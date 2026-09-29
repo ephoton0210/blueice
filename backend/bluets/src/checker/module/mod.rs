@@ -16,7 +16,7 @@ enum RecordSpreadFailure {
 pub(super) struct ModuleChecker<'a> {
     project: &'a Project,
     module: &'a Module,
-    exported_types: &'a BTreeMap<String, BTreeMap<String, TypeDefinition>>,
+    exports: &'a ProjectExports,
     ambient: Option<&'a AmbientDeclarations>,
     enforce_types: bool,
     require_declared_global_calls: bool,
@@ -25,12 +25,19 @@ pub(super) struct ModuleChecker<'a> {
     types: BTreeMap<String, TypeDefinition>,
     values: BTreeMap<String, Type>,
     functions: BTreeMap<String, Vec<FunctionSignature>>,
+    class_constructors: BTreeMap<String, ClassConstructorBinding>,
+    type_only_classes: BTreeSet<String>,
     function_implementations: BTreeSet<String>,
     type_parameters: BTreeSet<String>,
+    allowed_tuple_spread_parameters: BTreeMap<String, Type>,
     max_type_expansions: usize,
+    /// Catch bindings are strict `unknown`; the existing inference fallback
+    /// uses `Unknown` permissively outside the catch body.
+    strict_catch_unknown: bool,
     /// Inference uses `&self`; checked validation emits its first failure.
     record_spread_inference_failure: Cell<Option<(usize, usize, RecordSpreadFailure)>>,
 }
 
 mod binding;
 mod expressions;
+pub(in crate::checker) use binding::{class_export, class_instance_type};

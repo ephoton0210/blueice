@@ -172,6 +172,108 @@ fn config_builds_multiple_entries_and_resolves_only_declared_imports() {
 }
 
 #[test]
+fn strict_config_builds_only_complete_string_boundaries_for_both_targets() {
+    let temporary = unique_test_directory();
+    let root = temporary.join("project");
+    fs::create_dir_all(root.join("src")).unwrap();
+    let source_file = root.join("src/main.ts");
+    let config_file = root.join("bluetsc.json");
+    let good_source = "export function echo(value: string): string { return value; }";
+    for target in ["es2020", "es2022"] {
+        fs::write(&source_file, good_source).unwrap();
+        let out_dir = format!("dist-{target}");
+        let mut config = serde_json::json!({
+            "entries": ["src/main.ts"],
+            "outDir": out_dir,
+            "target": target,
+            "runtimePolicy": "strict-runtime",
+            "sourceMap": true,
+            "declaration": true,
+            "strictBoundaries": [{
+                "contractId": "echo-string-v1",
+                "module": "src/main.ts",
+                "function": "echo",
+                "sourceStart": 0,
+                "sourceEnd": good_source.len(),
+                "maxStringBytes": 64,
+                "helperVersion": "bluets-runtime-helper-v1"
+            }]
+        });
+        fs::write(&config_file, serde_json::to_vec_pretty(&config).unwrap()).unwrap();
+        let built = Command::new(env!("CARGO_BIN_EXE_bluetsc"))
+            .args(["build", "--config", config_file.to_str().unwrap()])
+            .output()
+            .unwrap();
+        assert!(
+            built.status.success(),
+            "{}",
+            String::from_utf8_lossy(&built.stderr)
+        );
+        let output = root.join(&out_dir);
+        let javascript = fs::read_to_string(output.join("src/main.js")).unwrap();
+        let manifest_bytes = fs::read(output.join("bluetsc.manifest.json")).unwrap();
+        let manifest: serde_json::Value = serde_json::from_slice(&manifest_bytes).unwrap();
+        assert_eq!(manifest["runtimePolicy"], "strict-runtime");
+        assert_eq!(manifest["target"], target);
+        assert_eq!(
+            manifest["strictBoundaries"][0]["contractId"],
+            "echo-string-v1"
+        );
+        assert_eq!(manifest["strictArtifacts"][0]["module"], "src/main.ts");
+        assert!(javascript.contains("from '../bluets.runtime-helper.v1.mjs'"));
+        assert_eq!(javascript.matches("__bluetsValidateStringV1(").count(), 2);
+        assert!(output.join("bluets.runtime-helper.v1.mjs").is_file());
+        assert!(output.join("src/main.js.map").is_file());
+        assert!(output.join("src/main.d.ts").is_file());
+        if Command::new("node").arg("--version").output().is_ok() {
+            fs::write(output.join("package.json"), r#"{"type":"module"}"#).unwrap();
+            let executed = Command::new("node")
+                .args([
+                    "--input-type=module",
+                    "-e",
+                    r#"import { echo } from './src/main.js';
+if (echo('é') !== 'é') process.exit(1);
+for (const value of [42, 'x'.repeat(65), '\uD800']) {
+  let refused = false;
+  try { echo(value); } catch (error) {
+    refused = error === 'BlueTS runtime contract rejected the value';
+  }
+  if (!refused) process.exit(2);
+}"#,
+                ])
+                .current_dir(&output)
+                .output()
+                .unwrap();
+            assert!(
+                executed.status.success(),
+                "{}",
+                String::from_utf8_lossy(&executed.stderr)
+            );
+        }
+
+        let bad_source = "export function echo(value: string): string { return globalText(); }";
+        fs::write(&source_file, bad_source).unwrap();
+        config["strictBoundaries"][0]["sourceEnd"] = bad_source.len().into();
+        fs::write(&config_file, serde_json::to_vec_pretty(&config).unwrap()).unwrap();
+        let refused = Command::new(env!("CARGO_BIN_EXE_bluetsc"))
+            .args(["build", "--config", config_file.to_str().unwrap()])
+            .output()
+            .unwrap();
+        assert!(!refused.status.success());
+        assert!(String::from_utf8_lossy(&refused.stderr).contains("BTS4000"));
+        assert_eq!(
+            fs::read_to_string(output.join("src/main.js")).unwrap(),
+            javascript
+        );
+        assert_eq!(
+            fs::read(output.join("bluetsc.manifest.json")).unwrap(),
+            manifest_bytes
+        );
+    }
+    fs::remove_dir_all(temporary).unwrap();
+}
+
+#[test]
 fn build_uses_root_confined_declaration_modules_without_emitting_runtime_artifacts() {
     let temporary = unique_test_directory();
     let root = temporary.join("project");

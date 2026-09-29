@@ -6,8 +6,9 @@
 
 use blueice_bluets::{
     compile, BuildArtifact, CompilerLimits, CompilerOptions, EcmaTarget, ModuleLoader,
-    ModuleSource, RuntimePolicy,
+    ModuleSource, RuntimePolicy, SourceSpan, StrictRuntimeBoundary,
 };
+use ring::digest::{digest, SHA256};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::env;
@@ -16,6 +17,10 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::{SystemTime, UNIX_EPOCH};
+
+const RUNTIME_HELPER_V1_FILE: &str = "bluets.runtime-helper.v1.mjs";
+const RUNTIME_HELPER_V1_VERSION: &str = "bluets-runtime-helper-v1";
+const RUNTIME_HELPER_V1_SOURCE: &str = include_str!("../runtime_helper_v1.mjs");
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Command {
@@ -35,7 +40,7 @@ enum Input {
         entry: PathBuf,
         project_root: Option<PathBuf>,
         out_dir: Option<PathBuf>,
-        options: CompilerOptions,
+        options: Box<CompilerOptions>,
     },
     Config(PathBuf),
 }
@@ -67,6 +72,20 @@ struct BlueTscConfig {
     runtime_policy: Option<String>,
     #[serde(default)]
     imports: BTreeMap<String, String>,
+    #[serde(default)]
+    strict_boundaries: Vec<StrictBoundaryConfig>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct StrictBoundaryConfig {
+    contract_id: String,
+    module: String,
+    function: String,
+    source_start: usize,
+    source_end: usize,
+    max_string_bytes: usize,
+    helper_version: String,
 }
 
 fn main() -> ExitCode {
@@ -94,9 +113,10 @@ fn main() -> ExitCode {
     }
     if args.command == Command::Build
         && invocation.options.runtime_policy == RuntimePolicy::StrictRuntime
+        && invocation.options.strict_runtime_boundaries.is_empty()
     {
         eprintln!(
-            "bluetsc: strict-runtime build requires the versioned runtime boundary helper, which standalone BlueTSC does not install"
+            "bluetsc: strict-runtime build requires owner-selected strictBoundaries in config"
         );
         return ExitCode::FAILURE;
     }
@@ -229,13 +249,13 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
             entry,
             project_root,
             out_dir,
-            options,
+            options: Box::new(options),
         },
     })
 }
 
 fn usage() -> &'static str {
-    "Usage:\n  bluetsc check <entry.ts> [--project-root <directory>] [--target es2020|es2022] [--runtime-policy transpile-only|checked|strict-runtime]\n  bluetsc build <entry.ts> --out-dir <directory> [--project-root <directory>] [--source-map] [--declaration] [--target es2020|es2022] [--runtime-policy transpile-only|checked|strict-runtime]\n  bluetsc check --config <bluetsc.json>\n  bluetsc build --config <bluetsc.json>\n\nConfig fields: entries, projectRoot, outDir, sourceMap, declaration, target, runtimePolicy, imports."
+    "Usage:\n  bluetsc check <entry.ts> [--project-root <directory>] [--target es2020|es2022] [--runtime-policy transpile-only|checked|strict-runtime]\n  bluetsc build <entry.ts> --out-dir <directory> [--project-root <directory>] [--source-map] [--declaration] [--target es2020|es2022] [--runtime-policy transpile-only|checked|strict-runtime]\n  bluetsc check --config <bluetsc.json>\n  bluetsc build --config <bluetsc.json>\n\nConfig fields: entries, projectRoot, outDir, sourceMap, declaration, target, runtimePolicy, imports, strictBoundaries."
 }
 
 #[derive(Debug)]
@@ -247,13 +267,19 @@ struct CompileSummary {
     has_errors: bool,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct BuildMetadata {
     language_version: &'static str,
     fingerprint: String,
     target: &'static str,
     runtime_policy: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    runtime_helper: Option<RuntimeHelperIdentity>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    strict_boundaries: Vec<StrictBoundaryManifest>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    strict_artifacts: Vec<StrictArtifactIdentity>,
     source_map: bool,
     declaration: bool,
     entries: Vec<String>,
@@ -261,6 +287,90 @@ struct BuildMetadata {
     imports: BTreeMap<String, String>,
     #[serde(skip)]
     has_configured_imports: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RuntimeHelperIdentity {
+    version: &'static str,
+    file: &'static str,
+    sha256: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct StrictBoundaryManifest {
+    contract_id: String,
+    module: String,
+    function: String,
+    source_start: usize,
+    source_end: usize,
+    max_string_bytes: usize,
+    helper_version: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct StrictArtifactIdentity {
+    module: String,
+    emitted_javascript_sha256: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    source_map_sha256: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    declaration_sha256: Option<String>,
+}
+
+impl From<&StrictRuntimeBoundary> for StrictBoundaryManifest {
+    fn from(boundary: &StrictRuntimeBoundary) -> Self {
+        Self {
+            contract_id: boundary.contract_id.clone(),
+            module: boundary.span.module.clone(),
+            function: boundary.function.clone(),
+            source_start: boundary.span.start,
+            source_end: boundary.span.end,
+            max_string_bytes: boundary.max_string_bytes,
+            helper_version: boundary.helper_version.clone(),
+        }
+    }
+}
+
+fn runtime_helper_v1_identity() -> RuntimeHelperIdentity {
+    RuntimeHelperIdentity {
+        version: RUNTIME_HELPER_V1_VERSION,
+        file: RUNTIME_HELPER_V1_FILE,
+        sha256: sha256_label(RUNTIME_HELPER_V1_SOURCE.as_bytes()),
+    }
+}
+
+fn sha256_label(bytes: &[u8]) -> String {
+    let hash = digest(&SHA256, bytes);
+    format!(
+        "sha256:{}",
+        hash.as_ref()
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>()
+    )
+}
+
+fn strict_artifact_inventory(
+    artifacts: &BTreeMap<String, BuildArtifact>,
+) -> Vec<StrictArtifactIdentity> {
+    artifacts
+        .iter()
+        .map(|(module, artifact)| StrictArtifactIdentity {
+            module: module.clone(),
+            emitted_javascript_sha256: sha256_label(artifact.javascript.as_bytes()),
+            source_map_sha256: artifact
+                .source_map
+                .as_ref()
+                .map(|map| sha256_label(map.to_json().as_bytes())),
+            declaration_sha256: artifact
+                .declaration
+                .as_ref()
+                .map(|declaration| sha256_label(declaration.as_bytes())),
+        })
+        .collect()
 }
 
 fn compile_entries(
@@ -336,6 +446,19 @@ fn build_metadata(invocation: &Invocation, summary: &CompileSummary) -> BuildMet
         fingerprint: summary.fingerprint.clone(),
         target: invocation.options.target.as_str(),
         runtime_policy: invocation.options.runtime_policy.as_str(),
+        runtime_helper: (invocation.options.runtime_policy == RuntimePolicy::StrictRuntime)
+            .then(runtime_helper_v1_identity),
+        strict_boundaries: invocation
+            .options
+            .strict_runtime_boundaries
+            .iter()
+            .map(StrictBoundaryManifest::from)
+            .collect(),
+        strict_artifacts: if invocation.options.runtime_policy == RuntimePolicy::StrictRuntime {
+            strict_artifact_inventory(&summary.artifacts)
+        } else {
+            Vec::new()
+        },
         source_map: invocation.options.source_map,
         declaration: invocation.options.declaration,
         entries,
@@ -364,7 +487,7 @@ fn resolve_invocation(input: Input) -> Result<Invocation, String> {
             project_root,
             out_dir,
             options,
-        } => resolve_explicit_invocation(entry, project_root, out_dir, options),
+        } => resolve_explicit_invocation(entry, project_root, out_dir, *options),
         Input::Config(path) => resolve_config_invocation(path),
     }
 }
@@ -452,6 +575,11 @@ fn resolve_config_invocation(path: PathBuf) -> Result<Invocation, String> {
     }
     entries.sort();
     entries.dedup();
+    if !config.strict_boundaries.is_empty() && entries.len() != 1 {
+        return Err(
+            "the first emitted strict boundary profile requires exactly one entry".to_string(),
+        );
+    }
     let out_dir = config
         .out_dir
         .map(|path| configured_output_path(&root, &path))
@@ -480,6 +608,11 @@ fn resolve_config_invocation(path: PathBuf) -> Result<Invocation, String> {
         }
         imports.insert(specifier, target);
     }
+    let strict_runtime_boundaries = config
+        .strict_boundaries
+        .into_iter()
+        .map(|boundary| configured_strict_boundary(&root, boundary))
+        .collect::<Result<Vec<_>, _>>()?;
     let options = CompilerOptions {
         target: parse_target(config.target.as_deref())?,
         runtime_policy: parse_runtime_policy(config.runtime_policy.as_deref())?,
@@ -491,6 +624,7 @@ fn resolve_config_invocation(path: PathBuf) -> Result<Invocation, String> {
         // declarations through the library API.
         ambient_declaration_modules: Vec::new(),
         require_declared_global_calls: false,
+        strict_runtime_boundaries,
         limits: CompilerLimits::default(),
     };
     Ok(Invocation {
@@ -499,6 +633,44 @@ fn resolve_config_invocation(path: PathBuf) -> Result<Invocation, String> {
         out_dir,
         options,
         imports,
+    })
+}
+
+fn configured_strict_boundary(
+    root: &Path,
+    boundary: StrictBoundaryConfig,
+) -> Result<StrictRuntimeBoundary, String> {
+    let relative = Path::new(&boundary.module);
+    if relative.as_os_str().is_empty()
+        || relative.is_absolute()
+        || relative
+            .components()
+            .any(|component| !matches!(component, std::path::Component::Normal(_)))
+    {
+        return Err("strict boundary module must be a root-relative source path".to_string());
+    }
+    let module = absolute_existing_path(&root.join(relative))
+        .map_err(|error| format!("cannot read strict boundary module: {error}"))?;
+    ensure_within(&module, root, "strict boundary module")?;
+    if !module.is_file()
+        || !matches!(
+            module.extension().and_then(|value| value.to_str()),
+            Some("ts" | "tsx")
+        )
+        || is_declaration_path(&module)
+    {
+        return Err("strict boundary module must be a .ts or .tsx source file".to_string());
+    }
+    Ok(StrictRuntimeBoundary {
+        contract_id: boundary.contract_id,
+        function: boundary.function,
+        span: SourceSpan::new(
+            project_module_id(root, &module),
+            boundary.source_start,
+            boundary.source_end,
+        ),
+        max_string_bytes: boundary.max_string_bytes,
+        helper_version: boundary.helper_version,
     })
 }
 
@@ -723,6 +895,15 @@ fn publish_build(
     declaration_modules: &std::collections::BTreeMap<String, String>,
     metadata: &BuildMetadata,
 ) -> io::Result<()> {
+    let expected_helper = (metadata.runtime_policy == RuntimePolicy::StrictRuntime.as_str())
+        .then(runtime_helper_v1_identity);
+    if metadata.runtime_helper != expected_helper {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "build metadata does not bind the exact runtime helper",
+        ));
+    }
+    strict_publish::verify(metadata, artifacts, declaration_modules)?;
     let output = absolute_path(out_dir)?;
     if output == root || (output.exists() && fs::canonicalize(&output)? == root) {
         return Err(io::Error::new(
@@ -742,6 +923,9 @@ fn publish_build(
     let stage = parent.join(format!(".bluetsc-stage-{}-{nonce}", std::process::id()));
     fs::create_dir(&stage)?;
     let write_result = (|| -> io::Result<()> {
+        if metadata.runtime_policy == RuntimePolicy::StrictRuntime.as_str() {
+            fs::write(stage.join(RUNTIME_HELPER_V1_FILE), RUNTIME_HELPER_V1_SOURCE)?;
+        }
         for (module_id, artifact) in artifacts {
             let module_path = Path::new(module_id);
             let relative = artifact_relative_path(root, module_path, module_id)?;
@@ -886,215 +1070,8 @@ fn project_module_id(root: &Path, path: &Path) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use blueice_bluets::{BuildArtifact, SourceMap};
-    use std::collections::BTreeMap;
+#[path = "bluetsc/tests.rs"]
+mod tests;
 
-    fn args(values: &[&str]) -> Result<Args, String> {
-        parse_args(values.iter().map(|value| value.to_string()))
-    }
-
-    #[test]
-    fn build_requires_an_output_directory() {
-        assert_eq!(
-            args(&["build", "main.ts"]),
-            Err("build requires --out-dir <directory>".to_string())
-        );
-    }
-
-    #[test]
-    fn parses_check_with_a_strict_policy() {
-        let parsed = args(&[
-            "check",
-            "main.ts",
-            "--runtime-policy",
-            "strict-runtime",
-            "--target",
-            "es2020",
-        ])
-        .unwrap();
-        assert_eq!(parsed.command, Command::Check);
-        let Input::Entry { options, .. } = parsed.input else {
-            panic!("expected explicit entry input");
-        };
-        assert_eq!(options.runtime_policy, RuntimePolicy::StrictRuntime);
-        assert_eq!(options.target, EcmaTarget::Es2020);
-    }
-
-    #[test]
-    fn config_mode_has_no_flag_escape_hatch() {
-        assert_eq!(
-            args(&["check", "--config", "bluetsc.json", "--source-map"]),
-            Err(
-                "`--config` owns project settings; unsupported extra argument `--source-map`"
-                    .to_string()
-            )
-        );
-    }
-
-    #[test]
-    fn configured_output_cannot_escape_its_project_root() {
-        assert!(configured_output_path(Path::new("/project"), "../outside").is_err());
-        assert!(configured_output_path(Path::new("/project"), ".").is_err());
-        assert!(configured_output_path(Path::new("/project"), "").is_err());
-        assert_eq!(
-            configured_output_path(Path::new("/project"), "dist").unwrap(),
-            PathBuf::from("/project/dist")
-        );
-    }
-
-    #[test]
-    fn declaration_modules_cannot_be_executable_entries() {
-        assert!(ensure_not_declaration_entry(Path::new("types/api.d.ts"), "entry").is_err());
-        assert!(ensure_not_declaration_entry(Path::new("src/main.ts"), "entry").is_ok());
-    }
-
-    #[test]
-    fn resolver_fingerprint_is_project_root_relative() {
-        let first_root = Path::new("/first/project");
-        let second_root = Path::new("/second/project");
-        let first = BTreeMap::from([("@shared/".to_string(), first_root.join("src/shared"))]);
-        let second = BTreeMap::from([("@shared/".to_string(), second_root.join("src/shared"))]);
-        assert_eq!(
-            import_map_fingerprint(first_root, &first),
-            import_map_fingerprint(second_root, &second)
-        );
-    }
-
-    #[test]
-    fn artifact_paths_accept_root_relative_ids_but_reject_parent_traversal() {
-        assert_eq!(
-            artifact_relative_path(
-                Path::new("/project"),
-                Path::new("src/main.ts"),
-                "src/main.ts"
-            )
-            .unwrap(),
-            PathBuf::from("src/main.ts")
-        );
-        assert!(artifact_relative_path(
-            Path::new("/project"),
-            Path::new("../outside.ts"),
-            "../outside.ts"
-        )
-        .is_err());
-    }
-
-    #[test]
-    fn project_module_ids_are_root_relative() {
-        assert_eq!(
-            project_module_id(Path::new("/project"), Path::new("/project/src/main.ts")),
-            "src/main.ts"
-        );
-    }
-
-    fn test_metadata() -> BuildMetadata {
-        BuildMetadata {
-            language_version: "blue-ts-test",
-            fingerprint: "bts-project-test".to_string(),
-            target: "es2022",
-            runtime_policy: "checked",
-            source_map: true,
-            declaration: true,
-            entries: vec!["src/main.js".to_string()],
-            declaration_modules: Vec::new(),
-            imports: BTreeMap::new(),
-            has_configured_imports: false,
-        }
-    }
-
-    #[test]
-    fn publishing_replaces_a_complete_output_directory_only_after_staging() {
-        let temporary = unique_test_directory("publish");
-        let root = temporary.join("source");
-        let output = temporary.join("output");
-        fs::create_dir_all(&root).unwrap();
-        fs::create_dir_all(&output).unwrap();
-        fs::write(output.join("obsolete.js"), "old output").unwrap();
-        let module = root.join("src/main.ts");
-        let artifacts = BTreeMap::from([(
-            path_id(&module),
-            BuildArtifact {
-                module_id: path_id(&module),
-                javascript: "export const answer = 42;".to_string(),
-                source_map: Some(SourceMap {
-                    file: "main.js".to_string(),
-                    sources: vec!["src/main.ts".to_string()],
-                    sources_content: vec!["export const answer: number = 42;".to_string()],
-                    mappings: "AAAA".to_string(),
-                }),
-                declaration: Some("export declare const answer: number;\n".to_string()),
-                fingerprint: "test".to_string(),
-            },
-        )]);
-
-        publish_build(
-            &root,
-            &output,
-            &artifacts,
-            &BTreeMap::new(),
-            &test_metadata(),
-        )
-        .unwrap();
-
-        assert_eq!(
-            fs::read_to_string(output.join("src/main.js")).unwrap(),
-            "export const answer = 42;\n//# sourceMappingURL=main.js.map\n"
-        );
-        assert!(output.join("src/main.js.map").is_file());
-        assert!(output.join("src/main.d.ts").is_file());
-        let manifest = fs::read_to_string(output.join("bluetsc.manifest.json")).unwrap();
-        assert!(manifest.contains("\"languageVersion\": \"blue-ts-test\""));
-        assert!(!manifest.contains(&root.to_string_lossy().into_owned()));
-        assert!(!output.join("obsolete.js").exists());
-        fs::remove_dir_all(temporary).unwrap();
-    }
-
-    #[test]
-    fn staging_failure_does_not_replace_an_existing_output_directory() {
-        let temporary = unique_test_directory("publish-failure");
-        let root = temporary.join("source");
-        let output = temporary.join("output");
-        fs::create_dir_all(&root).unwrap();
-        fs::create_dir_all(&output).unwrap();
-        fs::write(output.join("preserved.js"), "previous artifact").unwrap();
-        let artifacts = BTreeMap::from([(
-            path_id(&temporary.join("outside.ts")),
-            BuildArtifact {
-                module_id: path_id(&temporary.join("outside.ts")),
-                javascript: String::new(),
-                source_map: None,
-                declaration: None,
-                fingerprint: "test".to_string(),
-            },
-        )]);
-
-        assert!(publish_build(
-            &root,
-            &output,
-            &artifacts,
-            &BTreeMap::new(),
-            &test_metadata(),
-        )
-        .is_err());
-        assert_eq!(
-            fs::read_to_string(output.join("preserved.js")).unwrap(),
-            "previous artifact"
-        );
-        fs::remove_dir_all(temporary).unwrap();
-    }
-
-    fn unique_test_directory(name: &str) -> PathBuf {
-        let nonce = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let path = env::temp_dir().join(format!(
-            "blueice-bluets-{name}-{}-{nonce}",
-            std::process::id()
-        ));
-        fs::create_dir(&path).unwrap();
-        path
-    }
-}
+#[path = "bluetsc/strict_publish.rs"]
+mod strict_publish;

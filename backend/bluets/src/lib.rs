@@ -25,6 +25,7 @@ mod debug_info;
 mod diagnostic;
 mod emitter;
 mod parser;
+mod strict_boundaries;
 mod syntax;
 
 pub use authorized_loader::{
@@ -34,22 +35,28 @@ pub use authorized_loader::{
 pub use checker::{CheckedModule, CheckedProject, Symbol, SymbolKind, Type};
 pub use compiler::{
     compile, CompilerLimits, CompilerOptions, EcmaTarget, IncrementalCompiler, IncrementalResult,
-    MapLoader, ModuleLoader, ModuleSource, Project, RuntimePolicy,
+    MapLoader, ModuleLoader, ModuleSource, Project, RuntimePolicy, StrictRuntimeBoundary,
 };
 pub use contracts::{
     Contract, ContractError, ContractPlan, ContractValue, ValidationError, ValidationLimits,
+    ValidationUsage,
 };
 pub use debug_info::{
     source_locations_for_spans, BlueTsDebugInfo, ContractId, DebugContract, DebugSource,
     DebugSourceLocation, DebugSourcePosition, DebugSymbol, DebugType, SourceId, SymbolId, TypeId,
 };
 pub use diagnostic::{Diagnostic, DiagnosticCode, Severity, SourceSpan};
-pub use emitter::{BuildArtifact, BuildOutput, SourceMap};
+pub use emitter::{
+    BuildArtifact, BuildOutput, EmittedRuntimeBoundary, EmittedRuntimeSite, EmittedStrictModule,
+    SourceMap,
+};
 pub use parser::{
-    parse_module, Declaration, FunctionBodyItem, FunctionDeclaration, FunctionElseBranch,
-    FunctionIfStatement, ImportDeclaration, InterfaceDeclaration, Module, Parameter, ParserLimits,
-    RawDeclaration, TypeAliasDeclaration, TypeExportDeclaration, TypeParameter, ValueExportBinding,
-    ValueExportDeclaration, VariableDeclaration, VariableKind,
+    parse_module, ClassConstructor, ClassDeclaration, ClassMemberKind, ClassMemberShell,
+    ClassMethod, ClassMethodGroup, Declaration, FunctionBodyItem, FunctionCatchClause,
+    FunctionDeclaration, FunctionElseBranch, FunctionIfStatement, FunctionTryStatement,
+    FunctionWhileStatement, ImportDeclaration, InterfaceDeclaration, Module, Parameter,
+    ParserLimits, RawDeclaration, TupleTypeElement, TypeAliasDeclaration, TypeExportDeclaration,
+    TypeParameter, ValueExportBinding, ValueExportDeclaration, VariableDeclaration, VariableKind,
 };
 pub use syntax::{lex, Token, TokenKind};
 
@@ -57,12 +64,13 @@ pub use syntax::{lex, Token, TokenKind};
 /// diagnostics.  This is not a claim of complete `tsc` compatibility.
 pub const LANGUAGE_VERSION: &str = "blue-ts-0.1";
 
-/// A successful compilation, including checked modules and optional portable
-/// JavaScript artifacts.  Diagnostics are always returned; callers must only
-/// publish artifacts when [`Self::has_errors`] is false.
+/// One compilation, including checked modules and optional portable
+/// JavaScript artifacts. Diagnostics and the observed graph/options
+/// fingerprint remain available when errors prevent artifact emission.
 #[derive(Debug, Clone)]
 pub struct Compilation {
     pub project: Project,
+    pub project_fingerprint: String,
     pub checked: Option<CheckedProject>,
     pub debug_info: Option<BlueTsDebugInfo>,
     pub diagnostics: Vec<Diagnostic>,

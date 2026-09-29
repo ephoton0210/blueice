@@ -208,6 +208,55 @@ pub struct BlueTsDebugInfo {
     pub contracts: Vec<DebugContract>,
 }
 
+impl BlueTsDebugInfo {
+    /// Checked owned heap payload retained with this static metadata. This
+    /// counts vector buffers and string capacities plus nested contract plans;
+    /// it excludes allocator metadata and the enclosing struct itself.
+    pub fn owned_heap_payload_bytes(&self) -> Option<usize> {
+        let mut bytes = self
+            .language_version
+            .capacity()
+            .checked_add(self.compiler_options_hash.capacity())?;
+        bytes = bytes.checked_add(
+            self.sources
+                .capacity()
+                .checked_mul(std::mem::size_of::<DebugSource>())?,
+        )?;
+        for source in &self.sources {
+            bytes = bytes.checked_add(source.module.capacity())?;
+            bytes = bytes.checked_add(source.content_hash.capacity())?;
+        }
+        bytes = bytes.checked_add(
+            self.types
+                .capacity()
+                .checked_mul(std::mem::size_of::<DebugType>())?,
+        )?;
+        for static_type in &self.types {
+            bytes = bytes.checked_add(static_type.display.capacity())?;
+        }
+        bytes = bytes.checked_add(
+            self.symbols
+                .capacity()
+                .checked_mul(std::mem::size_of::<DebugSymbol>())?,
+        )?;
+        for symbol in &self.symbols {
+            bytes = bytes.checked_add(symbol.name.capacity())?;
+            bytes = bytes.checked_add(symbol.span.module.capacity())?;
+        }
+        bytes = bytes.checked_add(
+            self.contracts
+                .capacity()
+                .checked_mul(std::mem::size_of::<DebugContract>())?,
+        )?;
+        for contract in &self.contracts {
+            bytes = bytes.checked_add(contract.name.capacity())?;
+            bytes = bytes.checked_add(contract.span.module.capacity())?;
+            bytes = bytes.checked_add(contract.plan.owned_heap_payload_bytes()?)?;
+        }
+        Some(bytes)
+    }
+}
+
 pub(crate) fn build(checked: &CheckedProject, options: &CompilerOptions) -> BlueTsDebugInfo {
     let mut sources = Vec::new();
     let mut source_ids = BTreeMap::new();
@@ -498,6 +547,23 @@ mod tests {
     }
 
     #[test]
+    fn static_symbol_inventory_does_not_mint_function_local_or_parameter_ids() {
+        let loader = MapLoader::from([ModuleSource::new(
+            "memory:///app.ts",
+            "function read(input: number): number { const local: number = input; if (input > 0) { let nested: number = local; } return local; }",
+        )]);
+        let compilation = compile("memory:///app.ts", &loader, CompilerOptions::default());
+        assert!(
+            compilation.diagnostics.is_empty(),
+            "{:?}",
+            compilation.diagnostics
+        );
+        let debug = compilation.debug_info.unwrap();
+        assert_eq!(debug.symbols.len(), 1);
+        assert_eq!(debug.symbols[0].name, "read");
+    }
+
+    #[test]
     fn source_provenance_uses_a_labeled_cryptographic_digest() {
         assert_eq!(
             source_hash("abc"),
@@ -611,5 +677,14 @@ mod tests {
         assert_eq!(settings.source, SourceId(0));
         assert!(settings.contract.is_some());
         assert_ne!(debug.sources[0].content_hash, "Settings");
+
+        let retained_with_contracts = debug.owned_heap_payload_bytes().unwrap();
+        let mut without_contracts = debug.clone();
+        without_contracts.contracts.clear();
+        without_contracts.contracts.shrink_to_fit();
+        assert!(
+            retained_with_contracts > without_contracts.owned_heap_payload_bytes().unwrap(),
+            "retained reifiable plans must add to the metadata charge"
+        );
     }
 }

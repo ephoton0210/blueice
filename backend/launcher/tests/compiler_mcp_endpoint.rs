@@ -182,6 +182,7 @@ fn launcher_combines_owner_compiler_catalog_and_page_http_policy_in_one_private_
                 text: "export const answer: number = 42;".into(),
             }],
             expose_to_compiler_ipc: true,
+            grant_output_write: false,
             resolutions: Vec::new(),
             options: CompilerCatalogOptions::default(),
         }],
@@ -313,6 +314,7 @@ fn launcher_bootstraps_two_owner_selected_projects_without_public_registration()
                 text: format!("export const answer: number = {answer};"),
             }],
             expose_to_compiler_ipc: exposed,
+            grant_output_write: false,
             resolutions: Vec::new(),
             options: CompilerCatalogOptions::default(),
         }
@@ -403,6 +405,76 @@ fn launcher_bootstraps_two_owner_selected_projects_without_public_registration()
     );
     launcher.shutdown();
     let _ = std::fs::remove_file(&catalog_path);
+}
+
+#[test]
+fn launcher_registers_a_canonical_physical_catalog_before_compiler_queries() {
+    let directory = unique_path("physical-catalog");
+    std::fs::create_dir(&directory).unwrap();
+    let directory = directory.canonicalize().unwrap();
+    let project = directory.join("project");
+    let output = directory.join("output");
+    let catalog_path = directory.join("catalog.json");
+    std::fs::create_dir(&project).unwrap();
+    std::fs::create_dir(&output).unwrap();
+    std::fs::write(project.join("blue-ts.json"), "{}").unwrap();
+    let source = "export const answer: number = 42;";
+    std::fs::write(project.join("main.ts"), source).unwrap();
+    let entry = project.join("main.ts").to_str().unwrap().to_string();
+    let catalog = CompilerCatalogBootstrap {
+        version: COMPILER_CATALOG_BOOTSTRAP_VERSION,
+        projects: vec![CompilerCatalogProject {
+            canonical_project_root: project.to_str().unwrap().to_string(),
+            canonical_config_root: project.join("blue-ts.json").to_str().unwrap().to_string(),
+            canonical_output_root: output.to_str().unwrap().to_string(),
+            entry_module: entry.clone(),
+            modules: vec![CompilerCatalogModule {
+                canonical_id: entry,
+                text: source.to_string(),
+            }],
+            expose_to_compiler_ipc: true,
+            grant_output_write: true,
+            resolutions: Vec::new(),
+            options: CompilerCatalogOptions::default(),
+        }],
+    };
+    std::fs::write(&catalog_path, serde_json::to_vec(&catalog).unwrap()).unwrap();
+    let mut launcher = LauncherProcess::spawn_with_catalog_file(Some(&catalog_path));
+    let mut stream = UnixStream::connect(&launcher.compiler_socket).unwrap();
+    write_compiler_request(
+        &mut stream,
+        &CompilerRequest::Hello {
+            protocol_version: COMPILER_PROTOCOL_VERSION,
+        },
+    )
+    .unwrap();
+    assert!(matches!(
+        read_compiler_reply(&mut stream).unwrap(),
+        CompilerReply::HelloAck { .. }
+    ));
+    write_compiler_request(&mut stream, &CompilerRequest::ListProjects).unwrap();
+    let CompilerReply::Projects(inventory) = read_compiler_reply(&mut stream).unwrap() else {
+        panic!("physical owner catalog must be registered")
+    };
+    assert_eq!(inventory.projects, vec![CompilerProject { id: 1 }]);
+    write_compiler_request(
+        &mut stream,
+        &CompilerRequest::Check {
+            project: CompilerProject { id: 1 },
+        },
+    )
+    .unwrap();
+    let CompilerReply::Check(check) = read_compiler_reply(&mut stream).unwrap() else {
+        panic!("canonical physical source must check through the sealed graph")
+    };
+    assert!(!check.has_errors);
+    assert_eq!(
+        check.artifact_fingerprint.as_deref(),
+        Some(check.project_fingerprint.as_str())
+    );
+    assert!(std::fs::read_dir(&output).unwrap().next().is_none());
+    launcher.shutdown();
+    std::fs::remove_dir_all(directory).unwrap();
 }
 
 #[test]

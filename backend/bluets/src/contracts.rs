@@ -4,7 +4,7 @@
 
 //! Pure, bounded runtime-contract plans for reifiable BlueTS types.
 
-use crate::parser::{Type, TypeField};
+use crate::parser::{TupleTypeElement, Type, TypeField};
 use std::collections::{BTreeMap, HashSet};
 use std::fmt;
 
@@ -45,6 +45,16 @@ pub enum Contract {
     Literal(String),
     Array(Box<Contract>),
     Tuple(Vec<Contract>),
+    OptionalTuple {
+        items: Vec<Contract>,
+        required: usize,
+    },
+    RestTuple {
+        items: Vec<Contract>,
+        required: usize,
+        rest: Box<Contract>,
+        suffix: Vec<Contract>,
+    },
     Record(Vec<ContractField>),
     Union(Vec<Contract>),
     /// Every component must validate. This keeps inherited record contracts
@@ -104,6 +114,14 @@ pub struct ValidationLimits {
     pub max_string_bytes: usize,
 }
 
+/// Work performed by one pure validation attempt, including a rejected node.
+/// A boundary owner can charge this to the exact caller without retaining the
+/// inspected value or exposing it in a diagnostic.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ValidationUsage {
+    pub visited_nodes: usize,
+}
+
 impl Default for ValidationLimits {
     fn default() -> Self {
         Self {
@@ -116,6 +134,26 @@ impl Default for ValidationLimits {
 }
 
 impl ContractPlan {
+    /// Owned heap payload retained by this plan, excluding allocator and
+    /// BTreeMap node overhead. This is a checked accounting measure, not RSS.
+    pub(crate) fn owned_heap_payload_bytes(&self) -> Option<usize> {
+        let mut bytes = self
+            .id
+            .capacity()
+            .checked_add(self.fingerprint.capacity())?;
+        bytes = bytes.checked_add(contract_heap_payload_bytes(&self.root)?)?;
+        bytes = bytes.checked_add(
+            self.definitions
+                .len()
+                .checked_mul(std::mem::size_of::<(String, Contract)>())?,
+        )?;
+        for (name, contract) in &self.definitions {
+            bytes = bytes.checked_add(name.capacity())?;
+            bytes = bytes.checked_add(contract_heap_payload_bytes(contract)?)?;
+        }
+        Some(bytes)
+    }
+
     /// Lowers a supported static type into a pure runtime plan.  Callers supply
     /// the checker-approved named type table; unresolved or erased types are
     /// rejected rather than treated as an unchecked escape hatch.
@@ -150,17 +188,94 @@ impl ContractPlan {
         value: &ContractValue,
         limits: ValidationLimits,
     ) -> Result<(), ValidationError> {
+        self.validate_with_limits_metered(value, limits).0
+    }
+
+    /// Returns the bounded work done even when validation fails.
+    pub fn validate_with_limits_metered(
+        &self,
+        value: &ContractValue,
+        limits: ValidationLimits,
+    ) -> (Result<(), ValidationError>, ValidationUsage) {
         let mut state = ValidationState {
             limits,
             visited_nodes: 0,
+            attempted_nodes: 0,
         };
-        validate_contract(&self.root, value, &self.definitions, "$", 0, &mut state)
+        let result = validate_contract(&self.root, value, &self.definitions, "$", 0, &mut state);
+        (
+            result,
+            ValidationUsage {
+                visited_nodes: state.attempted_nodes,
+            },
+        )
+    }
+}
+
+fn contract_heap_payload_bytes(contract: &Contract) -> Option<usize> {
+    match contract {
+        Contract::Null
+        | Contract::Undefined
+        | Contract::Boolean
+        | Contract::Number
+        | Contract::String => Some(0),
+        Contract::Literal(value) | Contract::Reference(value) => Some(value.capacity()),
+        Contract::Array(item) => {
+            std::mem::size_of::<Contract>().checked_add(contract_heap_payload_bytes(item)?)
+        }
+        Contract::Tuple(items)
+        | Contract::OptionalTuple { items, .. }
+        | Contract::Union(items)
+        | Contract::Intersection(items) => {
+            let mut bytes = items
+                .capacity()
+                .checked_mul(std::mem::size_of::<Contract>())?;
+            for item in items {
+                bytes = bytes.checked_add(contract_heap_payload_bytes(item)?)?;
+            }
+            Some(bytes)
+        }
+        Contract::RestTuple {
+            items,
+            rest,
+            suffix,
+            ..
+        } => {
+            let mut bytes = items
+                .capacity()
+                .checked_mul(std::mem::size_of::<Contract>())?;
+            for item in items {
+                bytes = bytes.checked_add(contract_heap_payload_bytes(item)?)?;
+            }
+            bytes = bytes.checked_add(
+                suffix
+                    .capacity()
+                    .checked_mul(std::mem::size_of::<Contract>())?,
+            )?;
+            for item in suffix {
+                bytes = bytes.checked_add(contract_heap_payload_bytes(item)?)?;
+            }
+            bytes
+                .checked_add(std::mem::size_of::<Contract>())?
+                .checked_add(contract_heap_payload_bytes(rest)?)
+        }
+        Contract::Record(fields) => {
+            let mut bytes = fields
+                .capacity()
+                .checked_mul(std::mem::size_of::<ContractField>())?;
+            for field in fields {
+                bytes = bytes.checked_add(field.name.capacity())?;
+                bytes = bytes.checked_add(contract_heap_payload_bytes(&field.contract)?)?;
+            }
+            Some(bytes)
+        }
     }
 }
 
 struct ValidationState {
     limits: ValidationLimits,
     visited_nodes: usize,
+    attempted_nodes: usize,
 }
 
 impl ValidationState {
@@ -170,6 +285,7 @@ impl ValidationState {
         path: &str,
         depth: usize,
     ) -> Result<(), ValidationError> {
+        self.attempted_nodes = self.attempted_nodes.saturating_add(1);
         if depth > self.limits.max_depth {
             return Err(limit_error(
                 path,
@@ -237,11 +353,52 @@ fn lower(
             definitions,
             active,
         )?))),
-        Type::Tuple(values) => values
-            .iter()
-            .map(|value| lower(value, named_types, definitions, active))
-            .collect::<Result<Vec<_>, _>>()
-            .map(Contract::Tuple),
+        Type::Tuple(values) => {
+            let values = expand_contract_tuple_spreads(values, named_types, active, &mut 1_024)?;
+            if values.iter().filter(|value| value.rest).count() > 1 {
+                return Err(ContractError {
+                    message: "a tuple contract cannot contain multiple rest elements".to_string(),
+                });
+            }
+            let rest_index = values.iter().position(|value| value.rest);
+            let fixed = &values[..rest_index.unwrap_or(values.len())];
+            let items = fixed
+                .iter()
+                .map(|value| {
+                    let item = lower(&value.annotation, named_types, definitions, active)?;
+                    Ok(if value.optional {
+                        Contract::Union(vec![item, Contract::Undefined])
+                    } else {
+                        item
+                    })
+                })
+                .collect::<Result<Vec<_>, ContractError>>()?;
+            if let Some(rest_index) = rest_index {
+                let rest = &values[rest_index];
+                let Type::Array(element) = &rest.annotation else {
+                    return Err(ContractError {
+                        message: "tuple rest contract requires an array type".to_string(),
+                    });
+                };
+                let suffix = values[rest_index + 1..]
+                    .iter()
+                    .map(|value| lower(&value.annotation, named_types, definitions, active))
+                    .collect::<Result<Vec<_>, ContractError>>()?;
+                Ok(Contract::RestTuple {
+                    items,
+                    required: fixed.iter().filter(|value| !value.optional).count() + suffix.len(),
+                    rest: Box::new(lower(element, named_types, definitions, active)?),
+                    suffix,
+                })
+            } else if values.iter().any(|value| value.optional) {
+                Ok(Contract::OptionalTuple {
+                    items,
+                    required: values.iter().filter(|value| !value.optional).count(),
+                })
+            } else {
+                Ok(Contract::Tuple(items))
+            }
+        }
         Type::Record(fields) => {
             lower_fields(fields, named_types, definitions, active).map(Contract::Record)
         }
@@ -283,6 +440,79 @@ fn lower(
             message: format!("generic type `{name}` needs an explicit reifiable contract"),
         }),
     }
+}
+
+fn expand_contract_tuple_spreads(
+    values: &[TupleTypeElement],
+    named_types: &BTreeMap<String, Type>,
+    active: &mut HashSet<String>,
+    remaining: &mut usize,
+) -> Result<Vec<TupleTypeElement>, ContractError> {
+    let mut expanded = Vec::new();
+    for value in values {
+        *remaining = remaining.checked_sub(1).ok_or_else(|| ContractError {
+            message: "tuple spread contract exceeds the expansion limit".to_string(),
+        })?;
+        if !value.rest || matches!(value.annotation, Type::Array(_)) {
+            expanded.push(value.clone());
+            continue;
+        }
+        if let Type::Tuple(items) = &value.annotation {
+            expanded.extend(expand_contract_tuple_spreads(
+                items,
+                named_types,
+                active,
+                remaining,
+            )?);
+            continue;
+        }
+        let Type::Named { name, arguments } = &value.annotation else {
+            return Err(ContractError {
+                message: "tuple spread contract requires a concrete tuple or array type"
+                    .to_string(),
+            });
+        };
+        if !arguments.is_empty() || !active.insert(name.clone()) {
+            return Err(ContractError {
+                message: "tuple spread contract is generic or cyclic".to_string(),
+            });
+        }
+        let replacement = match named_types.get(name) {
+            Some(Type::Tuple(items)) => {
+                expand_contract_tuple_spreads(items, named_types, active, remaining)
+            }
+            Some(Type::Array(_)) => Ok(vec![TupleTypeElement {
+                annotation: named_types[name].clone(),
+                optional: false,
+                label: None,
+                rest: true,
+            }]),
+            Some(Type::Named { .. }) => expand_contract_tuple_spreads(
+                &[TupleTypeElement {
+                    annotation: named_types[name].clone(),
+                    optional: false,
+                    label: None,
+                    rest: true,
+                }],
+                named_types,
+                active,
+                remaining,
+            ),
+            _ => Err(ContractError {
+                message: "tuple spread contract requires a concrete tuple or array type"
+                    .to_string(),
+            }),
+        };
+        active.remove(name);
+        expanded.extend(replacement?);
+    }
+    if expanded.iter().filter(|value| value.rest).count() > 1 {
+        return Err(ContractError {
+            message: "a tuple contract cannot contain multiple rest elements".to_string(),
+        });
+    }
+    crate::parser::require_tuple_positions_before_suffix(&mut expanded);
+    Ok(expanded)
 }
 
 fn lower_fields(
@@ -347,6 +577,86 @@ fn validate_contract(
                 });
             }
             for (index, (item, item_value)) in items.iter().zip(values).enumerate() {
+                validate_contract(
+                    item,
+                    item_value,
+                    definitions,
+                    &format!("{path}[{index}]"),
+                    depth + 1,
+                    state,
+                )?;
+            }
+            Ok(())
+        }
+        Contract::OptionalTuple { items, required } => {
+            let ContractValue::Array(values) = value else {
+                return mismatch(path, "tuple", value);
+            };
+            if values.len() < *required || values.len() > items.len() {
+                return Err(ValidationError {
+                    path: path.to_string(),
+                    expected: format!("tuple of length {}..={}", required, items.len()),
+                    observed: format!("array of length {}", values.len()),
+                });
+            }
+            for (index, (item, item_value)) in items.iter().zip(values).enumerate() {
+                validate_contract(
+                    item,
+                    item_value,
+                    definitions,
+                    &format!("{path}[{index}]"),
+                    depth + 1,
+                    state,
+                )?;
+            }
+            Ok(())
+        }
+        Contract::RestTuple {
+            items,
+            required,
+            rest,
+            suffix,
+        } => {
+            let ContractValue::Array(values) = value else {
+                return mismatch(path, "tuple", value);
+            };
+            if values.len() < *required {
+                return Err(ValidationError {
+                    path: path.to_string(),
+                    expected: format!("tuple of length at least {required}"),
+                    observed: format!("array of length {}", values.len()),
+                });
+            }
+            for (index, (item, item_value)) in items.iter().zip(values).enumerate() {
+                validate_contract(
+                    item,
+                    item_value,
+                    definitions,
+                    &format!("{path}[{index}]"),
+                    depth + 1,
+                    state,
+                )?;
+            }
+            let suffix_start = values.len() - suffix.len();
+            for (index, item_value) in values
+                .iter()
+                .enumerate()
+                .take(suffix_start)
+                .skip(items.len())
+            {
+                validate_contract(
+                    rest,
+                    item_value,
+                    definitions,
+                    &format!("{path}[{index}]"),
+                    depth + 1,
+                    state,
+                )?;
+            }
+            for (index, (item, item_value)) in
+                suffix.iter().zip(&values[suffix_start..]).enumerate()
+            {
+                let index = suffix_start + index;
                 validate_contract(
                     item,
                     item_value,
@@ -465,7 +775,7 @@ fn contract_label(contract: &Contract) -> String {
         Contract::String => "string",
         Contract::Literal(value) => value,
         Contract::Array(_) => "array",
-        Contract::Tuple(_) => "tuple",
+        Contract::Tuple(_) | Contract::OptionalTuple { .. } | Contract::RestTuple { .. } => "tuple",
         Contract::Record(_) => "object",
         Contract::Union(_) => "union",
         Contract::Intersection(_) => "intersection",
@@ -605,5 +915,15 @@ mod tests {
             .unwrap_err();
         assert_eq!(fuel_error.path, "$[0]");
         assert!(fuel_error.expected.contains("fuel 1"));
+
+        let (metered_error, usage) = array_plan.validate_with_limits_metered(
+            &ContractValue::Array(vec![ContractValue::String("a".to_string())]),
+            ValidationLimits {
+                max_nodes: 1,
+                ..ValidationLimits::default()
+            },
+        );
+        assert_eq!(metered_error.unwrap_err(), fuel_error);
+        assert_eq!(usage.visited_nodes, 2, "the rejected node also costs work");
     }
 }

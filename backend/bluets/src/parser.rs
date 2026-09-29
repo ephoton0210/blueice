@@ -51,6 +51,7 @@ pub enum Declaration {
     Interface(InterfaceDeclaration),
     Variable(VariableDeclaration),
     Function(FunctionDeclaration),
+    Class(ClassDeclaration),
     Raw(RawDeclaration),
 }
 
@@ -65,6 +66,7 @@ impl Declaration {
             Self::Interface(declaration) => &declaration.span,
             Self::Variable(declaration) => &declaration.span,
             Self::Function(declaration) => &declaration.span,
+            Self::Class(declaration) => &declaration.span,
             Self::Raw(declaration) => &declaration.span,
         }
     }
@@ -131,6 +133,81 @@ pub struct RawDeclaration {
     pub span: SourceSpan,
 }
 
+/// A bounded named class shell. Members remain original tokens until the
+/// class checker and direct lowering install a shared structured grammar.
+/// That intermediate state is rejected by the checker before any emission.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ClassDeclaration {
+    pub name: String,
+    pub name_span: SourceSpan,
+    pub extends_name: Option<String>,
+    pub extends_span: Option<SourceSpan>,
+    pub body: Vec<Token>,
+    /// Token-indexed member boundaries within `body`; opaque members remain
+    /// unavailable to the checker and direct bridge.
+    pub members: Vec<ClassMemberShell>,
+    /// Contiguous same-name method overloads, indexed into `members`.
+    /// A missing implementation remains visible for the class checker.
+    pub method_groups: Vec<ClassMethodGroup>,
+    pub body_span: SourceSpan,
+    pub exported: bool,
+    pub span: SourceSpan,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ClassMemberKind {
+    Constructor,
+    Method,
+    Opaque,
+}
+
+/// One class member's original token and byte range. The token offsets index
+/// `ClassDeclaration::body` and avoid cloning a potentially large body again.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ClassMemberShell {
+    pub kind: ClassMemberKind,
+    pub name: Option<String>,
+    pub token_start: usize,
+    pub token_end: usize,
+    pub span: SourceSpan,
+    /// Present only after the bounded constructor grammar has parsed this
+    /// shell.
+    pub constructor: Option<ClassConstructor>,
+    pub method: Option<ClassMethod>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ClassConstructor {
+    pub parameters: Vec<Parameter>,
+    /// `None` denotes a signature declaration; `Some` retains body items,
+    /// including an empty implementation body.
+    pub body: Option<Vec<FunctionBodyItem>>,
+    pub span: SourceSpan,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ClassMethod {
+    pub name: String,
+    pub is_static: bool,
+    pub parameters: Vec<Parameter>,
+    pub return_type: Option<Type>,
+    /// Original annotation tokens, excluding the colon and trailing gap.
+    pub return_type_span: Option<SourceSpan>,
+    pub body: Option<Vec<FunctionBodyItem>>,
+    pub span: SourceSpan,
+}
+
+/// One source-ordered method declaration or overload set. Member indices
+/// refer to `ClassDeclaration::members` and preserve its original spans.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ClassMethodGroup {
+    pub name: String,
+    pub is_static: bool,
+    pub signature_member_indices: Vec<usize>,
+    pub implementation_member_index: Option<usize>,
+    pub span: SourceSpan,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TypeAliasDeclaration {
     pub name: String,
@@ -194,6 +271,12 @@ impl VariableKind {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FunctionDeclaration {
     pub name: String,
+    /// `async` changes the runtime result to a Promise and cannot satisfy a
+    /// primitive-string emitted boundary after type erasure.
+    pub async_function: bool,
+    /// Original `{` byte position for emitted boundary insertion. Signature
+    /// declarations have no body opening brace.
+    pub body_open: Option<usize>,
     pub type_parameters: Vec<TypeParameter>,
     pub parameters: Vec<Parameter>,
     pub return_type: Option<Type>,
@@ -255,6 +338,12 @@ pub enum FunctionBodyItem {
     /// `else if` from a braced `else` block so direct lowering preserves the
     /// BlueJS AST shape without adding an artificial block scope.
     If(FunctionIfStatement),
+    /// A braced `while` in a named function body. Runtime lowering remains
+    /// separately gated by the direct bridge.
+    While(FunctionWhileStatement),
+    /// A braced `try` with a single identifier catch, a finalizer, or both.
+    /// The direct bridge separately gates checker scope and runtime lowering.
+    Try(FunctionTryStatement),
     Return {
         tokens: Vec<Token>,
         span: SourceSpan,
@@ -268,6 +357,31 @@ pub struct FunctionIfStatement {
     pub test: Vec<Token>,
     pub consequent: Vec<FunctionBodyItem>,
     pub alternate: Option<FunctionElseBranch>,
+    pub span: SourceSpan,
+}
+
+/// The bounded function-body representation for one braced `while` loop.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FunctionWhileStatement {
+    pub test: Vec<Token>,
+    pub body: Vec<FunctionBodyItem>,
+    pub span: SourceSpan,
+}
+
+/// The bounded function-body representation for one braced `try` statement.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FunctionTryStatement {
+    pub block: Vec<FunctionBodyItem>,
+    pub handler: Option<FunctionCatchClause>,
+    pub finalizer: Option<Vec<FunctionBodyItem>>,
+    pub span: SourceSpan,
+}
+
+/// One unannotated identifier binding, visible only in the catch body.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FunctionCatchClause {
+    pub binding: String,
+    pub body: Vec<FunctionBodyItem>,
     pub span: SourceSpan,
 }
 
@@ -289,6 +403,75 @@ pub struct TypeParameter {
     pub span: SourceSpan,
 }
 
+/// One element of a parsed tuple type.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TupleTypeElement {
+    pub(crate) annotation: Type,
+    pub(crate) optional: bool,
+    pub(crate) label: Option<String>,
+    pub(crate) rest: bool,
+}
+
+impl TupleTypeElement {
+    /// Construct the currently supported required, unlabeled tuple element.
+    pub fn required(annotation: Type) -> Self {
+        Self {
+            annotation,
+            optional: false,
+            label: None,
+            rest: false,
+        }
+    }
+
+    pub fn annotation(&self) -> &Type {
+        &self.annotation
+    }
+
+    pub fn is_optional(&self) -> bool {
+        self.optional
+    }
+
+    pub fn label(&self) -> Option<&str> {
+        self.label.as_deref()
+    }
+
+    pub fn is_rest(&self) -> bool {
+        self.rest
+    }
+
+    pub(crate) fn value_type(&self) -> Type {
+        if self.optional {
+            Type::Union(vec![self.annotation.clone(), Type::Undefined])
+        } else {
+            self.annotation.clone()
+        }
+    }
+
+    pub(crate) fn indexed_type(&self) -> Type {
+        if self.rest {
+            match &self.annotation {
+                Type::Array(element) => (**element).clone(),
+                _ => Type::Unknown,
+            }
+        } else {
+            self.value_type()
+        }
+    }
+}
+
+/// A concrete tuple spread can place an optional source position before a
+/// required suffix. The position then remains present and accepts undefined.
+pub(crate) fn require_tuple_positions_before_suffix(elements: &mut [TupleTypeElement]) {
+    let mut required_suffix = false;
+    for element in elements.iter_mut().rev() {
+        if element.optional && required_suffix {
+            element.annotation = Type::Union(vec![element.annotation.clone(), Type::Undefined]);
+            element.optional = false;
+        }
+        required_suffix |= !element.optional && !element.rest;
+    }
+}
+
 /// The supported, reifiable portion of the TypeScript type grammar.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Type {
@@ -307,7 +490,7 @@ pub enum Type {
         arguments: Vec<Type>,
     },
     Array(Box<Type>),
-    Tuple(Vec<Type>),
+    Tuple(Vec<TupleTypeElement>),
     Record(Vec<TypeField>),
     /// A bounded, non-generic method signature in an interface or record.
     /// It is erased from runtime code but retains exact parameter and result

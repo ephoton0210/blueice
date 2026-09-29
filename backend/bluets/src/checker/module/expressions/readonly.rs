@@ -223,14 +223,16 @@ fn access_candidates(
             push_type(*element, result, budget)?;
         }
         Type::Tuple(values) if property.is_none() || index.is_some() => {
-            if let Some(index) = index {
-                if let Some(value) = values.get(index) {
-                    push_type(value.clone(), result, budget)?;
-                }
+            let values = if values.iter().any(|element| {
+                element.rest && matches!(element.annotation, Type::Named { .. } | Type::Tuple(_))
+            }) {
+                expand_concrete_tuple_spreads(&values, &checker.types, &mut HashSet::new(), budget)
+                    .map_err(|_| ())?
             } else {
-                for value in values {
-                    push_type(value, result, budget)?;
-                }
+                values
+            };
+            for value in tuple_indexed_candidates(&values, index) {
+                push_type(value, result, budget)?;
             }
         }
         Type::Record(fields) if property.is_none() => {
@@ -298,7 +300,15 @@ fn deep_contains_readonly(
             Ok(false)
         }
         Type::Array(element) => deep_contains_readonly(element, aliases, budget, depth + 1),
-        Type::Tuple(parts) | Type::Union(parts) | Type::Intersection(parts) => {
+        Type::Tuple(parts) => {
+            for part in parts {
+                if deep_contains_readonly(&part.annotation, aliases, budget, depth + 1)? {
+                    return Ok(true);
+                }
+            }
+            Ok(false)
+        }
+        Type::Union(parts) | Type::Intersection(parts) => {
             for part in parts {
                 if deep_contains_readonly(part, aliases, budget, depth + 1)? {
                     return Ok(true);

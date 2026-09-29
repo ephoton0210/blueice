@@ -10,7 +10,11 @@
 //! callback captures it. It does not claim contracts for absent DOM, Fetch,
 //! storage, messaging, JSON, or extension APIs.
 
-use blueice_bluets::{ContractPlan, ContractValue, Type, ValidationError, ValidationLimits};
+use super::host_typings::{HostBindingRoleV1, HostRuntimeBindingV1};
+use blueice_bluets::{
+    ContractPlan, ContractValue, SourceSpan, Type, ValidationError, ValidationLimits,
+    ValidationUsage,
+};
 use blueice_ipc::page_host::{
     PAGE_HOST_DOCUMENT_ORIGIN_MAX_BYTES, PAGE_HOST_DOCUMENT_TEXT_MAX_BYTES,
 };
@@ -25,6 +29,175 @@ pub const CORE_SCRIPT_DOCUMENT_ORIGIN_RESULT_CONTRACT_V1: &str =
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HostBindingContractDirection {
     HostToScript,
+    ScriptToHost,
+}
+
+/// The owner that selects a boundary's contract before page code executes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HostBindingBoundaryOwner {
+    CorePageRealm,
+}
+
+/// Whether the installed runtime path validates a value before realm capture.
+/// A new boundary starts unchecked until its crossing is implemented and
+/// tested; a reviewed type alone does not authorize an unchecked value.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HostBindingBoundaryValidation {
+    Unchecked,
+    CheckedBeforeRealmCapture,
+}
+
+/// One reviewed ingress/egress inventory record. Source coordinates are
+/// optional because the two immutable host snapshots are selected by core
+/// before any source-level call; future call-site boundaries can retain their
+/// original module and half-open byte range here. This core-only record is
+/// never serialized into a source-free page report.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HostBindingBoundaryRecordV1 {
+    pub stable_binding_id: &'static str,
+    pub runtime_binding_id: &'static str,
+    pub owner: HostBindingBoundaryOwner,
+    pub source_position: Option<SourceSpan>,
+    pub direction: HostBindingContractDirection,
+    pub contract_id: &'static str,
+    pub declared_type: Type,
+    pub validation_limits: ValidationLimits,
+    pub validation: HostBindingBoundaryValidation,
+    pub failure_category: &'static str,
+    pub capability: &'static str,
+}
+
+/// Stable, distinct strict-runtime refusals for a live host value crossing.
+/// Public script reports map them to fixed source-free categories.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StrictRuntimeBoundaryDiagnostic {
+    MissingContract { stable_binding_id: String },
+    UnreifiableType { stable_binding_id: String },
+    UncheckedBoundary { stable_binding_id: String },
+}
+
+/// Rejects a strict-runtime profile before the host installs or compiles any
+/// value boundary that lacks a matching reviewed, reifiable, actively checked
+/// contract. The record and installed profile are both core-selected; page
+/// source cannot add a record or change its validation status.
+pub fn validate_strict_runtime_boundary_inventory(
+    bindings: &[HostRuntimeBindingV1],
+    records: &[HostBindingBoundaryRecordV1],
+    actual_limits: CoreScriptBindingContractLimits,
+) -> Result<(), StrictRuntimeBoundaryDiagnostic> {
+    if let Err(error) = validate_host_binding_boundary_inventory(bindings, records) {
+        let stable_binding_id = match error {
+            HostBindingBoundaryInventoryError::MissingRecord(id)
+            | HostBindingBoundaryInventoryError::DuplicateRecord(id)
+            | HostBindingBoundaryInventoryError::MismatchedRecord(id) => id,
+        };
+        return Err(StrictRuntimeBoundaryDiagnostic::MissingContract { stable_binding_id });
+    }
+    for binding in bindings
+        .iter()
+        .filter(|binding| binding.role == HostBindingRoleV1::Value)
+    {
+        let Some(record) = records
+            .iter()
+            .find(|record| record.stable_binding_id == binding.stable_id)
+        else {
+            return Err(StrictRuntimeBoundaryDiagnostic::MissingContract {
+                stable_binding_id: binding.stable_id.clone(),
+            });
+        };
+        if record.runtime_binding_id != binding.runtime_binding_id
+            || record.capability != binding.capability
+            || record.contract_id.is_empty()
+        {
+            return Err(StrictRuntimeBoundaryDiagnostic::MissingContract {
+                stable_binding_id: binding.stable_id.clone(),
+            });
+        }
+        let actual_plan =
+            ContractPlan::from_type(record.contract_id, &record.declared_type, &BTreeMap::new())
+                .map_err(|_| StrictRuntimeBoundaryDiagnostic::UnreifiableType {
+                    stable_binding_id: binding.stable_id.clone(),
+                })?;
+        let Some(reviewed) = core_script_binding_contract(&binding.stable_id) else {
+            return Err(StrictRuntimeBoundaryDiagnostic::MissingContract {
+                stable_binding_id: binding.stable_id.clone(),
+            });
+        };
+        let expected_limits = match binding.stable_id.as_str() {
+            "dom.document-origin" => actual_limits.document_origin,
+            "dom.document-text" => actual_limits.document_text,
+            _ => {
+                return Err(StrictRuntimeBoundaryDiagnostic::MissingContract {
+                    stable_binding_id: binding.stable_id.clone(),
+                })
+            }
+        };
+        if record.owner != HostBindingBoundaryOwner::CorePageRealm
+            || record.direction != reviewed.direction
+            || record.contract_id != reviewed.contract_id
+            || record.runtime_binding_id != reviewed.runtime_binding_id
+            || record.capability != reviewed.capability
+            || record.failure_category != reviewed.failure_category
+            || record.validation_limits != expected_limits
+            || actual_plan.fingerprint != reviewed.plan().fingerprint
+        {
+            return Err(StrictRuntimeBoundaryDiagnostic::MissingContract {
+                stable_binding_id: binding.stable_id.clone(),
+            });
+        }
+        if record.validation != HostBindingBoundaryValidation::CheckedBeforeRealmCapture {
+            return Err(StrictRuntimeBoundaryDiagnostic::UncheckedBoundary {
+                stable_binding_id: binding.stable_id.clone(),
+            });
+        }
+    }
+    Ok(())
+}
+
+/// An installed runtime value may not silently acquire an inferred contract.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum HostBindingBoundaryInventoryError {
+    MissingRecord(String),
+    DuplicateRecord(String),
+    MismatchedRecord(String),
+}
+
+/// Requires an exact reviewed record for every installed runtime value in a
+/// selected host profile. Type-only declarations are not runtime crossings.
+/// The caller supplies the profile's actual generated runtime bindings, so a
+/// newly installed value fails until the boundary inventory is extended.
+pub fn validate_host_binding_boundary_inventory(
+    bindings: &[HostRuntimeBindingV1],
+    records: &[HostBindingBoundaryRecordV1],
+) -> Result<(), HostBindingBoundaryInventoryError> {
+    let mut by_id = BTreeMap::new();
+    for record in records {
+        if by_id.insert(record.stable_binding_id, record).is_some() {
+            return Err(HostBindingBoundaryInventoryError::DuplicateRecord(
+                record.stable_binding_id.to_string(),
+            ));
+        }
+    }
+    for binding in bindings
+        .iter()
+        .filter(|binding| binding.role == HostBindingRoleV1::Value)
+    {
+        let Some(record) = by_id.get(binding.stable_id.as_str()) else {
+            return Err(HostBindingBoundaryInventoryError::MissingRecord(
+                binding.stable_id.clone(),
+            ));
+        };
+        if record.runtime_binding_id != binding.runtime_binding_id
+            || record.capability != binding.capability
+            || record.contract_id.is_empty()
+            || record.failure_category.is_empty()
+        {
+            return Err(HostBindingBoundaryInventoryError::MismatchedRecord(
+                binding.stable_id.clone(),
+            ));
+        }
+    }
+    Ok(())
 }
 
 /// A named, reifiable live binding boundary. `stable_binding_id` must be the
@@ -37,6 +210,7 @@ pub struct HostBindingContractV1 {
     pub runtime_binding_id: &'static str,
     pub direction: HostBindingContractDirection,
     pub capability: &'static str,
+    pub failure_category: &'static str,
 }
 
 impl HostBindingContractV1 {
@@ -56,8 +230,17 @@ impl HostBindingContractV1 {
         value: &str,
         limits: ValidationLimits,
     ) -> Result<(), ValidationError> {
+        self.validate_string_metered(value, limits).0
+    }
+
+    /// Includes failed attempts in the work returned to the boundary owner.
+    pub fn validate_string_metered(
+        self,
+        value: &str,
+        limits: ValidationLimits,
+    ) -> (Result<(), ValidationError>, ValidationUsage) {
         self.plan()
-            .validate_with_limits(&ContractValue::String(value.to_string()), limits)
+            .validate_with_limits_metered(&ContractValue::String(value.to_string()), limits)
     }
 }
 
@@ -84,6 +267,32 @@ impl Default for CoreScriptBindingContractLimits {
     }
 }
 
+/// Builds the current core-owned boundary records using the owner's actual
+/// validation budgets. Only installed bindings are listed; a future boundary
+/// must supply its own reviewed record before E1.2.2 can admit it.
+pub fn core_script_binding_boundary_records(
+    limits: CoreScriptBindingContractLimits,
+) -> [HostBindingBoundaryRecordV1; 2] {
+    let [origin, text] = core_script_binding_contracts();
+    let record = |boundary: HostBindingContractV1, validation_limits| HostBindingBoundaryRecordV1 {
+        stable_binding_id: boundary.stable_binding_id,
+        runtime_binding_id: boundary.runtime_binding_id,
+        owner: HostBindingBoundaryOwner::CorePageRealm,
+        source_position: None,
+        direction: boundary.direction,
+        contract_id: boundary.contract_id,
+        declared_type: Type::String,
+        validation_limits,
+        validation: HostBindingBoundaryValidation::CheckedBeforeRealmCapture,
+        failure_category: boundary.failure_category,
+        capability: boundary.capability,
+    };
+    [
+        record(origin, limits.document_origin),
+        record(text, limits.document_text),
+    ]
+}
+
 /// Returns the complete current inventory. The order is stable by binding ID
 /// and contains no speculative future boundary.
 pub fn core_script_binding_contracts() -> [HostBindingContractV1; 2] {
@@ -94,6 +303,7 @@ pub fn core_script_binding_contracts() -> [HostBindingContractV1; 2] {
             runtime_binding_id: "global.blueiceDocumentOrigin",
             direction: HostBindingContractDirection::HostToScript,
             capability: "dom-read",
+            failure_category: "host binding contract rejected the page script",
         },
         HostBindingContractV1 {
             stable_binding_id: "dom.document-text",
@@ -101,6 +311,7 @@ pub fn core_script_binding_contracts() -> [HostBindingContractV1; 2] {
             runtime_binding_id: "global.blueiceDocumentText",
             direction: HostBindingContractDirection::HostToScript,
             capability: "dom-read",
+            failure_category: "host binding contract rejected the page script",
         },
     ]
 }
@@ -116,6 +327,10 @@ pub fn core_script_binding_contract(binding_id: &str) -> Option<HostBindingContr
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::script::host_typings::{
+        core_script_host_type_catalog, CORE_SCRIPT_DOCUMENT_CONTEXT_PROFILE_V1,
+        CORE_SCRIPT_DOCUMENT_TEXT_PROFILE_V1,
+    };
 
     #[test]
     fn inventory_names_only_installed_string_result_boundaries() {
@@ -151,5 +366,76 @@ mod tests {
             .unwrap_err();
         assert_eq!(error.path, "$");
         assert_eq!(error.observed, "string of 9 bytes");
+    }
+
+    #[test]
+    fn inventory_records_name_owner_position_policy_and_actual_limits() {
+        let mut limits = CoreScriptBindingContractLimits::default();
+        limits.document_text.max_string_bytes = 17;
+        let [origin, text] = core_script_binding_boundary_records(limits);
+        assert_eq!(origin.stable_binding_id, "dom.document-origin");
+        assert_eq!(
+            origin.contract_id,
+            CORE_SCRIPT_DOCUMENT_ORIGIN_RESULT_CONTRACT_V1
+        );
+        assert_eq!(origin.validation_limits, limits.document_origin);
+        assert_eq!(text.stable_binding_id, "dom.document-text");
+        assert_eq!(text.runtime_binding_id, "global.blueiceDocumentText");
+        assert_eq!(
+            text.contract_id,
+            CORE_SCRIPT_DOCUMENT_TEXT_RESULT_CONTRACT_V1
+        );
+        assert_eq!(text.validation_limits.max_string_bytes, 17);
+        for record in [origin, text] {
+            assert_eq!(record.owner, HostBindingBoundaryOwner::CorePageRealm);
+            assert_eq!(record.source_position, None);
+            assert_eq!(record.direction, HostBindingContractDirection::HostToScript);
+            assert_eq!(
+                record.failure_category,
+                "host binding contract rejected the page script"
+            );
+            assert_eq!(record.capability, "dom-read");
+        }
+    }
+
+    #[test]
+    fn installed_snapshot_value_without_a_reviewed_record_fails_inventory_gate() {
+        let catalog = core_script_host_type_catalog();
+        let records =
+            core_script_binding_boundary_records(CoreScriptBindingContractLimits::default());
+        for profile in [
+            CORE_SCRIPT_DOCUMENT_TEXT_PROFILE_V1,
+            CORE_SCRIPT_DOCUMENT_CONTEXT_PROFILE_V1,
+        ] {
+            let artifact = catalog.generate(profile).unwrap();
+            assert_eq!(
+                validate_host_binding_boundary_inventory(&artifact.runtime_bindings, &records),
+                Ok(())
+            );
+        }
+        let context = catalog
+            .generate(CORE_SCRIPT_DOCUMENT_CONTEXT_PROFILE_V1)
+            .unwrap();
+        assert_eq!(
+            validate_host_binding_boundary_inventory(&context.runtime_bindings, &records[1..]),
+            Err(HostBindingBoundaryInventoryError::MissingRecord(
+                "dom.document-origin".into()
+            ))
+        );
+        let mut new_value = context.runtime_bindings.clone();
+        new_value.push(HostRuntimeBindingV1 {
+            stable_id: "dom.future-value".into(),
+            role: HostBindingRoleV1::Value,
+            runtime_binding_id: "global.futureValue".into(),
+            capability: "dom-read".into(),
+            feature_flag: "future-value".into(),
+            first_host_api_version: "blueice-core-script-v1".into(),
+        });
+        assert_eq!(
+            validate_host_binding_boundary_inventory(&new_value, &records),
+            Err(HostBindingBoundaryInventoryError::MissingRecord(
+                "dom.future-value".into()
+            ))
+        );
     }
 }

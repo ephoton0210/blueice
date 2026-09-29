@@ -385,7 +385,7 @@ pub struct Instruction {
     pub operand: Option<u32>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq)]
 pub(crate) struct Binding {
     pub name: String,
     pub mutable: bool,
@@ -556,6 +556,10 @@ pub struct Bytecode {
     pub(crate) root_statement_ranges: Vec<Option<(u32, u32)>>,
     /// Direct child closure created by each root function declaration.
     pub(crate) root_function_child_indices: Vec<Option<u32>>,
+    /// Compiler-resolved root-scope lexical slot for each supported direct
+    /// single-identifier declaration, in root statement order. A nested,
+    /// erased, or compound statement has no declaration-slot evidence.
+    pub(crate) root_declaration_binding_slots: Vec<Option<u32>>,
     pub(crate) constants: Vec<Value>,
     pub(crate) bindings: Vec<Binding>,
     pub(crate) scopes: Vec<Vec<u32>>,
@@ -672,6 +676,7 @@ impl Bytecode {
             root_statement_offsets: Vec::new(),
             root_statement_ranges: Vec::new(),
             root_function_child_indices: Vec::new(),
+            root_declaration_binding_slots: Vec::new(),
             constants: Vec::new(),
             bindings: Vec::new(),
             scopes: Vec::new(),
@@ -737,6 +742,27 @@ impl Bytecode {
     /// Direct child closure index for each root function declaration.
     pub fn root_function_child_indices(&self) -> &[Option<u32>] {
         &self.root_function_child_indices
+    }
+
+    /// Exact root-scope binding for each root statement's supported single
+    /// identifier variable or named function declaration. These compiler
+    /// results must still be paired with an exact installed program and
+    /// checked source declaration; a matching name alone is not proof.
+    pub fn root_declaration_binding_slots(&self) -> &[Option<u32>] {
+        &self.root_declaration_binding_slots
+    }
+
+    /// Whether two code units retain exactly the same lexical binding and
+    /// activation layout. Equal instruction bytes or slot ordinals alone do
+    /// not prove that a slot still names the same declaration. This exposes
+    /// only equality, never binding names or runtime values.
+    pub fn debugger_binding_layout_matches(&self, other: &Self) -> bool {
+        self.bindings == other.bindings
+            && self.scopes == other.scopes
+            && self.captures == other.captures
+            && self.dynamic_eval_slots == other.dynamic_eval_slots
+            && self.global_function_names == other.global_function_names
+            && self.variable_scope == other.variable_scope
     }
 
     pub fn constants(&self) -> &[Value] {

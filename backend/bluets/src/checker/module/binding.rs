@@ -6,6 +6,10 @@
 
 use super::*;
 
+mod classes;
+mod functions;
+pub(in crate::checker) use classes::{class_export, class_instance_type};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum StructuredTermination {
     Terminates,
@@ -13,11 +17,22 @@ enum StructuredTermination {
     Opaque,
 }
 
+fn specialize_imported_class_type(value: &Type, source_name: &str, local_name: &str) -> Type {
+    let substitution = BTreeMap::from([(
+        source_name.to_string(),
+        Type::Named {
+            name: local_name.to_string(),
+            arguments: Vec::new(),
+        },
+    )]);
+    substitute_type(value, &substitution)
+}
+
 impl<'a> ModuleChecker<'a> {
     pub(crate) fn new(
         project: &'a Project,
         module: &'a Module,
-        exported_types: &'a BTreeMap<String, BTreeMap<String, TypeDefinition>>,
+        exports: &'a ProjectExports,
         ambient: Option<&'a AmbientDeclarations>,
         enforce_types: bool,
         require_declared_global_calls: bool,
@@ -26,7 +41,7 @@ impl<'a> ModuleChecker<'a> {
         Self {
             project,
             module,
-            exported_types,
+            exports,
             ambient,
             enforce_types,
             require_declared_global_calls,
@@ -35,9 +50,13 @@ impl<'a> ModuleChecker<'a> {
             types: BTreeMap::new(),
             values: BTreeMap::new(),
             functions: BTreeMap::new(),
+            class_constructors: BTreeMap::new(),
+            type_only_classes: BTreeSet::new(),
             function_implementations: BTreeSet::new(),
             type_parameters: BTreeSet::new(),
+            allowed_tuple_spread_parameters: BTreeMap::new(),
             max_type_expansions,
+            strict_catch_unknown: false,
             record_spread_inference_failure: Cell::new(None),
         }
     }
@@ -63,17 +82,23 @@ impl<'a> ModuleChecker<'a> {
                     );
                 }
                 Declaration::Interface(interface) => {
-                    self.insert_type(
-                        &interface.name,
-                        TypeDefinition {
-                            kind: TypeDefinitionKind::Interface,
-                            parameters: interface.type_parameters.clone(),
-                            value: interface_value(interface),
-                        },
-                        interface.span.clone(),
-                        SymbolKind::Interface,
-                        interface.exported,
-                    );
+                    if !self
+                        .types
+                        .get(&interface.name)
+                        .is_some_and(|definition| definition.kind == TypeDefinitionKind::Class)
+                    {
+                        self.insert_type(
+                            &interface.name,
+                            TypeDefinition {
+                                kind: TypeDefinitionKind::Interface,
+                                parameters: interface.type_parameters.clone(),
+                                value: interface_value(interface),
+                            },
+                            interface.span.clone(),
+                            SymbolKind::Interface,
+                            interface.exported,
+                        );
+                    }
                 }
                 Declaration::Variable(variable) => {
                     let value_type = variable.annotation.clone().unwrap_or(Type::Unknown);
@@ -128,6 +153,14 @@ impl<'a> ModuleChecker<'a> {
                             .or_default()
                             .push(signature);
                     }
+                }
+                Declaration::Class(class) => {
+                    self.bind_class(class);
+                    self.diagnostics.push(Diagnostic::error(
+                        DiagnosticCode::UnsupportedSyntax,
+                        class.span.clone(),
+                        "class members and runtime semantics are not installed yet",
+                    ));
                 }
                 Declaration::Raw(_) => {}
             }
@@ -227,6 +260,9 @@ impl<'a> ModuleChecker<'a> {
                 {
                     exported_names.insert(function.name.clone());
                 }
+                Declaration::Class(class) if class.exported => {
+                    exported_names.insert(class.name.clone());
+                }
                 _ => {}
             }
         }
@@ -249,6 +285,7 @@ impl<'a> ModuleChecker<'a> {
                                     && !function.declared
                                     && !function.overload
                             }
+                            Declaration::Class(class) => class.name == binding.local,
                             _ => false,
                         });
                 if !has_local_runtime_binding {
@@ -346,15 +383,30 @@ impl<'a> ModuleChecker<'a> {
         else {
             return;
         };
-        let exported = self.exported_types.get(resolved);
+        let exported = self.exports.types.get(resolved);
+        let exported_classes = self.exports.classes.get(resolved);
         for binding in &import.bindings {
             if binding.type_only {
                 if binding.imported == "*" {
                     if let Some(source_types) = exported {
+                        if exported_classes.is_some_and(|classes| !classes.is_empty()) {
+                            self.type_only_classes.insert(binding.local.clone());
+                        }
                         for (name, definition) in source_types {
+                            let local = format!("{}.{}", binding.local, name);
+                            let mut definition = definition.clone();
+                            if let Some(class) =
+                                exported_classes.and_then(|classes| classes.get(name))
+                            {
+                                definition.value = specialize_imported_class_type(
+                                    &class.instance_type,
+                                    &class.source_name,
+                                    &local,
+                                );
+                            }
                             self.insert_type(
-                                &format!("{}.{}", binding.local, name),
-                                definition.clone(),
+                                &local,
+                                definition,
                                 import.span.clone(),
                                 SymbolKind::Import,
                                 false,
@@ -375,14 +427,51 @@ impl<'a> ModuleChecker<'a> {
                     ));
                     continue;
                 };
+                let mut source_type = source_type.clone();
+                if let Some(class) =
+                    exported_classes.and_then(|classes| classes.get(&binding.imported))
+                {
+                    self.type_only_classes.insert(binding.local.clone());
+                    source_type.value = specialize_imported_class_type(
+                        &class.instance_type,
+                        &class.source_name,
+                        &binding.local,
+                    );
+                }
                 self.insert_type(
                     &binding.local,
-                    source_type.clone(),
+                    source_type,
                     import.span.clone(),
                     SymbolKind::Import,
                     false,
                 );
             } else {
+                if let Some(class) = exported_classes
+                    .and_then(|classes| classes.get(&binding.imported))
+                    .cloned()
+                {
+                    if class.value_exported {
+                        self.bind_imported_class(&binding.local, &class, &import.span);
+                    } else {
+                        self.type_only_classes.insert(binding.local.clone());
+                        self.insert_type(
+                            &binding.local,
+                            TypeDefinition {
+                                kind: TypeDefinitionKind::Class,
+                                parameters: Vec::new(),
+                                value: specialize_imported_class_type(
+                                    &class.instance_type,
+                                    &class.source_name,
+                                    &binding.local,
+                                ),
+                            },
+                            import.span.clone(),
+                            SymbolKind::Import,
+                            false,
+                        );
+                    }
+                    continue;
+                }
                 self.insert_value(
                     &binding.local,
                     Type::Unknown,
@@ -399,7 +488,7 @@ impl<'a> ModuleChecker<'a> {
             self.project
                 .resolutions
                 .get(&(self.module.id.clone(), specifier.clone()))
-                .and_then(|resolved| self.exported_types.get(resolved))
+                .and_then(|resolved| self.exports.types.get(resolved))
         });
         for binding in &export.bindings {
             if binding == "*" {
@@ -479,14 +568,33 @@ impl<'a> ModuleChecker<'a> {
     }
 
     pub(crate) fn check_types(&mut self) {
+        self.validate_class_heritage_cycles();
+        self.bind_inherited_class_instance_methods();
+        self.bind_inherited_class_static_methods();
+        self.bind_inherited_class_constructors();
         for declaration in &self.module.declarations {
             match declaration {
                 Declaration::TypeAlias(alias) => {
+                    let previous_spreads = self.allowed_tuple_spread_parameters.clone();
+                    self.allowed_tuple_spread_parameters = alias
+                        .type_parameters
+                        .iter()
+                        .filter(|parameter| {
+                            matches!(parameter.constraint, Some(Type::Array(_) | Type::Tuple(_)))
+                        })
+                        .map(|parameter| {
+                            (
+                                parameter.name.clone(),
+                                parameter.constraint.clone().expect("filtered constraint"),
+                            )
+                        })
+                        .collect();
                     self.check_type_with_parameters(
                         &alias.value,
                         &alias.span,
                         &alias.type_parameters,
                     );
+                    self.allowed_tuple_spread_parameters = previous_spreads;
                 }
                 Declaration::Interface(interface) => {
                     for parent in &interface.heritage {
@@ -511,6 +619,14 @@ impl<'a> ModuleChecker<'a> {
                 }
                 Declaration::Variable(variable) => self.check_variable(variable),
                 Declaration::Function(function) => self.check_function(function),
+                Declaration::Class(class) => {
+                    self.validate_class_heritage_name(class);
+                    self.validate_class_constructor_group(class);
+                    self.validate_class_method_groups(class);
+                    self.validate_class_method_overrides(class);
+                    self.check_class_constructor_bodies(class);
+                    self.check_class_method_bodies(class);
+                }
                 Declaration::Import(_)
                 | Declaration::TypeExport(_)
                 | Declaration::DefaultExport(_)
@@ -643,7 +759,19 @@ impl<'a> ModuleChecker<'a> {
         if variable.initializer.is_empty() || variable.declared {
             return;
         }
-        let inferred = if matches!(annotation, Type::Tuple(_)) {
+        let mut contextual = annotation.clone();
+        let mut contextual_budget = TypeExpansionBudget::new(self.max_type_expansions);
+        let mut visited = HashSet::new();
+        while let Some(expanded) = instantiate_named(
+            &contextual,
+            &self.types,
+            &mut visited,
+            &mut contextual_budget,
+            "contextual tuple",
+        ) {
+            contextual = expanded;
+        }
+        let inferred = if matches!(contextual, Type::Tuple(_)) {
             infer_contextual_tuple_literal(&variable.initializer, scope)
                 .unwrap_or_else(|| self.infer_expression(&variable.initializer, scope))
         } else {
@@ -659,233 +787,6 @@ impl<'a> ModuleChecker<'a> {
                 ),
                 DiagnosticCode::TypeMismatch,
             );
-        }
-    }
-
-    pub(super) fn check_function(&mut self, function: &FunctionDeclaration) {
-        let mut scope = self.values.clone();
-        let previous_parameters = self.type_parameters.clone();
-        self.check_type_parameters(&function.type_parameters);
-        for (index, parameter) in function.parameters.iter().enumerate() {
-            if parameter.rest && index + 1 != function.parameters.len() {
-                self.type_error(
-                    &parameter.span,
-                    "a rest parameter must be last".to_string(),
-                    DiagnosticCode::TypeMismatch,
-                );
-            }
-            if parameter.rest && parameter.optional {
-                self.type_error(
-                    &parameter.span,
-                    "a rest parameter cannot be optional or have a default initializer".to_string(),
-                    DiagnosticCode::TypeMismatch,
-                );
-            }
-            if parameter.rest
-                && parameter
-                    .annotation
-                    .as_ref()
-                    .is_some_and(|annotation| !matches!(annotation, Type::Array(_)))
-            {
-                self.type_error(
-                    &parameter.span,
-                    "the bounded rest-parameter rule requires an array annotation".to_string(),
-                    DiagnosticCode::TypeMismatch,
-                );
-            }
-            if let Some(default) = &parameter.default {
-                self.check_direct_runtime_expression(default, &scope, &parameter.span);
-                let actual = self.infer_expression(default, &scope);
-                let expected = parameter
-                    .annotation
-                    .as_ref()
-                    .cloned()
-                    .unwrap_or(Type::Unknown);
-                if !self.is_assignable_bounded(&actual, &expected, &parameter.span) {
-                    self.type_error(
-                        &parameter.span,
-                        format!(
-                            "default initializer has type `{}`, which is not assignable to parameter `{}` of type `{}`",
-                            type_label(&actual),
-                            parameter.name,
-                            type_label(&expected)
-                        ),
-                        DiagnosticCode::TypeMismatch,
-                    );
-                }
-            }
-            if let Some(annotation) = &parameter.annotation {
-                self.check_type(annotation, &parameter.span);
-                let parameter_type = if parameter.optional && parameter.default.is_none() {
-                    Type::Union(vec![annotation.clone(), Type::Undefined])
-                } else {
-                    annotation.clone()
-                };
-                scope.insert(parameter.name.clone(), parameter_type);
-            } else {
-                scope.insert(parameter.name.clone(), Type::Unknown);
-            }
-        }
-        for local in &function.locals {
-            self.check_variable_in_scope(local, &scope);
-            let inferred = local
-                .annotation
-                .clone()
-                .unwrap_or_else(|| self.infer_expression(&local.initializer, &scope));
-            scope.insert(local.name.clone(), inferred);
-        }
-        self.check_function_body_expressions(&function.body, &scope);
-        if let Some(return_type) = &function.return_type {
-            self.check_type(return_type, &function.span);
-            let allows_implicit_undefined =
-                self.return_type_allows_implicit_undefined(return_type, &function.span);
-            for returned in &function.returns {
-                if returned.is_empty() {
-                    if !allows_implicit_undefined {
-                        self.type_error(
-                            &function.span,
-                            format!(
-                                "return expression has type `undefined`, which is not assignable to `{}`",
-                                type_label(return_type)
-                            ),
-                            DiagnosticCode::ReturnTypeMismatch,
-                        );
-                    }
-                    continue;
-                }
-                self.check_direct_runtime_expression(returned, &scope, &function.span);
-                let actual = self.infer_expression(returned, &scope);
-                let return_is_assignable = (matches!(actual, Type::Undefined)
-                    && allows_implicit_undefined)
-                    || self.is_assignable_bounded(&actual, return_type, &function.span);
-                if !return_is_assignable {
-                    self.type_error(
-                        &function.span,
-                        format!(
-                            "return expression has type `{}`, which is not assignable to `{}`",
-                            type_label(&actual),
-                            type_label(return_type)
-                        ),
-                        DiagnosticCode::ReturnTypeMismatch,
-                    );
-                }
-            }
-            if !function.declared
-                && !function.overload
-                && !allows_implicit_undefined
-                && matches!(
-                    Self::function_body_termination(&function.body),
-                    StructuredTermination::FallsThrough
-                )
-            {
-                self.type_error(
-                    &function.span,
-                    format!(
-                        "function with return type `{}` can complete without returning a value",
-                        type_label(return_type)
-                    ),
-                    DiagnosticCode::ReturnTypeMismatch,
-                );
-            }
-        }
-        self.type_parameters = previous_parameters;
-    }
-
-    /// Whether an explicit return annotation permits the JavaScript
-    /// fall-through result. `void` is special in TypeScript return positions;
-    /// the bounded assignability relation otherwise covers `undefined`,
-    /// `any`, `unknown`, aliases, and unions containing one of those types.
-    fn return_type_allows_implicit_undefined(
-        &mut self,
-        return_type: &Type,
-        span: &SourceSpan,
-    ) -> bool {
-        matches!(return_type, Type::Void)
-            || self.is_assignable_bounded(&Type::Undefined, return_type, span)
-    }
-
-    /// Determines whether the structured function body cannot reach its end.
-    ///
-    /// The parser records unsupported syntax as `Opaque`, which must never be
-    /// mistaken for a terminating branch. A recognized `return` (including an
-    /// invalid bare return, diagnosed separately) or `throw` terminates its
-    /// sequential path. An `if` does so only when both structured branches do.
-    /// The unknown result preserves the standalone parser's existing opaque
-    /// syntax behavior; the direct bridge rejects that syntax independently.
-    fn function_body_termination(items: &[FunctionBodyItem]) -> StructuredTermination {
-        for item in items {
-            match item {
-                FunctionBodyItem::Return { .. } | FunctionBodyItem::Throw { .. } => {
-                    return StructuredTermination::Terminates;
-                }
-                FunctionBodyItem::If(statement) => match Self::function_if_termination(statement) {
-                    StructuredTermination::Terminates => {
-                        return StructuredTermination::Terminates;
-                    }
-                    StructuredTermination::FallsThrough => {}
-                    StructuredTermination::Opaque => return StructuredTermination::Opaque,
-                },
-                FunctionBodyItem::Opaque(_) => return StructuredTermination::Opaque,
-                FunctionBodyItem::Variable(_) | FunctionBodyItem::Expression { .. } => {}
-            }
-        }
-        StructuredTermination::FallsThrough
-    }
-
-    fn function_if_termination(statement: &FunctionIfStatement) -> StructuredTermination {
-        let consequent = Self::function_body_termination(&statement.consequent);
-        let alternate = match &statement.alternate {
-            Some(FunctionElseBranch::Braced(body)) => Self::function_body_termination(body),
-            Some(FunctionElseBranch::ElseIf(branch)) => Self::function_if_termination(branch),
-            None => StructuredTermination::FallsThrough,
-        };
-        match (consequent, alternate) {
-            (StructuredTermination::Opaque, _) | (_, StructuredTermination::Opaque) => {
-                StructuredTermination::Opaque
-            }
-            (StructuredTermination::Terminates, StructuredTermination::Terminates) => {
-                StructuredTermination::Terminates
-            }
-            (StructuredTermination::FallsThrough, _) | (_, StructuredTermination::FallsThrough) => {
-                StructuredTermination::FallsThrough
-            }
-        }
-    }
-
-    pub(super) fn check_function_body_expressions(
-        &mut self,
-        items: &[FunctionBodyItem],
-        scope: &BTreeMap<String, Type>,
-    ) {
-        for item in items {
-            let (tokens, span) = match item {
-                FunctionBodyItem::Expression { tokens, span }
-                | FunctionBodyItem::Throw { tokens, span } => (tokens, span),
-                FunctionBodyItem::If(statement) => {
-                    self.check_direct_function_if(statement, scope);
-                    continue;
-                }
-                _ => continue,
-            };
-            self.check_direct_runtime_expression(tokens, scope, span);
-        }
-    }
-
-    pub(super) fn check_direct_function_if(
-        &mut self,
-        statement: &FunctionIfStatement,
-        scope: &BTreeMap<String, Type>,
-    ) {
-        self.check_direct_runtime_expression(&statement.test, scope, &statement.span);
-        self.check_function_body_expressions(&statement.consequent, scope);
-        match &statement.alternate {
-            Some(FunctionElseBranch::Braced(alternate)) => {
-                self.check_function_body_expressions(alternate, scope);
-            }
-            Some(FunctionElseBranch::ElseIf(alternate)) => {
-                self.check_direct_function_if(alternate, scope);
-            }
-            None => {}
         }
     }
 
@@ -954,6 +855,12 @@ impl<'a> ModuleChecker<'a> {
             );
             return;
         }
+        self.check_type_only_class_value_uses(tokens, scope, span);
+        if self.check_optional_property_read(tokens, scope, span) {
+            return;
+        }
+        self.check_class_constructions_in_expression(tokens, scope, span);
+        self.check_bound_class_calls_in_expression(tokens, scope, span);
         self.check_function_call(tokens, scope, span);
         self.check_member_calls_in_expression(tokens, scope, span);
         self.check_direct_property_access(tokens, scope, span);
@@ -975,7 +882,51 @@ impl<'a> ModuleChecker<'a> {
                 }
             }
             Type::Array(value) => self.check_type(value, span),
-            Type::Tuple(values) | Type::Union(values) | Type::Intersection(values) => {
+            Type::Tuple(values) => {
+                for value in values {
+                    self.check_type(&value.annotation, span);
+                }
+                if values
+                    .iter()
+                    .any(|element| element.rest && matches!(element.annotation, Type::Named { .. }))
+                {
+                    let specialized = substitute_type(
+                        &Type::Tuple(values.clone()),
+                        &self.allowed_tuple_spread_parameters,
+                    );
+                    let Type::Tuple(specialized) = specialized else {
+                        unreachable!("tuple substitution retains a tuple")
+                    };
+                    let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
+                    if let Err(error) = expand_concrete_tuple_spreads(
+                        &specialized,
+                        &self.types,
+                        &mut HashSet::new(),
+                        &mut budget,
+                    ) {
+                        let (code, message) = match error {
+                            TupleSpreadError::Exhausted => (
+                                DiagnosticCode::ResourceLimit,
+                                "tuple spread exceeds the generic-expansion limit",
+                            ),
+                            TupleSpreadError::Cyclic => (
+                                DiagnosticCode::UnsupportedSyntax,
+                                "cyclic tuple spread cannot be resolved",
+                            ),
+                            TupleSpreadError::Unresolved => (
+                                DiagnosticCode::UnsupportedSyntax,
+                                "tuple spread names an unresolved type",
+                            ),
+                            TupleSpreadError::Unsupported => (
+                                DiagnosticCode::UnsupportedSyntax,
+                                "tuple spread requires one concrete tuple or array type",
+                            ),
+                        };
+                        self.type_error(span, message.to_string(), code);
+                    }
+                }
+            }
+            Type::Union(values) | Type::Intersection(values) => {
                 for value in values {
                     self.check_type(value, span);
                 }
@@ -1086,7 +1037,15 @@ impl<'a> ModuleChecker<'a> {
                 .get(&parameter.name)
                 .expect("completed generic arguments contain every parameter");
             let expected = substitute_type(constraint, &substitutions);
-            if !self.is_assignable_bounded(actual, &expected, span) {
+            let actual_bound = match actual {
+                Type::Named { name, arguments } if arguments.is_empty() => self
+                    .allowed_tuple_spread_parameters
+                    .get(name)
+                    .cloned()
+                    .unwrap_or_else(|| actual.clone()),
+                _ => actual.clone(),
+            };
+            if !self.is_assignable_bounded(&actual_bound, &expected, span) {
                 self.type_error(
                     span,
                     format!(

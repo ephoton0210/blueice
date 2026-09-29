@@ -51,18 +51,34 @@ pub(super) fn property_type(
     budget: &mut TypeExpansionBudget,
 ) -> PropertyType {
     match value {
-        Type::Record(fields) => fields
-            .iter()
-            .find(|field| field.name == property)
-            .map(|field| PropertyType::Found {
-                value: if field.optional {
+        Type::Record(fields) => {
+            let mut values = Vec::new();
+            let mut readonly = false;
+            for field in fields.iter().filter(|field| field.name == property) {
+                // Keep every same-named signature in declaration order. The
+                // first field preserves the existing simple-lookup budget.
+                if !values.is_empty() && !budget.consume() {
+                    return PropertyType::Exhausted;
+                }
+                values.push(if field.optional {
                     Type::Union(vec![field.value.clone(), Type::Undefined])
                 } else {
                     field.value.clone()
+                });
+                readonly |= field.readonly;
+            }
+            match values.len() {
+                0 => PropertyType::Missing,
+                1 => PropertyType::Found {
+                    value: values.pop().expect("one matching field"),
+                    readonly,
                 },
-                readonly: field.readonly,
-            })
-            .unwrap_or(PropertyType::Missing),
+                _ => PropertyType::Found {
+                    value: Type::Intersection(values),
+                    readonly,
+                },
+            }
+        }
         Type::Named { .. } => {
             match instantiate_named(value, aliases, visited, budget, "property") {
                 Some(value) => property_type(&value, property, aliases, visited, budget),
@@ -108,22 +124,31 @@ pub(super) fn property_type(
         }
         Type::Intersection(parts) => {
             let mut indeterminate = false;
-            let mut found: Option<(Type, bool)> = None;
+            let mut found = Vec::new();
+            let mut readonly = false;
             for part in parts {
                 match property_type(part, property, aliases, visited, budget) {
-                    PropertyType::Found { value, readonly } => {
-                        if let Some((_, found_readonly)) = &mut found {
-                            *found_readonly |= readonly;
-                        } else {
-                            found = Some((value, readonly));
+                    PropertyType::Found {
+                        value,
+                        readonly: part_readonly,
+                    } => {
+                        if !found.is_empty() && !budget.consume() {
+                            return PropertyType::Exhausted;
                         }
+                        found.push(value);
+                        readonly |= part_readonly;
                     }
                     PropertyType::Missing => {}
                     PropertyType::Indeterminate => indeterminate = true,
                     PropertyType::Exhausted => return PropertyType::Exhausted,
                 }
             }
-            if let Some((value, readonly)) = found {
+            if !found.is_empty() {
+                let value = if found.len() == 1 {
+                    found.pop().expect("one matching property")
+                } else {
+                    Type::Intersection(found)
+                };
                 PropertyType::Found { value, readonly }
             } else if indeterminate {
                 PropertyType::Indeterminate

@@ -39,7 +39,7 @@ use std::net::TcpListener;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
-use std::sync::{Arc, Barrier};
+use std::sync::{Arc, Barrier, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -81,6 +81,17 @@ fn clearing_gatekeeper() -> PathBuf {
 // longer than the ordinary test-profile startup, so this is deliberately a
 // bounded readiness deadline rather than a five-second scheduling assumption.
 const LAUNCHER_STARTUP_TIMEOUT: Duration = Duration::from_secs(30);
+
+// Each case starts at least one real launcher/core tree, and some supervise a
+// BlueJS child. Keep process teardown within its existing bounded deadline
+// while preserving the explicit concurrency exercised inside cutover tests.
+static BROKER_TEST_LOCK: Mutex<()> = Mutex::new(());
+
+fn broker_test_guard() -> std::sync::MutexGuard<'static, ()> {
+    BROKER_TEST_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
 
 /// Mirrors `blueice_launcher::v2_frame_dir`'s exact (private, so not
 /// directly callable from here) naming scheme, so this test can predict
@@ -265,6 +276,7 @@ impl Drop for Launcher {
 
 #[test]
 fn an_unrecognized_argument_exits_with_failure_and_creates_no_socket() {
+    let _guard = broker_test_guard();
     let rendezvous_socket = unique_path("bad-args-rendezvous.sock");
     let _ = std::fs::remove_file(&rendezvous_socket);
 
@@ -283,6 +295,7 @@ fn an_unrecognized_argument_exits_with_failure_and_creates_no_socket() {
 
 #[test]
 fn two_clients_through_the_same_launcher_observe_the_same_render_pass() {
+    let _guard = broker_test_guard();
     let mut launcher = Launcher::spawn();
 
     // Two independent connections to the *one* rendezvous socket,
@@ -411,6 +424,7 @@ fn two_clients_through_the_same_launcher_observe_the_same_render_pass() {
 
 #[test]
 fn shutdown_with_no_cutover_still_ends_the_whole_launcher_cleanly() {
+    let _guard = broker_test_guard();
     // A focused regression test that the generation-counter/cutover
     // restructuring didn't change this pre-existing behavior: with no
     // `Cutover` ever sent, a single client's `Shutdown` must still
@@ -443,6 +457,7 @@ fn shutdown_with_no_cutover_still_ends_the_whole_launcher_cleanly() {
 
 #[test]
 fn opt_in_launcher_supervises_the_private_bluejs_child_for_core_page_execution() {
+    let _guard = broker_test_guard();
     // This is intentionally the real launcher binary, not a direct core
     // invocation or a hand-configured host socket. `--out-of-process-bluejs`
     // is the only opt-in; the launcher itself creates the child endpoint and
@@ -542,14 +557,29 @@ fn opt_in_launcher_supervises_the_private_bluejs_child_for_core_page_execution()
         ])
     );
     write_client_message(&mut frontend, &ClientMessage::GetBlueTsScriptReports).unwrap();
+    let reply = read_server_message(&mut frontend).unwrap();
+    let ServerMessage::BlueTsScriptReports(reports) = reply else {
+        panic!("expected BlueTS script reports: {reply:?}");
+    };
+    let position = reports[2]
+        .source_position
+        .expect("an inline compiler rejection has a verified source position");
+    assert!(position.start < position.end);
+    assert!(position.end as usize <= "blueiceDocumentText(1);".len());
+    let mut without_positions = reports;
+    for report in &mut without_positions {
+        report.source_position = None;
+    }
     assert_eq!(
-        read_server_message(&mut frontend).unwrap(),
-        ServerMessage::BlueTsScriptReports(vec![
+        without_positions,
+        vec![
             blueice_ipc::BlueTsScriptExecutionReport {
                 tab_id: 1,
                 document_generation: 1,
                 ordinal: 1,
                 kind: blueice_ipc::BlueTsScriptKind::Classic,
+                policy: blueice_ipc::BlueTsScriptRuntimePolicy::Checked,
+                source_position: None,
                 outcome: blueice_ipc::BlueTsScriptExecutionOutcome::Executed,
             },
             blueice_ipc::BlueTsScriptExecutionReport {
@@ -557,6 +587,8 @@ fn opt_in_launcher_supervises_the_private_bluejs_child_for_core_page_execution()
                 document_generation: 1,
                 ordinal: 5,
                 kind: blueice_ipc::BlueTsScriptKind::Module,
+                policy: blueice_ipc::BlueTsScriptRuntimePolicy::Checked,
+                source_position: None,
                 outcome: blueice_ipc::BlueTsScriptExecutionOutcome::Executed,
             },
             blueice_ipc::BlueTsScriptExecutionReport {
@@ -564,11 +596,13 @@ fn opt_in_launcher_supervises_the_private_bluejs_child_for_core_page_execution()
                 document_generation: 1,
                 ordinal: 6,
                 kind: blueice_ipc::BlueTsScriptKind::Classic,
+                policy: blueice_ipc::BlueTsScriptRuntimePolicy::Checked,
+                source_position: None,
                 outcome: blueice_ipc::BlueTsScriptExecutionOutcome::Rejected {
                     category: "BlueTS compilation rejected the page script".to_string(),
                 },
             },
-        ])
+        ]
     );
 
     // The only public operation here is normal frontend shutdown. It neither
@@ -584,6 +618,7 @@ fn opt_in_launcher_supervises_the_private_bluejs_child_for_core_page_execution()
 
 #[test]
 fn owner_http_manifest_admits_closed_page_graphs_and_rejects_unlisted_or_tampered_sources() {
+    let _guard = broker_test_guard();
     const CLASSIC: &str = "globalThis.authorizedExternal = 42;";
     const ENTRY: &str = "import { answer } from './dep.ts'; export const result: number = answer;";
     const DEPENDENCY: &str = "export const answer: number = 42;";
@@ -733,6 +768,8 @@ fn owner_http_manifest_admits_closed_page_graphs_and_rejects_unlisted_or_tampere
             document_generation: 1,
             ordinal: 1,
             kind: blueice_ipc::BlueTsScriptKind::Module,
+            policy: blueice_ipc::BlueTsScriptRuntimePolicy::Checked,
+            source_position: None,
             outcome: blueice_ipc::BlueTsScriptExecutionOutcome::Executed,
         }])
     );
@@ -746,6 +783,7 @@ fn owner_http_manifest_admits_closed_page_graphs_and_rejects_unlisted_or_tampere
 
 #[test]
 fn opt_in_launcher_replaces_the_private_child_at_cutover_and_reaps_both_generations() {
+    let _guard = broker_test_guard();
     let gatekeeper_socket = clearing_gatekeeper();
     let mut launcher = Launcher::spawn_with_supervised_bluejs(&gatekeeper_socket);
     let v1_child_socket = launcher
@@ -823,6 +861,7 @@ fn opt_in_launcher_replaces_the_private_child_at_cutover_and_reaps_both_generati
 
 #[test]
 fn a_client_survives_a_cutover_and_sees_v2s_replayed_state() {
+    let _guard = broker_test_guard();
     let mut launcher = Launcher::spawn();
     let mut client = launcher.connect();
 
@@ -925,6 +964,7 @@ fn a_client_survives_a_cutover_and_sees_v2s_replayed_state() {
 
 #[test]
 fn simultaneous_cutovers_serialize_without_reusing_a_generation() {
+    let _guard = broker_test_guard();
     let mut launcher = Launcher::spawn();
     let barrier = Arc::new(Barrier::new(3));
     let requests = (0..2)
@@ -956,6 +996,7 @@ fn simultaneous_cutovers_serialize_without_reusing_a_generation() {
 
 #[test]
 fn a_cutover_that_fails_during_replay_leaves_v1_serving_normally() {
+    let _guard = broker_test_guard();
     let mut launcher = Launcher::spawn();
     let mut client = launcher.connect();
 

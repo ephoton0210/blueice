@@ -116,6 +116,32 @@ fn installs_direct_bytecode_with_its_checked_canonical_source_identity() {
 }
 
 #[test]
+fn existing_program_with_same_instructions_but_different_binding_refuses_attachment() {
+    let artifact = compile_direct_script(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(ENTRY, "const answer: number = 42;")]),
+        CompilerOptions::default(),
+    )
+    .unwrap();
+    let mut registry = bluejs::BlueJsProgramRegistry::default();
+    let identity =
+        bluejs::BlueJsSourceIdentity::new(ENTRY, artifact.sources[0].content_hash.clone()).unwrap();
+    let replacement = bluejs::BlueJsProgramV1::Script(bluejs::parse("const other=42;").unwrap());
+    let handle = registry.install(identity, &replacement).unwrap();
+    let installed = registry.get(handle).unwrap().bytecode();
+    assert_eq!(installed.bytes(), artifact.bytecode.bytes());
+    assert_eq!(installed.constants(), artifact.bytecode.constants());
+    assert_eq!(
+        installed.root_declaration_binding_slots(),
+        artifact.bytecode.root_declaration_binding_slots()
+    );
+    assert!(matches!(
+        artifact.attach_existing_in(&registry, handle),
+        Err(BridgeError::ProvenanceAttachment(_))
+    ));
+}
+
+#[test]
 fn resolves_a_ts_byte_position_to_the_next_verified_safe_point_or_unbound() {
     let artifact = compile_direct_script(
         ENTRY,
@@ -263,6 +289,34 @@ fn classic_and_module_maps_own_root_call_and_child_entry_without_mapping_halt() 
 }
 
 #[test]
+fn module_function_source_breakpoint_selects_child_entry_over_declaration_root() {
+    let source = "export function inner(): number { return 41; }";
+    let mut registry = bluejs::BlueJsProgramRegistry::default();
+    let mut debug = DirectDebugRegistry::default();
+    let attachment = compile_direct_module(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+        CompilerOptions::default(),
+    )
+    .unwrap()
+    .attach_debug_in(&mut registry, &mut debug)
+    .unwrap();
+    let bound = attachment.breakpoint_at_or_after(ENTRY, source.find("function inner").unwrap());
+    let DirectSafePointBinding::Bound(point) = bound else {
+        panic!("a verified module function entry must be source-bound")
+    };
+    assert_eq!(point.code_unit.ordinal(), 1);
+    assert_eq!(point.bytecode_offset, 0);
+    assert_eq!(
+        debug
+            .get(&registry, attachment.handle)
+            .unwrap()
+            .breakpoint_at_or_after(ENTRY, source.find("function inner").unwrap()),
+        bound
+    );
+}
+
+#[test]
 fn rejects_object_methods_without_reparsing_emitted_javascript() {
     let result = compile_direct_script(
         ENTRY,
@@ -280,6 +334,36 @@ fn rejects_object_methods_without_reparsing_emitted_javascript() {
     };
     assert_eq!(span.module, ENTRY);
     assert!(span.start > 0);
+}
+
+#[test]
+fn lowers_checked_optional_dot_read_to_bluejs_optional_member_ast() {
+    let artifact = compile_direct_script(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(
+            ENTRY,
+            "const receiver: { value: number } | null = null; const read: number | undefined = receiver?.value; read;",
+        )]),
+        CompilerOptions::default(),
+    )
+    .unwrap();
+    let bluejs::BlueJsProgramV1::Script(bluejs::Program { body }) = &artifact.program else {
+        panic!("direct compilation must retain a script AST");
+    };
+    assert!(body.iter().any(|statement| matches!(
+        statement,
+        bluejs::Stmt::VarDecl(_, declarations)
+            if declarations.iter().any(|declaration| matches!(
+                &declaration.init,
+                Some(bluejs::Expr::OptionalMember { object, property, computed: false })
+                    if matches!(object.as_ref(), bluejs::Expr::Identifier(name) if name == "receiver")
+                        && matches!(property.as_ref(), bluejs::Expr::Identifier(name) if name == "value")
+            ))
+    )));
+    assert_eq!(
+        bluejs::Vm::default().execute(&artifact.bytecode).unwrap(),
+        bluejs::Value::Undefined
+    );
 }
 
 #[test]

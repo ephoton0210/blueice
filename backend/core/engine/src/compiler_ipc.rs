@@ -38,9 +38,14 @@ use blueice_ipc::compiler::{
     CompilerStaticType, CompilerSymbolKind, CompilerWorkSetCursor, CompilerWorkSetKind,
     CompilerWorkSetPage, COMPILER_DIAGNOSTIC_MAX_CODE_BYTES, COMPILER_MAX_PROJECT_INVENTORY,
 };
+use blueice_ipc::compiler_output::{
+    CompilerOutputBuildResult, CompilerOutputErrorCode, CompilerOutputReply, CompilerOutputRequest,
+    CompilerOutputSessionReceipt,
+};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::io;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 
 /// A response budget smaller than the protocol's one-mebibyte transport cap.
@@ -207,1063 +212,6 @@ impl Default for CompilerServiceIpcAdapter {
     }
 }
 
-impl CompilerServiceIpcAdapter {
-    /// Wraps a service selected by the core owner. The adapter never exposes
-    /// the service mutably, preventing an IPC caller from changing its
-    /// registration inputs after construction.
-    pub fn new(
-        service: RegisteredProjectCompilerService,
-        limits: CompilerServiceIpcLimits,
-    ) -> Result<Self, CompilerServiceIpcConfigurationError> {
-        validate_limits(limits)?;
-        if service.registered_project_ids().count() > COMPILER_MAX_PROJECT_INVENTORY {
-            return Err(CompilerServiceIpcConfigurationError::TooManyRegisteredProjects);
-        }
-        Ok(Self {
-            service,
-            limits,
-            // A pre-populated service is not evidence that its projects were
-            // selected for public compiler IPC. Exposure is explicit only.
-            registered_projects: BTreeSet::new(),
-            project_inventory_streams: BTreeMap::new(),
-            session_cursors: BTreeMap::new(),
-        })
-    }
-
-    /// Creates an empty core-owned service with the supplied service and IPC
-    /// retention limits. Projects still have to be registered by a core owner
-    /// using [`Self::register_core_project`] before the protocol can inspect
-    /// them.
-    pub fn with_limits(
-        service_limits: CompilerServiceLimits,
-        ipc_limits: CompilerServiceIpcLimits,
-    ) -> Result<Self, CompilerServiceIpcConfigurationError> {
-        Self::new(
-            RegisteredProjectCompilerService::new(service_limits),
-            ipc_limits,
-        )
-    }
-
-    /// Core-only registration seam. It is intentionally not represented in
-    /// [`CompilerRequest`]: remote callers have no path, source graph,
-    /// resolver, plugin, compiler-option, or output-root field to influence.
-    pub fn register_core_project(
-        &mut self,
-        registration: RegisteredProjectRegistration,
-    ) -> Result<CompilerProject, CompilerServiceError> {
-        self.register_core_project_with_visibility(registration, true)
-    }
-
-    /// Keeps a core-owned registration out of every public stream inventory.
-    /// The service still owns it for later privileged core-only work; no
-    /// compiler IPC or MCP request can promote its visibility after sealing.
-    fn register_core_project_private(
-        &mut self,
-        registration: RegisteredProjectRegistration,
-    ) -> Result<CompilerProject, CompilerServiceError> {
-        self.register_core_project_with_visibility(registration, false)
-    }
-
-    fn register_core_project_with_visibility(
-        &mut self,
-        registration: RegisteredProjectRegistration,
-        exposed: bool,
-    ) -> Result<CompilerProject, CompilerServiceError> {
-        if self.service.registered_project_ids().count() >= COMPILER_MAX_PROJECT_INVENTORY {
-            return Err(CompilerServiceError::ProjectLimit {
-                limit: COMPILER_MAX_PROJECT_INVENTORY,
-            });
-        }
-        let project = project_to_wire(self.service.register(registration)?);
-        if exposed {
-            self.registered_projects.insert(project.id);
-        }
-        Ok(project)
-    }
-
-    /// Handles one request after the transport has successfully negotiated
-    /// `Hello`. A transport owner is responsible for first-message handling;
-    /// an in-band `Hello` is rejected rather than renegotiating state.
-    pub fn handle(&mut self, request: CompilerRequest) -> CompilerReply {
-        if let Some(project_id) = compiler_request_project_id(&request) {
-            // Direct core-side callers must not bypass owner visibility. Keep
-            // malformed and unknown handle categories unchanged by denying
-            // only identities the underlying service actually owns.
-            if !self.registered_projects.contains(&project_id)
-                && self
-                    .service
-                    .registered_project_ids()
-                    .any(|project| project.as_u64() == project_id)
-            {
-                return CompilerReply::Error {
-                    code: CompilerErrorCode::UnobservedProject,
-                    message: "compiler project was not exposed by the core owner".to_string(),
-                };
-            }
-        }
-        match request {
-            CompilerRequest::ListProjects => self.project_inventory(),
-            CompilerRequest::DescribeProject { project } => self.describe_project(project),
-            CompilerRequest::Check { project } => self.check(project),
-            CompilerRequest::ListDiagnostics {
-                generation,
-                cursor,
-                limit,
-            } => self.diagnostic_page(generation, cursor, limit),
-            CompilerRequest::ListWorkSet {
-                generation,
-                kind,
-                cursor,
-                limit,
-            } => self.work_set_page(generation, kind, cursor, limit),
-            CompilerRequest::GetStaticType {
-                generation,
-                type_id,
-            } => self.static_type(generation, type_id),
-            CompilerRequest::GetStaticSymbol {
-                generation,
-                symbol_id,
-            } => self.static_symbol(generation, symbol_id),
-            CompilerRequest::GetStaticSymbolLocation {
-                generation,
-                symbol_id,
-                source_id,
-            } => self.static_symbol_location(generation, symbol_id, source_id),
-            CompilerRequest::ListStaticMetadata {
-                generation,
-                kind,
-                cursor,
-                limit,
-            } => self.static_metadata_page(generation, kind, cursor, limit),
-            CompilerRequest::GetStaticProvenance {
-                generation,
-                source_id,
-            } => self.static_provenance(generation, source_id),
-            CompilerRequest::GetStaticContract {
-                generation,
-                contract_id,
-            } => self.static_contract(generation, contract_id),
-            CompilerRequest::GetStaticContractLocation {
-                generation,
-                contract_id,
-                source_id,
-            } => self.static_contract_location(generation, contract_id, source_id),
-            CompilerRequest::ValidateStaticContract {
-                generation,
-                contract_id,
-                value,
-            } => self.validate_static_contract(generation, contract_id, value),
-            CompilerRequest::Hello { .. } => CompilerReply::Error {
-                code: CompilerErrorCode::ProtocolVersion,
-                message: "compiler Hello is valid only as the first request".to_string(),
-            },
-            CompilerRequest::Unknown => CompilerReply::Unsupported {
-                operation: "unknown compiler request".to_string(),
-                reason: "this core build does not recognize the requested compiler operation"
-                    .to_string(),
-            },
-        }
-    }
-
-    /// Applies a decoded request under the exact accepted compiler stream's
-    /// core-minted attestation. A cursor is usable only if this stream
-    /// previously received it as `next_cursor` for the same generation and
-    /// collection. The attestation is internal hand-off data, not an IPC
-    /// request field that a remote client can choose.
-    fn handle_session_request(
-        &mut self,
-        session_id: &str,
-        request: CompilerRequest,
-    ) -> CompilerReply {
-        if matches!(request, CompilerRequest::ListProjects) {
-            if !self.project_inventory_streams.contains_key(session_id)
-                && self.project_inventory_streams.len() >= MAX_PROJECT_INVENTORY_STREAMS
-            {
-                return CompilerReply::Error {
-                    code: CompilerErrorCode::ResourceLimit,
-                    message: "compiler project inventory stream limit exceeded".to_string(),
-                };
-            }
-            let reply = self.project_inventory();
-            if let CompilerReply::Projects(inventory) = &reply {
-                self.project_inventory_streams.insert(
-                    session_id.to_string(),
-                    inventory
-                        .projects
-                        .iter()
-                        .map(|project| project.id)
-                        .collect(),
-                );
-            }
-            return reply;
-        }
-        if let Some(project_id) = compiler_request_project_id(&request) {
-            if !self
-                .project_inventory_streams
-                .get(session_id)
-                .is_some_and(|projects| projects.contains(&project_id))
-            {
-                return CompilerReply::Error {
-                    code: CompilerErrorCode::UnobservedProject,
-                    message: "compiler project was not inventoried on this stream".to_string(),
-                };
-            }
-        }
-        let pagination = match &request {
-            CompilerRequest::ListDiagnostics {
-                generation, cursor, ..
-            } => Some((
-                *generation,
-                CompilerSessionCursorKind::Diagnostics,
-                cursor.map(|cursor| cursor.id),
-            )),
-            CompilerRequest::ListWorkSet {
-                generation,
-                kind,
-                cursor,
-                ..
-            } => Some((
-                *generation,
-                CompilerSessionCursorKind::WorkSet(*kind),
-                cursor.map(|cursor| cursor.id),
-            )),
-            CompilerRequest::ListStaticMetadata {
-                generation,
-                kind,
-                cursor,
-                ..
-            } => Some((
-                *generation,
-                CompilerSessionCursorKind::from_static_kind(*kind),
-                cursor.map(|cursor| cursor.id),
-            )),
-            _ => None,
-        };
-        let checked_project = match &request {
-            CompilerRequest::Check { project } => Some(project.id),
-            _ => None,
-        };
-        let presented_cursor = pagination.and_then(|(generation, kind, id)| {
-            id.map(|id| CompilerSessionCursorReceipt::new(generation, kind, id))
-        });
-        if let Some(cursor) = presented_cursor {
-            if !self
-                .session_cursors
-                .get(session_id)
-                .is_some_and(|receipts| receipts.contains(&cursor))
-            {
-                let (code, message) = match cursor.kind {
-                    CompilerSessionCursorKind::Diagnostics => (
-                        CompilerErrorCode::InvalidDiagnosticCursor,
-                        "compiler diagnostic cursor was not returned on this stream",
-                    ),
-                    CompilerSessionCursorKind::WorkSet(_) => (
-                        CompilerErrorCode::InvalidWorkSetCursor,
-                        "compiler work-set cursor was not returned on this stream",
-                    ),
-                    _ => (
-                        CompilerErrorCode::InvalidMetadataCursor,
-                        "static metadata cursor was not returned on this stream",
-                    ),
-                };
-                return CompilerReply::Error {
-                    code,
-                    message: message.to_string(),
-                };
-            }
-        }
-        let reply = self.handle(request);
-        if let Some(project_id) = checked_project {
-            // A check may advance the generation before a response-budget
-            // error is reported. Conservatively revoke every old cursor for
-            // that project, including cursors held by another stream.
-            self.revoke_project_session_cursors(project_id);
-        }
-        let next_cursor = match (pagination, &reply) {
-            (
-                Some((generation, CompilerSessionCursorKind::Diagnostics, _)),
-                CompilerReply::DiagnosticPage(page),
-            ) if page.generation == generation => page.next_cursor.map(|cursor| {
-                CompilerSessionCursorReceipt::new(
-                    generation,
-                    CompilerSessionCursorKind::Diagnostics,
-                    cursor.id,
-                )
-            }),
-            (
-                Some((generation, CompilerSessionCursorKind::WorkSet(kind), _)),
-                CompilerReply::WorkSetPage(page),
-            ) if page.generation == generation && page.kind == kind => {
-                page.next_cursor.map(|cursor| {
-                    CompilerSessionCursorReceipt::new(
-                        generation,
-                        CompilerSessionCursorKind::WorkSet(kind),
-                        cursor.id,
-                    )
-                })
-            }
-            (Some((generation, kind, _)), CompilerReply::StaticMetadataPage(page))
-                if page.generation == generation
-                    && CompilerSessionCursorKind::from_static_kind(page.kind) == kind =>
-            {
-                page.next_cursor
-                    .map(|cursor| CompilerSessionCursorReceipt::new(generation, kind, cursor.id))
-            }
-            _ => None,
-        };
-        if matches!(
-            &reply,
-            CompilerReply::DiagnosticPage(_)
-                | CompilerReply::WorkSetPage(_)
-                | CompilerReply::StaticMetadataPage(_)
-        ) {
-            let receipts = self
-                .session_cursors
-                .entry(session_id.to_string())
-                .or_default();
-            if let Some(cursor) = presented_cursor {
-                receipts.remove(&cursor);
-            }
-            if let Some(cursor) = next_cursor {
-                receipts.insert(cursor);
-            }
-            if receipts.is_empty() {
-                self.session_cursors.remove(session_id);
-            }
-            if let Some(next_cursor) = next_cursor {
-                let total = self
-                    .session_cursors
-                    .values()
-                    .map(BTreeSet::len)
-                    .sum::<usize>();
-                if total > self.limits.max_stream_cursor_receipts {
-                    let receipts = self
-                        .session_cursors
-                        .get_mut(session_id)
-                        .expect("the newly minted cursor was just recorded on this stream");
-                    receipts.remove(&next_cursor);
-                    if receipts.is_empty() {
-                        self.session_cursors.remove(session_id);
-                    }
-                    self.release_session_cursors(BTreeSet::from([next_cursor]));
-                    return CompilerReply::Error {
-                        code: CompilerErrorCode::ResourceLimit,
-                        message: "compiler stream cursor receipt limit exceeded".to_string(),
-                    };
-                }
-            }
-        }
-        reply
-    }
-
-    /// Releases unconsumed cursor slots when the accepted stream ends. This
-    /// prevents a client from exhausting the core's fixed cursor budget by
-    /// repeatedly abandoning first pages and reconnecting.
-    fn end_session(&mut self, session_id: &str) {
-        self.project_inventory_streams.remove(session_id);
-        let Some(receipts) = self.session_cursors.remove(session_id) else {
-            return;
-        };
-        self.release_session_cursors(receipts);
-    }
-
-    fn project_inventory(&self) -> CompilerReply {
-        let projects = self
-            .registered_projects
-            .iter()
-            .map(|id| CompilerProject { id: *id })
-            .collect::<Vec<_>>();
-        let inventory = CompilerProjectInventory { projects };
-        if !inventory.is_well_formed() {
-            return response_limit_reply();
-        }
-        let mut budget = ResponseBudget::new(self.limits.max_response_bytes);
-        if !budget.reserve_fixed(128 + 32 * inventory.projects.len()) {
-            return response_limit_reply();
-        }
-        CompilerReply::Projects(inventory)
-    }
-
-    fn revoke_project_session_cursors(&mut self, project_id: u64) {
-        let mut revoked = BTreeSet::new();
-        self.session_cursors.retain(|_, receipts| {
-            receipts.retain(|receipt| {
-                if receipt.project_id == project_id {
-                    revoked.insert(*receipt);
-                    false
-                } else {
-                    true
-                }
-            });
-            !receipts.is_empty()
-        });
-        self.release_session_cursors(revoked);
-    }
-
-    fn release_session_cursors(&mut self, receipts: BTreeSet<CompilerSessionCursorReceipt>) {
-        let mut metadata = Vec::new();
-        let mut diagnostics = Vec::new();
-        let mut work_sets = Vec::new();
-        for receipt in receipts {
-            match receipt.kind {
-                CompilerSessionCursorKind::Diagnostics => diagnostics.push(receipt.id),
-                CompilerSessionCursorKind::WorkSet(_) => work_sets.push(receipt.id),
-                _ => metadata.push(receipt.id),
-            }
-        }
-        self.service
-            .revoke_inventory_cursors(&metadata, &diagnostics, &work_sets);
-    }
-
-    fn describe_project(&self, project: CompilerProject) -> CompilerReply {
-        let project_id = match project_from_wire(project) {
-            Ok(project_id) => project_id,
-            Err(error) => return handle_error_reply(error),
-        };
-        let identity = match self.service.identity(project_id) {
-            Ok(identity) => identity,
-            Err(error) => return service_error_reply(&error),
-        };
-        let mut budget = ResponseBudget::new(self.limits.max_response_bytes);
-        if !budget.reserve_fixed(256)
-            || !budget.reserve_required_string(&identity.entry_module, self.limits.max_field_bytes)
-        {
-            return response_limit_reply();
-        }
-        CompilerReply::Project(CompilerProjectIdentity {
-            project,
-            entry_module: identity.entry_module,
-        })
-    }
-
-    fn check(&mut self, project: CompilerProject) -> CompilerReply {
-        let project_id = match project_from_wire(project) {
-            Ok(project_id) => project_id,
-            Err(error) => return handle_error_reply(error),
-        };
-        let check = match self.service.check(project_id) {
-            Ok(check) => check,
-            Err(error) => return service_error_reply(&error),
-        };
-        // A successful check is the only public way an MCP receipt learns a
-        // generation. Validate every retained diagnostic field now, before
-        // any one-shot diagnostic cursor exists, so a later page cannot lose
-        // a cursor merely because an unseen later entry violates the fixed
-        // public field policy.
-        if !retained_diagnostics_fit_wire_policy(
-            &check.retained_diagnostics,
-            &check.retained_diagnostic_locations,
-            self.limits,
-        ) {
-            return response_limit_reply();
-        }
-        if [
-            &check.parsed_modules,
-            &check.reused_parsed_modules,
-            &check.rechecked_modules,
-            &check.reused_checked_modules,
-        ]
-        .into_iter()
-        .flatten()
-        .any(|module| module.len() > self.limits.max_field_bytes)
-        {
-            return response_limit_reply();
-        }
-        match self.check_to_wire(check) {
-            Ok(check) => CompilerReply::Check(check),
-            Err(()) => response_limit_reply(),
-        }
-    }
-
-    /// Returns one source-free diagnostic page for an exact retained
-    /// generation. The adapter bounds a page using the same pessimistic JSON
-    /// accounting as ordinary check replies before it asks the service to
-    /// consume a one-shot cursor.
-    fn diagnostic_page(
-        &mut self,
-        generation: CompilerGeneration,
-        cursor: Option<CompilerDiagnosticCursor>,
-        requested_limit: Option<u32>,
-    ) -> CompilerReply {
-        let generation = match generation_from_wire(generation) {
-            Ok(generation) => generation,
-            Err(error) => return handle_error_reply(error),
-        };
-        if cursor.is_some_and(|cursor| !cursor.is_well_formed()) {
-            return CompilerReply::Error {
-                code: CompilerErrorCode::InvalidDiagnosticCursor,
-                message: "invalid compiler diagnostic cursor".to_string(),
-            };
-        }
-        let requested_limit = match requested_limit {
-            Some(0) => {
-                return CompilerReply::Error {
-                    code: CompilerErrorCode::InvalidDiagnosticPage,
-                    message: "compiler diagnostic page limit must be positive".to_string(),
-                };
-            }
-            Some(limit) => usize::try_from(limit).unwrap_or(usize::MAX),
-            None => self.limits.max_diagnostic_page_entries,
-        };
-        // A diagnostic always carries two project-controlled strings (module
-        // identity and prose). Reserve their worst-case JSON expansion before
-        // the service accepts a cursor, so an accepted page cannot overflow
-        // this adapter's response envelope merely because a field is dense in
-        // escapable bytes.
-        const PAGE_FIXED_BYTES: usize = 256;
-        const PAGE_ENTRY_FIXED_BYTES: usize = 352;
-        let max_entry_bytes = self
-            .limits
-            .max_field_bytes
-            .checked_mul(12)
-            .and_then(|bytes| {
-                COMPILER_DIAGNOSTIC_MAX_CODE_BYTES
-                    .checked_mul(6)
-                    .and_then(|code_bytes| bytes.checked_add(code_bytes))
-            })
-            .and_then(|bytes| bytes.checked_add(PAGE_ENTRY_FIXED_BYTES));
-        let Some(max_entry_bytes) = max_entry_bytes else {
-            return response_limit_reply();
-        };
-        let response_cap = self
-            .limits
-            .max_response_bytes
-            .saturating_sub(PAGE_FIXED_BYTES)
-            / max_entry_bytes;
-        let limit = requested_limit
-            .min(self.limits.max_diagnostic_page_entries)
-            .min(response_cap);
-        if limit == 0 {
-            return response_limit_reply();
-        }
-        let page = match self.service.diagnostic_inventory(
-            generation,
-            cursor.map(|cursor| cursor.id),
-            limit,
-        ) {
-            Ok(page) => page,
-            Err(error) => return service_error_reply(&error),
-        };
-        let mut budget = ResponseBudget::new(self.limits.max_response_bytes);
-        if !budget.reserve_fixed(PAGE_FIXED_BYTES) {
-            if let Some(id) = page.next_cursor {
-                self.service.revoke_inventory_cursors(&[], &[id], &[]);
-            }
-            return response_limit_reply();
-        }
-        let entries = match diagnostic_page_entries_to_wire(
-            &page.entries,
-            &page.locations,
-            self.limits,
-            &mut budget,
-        ) {
-            Ok(entries) => entries,
-            Err(()) => {
-                if let Some(id) = page.next_cursor {
-                    self.service.revoke_inventory_cursors(&[], &[id], &[]);
-                }
-                return response_limit_reply();
-            }
-        };
-        CompilerReply::DiagnosticPage(CompilerDiagnosticPage {
-            generation: generation_to_wire(generation),
-            entries,
-            next_cursor: page.next_cursor.map(|id| CompilerDiagnosticCursor { id }),
-            truncated: page.truncated,
-        })
-    }
-
-    fn work_set_page(
-        &mut self,
-        generation: CompilerGeneration,
-        kind: CompilerWorkSetKind,
-        cursor: Option<CompilerWorkSetCursor>,
-        requested_limit: Option<u32>,
-    ) -> CompilerReply {
-        let generation = match generation_from_wire(generation) {
-            Ok(generation) => generation,
-            Err(error) => return handle_error_reply(error),
-        };
-        if cursor.is_some_and(|cursor| !cursor.is_well_formed()) {
-            return CompilerReply::Error {
-                code: CompilerErrorCode::InvalidWorkSetCursor,
-                message: "invalid compiler work-set cursor".to_string(),
-            };
-        }
-        let requested_limit = match requested_limit {
-            Some(0) => {
-                return CompilerReply::Error {
-                    code: CompilerErrorCode::InvalidWorkSetPage,
-                    message: "compiler work-set page limit must be positive".to_string(),
-                };
-            }
-            Some(limit) => usize::try_from(limit).unwrap_or(usize::MAX),
-            None => self.limits.max_work_set_page_entries,
-        };
-        const PAGE_FIXED_BYTES: usize = 256;
-        const ENTRY_FIXED_BYTES: usize = 64;
-        let Some(max_entry_bytes) = self
-            .limits
-            .max_field_bytes
-            .checked_mul(6)
-            .and_then(|bytes| bytes.checked_add(ENTRY_FIXED_BYTES + 2))
-        else {
-            return response_limit_reply();
-        };
-        let response_cap = self
-            .limits
-            .max_response_bytes
-            .saturating_sub(PAGE_FIXED_BYTES)
-            / max_entry_bytes;
-        let limit = requested_limit
-            .min(self.limits.max_work_set_page_entries)
-            .min(response_cap);
-        if limit == 0 {
-            return response_limit_reply();
-        }
-        let page = match self.service.work_set_inventory(
-            generation,
-            work_set_kind_from_wire(kind),
-            cursor.map(|cursor| cursor.id),
-            limit,
-        ) {
-            Ok(page) => page,
-            Err(error) => return service_error_reply(&error),
-        };
-        let mut budget = ResponseBudget::new(self.limits.max_response_bytes);
-        let valid = budget.reserve_fixed(PAGE_FIXED_BYTES)
-            && page.entries.iter().all(|entry| {
-                budget.reserve_required_string(entry, self.limits.max_field_bytes)
-                    && budget.reserve_fixed(ENTRY_FIXED_BYTES)
-            });
-        if !valid {
-            if let Some(id) = page.next_cursor {
-                self.service.revoke_inventory_cursors(&[], &[], &[id]);
-            }
-            return response_limit_reply();
-        }
-        CompilerReply::WorkSetPage(CompilerWorkSetPage {
-            generation: generation_to_wire(generation),
-            kind,
-            entries: page.entries,
-            next_cursor: page.next_cursor.map(|id| CompilerWorkSetCursor { id }),
-            truncated: page.truncated,
-        })
-    }
-
-    fn static_type(&self, generation: CompilerGeneration, type_id: u32) -> CompilerReply {
-        let generation = match generation_from_wire(generation) {
-            Ok(generation) => generation,
-            Err(error) => return handle_error_reply(error),
-        };
-        let static_type = match self
-            .service
-            .static_type(generation, blueice_bluets::TypeId(type_id))
-        {
-            Ok(static_type) => static_type,
-            Err(error) => return service_error_reply(&error),
-        };
-        let mut budget = ResponseBudget::new(self.limits.max_response_bytes);
-        if !budget.reserve_fixed(256)
-            || !budget.reserve_required_string(&static_type.display, self.limits.max_field_bytes)
-        {
-            return response_limit_reply();
-        }
-        CompilerReply::StaticType(CompilerStaticType {
-            generation: generation_to_wire(generation),
-            id: static_type.id.0,
-            display: static_type.display,
-        })
-    }
-
-    fn static_symbol(&self, generation: CompilerGeneration, symbol_id: u32) -> CompilerReply {
-        let generation = match generation_from_wire(generation) {
-            Ok(generation) => generation,
-            Err(error) => return handle_error_reply(error),
-        };
-        let symbol = match self
-            .service
-            .static_symbol(generation, blueice_bluets::SymbolId(symbol_id))
-        {
-            Ok(symbol) => symbol,
-            Err(error) => return service_error_reply(&error),
-        };
-        let mut budget = ResponseBudget::new(self.limits.max_response_bytes);
-        if !budget.reserve_fixed(384)
-            || !budget.reserve_required_string(&symbol.name, self.limits.max_field_bytes)
-            || !budget.reserve_required_string(&symbol.span.module, self.limits.max_field_bytes)
-        {
-            return response_limit_reply();
-        }
-        let (start, end) = match (
-            u64::try_from(symbol.span.start),
-            u64::try_from(symbol.span.end),
-        ) {
-            (Ok(start), Ok(end)) => (start, end),
-            _ => return response_limit_reply(),
-        };
-        CompilerReply::StaticSymbol(CompilerStaticSymbol {
-            generation: generation_to_wire(generation),
-            id: symbol.id.0,
-            name: symbol.name,
-            kind: symbol_kind_to_wire(symbol.kind),
-            exported: symbol.exported,
-            module: symbol.span.module,
-            start,
-            end,
-            static_type_id: symbol.static_type.map(|id| id.0),
-            source_id: symbol.source.0,
-            contract_id: symbol.contract.map(|id| id.0),
-        })
-    }
-
-    fn static_symbol_location(
-        &self,
-        generation: CompilerGeneration,
-        symbol_id: u32,
-        source_id: u32,
-    ) -> CompilerReply {
-        let generation = match generation_from_wire(generation) {
-            Ok(generation) => generation,
-            Err(error) => return handle_error_reply(error),
-        };
-        let symbol = match self
-            .service
-            .static_symbol(generation, blueice_bluets::SymbolId(symbol_id))
-        {
-            Ok(symbol) => symbol,
-            Err(error) => return service_error_reply(&error),
-        };
-        if symbol.source.0 != source_id {
-            return invalid_location_target_reply();
-        }
-        let Some((start_byte, end_byte, coordinates)) =
-            compiler_declaration_location(&symbol.span, symbol.location)
-        else {
-            return response_limit_reply();
-        };
-        let reply = CompilerStaticSymbolLocation {
-            generation: generation_to_wire(generation),
-            symbol_id,
-            source_id,
-            start_byte,
-            end_byte,
-            coordinates,
-        };
-        if !reply.is_well_formed()
-            || !ResponseBudget::new(self.limits.max_response_bytes).reserve_fixed(256)
-        {
-            return response_limit_reply();
-        }
-        CompilerReply::StaticSymbolLocation(reply)
-    }
-
-    /// Returns one source-free page of opaque static IDs. The cursor is
-    /// validated by both this adapter and the core service, which binds it to
-    /// the exact retained generation and consumes it after one use. The page
-    /// cap has both a configured policy limit and a response-budget limit.
-    fn static_metadata_page(
-        &mut self,
-        generation: CompilerGeneration,
-        kind: CompilerStaticMetadataKind,
-        cursor: Option<CompilerStaticMetadataCursor>,
-        requested_limit: Option<u32>,
-    ) -> CompilerReply {
-        let generation = match generation_from_wire(generation) {
-            Ok(generation) => generation,
-            Err(error) => return handle_error_reply(error),
-        };
-        if cursor.is_some_and(|cursor| !cursor.is_well_formed()) {
-            return CompilerReply::Error {
-                code: CompilerErrorCode::InvalidMetadataCursor,
-                message: "invalid static metadata cursor".to_string(),
-            };
-        }
-        let requested_limit = match requested_limit {
-            Some(0) => {
-                return CompilerReply::Error {
-                    code: CompilerErrorCode::InvalidMetadataPage,
-                    message: "static metadata page limit must be positive".to_string(),
-                };
-            }
-            Some(limit) => usize::try_from(limit).unwrap_or(usize::MAX),
-            None => self.limits.max_static_metadata_page_entries,
-        };
-        // Each ID, list delimiter and conservative JSON framing are charged
-        // before the service consumes a one-shot cursor. This means a tiny
-        // adapter response policy returns a limit failure without losing the
-        // cursor or accidentally creating a partial page.
-        const PAGE_FIXED_BYTES: usize = 256;
-        const PAGE_ID_BYTES: usize = 32;
-        let response_cap = self
-            .limits
-            .max_response_bytes
-            .saturating_sub(PAGE_FIXED_BYTES)
-            / PAGE_ID_BYTES;
-        let limit = requested_limit
-            .min(self.limits.max_static_metadata_page_entries)
-            .min(response_cap);
-        if limit == 0 {
-            return response_limit_reply();
-        }
-        let page = match self.service.static_metadata_inventory(
-            generation,
-            static_metadata_kind_from_wire(kind),
-            cursor.map(|cursor| cursor.id),
-            limit,
-        ) {
-            Ok(page) => page,
-            Err(error) => return service_error_reply(&error),
-        };
-        let mut budget = ResponseBudget::new(self.limits.max_response_bytes);
-        if !budget.reserve_fixed(PAGE_FIXED_BYTES)
-            || page
-                .ids
-                .iter()
-                .any(|_| !budget.reserve_optional_fixed(PAGE_ID_BYTES))
-        {
-            if let Some(id) = page.next_cursor {
-                self.service.revoke_inventory_cursors(&[id], &[], &[]);
-            }
-            return response_limit_reply();
-        }
-        CompilerReply::StaticMetadataPage(CompilerStaticMetadataPage {
-            generation: generation_to_wire(generation),
-            kind,
-            ids: page.ids,
-            next_cursor: page
-                .next_cursor
-                .map(|id| CompilerStaticMetadataCursor { id }),
-        })
-    }
-
-    fn static_provenance(&self, generation: CompilerGeneration, source_id: u32) -> CompilerReply {
-        let generation = match generation_from_wire(generation) {
-            Ok(generation) => generation,
-            Err(error) => return handle_error_reply(error),
-        };
-        let provenance = match self
-            .service
-            .static_provenance(generation, SourceId(source_id))
-        {
-            Ok(provenance) => provenance,
-            Err(error) => return service_error_reply(&error),
-        };
-        let mut budget = ResponseBudget::new(self.limits.max_response_bytes);
-        if !budget.reserve_fixed(384)
-            || !budget.reserve_required_string(&provenance.module, self.limits.max_field_bytes)
-            || !budget
-                .reserve_required_string(&provenance.content_hash, self.limits.max_field_bytes)
-        {
-            return response_limit_reply();
-        }
-        CompilerReply::StaticProvenance(CompilerStaticProvenance {
-            generation: generation_to_wire(generation),
-            source_id: provenance.id.0,
-            module: provenance.module,
-            content_hash: provenance.content_hash,
-        })
-    }
-
-    fn static_contract(&self, generation: CompilerGeneration, contract_id: u32) -> CompilerReply {
-        let generation = match generation_from_wire(generation) {
-            Ok(generation) => generation,
-            Err(error) => return handle_error_reply(error),
-        };
-        let contract = match self
-            .service
-            .static_contract(generation, ContractId(contract_id))
-        {
-            Ok(contract) => contract,
-            Err(error) => return service_error_reply(&error),
-        };
-        let root = format!("{:?}", contract.plan.root);
-        let definitions = format!("{:?}", contract.plan.definitions);
-        let definition_count = match u32::try_from(contract.plan.definitions.len()) {
-            Ok(count) => count,
-            Err(_) => return response_limit_reply(),
-        };
-        let mut budget = ResponseBudget::new(self.limits.max_response_bytes);
-        if !budget.reserve_fixed(512)
-            || !budget.reserve_required_string(&contract.name, self.limits.max_field_bytes)
-            || !budget
-                .reserve_required_string(&contract.plan.fingerprint, self.limits.max_field_bytes)
-            || !budget.reserve_required_string(&root, self.limits.max_field_bytes)
-            || !budget.reserve_required_string(&definitions, self.limits.max_field_bytes)
-        {
-            return response_limit_reply();
-        }
-        CompilerReply::StaticContract(CompilerStaticContract {
-            generation: generation_to_wire(generation),
-            contract_id: contract.id.0,
-            source_id: contract.source.0,
-            name: contract.name,
-            fingerprint: contract.plan.fingerprint,
-            root,
-            definitions,
-            definition_count,
-        })
-    }
-
-    fn static_contract_location(
-        &self,
-        generation: CompilerGeneration,
-        contract_id: u32,
-        source_id: u32,
-    ) -> CompilerReply {
-        let generation = match generation_from_wire(generation) {
-            Ok(generation) => generation,
-            Err(error) => return handle_error_reply(error),
-        };
-        let contract = match self
-            .service
-            .static_contract(generation, ContractId(contract_id))
-        {
-            Ok(contract) => contract,
-            Err(error) => return service_error_reply(&error),
-        };
-        if contract.source.0 != source_id {
-            return invalid_location_target_reply();
-        }
-        let Some((start_byte, end_byte, coordinates)) =
-            compiler_declaration_location(&contract.span, contract.location)
-        else {
-            return response_limit_reply();
-        };
-        let reply = CompilerStaticContractLocation {
-            generation: generation_to_wire(generation),
-            contract_id,
-            source_id,
-            start_byte,
-            end_byte,
-            coordinates,
-        };
-        if !reply.is_well_formed()
-            || !ResponseBudget::new(self.limits.max_response_bytes).reserve_fixed(256)
-        {
-            return response_limit_reply();
-        }
-        CompilerReply::StaticContractLocation(reply)
-    }
-
-    fn validate_static_contract(
-        &self,
-        generation: CompilerGeneration,
-        contract_id: u32,
-        value: CompilerContractValue,
-    ) -> CompilerReply {
-        let generation = match generation_from_wire(generation) {
-            Ok(generation) => generation,
-            Err(error) => return handle_error_reply(error),
-        };
-        let value = match wire_contract_value(value, self.service.contract_validation_limits()) {
-            Ok(value) => value,
-            Err(()) => {
-                return CompilerReply::Error {
-                    code: CompilerErrorCode::InvalidContractValue,
-                    message: "invalid or over-budget data-only contract value".to_string(),
-                };
-            }
-        };
-        let outcome =
-            match self
-                .service
-                .validate_static_contract(generation, ContractId(contract_id), &value)
-            {
-                Ok(outcome) => outcome,
-                Err(error) => return service_error_reply(&error),
-            };
-        let failure = outcome.err().map(validation_failure_to_wire);
-        let mut budget = ResponseBudget::new(self.limits.max_response_bytes);
-        if !budget.reserve_fixed(512)
-            || failure.as_ref().is_some_and(|failure| {
-                !budget.reserve_required_string(&failure.path, self.limits.max_field_bytes)
-                    || !budget
-                        .reserve_required_string(&failure.expected, self.limits.max_field_bytes)
-                    || !budget
-                        .reserve_required_string(&failure.observed, self.limits.max_field_bytes)
-            })
-        {
-            return response_limit_reply();
-        }
-        CompilerReply::ContractValidation(CompilerContractValidation {
-            generation: generation_to_wire(generation),
-            contract_id,
-            valid: failure.is_none(),
-            failure,
-        })
-    }
-
-    fn check_to_wire(&self, check: CompilerServiceCheck) -> Result<CompilerCheck, ()> {
-        let mut budget = ResponseBudget::new(self.limits.max_response_bytes);
-        if !budget.reserve_fixed(2_048) {
-            return Err(());
-        }
-        let parsed_modules = module_list(&check.parsed_modules, self.limits, &mut budget)?;
-        let reused_parsed_modules =
-            module_list(&check.reused_parsed_modules, self.limits, &mut budget)?;
-        let rechecked_modules = module_list(&check.rechecked_modules, self.limits, &mut budget)?;
-        let reused_checked_modules =
-            module_list(&check.reused_checked_modules, self.limits, &mut budget)?;
-        let diagnostics = diagnostics_to_wire(
-            &check.diagnostics.entries,
-            check
-                .retained_diagnostic_locations
-                .get(..check.diagnostics.entries.len())
-                .ok_or(())?,
-            check.diagnostics.truncated,
-            self.limits,
-            &mut budget,
-        )?;
-        let artifact_fingerprint = match check.artifact_fingerprint {
-            Some(fingerprint) => {
-                if !budget.reserve_required_string(&fingerprint, self.limits.max_field_bytes) {
-                    return Err(());
-                }
-                Some(fingerprint)
-            }
-            None => None,
-        };
-        let static_metadata = match check.static_debug_info {
-            Some(info) => {
-                if !budget.reserve_fixed(256)
-                    || !budget.reserve_required_string(
-                        &info.language_version,
-                        self.limits.max_field_bytes,
-                    )
-                    || !budget.reserve_required_string(
-                        &info.compiler_options_hash,
-                        self.limits.max_field_bytes,
-                    )
-                {
-                    return Err(());
-                }
-                Some(CompilerStaticMetadataSummary {
-                    language_version: info.language_version,
-                    compiler_options_hash: info.compiler_options_hash,
-                    source_count: u32::try_from(info.sources.len()).map_err(|_| ())?,
-                    type_count: u32::try_from(info.types.len()).map_err(|_| ())?,
-                    symbol_count: u32::try_from(info.symbols.len()).map_err(|_| ())?,
-                    contract_count: u32::try_from(info.contracts.len()).map_err(|_| ())?,
-                })
-            }
-            None => None,
-        };
-        Ok(CompilerCheck {
-            generation: generation_to_wire(check.generation),
-            cache_hit: check.cache_hit,
-            parsed_modules,
-            reused_parsed_modules,
-            rechecked_modules,
-            reused_checked_modules,
-            diagnostics,
-            has_errors: check.has_errors,
-            artifact_fingerprint,
-            static_metadata,
-        })
-    }
-}
-
 fn compiler_request_project_id(request: &CompilerRequest) -> Option<u64> {
     match request {
         CompilerRequest::DescribeProject { project } | CompilerRequest::Check { project } => {
@@ -1294,7 +242,171 @@ fn compiler_request_project_id(request: &CompilerRequest) -> Option<u64> {
 pub struct CoreCompilerProjectCatalog {
     adapter: CompilerServiceIpcAdapter,
     registered_projects: Vec<CompilerProject>,
+    output_write_grants: BTreeMap<RegisteredProjectId, OwnerOutputWriteGrant>,
 }
+
+/// An owner-only marker bound to an existing canonical physical output root.
+/// Possessing a root identity in a project registration does not create this
+/// grant. No compiler request or MCP tool can construct or inspect it.
+#[derive(Debug)]
+pub struct OwnerOutputWriteGrant {
+    canonical_root: PathBuf,
+    #[cfg(unix)]
+    root_device: u64,
+    #[cfg(unix)]
+    root_inode: u64,
+}
+
+impl OwnerOutputWriteGrant {
+    /// The pinned root for a future owner-authorized output transaction. A
+    /// writer must revalidate the filesystem object before each use because
+    /// the directory may be replaced after startup.
+    pub fn canonical_root(&self) -> &Path {
+        &self.canonical_root
+    }
+
+    fn validate_current_root(&self) -> io::Result<()> {
+        if std::fs::canonicalize(&self.canonical_root)? != self.canonical_root {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "output root changed after the owner grant",
+            ));
+        }
+        let metadata = std::fs::metadata(&self.canonical_root)?;
+        if !metadata.is_dir() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "output root is no longer a directory",
+            ));
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::MetadataExt;
+            if metadata.dev() != self.root_device || metadata.ino() != self.root_inode {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "output root identity changed after the owner grant",
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    fn for_registration(registration: &RegisteredProjectRegistration) -> io::Result<Self> {
+        fn canonical_existing_path(identity: &str, directory: bool) -> io::Result<PathBuf> {
+            let path = Path::new(identity);
+            if !path.is_absolute() {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "output-write grant requires physical project paths",
+                ));
+            }
+            let canonical = std::fs::canonicalize(path)?;
+            let metadata = std::fs::metadata(&canonical)?;
+            if canonical != path
+                || (directory && !metadata.is_dir())
+                || (!directory && !metadata.is_file())
+            {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "output-write grant requires existing canonical roots and sources",
+                ));
+            }
+            Ok(canonical)
+        }
+
+        let project_root = canonical_existing_path(&registration.canonical_project_root, true)?;
+        let config = canonical_existing_path(&registration.canonical_config_root, false)?;
+        let entry = canonical_existing_path(&registration.entry_module, false)?;
+        if !config.starts_with(&project_root) || !entry.starts_with(&project_root) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "output-write grant input escapes its project root",
+            ));
+        }
+        let mut inputs = vec![config, entry];
+        for (module_id, _) in registration.loader.authorized_modules() {
+            let module = canonical_existing_path(module_id, false)?;
+            if !module.starts_with(&project_root) {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "output-write grant input escapes its project root",
+                ));
+            }
+            inputs.push(module);
+        }
+        for ambient in &registration.compiler_options.ambient_declaration_modules {
+            inputs.push(canonical_existing_path(&ambient.id, false)?);
+        }
+        let canonical_root = canonical_existing_path(&registration.canonical_output_root, true)?;
+        if inputs
+            .iter()
+            .any(|input| input.starts_with(&canonical_root))
+        {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "output-write grant root overlaps an input",
+            ));
+        }
+        #[cfg(unix)]
+        let (root_device, root_inode) = {
+            use std::os::unix::fs::MetadataExt;
+            let metadata = std::fs::metadata(&canonical_root)?;
+            (metadata.dev(), metadata.ino())
+        };
+        Ok(Self {
+            canonical_root,
+            #[cfg(unix)]
+            root_device,
+            #[cfg(unix)]
+            root_inode,
+        })
+    }
+}
+
+/// Startup grant failure. Validation happens before registration, so a bad
+/// physical root cannot leave a partially registered project behind.
+#[derive(Debug)]
+pub enum OwnerOutputWriteGrantError {
+    InvalidPhysicalRoot(io::Error),
+    Registration(CompilerServiceError),
+}
+
+impl fmt::Display for OwnerOutputWriteGrantError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::InvalidPhysicalRoot(error) => {
+                write!(formatter, "invalid output-write grant: {error}")
+            }
+            Self::Registration(error) => {
+                write!(formatter, "invalid compiler registration: {error}")
+            }
+        }
+    }
+}
+
+impl std::error::Error for OwnerOutputWriteGrantError {}
+
+/// Owner-only build/staging failure. Compiler diagnostics are returned as a
+/// normal no-output check result, never as a partially staged artifact.
+#[derive(Debug)]
+pub enum OwnerBuildStageError {
+    NotGranted,
+    Compiler(CompilerServiceError),
+    Io(io::Error),
+}
+
+impl fmt::Display for OwnerBuildStageError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::NotGranted => formatter.write_str("output write was not granted"),
+            Self::Compiler(error) => write!(formatter, "compiler build failed: {error}"),
+            Self::Io(error) => write!(formatter, "compiler output staging failed: {error}"),
+        }
+    }
+}
+
+impl std::error::Error for OwnerBuildStageError {}
 
 impl Default for CoreCompilerProjectCatalog {
     fn default() -> Self {
@@ -1322,6 +434,7 @@ impl CoreCompilerProjectCatalog {
         Ok(Self {
             adapter: CompilerServiceIpcAdapter::new(service, limits)?,
             registered_projects,
+            output_write_grants: BTreeMap::new(),
         })
     }
 
@@ -1350,6 +463,41 @@ impl CoreCompilerProjectCatalog {
         Ok(project)
     }
 
+    /// Registers one owner-selected project with a separate output-write
+    /// grant. This is never called by the query channel; the exact physical
+    /// inputs and output root are checked before registration is mutated.
+    pub fn register_startup_project_with_output_write_grant(
+        &mut self,
+        registration: RegisteredProjectRegistration,
+    ) -> Result<CompilerProject, OwnerOutputWriteGrantError> {
+        let grant = OwnerOutputWriteGrant::for_registration(&registration)
+            .map_err(OwnerOutputWriteGrantError::InvalidPhysicalRoot)?;
+        let project = self
+            .register_startup_project(registration)
+            .map_err(OwnerOutputWriteGrantError::Registration)?;
+        let id = RegisteredProjectId::from_wire(project.id)
+            .expect("a registered core project always has a valid ID");
+        self.output_write_grants.insert(id, grant);
+        Ok(project)
+    }
+
+    /// The same owner grant may be retained for a private project, without
+    /// exposing that project's ID to any compiler query stream.
+    pub fn register_startup_project_private_with_output_write_grant(
+        &mut self,
+        registration: RegisteredProjectRegistration,
+    ) -> Result<CompilerProject, OwnerOutputWriteGrantError> {
+        let grant = OwnerOutputWriteGrant::for_registration(&registration)
+            .map_err(OwnerOutputWriteGrantError::InvalidPhysicalRoot)?;
+        let project = self
+            .register_startup_project_private(registration)
+            .map_err(OwnerOutputWriteGrantError::Registration)?;
+        let id = RegisteredProjectId::from_wire(project.id)
+            .expect("a registered core project always has a valid ID");
+        self.output_write_grants.insert(id, grant);
+        Ok(project)
+    }
+
     /// Returns how many registrations the trusted startup owner admitted.
     /// It is intentionally a count, not a remote project enumeration API.
     pub fn registered_project_count(&self) -> usize {
@@ -1363,6 +511,8 @@ impl CoreCompilerProjectCatalog {
         CoreCompilerServiceSession {
             adapter: self.adapter,
             registered_project_count: self.registered_projects.len(),
+            output_write_grants: self.output_write_grants,
+            output_session_projects: BTreeMap::new(),
         }
     }
 }
@@ -1374,14 +524,127 @@ impl CoreCompilerProjectCatalog {
 pub struct CoreCompilerServiceSession {
     adapter: CompilerServiceIpcAdapter,
     registered_project_count: usize,
+    output_write_grants: BTreeMap<RegisteredProjectId, OwnerOutputWriteGrant>,
+    output_session_projects: BTreeMap<String, BTreeSet<u64>>,
 }
 
 impl CoreCompilerServiceSession {
+    /// Whether an independently configured output listener has any project
+    /// the owner both granted and exposed. Refuse an empty write endpoint.
+    pub fn has_exposed_output_grants(&self) -> bool {
+        self.adapter.registered_projects.iter().any(|id| {
+            RegisteredProjectId::from_wire(*id)
+                .is_some_and(|id| self.output_write_grants.contains_key(&id))
+        })
+    }
+
+    /// Handles an already accepted output stream on the core owner thread.
+    /// Only a separately minted output receipt and this stream's inventory
+    /// can reach the startup owner grant; the query adapter remains read-only.
+    pub fn handle_output_request(
+        &mut self,
+        session: &CompilerOutputSessionReceipt,
+        request: CompilerOutputRequest,
+    ) -> CompilerOutputReply {
+        let presented = match &request {
+            CompilerOutputRequest::ListProjects { receipt }
+            | CompilerOutputRequest::Build { receipt, .. } => receipt,
+            CompilerOutputRequest::Hello { .. } | CompilerOutputRequest::Unknown => {
+                return output_error(
+                    CompilerOutputErrorCode::Unsupported,
+                    "compiler output Hello is valid only as the first request",
+                );
+            }
+        };
+        if !session.is_well_formed() || presented != session {
+            return output_error(
+                CompilerOutputErrorCode::InvalidReceipt,
+                "compiler output receipt does not belong to this stream",
+            );
+        }
+        match request {
+            CompilerOutputRequest::ListProjects { .. } => {
+                let projects = self
+                    .adapter
+                    .registered_projects
+                    .iter()
+                    .copied()
+                    .filter(|id| {
+                        RegisteredProjectId::from_wire(*id)
+                            .is_some_and(|id| self.output_write_grants.contains_key(&id))
+                    })
+                    .collect::<BTreeSet<_>>();
+                self.output_session_projects
+                    .insert(session.id.clone(), projects.clone());
+                CompilerOutputReply::Projects(CompilerProjectInventory {
+                    projects: projects
+                        .into_iter()
+                        .map(|id| CompilerProject { id })
+                        .collect(),
+                })
+            }
+            CompilerOutputRequest::Build { project, .. } => {
+                if !project.is_well_formed()
+                    || !self
+                        .output_session_projects
+                        .get(&session.id)
+                        .is_some_and(|projects| projects.contains(&project.id))
+                {
+                    return output_error(
+                        CompilerOutputErrorCode::UnobservedProject,
+                        "compiler output project was not inventoried on this stream",
+                    );
+                }
+                let Some(project_id) = RegisteredProjectId::from_wire(project.id) else {
+                    return output_error(
+                        CompilerOutputErrorCode::UnobservedProject,
+                        "invalid compiler output project",
+                    );
+                };
+                let build = self.build_and_stage_owner_output(project_id);
+                // The build can advance the service generation even when
+                // publication later fails. Revoke query pagination evidence.
+                self.adapter.revoke_project_session_cursors(project.id);
+                match build {
+                    Ok((check, published)) => {
+                        let result = CompilerOutputBuildResult {
+                            generation: generation_to_wire(check.generation),
+                            project_fingerprint: check.project_fingerprint,
+                            has_errors: check.has_errors,
+                            published: published.is_some(),
+                        };
+                        if !result.is_well_formed_for_project(project) {
+                            return output_error(
+                                CompilerOutputErrorCode::BuildFailed,
+                                "compiler output result failed structural validation",
+                            );
+                        }
+                        CompilerOutputReply::Build(result)
+                    }
+                    Err(OwnerBuildStageError::NotGranted) => output_error(
+                        CompilerOutputErrorCode::NotGranted,
+                        "compiler output write was not granted",
+                    ),
+                    Err(_) => output_error(
+                        CompilerOutputErrorCode::BuildFailed,
+                        "compiler output build or staging failed",
+                    ),
+                }
+            }
+            CompilerOutputRequest::Hello { .. } | CompilerOutputRequest::Unknown => unreachable!(),
+        }
+    }
+
+    /// Releases the project inventory when an accepted output stream closes.
+    pub fn end_output_session(&mut self, session: &CompilerOutputSessionReceipt) {
+        self.output_session_projects.remove(&session.id);
+    }
+
     /// Drains a bounded batch on the core session thread. The listener worker
     /// owns framing/handshake only and never obtains this adapter or its
     /// incremental compiler state.
     pub fn dispatch_pending(&mut self, receiver: &CompilerServiceIpcRequestReceiver) -> usize {
-        receiver.dispatch_pending(&mut self.adapter)
+        receiver.dispatch_pending_owner(self)
     }
 
     /// A startup-only count useful for core lifecycle diagnostics and tests.
@@ -1389,6 +652,88 @@ impl CoreCompilerServiceSession {
     /// through its inventoried opaque handle and `DescribeProject` query.
     pub fn registered_project_count(&self) -> usize {
         self.registered_project_count
+    }
+
+    /// Trusted core code can inspect a separately granted output root. A
+    /// project receipt from the query listener has no access to this method.
+    pub fn output_write_grant(
+        &self,
+        project_id: RegisteredProjectId,
+    ) -> Option<&OwnerOutputWriteGrant> {
+        self.output_write_grants.get(&project_id)
+    }
+
+    /// Stages trusted owner-selected content under this project's separate
+    /// output grant, then atomically publishes one immutable generation
+    /// directory. There is no compiler IPC/MCP call for this owner API.
+    /// Artifact selection and no-emit-on-error policy are added separately.
+    fn stage_owner_output<F>(
+        &self,
+        generation: RegisteredProjectGeneration,
+        populate: F,
+    ) -> io::Result<PathBuf>
+    where
+        F: FnOnce(&Path) -> io::Result<()>,
+    {
+        let grant = self
+            .output_write_grants
+            .get(&generation.project_id())
+            .ok_or_else(|| {
+                io::Error::new(io::ErrorKind::PermissionDenied, "output write not granted")
+            })?;
+        if !self.adapter.service.is_current_generation(generation) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "compiler generation is not current",
+            ));
+        }
+        output_staging::stage_and_publish(grant, generation, populate)
+    }
+
+    /// Compiles one core-owned project and stages only its validated artifact
+    /// paths under the separately granted output root. A diagnostic-bearing
+    /// check returns `None` without creating a staging path. No compiler
+    /// IPC/MCP request calls this owner API.
+    pub fn build_and_stage_owner_output(
+        &mut self,
+        project_id: RegisteredProjectId,
+    ) -> Result<(CompilerServiceCheck, Option<PathBuf>), OwnerBuildStageError> {
+        if !self.output_write_grants.contains_key(&project_id) {
+            return Err(OwnerBuildStageError::NotGranted);
+        }
+        let build = self
+            .adapter
+            .service
+            .build(project_id)
+            .map_err(OwnerBuildStageError::Compiler)?;
+        let check = build.check;
+        let Some(output) = build.output else {
+            return Ok((check, None));
+        };
+        if check.has_errors {
+            return Err(OwnerBuildStageError::Io(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "compiler returned artifacts with errors",
+            )));
+        }
+        let identity = self
+            .adapter
+            .service
+            .identity(project_id)
+            .map_err(OwnerBuildStageError::Compiler)?;
+        let planned = output_artifacts::plan(&identity.canonical_project_root, &output)
+            .map_err(OwnerBuildStageError::Io)?;
+        let published = self
+            .stage_owner_output(check.generation, |stage| planned.write_to(stage))
+            .map_err(OwnerBuildStageError::Io)?;
+        Ok((check, Some(published)))
+    }
+}
+
+fn output_error(code: CompilerOutputErrorCode, message: &'static str) -> CompilerOutputReply {
+    CompilerOutputReply::Error {
+        code,
+        message: message.to_string(),
     }
 }
 
@@ -1561,7 +906,8 @@ fn service_error_reply(error: &CompilerServiceError) -> CompilerReply {
         CompilerServiceError::InvalidRegistration { .. }
         | CompilerServiceError::EntryModuleNotAuthorized { .. }
         | CompilerServiceError::DuplicateRegistration
-        | CompilerServiceError::ProjectIdExhausted => (
+        | CompilerServiceError::ProjectIdExhausted
+        | CompilerServiceError::BuildOutputFingerprintMismatch => (
             CompilerErrorCode::Unavailable,
             "compiler operation is unavailable",
         ),
@@ -1905,6 +1251,12 @@ pub struct CompilerServiceIpcSessionSender {
     session_id: String,
 }
 
+/// Bound to the independent output Hello receipt; no query sender can mint it.
+pub struct CompilerOutputIpcSessionSender {
+    sender: CompilerServiceIpcRequestSender,
+    receipt: CompilerOutputSessionReceipt,
+}
+
 /// Session-owner receiver for the compiler adapter. Only this side obtains a
 /// mutable adapter and therefore the mutable incremental compiler cache.
 pub struct CompilerServiceIpcRequestReceiver(mpsc::Receiver<CompilerServiceIpcRequestEnvelope>);
@@ -1917,6 +1269,14 @@ enum CompilerServiceIpcRequestEnvelope {
     },
     EndSession {
         session_id: String,
+    },
+    OutputRequest {
+        receipt: CompilerOutputSessionReceipt,
+        request: CompilerOutputRequest,
+        reply: mpsc::SyncSender<CompilerOutputReply>,
+    },
+    EndOutputSession {
+        receipt: CompilerOutputSessionReceipt,
     },
 }
 
@@ -1933,6 +1293,22 @@ pub fn compiler_service_ipc_request_channel() -> (
 }
 
 impl CompilerServiceIpcRequestSender {
+    pub fn bind_output_session(
+        &self,
+        receipt: CompilerOutputSessionReceipt,
+    ) -> io::Result<CompilerOutputIpcSessionSender> {
+        if !receipt.is_well_formed() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "invalid core output session receipt",
+            ));
+        }
+        Ok(CompilerOutputIpcSessionSender {
+            sender: self.clone(),
+            receipt,
+        })
+    }
+
     /// Binds one accepted worker stream to the core-minted Hello attestation.
     /// Only this internal handle can present a pagination cursor receipt.
     pub fn bind_session(
@@ -1949,6 +1325,34 @@ impl CompilerServiceIpcRequestSender {
             sender: self.clone(),
             session_id: attestation.id,
         })
+    }
+}
+
+impl CompilerOutputIpcSessionSender {
+    pub fn request(&self, request: CompilerOutputRequest) -> io::Result<CompilerOutputReply> {
+        let (reply_sender, reply_receiver) = mpsc::sync_channel(1);
+        self.sender
+            .0
+            .send(CompilerServiceIpcRequestEnvelope::OutputRequest {
+                receipt: self.receipt.clone(),
+                request,
+                reply: reply_sender,
+            })
+            .map_err(|_| io::Error::new(io::ErrorKind::BrokenPipe, "core output session ended"))?;
+        reply_receiver
+            .recv()
+            .map_err(|_| io::Error::new(io::ErrorKind::BrokenPipe, "core output reply unavailable"))
+    }
+}
+
+impl Drop for CompilerOutputIpcSessionSender {
+    fn drop(&mut self) {
+        let _ = self
+            .sender
+            .0
+            .send(CompilerServiceIpcRequestEnvelope::EndOutputSession {
+                receipt: self.receipt.clone(),
+            });
     }
 }
 
@@ -1986,6 +1390,43 @@ impl Drop for CompilerServiceIpcSessionSender {
 }
 
 impl CompilerServiceIpcRequestReceiver {
+    /// Applies query and output requests on the same sealed owner thread.
+    pub fn dispatch_pending_owner(&self, owner: &mut CoreCompilerServiceSession) -> usize {
+        const MAX_REQUESTS_PER_TICK: usize = 64;
+        let mut dispatched = 0;
+        while dispatched < MAX_REQUESTS_PER_TICK {
+            let Ok(envelope) = self.0.try_recv() else {
+                break;
+            };
+            match envelope {
+                CompilerServiceIpcRequestEnvelope::Request {
+                    session_id,
+                    request,
+                    reply,
+                } => {
+                    let result = owner.adapter.handle_session_request(&session_id, request);
+                    let _ = reply.send(result);
+                }
+                CompilerServiceIpcRequestEnvelope::EndSession { session_id } => {
+                    owner.adapter.end_session(&session_id);
+                }
+                CompilerServiceIpcRequestEnvelope::OutputRequest {
+                    receipt,
+                    request,
+                    reply,
+                } => {
+                    let result = owner.handle_output_request(&receipt, request);
+                    let _ = reply.send(result);
+                }
+                CompilerServiceIpcRequestEnvelope::EndOutputSession { receipt } => {
+                    owner.end_output_session(&receipt);
+                }
+            }
+            dispatched += 1;
+        }
+        dispatched
+    }
+
     /// Applies a bounded batch under the service owner. A disconnected worker
     /// cannot interrupt compilation, page processing, or future rendering.
     pub fn dispatch_pending(&self, adapter: &mut CompilerServiceIpcAdapter) -> usize {
@@ -2007,6 +1448,13 @@ impl CompilerServiceIpcRequestReceiver {
                 CompilerServiceIpcRequestEnvelope::EndSession { session_id } => {
                     adapter.end_session(&session_id);
                 }
+                CompilerServiceIpcRequestEnvelope::OutputRequest { reply, .. } => {
+                    let _ = reply.send(output_error(
+                        CompilerOutputErrorCode::NotGranted,
+                        "output requests require the sealed core owner",
+                    ));
+                }
+                CompilerServiceIpcRequestEnvelope::EndOutputSession { .. } => {}
             }
             dispatched += 1;
         }
@@ -2014,1167 +1462,11 @@ impl CompilerServiceIpcRequestReceiver {
     }
 }
 
+mod adapter;
+mod output_artifacts;
+mod output_staging;
+
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use blueice_bluets::{
-        AuthorizedModule, AuthorizedModuleLoader, AuthorizedModuleResolution, CompilerOptions,
-        RuntimePolicy,
-    };
-
-    mod inventory_tests {
-        include!("compiler_ipc/inventory_tests.rs");
-    }
-
-    const ENTRY: &str = "project:///app/main.ts";
-    const DEPENDENCY: &str = "project:///app/math.ts";
-
-    fn registration(source: &str) -> RegisteredProjectRegistration {
-        RegisteredProjectRegistration {
-            canonical_project_root: "project:///app".to_string(),
-            canonical_config_root: "project:///app/blue-ts.json".to_string(),
-            canonical_output_root: "project:///dist".to_string(),
-            entry_module: ENTRY.to_string(),
-            loader: AuthorizedModuleLoader::new(
-                [
-                    AuthorizedModule::new(
-                        ENTRY,
-                        format!("import {{ answer }} from './math'; {source}"),
-                    ),
-                    AuthorizedModule::new(DEPENDENCY, "export const answer: number = 42;"),
-                ],
-                [AuthorizedModuleResolution::new(ENTRY, "./math", DEPENDENCY)],
-            )
-            .unwrap(),
-            compiler_options: CompilerOptions {
-                resolver_fingerprint: "registered-project-resolver-v1".to_string(),
-                runtime_policy: RuntimePolicy::Checked,
-                ..CompilerOptions::default()
-            },
-        }
-    }
-
-    fn adapter() -> (CompilerServiceIpcAdapter, CompilerProject) {
-        let mut adapter = CompilerServiceIpcAdapter::default();
-        let project = adapter
-            .register_core_project(registration("export const value: number = answer;"))
-            .unwrap();
-        (adapter, project)
-    }
-
-    fn inventory_on_stream(
-        adapter: &mut CompilerServiceIpcAdapter,
-        stream: &str,
-        project: CompilerProject,
-    ) {
-        let CompilerReply::Projects(inventory) =
-            adapter.handle_session_request(stream, CompilerRequest::ListProjects)
-        else {
-            panic!("accepted stream must receive sealed project inventory")
-        };
-        assert!(inventory.is_well_formed());
-        assert!(inventory.projects.contains(&project));
-    }
-
-    #[test]
-    fn sealed_project_inventory_is_bounded_and_stream_local() {
-        let (mut adapter, first) = adapter();
-        let mut second_registration = registration("export const next: number = answer;");
-        second_registration.canonical_project_root = "project:///next".to_string();
-        second_registration.canonical_config_root = "project:///next/blue-ts.json".to_string();
-        let second = adapter.register_core_project(second_registration).unwrap();
-        let first_stream = "a".repeat(CompilerSessionAttestation::ID_LENGTH);
-        let second_stream = "b".repeat(CompilerSessionAttestation::ID_LENGTH);
-        for (stream, project) in [(&first_stream, first), (&second_stream, second)] {
-            assert!(matches!(
-                adapter
-                    .handle_session_request(stream, CompilerRequest::DescribeProject { project }),
-                CompilerReply::Error {
-                    code: CompilerErrorCode::UnobservedProject,
-                    ..
-                }
-            ));
-        }
-        let CompilerReply::Projects(inventory) =
-            adapter.handle_session_request(&first_stream, CompilerRequest::ListProjects)
-        else {
-            panic!("sealed project inventory must be available")
-        };
-        assert_eq!(inventory.projects, vec![first, second]);
-        let mut later_registration = registration("export const later: number = answer;");
-        later_registration.canonical_project_root = "project:///later".to_string();
-        later_registration.canonical_config_root = "project:///later/blue-ts.json".to_string();
-        let later = adapter.register_core_project(later_registration).unwrap();
-        assert!(matches!(
-            adapter.handle_session_request(
-                &first_stream,
-                CompilerRequest::DescribeProject { project: later }
-            ),
-            CompilerReply::Error {
-                code: CompilerErrorCode::UnobservedProject,
-                ..
-            }
-        ));
-        assert!(matches!(
-            adapter.handle_session_request(
-                &first_stream,
-                CompilerRequest::DescribeProject { project: first }
-            ),
-            CompilerReply::Project(_)
-        ));
-        assert!(matches!(
-            adapter
-                .handle_session_request(&second_stream, CompilerRequest::Check { project: first }),
-            CompilerReply::Error {
-                code: CompilerErrorCode::UnobservedProject,
-                ..
-            }
-        ));
-        assert!(matches!(
-            adapter.handle_session_request(
-                &first_stream,
-                CompilerRequest::Check {
-                    project: CompilerProject { id: u64::MAX }
-                }
-            ),
-            CompilerReply::Error {
-                code: CompilerErrorCode::UnobservedProject,
-                ..
-            }
-        ));
-        adapter.end_session(&first_stream);
-        assert!(matches!(
-            adapter
-                .handle_session_request(&first_stream, CompilerRequest::Check { project: first }),
-            CompilerReply::Error {
-                code: CompilerErrorCode::UnobservedProject,
-                ..
-            }
-        ));
-    }
-
-    #[test]
-    fn opaque_project_queries_return_generation_bound_source_free_metadata() {
-        let (mut adapter, project) = adapter();
-        assert_eq!(
-            adapter.handle(CompilerRequest::DescribeProject { project }),
-            CompilerReply::Project(CompilerProjectIdentity {
-                project,
-                entry_module: ENTRY.to_string(),
-            })
-        );
-
-        let CompilerReply::Check(check) = adapter.handle(CompilerRequest::Check { project }) else {
-            panic!("registered project must check through adapter")
-        };
-        assert!(!check.has_errors, "{check:#?}");
-        assert!(!check.parsed_modules.truncated);
-        assert!(check
-            .parsed_modules
-            .entries
-            .iter()
-            .any(|module| module == ENTRY));
-        assert!(check.artifact_fingerprint.is_some());
-        let metadata = check.static_metadata.as_ref().unwrap();
-        assert_eq!(metadata.source_count, 2);
-        assert!(metadata.type_count > 0);
-        assert!(metadata.symbol_count > 0);
-
-        let CompilerReply::StaticType(static_type) =
-            adapter.handle(CompilerRequest::GetStaticType {
-                generation: check.generation,
-                type_id: 0,
-            })
-        else {
-            panic!("checked type must be generation-addressable")
-        };
-        assert_eq!(static_type.generation, check.generation);
-        // The first deterministic type belongs to the imported binding. Its
-        // checked static shape is intentionally `unknown` until a richer
-        // import type surface is implemented; this still proves a precise,
-        // generation-bound type lookup rather than a runtime-value query.
-        assert_eq!(static_type.display, "unknown");
-
-        let CompilerReply::StaticSymbol(symbol) =
-            adapter.handle(CompilerRequest::GetStaticSymbol {
-                generation: check.generation,
-                symbol_id: 0,
-            })
-        else {
-            panic!("checked symbol must be generation-addressable")
-        };
-        assert_eq!(symbol.generation, check.generation);
-        assert_eq!(symbol.kind, CompilerSymbolKind::Import);
-        assert!(!symbol.exported);
-        assert_eq!(symbol.module, ENTRY);
-        assert_ne!(symbol.module, "import { answer } from './math';");
-        let CompilerReply::StaticSymbol(exported) =
-            adapter.handle(CompilerRequest::GetStaticSymbol {
-                generation: check.generation,
-                symbol_id: 1,
-            })
-        else {
-            panic!("exported declaration must be generation-addressable")
-        };
-        assert_eq!(exported.name, "value");
-        assert!(exported.exported);
-    }
-
-    #[test]
-    fn declaration_locations_require_exact_generation_and_source_ownership() {
-        let mut adapter = CompilerServiceIpcAdapter::default();
-        let project = adapter
-            .register_core_project(registration(
-                "export interface Shape { value: number; }\r\n/* 🚀 */ const value: number = answer;",
-            ))
-            .unwrap();
-        let CompilerReply::Check(check) = adapter.handle(CompilerRequest::Check { project }) else {
-            panic!("registered project must check")
-        };
-        assert!(!check.has_errors, "{check:#?}");
-        let symbol_count = check.static_metadata.as_ref().unwrap().symbol_count;
-        let symbols: Vec<_> = (0..symbol_count)
-            .filter_map(|symbol_id| {
-                match adapter.handle(CompilerRequest::GetStaticSymbol {
-                    generation: check.generation,
-                    symbol_id,
-                }) {
-                    CompilerReply::StaticSymbol(symbol) => Some(symbol),
-                    _ => None,
-                }
-            })
-            .collect();
-        let variable = symbols
-            .iter()
-            .find(|symbol| symbol.name == "value")
-            .unwrap();
-        let interface = symbols
-            .iter()
-            .find(|symbol| symbol.name == "Shape")
-            .unwrap();
-        let contract_id = interface.contract_id.expect("interface is reifiable");
-        let CompilerReply::StaticSymbolLocation(location) =
-            adapter.handle(CompilerRequest::GetStaticSymbolLocation {
-                generation: check.generation,
-                symbol_id: variable.id,
-                source_id: variable.source_id,
-            })
-        else {
-            panic!("symbol location must be available")
-        };
-        assert!(location.is_well_formed());
-        assert_eq!(location.coordinates.start_line, 1);
-        assert_eq!(location.coordinates.start_column_utf16, 9);
-        assert!(!format!("{location:?}").contains("value"));
-        let CompilerReply::StaticContractLocation(contract_location) =
-            adapter.handle(CompilerRequest::GetStaticContractLocation {
-                generation: check.generation,
-                contract_id,
-                source_id: interface.source_id,
-            })
-        else {
-            panic!("contract location must be available")
-        };
-        assert!(contract_location.is_well_formed());
-        assert_eq!(contract_location.coordinates.start_line, 0);
-        assert!(!format!("{contract_location:?}").contains("Shape"));
-        assert!(matches!(
-            adapter.handle(CompilerRequest::GetStaticSymbolLocation {
-                generation: check.generation,
-                symbol_id: variable.id,
-                source_id: variable.source_id.wrapping_add(1),
-            }),
-            CompilerReply::Error {
-                code: CompilerErrorCode::InvalidLocationTarget,
-                ..
-            }
-        ));
-        assert!(matches!(
-            adapter.handle(CompilerRequest::GetStaticContractLocation {
-                generation: check.generation,
-                contract_id,
-                source_id: interface.source_id.wrapping_add(1),
-            }),
-            CompilerReply::Error {
-                code: CompilerErrorCode::InvalidLocationTarget,
-                ..
-            }
-        ));
-        let CompilerReply::Check(next) = adapter.handle(CompilerRequest::Check { project }) else {
-            panic!("second check must succeed")
-        };
-        assert_ne!(next.generation, check.generation);
-        assert!(matches!(
-            adapter.handle(CompilerRequest::GetStaticSymbolLocation {
-                generation: check.generation,
-                symbol_id: variable.id,
-                source_id: variable.source_id,
-            }),
-            CompilerReply::Error {
-                code: CompilerErrorCode::StaleGeneration,
-                ..
-            }
-        ));
-    }
-
-    #[test]
-    fn later_check_invalidates_an_old_generation_without_retargeting() {
-        let (mut adapter, project) = adapter();
-        let CompilerReply::Check(first) = adapter.handle(CompilerRequest::Check { project }) else {
-            panic!("first check must succeed")
-        };
-        let CompilerReply::Check(second) = adapter.handle(CompilerRequest::Check { project })
-        else {
-            panic!("second check must succeed")
-        };
-        assert_ne!(first.generation, second.generation);
-        assert!(matches!(
-            adapter.handle(CompilerRequest::GetStaticType {
-                generation: first.generation,
-                type_id: 0,
-            }),
-            CompilerReply::Error {
-                code: CompilerErrorCode::StaleGeneration,
-                ..
-            }
-        ));
-    }
-
-    #[test]
-    fn adapter_rejects_over_budget_or_non_finite_contract_snapshots() {
-        let mut adapter = CompilerServiceIpcAdapter::default();
-        let project = adapter
-            .register_core_project(registration(
-                "type Name = string; export const name: Name = 'blueice';",
-            ))
-            .unwrap();
-        let CompilerReply::Check(check) = adapter.handle(CompilerRequest::Check { project }) else {
-            panic!("registered project must check")
-        };
-        let CompilerReply::StaticSymbol(symbol) =
-            adapter.handle(CompilerRequest::GetStaticSymbol {
-                generation: check.generation,
-                symbol_id: 1,
-            })
-        else {
-            panic!("type alias symbol must be retained")
-        };
-        let contract_id = symbol.contract_id.unwrap();
-        let oversized = CompilerContractValue::String("x".repeat(256 * 1_024 + 1));
-        assert!(matches!(
-            adapter.handle(CompilerRequest::ValidateStaticContract {
-                generation: check.generation,
-                contract_id,
-                value: oversized,
-            }),
-            CompilerReply::Error {
-                code: CompilerErrorCode::InvalidContractValue,
-                ..
-            }
-        ));
-        assert!(matches!(
-            adapter.handle(CompilerRequest::ValidateStaticContract {
-                generation: check.generation,
-                contract_id,
-                value: CompilerContractValue::Number("NaN".to_string()),
-            }),
-            CompilerReply::Error {
-                code: CompilerErrorCode::InvalidContractValue,
-                ..
-            }
-        ));
-    }
-
-    #[test]
-    fn malformed_or_unknown_handles_never_create_or_select_a_project() {
-        let (mut adapter, _) = adapter();
-        assert!(matches!(
-            adapter.handle(CompilerRequest::Check {
-                project: CompilerProject { id: 0 },
-            }),
-            CompilerReply::Error {
-                code: CompilerErrorCode::InvalidProject,
-                ..
-            }
-        ));
-        assert!(matches!(
-            adapter.handle(CompilerRequest::DescribeProject {
-                project: CompilerProject { id: 999 },
-            }),
-            CompilerReply::Error {
-                code: CompilerErrorCode::InvalidProject,
-                ..
-            }
-        ));
-        assert!(matches!(
-            adapter.handle(CompilerRequest::GetStaticSymbol {
-                generation: CompilerGeneration {
-                    project: CompilerProject { id: 1 },
-                    sequence: 0,
-                },
-                symbol_id: 0,
-            }),
-            CompilerReply::Error {
-                code: CompilerErrorCode::StaleGeneration,
-                ..
-            }
-        ));
-    }
-
-    #[test]
-    fn adapter_refuses_an_over_budget_field_without_exposing_partial_data() {
-        let mut adapter = CompilerServiceIpcAdapter::new(
-            RegisteredProjectCompilerService::default(),
-            CompilerServiceIpcLimits {
-                max_field_bytes: 4,
-                ..CompilerServiceIpcLimits::default()
-            },
-        )
-        .unwrap();
-        let project = adapter
-            .register_core_project(registration("export const value: number = answer;"))
-            .unwrap();
-        assert!(matches!(
-            adapter.handle(CompilerRequest::DescribeProject { project }),
-            CompilerReply::Error {
-                code: CompilerErrorCode::ResourceLimit,
-                ..
-            }
-        ));
-        assert!(matches!(
-            adapter.handle(CompilerRequest::Check { project }),
-            CompilerReply::Error {
-                code: CompilerErrorCode::ResourceLimit,
-                ..
-            }
-        ));
-    }
-
-    #[test]
-    fn check_marks_adapter_capped_work_sets_and_diagnostics_as_truncated() {
-        let mut adapter = CompilerServiceIpcAdapter::new(
-            RegisteredProjectCompilerService::default(),
-            CompilerServiceIpcLimits {
-                max_modules_per_set: 1,
-                max_diagnostics: 0,
-                ..CompilerServiceIpcLimits::default()
-            },
-        )
-        .unwrap();
-        let project = adapter
-            .register_core_project(registration("export const value: number = 'wrong';"))
-            .unwrap();
-        let CompilerReply::Check(check) = adapter.handle(CompilerRequest::Check { project }) else {
-            panic!("registered project must return a bounded check reply")
-        };
-        assert!(check.has_errors);
-        assert_eq!(check.parsed_modules.entries.len(), 1);
-        assert!(check.parsed_modules.truncated);
-        assert!(check.rechecked_modules.truncated);
-        assert!(check.diagnostics.entries.is_empty());
-        assert!(check.diagnostics.truncated);
-    }
-
-    #[test]
-    fn adapter_pages_diagnostics_with_one_shot_generation_bound_cursors() {
-        let mut adapter = CompilerServiceIpcAdapter::new(
-            RegisteredProjectCompilerService::new(CompilerServiceLimits {
-                max_retained_diagnostics: 4,
-                max_diagnostics: 1,
-                ..CompilerServiceLimits::default()
-            }),
-            CompilerServiceIpcLimits {
-                max_diagnostics: 0,
-                max_diagnostic_page_entries: 1,
-                ..CompilerServiceIpcLimits::default()
-            },
-        )
-        .unwrap();
-        let project = adapter
-            .register_core_project(registration(
-                "const marker = '😀';\r\nconst first: number = 'one'; \
-                 const second: number = 'two'; \
-                 const third: number = 'three';",
-            ))
-            .unwrap();
-        let CompilerReply::Check(check) = adapter.handle(CompilerRequest::Check { project }) else {
-            panic!("registered invalid project must return a bounded check reply")
-        };
-        assert!(check.has_errors);
-        assert!(check.diagnostics.entries.is_empty());
-        assert!(check.diagnostics.truncated);
-        let CompilerReply::DiagnosticPage(first) =
-            adapter.handle(CompilerRequest::ListDiagnostics {
-                generation: check.generation,
-                cursor: None,
-                limit: Some(1),
-            })
-        else {
-            panic!("first diagnostic page must be returned for the exact check generation")
-        };
-        assert_eq!(first.generation, check.generation);
-        assert_eq!(first.entries.len(), 1);
-        let coordinates = first.entries[0]
-            .coordinates
-            .expect("an authorized diagnostic must retain original source coordinates");
-        assert_eq!(coordinates.start_line, 1);
-        assert_eq!(coordinates.end_line, 1);
-        assert!(coordinates
-            .is_well_formed_for_diagnostic_range(first.entries[0].start, first.entries[0].end,));
-        assert!(
-            !format!("{first:?}").contains("const first"),
-            "paged diagnostic output must not contain the retained project source"
-        );
-        let cursor = first
-            .next_cursor
-            .expect("fixture must require a continuation cursor");
-        assert!(matches!(
-            adapter.handle(CompilerRequest::ListDiagnostics {
-                generation: check.generation,
-                cursor: Some(cursor),
-                limit: Some(0),
-            }),
-            CompilerReply::Error {
-                code: CompilerErrorCode::InvalidDiagnosticPage,
-                ..
-            }
-        ));
-        let CompilerReply::DiagnosticPage(_) = adapter.handle(CompilerRequest::ListDiagnostics {
-            generation: check.generation,
-            cursor: Some(cursor),
-            limit: Some(1),
-        }) else {
-            panic!("a rejected page-limit request must not consume its cursor")
-        };
-        assert!(matches!(
-            adapter.handle(CompilerRequest::ListDiagnostics {
-                generation: check.generation,
-                cursor: Some(cursor),
-                limit: Some(1),
-            }),
-            CompilerReply::Error {
-                code: CompilerErrorCode::InvalidDiagnosticCursor,
-                ..
-            }
-        ));
-        let CompilerReply::Check(later) = adapter.handle(CompilerRequest::Check { project }) else {
-            panic!("later check must create a successor generation")
-        };
-        assert!(matches!(
-            adapter.handle(CompilerRequest::ListDiagnostics {
-                generation: check.generation,
-                cursor: None,
-                limit: Some(1),
-            }),
-            CompilerReply::Error {
-                code: CompilerErrorCode::StaleGeneration,
-                ..
-            }
-        ));
-        assert_ne!(later.generation, check.generation);
-    }
-
-    #[test]
-    fn immediate_check_diagnostics_include_authorized_utf16_positions() {
-        let mut adapter = CompilerServiceIpcAdapter::default();
-        let project = adapter
-            .register_core_project(registration(
-                "const marker = '😀';\r\nconst invalid: number = 'wrong';",
-            ))
-            .unwrap();
-        let CompilerReply::Check(check) = adapter.handle(CompilerRequest::Check { project }) else {
-            panic!("the invalid closed project must return a check result")
-        };
-        let diagnostic = check
-            .diagnostics
-            .entries
-            .iter()
-            .find(|entry| entry.code == "BTS3003")
-            .expect("a static type mismatch must remain observable");
-        let coordinates = diagnostic.coordinates.unwrap();
-        assert_eq!(coordinates.start_line, 1);
-        assert_eq!(coordinates.end_line, 1);
-        assert!(coordinates.is_well_formed_for_diagnostic_range(diagnostic.start, diagnostic.end,));
-        assert!(!format!("{check:?}").contains("const marker"));
-    }
-
-    #[test]
-    fn diagnostic_cursors_are_bound_to_the_receiving_compiler_stream() {
-        let mut adapter = CompilerServiceIpcAdapter::new(
-            RegisteredProjectCompilerService::new(CompilerServiceLimits {
-                max_diagnostic_cursors: 1,
-                ..CompilerServiceLimits::default()
-            }),
-            CompilerServiceIpcLimits {
-                max_diagnostic_page_entries: 1,
-                ..CompilerServiceIpcLimits::default()
-            },
-        )
-        .unwrap();
-        let project = adapter
-            .register_core_project(registration(
-                "const first: number = 'one'; \
-                 const second: number = 'two'; \
-                 const third: number = 'three';",
-            ))
-            .unwrap();
-        let first_stream = "a".repeat(CompilerSessionAttestation::ID_LENGTH);
-        let second_stream = "b".repeat(CompilerSessionAttestation::ID_LENGTH);
-        inventory_on_stream(&mut adapter, &first_stream, project);
-        inventory_on_stream(&mut adapter, &second_stream, project);
-        let CompilerReply::Check(check) =
-            adapter.handle_session_request(&first_stream, CompilerRequest::Check { project })
-        else {
-            panic!("the invalid fixture must yield a bounded check")
-        };
-        let CompilerReply::DiagnosticPage(first) = adapter.handle_session_request(
-            &first_stream,
-            CompilerRequest::ListDiagnostics {
-                generation: check.generation,
-                cursor: None,
-                limit: Some(1),
-            },
-        ) else {
-            panic!("the first stream must receive a diagnostic page")
-        };
-        let cursor = first
-            .next_cursor
-            .expect("three diagnostics need continuation");
-        let continuation = CompilerRequest::ListDiagnostics {
-            generation: check.generation,
-            cursor: Some(cursor),
-            limit: Some(1),
-        };
-        assert!(matches!(
-            adapter.handle_session_request(&second_stream, continuation.clone()),
-            CompilerReply::Error {
-                code: CompilerErrorCode::InvalidDiagnosticCursor,
-                ..
-            }
-        ));
-        assert!(matches!(
-            adapter.handle_session_request(
-                &first_stream,
-                CompilerRequest::ListDiagnostics {
-                    generation: check.generation,
-                    cursor: Some(cursor),
-                    limit: Some(0),
-                },
-            ),
-            CompilerReply::Error {
-                code: CompilerErrorCode::InvalidDiagnosticPage,
-                ..
-            }
-        ));
-        adapter.end_session(&first_stream);
-        inventory_on_stream(&mut adapter, &first_stream, project);
-        assert!(matches!(
-            adapter.handle_session_request(&second_stream, continuation),
-            CompilerReply::Error {
-                code: CompilerErrorCode::InvalidDiagnosticCursor,
-                ..
-            }
-        ));
-        let CompilerReply::DiagnosticPage(second) = adapter.handle_session_request(
-            &second_stream,
-            CompilerRequest::ListDiagnostics {
-                generation: check.generation,
-                cursor: None,
-                limit: Some(1),
-            },
-        ) else {
-            panic!("disconnect must release the sole diagnostic cursor slot")
-        };
-        let second_cursor = second.next_cursor.expect("a fresh stream can paginate");
-        assert_ne!(second_cursor, cursor);
-        let CompilerReply::Check(later) =
-            adapter.handle_session_request(&first_stream, CompilerRequest::Check { project })
-        else {
-            panic!("a later check must advance the project generation")
-        };
-        assert_ne!(later.generation, check.generation);
-        assert!(matches!(
-            adapter.handle_session_request(
-                &second_stream,
-                CompilerRequest::ListDiagnostics {
-                    generation: check.generation,
-                    cursor: Some(second_cursor),
-                    limit: Some(1),
-                },
-            ),
-            CompilerReply::Error {
-                code: CompilerErrorCode::InvalidDiagnosticCursor,
-                ..
-            }
-        ));
-    }
-
-    #[test]
-    fn work_set_cursors_are_stream_kind_and_generation_bound() {
-        let mut adapter = CompilerServiceIpcAdapter::new(
-            RegisteredProjectCompilerService::new(CompilerServiceLimits {
-                max_work_set_cursors: 1,
-                ..CompilerServiceLimits::default()
-            }),
-            CompilerServiceIpcLimits {
-                max_modules_per_set: 1,
-                max_work_set_page_entries: 1,
-                ..CompilerServiceIpcLimits::default()
-            },
-        )
-        .unwrap();
-        let project = adapter
-            .register_core_project(registration("export const value: number = answer;"))
-            .unwrap();
-        let first_stream = "a".repeat(CompilerSessionAttestation::ID_LENGTH);
-        let second_stream = "b".repeat(CompilerSessionAttestation::ID_LENGTH);
-        inventory_on_stream(&mut adapter, &first_stream, project);
-        inventory_on_stream(&mut adapter, &second_stream, project);
-        let CompilerReply::Check(check) =
-            adapter.handle_session_request(&first_stream, CompilerRequest::Check { project })
-        else {
-            panic!("fixture must check under the first stream")
-        };
-        assert!(check.parsed_modules.truncated);
-        let CompilerReply::WorkSetPage(first) = adapter.handle_session_request(
-            &first_stream,
-            CompilerRequest::ListWorkSet {
-                generation: check.generation,
-                kind: CompilerWorkSetKind::Parsed,
-                cursor: None,
-                limit: Some(1),
-            },
-        ) else {
-            panic!("first work-set page must be available")
-        };
-        assert_eq!(first.entries.len(), 1);
-        let cursor = first.next_cursor.expect("two modules need continuation");
-        let continuation = CompilerRequest::ListWorkSet {
-            generation: check.generation,
-            kind: CompilerWorkSetKind::Parsed,
-            cursor: Some(cursor),
-            limit: Some(1),
-        };
-        for rejected in [
-            adapter.handle_session_request(&second_stream, continuation.clone()),
-            adapter.handle_session_request(
-                &first_stream,
-                CompilerRequest::ListWorkSet {
-                    generation: check.generation,
-                    kind: CompilerWorkSetKind::Rechecked,
-                    cursor: Some(cursor),
-                    limit: Some(1),
-                },
-            ),
-        ] {
-            assert!(matches!(
-                rejected,
-                CompilerReply::Error {
-                    code: CompilerErrorCode::InvalidWorkSetCursor,
-                    ..
-                }
-            ));
-        }
-        assert!(matches!(
-            adapter.handle_session_request(
-                &first_stream,
-                CompilerRequest::ListWorkSet {
-                    generation: check.generation,
-                    kind: CompilerWorkSetKind::Parsed,
-                    cursor: Some(cursor),
-                    limit: Some(0),
-                },
-            ),
-            CompilerReply::Error {
-                code: CompilerErrorCode::InvalidWorkSetPage,
-                ..
-            }
-        ));
-        let CompilerReply::WorkSetPage(second) =
-            adapter.handle_session_request(&first_stream, continuation.clone())
-        else {
-            panic!("owning stream must consume its cursor once")
-        };
-        assert!(second.next_cursor.is_none());
-        assert_ne!(first.entries, second.entries);
-        assert!(matches!(
-            adapter.handle_session_request(&first_stream, continuation),
-            CompilerReply::Error {
-                code: CompilerErrorCode::InvalidWorkSetCursor,
-                ..
-            }
-        ));
-        let CompilerReply::Check(later) =
-            adapter.handle_session_request(&first_stream, CompilerRequest::Check { project })
-        else {
-            panic!("successor generation must check")
-        };
-        assert_ne!(later.generation, check.generation);
-        assert!(matches!(
-            adapter.handle_session_request(
-                &first_stream,
-                CompilerRequest::ListWorkSet {
-                    generation: check.generation,
-                    kind: CompilerWorkSetKind::Parsed,
-                    cursor: None,
-                    limit: Some(1),
-                }
-            ),
-            CompilerReply::Error {
-                code: CompilerErrorCode::StaleGeneration,
-                ..
-            }
-        ));
-    }
-
-    #[test]
-    fn abandoned_work_set_cursor_slots_are_released_on_disconnect() {
-        let mut adapter = CompilerServiceIpcAdapter::new(
-            RegisteredProjectCompilerService::new(CompilerServiceLimits {
-                max_work_set_cursors: 1,
-                ..CompilerServiceLimits::default()
-            }),
-            CompilerServiceIpcLimits {
-                max_work_set_page_entries: 1,
-                ..CompilerServiceIpcLimits::default()
-            },
-        )
-        .unwrap();
-        let project = adapter
-            .register_core_project(registration("export const value: number = answer;"))
-            .unwrap();
-        let first_stream = "a".repeat(CompilerSessionAttestation::ID_LENGTH);
-        let second_stream = "b".repeat(CompilerSessionAttestation::ID_LENGTH);
-        inventory_on_stream(&mut adapter, &first_stream, project);
-        inventory_on_stream(&mut adapter, &second_stream, project);
-        let CompilerReply::Check(check) =
-            adapter.handle_session_request(&first_stream, CompilerRequest::Check { project })
-        else {
-            panic!("registered fixture must check")
-        };
-        let first_request = CompilerRequest::ListWorkSet {
-            generation: check.generation,
-            kind: CompilerWorkSetKind::Parsed,
-            cursor: None,
-            limit: Some(1),
-        };
-        let CompilerReply::WorkSetPage(first) =
-            adapter.handle_session_request(&first_stream, first_request.clone())
-        else {
-            panic!("the first stream must own the sole cursor slot")
-        };
-        let cursor = first.next_cursor.unwrap();
-        assert!(matches!(
-            adapter.handle_session_request(&second_stream, first_request.clone()),
-            CompilerReply::Error {
-                code: CompilerErrorCode::ResourceLimit,
-                ..
-            }
-        ));
-        adapter.end_session(&first_stream);
-        let CompilerReply::WorkSetPage(second) =
-            adapter.handle_session_request(&second_stream, first_request)
-        else {
-            panic!("disconnect must release the sole work-set cursor slot")
-        };
-        assert_ne!(second.next_cursor, Some(cursor));
-    }
-
-    #[test]
-    fn rejected_diagnostic_wire_page_does_not_leak_a_core_cursor_slot() {
-        let mut adapter = CompilerServiceIpcAdapter::new(
-            RegisteredProjectCompilerService::new(CompilerServiceLimits {
-                max_diagnostic_cursors: 1,
-                ..CompilerServiceLimits::default()
-            }),
-            CompilerServiceIpcLimits {
-                max_field_bytes: 4,
-                max_diagnostic_page_entries: 1,
-                ..CompilerServiceIpcLimits::default()
-            },
-        )
-        .unwrap();
-        let project = adapter
-            .register_core_project(registration(
-                "const first: number = 'one'; \
-                 const second: number = 'two'; \
-                 const third: number = 'three';",
-            ))
-            .unwrap();
-        assert_eq!(
-            adapter.handle(CompilerRequest::Check { project }),
-            response_limit_reply(),
-            "the tiny wire-field budget must not disclose a check generation"
-        );
-        // An untrusted raw IPC peer may guess a generation number even after
-        // the check reply was rejected. Both attempts must fail at the wire
-        // budget, not because the first undisclosed page exhausted the sole
-        // service cursor slot.
-        let generation = CompilerGeneration {
-            project,
-            sequence: 1,
-        };
-        for _ in 0..2 {
-            assert_eq!(
-                adapter.handle(CompilerRequest::ListDiagnostics {
-                    generation,
-                    cursor: None,
-                    limit: Some(1),
-                }),
-                response_limit_reply(),
-            );
-        }
-    }
-
-    #[test]
-    fn queued_requests_are_applied_only_by_the_adapter_owner() {
-        let (mut adapter, project) = adapter();
-        inventory_on_stream(
-            &mut adapter,
-            &"a".repeat(CompilerSessionAttestation::ID_LENGTH),
-            project,
-        );
-        let (sender, receiver) = compiler_service_ipc_request_channel();
-        assert!(sender
-            .bind_session(CompilerSessionAttestation {
-                id: "caller-chosen-short-token".to_string(),
-            })
-            .is_err());
-        let bound = sender
-            .bind_session(CompilerSessionAttestation {
-                id: "a".repeat(CompilerSessionAttestation::ID_LENGTH),
-            })
-            .unwrap();
-        let worker = std::thread::spawn(move || bound.request(CompilerRequest::Check { project }));
-        while receiver.dispatch_pending(&mut adapter) == 0 {
-            std::thread::yield_now();
-        }
-        assert!(matches!(
-            worker.join().unwrap().unwrap(),
-            CompilerReply::Check(_)
-        ));
-    }
-
-    #[test]
-    fn startup_catalog_seals_registration_before_the_session_receives_queries() {
-        let mut catalog = CoreCompilerProjectCatalog::default();
-        let project = catalog
-            .register_startup_project(registration("export const value: number = answer;"))
-            .unwrap();
-        assert_eq!(catalog.registered_project_count(), 1);
-
-        // `seal` consumes the only object that exposes registration. The
-        // resulting service exposes only this bounded query dispatch API.
-        let mut session = catalog.seal();
-        assert_eq!(session.registered_project_count(), 1);
-        inventory_on_stream(
-            &mut session.adapter,
-            &"b".repeat(CompilerSessionAttestation::ID_LENGTH),
-            project,
-        );
-        let (sender, receiver) = compiler_service_ipc_request_channel();
-        let bound = sender
-            .bind_session(CompilerSessionAttestation {
-                id: "b".repeat(CompilerSessionAttestation::ID_LENGTH),
-            })
-            .unwrap();
-        let worker =
-            std::thread::spawn(move || bound.request(CompilerRequest::DescribeProject { project }));
-        while session.dispatch_pending(&receiver) == 0 {
-            std::thread::yield_now();
-        }
-        assert!(matches!(
-            worker.join().unwrap().unwrap(),
-            CompilerReply::Project(CompilerProjectIdentity { project: returned, .. })
-                if returned == project
-        ));
-    }
-
-    #[test]
-    fn private_startup_project_is_never_inventoried_or_queryable() {
-        let mut catalog = CoreCompilerProjectCatalog::default();
-        let visible = catalog
-            .register_startup_project(registration("export const shown: number = answer;"))
-            .unwrap();
-        let mut private_registration = registration("export const hidden: number = answer;");
-        private_registration.canonical_project_root = "project:///private".to_string();
-        private_registration.canonical_config_root = "project:///private/blue-ts.json".to_string();
-        private_registration.canonical_output_root = "project:///private-dist".to_string();
-        let private = catalog
-            .register_startup_project_private(private_registration)
-            .unwrap();
-        assert_eq!(catalog.registered_project_count(), 2);
-        let mut session = catalog.seal();
-        let stream = "c".repeat(CompilerSessionAttestation::ID_LENGTH);
-        let CompilerReply::Projects(inventory) = session
-            .adapter
-            .handle_session_request(&stream, CompilerRequest::ListProjects)
-        else {
-            panic!("accepted stream must receive a project inventory")
-        };
-        assert_eq!(inventory.projects, vec![visible]);
-        for request in [
-            CompilerRequest::DescribeProject { project: private },
-            CompilerRequest::Check { project: private },
-        ] {
-            assert!(matches!(
-                session.adapter.handle_session_request(&stream, request),
-                CompilerReply::Error {
-                    code: CompilerErrorCode::UnobservedProject,
-                    ..
-                }
-            ));
-        }
-    }
-
-    #[test]
-    fn pre_registered_service_projects_remain_private_until_explicitly_exposed() {
-        let mut service = RegisteredProjectCompilerService::default();
-        let private = project_to_wire(
-            service
-                .register(registration("export const hidden: number = answer;"))
-                .unwrap(),
-        );
-        let mut adapter =
-            CompilerServiceIpcAdapter::new(service, CompilerServiceIpcLimits::default()).unwrap();
-        let stream = "d".repeat(CompilerSessionAttestation::ID_LENGTH);
-        for reply in [
-            adapter.handle(CompilerRequest::ListProjects),
-            adapter.handle_session_request(&stream, CompilerRequest::ListProjects),
-        ] {
-            let CompilerReply::Projects(inventory) = reply else {
-                panic!("a private-only service must return an empty inventory")
-            };
-            assert!(inventory.projects.is_empty());
-        }
-        for request in [
-            CompilerRequest::DescribeProject { project: private },
-            CompilerRequest::Check { project: private },
-        ] {
-            assert!(matches!(
-                adapter.handle(request.clone()),
-                CompilerReply::Error {
-                    code: CompilerErrorCode::UnobservedProject,
-                    ..
-                }
-            ));
-            assert!(matches!(
-                adapter.handle_session_request(&stream, request),
-                CompilerReply::Error {
-                    code: CompilerErrorCode::UnobservedProject,
-                    ..
-                }
-            ));
-        }
-
-        let mut exposed_registration = registration("export const shown: number = answer;");
-        exposed_registration.canonical_project_root = "project:///shown".to_string();
-        exposed_registration.canonical_config_root = "project:///shown/blue-ts.json".to_string();
-        exposed_registration.canonical_output_root = "project:///shown-dist".to_string();
-        let exposed = adapter.register_core_project(exposed_registration).unwrap();
-        let CompilerReply::Projects(inventory) =
-            adapter.handle_session_request(&stream, CompilerRequest::ListProjects)
-        else {
-            panic!("accepted stream must receive an inventory")
-        };
-        assert_eq!(inventory.projects, vec![exposed]);
-        assert!(matches!(
-            adapter.handle_session_request(&stream, CompilerRequest::Check { project: private }),
-            CompilerReply::Error {
-                code: CompilerErrorCode::UnobservedProject,
-                ..
-            }
-        ));
-    }
-
-    #[test]
-    fn pre_registered_catalog_projects_are_counted_but_never_exposed() {
-        let mut service = RegisteredProjectCompilerService::default();
-        service
-            .register(registration("export const hidden: number = answer;"))
-            .unwrap();
-        let catalog =
-            CoreCompilerProjectCatalog::new(service, CompilerServiceIpcLimits::default()).unwrap();
-        assert_eq!(catalog.registered_project_count(), 1);
-        let mut session = catalog.seal();
-        assert_eq!(session.registered_project_count(), 1);
-        let stream = "e".repeat(CompilerSessionAttestation::ID_LENGTH);
-        let CompilerReply::Projects(inventory) = session
-            .adapter
-            .handle_session_request(&stream, CompilerRequest::ListProjects)
-        else {
-            panic!("private-only catalog must still return a valid inventory")
-        };
-        assert!(inventory.projects.is_empty());
-    }
-
-    #[test]
-    fn invalid_ipc_limits_fail_before_an_adapter_is_available() {
-        assert_eq!(
-            CompilerServiceIpcAdapter::new(
-                RegisteredProjectCompilerService::default(),
-                CompilerServiceIpcLimits {
-                    max_stream_cursor_receipts: 0,
-                    ..CompilerServiceIpcLimits::default()
-                },
-            )
-            .unwrap_err(),
-            CompilerServiceIpcConfigurationError::ZeroStreamCursorReceipts
-        );
-        assert_eq!(
-            CompilerServiceIpcAdapter::new(
-                RegisteredProjectCompilerService::default(),
-                CompilerServiceIpcLimits {
-                    max_response_bytes: 0,
-                    ..CompilerServiceIpcLimits::default()
-                },
-            )
-            .unwrap_err(),
-            CompilerServiceIpcConfigurationError::ZeroResponseBytes
-        );
-        assert_eq!(
-            CompilerServiceIpcAdapter::new(
-                RegisteredProjectCompilerService::default(),
-                CompilerServiceIpcLimits {
-                    max_response_bytes: blueice_ipc::compiler::MAX_COMPILER_MESSAGE_BYTES + 1,
-                    ..CompilerServiceIpcLimits::default()
-                },
-            )
-            .unwrap_err(),
-            CompilerServiceIpcConfigurationError::ResponseExceedsTransportLimit
-        );
-        assert_eq!(
-            CompilerServiceIpcAdapter::new(
-                RegisteredProjectCompilerService::default(),
-                CompilerServiceIpcLimits {
-                    max_diagnostic_page_entries: 0,
-                    ..CompilerServiceIpcLimits::default()
-                },
-            )
-            .unwrap_err(),
-            CompilerServiceIpcConfigurationError::ZeroDiagnosticPageEntries
-        );
-        assert_eq!(
-            CompilerServiceIpcAdapter::new(
-                RegisteredProjectCompilerService::default(),
-                CompilerServiceIpcLimits {
-                    max_work_set_page_entries: 0,
-                    ..CompilerServiceIpcLimits::default()
-                },
-            )
-            .unwrap_err(),
-            CompilerServiceIpcConfigurationError::ZeroWorkSetPageEntries
-        );
-        assert_eq!(
-            CompilerServiceIpcAdapter::new(
-                RegisteredProjectCompilerService::default(),
-                CompilerServiceIpcLimits {
-                    max_static_metadata_page_entries: 0,
-                    ..CompilerServiceIpcLimits::default()
-                },
-            )
-            .unwrap_err(),
-            CompilerServiceIpcConfigurationError::ZeroStaticMetadataPageEntries
-        );
-    }
-}
+mod output_write_tests;
+#[cfg(test)]
+mod tests;

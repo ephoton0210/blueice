@@ -15,6 +15,14 @@ harness is `differential-testing/`.
 
 - `cargo build --workspace --all-targets` builds every Rust crate and target.
 - `cargo test --workspace` runs the workspace test suite.
+- On a local Linux host, use `scripts/test-with-disk-budget.sh cargo test --workspace`
+  for long Rust test runs. It reuses the workspace `target`, disables incremental
+  cache growth and dev/test debug info by default, checks disk usage every
+  two seconds, and stops the test process group if `target` reaches 60 GiB
+  or the filesystem falls to 50 GiB free,
+  and refuses a second `CARGO_TARGET_DIR`.
+  Override the GiB limits with `BLUEICE_TEST_MAX_TARGET_GIB` and
+  `BLUEICE_TEST_MIN_FREE_GIB` when the host has a smaller disk.
 - `cargo clippy --workspace --all-targets -- -D warnings` treats all Clippy
   warnings as errors, matching CI.
 - `cargo fmt --all -- --check` verifies Rust formatting; run `cargo fmt --all`

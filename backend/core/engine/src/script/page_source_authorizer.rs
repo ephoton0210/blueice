@@ -95,6 +95,18 @@ pub trait PageScriptSourceAuthorizer {
         &mut self,
         request: &PageScriptSourceRequest,
     ) -> Result<AuthorizedPageScriptGraph, PageScriptSourceAuthorizationError>;
+
+    /// Releases owner-private source retained for a completed document.
+    fn release_document(&mut self, _tab_id: TabId, _document_generation: u64) {}
+
+    /// Reports retained source payload for an exact document, if measurable.
+    fn retained_source_payload_bytes(
+        &self,
+        _tab_id: TabId,
+        _document_generation: u64,
+    ) -> Option<usize> {
+        None
+    }
 }
 
 /// A private authorizer failure. Its message is intentionally never copied to
@@ -166,6 +178,18 @@ pub trait OutOfProcessPageScriptSourceAuthorizer {
         &self,
         request: &OutOfProcessPageScriptSourceRequest,
     ) -> Result<AuthorizedOutOfProcessPageScriptGraph, OutOfProcessPageScriptSourceAuthorizationError>;
+
+    /// Releases owner-private source retained for a completed document.
+    fn release_document(&self, _tab_id: TabId, _document_generation: u64) {}
+
+    /// Reports retained source payload for an exact document, if measurable.
+    fn retained_source_payload_bytes(
+        &self,
+        _tab_id: TabId,
+        _document_generation: u64,
+    ) -> Option<usize> {
+        None
+    }
 }
 
 /// Private owner-side source-authorization failure for the child route.

@@ -45,6 +45,14 @@ impl<'a> ModuleChecker<'a> {
             return Type::Unknown;
         }
         let tokens = strip_outer_parentheses(tokens);
+        if let Some(call) = constructor_call_parts(tokens) {
+            if self.is_bound_class_constructor_value(&call.callee.text, scope) {
+                return Type::Named {
+                    name: call.callee.text.clone(),
+                    arguments: Vec::new(),
+                };
+            }
+        }
         if let Some((_, _, result)) = top_level_binary_parts(tokens, &[","], |start| {
             self.module.generic_call_type_arguments.contains_key(&start)
         }) {
@@ -96,17 +104,50 @@ impl<'a> ModuleChecker<'a> {
         if let Some(call) = member_call_parts(tokens) {
             let base = self.infer_expression(call.receiver, scope);
             let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
-            if let PropertyType::Found {
-                value: Type::Function { result, .. },
-                ..
-            } = property_type(
+            let found = property_type(
                 &base,
                 &call.member.text,
                 &self.types,
                 &mut HashSet::new(),
                 &mut budget,
-            ) {
-                return *result;
+            );
+            if let PropertyType::Found { value, .. } = found {
+                match value {
+                    Type::Function { result, .. } => return *result,
+                    Type::Intersection(overloads)
+                        if self.is_bound_class_instance_type(&base)
+                            || matches!(call.receiver, [receiver] if self.is_bound_class_constructor_value(&receiver.text, scope) || self.is_bound_class_static_this(receiver, scope)) =>
+                    {
+                        if let Some(signatures) = method_overload_signatures(&overloads) {
+                            return self.infer_function_call(
+                                &signatures,
+                                call.arguments,
+                                scope,
+                                None,
+                            );
+                        }
+                    }
+                    Type::Intersection(overloads)
+                        if supports_callback_method_receiver(
+                            &base,
+                            &self.types,
+                            self.max_type_expansions,
+                        ) =>
+                    {
+                        if let Some(arguments) = split_call_arguments(call.arguments) {
+                            if let Ok(actuals) =
+                                self.expanded_call_argument_types(&arguments, scope)
+                            {
+                                if let Ok(Type::Function { result, .. }) =
+                                    select_callback_method_overload(&overloads, &actuals)
+                                {
+                                    return *result.clone();
+                                }
+                            }
+                        }
+                    }
+                    _ => {}
+                }
             }
             return Type::Unknown;
         }
@@ -250,6 +291,25 @@ impl<'a> ModuleChecker<'a> {
         if first.kind == TokenKind::Number {
             return Type::Number;
         }
+        if let [receiver, optional, property] = tokens {
+            if receiver.kind == TokenKind::Identifier
+                && optional.is("?.")
+                && property.kind == TokenKind::Identifier
+            {
+                return scope
+                    .get(&receiver.text)
+                    .and_then(|receiver_type| {
+                        optional_property_type(
+                            receiver_type,
+                            &property.text,
+                            &self.types,
+                            self.max_type_expansions,
+                        )
+                        .ok()
+                    })
+                    .unwrap_or(Type::Unknown);
+            }
+        }
         if let Some((receiver, property)) = member_access_target(tokens) {
             if tokens.iter().filter(|token| token.is("[")).count() > self.max_type_expansions {
                 return Type::Unknown;
@@ -293,6 +353,9 @@ impl<'a> ModuleChecker<'a> {
                     Type::Unknown
                 }
             };
+        }
+        if first.is("this") && tokens.len() == 1 {
+            return scope.get("this").cloned().unwrap_or(Type::Unknown);
         }
         match first.text.as_str() {
             "true" | "false" => Type::Boolean,

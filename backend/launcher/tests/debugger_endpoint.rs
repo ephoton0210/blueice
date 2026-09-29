@@ -160,6 +160,7 @@ fn open_debugger_session(
         &mut stream,
         &DebuggerRequest::Hello {
             protocol_version: DEBUGGER_PROTOCOL_VERSION,
+            requested_bounded_values: false,
             requested_metadata_capabilities: DebuggerMetadataCapabilityManifest::empty(),
         },
     )
@@ -168,6 +169,7 @@ fn open_debugger_session(
         read_debugger_reply(&mut stream).unwrap(),
         DebuggerReply::HelloAck {
             protocol_version: DEBUGGER_PROTOCOL_VERSION,
+            granted_bounded_values: false,
             granted_metadata_capabilities: DebuggerMetadataCapabilityManifest::empty(),
         },
         "the fixed core profile must negotiate the native debugger protocol"

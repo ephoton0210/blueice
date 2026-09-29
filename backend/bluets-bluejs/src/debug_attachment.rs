@@ -46,9 +46,36 @@ pub struct RetainedDirectDebugInfo {
     static_info: BlueTsDebugInfo,
     safe_point_map: BlueTsSafePointMapV1,
     breakpoint_spans: Vec<RetainedBreakpointSpan>,
+    root_symbol_slots: Vec<DirectRootSymbolSlot>,
+    retained_payload_bytes: usize,
 }
 
 impl RetainedDirectDebugInfo {
+    /// Checked retained metadata payload, including nested contract plans.
+    pub fn retained_payload_bytes(&self) -> usize {
+        self.retained_payload_bytes
+    }
+
+    fn measure_payload_bytes(&self) -> Option<usize> {
+        let mut bytes = std::mem::size_of::<Self>()
+            .checked_add(self.static_info.owned_heap_payload_bytes()?)?
+            .checked_add(self.safe_point_map.owned_heap_payload_bytes()?)?;
+        bytes = bytes.checked_add(
+            self.breakpoint_spans
+                .capacity()
+                .checked_mul(std::mem::size_of::<RetainedBreakpointSpan>())?,
+        )?;
+        for span in &self.breakpoint_spans {
+            bytes = bytes.checked_add(span.source.module.capacity())?;
+        }
+        bytes = bytes.checked_add(
+            self.root_symbol_slots
+                .capacity()
+                .checked_mul(std::mem::size_of::<DirectRootSymbolSlot>())?,
+        )?;
+        Some(bytes)
+    }
+
     /// The exact live generation that owns this static metadata.
     pub fn handle(&self) -> bluejs::BlueJsProgramHandle {
         self.handle
@@ -76,7 +103,15 @@ impl RetainedDirectDebugInfo {
         resolve_breakpoint_at_or_after(
             self.breakpoint_spans
                 .iter()
-                .map(|span| (&span.source, span.safe_point)),
+                .map(|span| {
+                    (
+                        span.source.module.as_str(),
+                        span.source.start,
+                        span.source.end,
+                        span.safe_point,
+                    )
+                })
+                .chain(verified_child_breakpoint_spans(&self.safe_point_map)),
             source,
             source_byte,
         )
@@ -117,6 +152,31 @@ impl DirectDebugRegistry {
         self.programs.is_empty()
     }
 
+    /// Sums only metadata paired with handles in one live page realm. A plain
+    /// JavaScript program without BlueTS metadata contributes zero.
+    pub fn retained_payload_bytes_for_live_handles(
+        &self,
+        registry: &bluejs::BlueJsProgramRegistry,
+        handles: impl IntoIterator<Item = bluejs::BlueJsProgramHandle>,
+    ) -> Result<usize, DirectDebugAttachmentError> {
+        let mut bytes = 0usize;
+        for handle in handles {
+            let Some(retained) = self.programs.get(&handle.generation()) else {
+                continue;
+            };
+            if retained.handle != handle {
+                return Err(DirectDebugAttachmentError::MetadataUnavailable);
+            }
+            registry
+                .get(handle)
+                .map_err(DirectDebugAttachmentError::BlueJsProgram)?;
+            bytes = bytes
+                .checked_add(retained.retained_payload_bytes)
+                .ok_or(DirectDebugAttachmentError::AccountingOverflow)?;
+        }
+        Ok(bytes)
+    }
+
     /// Looks up static metadata for an exact live generation. The BlueJS
     /// registry check is deliberately first, so stale or invalid handles fail
     /// rather than discovering a coincidental retained map entry.
@@ -132,6 +192,24 @@ impl DirectDebugRegistry {
             .get(&handle.generation())
             .filter(|retained| retained.handle == handle)
             .ok_or(DirectDebugAttachmentError::MetadataUnavailable)
+    }
+
+    /// Only exact-live root slots retained with this program's static
+    /// metadata. Refusal returns no partial source, symbol, or type IDs.
+    pub fn root_symbol_slots<'a>(
+        &'a self,
+        registry: &bluejs::BlueJsProgramRegistry,
+        handle: bluejs::BlueJsProgramHandle,
+    ) -> Result<&'a [DirectRootSymbolSlot], DirectDebugAttachmentError> {
+        let retained = self.get(registry, handle)?;
+        validate_live_root_symbol_slots(
+            registry,
+            handle,
+            &retained.safe_point_map,
+            &retained.root_symbol_slots,
+        )
+        .map_err(|error| DirectDebugAttachmentError::SlotMap(error.to_string()))?;
+        Ok(&retained.root_symbol_slots)
     }
 
     /// Removes the exact generation record. It is safe to call after BlueJS
@@ -209,6 +287,10 @@ impl DirectDebugRegistry {
                 "retained lowering spans do not match the verified safe-point map".to_string(),
             ));
         }
+        let root_symbol_slots = attachment
+            .live_root_symbol_slots(registry)
+            .map_err(|error| DirectDebugAttachmentError::SlotMap(error.to_string()))?
+            .to_vec();
 
         let breakpoint_spans = attachment
             .provenance
@@ -220,14 +302,24 @@ impl DirectDebugRegistry {
             .collect::<Vec<_>>();
 
         let generation = attachment.handle.generation();
+        let mut retained = RetainedDirectDebugInfo {
+            handle: attachment.handle,
+            static_info: static_info.clone(),
+            safe_point_map: attachment.safe_point_map.clone(),
+            breakpoint_spans,
+            root_symbol_slots,
+            retained_payload_bytes: 0,
+        };
+        retained.retained_payload_bytes = retained
+            .measure_payload_bytes()
+            .ok_or(DirectDebugAttachmentError::AccountingOverflow)?;
         if let Some(existing) = self.programs.get(&generation) {
-            let replacement = RetainedDirectDebugInfo {
-                handle: attachment.handle,
-                static_info: static_info.clone(),
-                safe_point_map: attachment.safe_point_map.clone(),
-                breakpoint_spans: breakpoint_spans.clone(),
-            };
-            if existing == &replacement {
+            if existing.handle == retained.handle
+                && existing.static_info == retained.static_info
+                && existing.safe_point_map == retained.safe_point_map
+                && existing.breakpoint_spans == retained.breakpoint_spans
+                && existing.root_symbol_slots == retained.root_symbol_slots
+            {
                 return Ok(());
             }
             return Err(DirectDebugAttachmentError::GenerationAlreadyAttached);
@@ -237,15 +329,13 @@ impl DirectDebugRegistry {
             self.programs.len() + 1,
             self.limits.max_programs,
         )?;
-        self.programs.insert(
-            generation,
-            RetainedDirectDebugInfo {
-                handle: attachment.handle,
-                static_info: static_info.clone(),
-                safe_point_map: attachment.safe_point_map.clone(),
-                breakpoint_spans,
-            },
-        );
+        self.programs
+            .values()
+            .try_fold(retained.retained_payload_bytes, |bytes, program| {
+                bytes.checked_add(program.retained_payload_bytes)
+            })
+            .ok_or(DirectDebugAttachmentError::AccountingOverflow)?;
+        self.programs.insert(generation, retained);
         Ok(())
     }
 }
@@ -256,6 +346,7 @@ impl DirectDebugRegistry {
 pub enum DirectDebugAttachmentError {
     BlueJsProgram(bluejs::BlueJsProgramDebugError),
     SafePointMap(String),
+    SlotMap(String),
     LanguageVersionMismatch,
     CompilerOptionsMismatch,
     SourceSetMismatch,
@@ -265,6 +356,7 @@ pub enum DirectDebugAttachmentError {
     },
     GenerationAlreadyAttached,
     MetadataUnavailable,
+    AccountingOverflow,
 }
 
 impl fmt::Display for DirectDebugAttachmentError {
@@ -274,6 +366,7 @@ impl fmt::Display for DirectDebugAttachmentError {
                 write!(formatter, "BlueJS program is unavailable: {error}")
             }
             Self::SafePointMap(error) => write!(formatter, "safe-point map is invalid: {error}"),
+            Self::SlotMap(error) => write!(formatter, "root symbol-slot map is invalid: {error}"),
             Self::LanguageVersionMismatch => {
                 formatter.write_str("BlueTS language version does not match direct program")
             }
@@ -294,6 +387,9 @@ impl fmt::Display for DirectDebugAttachmentError {
             Self::MetadataUnavailable => {
                 formatter.write_str("no static TypeScript metadata is retained for this generation")
             }
+            Self::AccountingOverflow => {
+                formatter.write_str("direct debug retained payload accounting overflowed")
+            }
         }
     }
 }
@@ -311,7 +407,7 @@ fn enforce_limit(
     Ok(())
 }
 
-fn source_sets_match(
+pub(super) fn source_sets_match(
     debug_sources: &[blueice_bluets::DebugSource],
     bridge_sources: &[BridgeSource],
 ) -> bool {

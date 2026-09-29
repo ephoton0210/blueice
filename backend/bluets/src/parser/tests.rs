@@ -118,6 +118,341 @@ fn rejects_runtime_enums_explicitly() {
 }
 
 #[test]
+fn retains_named_class_headers_and_bodies_without_claiming_class_semantics() {
+    let source = "class Base { value(): number { return 1; } }\nexport class Child extends Base { constructor() { super(); } }";
+    let module = parse_module("memory:///classes.ts", source).unwrap();
+    assert_eq!(module.declarations.len(), 2);
+    let Declaration::Class(base) = &module.declarations[0] else {
+        panic!("expected the base class");
+    };
+    assert_eq!(base.name, "Base");
+    assert_eq!(&source[base.name_span.start..base.name_span.end], "Base");
+    assert_eq!(base.extends_name, None);
+    assert_eq!(
+        &source[base.body_span.start..base.body_span.end],
+        "{ value(): number { return 1; } }"
+    );
+    assert!(!base.exported);
+    let Declaration::Class(child) = &module.declarations[1] else {
+        panic!("expected the child class");
+    };
+    assert_eq!(child.name, "Child");
+    assert_eq!(child.extends_name.as_deref(), Some("Base"));
+    let heritage = child.extends_span.as_ref().unwrap();
+    assert_eq!(&source[heritage.start..heritage.end], "Base");
+    assert_eq!(
+        child
+            .body
+            .iter()
+            .map(|token| token.text.as_str())
+            .collect::<Vec<_>>(),
+        vec!["constructor", "(", ")", "{", "super", "(", ")", ";", "}"]
+    );
+    assert!(child.exported);
+    assert_eq!(
+        &source[child.span.start..child.span.end],
+        "export class Child extends Base { constructor() { super(); } }"
+    );
+}
+
+#[test]
+fn class_header_errors_and_unimplemented_forms_fail_closed() {
+    for source in [
+        "class Missing",
+        "class { }",
+        "class Box<T> {}",
+        "class C extends Base.Member {}",
+        "class C extends Base[0] {}",
+        "class C implements Shape {}",
+    ] {
+        assert!(
+            parse_module("memory:///classes.ts", source).is_err(),
+            "{source}"
+        );
+    }
+    let compilation = crate::compile(
+        "memory:///classes.ts",
+        &crate::MapLoader::from([crate::ModuleSource::new(
+            "memory:///classes.ts",
+            "class Ready {}",
+        )]),
+        crate::CompilerOptions::default(),
+    );
+    assert!(compilation.has_errors());
+    assert!(compilation.output.is_none());
+    assert_eq!(
+        compilation.diagnostics[0].code,
+        DiagnosticCode::UnsupportedSyntax
+    );
+}
+
+#[test]
+fn partitions_constructor_method_and_opaque_class_members_at_source_spans() {
+    let source = "class Counter { constructor(value: number) { this.value = value; } read(): number { return this.value; } }";
+    let module = parse_module("memory:///counter.ts", source).unwrap();
+    let Declaration::Class(class) = &module.declarations[0] else {
+        panic!("expected a class");
+    };
+    assert_eq!(class.members.len(), 2);
+    assert_eq!(class.members[0].kind, ClassMemberKind::Constructor);
+    assert_eq!(class.members[0].name.as_deref(), Some("constructor"));
+    assert_eq!(class.members[1].kind, ClassMemberKind::Method);
+    assert_eq!(class.members[1].name.as_deref(), Some("read"));
+    for member in &class.members {
+        let tokens = &class.body[member.token_start..member.token_end];
+        assert_eq!(member.span.start, tokens[0].start);
+        assert_eq!(member.span.end, tokens.last().unwrap().end);
+    }
+    assert_eq!(
+        &source[class.members[1].span.start..class.members[1].span.end],
+        "read(): number { return this.value; }"
+    );
+
+    let module = parse_module(
+        "memory:///other.ts",
+        "class Other { field = 1; method() {} }",
+    )
+    .unwrap();
+    let Declaration::Class(class) = &module.declarations[0] else {
+        panic!("expected a class");
+    };
+    assert_eq!(class.members.len(), 2);
+    assert_eq!(class.members[0].kind, ClassMemberKind::Opaque);
+    assert_eq!(class.members[1].kind, ClassMemberKind::Method);
+}
+
+#[test]
+fn parses_constructor_parameters_and_body_without_accepting_class_execution() {
+    let source = "class Counter { constructor(value: number) { const next: number = value; return; } read() {} }";
+    let module = parse_module("memory:///counter.ts", source).unwrap();
+    let Declaration::Class(class) = &module.declarations[0] else {
+        panic!("expected a class");
+    };
+    let constructor = class.members[0].constructor.as_ref().unwrap();
+    assert_eq!(constructor.parameters.len(), 1);
+    assert_eq!(constructor.parameters[0].name, "value");
+    assert_eq!(constructor.parameters[0].annotation, Some(Type::Number));
+    assert_eq!(
+        &source[constructor.parameters[0].span.start..constructor.parameters[0].span.end],
+        "value: number"
+    );
+    assert_eq!(constructor.body.as_ref().unwrap().len(), 2);
+    assert!(matches!(
+        constructor.body.as_ref().unwrap()[0],
+        FunctionBodyItem::Variable(_)
+    ));
+    assert!(matches!(
+        constructor.body.as_ref().unwrap()[1],
+        FunctionBodyItem::Return { .. }
+    ));
+    let FunctionBodyItem::Variable(local) = &constructor.body.as_ref().unwrap()[0] else {
+        unreachable!();
+    };
+    assert_eq!(
+        &source[local.span.start..local.span.end],
+        "const next: number = value;"
+    );
+    assert_eq!(
+        &source[constructor.span.start..constructor.span.end],
+        "constructor(value: number) { const next: number = value; return; }"
+    );
+    assert_eq!(module.edits.len(), 2);
+    assert!(class.members[1].constructor.is_none());
+    let compilation = crate::compile(
+        "memory:///counter.ts",
+        &crate::MapLoader::from([crate::ModuleSource::new("memory:///counter.ts", source)]),
+        crate::CompilerOptions::default(),
+    );
+    assert!(compilation.has_errors());
+    assert!(compilation.output.is_none());
+}
+
+#[test]
+fn constructor_signatures_and_incomplete_forms_keep_the_parser_closed() {
+    let module = parse_module(
+        "memory:///constructors.ts",
+        "class Box { constructor(value: number); constructor(value: number) {} }",
+    )
+    .unwrap();
+    let Declaration::Class(class) = &module.declarations[0] else {
+        panic!("expected a class");
+    };
+    assert!(class.members[0]
+        .constructor
+        .as_ref()
+        .unwrap()
+        .body
+        .is_none());
+    assert_eq!(
+        class.members[1].constructor.as_ref().unwrap().body,
+        Some(vec![])
+    );
+    for source in [
+        "class Bad { constructor(value: ) {} }",
+        "class Bad { constructor(value: number): number {} }",
+        "class Bad { constructor(value: number) }",
+        "class Bad { constructor(value: number {} }",
+    ] {
+        assert!(
+            parse_module("memory:///bad.ts", source).is_err(),
+            "{source}"
+        );
+    }
+}
+
+#[test]
+fn parses_simple_named_method_signatures_and_bodies_at_original_spans() {
+    let source = "class Counter { read(value: number): number; read(value: number): number { return value; } }";
+    let module = parse_module("memory:///methods.ts", source).unwrap();
+    let Declaration::Class(class) = &module.declarations[0] else {
+        panic!("expected a class");
+    };
+    assert_eq!(class.members.len(), 2);
+    let signature = class.members[0].method.as_ref().unwrap();
+    assert!(signature.body.is_none());
+    assert_eq!(signature.parameters[0].annotation, Some(Type::Number));
+    assert_eq!(signature.return_type, Some(Type::Number));
+    let implementation = class.members[1].method.as_ref().unwrap();
+    assert_eq!(implementation.name, "read");
+    assert_eq!(implementation.return_type, Some(Type::Number));
+    assert!(matches!(
+        implementation.body.as_ref().unwrap()[0],
+        FunctionBodyItem::Return { .. }
+    ));
+    assert_eq!(
+        &source[implementation.span.start..implementation.span.end],
+        "read(value: number): number { return value; }"
+    );
+    assert_eq!(module.edits.len(), 4);
+    let compilation = crate::compile(
+        "memory:///methods.ts",
+        &crate::MapLoader::from([crate::ModuleSource::new("memory:///methods.ts", source)]),
+        crate::CompilerOptions::default(),
+    );
+    assert!(compilation.has_errors());
+    assert!(compilation.output.is_none());
+}
+
+#[test]
+fn incomplete_methods_fail_and_unsupported_accessors_remain_opaque() {
+    for source in [
+        "class Bad { read(value: ) {} }",
+        "class Bad { read(value: number) }",
+        "class Bad { read(value: number {} }",
+    ] {
+        assert!(
+            parse_module("memory:///bad.ts", source).is_err(),
+            "{source}"
+        );
+    }
+    let module = parse_module(
+        "memory:///opaque.ts",
+        "class C { get value() { return 1; } }",
+    )
+    .unwrap();
+    let Declaration::Class(class) = &module.declarations[0] else {
+        panic!("expected a class");
+    };
+    assert_eq!(class.members[0].kind, ClassMemberKind::Opaque);
+}
+
+#[test]
+fn preserves_union_and_record_method_return_types_without_losing_body_boundaries() {
+    let source = "class Reader { union(): string | number { return 1; } record(): { value: number } { return { value: 1 }; } }";
+    let module = parse_module("memory:///reader.ts", source).unwrap();
+    let Declaration::Class(class) = &module.declarations[0] else {
+        panic!("expected a class");
+    };
+    assert_eq!(class.members.len(), 2);
+    assert_eq!(
+        class.members[0].method.as_ref().unwrap().return_type,
+        Some(Type::Union(vec![Type::String, Type::Number]))
+    );
+    assert!(matches!(
+        class.members[1].method.as_ref().unwrap().return_type,
+        Some(Type::Record(_))
+    ));
+    assert!(class
+        .members
+        .iter()
+        .all(|member| member.method.as_ref().unwrap().body.is_some()));
+    assert_eq!(module.edits.len(), 2);
+    assert_eq!(
+        &source[class.members[1].span.start..class.members[1].span.end],
+        "record(): { value: number } { return { value: 1 }; }"
+    );
+}
+
+#[test]
+fn groups_contiguous_method_overloads_at_original_member_boundaries() {
+    let source = "class Reader { read(value: number): number; read(value: string): string; read(value: number | string): number | string { return value; } other() {} read(value: number): number; }";
+    let module = parse_module("memory:///reader.ts", source).unwrap();
+    let Declaration::Class(class) = &module.declarations[0] else {
+        panic!("expected a class");
+    };
+    assert_eq!(class.method_groups.len(), 3);
+    let overloads = &class.method_groups[0];
+    assert_eq!(overloads.name, "read");
+    assert_eq!(overloads.signature_member_indices, vec![0, 1]);
+    assert_eq!(overloads.implementation_member_index, Some(2));
+    assert_eq!(overloads.span.start, class.members[0].span.start);
+    assert_eq!(overloads.span.end, class.members[2].span.end);
+    assert_eq!(
+        &source[overloads.span.start..overloads.span.end],
+        "read(value: number): number; read(value: string): string; read(value: number | string): number | string { return value; }"
+    );
+    assert_eq!(class.method_groups[1].name, "other");
+    assert!(class.method_groups[1].signature_member_indices.is_empty());
+    assert_eq!(class.method_groups[1].implementation_member_index, Some(3));
+    assert_eq!(class.method_groups[2].name, "read");
+    assert_eq!(class.method_groups[2].signature_member_indices, vec![4]);
+    assert_eq!(class.method_groups[2].implementation_member_index, None);
+    assert!(crate::compile(
+        "memory:///reader.ts",
+        &crate::MapLoader::from([crate::ModuleSource::new("memory:///reader.ts", source)]),
+        crate::CompilerOptions::default(),
+    )
+    .output
+    .is_none());
+}
+
+#[test]
+fn opaque_class_member_interrupts_method_overload_group() {
+    let module = parse_module(
+        "memory:///reader.ts",
+        "class Reader { read(value: number): number; field = 1; read(value: number): number { return value; } }",
+    )
+    .unwrap();
+    let Declaration::Class(class) = &module.declarations[0] else {
+        panic!("expected a class");
+    };
+    assert_eq!(class.method_groups.len(), 2);
+    assert_eq!(class.method_groups[0].signature_member_indices, vec![0]);
+    assert_eq!(class.method_groups[0].implementation_member_index, None);
+    assert!(class.method_groups[1].signature_member_indices.is_empty());
+    assert_eq!(class.method_groups[1].implementation_member_index, Some(2));
+}
+
+#[test]
+fn routes_unimplemented_class_member_shapes_to_opaque_shells() {
+    for source in [
+        "class C { public read() {} }",
+        "class C { private read() {} }",
+        "class C { get value() { return 1; } }",
+        "class C { [key]() {} }",
+        "class C { #secret() {} }",
+        "class C { generic<T>() {} }",
+    ] {
+        let module = parse_module("memory:///opaque.ts", source).unwrap();
+        let Declaration::Class(class) = &module.declarations[0] else {
+            panic!("expected a class");
+        };
+        assert_eq!(class.members.len(), 1, "{source}");
+        assert_eq!(class.members[0].kind, ClassMemberKind::Opaque, "{source}");
+    }
+}
+
+#[test]
 fn rejects_tsx_modules_even_when_they_contain_no_tag_tokens() {
     let diagnostics =
         parse_module("memory:///view.tsx", "const label: string = 'BlueIce';").unwrap_err();

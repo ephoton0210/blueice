@@ -398,6 +398,25 @@ fn lowers_throw_statements_in_direct_functions() {
 }
 
 #[test]
+fn direct_script_catches_bluets_throw_through_declared_eval_alias() {
+    let source = "function fail(): number { throw 11; } globalThis.fail = fail; const evaluate = eval; evaluate('try { globalThis.fail(); } catch (error) { globalThis.caughtBlueTsThrow = error === 11; }'); globalThis.caughtBlueTsThrow;";
+    let result = compile_direct_script(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+        CompilerOptions {
+            require_declared_global_calls: true,
+            ..CompilerOptions::default()
+        },
+    );
+    let artifact =
+        result.unwrap_or_else(|error| panic!("caught throw fixture must lower: {error:?}"));
+    assert_eq!(
+        bluejs::Vm::default().execute(&artifact.bytecode),
+        Ok(bluejs::Value::Bool(true))
+    );
+}
+
+#[test]
 fn lowers_braced_if_else_statements_in_direct_functions() {
     let artifact = compile_direct_script(
             ENTRY,
@@ -547,6 +566,135 @@ fn refuses_to_silently_drop_an_unstructured_function_body_statement() {
     };
     assert_eq!(span.module, ENTRY);
     assert!(message.contains("function body syntax"));
+}
+
+#[test]
+fn lowers_braced_while_to_a_real_bluejs_loop_and_block() {
+    let source = "function count(value: number): number { while (value > 0) { value -= 1; } return value; } count(2);";
+    let artifact = compile_direct_script(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+        CompilerOptions::default(),
+    )
+    .unwrap();
+    let bluejs::BlueJsProgramV1::Script(program) = &artifact.program else {
+        panic!("expected a direct script");
+    };
+    assert!(matches!(
+        program.body.as_slice(),
+        [bluejs::Stmt::FunctionDecl(bluejs::Function { body, .. }), bluejs::Stmt::Expr(_)]
+            if matches!(
+                body.as_slice(),
+                [bluejs::Stmt::While { body, .. }, bluejs::Stmt::Return(Some(_))]
+                    if matches!(body.as_ref(), bluejs::Stmt::Block(items)
+                        if matches!(items.as_slice(), [bluejs::Stmt::Expr(_)]))
+            )
+    ));
+    assert_eq!(
+        bluejs::Vm::default().execute(&artifact.bytecode),
+        Ok(bluejs::Value::Number(0.0))
+    );
+}
+
+#[test]
+fn lowers_braced_try_catch_finally_to_bluejs_ast() {
+    let source = "function f(): void { try { throw 1; } catch (caught) { throw caught; } finally { 0; } } f();";
+    let artifact = compile_direct_script(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+        CompilerOptions::default(),
+    )
+    .unwrap();
+    let bluejs::BlueJsProgramV1::Script(program) = &artifact.program else {
+        panic!("expected a direct script");
+    };
+    let bluejs::Stmt::FunctionDecl(function) = &program.body[0] else {
+        panic!("expected a directly lowered named function");
+    };
+    assert!(matches!(
+        function.body.as_slice(),
+        [bluejs::Stmt::Try {
+            block,
+            handler: Some(bluejs::CatchClause {
+                param: Some(bluejs::Pattern::Identifier(binding)),
+                body,
+            }),
+            finalizer: Some(finalizer),
+        }] if binding == "caught"
+            && matches!(block.as_slice(), [bluejs::Stmt::Throw(_)])
+            && matches!(body.as_slice(), [bluejs::Stmt::Throw(_)])
+            && matches!(finalizer.as_slice(), [bluejs::Stmt::Expr(_)])
+    ));
+}
+
+#[test]
+fn direct_try_rejects_excluded_blocks_without_reparsing_javascript() {
+    for source in [
+        "function f(): void { try { let inner = 1; } finally { 0; } } f();",
+        "function f(): void { try { 0; } catch (error) { const inner = 1; } } f();",
+        "function f(): void { try { 0; } finally { if (true) { var inner = 1; } } } f();",
+        "function f(): void { try { while (true) {} } finally { 0; } } f();",
+        "function f(): void { try { 0; } catch (error) { while (true) {} } } f();",
+        "function f(): void { try { 0; } finally { while (true) {} } } f();",
+        "function f(): void { try { try { 0; } finally { 1; } } finally { 2; } } f();",
+        "function f(): void { try { 0; } catch (error) { if (true) { try { 1; } finally { 2; } } } } f();",
+        "function f(): void { try { 0; } catch { 1; } } f();",
+        "function f(): void { try { 0; } catch (error: any) { 1; } } f();",
+        "function f(): void { try { 0; } catch ({error}) { 1; } } f();",
+        "function f(): void { try { 0; } catch (first) { 1; } catch (second) { 2; } } f();",
+        "function f(): void { try { 0; } } f();",
+        "try { 0; } catch (error) { 1; }",
+        "const f = () => { try { 0; } catch (error) { 1; } }; f();",
+    ] {
+        let result = compile_direct_script(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+            CompilerOptions::default(),
+        );
+        assert!(
+            matches!(result, Err(BridgeError::UnsupportedRuntimeTarget { .. } | BridgeError::BlueTs(_))),
+            "excluded direct try shape must fail closed: {source}"
+        );
+    }
+}
+
+#[test]
+fn direct_while_rejects_local_declarations_and_nested_loops() {
+    for source in [
+        "function f(value: number): number { while (value > 0) { let inner = 1; value -= 1; } return value; } f(2);",
+        "function f(value: number): number { while (value > 0) { while (value > 1) { value -= 1; } value -= 1; } return value; } f(2);",
+        "function f(value: number): number { while (value > 0) { if (value > 1) { const inner = 1; } value -= 1; } return value; } f(2);",
+    ] {
+        let result = compile_direct_script(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+            CompilerOptions::default(),
+        );
+        let Err(BridgeError::UnsupportedRuntimeTarget { span, .. }) = result else {
+            panic!("excluded while body must fail closed: {source}");
+        };
+        assert_eq!(span.module, ENTRY);
+        assert!(span.start < span.end);
+    }
+}
+
+#[test]
+fn direct_while_rejects_unbraced_and_abrupt_control_forms() {
+    for source in [
+        "function f(value: number): number { while (value > 0) value -= 1; return value; } f(2);",
+        "function f(value: number): number { while (value > 0) { break; } return value; } f(2);",
+        "function f(value: number): number { while (value > 0) { continue; } return value; } f(2);",
+        "function f(value: number): number { while (value > 0) { loop: value -= 1; } return value; } f(2);",
+        "function f(value: number): number { do { value -= 1; } while (value > 0); return value; } f(2);",
+        "function f(value: number): number { for (value = 2; value > 0; value -= 1) {} return value; } f(2);",
+    ] {
+        let result = compile_direct_script(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+            CompilerOptions::default(),
+        );
+        assert!(result.is_err(), "excluded loop control must fail closed: {source}");
+    }
 }
 
 #[test]

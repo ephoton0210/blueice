@@ -32,6 +32,7 @@ use std::io::{self, Read, Write};
 pub mod ai;
 pub mod compiler;
 pub mod compiler_catalog;
+pub mod compiler_output;
 pub mod debugger;
 pub mod extension;
 pub mod gatekeeper;
@@ -47,7 +48,7 @@ pub use ai::{AiNode, AiSnapshot, Bounds, NameFrom, NodeAction, NodeState, Role};
 /// one coarse version, bumped only on a breaking change (a variant
 /// removed/renamed, a field's meaning changed) -- adding a new variant
 /// or a new `#[serde(default)]` field does not bump it.
-pub const PROTOCOL_VERSION: u32 = 1;
+pub const PROTOCOL_VERSION: u32 = 2;
 
 /// Browser-chrome control actions -- distinct from page-content
 /// messages (`Navigate`, `ActOn`, ...) per
@@ -292,6 +293,21 @@ pub enum BlueTsScriptExecutionOutcome {
     },
 }
 
+/// Core-selected BlueTS runtime policy; transpile-only cannot run on pages.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum BlueTsScriptRuntimePolicy {
+    Checked,
+    StrictRuntime,
+}
+
+/// A verified half-open byte range in the original inline BlueTS input.
+/// The report never carries its module identity or source contents.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BlueTsScriptSourcePosition {
+    pub start: u32,
+    pub end: u32,
+}
+
 /// One source-free inline BlueTS execution report for a tab/document pair.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BlueTsScriptExecutionReport {
@@ -299,6 +315,9 @@ pub struct BlueTsScriptExecutionReport {
     pub document_generation: u64,
     pub ordinal: u32,
     pub kind: BlueTsScriptKind,
+    pub policy: BlueTsScriptRuntimePolicy,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_position: Option<BlueTsScriptSourcePosition>,
     pub outcome: BlueTsScriptExecutionOutcome,
 }
 
@@ -767,6 +786,8 @@ mod tests {
                 document_generation: 42,
                 ordinal: 0,
                 kind: BlueTsScriptKind::Classic,
+                policy: BlueTsScriptRuntimePolicy::Checked,
+                source_position: None,
                 outcome: BlueTsScriptExecutionOutcome::Executed,
             }]),
             ServerMessage::BlueJsScriptReports(vec![BlueJsScriptExecutionReport {
@@ -790,6 +811,8 @@ mod tests {
                 document_generation: 42,
                 ordinal: 1,
                 kind: BlueTsScriptKind::Module,
+                policy: BlueTsScriptRuntimePolicy::StrictRuntime,
+                source_position: Some(BlueTsScriptSourcePosition { start: 3, end: 8 }),
                 outcome: BlueTsScriptExecutionOutcome::Rejected {
                     category: "BlueTS compilation rejected the page script".to_string(),
                 },

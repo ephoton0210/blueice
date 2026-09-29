@@ -817,6 +817,36 @@ impl<'a> ExpressionLowerer<'a> {
                 self.index += 1;
                 continue;
             }
+            if token.text == "?." {
+                let optional_span = self.token_span(token);
+                if !matches!(expression, bluejs::Expr::Identifier(_)) {
+                    return Err(unsupported(
+                        optional_span,
+                        "only a direct identifier receiver may use optional dot access",
+                    ));
+                }
+                self.index += 1;
+                let Some(property) = self.tokens.get(self.index) else {
+                    return Err(unsupported(
+                        optional_span,
+                        "expected an identifier after optional dot access",
+                    ));
+                };
+                if property.kind != TokenKind::Identifier {
+                    return Err(unsupported(
+                        self.token_span(property),
+                        "only an identifier property is in the first optional dot subset",
+                    ));
+                }
+                let name = property.text.clone();
+                self.index += 1;
+                expression = bluejs::Expr::OptionalMember {
+                    object: Box::new(expression),
+                    property: Box::new(bluejs::Expr::Identifier(name)),
+                    computed: false,
+                };
+                continue;
+            }
             if token.text == "." {
                 let dot_span = self.token_span(token);
                 self.index += 1;
@@ -1111,6 +1141,12 @@ pub(super) fn lower_template_substitution(
     for token in &mut tokens {
         token.start += template.start + source_offset;
         token.end += template.start + source_offset;
+    }
+    if let Some(optional) = tokens.iter().find(|token| token.is("?.")) {
+        return Err(unsupported(
+            token_span(module, optional),
+            "unsupported expression token `?.` in a template substitution",
+        ));
     }
     ExpressionLowerer::new(module, &tokens).parse()
 }

@@ -5,6 +5,99 @@
 use super::*;
 
 #[test]
+fn property_lookup_keeps_both_callback_method_overloads_without_first_wins() {
+    let module = crate::parse_module(
+        "memory:///main.ts",
+        "interface Visitor { visit(kind: 'text', callback: (value: string) => void): void; visit(kind: 'count', callback: (value: number) => void): void; }",
+    )
+    .unwrap();
+    let [Declaration::Interface(interface)] = module.declarations.as_slice() else {
+        panic!("expected one interface");
+    };
+    let PropertyType::Found {
+        value: Type::Intersection(overloads),
+        ..
+    } = property_type(
+        &Type::Record(interface.fields.clone()),
+        "visit",
+        &BTreeMap::new(),
+        &mut HashSet::new(),
+        &mut TypeExpansionBudget::new(8),
+    )
+    else {
+        panic!("property lookup must retain both overload signatures");
+    };
+    assert_eq!(overloads.len(), 2);
+    assert_eq!(overloads[0], interface.fields[0].value);
+    assert_eq!(overloads[1], interface.fields[1].value);
+    assert!(matches!(
+        property_type(
+            &Type::Record(interface.fields.clone()),
+            "visit",
+            &BTreeMap::new(),
+            &mut HashSet::new(),
+            &mut TypeExpansionBudget::new(0),
+        ),
+        PropertyType::Exhausted
+    ));
+}
+
+#[test]
+fn unsupported_callback_method_overload_sets_do_not_choose_the_first_signature() {
+    for signatures in [
+        "visit(kind: 'text', callback: (value: string) => void): void; visit(kind: 'text', callback: (value: number) => void): void;",
+        "visit(kind: 'text', callback: (value: string) => void): void; visit(kind: 'count', callback: (value: number) => void): void; visit(kind: 'other', callback: (value: boolean) => void): void;",
+        "visit(kind: 'text', callback?: (value: string) => void): void; visit(kind: 'count', callback: (value: number) => void): void;",
+        "visit(kind: 'text', callback: (value: string) => string): void; visit(kind: 'count', callback: (value: number) => void): void;",
+    ] {
+        let ambient = ModuleSource::new(
+            "memory:///visitor.d.ts",
+            format!("interface Visitor {{ {signatures} }} declare const visitor: Visitor;"),
+        );
+        let result = crate::compile(
+            "memory:///main.ts",
+            &MapLoader::from([ModuleSource::new(
+                "memory:///main.ts",
+                "function onText(value: string): void {} visitor.visit('text', onText);",
+            )]),
+            CompilerOptions {
+                ambient_declaration_modules: vec![ambient],
+                require_declared_global_calls: true,
+                ..CompilerOptions::default()
+            },
+        );
+        assert!(
+            result.diagnostics.iter().any(|diagnostic| {
+                diagnostic.code == DiagnosticCode::TypeMismatch
+                    && diagnostic.message == "unsupported overload set for method visit"
+            }),
+            "{signatures}: {:#?}",
+            result.diagnostics
+        );
+    }
+}
+
+#[test]
+fn inherited_callback_method_overloads_do_not_choose_a_parent_signature() {
+    let result = crate::compile(
+        "memory:///main.ts",
+        &MapLoader::from([ModuleSource::new(
+            "memory:///main.ts",
+            "interface Base { visit(kind: 'text', callback: (value: string) => void): void; } interface Visitor extends Base { visit(kind: 'count', callback: (value: number) => void): void; } declare const visitor: Visitor; function onText(value: string): void {} visitor.visit('text', onText);",
+        )]),
+        CompilerOptions::default(),
+    );
+    assert!(
+        result.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == DiagnosticCode::TypeMismatch
+                && diagnostic.message == "unsupported overload set for method visit"
+        }),
+        "{:#?}",
+        result.diagnostics
+    );
+}
+
+#[test]
 fn ambient_interface_methods_check_member_call_arguments_and_return_types() {
     let ambient = ModuleSource::new(
         "memory:///lib.blueice.d.ts",

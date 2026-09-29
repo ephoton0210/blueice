@@ -18,10 +18,20 @@ pub(super) fn indexed_value_type(
 ) -> Type {
     match value {
         Type::Array(element) => (**element).clone(),
-        Type::Tuple(values) => index.map_or_else(
-            || alternatives_type(values.to_vec()),
-            |index| values.get(index).cloned().unwrap_or(Type::Unknown),
-        ),
+        Type::Tuple(values) => {
+            if values.iter().any(|element| {
+                element.rest && matches!(element.annotation, Type::Named { .. } | Type::Tuple(_))
+            }) {
+                let Ok(expanded) =
+                    expand_concrete_tuple_spreads(values, aliases, &mut HashSet::new(), budget)
+                else {
+                    return Type::Unknown;
+                };
+                alternatives_type(tuple_indexed_candidates(&expanded, index))
+            } else {
+                alternatives_type(tuple_indexed_candidates(values, index))
+            }
+        }
         Type::Record(fields) if index.is_none() => alternatives_type(
             fields
                 .iter()
@@ -50,6 +60,36 @@ pub(super) fn indexed_value_type(
         }
         _ => Type::Unknown,
     }
+}
+
+pub(super) fn tuple_indexed_candidates(
+    values: &[TupleTypeElement],
+    index: Option<usize>,
+) -> Vec<Type> {
+    let Some(index) = index else {
+        return values.iter().map(TupleTypeElement::indexed_type).collect();
+    };
+    if let Some(rest_index) = values
+        .iter()
+        .position(|value| value.rest)
+        .filter(|index| index + 1 < values.len())
+    {
+        if index < rest_index {
+            return vec![values[index].value_type()];
+        }
+        let mut candidates = vec![values[rest_index].indexed_type()];
+        candidates.extend(
+            values[rest_index + 1..]
+                .iter()
+                .take(index.saturating_sub(rest_index).saturating_add(1))
+                .map(TupleTypeElement::value_type),
+        );
+        return candidates;
+    }
+    values
+        .get(index)
+        .or_else(|| values.last().filter(|value| value.rest))
+        .map_or_else(Vec::new, |value| vec![value.indexed_type()])
 }
 
 pub(super) fn canonical_index_key(tokens: &[Token]) -> Option<usize> {

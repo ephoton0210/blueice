@@ -155,9 +155,31 @@ impl DirectPageRealmOwner {
             .get(self.runtime.program_registry(), handle)
     }
 
+    /// Checks that one root-slot relation remains paired with exact live
+    /// static metadata and the realm's installed BlueJS generation.
+    pub fn debug_root_symbol_slots(
+        &self,
+        handle: bluejs::BlueJsProgramHandle,
+    ) -> Result<&[DirectRootSymbolSlot], DirectDebugAttachmentError> {
+        self.debug_registry
+            .root_symbol_slots(self.runtime.program_registry(), handle)
+    }
+
     /// Number of static metadata records whose generations remain live.
     pub fn debug_record_count(&self) -> usize {
         self.debug_registry.len()
+    }
+
+    /// Counts only retained BlueTS debug and contract payload paired with the
+    /// live programs of this exact page realm.
+    pub fn retained_debug_payload_bytes(&self, tab_id: u64) -> Result<usize, BridgeError> {
+        let handles = self
+            .runtime
+            .program_handles(tab_id)
+            .map_err(BridgeError::PageRuntime)?;
+        self.debug_registry
+            .retained_payload_bytes_for_live_handles(self.runtime.program_registry(), handles)
+            .map_err(BridgeError::DebugAttachment)
     }
 
     /// Returns bounded resource accounting for one live realm.
@@ -180,6 +202,20 @@ pub struct DirectPageModuleGraphAttachment {
 }
 
 impl DirectPageModuleGraphAttachment {
+    /// Counts this graph attachment's owned heap payload. The entry and each
+    /// module attachment are separate retained clones, so both are charged.
+    pub fn owned_heap_payload_bytes(&self) -> Option<usize> {
+        self.modules.iter().try_fold(
+            self.entry.owned_heap_payload_bytes()?,
+            |bytes, (module_id, attachment)| {
+                bytes
+                    .checked_add(std::mem::size_of::<(String, DirectProgramAttachment)>())?
+                    .checked_add(module_id.capacity())?
+                    .checked_add(attachment.owned_heap_payload_bytes()?)
+            },
+        )
+    }
+
     /// Executes the fully attached graph in its owning page realm. BlueJS uses
     /// the retained canonical module IDs and does not re-resolve TypeScript
     /// import specifiers at execution time.

@@ -1013,6 +1013,2563 @@ and successor-document denial. The real route leaves public BoundedValues
 Planned and debugger v36 unchanged; the owner receipt/public request is
 C2.2.1.5. The 292 engine library tests and workspace Clippy pass.
 
+**Public paused-value boundary decision (C2.2.1.5.1):** The public operation
+will have its own default-denied `BoundedValues` owner switch and a separate
+client opt-in in debugger `Hello`; neither Stack, Scopes, static-metadata
+grants, nor protocol version imply it. `HelloAck` grants only the intersection.
+The live realm must also advertise the native value route, and the request
+must find that exact available capability before reading a slot. These new
+handshake fields, the public request/reply, and the protocol bump arrive
+together only after the dispatcher is complete; v36 remains unchanged in the
+intermediate ledger leaf. The metadata manifest retains its static-metadata
+meaning and version.
+
+The public target carries only program, optional core-instance-bound nested
+frame, frame index, safe point, slot ordinal, and scope depth. After a
+successful `GetScopes`, core records each returned entry in a bounded,
+core-local receipt ledger owned by that socket stream. The ledger binds the
+complete tuple and the current pause incarnation; a guessed or other-stream
+tuple is not sufficient, even when its numeric fields happen to be valid.
+The pause incarnation is core-owned, never a client-selectable VM handle.
+Every successful command that arms, advances, or releases execution, including
+one issued on another debugger stream, and every scheduler transition away
+from the observed pause invalidates earlier receipts. A resumed frame that
+later stops at the same bytecode offset must therefore require new Scopes.
+The exact realm/program generations and nested core frame still guard
+replacement and return; core re-reads the current paused stack and active
+slot before the child call. Receipts are bounded to 4,096 distinct slots per
+stream and cleared on pause invalidation or socket close. A full ledger
+refuses the newly requested Scopes snapshot atomically rather than returning
+entries that could not be receipted. Scopes on a stream without the value
+grant remain unaffected.
+
+The public reply copies the validated core-owned tagged tree, with no child
+identifier or reusable heap handle. It preserves IEEE-754 bits, signed
+BigInt bytes, UTF-16 units, array holes, and ordered record keys under the
+same depth-4, length-32, node-256, aggregate-payload-4,096 limits as the
+private route. Core validates the complete public tree before reply; no
+truncated or partial value is a success. Missing owner/client/native grant
+returns `CapabilityUnavailable`; malformed or unreceipted selectors return
+`InvalidTarget`; a moved or no-longer-paused target returns
+`InvalidExecutionState` (or the existing more specific stale realm/program
+code); and any tree or receipt budget excess returns `ResourceLimit`.
+Unsupported VM shapes remain a typed refusal, not an implicit `undefined`.
+The value wire has no expression, positive source-text read, arbitrary object,
+or property-path selector. C2.2.1.5.2 installs the internal receipt boundary, C2.2.1.5.3
+installs the complete public route, and C2.2.1.5.4 proves it on real sockets.
+
+**Core-local scope receipt groundwork (C2.2.1.5.2):** The existing
+per-debugger-stream authorization now owns a bounded set of exact Scopes
+slot targets, with an independent core pause-incarnation number. The set
+remembers no value and cannot be supplied by the client. A snapshot with
+duplicate or malformed entries fails atomically, as does any insertion past
+4,096 distinct tuples. A new incarnation clears the stream's old tuples;
+another stream never shares them. The core request receiver increments its
+incarnation on successful arm/step/resume control replies before a later
+request can use an old receipt. Counter exhaustion enters permanent deny
+rather than wrapping to a previously valid incarnation. The public Scopes
+handler does not yet record receipts because no value grant exists; the
+complete guarded dispatch in C2.2.1.5.3 will activate observation. Public
+debugger v36, Hello, and BoundedValues Planned remain unchanged. Two focused
+IPC receipt/budget tests, the engine invalidation test, and all-target
+workspace Clippy pass.
+
+**Owner value policy before public transport (C2.2.1.5.3.1):** Launcher and
+core now parse the independent `--debugger-bounded-values` owner opt-in and
+require an explicit debugger socket. The Launcher launch options carry this
+choice to each supervised core generation without enabling any static-metadata
+policy. Core retains the choice but debugger v36 still has no value grant,
+request, or reply; BoundedValues stays Planned, even with the flag. The next
+leaf activates this owner policy only in the same change that adds separate
+client negotiation and the complete receipt-gated route. Focused core and
+Launcher CLI tests reject the flag without an endpoint and prove it remains
+independent of static-metadata inventory; the Launcher launch-option test
+passes. Both binaries pass `cargo check`.
+
+**Public value types before transport (C2.2.1.5.3.2.1):** The debugger IPC
+now has a serializable exact value target and separately validated snapshot
+and tagged preview types, but no `GetValue`/`Value` wire variants yet. The
+target contains only the already-defined Scopes selector and core frame;
+the snapshot echoes that selector and a handle-free tree. Public validation
+independently enforces the private/native depth 4, container length 32, node
+count 256 (including holes), and aggregate UTF-16 key/string and BigInt byte
+limit 4,096; duplicate record keys and impossible root/nested shapes refuse.
+Tests cover lossless number bits and lone-surrogate UTF-16 round trips,
+malformed program/frame/index identities, every budget, and duplicates.
+Debugger v36 remains unchanged; the complete negotiated route and bump are
+C2.2.1.5.3.2.2. All 107 IPC library tests and workspace Clippy pass.
+
+**Core-internal public-value remint (C2.2.1.5.3.2.2.1):** A guarded core
+helper now accepts only a combined owner/client grant, a negotiated stream's
+exact Scopes-slot receipt, and the current core pause incarnation. It
+re-reads that frame's full active scope inventory before calling the private
+child proxy, then copies the complete core-facing tree into an independently
+budgeted public snapshot. This remint limits depth, container length, nodes
+including holes, aggregate UTF-16/BigInt bytes, and duplicate record keys
+before allocation grows past a cap. The out-of-process executor separately
+reports whether its private value route is installed; no public request can
+reach the helper until C2.2.1.5.3.2.2.2 wires the grant and operation.
+Mock-core regressions prove exact core frame/slot forwarding, distinct
+stream and pause denial, moved live scope rejection, lossless bits/UTF-16 and
+array holes, and every remint budget. Two focused tests, all 295 engine
+library tests, and workspace Clippy pass. Public debugger v36 and
+BoundedValues Planned are unchanged.
+
+**Complete public paused-value route (C2.2.1.5.3.2.2.2):** Debugger v37
+introduces `requested_bounded_values` in `Hello` and its exact owner-policy
+intersection in `HelloAck`; the static-metadata manifest remains independent.
+The core listener reconstructs a stream-local grant that cannot be supplied
+by a later request. Only a granted live child route advertises
+`BoundedValues` Available. An authorized `GetScopes` records exactly the
+returned slots under the core session's current pause incarnation, refusing
+an over-budget receipt set atomically; ungranted Scopes remains source-free
+and unaffected. `GetValue` requires that same stream/slot/incarnation,
+rechecks the active scope and exact frame, invokes the private child proxy,
+and returns only a complete validated handle-free `Value` snapshot. The
+independently bounded public remint rejects oversized or duplicate-key trees
+without returning a partial preview. IPC socket serialization and separate
+owner/client handshake tests pass; a mock public dispatcher proves grant,
+receipt, cross-stream, stale-pause and moved-frame behavior. A real core
+socket confirms owner-enabled v37 grants only the requesting stream; the
+Launcher endpoint cutover regression passes with matching rebuilt binaries.
+All 108 IPC and 296 engine library tests, format, and workspace Clippy pass.
+The Launcher-supervised classic/module root/nested and budget regressions
+remain C2.2.1.5.4.
+
+**Real public value reads (C2.2.1.5.4.1):** The Launcher-supervised
+classic and module fixtures now enable the independent owner value policy and
+request the v37 client grant. Through only the public debugger socket, each
+test arms a nested BlueTS entry, receipts exact current Scopes slots, reads
+lossless nested and waiting caller-root numbers, then resumes the child and
+reads the returned root's own number from a newly receipted slot. Both paths
+pass the focused real-process test. Cross-stream, stale-pause, forged-slot,
+and complete budget denials remain C2.2.1.5.4.2.
+
+**Real public value refusal and caps (C2.2.1.5.4.2):** On the same
+Launcher-supervised classic/module sockets, a client without a value grant is
+refused, a separate granted stream cannot reuse the first stream's exact root
+slot while that root remains paused, a forged slot is refused, and the nested
+slot receipt expires immediately when its pause is resumed. The real BlueTS
+budget fixture passes four over-limit values as active nested arguments:
+depth 5, container length 33, 298 tree nodes, and 4,098 UTF-16 payload bytes.
+Each is refused as a whole at the public `GetValue` route. Four neighboring
+arguments at depth 4, length 32, exactly 256 nodes, and exactly 4,096 payload
+bytes return complete independently validated previews; an ordinary numeric
+argument remains readable. Both focused real-process tests, formatting, and
+workspace Clippy pass. The child currently maps a native unsupported or
+over-budget preview to `InvalidExecutionState`; the more precise typed
+refusal distinctions belong to C2.2.2.
+
+**Typed value-refusal boundary (C2.2.2.1):** Preserve the only positive
+value selector: an exact, active `Scopes` slot receipted on this granted
+debugger stream. A syntactically malformed or guessed target, a target copied
+from another stream or realm, and a slot from an expired pause all fail with
+typed `InvalidTarget` before resolving a realm, program, or private child.
+This intentionally gives no existence oracle for another realm. An owner or
+client without the independent value grant receives typed
+`CapabilityUnavailable`; a receipted but no-longer-live frame receives
+`InvalidExecutionState` where the live check can establish it. Native
+unsupported shapes—including cross-heap object references—and native
+over-budget trees remain a whole-value `InvalidExecutionState`, not a partial
+tree or a shape-specific oracle. Core's independent remint can still return
+`ResourceLimit` if a child violates its output budget. These existing typed
+categories are stable identifiers; clients must not parse diagnostic prose.
+
+No positive public source-text read selector is added. The existing unit
+`Unknown` catch-all cannot deserialize a payload-bearing unknown JSON
+command: it closes the stream before core can give a typed refusal. Therefore
+v38 adds an explicitly denial-only `GetSourceText { program }` probe. IPC
+parses its opaque program shape, but core never looks up the program, realm,
+child, or source; every post-`Hello` probe gets the same generic typed
+`CapabilityUnavailable` as a unit unknown command, without echoing its target.
+Malformed JSON still fails framing rather than becoming a different request.
+Before `Hello`, the existing typed `ProtocolVersion` refusal remains. The
+new denial-only variant and changed unknown-operation reply require debugger
+v38; no source text can be returned. An authorized runtime string whose bytes
+resemble source text is still a value, not a source-read operation. C2.2.2.2
+implements the mapping and tests framing; C2.2.2.3 proves it on real sockets.
+
+**Typed public refusal implementation (C2.2.2.2):** Debugger v38 carries
+the denial-only `GetSourceText { program }` request. The core never resolves
+that program; it returns the same fixed `CapabilityUnavailable` code and
+message as a post-`Hello` unit unknown command, whether the parsed program
+names the local realm or another one. Before `Hello`, the probe returns
+`ProtocolVersion`. A raw framed probe followed by another request remains
+parseable, while guessed and cross-realm `GetValue` targets still fail at the
+same-stream receipt gate with `InvalidTarget` and no child call. The existing
+private child tests retain exact active-frame and plain-value refusals; no
+private source-text operation or value grant was added. All 109 IPC and 297
+engine library tests, five focused private child tests, formatting, and
+workspace Clippy pass. Real public socket proof remains C2.2.2.3.
+
+**Real typed value refusals (C2.2.2.3):** The Launcher-supervised v38
+classic and module sockets return identical generic `CapabilityUnavailable`
+for local and foreign `GetSourceText` probes and a unit unknown command, then
+continue to answer the same stream. On each granted, actually paused BlueTS
+child, structurally valid guessed-program and foreign-realm `GetValue` targets
+return `InvalidTarget` before a child read. An independent short BlueTS
+fixture passes a function as one initialized nested argument beside a readable
+number; its exact receipted slot produces only `InvalidExecutionState`, never
+a partial preview. The existing four exact-cap/four over-cap real-value test
+still passes under v38, and workspace Clippy is clean. The classic/module
+test hit the previously observed pending-admission timing race once (program
+completed before breakpoint arming) and passed unchanged on rerun; no v38
+reply mismatch was observed.
+
+**Uncaught BlueTS exception-location contract (C2.3.1.1):** Location means
+the exact original BlueTS span of the instruction that first produced an
+*uncaught, catchable* runtime exception, not the caller's `Call`, a nearest
+statement, the location where a message was formatted, or a compile/host
+failure. BlueJS retains only its already-installed debugger program
+generation, code-unit ordinal, and verified instruction start offset as a
+source-free throw-site sidecar. Propagation through a direct nested call keeps
+the callee's first site; entering a catch clears it, and a new throw that
+replaces an older completion records its own site. A normal completion clears
+any retained site. These rules must not change JavaScript catch/finally
+semantics or turn a host/resource abort into a reportable language exception.
+No source identity, text, span, value, or error message enters the VM sidecar.
+
+The supervised child matches that tuple only against the exact live BlueTS
+debug attachment and its compiler-bound safe-point map. An unbound
+instruction, wrong program generation, missing/ambiguous source record,
+ordinary JavaScript program, or replaced document produces no guessed
+location. The private page-host route will carry one bounded
+source-ID/safe-point/original-byte-range/UTF-16-coordinate record under the
+exact tab/document/program identity, never the thrown value, stack, source
+text, generated text, or runtime message. The next complete private route
+bumps page-host v38 to v39; the frontend script reports remain source-free
+fixed categories and do not acquire this privileged detail.
+
+Public `DescribeExceptionLocation { source }` will require the already
+independent owner/client `OpaqueSafePointSpan` grant and that exact source ID's
+same-stream inventory receipt under the program's metadata parent. Core must
+revalidate the live document/program and child record, remint a distinct
+exception-location reply containing only the exact program-bound safe point
+and original half-open UTF-8 byte/UTF-16 coordinate span, and refuse any
+source mismatch or stale generation without a partial position. Missing
+grant returns typed `CapabilityUnavailable`; forged/unreceipted source or
+unbound mapping returns `InvalidTarget`; a normally completed or still-active
+program has no exception location. No exception-policy pause capability or
+source-text read is implied. The complete public route bumps debugger v38 to
+v39; C2.3.1.2–C2.3.1.5 implement and prove each boundary in order.
+
+**Classic native throw-site groundwork (C2.3.1.2.1):** BlueJS now exposes
+`VmDebuggerThrowSite`, containing only the installed debugger program
+generation, code-unit ordinal, and exact throwing instruction offset. The
+interpreter stamps a catchable throw at its instruction before unwinding, a
+catch entry clears the transient site, and outer script completion publishes
+the site only if the language exception escaped; a new execution or normal
+completion clears it. An unregistered bytecode throw has no site. Classic
+direct-throw, caught-throw, successor, and unregistered regressions pass,
+alongside all 31 native debugger VM tests and workspace Clippy. No IPC or
+source-map lookup changed. Nested/module propagation and replacement by a
+new throw remain C2.3.1.2.2.
+
+**Nested and module native throw sites (C2.3.1.2.2):** The VM now distinguishes
+a new catchable throw from an error propagating through its caller by a
+per-execution throw epoch. The first throwing child instruction keeps its
+installed generation/code-unit/offset through a classic or module call;
+catch entry clears that transient site, while a new catch or finally throw
+replaces it, including when finally calls another throwing child. Module
+completion publishes the same source-free sidecar only for an uncaught
+catchable error, and new module/debugger executions clear it after their
+entry is validated. Direct classic, nested classic, direct module, nested
+module, catch/rethrow, finally replacement, and retained debugger-continuation
+regressions pass; all 34 native debugger VM tests, workspace Clippy, and
+format checking pass. No IPC or source-map lookup changed.
+
+**Private location route split (C2.3.1.3):** The VM sidecar is the most recent
+realm execution, not durable per-program debugger state. First, the page
+runtime will expose it only for an exact tab-owned, generation-matching
+program (C2.3.1.3.1). Next, the supervised child will snapshot each terminal
+debugger-controlled execution before another program can overwrite the realm
+sidecar and bind it through the live BlueTS attachment's exact instruction
+entry; absent or ambiguous bindings retain no location (C2.3.1.3.2). Only
+after that complete child operation exists will page-host v39 add the private
+request/reply and core transport wrapper (C2.3.1.3.3). This keeps the wire at
+v38 until the route is fully implemented and tested; no frontend report gains
+privileged position data.
+
+**Page-owned throw-site read (C2.3.1.3.1):** `BlueJsPageRuntime` now returns
+the VM's source-free uncaught site only if the requested program is still
+owned by the exact tab and its installed generation equals the VM site.
+This is explicitly an ephemeral last-execution read, not a durable program
+record. Focused tests cover classic nested and module root/nested throws,
+another program's nonmatching read, successor execution overwrite,
+cross-realm refusal, and discard/navigation invalidation. The child still
+needs to snapshot the result before the next execution (C2.3.1.3.2); no
+wire or source-map route changed.
+
+**Child-only terminal location snapshot (C2.3.1.3.2):** A debugger-controlled
+BlueTS execution now snapshots the ephemeral native site before the scheduler
+advances another script. It checks only that pending classic program or the
+entry graph's exact installed module handles, allowing a throwing dependency
+to own its own private record. The site must pass live program/safe-point
+validation and an exact compiler-bound lowering entry with one matching
+source, bounded half-open bytes, and valid UTF-16 coordinates; a missing or
+unbound entry yields no record. The child retains only the private safe point
+and source-ID/span under its document/program record, not text, error value,
+stack, or message. Focused tests prove classic snapshot survival across later
+scripts, module nested and dependency attribution, normal BlueTS/ordinary JS
+absence, unbound-offset refusal, and navigation expiry; all ten focused
+private-child tests and workspace Clippy pass. The broader Launcher library
+run is not green: it includes socket/sandbox failures and a separately
+reproduced existing source-breakpoint expectation mismatch (offset 10 versus
+15) in an unchanged route. Current BlueTS direct lowering rejects top-level
+`throw` and `try/catch`; native caught-throw clearing was proven in
+C2.3.1.2, while real caught-BlueTS socket coverage remains for C2.3.1.5.
+No page-host wire or frontend report changed.
+
+**Complete private v39 exception route (C2.3.1.3.3):** Page-host v39 adds
+`DescribeDebuggerBlueTsExceptionLocation` and a dedicated reply under the
+exact tab/document/program/metadata tuple. The child revalidates its saved
+safe point against the live installed program and the exact retained BlueTS
+map before returning only the child-private safe point plus source-ID,
+half-open byte span, and UTF-16 coordinates. Pending/normal executions have
+typed `InvalidDebuggerState`; mismatched program/metadata or failed live
+mapping is `InvalidRequest`; replaced documents are `StaleDocument`. Core's
+page-host transport wrapper remains default-denied for test doubles and
+does not yet remint this into a public debugger response. All 14 page-host
+IPC tests pass with local sockets, as do the focused child route test, the
+real Launcher-supervised child socket test, the core wrapper socket test,
+format checking, and workspace Clippy. No frontend report or public debugger
+protocol changed; C2.3.1.4 provides the separate public authorization.
+
+**Public exception-location route decision (C2.3.1.4.1):** The public request
+will be `DescribeExceptionLocation { source }`; the only caller-selected
+identity is a previously inventoried opaque BlueTS source ID under its
+metadata/program/realm parent. The distinct `ExceptionLocation` reply will
+echo that source, a newly core-reminted exact safe point under the same
+program, and the bounded original half-open UTF-8 bytes/UTF-16 coordinates.
+It will contain no error value, stack, message, source text, generated span,
+or child handle. The core-private target/result carry only numeric public
+program/metadata/source IDs and, on success, child-validated code-unit/offset
+and coordinates; default-denied executors cannot fabricate a location.
+
+Validation proceeds in a non-disclosing order: reject malformed source
+shape; require the existing independent owner/client `OpaqueSafePointSpan`
+grant for the live realm (missing grant is `CapabilityUnavailable` without a
+child location query); then require that this stream actually received both
+the metadata parent and this exact source ID (missing/forged receipt is
+`InvalidTarget`). Resolve the live realm and program and ask the child only
+for that parent's terminal site. Core must revalidate the returned exact
+safe point and same source binding before reminting. A pending/normal program
+has no location (`InvalidExecutionState`), while a stale document/program,
+unbound instruction, mismatched source, or malformed child reply is an
+`InvalidTarget`-class refusal with no partial position. This is a new reply,
+not `StaticMetadataSafePointSpan` or a breakpoint/step grant. The protocol
+stays public v38 until the complete route and tests land in C2.3.1.4.3.
+
+**Default-denied core exception adapter (C2.3.1.4.2):** The page-debugger
+executor trait now has a separate default-denied terminal-exception API. Its
+core-private target carries only the public program/metadata generations and
+the selected source ID; its result carries only that source ID, exact
+code-unit/instruction offset, and bounded original bytes/UTF-16 coordinates.
+The out-of-process adapter translates the live identities to child handles,
+requires a matching private v39 reply, validates its source and coordinate
+shape, then independently rechecks the child safe point and exact BlueTS
+safe-point span before reminting the source-free result. Wrong program/source,
+malformed point/span echoes, stale generations, normal completion, and
+unimplemented test-double routes yield typed errors without partial data.
+The focused adapter test and all 299 engine library tests pass, as does
+workspace Clippy; the public debugger remains v38 until C2.3.1.4.3.
+
+**Public debugger v39 exception location (C2.3.1.4.3):** The complete
+`DescribeExceptionLocation { source }` command has only a previously
+inventoried opaque BlueTS source ID as input. Core requires the existing
+independent owner/client `OpaqueSafePointSpan` grant before testing the
+stream's exact metadata/source receipts, calls the default-denied exception
+adapter only after both gates, and rechecks the returned live safe point and
+compiler-bound span before constructing a distinct core-minted
+`ExceptionLocation` reply. Missing grant is fixed `CapabilityUnavailable`;
+unreceipted/forged source, malformed or mismatched location is `InvalidTarget`;
+normal/pending execution without an uncaught site is `InvalidExecutionState`.
+The reply contains only source ID, exact safe point, bounded original byte
+range, and UTF-16 coordinates; no error value, message, stack, source text,
+generated text, or child handle. The public debugger protocol is now v39.
+All 110 IPC and 300 engine library tests pass with local sockets, along with
+workspace Clippy; real Launcher-supervised public socket proof is C2.3.1.5.
+
+**Real exception-location proof split (C2.3.1.5):** First verify the positive
+classic/module nested path over the public Launcher/core/child sockets with
+an astral character before the throwing function, checking exact original
+UTF-8 byte and UTF-16 column positions and the returned child code-unit
+ordinal (C2.3.1.5.1). Then prove the negative owner/client grant, source
+receipt, caught/normal execution, and successor-document cases on real
+sockets (C2.3.1.5.2). Direct BlueTS lowering does not admit top-level
+`throw` or `try/catch`. For caught-throw proof under the page's
+`require_declared_global_calls` policy, the BlueTS source declares the
+throwing function, exposes it on `globalThis`, and calls a locally declared
+eval alias whose JavaScript `try/catch` invokes that function. The direct
+bridge regression verifies that this exact source evaluates to `true` after
+catching the original thrown value.
+
+**C2.3.1.5.1 real-socket evidence:** The Launcher-supervised public debugger
+test exercises classic and module BlueTS nested throws through separate
+browser/core/child processes. After same-stream metadata and source inventory,
+each returns one originating source, the first nested code-unit safe point in
+the public inventory, and the original function declaration's exact UTF-8 byte
+span and UTF-16 columns. An astral prefix makes byte and UTF-16 columns
+different; the second module source ID receives `InvalidTarget` instead of a
+partial location. The focused real-socket test passes.
+
+**C2.3.1.5.2 real-socket evidence:** Separate Launcher/core/child socket
+sessions prove that absent owner or client `OpaqueSafePointSpan` grant returns
+`CapabilityUnavailable` even after source inventory. With both grants, a
+fresh stream refuses the same valid source as `InvalidTarget` until it has
+independently inventoried both metadata and source IDs; the exact source then
+returns a location. A successor document refuses the predecessor's receipted
+source as `StaleRealm`, while a newly receipted normally completed BlueTS
+program returns `InvalidExecutionState`. The caught-throw BlueTS program uses
+the checked eval-alias fixture above and also returns `InvalidExecutionState`
+without a partial location. All three focused real-socket denial tests, the
+bridge caught-value regression, workspace Clippy, and formatting checks pass.
+
+**C3.1.1 source-set split:** The existing v36 `GetStackCoordinates` route
+already maps a paused classic or module caller/callee stack within one BlueTS
+program to exact original byte and UTF-16 spans after same-stream receipts.
+C3.1.1.1 strengthens that real-process test: the classic fixture must expose
+a second inventoried source, and substituting it for the caller's correct
+source must return `InvalidTarget`, not merely any non-coordinate reply. The
+module fixture exposes only one source, so its positive nested-stack proof
+cannot establish wrong-but-receipted multi-source behavior. Current
+`DebuggerStackSnapshot` and `DebuggerStackCoordinatesTarget` require every
+frame and source to share one program/metadata parent. A closed module graph
+can retain separate entry and dependency debugger programs; C3.1.1.2 first
+decides how a truly cross-program stack represents and authorizes per-frame
+sources, then implements and proves that contract on real sockets. C3.1.1.1's
+focused Launcher test passes for classic and module without a wire change.
+
+**C3.1.1.2.1 linked-module frame decision:** Do not relabel a dependency
+closure as an entry-program code unit. Today the VM snapshot carries one root
+generation and rejects a child with a different installed generation;
+page-runtime and public frame identities similarly use one program, and the
+public stack-coordinate target requires every source to share one metadata
+parent. A distinct linked-module family will preserve the v39 same-program
+route. Its arm target is an inventoried dependency safe point plus an explicit
+entry program in the same live realm; the child must prove the dependency is
+in the entry's closed authorized graph and that the target instruction belongs
+to that exact installed dependency generation. The VM records both entry and
+callee generations in the retained continuation and each stack frame, never
+inferring a callee from a repeated ordinal or a module URL. The initial
+bounded stack is the paused dependency child and its suspended entry caller.
+
+The new public linked-frame identity is core-minted and binds the core
+instance, document generation, entry program, callee program, code-unit
+ordinal, and invocation serial/handle. `GetExecutionState { entry }` will
+report a distinct linked-paused state; separate linked-stack and linked-resume
+requests accept that exact frame. A linked stack carries an ordered safe point
+with its *own* program for each frame, unlike `DebuggerStackSnapshot`. Its
+coordinate request echoes the complete expected stack and one source ID per
+frame. Each source ID must be under a separately inventoried metadata handle
+for that frame's program; the two handles need not match.
+
+The public operations are `ArmLinkedNestedSafePointBreakpoint` (entry and
+safe point), `GetLinkedStack` (frame), `GetLinkedStackCoordinates` (complete
+expected stack and ordered sources), and `ResumeLinkedNestedFrame` (frame),
+with distinct linked-frame and linked-stack result types; none are added to
+v39. Arm, stack, and resume require the existing live nested-frame execution
+capability; coordinate reads additionally require the independent owner/client
+`OpaqueSafePointSpan` grant and same-stream metadata and source receipts for
+**each** frame. Core rereads the complete paused stack, checks exact equality,
+then remints only compiler-bound original byte
+and UTF-16 spans from the corresponding child attachments. One bad frame
+returns no span vector. No source text, module URL, bytecode, or error value
+is added to the public reply.
+
+Malformed, cross-realm, cross-graph, or wrong-generation targets return
+`InvalidTarget`; missing owner/client span grant or a missing same-stream
+receipt returns `CapabilityUnavailable`; a moved or absent continuation
+returns `InvalidExecutionState`; an expired document returns `StaleRealm`.
+A wrong but receipted source for one frame returns `InvalidTarget`, with no
+partial coordinates. The linked family needs a complete private page-host
+v40 route and public debugger v40 route, each bumped only when its corresponding
+route is implemented; both remain v39 during the native-only step. The acceptance
+fixture is an authorized entry module importing a function from a separate
+BlueTS dependency and calling it from the entry body; tests must prove the
+two installed programs and two original source IDs remain distinct.
+
+**C3.1.1.2.2.1 native evidence:** BlueJS now stamps each retained stack frame
+with its own installed program generation. A separate linked-module native
+pause accepts an exact entry/dependency generation pair and dependency safe
+point only in the entry's reachable closed graph; the interpreter captures the
+generation of the *calling instruction* because the active module name can
+already denote the callee. This ensures a dependency function called during
+dependency evaluation cannot consume the entry's target. The linked snapshot
+requires the paused dependency child and entry caller, while the existing
+same-program snapshot still refuses mixed generations. Native debugger tests
+cover exact child/parent generations, wrong serial, stale entry/dependency
+generations, unrelated graph members, and expiry after resume. The full 36
+BlueJS native debugger tests pass; the private and public wires remain v39.
+
+**C3.1.1.2.2.2 split and first seam:** The private route is staged as a
+host-neutral page-runtime seam, then a child-local state/source-mapping seam,
+then one complete private wire change. The page runtime now retains a distinct
+linked frame carrying the exact realm tab, entry program, dependency program,
+code-unit ordinal, and invocation serial. It accepts only a dependency safe
+point owned by the realm and present in the closed graph, delegates exact
+entry-to-dependency reachability to the VM, and checks both installed frame
+generations on linked stack reads. Its resume consumes only that retained
+linked frame and leaves the entry root for its separate module resume. Tests
+exercise the real imported dependency call, both generations, old-route
+refusal, wrong dependency/serial, cross-realm read, graph exclusion, unrelated
+member, and navigation expiry. No IPC shape or version changes in this seam.
+
+**C3.1.1.2.2.2.2.1 child scheduling evidence:** The page host retains an
+independent linked target on a pending BlueTS module entry and identifies the
+dependency by its separately registered child program. On advance it pauses
+only the dependency safe point in the entry's attached graph, keeps the exact
+linked runtime frame under the entry's scheduler state, and maps a two-frame
+stack back to distinct child program safe points. Linked resume consumes only
+that frame and restores the verified entry root boundary for the existing
+module resume. Wrong entry/document selectors, moved frames, and attempts to
+read the linked state through the v39 same-program execution route are refused.
+The child test exercises the actual imported function and full return path;
+the private/public wire remains v39. The child-local arm, stack, and resume
+methods are intentionally staged until the complete private v40 route is
+added, so their temporary dead-code allowances are removed at that wiring
+step.
+
+Verification note: the focused linked child test and workspace Clippy pass.
+In the wider 49-test `bluejs_host::tests` run, 47 pass and two existing
+source-breakpoint/source-step cases fail independently with an expected
+bytecode offset of 10 versus the observed 15. Both reproduce in isolation;
+neither uses the linked scheduler. This leaf does not claim to fix those
+source-mapping assertions.
+
+**C3.1.1.2.2.2.2.2 child source evidence:** The child-local linked coordinate
+read first reacquires the complete paused two-frame stack with the original
+scope budget and checks it against the caller's full expected snapshot. It
+then resolves each frame's safe point through the independently registered
+BlueTS metadata handle and compiler source ID for that frame's program. The
+result is an all-or-nothing two-span array: a swapped metadata handle, an
+unbound child or entry source ID, or a changed expected stack returns no span.
+The real imported-dependency test verifies the dependency and entry source
+provenance names remain separate. Private and public protocol versions remain
+v39 until their complete linked routes are implemented.
+
+**C3.1.1.2.2.2.3 private v40 route:** The page-host wire now has a separate
+linked-module arm, execution-state reply, two-frame stack, two-source span
+read, and exact-frame resume family. Each frame carries its own child program
+safe point; the span reply contains only the complete pair of compiler-bound
+original spans, never a partial vector. Large stack/span replies are boxed so
+the existing error-returning child helpers keep their bounded enum size.
+Before acknowledging an arm, BlueJS validates entry-to-dependency graph
+reachability and both exact installed generations without executing or
+reserving the graph. Child requests reject malformed/wrong serials, stale
+documents, moved stacks, swapped metadata, and either unbound source ID.
+Private protocol v40 is enabled only with these handlers and round-trip
+coverage; the public debugger protocol remains v39 until core remints and
+independently authorizes this route. The IPC library suite passes 111 tests;
+the wider launcher host suite has the same two isolated source-offset failures
+recorded above and no new linked-route failure.
+
+**C3.1.1.2.2.3.1 core child adapter:** The core transport can now send each
+private linked arm/stack/span/resume request, while a separate adapter accepts
+only exact echoes of the entry/dependency programs, document, invocation,
+complete two-frame stack, ordered source IDs, and compiler-valid byte/UTF-16
+span ranges. A moved or malformed private reply returns a typed core failure
+with no partial data. The adapter deliberately does not mint public frame IDs
+or authorize span access; those are the next core leaf. The public debugger
+wire remains v39.
+
+The adapter's focused fake-child test passes after checking the valid
+arm/state/stack/span/resume sequence and then altering each reply in turn:
+wrong arm safe point, moved frame serial, swapped stack frame, bad second
+source span, and wrong resume echo are all rejected. The existing coordinate
+validator remains authoritative for byte/UTF-16 bounds; no public source
+identity or capability is created in this leaf.
+
+**C3.1.1.2.2.3.2 core linked-frame reminting:** Core now captures the complete
+private paused stack before minting two distinct, process-bound frame handles.
+Each handle carries its own reminted program and exact safe point; the private
+entry/dependency IDs, invocation serial, and source attachments stay in the
+executor. Re-reading the same pause preserves both handles, while a moved
+invocation remints them and stale document/program mappings discard them.
+Malformed or moved child state/stack replies clear the prior association.
+The staged two-span read requires a separate grant plus both metadata and
+source receipts, checks both ordered public safe points and their independent
+metadata attachments before child access, and emits no partial spans. The
+focused fake-child test proves stable/moved identities, distinct provenance,
+grant/receipt/swapped-attachment denials without child calls, and complete
+two-span success. The public debugger wire remains v39 until the final route.
+
+**C3.1.1.2.2.3.3.1 public linked data shapes:** The public IPC crate now
+defines a distinct linked-frame identity that can represent both the non-root
+dependency and root entry caller. Its fixed two-frame stack requires ordered
+distinct programs, one realm/core instance, separate frame handles, and exact
+per-frame safe points. The two-source coordinate target and result each bind
+their metadata/source attachment to the corresponding frame, rejecting a
+swapped pair or reordered span. A focused IPC serialization/denial test passes.
+No request/reply variant or callable route was added, and public v39 stays
+unchanged until the complete authorized handler is ready.
+
+**C3.1.1.2.2.3.3.2.1 core-facing linked arm:** A distinct default-deny linked
+capability and core-facing frame/stack/state/authorization types are staged for
+the public dispatcher. The out-of-process arm resolves both independently
+reminted live programs, rejects a same-program or root dependency target,
+revalidates the dependency safe point, and accepts only the private child's
+exact graph-validated acknowledgement. Focused fake-child tests cover valid
+arms, stale documents, same-program targets, and a forged arm echo. The
+existing core pause collector now keeps stable frame handles when only the
+requested scope budget changes. Public v39 remains unchanged.
+
+**C3.1.1.2.2.3.3.2.2.1 core-facing linked state/stack:** The strict private
+adapter distinguishes exact entry-bound Pending and Completed replies from
+linked Paused and Resuming replies. Core publishes a linked pause only after
+the complete dependency/entry stack is re-read and both program generations
+are found in the current document's remint map; an unregistered frame clears
+the old association. A repeated pause or different scope budget preserves
+both core frame handles, whereas a moved invocation remints both and makes
+the old top frame unusable. Focused tests cover all four lifecycle states,
+complete stack reads, stale-frame refusal, and malformed/missing child data.
+No public request/reply variant exists yet; the debugger wire remains v39.
+
+**C3.1.1.2.2.3.3.2.2.2 core-facing linked resume/spans:** Exact resume now
+requires the active top core frame and rechecks both independent live program
+mappings before asking the child to resume the matching private invocation.
+The two-source span operation requires a complete previously returned public
+stack, a separate span grant, and independent metadata/source receipts for
+both frames. It rejects any changed caller location, swapped metadata, or
+missing grant/receipt before the child is contacted, then asks the strict
+private adapter for all-or-nothing original byte/UTF-16 spans. Fake-child
+tests cover successful resume and both spans, stale top frame, forged caller
+stack, swapped attachment, and each missing authorization. The core-facing
+route is complete; no public wire request or version change exists yet.
+
+**C3.1.1.2.2.3.3.3.1 public linked control shapes:** The public linked-arm
+target now requires one exact non-root dependency safe point under a distinct
+entry program in the same realm. The separate linked lifecycle type validates
+Pending/Completed, a complete entry-owned paused stack, and a non-root
+dependency frame while resuming. The IPC test round-trips the paused shape and
+rejects same-program/root targets or role-swapped state. These are data shapes
+only; no request/reply route or public protocol bump has occurred.
+
+**C3.1.1.2.2.3.3.3.2 public linked v40 route:** The public debugger now has a
+distinct `LinkedModules` capability and complete linked arm, state, stack,
+resume, and two-source coordinate request/reply family. Core remints both
+programs and both active frames, checks the complete previously returned
+stack against the current pause, and requires the existing independent
+`OpaqueSafePointSpan` grant plus separate same-stream metadata and source-ID
+receipts for each program before contacting the child. Child span mapping
+revalidates the whole live stack and both source attachments atomically; no
+partial span vector is returned. An IPC socket test round-trips every new
+request/reply. The core dispatcher fake-child test proves same-program arm
+denial, missing second receipt, absent span grant, a fresh unreceipted stream,
+moved caller, and corrupt second span all fail without a partial response.
+The real launcher-supervised BlueTS graph test proves the public arm/state/
+stack/resume path over the child socket and independently reads exact original
+dependency and entry spans. It exposed and fixed a core inventory issue:
+refreshing one module's metadata formerly erased its sibling's mapping;
+inventory now replaces only the selected program's attachments. The linked
+resume returns to the entry root, which remains under its separate root
+resume control until completion. Public debugger protocol v40 is enabled only
+with this complete route; private PageHost remains v40.
+The workspace test run stopped after three BlueJS regex-deadline failures
+under concurrent build load; each passed in isolation, and all 576 BlueJS
+library tests passed with one test thread. All 305 engine library tests passed
+with local socket access and one test thread. Focused linked IPC, core, and
+real child tests and workspace Clippy also passed.
+
+**C3.1.1.2.3 real Launcher source-set proof:** An owner-manifest-authorized
+HTTP page now loads a two-file BlueTS module graph through the actual
+Launcher/core/child processes. The public debugger socket arms a dependency
+function entry, observes distinct dependency and entry program/frame handles,
+and returns two source-bound spans matching the exact original text and UTF-16
+columns. A missing entry-source receipt refuses the whole request; swapped
+source handles return a typed invalid-target reply; an HTTP reload expires
+the old arm, state, and coordinate targets as stale realms. This closes the
+cross-program nested source-set mapping without exposing either module's text
+or private child handles in the protocol.
+
+**C3.1.2.1 module breakpoint/symbol contract:** A module entry and each
+dependency remain separate generation-bound public programs. Source-position
+resolution accepts only a source ID under that program's own metadata and a
+bounded original byte offset, with the independent `OpaqueSourceBreakpoint`
+owner/client grant and same-stream metadata/source receipts. It yields either
+one verified safe point in that same program or an explicit unbound result;
+an unrelated program's source never substitutes. A static symbol location is
+a declaration range, not an executable breakpoint: it separately requires
+`OpaqueSymbolLocation` plus same-stream symbol and source receipts under one
+program's metadata. A client may resolve a receipted declaration position,
+but an unbound/type-only symbol must not be rounded to a nearby instruction.
+Neither operation leaks a source path, text, symbol name, runtime value, or
+child handle. Module-root points use the root execution-control family only
+when their ordinal is zero; dependency function points use the linked family
+only with an exact, distinct entry program and a live closed-graph check.
+Any source-to-control path must revalidate the program generation, verified
+safe point, pending execution state, and graph at arm time; stale, swapped,
+cross-program, unreceipted, or moved targets return typed no-partial refusals.
+The existing two-step resolve/arm composition remains available for discovery;
+the implementation leaf will decide whether it needs an atomic source-arm
+request after proving the existing module behavior. This decision changes no
+wire or capability and leaves public debugger v40 unchanged.
+
+**C3.1.2.2 module source/symbol binding:** The two-file Launcher fixture now
+negotiates the separate source-breakpoint and symbol-location grants. For
+each program it inventories only that program's metadata, source, and symbol
+handles; a source position resolves to a safe point in the same program,
+while the compiler symbol range names only its own original declaration.
+Source-end positions remain explicitly unbound. Guessed source/symbol IDs
+fail before child lookup, a dependency symbol paired with the entry source
+is invalid, and the old source/symbol handles become stale after HTTP reload.
+The test exposed that direct-bridge breakpoint resolution indexed root AST
+provenance but omitted verified nested map entries: the dependency function
+declaration resolved to its module root instead of the child entry. Both the
+live attachment and retained registry now consult the already-validated
+nested safe-point entries without duplicating their stored source map. The
+resolver selects the most specific containing span, then the nearest
+following span; identical declaration/child ranges choose the child's first
+verified instruction. All 97 bridge library tests, the focused real Launcher
+test, workspace Clippy, and formatting pass. No protocol bump is needed.
+The broader 24-test Launcher debugger file passed 22 tests in one run; two
+existing nested-arm cases lost their short pending-admission window before
+arm. Each passed when rerun alone (the cutover case on its second retry).
+All 305 engine library tests passed with local socket access and one test
+thread; the full Launcher file is therefore not claimed clean for this run.
+
+**C3.1.2.3.1 module-root source arm:** The existing atomic
+`ArmStaticMetadataSourceBreakpoint` route also owns a module root code unit,
+not just a classic root. A real Launcher/core/child socket test inventories
+the module's own metadata and source, refuses an unreceipted guess, then
+proves a verified function-child source position and a source-end unbound
+position both refuse arm while execution remains pending. The original root
+call position arms its exact program-bound safe point, pauses, resumes, and
+completes. The public capability description now names both classic and
+module roots; no wire or runtime behavior changed.
+
+**C3.1.2.3.2 dependency source-to-linked control:** The real Launcher debugger
+stream now inventories the dependency's metadata and source while the two-file
+graph is pending, resolves an original dependency function position to the
+verified child-entry safe point, and supplies that exact program-generation
+bound point with a distinct entry program to `ArmLinkedNestedSafePointBreakpoint`.
+The public arm revalidates the safe point before the private child validates
+the live closed graph and pending state in the same owning request. A
+same-program entry, wrong dependency generation, or arm after the pause has
+moved returns a typed refusal; earlier core/child tests cover unrelated graph
+members and forged child acknowledgements. Since source maps cannot change
+within a retained program generation, the two-step source discovery plus
+arm-time generation/graph validation preserves the contract without adding an
+atomic source-specific public operation or bumping debugger v40.
+
+**C3.1.2.3.3.1 symbol-to-control decision:** A symbol location is only an
+original declaration range; source-position lookup may legitimately return a
+later instruction, so its result alone cannot prove that a symbol is
+executable. The supported composed workflow independently negotiates
+`OpaqueSymbolDisplay`, `OpaqueSymbolLocation`, `OpaqueSourceBreakpoint`, and
+`OpaqueSafePointSpan` with their inventory prerequisites. It accepts only a
+same-stream, same-program symbol/source pair whose compiler-owned kind is
+`Variable` or `Function`. `Interface`, `TypeAlias`, and `Import` are not local
+executable breakpoint candidates in this slice, even if a later statement is
+available; a missing display/location/span grant or receipt also refuses.
+For a value candidate, resolve the declaration start under the same source
+receipt, then require a separately authorized exact safe-point span under
+that source to lie within the declaration's half-open range before choosing
+root or linked control by its code-unit ordinal. Explicit unbound results and
+non-overlapping later spans do not arm. Both control arms still revalidate
+the generation-bound safe point and pending graph at the owning core/child
+request. This is a checked composition of existing v40 operations, not a new
+server-side symbol-arm authority or a wire version change; clients that do
+not negotiate every required surface cannot claim symbol breakpoint control.
+
+**C3.1.2.3.3.2 entry-module symbol control:** A data-only v40 helper now
+checks the separately observed symbol kind, original declaration location,
+source-position binding, and exact safe-point span as one candidate tuple.
+It returns only a safe point already in those observations, or `None` for
+type-only/import kinds, unbound positions, wrong IDs, a moved source byte,
+or a later span outside the declaration. It does not grant any debugger
+operation. The real Launcher socket test loads an inline BlueTS module with
+an interface and a root variable, negotiates all four independent metadata
+surfaces, verifies the variable declaration's original range and contained
+root span, and arms only that exact module root. The interface and an explicit
+unbound candidate leave execution pending. All 114 IPC library tests, the
+focused Launcher test, workspace Clippy, and formatting pass; debugger v40
+is unchanged.
+
+**C3.1.2.3.3.3 dependency symbol control:** The real two-file Launcher
+fixture now inventories the dependency's function symbol while execution is
+pending, verifies its separately granted `Function` display and original
+declaration range, resolves that declaration under the dependency's own
+source receipt, and obtains the exact child span under the independent span
+grant. Only the candidate accepted by the data-only same-program/contained-
+span helper is supplied to the distinct entry's linked arm. The existing
+same-program, wrong-generation, moved-pause, swapped symbol/source, and
+reload-stale checks remain typed refusals. The focused real socket test,
+workspace Clippy, and formatting pass; debugger v40 remains unchanged.
+
+**C3.1.2.4 real module breakpoint/symbol acceptance:** The inline module
+root and two-file linked dependency now each have a focused Launcher/core/
+child public-socket test of independently granted source, symbol, and exact
+span evidence feeding their appropriate execution-control arm. A second
+debugger stream opened after the first closes cannot reuse its source,
+symbol, or span handles, whether it requests no metadata grants or all of
+them without same-stream inventory receipts; refusal is typed and returns no
+partial payload. The two-file stream additionally proves both entry and
+dependency source/symbol targets expire after real HTTP reload, alongside
+the linked frame and coordinate targets. Concurrent servicing of two debugger
+streams is not guaranteed, so the second-stream probe closes the first before
+connecting. Both focused real-socket tests, workspace Clippy, and
+formatting pass; public debugger remains v40.
+
+**C3.1.3.1 static/runtime scope contract:** The existing public `Scopes`
+inventory exposes only active `(scope_depth, slot_ordinal)` selectors;
+`Value` returns a separately granted bounded runtime preview, while
+`DescribeStaticMetadataType` and `DescribeStaticMetadataSymbolType` report
+compiler-owned static evidence. None currently binds an active VM slot to a
+specific checked BlueTS symbol, so equal names, inferred value shapes, or a
+nearby source span are not acceptable joins. The bridge must retain a
+verified, generation-bound mapping from a supported lowered declaration's
+compiler symbol to its installed BlueJS code unit and lexical slot. A query
+for one previously receipted active `Scopes` slot must repeat its exact
+realm/program/frame/safe-point/slot target and metadata attachment; core
+checks the receipt's internal pause incarnation and child rechecks the live
+mapping before returning only
+opaque symbol and type IDs under a new independent owner/client static-scope
+grant. The symbol/type relation and optional type display still require
+their own same-stream inventories and grants. No runtime preview, value
+handle, type name, source text, or claim of runtime type validation belongs
+in this static relation reply. Conversely `Value` remains the only bounded
+runtime-preview reply under its separate grant and scope receipt; possessing
+a static type grant never authorizes it. A client may present both replies
+side by side only for the same live pause incarnation. Unsupported, erased,
+ambiguous/shadowed without exact slot provenance, cross-program, moved,
+cutover, and stale targets refuse without a guessed type or partial value.
+An `Undefined` runtime preview does not erase a declared static type, and a
+static `TypeId` is not a runtime proof. This design does not add general
+watch/evaluate or dynamic type reification; debugger v40 remains unchanged
+until the complete independently gated public relation is ready.
+
+**C3.1.3.5.1 same-slot display/value decision:** The client may pair two
+independent successful replies only when they name one exact active slot on
+one debugger stream and one still-live pause. For an ordinary classic or
+module root/parent, `GetStaticScopeRelation` echoes the complete
+`DebuggerValueTarget` inside its static selector; its `static_type` may then
+be passed to `DescribeStaticMetadataType` only after that stream inventories
+the type and negotiates the separate type-display grant. `GetValue` must echo
+the same `DebuggerValueTarget`, after an independently granted bounded-value
+read and a same-stream `GetScopes` receipt. A type display is compiler
+evidence; the bounded value is a copied VM snapshot. They are never merged
+into one reply or used to claim runtime type validation. In particular, a
+declared `number` beside `Undefined` remains two truthful observations.
+
+The existing public `GetValue` target is an ordinary `Scopes` selector and
+cannot name a linked entry-root slot. Add a distinct linked value selector
+using the existing complete `DebuggerLinkedScopeTarget` (exact two-frame
+stack, entry frame index 1, and scope entry), and a distinct echoed snapshot
+with the existing bounded preview vocabulary. The private child route must
+read the retained linked entry root directly from the exact live graph; it
+must not synthesize an ordinary root frame or infer a slot from a name,
+source span, or runtime shape. Core remints the preview under its existing
+depth/node/payload budgets. No new metadata grant is implied: a complete
+`GetLinkedScopes` reply may mint a linked slot receipt for a stream holding
+either the static-relation or bounded-value grant, but `GetLinkedValue`
+requires the bounded-value owner and client grants specifically. The static
+relation still requires its own grant plus metadata, symbol, and type
+inventories; a type display still requires its separate display grant.
+
+Both paths recheck the core-owned pause incarnation and exact child document,
+program generation, linked stack, and active slot before returning a full
+snapshot. Truncated linked scopes, a missing or foreign-stream receipt, a
+swapped frame/program, a moved step or resume, HTTP reload, or supervised
+child cutover yield a typed denial with no partial type/value payload. A
+client must discard an earlier half of a proposed side-by-side display if
+the other half is refused. Stage the private route and native tests before
+adding a callable public linked request; bump private and public protocol
+versions only when each respective route is complete. This design leaf does
+not change debugger v41 or the current metadata manifest.
+
+**C3.1.3.5.2 real ordinary display/value acceptance:** A focused public
+Launcher/core/child socket test runs the same supported BlueTS declaration in
+classic and module form. It arms the root before metadata reads, obtains
+same-stream compiler metadata/type/symbol and Scopes receipts, and checks the
+exact static relation selector and `number` type display. An independent
+Value-only stream advances to the initialized slot and obtains a bounded `9`
+preview; static-only and relation-only streams refuse Value and type display
+respectively, while the Value-only stream refuses the static relation. A
+combined stream independently receipts the same live slot, echoes the same
+selector in both replies, and proves its preview matches the Value-only
+snapshot. After a real instruction step, both old slot requests refuse
+without a partial payload; after HTTP reload, old relation, Value, and type
+display targets also refuse. The focused real-socket test passes for both
+script kinds without changing debugger v41 or the compiler/runtime ABI.
+
+**C3.1.3.5.3.1 native linked entry value:** BlueJS now reads one entry-root
+slot directly from the retained module continuation while a distinct
+dependency child is paused. It first reacquires the full two-frame linked
+snapshot, compares every frame generation, safe point, active slot, and
+truncation flag with the caller's expected snapshot, then uses the existing
+plain-data copier and its fixed depth/node/payload limits. The page runtime
+rechecks exact tab ownership, both installed program handles, invocation
+serial, and the complete snapshot before asking the VM for the value. Native
+and page-realm regressions read an initialized `9`, refuse wrong serial,
+slot, moved child frame, wrong realm/program, and resume-stale targets; a
+4 KiB-plus string refuses without a partial preview. Five focused linked
+tests and eleven existing plain-preview tests pass. This leaf adds no private
+wire route or public Value authority.
+
+**C3.1.3.5.3.2 private linked entry value:** Page-host protocol v42 carries a
+distinct linked value target: the exact linked frame, its complete child-first
+two-frame stack, frame index one, and one unique entry-root slot. The private
+reply echoes that entire target and one bounded plain-data preview. The host
+first validates the wire shape, reacquires the active linked frame and full
+stack, and then asks the page runtime to recheck both installed programs and
+the retained BlueJS continuation before copying the binding. Malformed and
+moved selectors, wrong programs or document generations, and resumed frames
+return only typed errors. A preview exceeding the payload budget returns
+`ResourceLimit` with no partial value. The IPC socket round trip and the
+Launcher child-owner linked-pause test pass; this leaf adds no public debugger
+request or grant. The child executor and core-facing adapter follow in
+C3.1.3.5.3.3.
+
+**C3.1.3.5.3.3 child and core-facing linked value:** The child client now
+transports the v42 linked-value request. A strict private adapter accepts only
+a well-formed bounded reply that echoes the complete frame, stack, selected
+root frame, and slot. The core-facing selector contains only its reminted
+two-frame identity and root slot. The executor rechecks the full live linked
+scope, exact entry slot, and retained private stack before sending the child
+request, then remints the plain-data preview only after the adapter accepts
+the exact echo. The public debugger still has no linked Value request or
+receipt. The focused engine regression reads `9` and refuses wrong frame and
+slot, swapped program order, altered child echo, and over-budget child data.
+The native, private wire, owner, and core-facing parts of C3.1.3.5.3 are now
+complete; public authorization and same-stream receipt are C3.1.3.5.4.
+
+**C3.1.3.5.4.1 staged public linked value and receipt:** The existing
+`DebuggerLinkedScopeTarget` is the exact public linked value selector: it
+contains both core-reminted frames, the entry frame index, and one slot. A
+distinct `DebuggerLinkedValueSnapshot` echoes this selector with the existing
+bounded plain-data preview, while debugger v41 still has no request or reply
+that can carry it. The per-stream receipt table now exposes an exact linked
+slot check separate from ordinary `Scopes` receipts. A complete
+`GetLinkedScopes` reply records its slots when either the independently
+negotiated static relation grant or bounded-value grant is present; a visibly
+truncated reply records none. Receipts remain limited by the shared fixed
+scope budget and expire on a new core pause incarnation. This prepares the
+public handler without giving a Value-only stream metadata authority.
+
+**C3.1.3.5.4.2 authorized public linked value:** Public debugger protocol
+v42 adds `GetLinkedValue` and an exact echoed `LinkedValue` snapshot. Core
+requires the independently negotiated bounded-value owner/client grant and
+the complete same-stream `GetLinkedScopes` receipt from the current pause.
+Before reading, it reacquires the live linked entry scope, confirms the
+unique selected slot, and compares the full core-reminted two-program stack
+with the current child state. The already strict core-facing adapter then
+reads the retained entry binding. Core remints the plain-data preview under
+its fixed depth, node, container, and payload limits and returns one complete
+snapshot or one typed error. IPC and engine tests reject absent grants or
+receipts, truncated scopes, foreign streams, new pause incarnations, forged
+slots, swapped programs, moved stacks, and over-budget data. The IPC 120-test
+and engine 309-test library suites pass. The engine value test module was
+split into an ordinary-value file and a linked-scope file, both below 1,300
+lines. The real Launcher socket acceptance and expiry proof remains
+C3.1.3.5.5.
+
+**C3.1.3.5.5.1 linked same-slot socket acceptance:** A two-file BlueTS module
+pauses in its dependency while the entry root still owns an initialized
+`rootValue` slot. One real Launcher/core/child debugger stream obtains the
+complete linked stack and linked-scope receipt, then pairs the exact echoed
+linked static selector with its compiler `number` type display and the exact
+echoed linked Value selector with a bounded `9` preview. Separate streams
+verify that static-only, relation-only, and Value-only grants stay independent;
+a Value-only stream must first receipt complete linked scopes. A foreign stream
+without that receipt and a stream with truncated linked scopes both reject the
+Value target without a partial preview. The focused real-socket test passes
+using the shared workspace `target/` directory. Lifecycle expiry remains
+C3.1.3.5.5.2.
+
+**C3.1.3.5.5.2 linked lifecycle and cutover acceptance:** The public linked
+execution route exposes resume, but no separate linked step command. A real
+socket resume invalidates the old pause-bound static relation and linked Value
+target without a partial reply. The compiler type display remains valid while
+its program generation is live, because it is an independently authorized
+metadata query. HTTP reload invalidates all three old selectors. A supervised
+child cutover then starts a successor core, pauses the same two-file module,
+and proves the predecessor relation, type display, and Value selector refuse
+while the successor's fresh Value selector still returns `9`.
+
+The cutover regression first exposed an ABA alias: with matching realm and
+program ordinals, deterministic public metadata counters let the old type ID
+match a fresh successor type receipt. Core now seeds its public metadata
+handle and generation counters from its already-random process incarnation
+within the reserved metadata namespace, and fails closed if that incarnation
+cannot be minted. The independent linked frame still carries its full core
+instance. The focused resume/reload and cutover real-socket tests pass with the
+single workspace target cache.
+
+**C3.1.3.5.5.3 workspace and coverage closure:** The all-target workspace
+build, sequential workspace test suite, warning-free workspace Clippy, Rust
+format check, and diff check pass. The CI-style workspace coverage run reports
+90.33% lines against the 90% gate; the independent no-exclusion BlueJS run
+reports 93.31% against its 88% gate. Both runs exercised the BlueTS compiler,
+bridge, core, and real Launcher tests. `cargo llvm-cov` used a temporary
+`target/llvm-cov-target` instrumentation cache, which was removed after the
+reports; the ordinary `target/debug` cache was retained.
+
+The line audit found one 1,322-line linked child test owner. Its independent
+arm and real-child execution tests now live in an MPL-headed 544-line
+`linked_execution.rs`; the paused-stack and static/value remint test stays in
+the 784-line `linked_pause.rs`. The three tests pass under their moved module
+paths, and the incremental all-target build, workspace Clippy, and formatting
+checks pass after the split. No affected BlueTS/debugger source or test owner
+exceeds 1,300 lines. C3.1.3.5, C3.1.3, and C3.1 are complete; metadata
+invalidation and successor isolation continue under C3.2.
+
+**C3.2.1 reload and tab-close metadata invalidation:** Reload already clears
+the child executor's retained metadata and makes old public inventory,
+derived type/symbol/contract/source, and lowering requests return typed
+stale-realm refusals on a real Launcher stream. A new real socket test closes
+the only BlueTS tab after receipting and displaying its `number` compiler
+type. The public realm inventory then becomes empty, and old metadata and
+type requests return typed `InvalidTarget` or `StaleRealm` errors with no
+payload. The core child-executor test additionally mints successor metadata
+after reload, closes that tab, checks both retained live-document and
+metadata maps are empty, and rejects its former summary. The existing
+`close_removed_tabs` lifecycle cleanup supplies the behavior; no public wire
+change is needed. Focused core and Launcher tests, affected Clippy, and
+formatting pass with the ordinary shared target cache.
+
+**C3.2.2 cache and hibernation generation rule:** Current BlueIce has no page
+cache or hibernation restore route, so no static BlueTS metadata can be
+serialized and revived by either event. The existing HTTP source cache owns
+only verified source bytes; eviction causes a refetch and fresh integrity
+check, not an installed-program or metadata generation change. For a future
+page eviction or hibernation, the supported fail-closed operation is BlueJS
+program invalidation followed by `DirectDebugRegistry::prune_invalid` or
+`forget`; a restoration path would require proof that the same checked
+generation survived. The direct-bridge regression now invalidates a live
+program, prunes its static metadata, reinstalls identical source with a new
+generation, rejects the predecessor handle, and explicitly forgets the new
+generation. The existing HTTP cache test covers refetch integrity after
+eviction. The focused bridge test, Clippy, and format checks pass. This closes
+the current no-restore contract without claiming that page-cache or
+hibernation features are implemented.
+
+**C3.2.3 successor metadata isolation:** The real supervised-child cutover
+regression now asserts that a successor can reuse the predecessor's visible
+realm and public program IDs while its full core instance and public metadata
+ID differ. With the successor's own complete linked-scope and metadata
+receipts, its Value request still returns `9`, while the predecessor's static
+relation, type display, and linked Value selectors all receive typed
+no-payload refusals. The direct bridge separately proves that reinstalling
+identical source after invalidation mints a distinct BlueJS generation and
+cannot retrieve predecessor static metadata. The focused socket test,
+Launcher Clippy, and formatting pass. C3.2 is closed for the current
+no-page-restore lifecycle contract.
+
+**C4.1.1 public debugger capability inventory:** The real Launcher socket
+suite already exercises each required public route through core and the
+supervised child. `module_lifecycle::launcher_pauses_and_resumes_a_real_bluets_module_entry`
+proves pause; `module_lifecycle::launcher_steps_a_real_bluets_module_then_rejects_stale_generation`
+proves step; `spans_stack::launcher_batches_exact_classic_and_module_stack_coordinates_only_with_receipts`
+proves stack; `scope_relations::launcher_relates_classic_and_module_root_scopes_without_value_authority`
+proves scope; `runtime_values::launcher_reads_granted_classic_and_module_root_and_nested_bluets_values`
+proves bounded Value; and
+`exceptions::launcher_reports_original_classic_and_module_nested_exception_positions`
+proves original exception location. These are distinct registered tests in
+`backend/launcher/tests/out_of_process_debugger/`; the sequential workspace
+suite passed, and `cargo test -- --list` confirms the current inventory.
+Rejection classes are audited separately in C4.1.2.
+
+**C4.1.2 public debugger refusal inventory:** Three distinct real
+Launcher/core/child socket tests already cover the required rejection
+classes. `module_lifecycle::launcher_steps_a_real_bluets_module_then_rejects_stale_generation`
+requires `StaleRealm` for old program and safe-point requests after reload.
+`exceptions::launcher_refuses_exception_locations_without_owner_client_grants_or_source_receipts`
+requires `CapabilityUnavailable` without the independent owner/client
+exception-location grant, and `InvalidTarget` without its exact source
+receipt. `runtime_values::launcher_refuses_every_bounded_value_budget_on_a_real_bluets_socket`
+requires typed `InvalidExecutionState` and no partial preview for depth,
+collection, node, and payload over-budget reads. All were registered in the
+current Launcher test inventory and passed in the complete sequential
+workspace suite. C4.1 needs no additional wire or runtime route.
+
+**D.1.1 real classic direct-page acceptance:** The supervised BlueJS child
+previously rejected every multi-source classic BlueTS graph before the direct
+bridge could erase a compiler-only `import type` edge. The child now validates
+the exact caller-supplied closed resolution records and lets the direct script
+compiler consume them; `lower_script` still rejects any runtime import. A
+real child-process fixture supplies an entry source and a type-only declaration
+module, then proves that only one classic program is installed and executed.
+Its exact verified safe-point span names the original typed declaration byte
+range after an astral-prefix comment, retains the matching UTF-16 column, and
+resolves to the entry's canonical source identity. A replacement document
+with an ordinary runtime import remains rejected and installs no program.
+All 116 Launcher library tests, 13 real child-process tests, Launcher Clippy,
+formatting, and diff checks pass. The original test owner remains 1,124 lines;
+the new MPL-headed direct-page module is 194 lines. This proves the real child
+transport; browser HTTP policy and public socket acceptance are covered by
+later D leaves.
+
+**D.1.2 real ESM direct-page acceptance:** A second supervised BlueJS child
+fixture supplies an explicit static edge from `./answer.ts` to a canonical
+`blueice://authorized/...` module. Because that target is distinct from the
+specifier's relative URL, successful two-program execution proves that the
+checked caller edge determines the runtime dependency. Both programs retain
+compiler metadata whose verified safe points map to their own original typed
+declarations with exact UTF-8 ranges, UTF-16 columns, and canonical source
+provenance. Changing only the caller's resolver fingerprint changes the
+compiler-options hash. Removing the edge rejects the same source graph and
+installs no program, demonstrating no ambient URL fallback. The focused real
+child test and Launcher Clippy/format checks pass with the shared target
+cache; the new direct-page test module remains below 1,300 lines. D.1 is
+complete for the real child transport, with public browser behavior remaining
+under D.2 and D.3.
+
+**D.2.1 real-page contract report:** The existing `blueice-core` binary
+regression serves an HTTP page whose document snapshot exceeds the
+core-selected one-mebibyte `blueiceDocumentText()` contract before inline
+BlueTS admission. The public `GetBlueTsScriptReports` response now must have
+exactly one rejection attributed to tab 1, document generation 1, ordinal 0,
+and classic script kind. It must carry the fixed host-binding contract category
+within 64 bytes. The focused subprocess test passes with the ordinary target
+cache; protected-content checks are completed separately in D.2.2.
+
+**D.2.2 protected-content boundary:** The same real HTTP document now
+includes separate private markers in its oversized body and inline BlueTS
+source. The test records the exact public IPC frame while using the normal
+framed reader, caps the reply at 512 bytes, and requires both markers and a
+128-byte document-text run to be absent from its serialized payload. The
+decoded reply remains one fixed-category contract rejection and contains no
+source or diagnostic field. The focused real core-binary test, formatting,
+and diff checks pass with the shared target cache; D.2 is complete for this
+declared immutable document-text boundary.
+
+**D.3.1 public two-tab attribution:** The existing real `blueice-core`
+binary regression navigates two separate HTTP pages through one public IPC
+session. It requires distinct tab IDs, one source-free BlueTS report with the
+exact requested tab/document/script tuple for each page, and the proper tab
+ID in each public reply envelope. A repeated tab-one query returns an empty
+report before tab two is read, proving the first drain cannot replay its own
+result or consume the second tab's result. The focused subprocess test passes
+with the shared target cache; later D.3 leaves cover reload, policy, and
+resource accounting separately.
+
+**D.3.2 public reload isolation:** Two existing subprocess cases form the
+public boundary proof. `page_execution::real_subprocess_reexecutes_opted_in_inline_bluets_for_a_replacement_document`
+serves two HTTP replacements to the real core binary and requires a fresh
+BlueTS execution report with document generation 1 then 2 for the same tab.
+`module_lifecycle::launcher_steps_a_real_bluets_module_then_rejects_stale_generation`
+uses a real Launcher/core/child debugger socket after HTTP reload: predecessor
+breakpoint, instruction-step, and original source-span-step targets all fail
+with `StaleRealm`, while a successor realm/program for the same tab is
+inventoried under a different realm generation. Both focused tests pass with
+the shared target cache. Together they prove the old execution and debugger
+identities cannot be carried into the successor document.
+
+**D.3.3 tab/child source-policy isolation:** A real public Launcher/core/
+supervised-BlueJS-child regression serves two HTTP origins with documents
+declaring the same `/approved.ts` BlueTS module path. The owner HTTP manifest
+pins only the first origin's full canonical URL and SHA-256 integrity. Public
+report envelopes prove that tab one's module executes while tab two receives
+only the fixed source-free authorization rejection. The test then cuts over
+both tabs to a new supervised core/child generation and repeats the public
+navigations with the same split outcome. The second origin's HTTP request log
+contains only document fetches before and after cutover: neither child can
+borrow the first tab's owner-authorized module URL or trigger an unauthorized
+fetch. The focused subprocess test passes using the shared target cache; the
+new MPL-headed module is below the 1,300-line limit.
+
+**D.3.4 private numeric resource attribution:** The browser IPC intentionally
+does not expose child bytecode/heap statistics. A new real supervised BlueJS
+child-process test exercises the authenticated accounting boundary used by
+core: two BlueTS pages occupy distinct tab realms, and the child-wide live
+realm, program, bytecode, and VM-managed heap totals equal the two exact
+per-realm charges. Closing tab one rejects its old realm-stats lookup while
+preserving tab two's exact charge; the child total then equals only tab two.
+Closing tab two zeroes every aggregate. The focused subprocess test passes
+with the ordinary target cache. Together with D.3.1's public browser tab
+report attribution and existing core validation of private stats tuples,
+this proves tab/child accounting without adding a public resource-inspection
+capability. The new MPL-headed test module stays below 1,300 lines.
+
+**E1.2.1 boundary inventory record:** Core now defines a core-only
+`HostBindingBoundaryRecordV1` with stable and runtime binding IDs, owner,
+optional original source span, host-to-script or script-to-host direction,
+reviewed contract ID, the owner's effective validation limits, a fixed
+source-free failure category, and capability. Its current two records are
+derived from the installed immutable document-origin and document-text
+contracts. Both correctly leave source position absent because the copied
+snapshot boundary is selected before an individual script call site is known;
+future source-addressable crossings can fill the same field. A focused test
+checks both records and proves a tighter owner-selected text limit is carried
+into the record. This defines the shape; E1.2.2 will enforce completeness
+against the installed runtime bindings.
+
+**E1.2.2 installed-boundary completeness gate:** Core now compares each
+installed runtime value in the document-text and document-context generated
+profiles with a reviewed boundary record, matching stable ID, runtime ID,
+capability, nonempty contract ID, and fixed failure category. Type-only
+declarations do not cross a runtime value boundary. A focused regression
+requires both actual snapshot profiles to pass, then removes the origin record
+and adds a previously unrecorded runtime value; both mutations fail with a
+typed `MissingRecord`. This catches a future snapshot binding added without
+its contract inventory entry. The focused test passes with the shared target
+cache. E1.3 will apply the gate during strict-runtime admission and add
+separate diagnostics for missing, unreifiable, and unchecked boundaries.
+
+**E1.3.1 strict-runtime refusal diagnostics:** The direct-page host now
+checks its core-owned installed binding inventory before a strict-runtime
+script can compile or capture a callback. Each record names a declared type
+and whether the installed crossing validates before realm capture. A missing
+or mismatched reviewed record, a type that cannot become a pure `ContractPlan`
+(including `any`), and an unchecked crossing return separate typed
+`MissingContract`, `UnreifiableType`, and `UncheckedBoundary` diagnostics.
+The core inline-report adapter maps them to three different fixed categories
+without serializing binding IDs or page source. A public `DirectPageScriptHost`
+execution regression injects each faulty owner record under the same live
+document-text profile and requires no program or debug attachment; a report
+regression checks the three bounded category labels. Focused tests, Engine
+Clippy, rustfmt, diff, and line-count checks pass with the shared target
+cache. This is direct-page strict admission; standalone emitted strict-runtime
+artifacts remain unavailable until the helper work in E3.
+
+**E1.3.2 reviewed strict-runtime admission:** The direct-page gate now
+requires each installed value record to match the core-owned reviewed binding
+identity, direction, capability, fixed failure category, contract ID, pure
+plan fingerprint, and the validator's actual owner-selected limits. A
+reifiable but mismatched `number` plan or forged larger recorded limit cannot
+authorize the installed string callback. A live loaded-page test successfully
+executes both copied document-origin and document-text callbacks with
+`RuntimePolicy::StrictRuntime`; a separately bounded host rejects an
+oversized document-text value before any program or debug attachment. The
+three focused strict-runtime tests pass, as do Engine Clippy, formatting,
+diff, and the 1,300-line source audit, using the shared target cache. This
+closes E1.3 for the currently installed immutable direct-page result
+boundaries; emitted strict-runtime artifacts remain unavailable until E3.
+
+**E2.1.1 validation precedes VM capture:** The current immutable snapshot
+paths validate copied document text and canonical origin against their pure,
+bounded core-selected contract plans before they call the BlueJS realm binding
+registrar. The strict-runtime loaded-page regression now rejects an oversized
+document-text result with no program, debug attachment, or bound host profile,
+then installs a callback with the same global name in that exact still-live
+realm. BlueJS rejects duplicate host globals, so successful registration
+proves that the failed result never installed its callback or copied its value
+into the VM. The focused test passes with the shared target cache; E2.1.2
+will separately prove validation does not invoke active page behavior.
+
+**E2.1.2 validation has no executable inputs or side effects:** The runtime
+validator accepts `&ContractValue`, whose closed set of owned variants contains
+only primitives, vectors, and ordered string-keyed maps. No variant can hold a
+JavaScript object, getter, Proxy, callback, or host handle. The installed
+document boundaries copy text and origin into Rust strings before building
+that data-only value; the validator traverses it without VM access. At the
+loaded-page boundary, a regression supplies an over-budget snapshot, an inline
+script, and an external BlueTS module with a counted source authorizer. The
+contract rejects both scripts with source-free reports, records zero source
+authorizer calls, and sends no document to the child. Thus validation neither
+invokes page code nor enters the source-fetch path. This proof applies to the
+currently installed immutable snapshot bindings; future VM-object boundaries
+must provide a separately reviewed, pure data-copy step before validation.
+
+**E2.2.1.1 direct-page validation attribution:** The pure contract validator
+now returns a source-free count of attempted value-node visits, including the
+node that trips a fuel/depth/size failure. The direct-page host attributes each
+validation attempt, node visit, and copied string byte to the exact live
+`TabId` and document generation before returning a contract error. Its private
+accounting record is cleared on replacement or close; it is not a page,
+debugger, or MCP query. A two-tab public-boundary regression exercises a valid
+text/origin pair alongside a rejected text result, checks distinct charges,
+then navigates one tab and closes the other to prove scoped release. The
+remaining E2.2.1 work is out-of-process snapshot attribution and retained
+compiler/contract/debug cache accounting; this leaf does not claim those
+costs are already charged.
+
+**E2.2.1.2 out-of-process snapshot attribution:** Core now obtains a metered
+result from its document-text and origin contract checks and records attempted
+nodes and copied validation-value bytes under the initiating tab and exact
+document generation. A contract failure retains its charge even though core
+does not authorize external sources or send a document to the child. A two-tab
+public-boundary regression checks separate successful and over-budget charges,
+then verifies that navigation replaces only the first tab's record and closing
+the second removes only its record. The cohesive `prepare_document` body lives
+in the existing document-admission submodule; the production executor facade
+is below the 1,300-line threshold. Retained compiler/contract/debug cache
+bytes remain E2.2.1.3.
+
+**E2.2.1.3.1 live-page cache ownership decision:** Account bounded retained
+payload bytes, not allocator overhead or process RSS. Count each owned source,
+metadata, contract-plan, and deferred graph copy once at the owner that retains
+it; keep VM bytecode and heap in their existing realm statistics. The charge
+belongs to the exact initiating tab and document generation and disappears
+when that owner replaces or closes the document. A source cache hit within the
+same document reuses its charge. A different tab or generation gets a separate
+cache entry so a shared retained source is never left billed to a closed tab.
+New retained-byte counters use checked arithmetic and fail admission or
+caching on overflow.
+
+| Current owner | Retention and identity | Required accounting |
+| --- | --- | --- |
+| Direct page compilation and primitive `HostBindingContractV1::plan` | The direct bridge calls stateless `compile`, and primitive plans are built for one validation then dropped. No live page compiler or primitive-plan cache survives the call. | Prove zero retained cache in the final audit; keep validation work in E2.2.1.1. |
+| `DirectPageRealmOwner::debug_registry` | Static BlueTS source/type/symbol/contract plans and safe-point maps remain under live BlueJS program generations. The realm maps those generations to a tab. | Sum retained metadata payload for that tab, including contract plans; release on realm navigation/close. |
+| `BlueJsChildHost` debug registry and deferred execution | Child-private BlueTS metadata and some source-bearing deferred module graphs remain under a document/program generation. | Include both in exact child realm accounting, carry only bounded numeric totals to core, and release with the document. |
+| Core out-of-process debugger maps | Opaque program, metadata, linked, and nested records are already keyed by tab but have no byte charge. | Count retained payload per exact live generation and discard it on failed admission, replacement, or close. |
+| `HttpOutOfProcessPageScriptSourceAuthorizer` verified cache | Up to 4 MiB of verified source payload is now keyed by URL/integrity/MIME and shared across documents; it has no tab owner or lifecycle release. | Partition entries by initiating tab/document, retain same-document hits, and add a core lifecycle release hook. Preserve manifest and response integrity checks. |
+| `RegisteredProjectCompilerService::IncrementalCompiler` | Cache belongs to an owner-registered sealed compiler project, not to a page script or a page tab. | Keep it under the project's separate compiler-service limits; do not invent a tab charge until a page-owned project registration route exists. |
+
+The retained-byte counter measures the concrete payload held by these owners;
+it is not a claim about allocator metadata or VM heap. The remaining subleaves
+implement each retained owner and close with a real-process two-tab audit.
+
+**E2.2.1.3.4 core debugger maps:** Program and static-metadata inventories
+each retain an outer tab entry and a child-to-public identity map with fixed
+opaque keys and values. An execution-deferral entry is another fixed-size
+core record. Active nested frames retain a fixed record, while a linked pause
+also retains two child stack scope vectors whose capacities must be counted.
+These maps are keyed by tab, so each query must additionally validate the
+live document generation before summing logical map-entry payload. The child
+already owns its own debugger metadata and stack; core counts only its copies.
+Program/metadata/deferral identities and active-frame payload are separate
+substeps, with replacement, failed admission, and close tests at the core
+boundary.
+
+**E2.2.1.3.4.1 core identity-map charge:** A checked exact-document query
+counts logical outer and inner `BTreeMap` entry payload for core-minted
+program and static-metadata identities plus the execution-deferral record.
+It validates both the live document and deferral generation, reports zero for
+a rejected successor with no debugger records, and returns no value for a
+closed or stale document. A real launcher-child/core test shows program and
+metadata discovery increase only one tab's charge; replacement, failed
+snapshot admission, and close release the appropriate records. Active
+nested/linked frames and their scope vectors follow in E2.2.1.3.4.2.
+
+**E2.2.1.3.4.2 active core frames:** The exact-document core query counts
+the fixed nested-frame map entry or linked-pause map entry and the capacity of
+both linked child-stack scope vectors. It validates the retained core/child
+frame tuple against the addressed tab and generation before returning any
+charge. A combined query adds these allocations to program, metadata, and
+deferral map entries with checked arithmetic. Real child/core nested and
+linked tests observe nonzero active-frame charges, linked scope-vector bytes,
+and zero after frame return or linked completion; navigation makes the old
+generation unqueryable. No child-owned metadata or VM runtime state is counted
+inside this core-only total.
+
+**E2.2.1.3.5 verified HTTP source cache:** The cache key now includes the
+initiating tab and document generation in addition to canonical URL, expected
+SHA-256, and MIME lane. One document still reuses a verified response across
+its declarations; a second tab or successor document performs its own fetch
+and integrity check. Both page executors tell their private source authorizer
+when a document is replaced or closed. The child route also releases an
+attempted successor after failed acknowledgement or malformed realm stats,
+and rejects old-generation accounting queries. The exact-document meter sums
+only retained source lengths under the existing shared 4 MiB source-byte
+budget, leaving key/allocator and completed graph copies outside this charge.
+The fixed fixture profile forwards release and checked charges across its
+per-origin inner authorizers. A real two-tab child/core HTTP test proves
+same-document hits, cross-tab isolation, replacement and close release,
+re-fetch after release, and rejection of a changed response; a direct route
+test proves the same lifecycle callback contract. The cache implementation is
+in its own module so the authorizer and child executor stay under 1,300 lines.
+Partitioning could otherwise retain arbitrarily many empty-source keys, so
+the cache also caps entries at 4,096 and advances the policy fingerprint to
+`core-page-http-resource-authorizer-v3`.
+
+**E2.2.1.3.6 final live-page cache recount:** Core exposes one checked
+exact-tab/document sum of child static BlueTS metadata, child pending debugger
+payload, core debugger maps and active frames, and verified HTTP source. The
+direct route sums its exact-generation BlueJS debug/contract metadata and
+verified source. Each component is owned by one layer and counted once; VM
+bytecode/heap, validation work counters, and completed temporary graph copies
+remain in their own accounting. A custom source authorizer without a retained
+payload meter leaves the aggregate unavailable rather than reporting a false
+zero. A two-tab launcher-supervised child test combines real external BlueTS
+HTTP source with all three debugger/cache owners, then checks execution,
+independent replacement and close, stale tuples, and failed snapshot
+admission. Direct-route tests check metadata and source totals separately.
+
+The live-page compiler has zero independent retained cache: each direct
+declaration calls the stateless `compile_direct_script` or
+`compile_direct_module_graph`, then passes its temporary artifact to the
+realm attachment. Only copied realm debug metadata and VM state survive, and
+those are already attributed to the realm. `DirectPageScriptHost` owns no
+compiler or incremental-project field. Primitive host-boundary validation
+likewise calls `HostBindingContractV1::plan()` inside
+`validate_string_metered()` and drops that temporary plan after the call;
+the retained compiler-generated contract plans inside debug metadata are
+counted by the direct/child static meters. The sealed project compiler's
+incremental cache belongs to its owner-registered project, which has no page
+tab identity.
+
+**E2.2.2.1 source-free policy/position report decision:** The existing
+tab-addressed BlueTS outcome reports are the public seam. Core may add
+only the owner-selected runtime policy label (`checked` or `strict-runtime`)
+and an optional half-open byte range in the original *inline* BlueTS source.
+For a compiler diagnostic, the owner must match its module ID to the exact
+core-minted inline declaration identity, validate `start < end` and both
+endpoints against that declaration's original source bytes, and retain only
+the numeric range. The current precompile document-text/origin contract
+crossings have no source call site, so their position is unavailable; the
+report must not synthesize a script-tag or callback coordinate. External
+source graphs can be owner-private and their module IDs/lengths may disclose
+protected input, so their positions remain unavailable on this page-report
+surface without a separate owner authorization. A missing, malformed, stale,
+or mismatched span is omitted. Fixed outcome categories stay source-free; no
+URL, module identity, source text, diagnostic prose, value, failure path,
+expected/observed type, contract plan, or compiler option fingerprint enters
+the report. The direct executor can validate before reporting; the child
+route needs a private bounded position candidate and a second core check
+against the original inline declaration before public serialization.
+
+**E2.2.2.2 direct-page report route:** `DirectPageInlineExecutor` records its
+construction-time checked or strict-runtime policy with each BlueTS outcome.
+For a rejected inline script, it inspects only compiler or unsupported-target
+spans, requires the exact core-minted module ID for that tab, document, and
+ordinal, checks non-empty offsets within the original extracted inline UTF-8
+source at character boundaries, converts them to bounded 32-bit numbers, and
+discards the diagnostic, module ID, and source. Other failures, successful
+scripts, and every external declaration have no position. The session maps
+this private record to a typed tab-addressed `BlueTsScriptExecutionReport`
+with a fixed policy enum and optional numeric range; the existing outcome
+category stays source-free. Browser IPC advances to v2 because policy is a
+required field. A live HTTP/session query proves the public checked-policy
+and original inline range without source text; direct tests cover strict
+policy, external omission, and malformed/mismatched spans, while IPC tests
+round-trip the shape. The direct executor's tests now reside in their own
+MPL-licensed submodule so the implementation file remains easy to extend.
+
+**E2.2.2.3.1 private child candidate:** Page-host protocol v44 carries an
+optional compiler-position candidate only on a rejected BlueTS script report.
+The child selects compiler or direct-lowering spans from its independently
+validated graph, requires a nonempty UTF-8 byte range within the referenced
+module, and bounds the module ID and 32-bit offsets. JavaScript, successful
+BlueTS, graph validation, and runtime failures carry no candidate. Immediate
+and debugger-controlled synchronization use the same private field. Core
+must still verify the candidate against its own exact inline declaration
+before placing a numeric range in a browser report.
+
+**E2.2.2.3.2 core verification and public route:** While an authenticated
+document synchronization is pending, core retains the original inline BlueTS
+declaration text and its ordinal only until the reply is processed. It first
+requires the child report to name a script that core actually submitted for
+the same tab and generation. It publishes a numeric position only for a
+recognized compiler or direct-lowering rejection whose bounded private
+candidate names the exact core-minted inline module and falls on UTF-8
+boundaries within those original bytes. Core discards the private module ID,
+source, and diagnostic before the tab-addressed report enters browser IPC.
+External graph failures, malformed or stale candidates, and later debugger
+execution replies have no public position; the child runtime policy is the
+fixed checked mode. Real launcher-supervised two-tab, navigation, authorized
+external failure, and core-binary/browser-IPC tests exercise these boundaries.
+
+**E2.3.1.1 live-value boundary inventory:** The installed page contract
+crossings are the core-owned document-text and canonical-origin results.
+They copy Rust strings, run a pure bounded `ContractValue::String` validation,
+then permit BlueJS callback capture. This real path can exercise accepted
+strings, string-size limits, and selected node/work budgets. Its `string`
+contract accepts every in-budget Rust string, so it cannot exercise a
+type-malformed value. It also cannot receive an array, object, or cyclic
+runtime reference, so a validator-only nested-value test cannot establish
+the E2.3 live-boundary claim. The compiler and debugger validation protocols
+accept a caller-supplied, data-only `CompilerContractValue` tree for static
+plans; that protocol explicitly never describes a live BlueJS value, and its
+owned recursive enum cannot encode a cycle. E2.3.1 therefore separates
+string-boundary regressions from the work needed to identify or add a
+reviewed structured runtime crossing for malformed, deep, and cyclic values.
+The latter must preserve pure bounded
+validation, explicit owner capability, and rejection before host/VM effects;
+no test may claim cyclic/deep live coverage by fabricating an impossible
+snapshot or calling the plan validator in isolation.
+
+**E2.3.1.2 current string crossing:** The loaded-page direct host already
+accepts a valid document-text result and rejects an overlong copied snapshot
+before program admission. A zero-node owner-selected validation budget now
+rejects even a short copied document result after accounting one attempted
+node to that tab and generation; no BlueJS program or debug record is
+installed. The inline page executor repeats overlong and exhausted cases
+through the public report seam, returning the same fixed category without a
+source position or protected text. These are distinct real string-value
+classes. A malformed type, nested value, or cycle is not representable by
+the installed string-only callback and remains in E2.3.1.3.
+
+**E2.3.1.3 structured live crossing:** The existing owner-only paused
+debugger-value preview is a real VM-to-child-to-core value boundary. It is
+selected only by native debugger execution control and an exact live frame,
+safe point, and scope slot; the public debugger still marks bounded values
+planned. BlueJS reads stored own data directly, never invokes a getter or
+proxy trap, and bounds depth, node count, container length, and copied bytes
+before producing the private snapshot. A BlueTS page in a real child/core
+socket test reaches that boundary with one initialized root value at a time:
+a plain number crosses, while an array with a non-index own property, a
+self-referential object, and an object deeper than the preview limit each
+return only the fixed invalid-state refusal. Existing VM-level accessor tests
+also verify no getter runs during preview. This uses an already reviewed
+debugger capability rather than adding a page-visible structured host API;
+E2.3.1.4 will make the six requested value classes independently visible in
+the final regression gate and verify report redaction.
+
+**E2.3.1.4 six-case gate:** Named loaded-page tests cover a valid copied
+document-text value, an oversized pre-capture refusal, and a zero-node-budget
+refusal charged to the initiating tab. Four independently named real
+child/core BlueTS debugger tests share only their setup: a plain value is
+copied from one exact paused root slot, while a non-plain array, a cyclic
+object, and a value beyond the fixed depth limit are each refused before a
+preview is returned. The malformed array contains a private marker, and the
+fixed refusal and any page-script report omit it. No public debugger
+bounded-value capability was enabled by these tests. These two reviewed
+live crossings cover the six required classes without treating a static
+compiler validation snapshot as a runtime object or duplicating the build
+target.
+
+**E3.2.1.1 emitted helper v1 decision:** The only reviewed live page
+contracts today are primitive string results for document text and canonical
+origin. The first emitted strict-runtime helper therefore supports that
+closed subset: require a primitive string, reject unpaired UTF-16 surrogates,
+and count its UTF-8 bytes under an owner-selected nonnegative integer limit.
+It must use string indexing, length, comparisons, and arithmetic on that
+primitive rather than calling replaceable global encoders, prototype
+methods, getters, or callbacks. Unsupported object and array contracts are
+not treated as validated strings. The helper is fixed UTF-8 source with an
+MPL header and a stable `bluets.runtime-helper.v1.mjs` output name, written
+in the same staged atomic publication as the emitted modules. E3.2.1.2 will
+test that writer directly with strict metadata and verify exact bytes; the
+public standalone strict-runtime build gate remains closed until the
+manifest binds the helper identity and output-target checks are enforced in
+E3.2.2–E3.2.3. A helper file alone is no proof that generated modules call
+it at every required boundary.
+
+**E3.2.1.2 helper staging:** The fixed MPL-licensed v1 ESM source exposes a
+version label and one primitive-string validator. It accepts only a
+nonnegative safe-integer byte budget, walks the string's own indexed UTF-16
+units without calling mutable globals or prototypes, rejects unpaired
+surrogates, and counts the equivalent UTF-8 bytes before returning the
+original value. Every refusal throws one fixed source-free string. The
+atomic BlueTSC publisher writes the exact embedded source as
+`bluets.runtime-helper.v1.mjs` only for strict metadata; a checked rebuild
+replaces the output directory and drops the helper. A direct publisher test
+proves exact bytes and lifecycle, a CLI regression proves standalone strict
+builds still refuse before publication, and direct Node checks cover Unicode
+byte limits, invalid budgets, surrogate refusal, and a Proxy that receives
+no property read. Manifest identity and generated-code retention gates remain
+the next steps.
+
+**E3.2.2 manifest binding:** Strict build metadata carries one optional
+runtime-helper record with the v1 version, fixed relative output filename,
+and a `sha256:` digest of the exact embedded helper bytes. The publisher
+recomputes the expected record before staging and rejects missing, altered,
+or policy-inconsistent metadata without replacing an existing output
+directory. The direct publisher regression reads the serialized manifest,
+compares all three fields to the written helper source, then proves a wrong
+digest, missing strict record, and unexpected checked record all fail before
+replacement. This binds artifact identity but does not yet prove that
+generated modules retain calls to the helper; E3.2.3 owns that gate.
+
+**E3.2.3.1 strict emitted-path audit:** The current compiler passes both
+`checked` and `strict-runtime` as the same checking-enabled boolean into
+`checker::check_incremental`. `emitter::emit` receives policy in options for
+fingerprinting, but its `emit_javascript` path has no selected runtime
+boundary record or helper-call insertion. Standalone `bluetsc` also builds
+with `require_declared_global_calls: false`, so an undeclared ambient call
+may enter emitted JavaScript. Thus the newly staged helper file and hashed
+manifest prove artifact identity only; they do not prove that any boundary
+was checked at runtime. The existing early strict-build refusal is the
+correct current target gate. A supported strict emitted path requires an
+owner-selected, reifiable boundary descriptor tied to each source crossing,
+deterministic helper imports/calls at those sites, and a publisher audit that
+refuses any module/target that loses a required check. E3.2.3.2 implements
+the crossing route; E3.2.3.3 proves target retention and opens only covered
+strict output. No module is considered safe merely because its manifest
+names a helper.
+
+**E3.2.3.2.1 bounded BlueTSC owner file:** Before adding emitted-boundary
+metadata, the binary's existing Rust unit tests moved to an MPL-licensed
+`bluetsc/tests.rs` submodule. The command-line owner now holds only the
+publisher and policy code (933 lines instead of 1,221), while its 291-line
+test module retains the same 11 cases. This keeps the implementation below
+the repository's 1,300-line maintenance threshold as strict output work
+continues and uses the same build target.
+
+**E3.2.3.2.2 first emitted crossing contract:** The first standalone strict
+profile admits only a directly named `export function` with required primitive
+`string` parameters, an explicit `string` result, and one unconditional
+`return` expression. That expression may use only those parameters, primitive
+string literals, parentheses, and string concatenation (`+`). The checker
+must reject every other statement or expression shape, including calls,
+property access, object creation, assignments, fallthrough, overloads,
+generics, optional/default/rest parameters, and `async` functions. No runtime
+import, ambient declaration, global reference, default/value re-export, or
+other runtime declaration is admitted in a strict module. Type-only imports
+and declarations may remain because they erase; each source module in a
+multi-module graph is checked independently. This intentionally small
+language ensures there is no unreviewed foreign value between the two
+observable crossings: JavaScript caller to each parameter, and the function
+result back to JavaScript. Both crossings must call helper v1, including when
+the body returns its input unchanged. A module with no selected crossing is
+refused rather than receiving a strict label by vacuity.
+
+The owner selects each crossing through a build configuration descriptor, not
+through TypeScript source text. A descriptor identifies the canonical
+root-relative module, exported function name, exact UTF-8 byte span of its
+declaration, stable contract ID, nonnegative safe-integer string-byte budget,
+and the fixed `bluets-runtime-helper-v1` version. The same descriptor applies
+the budget at every parameter ingress and result egress; a later profile may
+add independent budgets only with a new descriptor version. The compiler
+requires exactly one descriptor for every emitted function and rejects stale,
+duplicate, missing, unused, out-of-graph, or conflicting descriptors. It
+checks the parser's exact span and signature before emission, includes the
+ordered descriptor data in the project fingerprint, and retains an ordered
+checked-boundary record with the output. The CLI accepts these records only
+from its owner-read config, not from a source annotation or imported module.
+Direct compiler callers must also supply the descriptor explicitly. Missing
+descriptor data never silently selects a default budget.
+
+Emission uses one fixed helper import alias and path per module, validated
+against source identifiers to prevent capture. It inserts a validation call
+for every parameter immediately inside the function body and wraps the
+return expression in a validation call at that return's exact source span.
+Only these inserted calls can support the strict claim. Source-map provenance
+maps inserted code to the corresponding parameter/body or return expression;
+the publisher verifies the checked-boundary record, helper version, imports,
+and retained calls before replacing the previous build. Both ES2020 and
+ES2022 must pass that gate. A stronger checker or different target cannot
+turn an unsupported crossing into a successful strict artifact merely by
+erasing its syntax. Until all of these checks run, standalone strict build
+continues to refuse before publication.
+
+**E3.2.3.2.3.1 descriptor plumbing:** `bluetsc.json` now accepts an owner
+`strictBoundaries` array with root-confined source paths, exact declaration
+byte spans, contract IDs, function names, UTF-8 byte limits, and helper
+versions. The compiler option carries the same records and fingerprints every
+field in owner order. Before emission, it rejects records that do not match
+an exact named exported function, repeat a contract ID or function, select a
+different policy/helper version, or exceed helper v1's safe-integer limit.
+Direct page hosts leave the emitted descriptor list empty because their live
+boundary inventory is a separate owner-selected route. This leaf only binds
+descriptors; emitted JavaScript still has no inserted helper calls and the
+standalone strict build refusal remains in force. Two focused compiler tests,
+one config path/span test, all 158 BlueTS library tests, workspace Clippy,
+and formatting pass against the reused target directory.
+
+**E3.2.3.2.3.2 strict shape admission:** A descriptor-selected compilation
+now admits only modules whose runtime declarations are all matching named
+exported functions. Each such function has 1–16 required primitive-string
+parameters, an explicit string result, and exactly one unconditional return
+made from those parameters, string literals, parentheses, and `+` (at most
+128 expression tokens). Each owner budget is capped at 1 MiB as well as
+helper v1's safe-integer range. The parser retains the `async` marker so a
+Promise-returning declaration cannot masquerade as a primitive-string
+crossing after type erasure. Ambient declarations, runtime imports, uncovered
+modules or functions, default/value exports, extra runtime declarations,
+opaque bodies, global calls, property reads, optional/default/rest
+parameters, and unsupported expressions fail with `InvalidContract` before
+output. Type-only imports to `.d.ts` modules remain erasable. The first
+profile requires one CLI entry so descriptors cannot be misinterpreted as
+stale when independently compiling multiple entry graphs. Focused
+admission/refusal tests, 161 BlueTS library tests, 12 BlueTSC binary tests,
+workspace Clippy, and formatting pass in the reused target directory.
+Generated JavaScript is still uninstrumented, so standalone strict build
+remains closed.
+
+**E3.2.3.2.3.3.1 emitted record shape:** Strict descriptors and every
+runtime module now require canonical root-relative `.ts` IDs, matching the
+standalone owner's confined project paths. Source containing the reserved
+`__bluetsValidateStringV1` alias refuses before emission, including comments
+and longer identifiers, so later generated-call site scans cannot confuse
+source text with inserted calls. `BuildArtifact` now has an optional strict
+module record with helper version/import site and per-contract ingress/egress
+source and generated byte sites. It remains absent until helper calls are
+actually inserted. The six focused descriptor tests, 162 BlueTS library
+tests, 12 binary tests, workspace Clippy, and formatting pass in the reused
+target directory; standalone strict publication is still closed.
+
+**E3.2.3.2.3.3.2 helper-call insertion:** The parser now retains each
+function body's opening brace byte so the emitter can insert ingress checks
+immediately inside it. For each admitted exported function, the emitter adds
+one deterministic root-relative helper import per module, validates every
+required string parameter, and wraps the sole return expression in the same
+versioned helper. Its strict record holds the owner contract ID and budget,
+the original parameter/expression spans, and generated offsets of every
+exact call. A source alias collision was already rejected; after applying
+all ordinary type-erasure edits, emission scans generated calls in source
+order and returns `InvalidContract` without output if any import or call is
+missing, changed, or unexpectedly duplicated. Compiler emission now returns
+a diagnostic rather than treating such a mismatch as success. The focused
+two-parameter concatenation test asserts the helper path, exact ingress and
+egress text, and retained generated sites. All 162 BlueTS library tests,
+12 BlueTSC binary tests, workspace Clippy, and formatting pass in the reused
+target directory. The public strict build gate remains closed pending
+source-map, multi-module, and publisher verification.
+
+**E3.2.3.2.3.3.3.1 emitter test extraction:** Before adding more strict
+emission regressions, the emitter's 15 existing tests moved unchanged into
+the MPL-licensed `emitter/tests.rs` submodule. The owner file fell from
+1,204 to 787 lines and the tests occupy 420 lines. All 15 focused emitter
+tests pass using the same target directory. The following leaf adds the
+strict crossing and provenance cases in the bounded test module.
+
+**E3.2.3.2.3.3.3.2 emitted crossing proof:** Inserted multiline helper code
+now contributes a source-map segment at each generated line start, anchored
+to the function body's opening source byte. The return wrapper maps its
+generated call directly to the return expression's source byte. The
+pre-emission source-map bound includes strict insertions and their newlines;
+the emitter also checks the actual segment count before returning an
+artifact. A focused test decodes mappings for two ingress calls and one
+egress call, and proves a cap that permits the checked source refuses the
+additional strict segments. Another test compiles a two-module graph linked
+through an erased type-only import and checks that each module retains its
+own root-relative helper path and exact recorded calls. A typed wrong
+parameter fails with `InvalidContract` at the function span and no output.
+All 165 BlueTS library tests, 12 BlueTSC binary tests, workspace Clippy, and
+formatting pass in the same target directory. This closes the supported
+crossing insertion leaf; strict standalone publication remains closed until
+E3.2.3.3 audits target retention and publisher/manifest consistency.
+
+**E3.2.3.3.1 target retention:** The admitted emitted profile uses only ESM
+named function exports, primitive string parameters, string literals,
+parentheses, and string concatenation. Its generated validation calls and
+static helper import are valid in both declared targets without syntax
+downleveling. A focused ES2020/ES2022 test compiles the same owner descriptor
+with source maps and proves byte-identical JavaScript, source maps, and
+strict crossing records while the target-bound fingerprints differ. This
+proves compiler retention for the current narrow profile; publisher
+consistency and public strict build admission remain separate gates.
+
+**E3.2.3.3.2.1 manifest boundary inventory:** Build metadata now serializes
+each owner-selected strict contract as `strictBoundaries` with its stable ID,
+root-relative source module, function name, exact declaration byte range,
+fixed UTF-8 byte limit, and helper version. It preserves owner order, which
+already participates in the build fingerprint. Checked output with no
+selected strict boundaries omits this field. A focused config/binary test
+checks every serialized descriptor field; the existing checked publisher
+test asserts omission. The publisher must still compare these claims to
+generated code before any strict publication.
+
+**E3.2.3.3.2.2 publisher audit:** Strict manifests now add a sorted
+`strictArtifacts` inventory with SHA-256 of each compiler-emitted JavaScript
+module, serialized source map, and declaration text. The publisher recomputes
+that inventory before staging, alongside the already pinned helper hash. It
+also requires the exact language and ES2020/ES2022 target, one entry matching
+an emitted module, one consistent project fingerprint, matching requested
+map/declaration modes and declaration-module inventory, one exact helper
+import per module, every manifest-owned boundary, and every recorded helper
+call at its generated byte offset. It refuses missing or extra call markers,
+changed source spans/budgets, noncanonical module IDs, and any strict claim
+on checked output. The audited JavaScript digest covers the emitted module
+before the publisher appends its deterministic source-map URL comment; map
+and declaration digests cover exactly the staged payloads. A direct
+publisher test first creates a valid strict artifact, then mutates metadata,
+helper identity, module bytes (including non-call code), import, call, map,
+or record and proves every refusal leaves the previous JavaScript and
+manifest intact. All 13 BlueTSC binary tests and workspace Clippy pass with
+the reused target. Public CLI strict build admission remains E3.2.3.3.3.
+
+**E3.2.3.3.3 strict CLI admission:** `bluetsc build` now requires an explicit
+owner `strictBoundaries` configuration for strict-runtime. Missing records
+still fail before compilation; stale, unsupported, ambient, or unpaired
+records fail in compilation with no output; only the fully admitted
+primitive-string profile reaches the pre-staging publisher audit. A real
+BlueTSC process test builds both ES2020 and ES2022 with helper v1, source
+maps, declarations, exact boundary and artifact identities, and two retained
+calls. Where Node is installed, it imports each published module, accepts a
+valid Unicode string, and rejects a number, oversized string, and unpaired
+surrogate with the fixed helper refusal. The test then updates the descriptor
+to the current source span but changes the body to call an ambient global;
+the CLI reports `BTS4000` and preserves the previous JavaScript and
+manifest. The previous no-descriptor strict build regression still refuses.
+All 166 BlueTS library tests, 13 BlueTSC binary tests, 7 CLI tests, 18 CLI
+coverage tests, workspace Clippy, and formatting pass in the same target
+directory. E3.2's helper, manifest, target, and publication gates are closed;
+E3.3 still requires direct-page/emitted malformed-value parity.
+
+**E3.3.1 malformed string parity:** One Engine test sends the exact
+`ABCDEFGHI` value through a strict direct-page document-text snapshot with
+an owner-selected eight-byte limit. Core returns its typed
+`dom.document-text`/`core-script-document-text-result-v1` contract violation
+before realm capture, identifying nine observed bytes and retaining no debug
+record. The same test compiles a strict ESM `echo` crossing with an eight-byte
+owner limit and, where Node is installed, executes the emitted module with
+the exact same value. Helper v1 rejects it with its fixed source-free
+refusal. Both paths therefore reject the same malformed primitive and
+budget; their outward error formats remain appropriate to their hosts.
+The 337-test Engine library suite passes with local HTTP/socket access,
+alongside workspace Clippy and formatting. The same target directory was
+reused; E3.3.2 still checks weaker artifact claims.
+
+**E3.3.2 weaker artifact refusal:** The public BlueTSC CLI regressions now
+assert that `checked` and `transpile-only` manifests omit the helper,
+`strictBoundaries`, and `strictArtifacts`, and that their emitted JavaScript
+contains no strict helper call. A direct publisher regression compiles both
+weaker policies, then forges strict metadata with matching recalculated
+artifact digests and project fingerprints. Both attempts still fail because
+their modules lack emitted strict boundary records, and the previously
+published strict JavaScript and manifest remain byte-identical. All 13
+BlueTSC binary tests, 18 CLI coverage tests, workspace Clippy, and formatting
+pass in the reused target directory. Together with E3.3.1's same-value
+runtime refusal, this closes E3.3 for the first supported string profile.
+
+**E2.2.1.3.3.2 deferred child records:** The pending debugger queue stores
+JavaScript module source graphs alongside parsed program ASTs, while BlueTS
+modules retain bridge attachments with their own module maps. The source-graph
+heap payload is counted first, including vector capacity and owned strings;
+the parsed AST, BlueTS attachment, and inline pending-record payload require
+separate checked counts before the combined deferred total is exposed to core.
+Execution pops a completed record; document replacement and close drop its
+entire queue. The source-graph-only query must not be presented as the full
+deferred charge.
+
+**E2.2.1.3.3.2.1 source-graph charge:** `PageHostModuleGraph` computes the
+checked heap payload of its vector capacities and owned strings. The child
+query selects only pending JavaScript module graphs for an exact live
+tab/document and sums their payload; the graph's inline header remains for
+the later pending-record count. A two-tab child-host regression demonstrates
+that larger source content costs more and that execution, document replacement,
+and close release only the affected pending graphs. No private wire field or
+core charge is claimed by this step.
+
+The two remaining nested payloads use separate owners: BlueTS module
+attachments contain provenance spans, safe-point maps, root slots, and an
+ordered module map; pending JavaScript programs contain parsed ASTs and their
+module-ID map. Their recursive storage shapes differ, so E2.2.1.3.3.2.2 is
+split into attachment and AST counters before the combined queue count.
+
+**E2.2.1.3.3.2.2.1 BlueTS attachment charge:** A checked bridge meter counts
+each program attachment's provenance vector and source-module strings, its
+safe-point-map copy, and its root-slot vector. The module-graph meter adds the
+entry attachment and every separately retained map attachment and module ID;
+map-entry payload is counted without claiming allocator-node overhead. The
+child query sums only pending BlueTS module attachments for the exact live
+document. A two-tab regression verifies content sensitivity and release after
+execution, replacement, and close. The separately retained static debugger
+registry record remains under E2.2.1.3.3.1, so no cross-owner duplication is
+introduced.
+
+**E2.2.1.3.3.2.2.2 JavaScript AST charge:** BlueJS owns a separate recursive
+meter for structured programs. It counts each syntax vector's retained
+capacity, each owned UTF-8/UTF-16 string, each boxed node, all nested
+import/export/statement/expression payloads, and one copy of each shared
+`SourceText` allocation within a program. Opaque `BigInt` storage contributes
+its normalized magnitude digits because the dependency does not expose spare
+capacity. The child adds module-map entry payload and module IDs only for
+pending JavaScript modules in the exact live document. Tests show larger
+nested syntax raises the charge and that advance, navigation, and close drop
+the affected tab's pending ASTs; bytecode and source graphs stay separate.
+
+**E2.2.1.3.3.2.3 complete deferred queue:** The child sums the
+`VecDeque`'s retained slot capacity and the separately counted JavaScript
+source graphs, JavaScript parsed AST/module maps, and BlueTS module
+attachments for one exact document. The slot allocation includes each
+pending record's inline fields. Advancing execution shrinks the queue after
+completed records are popped, releasing an empty queue's reserved buffer.
+A mixed-language two-tab regression checks the sum and independent execution,
+replacement, and close release. E2.2.1.3.3.3 may now transport a bounded
+numeric total to core without exposing source or AST data.
+
+**E2.2.1.3.3.3 private accounting route:** The existing exact-generation
+`GetRealmStats` reply already carries program, bytecode, and VM heap totals
+to core. Private v43 adds mandatory numeric static-metadata and deferred-queue
+payload fields to that one reply. Each field and their checked sum must remain
+below a fixed 4 GiB per-realm transport ceiling; larger or conversion-failed
+measurements are refused. The child populates both fields only after exact
+document validation. Core admits the whole v43 record only when its tuple
+and bounds validate, then discards it on replacement or close. Wire shape,
+child owner production, and real-process core reconciliation are separate
+reviewable steps.
+
+**E2.2.1.3.3.3.1–2 v43 shape and child production:** The two new realm-stats
+fields are required during deserialization and have no source or AST content.
+Their checked sum must fit the 4 GiB envelope before core caches the exact
+tab/document tuple. The child now obtains static metadata and complete
+deferred-queue charges from its exact-document owner queries, converts them
+to `u64` without truncation, and refuses any invalid reply. A local mixed
+two-tab test compares wire values with owner totals and observes deferred
+release after execution; IPC and core tests reject missing or excessive
+fields and preserve valid nonzero charges only for the live generation. The
+real-process child/core reconciliation is recorded in E2.2.1.3.3.3.3 below.
+
+**E2.2.1.3.3.3.3 real child/core reconciliation:** Core re-queries and
+validates the exact realm-stats tuple after every successful debugger advance,
+so execution release no longer leaves a stale cached deferred charge. An
+unsupported test transport clears any prior cache rather than preserving a
+number it cannot refresh. A launcher-supervised real child with two opted-in
+BlueTS tabs confirms nonzero static/deferred fields cross private v43 into
+core, deferred bytes fall to zero after execution, one replacement leaves the
+other tab's record intact, stale child generations refuse, close drops the
+addressed tab, and an oversized failed snapshot admission retains no cached
+or child realm. No new public debugger, page, or MCP field is exposed.
+
+**E2.2.1.3.2 direct-page retained metadata charge:** BlueTS now computes a
+checked owned-heap payload for static source/type/symbol records and nested
+reifiable contract plans. The bridge adds its safe-point map, breakpoint spans,
+root slots, and inline retained record. Each `DirectDebugRegistry` entry stores
+the measured charge before admission; overflow refuses retention. The direct
+page realm owner sums only live program handles in the requested tab, while
+bytecode and VM heap remain in their separate runtime statistics. A two-tab
+public-boundary test proves a longer retained contract/symbol source costs more,
+navigation zeroes only the replaced tab, and close removes only its owner.
+The module-graph regression sums both program records and observes zero after
+pruning; a compiler metadata test confirms retained contracts add bytes. The
+metric counts vector and string capacities plus logical map-entry payload,
+excluding allocator metadata and BTreeMap node overhead. All affected files
+are below 1,300 lines. Child, core debugger-map, and verified-source charges
+remain in the following subleaves.
+
+**E2.2.1.3.3.1 child static metadata charge:** The child now checks the exact
+tab/document tuple, obtains that realm's live BlueJS program handles, and sums
+only their checked `DirectDebugRegistry` payload charges. It does not expose a
+new page-host protocol field yet. A two-tab child-host regression executes
+different BlueTS interfaces/symbols, observes independent content-sensitive
+charges, rejects the old generation after replacement, and sees zero in the
+new empty realm while the second tab retains its charge. Closing the second
+tab removes its charge. Deferred source graphs and the private numeric
+core/child accounting field remain the next child subleaves.
+
+**C3.1.3.2.1 root declaration-slot evidence:** BlueJS bytecode now records a
+compiler-resolved root-scope slot in root statement order only for a
+single-identifier variable or named function declaration. The compiler takes
+the slot from its own root lexical table, not a post-hoc search of binding
+names or an instruction span. Nested blocks, expressions, and compound or
+destructured declarations have no single-slot evidence. Repeated `var`
+declarations may name the same slot; this is deliberately visible evidence
+that a later BlueTS symbol join must reject as ambiguous, not a license to
+choose either declaration. The direct bridge's bytecode equality check also
+includes this new compiler metadata. This leaf does not yet join BlueTS
+symbols or types, retain child mappings, or expose a debugger request; those
+are separate ordered leaves.
+
+**C3.1.3.2.2 nested/captured exclusion:** The current BlueTS checker mints
+`DebugSymbol` records for module-level declarations, not function parameters
+or function-body/branch locals. Even when a BlueJS child code unit captures a
+root binding cell, that captured cell is not an active child `Scopes` slot;
+the paused stack lists it only in the still-active parent frame. A focused
+BlueTS inventory test and a real paused BlueJS child snapshot establish both
+boundaries. The first static-scope relation therefore joins only checked
+top-level declarations to exact root-code-unit slots. It must not attach a
+top-level SymbolId to a same-named child local, parameter, or captured slot;
+future local-symbol metadata would require its own compiler provenance and
+grant review. A parent frame shown alongside the child can still be queried
+through its own active slot and exact frame receipt.
+
+**C3.1.3.2.3.1 binding-layout attachment guard:** An already-installed
+BlueJS program could previously pass direct attachment when its instruction
+bytes, constants, root statement offsets, and root declaration slot ordinals
+matched but its binding name differed. The bridge now also requires exact
+compiler-owned binding metadata, scope membership, capture ordering, dynamic
+eval slots, global function names, and variable-scope identity for every
+recursively compared code unit. The BlueJS API reveals only a boolean layout
+comparison, not names or runtime values. A regression deliberately installs
+same-shaped code under a forged matching source identity and proves attachment
+refuses before any BlueTS symbol-to-slot join is built.
+
+**C3.1.3.2.3.2 checked root join:** Each direct attachment now builds a
+static-only root-slot inventory from the exact installed bytecode's compiler
+slot record, the corresponding structured root statement, the BlueTS lowering
+span/location, and the compiler's symbol/source/type IDs. A candidate must be
+one single-identifier variable or named function declaration of the matching
+name/kind, with exactly one symbol at that span, one symbol ID, one type ID,
+the matching compiler-options/language/source set, and one owner of the
+lexical slot. Erased type-only declarations, local/parameter/captured slots,
+duplicate `var` slot owners, and absent or inconsistent evidence produce no
+entry. Each entry already carries its installed program and root code-unit
+identity but does not assert any runtime value or expose a public debugger
+request. Classic and module tests exercise valid declarations plus malformed
+name, kind, span/location, source, type, fingerprint, and duplicate evidence;
+the next leaf proves cross-generation and linked-program isolation explicitly.
+
+**C3.1.3.2.3.3 live generation isolation:** The attachment no longer exposes
+its static slot list through an unchecked getter. Reading it requires the
+BlueJS program registry to confirm the handle is still live, the attached
+safe-point map still belongs to that generation, and every slot's program and
+root code-unit IDs match the installed program. Two identical classic
+installations yield distinct generation/code-unit IDs; invalidating one does
+not affect the other, while a moved handle refuses. In a two-file linked
+module graph, each source's top-level variable maps only to its own module
+generation. Swapped module attachments refuse; navigation invalidates both.
+The bridge still does not retain this relation in the child or expose it on a
+debugger wire.
+
+**C3.1.3.2.4.1 retained live slot map:** The direct debug registry now copies
+only a live-validated root-slot join alongside the corresponding static
+metadata, safe-point map, and breakpoint spans. Retention rejects a forged
+slot ordinal or moved generation before installing any partial record; the
+registry's lookup checks the live BlueJS handle and revalidates the root
+code-unit/slot layout before returning IDs. The page-realm owner exposes the
+same checked lookup, so navigation invalidates old slot results even after a
+new generation of identical source is installed. No child debugger request or
+public wire is added in this leaf; supervised-child call sites and forged
+handle/source/type denials remain in the next leaf.
+
+**C3.1.3.2.4.2 supervised-child scope provenance:** `BlueJsChildHost` now has
+a child-private lookup that requires the exact live document generation,
+child-minted program tuple, and metadata handle before consulting the direct
+debug registry's checked root-slot map. Existing metadata inventory and
+summary paths use the live-map check without adding a page-host or public
+debugger request. Classic-script tests reject a JavaScript sibling, forged
+program generation and metadata handle, and the old document after cutover;
+two-file linked-module tests reject swapped metadata and both old handles
+after realm close. This lookup accepts no source or type ID from a caller, so
+there is nothing to guess or partially disclose. A later private static-scope
+request (C3.1.3.3) must separately validate any such selector before it can
+return an opaque static relation; no runtime value is produced here.
+The full Launcher library suite (112 tests) passes. Two older source-debugger
+tests were also corrected to select the next *distinct source declaration*
+from the per-instruction safe-point map; their former `entries[1]` assumption
+mistook another instruction in the first declaration for the second statement.
+
+**C3.1.3.3.1 private static-scope relation contract:** The child/core route
+has two distinct exact-pause targets because the existing ordinary `Scopes`
+snapshot cannot represent a linked dependency/entry pause. The ordinary
+target carries the existing exact active-slot selector shape
+(`PageHostDebuggerValueTarget`) plus the selected program's child-minted
+metadata handle. It may resolve a root frame, including the still-active
+parent root of a nested pause; the child frame's locals and captures remain
+unbound because the current BlueTS inventory has no matching SymbolId. The
+linked target carries the child-minted linked frame, its complete expected
+two-program stack with the original scope-entry budget, the selected frame
+index, the selected program's metadata handle, and one exact active slot.
+The first supported linked relation selects the entry root at index one;
+index zero is a dependency child, not an active dependency root declaration.
+The child reacquires and compares the complete stack before using any slot.
+
+One private reply echoes the entire target and returns only the checked
+opaque `symbol_id` and `type_id`. No source/name/type display, runtime preview,
+runtime type tag, or optional partial result is serialized. Malformed IDs,
+unreceipted/inactive slots, wrong metadata owner, moved safe points or linked
+stacks, stale documents/programs, and missing/ambiguous compiler joins return
+a typed error instead of a relation. A private page-host version bump belongs
+to the leaf that adds request/reply variants; public debugger v40 remains
+unchanged until C3.1.3.4 supplies an independent static-scope grant and
+same-stream receipts. That public leaf must also provide a linked-stack-derived
+scope receipt for index one; the ordinary `Scopes` receipt cannot be silently
+reused for linked pauses. The existing `Value` route and grant remain separate.
+
+**C3.1.3.3.2 private v41 wire:** The page-host protocol now has a bounded
+`StaticScopeTarget` for either an ordinary root (including the parent root of
+an exact nested pause) or a linked entry root with the complete two-program
+stack. The structural validator requires a live-shaped metadata handle,
+root-only frame index, non-truncated linked stack within the original scope
+budget, and exactly one selected entry slot. It rejects malformed frame and
+program pairings before any relation can be returned. The static-only reply
+echoes the entire target and contains only compiler symbol/type IDs; no VM
+preview, runtime tag, type display, name, or source is present. The Launcher
+intentionally returns `InvalidDebuggerState` for this new request until the
+ordinary and linked child handlers land in C3.1.3.3.3–4. Public debugger
+remains v40 with no new grant. Both ordinary and linked socket round trips,
+negative shape cases, the staged child denial, the full IPC (116) and Launcher
+(113) library suites, workspace Clippy, and formatting checks pass.
+
+**C3.1.3.3.3 ordinary child relation:** For an ordinary root pause or the
+parent root of an exact nested invocation, the child reacquires the current
+two-frame-capable stack without reading a VM binding. It rejects any stack or
+scope truncation, a missing/moved root safe point, a changed nested invocation,
+and a selected slot that is absent, duplicated, or at a different lexical
+depth. Only then does it use the exact document/program/metadata-owned,
+generation-checked root-slot map and return that slot's compiler symbol/type
+IDs. Child-local and capture frames remain ineligible; linked targets still
+return a typed error. The classic-root and nested-parent tests include
+forged slots, scope depths, safe points, invocation serials, metadata, missing
+realms, and document cutover without a partial reply. The full Launcher
+115-test suite, workspace Clippy, and formatting pass; public debugger v40
+and the independent `Value` route are unchanged.
+
+**C3.1.3.3.4 linked child relation:** A linked static-scope request first
+validates the exact child-minted dependency/entry invocation. The child then
+reacquires a complete two-program stack using the caller's original bounded
+scope budget and compares the entire safe-point/slot snapshot, not merely the
+selected entry frame. Only the entry root at index one may join to the entry
+program's live, metadata-owned retained root-slot map; the dependency child
+and its captures cannot borrow that metadata or map. Swapped program or
+metadata identities, forged invocation/slot, moved dependency or entry safe
+points, and stale document cutover all produce typed errors without partial
+symbol/type IDs. The full Launcher 116-test suite, workspace Clippy, and
+formatting pass. Public debugger v40 and `Value` remain unchanged.
+
+**C3.1.3.3.5.1 core/adapter split:** Keep the core-facing target separate
+from the page-host wire. The ordinary form carries the existing core-owned
+paused `ValueTarget` selector plus the independently reminted metadata
+identity; this is only a slot selector, never a request for a value. The
+linked form carries the exact core-reminted two-frame pause snapshot, entry
+metadata identity, entry-root index one, and selected lexical slot. Its
+stored child stack includes the complete scope entries and original budget;
+core must reacquire and compare it before constructing the private child
+target. A result contains only compiler symbol/type IDs tied to the input
+target. The page-host adapter is default-deny for test doubles, validates the
+whole request before sending, and accepts only a structurally valid reply
+whose entire target exactly echoes the request; an error or any changed field
+has no partial relation. The out-of-process executor separately resolves
+core program, nested/linked frame, document generation, and metadata handles
+to current child identities, then verifies the selected slot against a fresh
+active ordinary or linked stack. A private core debugger helper can consume
+that result only after its own live pause and scope checks. Same-stream
+ordinary `Scopes` and future linked-stack-derived scope receipts, type-ID
+receipt, owner/client grant, and public protocol bump belong to C3.1.3.4;
+this split adds none of those public authorities and never calls `Value`.
+
+**C3.1.3.3.5.2 private transport adapter:** `PageHostClient` now defaults the
+static-scope operation to unsupported; only the authenticated page-host
+connection sends its v41 request. The staged child adapter refuses malformed
+targets before transport and accepts a relation only when the full echoed
+ordinary or linked target is structurally valid and byte-for-byte equivalent
+in its typed fields. Changed metadata, safe points, an unrelated reply, or a
+child error never yields partial symbol/type IDs. Transport-double tests cover
+both pause shapes, including no send on malformed input. After rebuilding the
+workspace's child executable (the prior binary rejected v41 as an old
+protocol), the real Launcher/Core integration case and full engine 306-test
+library suite pass. Workspace Clippy and formatting pass; no public debugger
+request, capability, receipt, or protocol change was added.
+
+**C3.1.3.3.5.3 ordinary core remap:** The core-facing static-only target and
+relation types carry only core-owned program/frame/metadata identities and
+opaque compiler symbol/type IDs. For an ordinary root or nested parent-root
+slot, the out-of-process executor reacquires the full current stack through
+its existing live document/program/frame checks, rejects truncation, checks
+the exact root safe point and one unambiguous active lexical slot, then maps
+the core program and metadata generations to their live child identities.
+The private adapter demands a complete exact echo before core remints the
+two compiler IDs; it never reads `Value`. Tests cover successful root and
+nested-parent mapping, child-local refusal, stale/moved frames, forged slot
+and scope depth, sibling-owned metadata, stale program/document, truncation,
+and altered child replies. Linked targets remain denied pending the next
+leaf. The engine 308-test library suite, workspace Clippy, and formatting
+pass; the public debugger protocol and grants are unchanged.
+
+**C3.1.3.3.5.4 linked core remap:** A core-owned linked selector names the
+two reminted frames, entry-root index one, one active lexical slot, and its
+static metadata generation. The out-of-process executor requires the stored
+complete child-first stack and both current core-to-child program mappings,
+then reacquires the same linked invocation using the original scope budget.
+It compares the entire private stack, not just frame safe points, so scope
+drift at unchanged offsets cannot turn an old selector into a new relation.
+Only the entry program's metadata can reach the strict private adapter, whose
+full-target echo is required before reminting the opaque symbol/type IDs.
+The linked core regression covers success and dependency-owned metadata,
+swapped/moved public frames, forged slot/index, stale document, private scope
+drift, moved invocation, and changed child echo. The engine 308-test suite,
+workspace Clippy, and formatting pass. Neither the public debugger wire nor
+its receipt/grant authority changes here; a shared private core helper remains
+the next leaf.
+
+**C3.1.3.3.5.5 private core staging helper:** Before any future public
+dispatch, the debugger session can resolve one exact live realm and request a
+static-only relation through a private helper shared by ordinary and linked
+targets. The ordinary branch reacquires a complete root/parent stack and
+requires one unique active lexical slot at the expected root safe point. The
+linked branch validates the reminted two-program frame shape and reacquires
+the exact two-frame pause; the out-of-process executor then performs the
+complete private scope/slot recheck before the child adapter's exact echo.
+The session helper also refuses a changed core-target echo, so no partial
+relation is exposed on stale or forged input. Tests cover both successful
+shapes, forged/duplicated ordinary slots, stale realm generation, moved linked
+stack, and altered echo. The engine 309-test suite, workspace Clippy, and
+formatting pass. This staging helper is not wired to a public debugger
+request, capability, or grant; those remain C3.1.3.4 work.
+
+**C3.1.3.3.6.1 classic/module root boundary:** The real Launcher-supervised
+BlueJS child now proves that an initialized BlueTS root binding in both
+classic and module script kinds can pass through the private v41 relation,
+the child adapter's exact echo, and the core-reminted program and metadata
+identities. The returned relation echoes only the static core target and
+opaque compiler symbol/type IDs. Replacing the document makes the same
+target fail with no partial relation. The focused real-child test passes;
+public debugger routing and grants remain unchanged.
+
+**C3.1.3.3.6.2 nested/linked boundary:** Real Launcher-supervised classic
+and module nested pauses now verify the initialized parent-root binding's
+static relation through core reminting, while selecting a child-local slot
+for that root-owned metadata fails. A real linked dependency/entry module
+graph reacquires the full private linked scope budget, relates the entry
+root's active slot through its entry-owned metadata, and refuses dependency
+metadata or frame index zero. The two focused child/core socket tests pass;
+neither shape adds a public static-scope request or grant.
+
+**C3.1.3.3.6.3 no-partial closure:** Against the real Launcher-supervised
+child, ordinary nested-parent and linked entry-root relation targets now
+refuse forged metadata generations, forged slot ordinals, and moved safe
+points. Resuming the respective child/dependency invalidates the old paused
+target; replacement documents also refuse both shapes. Each refusal is a
+typed error with no symbol/type partial payload. The full engine 309-test
+suite, workspace Clippy, and formatting pass, closing the private child/core
+static-relation milestone C3.1.3.3. Public same-stream receipts and the
+independent owner/client grant remain C3.1.3.4 work.
+
+**C3.1.3.4.1 public static-scope contract and sequence:** Stage only
+data-only validators and private core checks under public debugger v40. The
+complete public route will use an ordinary selector consisting of an exact
+`DebuggerValueTarget` from `GetScopes` plus its same-program opaque metadata
+handle, or a linked selector consisting of the complete child-first reminted
+`DebuggerLinkedStackSnapshot`, entry-root index one, one selected lexical
+slot, and entry-owned metadata. A new `GetLinkedScopes` request under the
+existing owner-selected LinkedModules and Scopes availability will take an
+exact expected linked stack and bounded scope budget, reacquire the whole
+pause, and return only the entry-root active slot/depth list with that stack
+echoed. It grants no value read. Only a successful complete reply creates a
+distinct same-stream linked scope receipt for those exact stack/slot tuples;
+ordinary `GetScopes` creates ordinary receipts. Both receipt sets are bounded
+and tied to the core-owned pause incarnation; successful arm/step/resume
+invalidates them, and every relation additionally rechecks the live realm,
+program, frame, stack, metadata generation, and active slot. A linked receipt
+cannot satisfy ordinary `GetValue`, and an ordinary receipt cannot select a
+linked slot.
+
+The public `GetStaticScopeRelation` target echoes one of those two shapes.
+It requires a new independently negotiated, default-deny owner/client
+`OpaqueStaticScopeRelation` grant, not `BoundedValues` or the existing
+`OpaqueSymbolType` grant. The canonical manifest includes the prerequisite
+opaque metadata, symbol-inventory, and type-inventory grants; the exact
+metadata, symbol ID, and type ID must already have crossed that same stream's
+inventory receipt boundary before any pair is returned. Core checks the
+metadata receipt and matching program before the private relation; after the
+child's exact static-only echo, core checks the returned symbol and type IDs
+against their separately receipted inventories before emitting a complete
+public reply that echoes the full target and contains only those parent-bound
+opaque IDs. A missing grant, receipt, moved pause, malformed response, or
+unbound slot yields one typed error, never a partial symbol/type pair. Type
+display still needs its independent grant and `Value` remains separately
+granted, Scopes-receipted, bounded, and runtime-only. Add the new public
+request/reply variants, named owner policy, canonical capability identifier,
+manifest version, and debugger protocol bump together only after the staged
+IPC and core denial checks are ready; then prove real socket behavior before
+claiming C3.1.3.4 complete.
+
+**C3.1.3.4.2 staged public data shapes:** `DebuggerLinkedScopeSnapshot`
+echoes a complete child-first linked stack, fixes selection to entry-root
+index one, and bounds its lexical slot list by the retained scope budget.
+Duplicate slot ordinals, zero/out-of-range budgets, and inconsistent
+truncation are malformed. `DebuggerStaticScopeTarget` holds either an exact
+ordinary root/parent `ValueTarget` with matching metadata owner or an exact
+linked entry-root stack/slot selector with entry-owned metadata. Its static
+relation echoes the whole target and requires both opaque compiler IDs to
+remain under that same metadata parent. Focused malformed-shape and JSON
+round-trip tests, the full IPC 117-test suite, workspace Clippy, and
+formatting pass. These data-only types add no request, reply variant,
+capability, grant, or public protocol change; debugger remains v40.
+
+**C3.1.3.4.3 private linked entry-root scopes:** The page-executor trait now
+offers a default-denied complete linked-scope snapshot. The out-of-process
+owner accepts only the exact stored core-reminted two-frame identity and live
+document, reacquires the same child invocation at the fixed maximum scope
+budget, and rejects a changed frame, truncated private scope, or duplicate
+entry-root slot ordinal. If the previously stored private stack was already
+complete, every reacquired frame and scope entry must also match it, even
+when safe points alone are unchanged. Only the complete entry-root
+`(slot_ordinal, scope_depth)` list crosses to the core-facing result; child
+program and invocation IDs remain private. Focused mock drift/forgery and
+real Launcher-child tests, engine 309-test suite, workspace Clippy, and
+formatting pass. No public linked-scopes request, receipt, grant, or version
+change exists in this leaf.
+
+**C3.1.3.4.4 staged pause receipts:** The core-local debugger session now
+retains ordinary `GetScopes` slot targets and complete linked entry-root
+stack/slot targets in separate sets under one 4,096-entry bound and one
+core-owned pause incarnation. A new or malformed later-pause reply clears
+both old sets before denial; stale incarnation values and other streams
+cannot borrow either. Linked replies that are truncated, malformed, or
+over-budget mint no receipt. The static-only receipt checker accepts the
+appropriate shape, while the existing `Value` receipt checker consults only
+the ordinary set and its separate runtime-value grant remains required.
+Focused tests cover same-stream exactness, forged slots, cross-stream and
+stale denials, truncation, and atomic combined-budget refusal. IPC 118-test
+suite, workspace Clippy, and formatting pass. No public static relation
+request, dispatch, grant, or protocol change is added here.
+
+**C3.1.3.4.5 staged core relation dispatch:** A core-local helper now requires
+an explicit independent-grant decision and the exact ordinary or linked
+same-stream scope receipt at the current pause incarnation. It rejects absent
+metadata and separate symbol/type inventory receipts, then remaps the public
+selector through the live realm and core-owned frame/stack identity. The
+existing private relation helper reacquires the active lexical slot and
+metadata generation; the staged caller accepts only a full private target
+echo and a complete parent-bound public symbol/type pair already receipted on
+that session. Tests exercise ordinary and linked success without `Value`
+authority and deny missing grants, missing/foreign receipts, stale
+incarnations, and altered echoes. The engine 309-test suite, workspace Clippy,
+formatting, and diff checks pass. No public request, owner policy, manifest
+or protocol change exists yet; the explicit grant parameter must be derived
+from the actual owner/client negotiation in C3.1.3.4.6.
+
+**C3.1.3.4.6.1 staged linked scopes:** A core-only helper accepts an exact
+complete public linked stack and a bounded entry budget, resolves the live
+realm, requires LinkedModules and Scopes availability, and remaps the full
+stack to the private core identity. The private executor reacquires the whole
+pause; core requires its exact stack echo and validates the entire complete
+entry-root slot list, including duplicate ordinals beyond the caller's
+display budget, before returning only entry-root slot/depth. A smaller
+requested budget may produce a marked-truncated public shape, which the
+session receipt logic will not accept. Focused tests reject invalid budgets,
+forged or moved stacks, hidden duplicate slots, and unavailable scopes; the
+engine 309-test suite, workspace Clippy, formatting, and diff checks pass.
+There is still no public linked-scopes request or static relation grant.
+
+**C3.1.3.4.6.2 atomic public route decision:** Publish debugger v41 and
+metadata manifest v5 only in the same change as both routes and their
+fail-closed tests. Name the independent metadata capability
+`OpaqueStaticScopeRelation`, map it to a separate public
+`StaticScopeRelation` availability report, and add one default-off Launcher
+owner option forwarded to the core's startup-only option. The canonical
+selection includes opaque metadata, type, and symbol inventories; neither
+`OpaqueSymbolType` nor `BoundedValues` implies it. The report is Available
+only for a live child with Scopes and all three prerequisite inventories,
+and a client must both negotiate that exact grant and retain an Available
+report for its realm. In-process/absent-executor routes deny both new
+requests. An owner option without its socket and inventory prerequisites is
+rejected before listener startup.
+
+`GetLinkedScopes` takes an exact complete linked stack and an entry budget;
+it requires live LinkedModules and Scopes availability and echoes only the
+entry-root slot/depth list. Its complete, well-formed, untruncated reply
+mints a distinct linked receipt only if this stream negotiated the static
+relation grant; an incomplete reply remains inspectable but mints none.
+Ordinary `GetScopes` mints its existing receipt when either the independent
+static relation or bounded-value grant is present. Both receipt families
+share the current pause incarnation and cap, but `GetValue` continues to
+consult only ordinary receipts and its separate value grant.
+`GetStaticScopeRelation` accepts the ordinary or linked exact target. Core
+must validate the public shape, live realm, negotiated capability and
+Available report, exact same-stream pause receipt, metadata receipt, and
+separately receipted symbol/type IDs before returning one complete echoed
+pair. No error path may include one half of the pair. IPC tests cover wrong
+manifest version/order/prerequisites, wrong-version Hello, malformed wire
+targets/replies, and no accidental Value authority. Core tests cover
+default-off owner/client grants, truncated/over-budget scopes, stale pause,
+foreign stream, forged slot or metadata, moved linked stack, and changed
+private echo. Launcher/core startup tests cover prerequisite failures. Real
+Launcher socket acceptance remains C3.1.3.4.7.
+
+**C3.1.3.4.6.2 guarded public route delivered:** The complete route now
+ships as debugger v41 with canonical metadata manifest v5. Launcher and core
+both require an explicit default-off `--debugger-static-scope-relation` owner
+selection with debugger socket plus opaque metadata, type, and symbol
+inventories; the client separately requests `OpaqueStaticScopeRelation` in
+Hello. A live child advertises `StaticScopeRelation` only when Scopes and all
+three prerequisites are available for that stream. `GetLinkedScopes` remaps
+and reacquires the complete linked stack, returning only bounded entry-root
+slots; an untruncated complete reply can mint a linked same-stream receipt.
+Ordinary `GetScopes` likewise mints a receipt for the independent static grant
+without a value grant. `GetStaticScopeRelation` then requires the exact pause
+receipt, metadata receipt, symbol/type inventory receipts, live realm and
+active slot, and full private target echo before returning one boxed,
+parent-bound opaque pair. The existing `GetValue` gate still requires
+`BoundedValues` and only an ordinary receipt.
+
+Focused IPC wire/manifest, core dispatch, and both owner-option tests pass.
+The core denial matrix covers missing owner/client grant, missing or foreign
+receipt, stale pause, malformed target, moved linked stack, altered private
+echo, truncated linked scope, and combined receipt-cap exhaustion. The full
+workspace test suite, workspace Clippy, formatting, and diff checks pass.
+One old core-binary test still expected Stack/Scopes to be Planned on the
+out-of-process route; it was updated to assert their already available
+source-free state while retaining Planned runtime values and the new static
+relation without a grant. Real Launcher public-socket acceptance and
+no-partial lifecycle tests remain C3.1.3.4.7.
+
+**C3.1.3.4.7.1 real ordinary roots:** The Launcher public socket now proves
+the complete static-only relation path for inline BlueTS classic and module
+pages through a real core and supervised child. Each stream independently
+negotiates the static grant without bounded values, inventories one opaque
+metadata handle and its symbol/type IDs, pauses a verified root safe point,
+then selects an exact `GetScopes` lexical slot. A successful relation echoes
+the full ordinary target and only the two IDs already inventoried on that
+same stream; no source, display, or runtime preview is included. The selected
+slot's `GetValue` remains CapabilityUnavailable. The focused two-kind real
+Launcher test passes; nested and linked sockets plus lifecycle refusals
+remain separate leaves.
+
+**C3.1.3.4.7.2 real nested parents:** On both classic and module pages, the
+real Launcher socket pauses inside a verified nested BlueTS function. The
+active child argument can be inspected as a source-free Scopes slot but is
+not a valid static-only selector; the caller-root frame's own slot, frame
+identity, safe point, and metadata yield one complete parent-bound symbol/type
+pair from the same stream's inventories. A guessed parent slot refuses.
+The test deliberately inventories metadata after the final `ListPrograms`:
+that operation invalidates the core's previous private metadata mapping,
+even if old numeric handles happen to match. The focused two-kind real
+socket test passes. Linked and lifecycle cases remain separate leaves.
+
+**C3.1.3.4.7.3 real linked entry root:** The existing Launcher-supervised
+two-module graph now independently negotiates static-scope authority and
+receives a complete `GetLinkedScopes` snapshot for the exact child-first
+dependency/entry stack. Only entry-root slot/depth entries cross that reply;
+the same stream inventories entry-owned type and symbol IDs before one
+compiler-only relation echoes the complete linked target. A selector using
+dependency metadata refuses as InvalidTarget, never returning a partial
+pair. The focused real linked graph test passes. Lifecycle, cross-stream,
+and separate runtime-value grant cases remain C3.1.3.4.7.4.
+
+**C3.1.3.4.7.4.1 forged and cross-stream refusals:** The real linked Launcher
+graph rejects a guessed entry-root slot and a modified metadata generation
+with complete typed errors, never a partially filled symbol/type pair. Its
+breakpoint is now armed immediately after the two program IDs and dependency
+safe point are known; waiting for multiple original-source metadata queries
+could let the graph complete before arming. The real classic/module root
+test first obtains an ordinary static relation, closes that debugger stream,
+then proves a fresh stream with the same static grant cannot borrow the
+old metadata/scope selector. The debugger socket serves streams serially,
+so the cross-stream check is deliberately sequential. Both focused real
+Launcher tests pass. On request, a BlueTS >1,300-line modularity audit and
+justified refactors will follow C3.1.3.4.7.4 before C3.1.3.4 closes.
+
+**C3.1.3.4.7.4.2 real pause lifecycle and grant separation:** The classic
+and module static-only root sockets reject `Value` for the very slot whose
+compiler relation succeeded; after stepping that root, its old static
+selector also returns only a typed error. The linked graph rejects old
+linked-scopes and relation selectors after resuming its dependency pause.
+After reload, old linked-scopes and the other linked-program requests are
+StaleRealm; the static relation instead returns CapabilityUnavailable
+because reload revokes the independent grant/receipts before that route's
+realm preflight. Neither path returns a partial pair. Conversely, the real
+classic/module value-only nested socket reads its caller-root value but
+cannot use a well-formed static selector without the separate grant. All
+three focused real Launcher tests pass against the shared Cargo target;
+complete socket/workspace gates remain C3.1.3.4.7.4.3.
+
+**C3.1.3.4.7.4.3 public acceptance:** The complete serial workspace suite
+now exits successfully, including all 27 real Launcher debugger socket
+tests, 309 engine unit tests, and 19 core-binary integration tests. Workspace
+Clippy and rustfmt checks pass. Two existing real-process tests exposed
+time-sensitive setup while running the full gate: the source-span test now
+arms its root breakpoint immediately after safe-point inventory, before
+longer source-metadata queries, and the DOM socket core-replacement test
+allows both frontend navigation phases a 30-second read window while
+retaining a URL-specific timeout diagnostic. No production behavior changed.
+All checks reused the workspace `target/`; one verified obsolete Launcher
+test executable was removed, retaining both currently used package and
+workspace variants. C3.1.3.4.7.4 is closed. The requested BlueTS file-size
+and module-boundary audit is C3.1.3.4.7.5 before the parent closes.
+
+**C3.1.3.4.7.5.1 modularity inventory:** `MODULARITY_AUDIT.md` records the
+2026-09-27 line-count snapshot for 27 over-1,300-line Rust files containing
+BlueTS-owned code or references, including the separate `checker.rs` owner.
+Four direct compiler/bridge files have clear test, inference, lowering, or
+attachment splits. Mixed child host, debugger, compiler transport, and
+acceptance owners need staged internal modules that preserve wire/ABI and
+same-stream receipt semantics. Ten adjacent generic browser/BlueJS files
+were evaluated but a BlueTS-only extraction was deferred because their
+large body is not BlueTS-owned. The first implementation leaf moves the
+compiler's inline tests to their own module; subsequent compiler, bridge,
+and mixed-runtime work stays file-scoped and runs focused gates.
+
+**C3.1.3.4.7.5.2.1 compiler test owner:** The compiler's inline `#[cfg(test)]`
+block moved unchanged to `compiler/tests.rs` with an MPL header, while
+`compiler.rs` now names the child test module. The implementation file fell
+from 1,364 to 766 lines; the relocated test file is 600 lines. All 156
+BlueTS library tests and the crate's full integration suite pass with their
+original test names, and workspace Clippy, formatting, and diff checks pass.
+No compiler API, cache behavior, or output contract changed.
+
+**C3.1.3.4.7.5.2.2 checker test owners:** The checker tests' structural,
+project, generic, and overload cases moved to `tests/project_contracts.rs`
+with their original function names and an MPL header. The original 1,469-line
+module is now 778 lines and the new child module is 697 lines. The complete
+BlueTS crate suite (including all 156 library tests), workspace Clippy,
+formatting, and diff checks pass. No checker implementation or public
+diagnostic contract changed.
+
+**C3.1.3.4.7.5.2.3 checker type relations:** Structural assignability,
+named-type expansion, defaulted generic argument completion, type
+substitution, and type labels moved together to the internal
+`checker/type_relations.rs` module. The parent keeps its original crate-level
+`type_label` import and sibling helper visibility, so checker call sites and
+diagnostic text are unchanged. `checker.rs` fell from 1,368 to 1,080 lines;
+the new module is 301 lines. The complete BlueTS crate suite, workspace
+Clippy, rustfmt, and diff checks pass.
+
+**C3.1.3.4.7.5.3.1 direct lowering owner:** Classic/module AST lowering,
+function and variable conversion, and original-source provenance generation
+now live in `bluets-bluejs/src/lowering.rs` (342 lines). The facade fell
+from 1,711 to 1,378 lines and retains its public bridge ABI/types. Existing
+expression tests depended on the facade's private `ExpressionLowerer` import;
+it remains available under `#[cfg(test)]` without exposing a production API.
+All 107 bridge crate tests, workspace Clippy, rustfmt, and diff checks pass.
+The remaining over-threshold attachment/map owner is C3.1.3.4.7.5.3.2.
+
+**C3.1.3.4.7.5.3.2 attachment/map owner:** Source identity validation,
+live program attachment, root symbol slots, and safe-point map construction
+and validation moved to `bluets-bluejs/src/attachment.rs` (524 lines).
+The facade is now 866 lines, with its original public bridge types and ABI.
+The page runtime's internal source-identity use remains available through a
+private parent import. All 107 bridge tests, workspace Clippy, rustfmt, and
+diff checks pass. The direct bridge phase is closed; mixed runtime/transport
+files proceed in separately scoped leaves.
+
+**C3.1.3.4.7.5.4.1.1 child-executor test boundary:** The entire existing
+inline test body moved, without rewriting the tests, to
+`javascript_child/tests.rs` under the same `mod tests` identity. The
+production `javascript_child.rs` fell from 14,468 to 7,016 lines; the
+7,344-line extracted test file still needs concern-level submodules before
+the test owner is considered modular. All 309 engine library tests, workspace
+Clippy, rustfmt, and diff checks pass. No runtime or debugger behavior changed.
+
+**C3.1.3.4.7.5.4.1.2 child-executor debugger test owners:** The exact private
+static/linked adapter, linked pause, and scope/value test bodies now live in
+three bounded child modules (486, 1,226, and 992 lines). The parent test file
+retains one shared socket/child fixture harness and the remaining integration
+tests; it is 4,658 lines until the transport/authorization and real-child
+metadata leaves. All 309 engine library tests pass with the reused target;
+runtime and debugger contracts are unchanged.
+
+**C3.1.3.4.7.5.4.1.3 child transport and admission tests:** Socket/session
+timing and DOM-pump cases, resource-accounting/lifecycle cases, and closed
+graph/HTTP authorization cases now have independent 432-, 294-, and 506-line
+test owners. A 3,444-line parent retains shared fixtures and real-child
+debugger/metadata cases for the final test split. All 309 engine library
+tests pass using the same target directory; wire and runtime behavior is
+unchanged.
+
+**C3.1.3.4.7.5.4.1.4 real-child test owners:** Real-child metadata, exact
+span/envelope validation, nested pause, stack/scope, and lifecycle tests are
+now separate 390-, 935-, 647-, 647-, and 448-line modules. Shared fixtures
+remain in a 407-line parent, and the largest file across the completed child
+test family is 1,226 lines. All 309 engine library tests pass; production
+adapter extraction remains a separate leaf.
+
+**C3.1.3.4.7.5.4.2.1 Launcher host test boundary:** The existing inline
+test body moved under the same `mod tests` identity to an MPL-headed
+`bluejs_host/tests.rs`, with no rewritten assertions or changed runtime
+behavior. Production `bluejs_host.rs` fell from 14,133 to 7,709 lines; the
+6,394-line test owner proceeds through DOM/scheduler, metadata, and
+admission/stepping concern splits. All 116 Launcher library tests pass with
+the reused Cargo target.
+
+**C3.1.3.4.7.5.4.2.2 Launcher host DOM and private debugger tests:** DOM
+transport, nested-frame scheduler, exception locations, and static-scope/value
+cases now have independent 704-, 659-, 261-, and 636-line test modules.
+Shared graph/document/script/value-target fixtures remain in the parent,
+which is 4,158 lines until metadata and admission/step concerns are split.
+All 116 Launcher library tests pass with the reused target; behavior and
+wire contracts remain unchanged.
+
+**C3.1.3.4.7.5.4.2.3 Launcher host metadata test owners:** Resource
+accounting, debugger configuration, BlueTS root slots, metadata inventory and
+contracts, and source-span cases now have bounded 184-, 516-, 520-, 690-, and
+289-line modules. The 1,989-line parent retains fixtures and admission/step
+tests for the last split. All 116 Launcher library tests pass with one reused
+Cargo target; no wire or runtime behavior changed.
+
+**C3.1.3.4.7.5.4.2.4 Launcher host admission and stepping tests:** Snapshot
+and module admission, module/source-span stepping, and linked-module lifecycle
+cases now live in 533-, 940-, and 417-line modules. The common fixture owner
+is 117 lines; all host test-family files are below 1,300 lines (maximum 940).
+All 116 Launcher library tests pass with one reused target. Production host
+prepare/debugger extraction remains a separate leaf.
+
+**C3.1.3.4.7.5.4.3.1 child-client contract boundary:** The complete public
+`PageHostClient` transport trait moved unchanged to a 765-line internal
+module and is re-exported through its original path. This leaves the
+production executor facade at 6,259 lines, with separate socket, private
+linked/static adapter, core debugger, and helper seams for later leaves.
+All 309 engine library tests pass with the reused target; the child protocol
+and API are unchanged.
+
+**C3.1.3.4.7.5.4.3.2 child connection transport:** The authenticated
+`PageHostConnection`, fixed-deadline socket request/pump, and its full
+`PageHostClient` implementation moved to a 901-line internal module. The
+original public connection path remains a re-export; request helpers and
+stream visibility extend only to the parent so existing transport tests keep
+their exact assertions. The executor facade is 5,365 lines. All 309 engine
+library tests pass with the reused target; protocol behavior is unchanged.
+
+**C3.1.3.4.7.5.4.3.3 private debugger reply adapters:** Exact linked arm,
+state, stack, spans, resume, and static-scope relation checks moved together
+to a 277-line internal module. The adapters expose only parent-module access,
+leaving public grants, reminted handles, and wire replies unchanged. The
+production child-executor facade is 5,097 lines; all 309 engine library tests
+pass with the reused target.
+
+**C3.1.3.4.7.5.4.3.4.1 core debugger trait boundary:** The complete
+`PageJavaScriptDebuggerLocations` implementation moved intact to an internal
+`debugger.rs`; no grant, remint, validation, or reply path was rewritten.
+The executor facade is 2,238 lines and the debugger owner is 2,865 lines.
+Both still require bounded concern-level delegations and helper extraction.
+All 309 engine library tests pass with the reused target.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact
@@ -1396,6 +3953,416 @@ public project ID, rejects the private project ID, and still checks the public
 project. This does not add per-client project subsets, project registration,
 build/output authority, or filesystem-root canonicalization.
 
+**F1.1.1 physical owner roots:** An owner catalog may now use absolute host
+paths for its project root, config file, source modules, and output directory.
+Validation resolves every such identity against the current filesystem and
+requires the supplied spelling to equal the resolved canonical path. Project
+and output roots must be existing directories; config and source identities
+must be existing regular files. Lexical containment and cross-project
+input/output collision checks still run first. An absolute project cannot mix
+virtual and physical config, entry, module, or output identities. Existing
+`project:///` catalogs continue to represent bundled source text with no
+filesystem lookup. The launcher checks the owner file before spawning core;
+core validates the private bootstrap again before binding listeners. This
+does not compare bundled source text with file contents or open a write
+capability. F1.1.3 must separately authorize output writes and revalidate
+paths at the time of use, because filesystem entries can change after startup.
+
+**F1.1.2 client request closure:** Compiler IPC now refuses unknown fields in
+each request variant and its nested project, generation, cursor, and contract
+value envelopes. The compiler MCP adapter applies the same strict decoding to
+each typed compiler-tool argument and nested cursor. Extra client paths,
+resolver edges, compiler options, or plugin names are rejected instead of
+being silently dropped before a read-only query. Unknown operation variants
+still take the existing unsupported path; contract-validation JSON remains
+data, never a route to a filesystem or compiler option. A real core/MCP
+regression injects all four field classes and then checks the same inventoried
+project successfully with the fixed query shape.
+
+**F1.1.3 owner output grant:** `canonical_output_root` remains an identity in
+every registration, without implying write authority. The optional owner
+bootstrap `grant_output_write` flag defaults to false, requires a physical
+catalog, and is validated with the complete physical input/output graph.
+During core startup, an explicit grant path preflights the existing canonical
+files and output directory before mutating the registered-project catalog.
+The grant lives separately in the sealed core session under a core-owned
+project ID; compiler IPC and MCP still expose only the unchanged query-only
+manifest and project receipts. A granted catalog check creates no output.
+Actual build publication remains for F2.2 and F3.2, which must verify the
+grant and revalidate the filesystem target at the time of every write.
+
+**F2.1.1 result identity:** BlueTS now computes one stable observed
+graph/options fingerprint before deciding whether emission is possible. A
+diagnostic-bearing compilation therefore has a fingerprint even though it
+has no artifact; a successful compilation's fingerprint equals its output
+and each module artifact fingerprint. Core keeps this value with every
+registered-project check generation and verifies build artifacts against it
+before returning the in-memory build. Compiler IPC v11 adds the value to the
+check reply; later diagnostic, work-set, and static records carry the exact
+generation that the client first received with that fingerprint. MCP checks
+project/generation/fingerprint consistency before accepting a replacement
+generation receipt. This fingerprint is deterministic cache provenance, not a
+cryptographic authorization token or an output-write grant.
+
+**F2.1.2 bounded results:** The registered-project service now charges every
+retained build component against its artifact byte budget, including module
+map keys, repeated artifact fingerprints, source-map entries, declarations,
+and strict runtime helper/crossing records. Its artifact count uses checked
+arithmetic. Diagnostic retention uses an independent combined byte budget
+as well as the existing count limit, keeping a deterministic prefix and
+reporting truncation even if the first diagnostic is too large. Existing
+work-set retention bounds both entry count and combined identity bytes; the
+core IPC adapter additionally caps each check list and page by its own field,
+entry, and response budgets. The limits apply before any future output
+transaction or MCP build response can carry these results.
+
+**F2.2.1 atomic owner staging:** A trusted core owner now has one staging
+primitive for a current registered generation with a separate output-write
+grant. It creates a fresh temporary directory inside the canonical output
+root, lets trusted owner code populate it, and makes the complete directory
+visible with one same-filesystem rename to an immutable project/generation
+name. A failed population removes the stage and leaves previous published
+generations untouched; duplicate names, missing grants, stale generations,
+and changed output-root aliases refuse before publication. The test removes
+its tiny temporary output tree. This primitive is not a compiler IPC/MCP
+operation. F2.2.2 must prevent diagnostics from entering staging, and F2.2.3
+must map only validated artifact paths under the granted root before any
+public build route is opened.
+
+**F2.2.2 no-emit-on-error admission:** The owner build/staging entry checks
+the separate grant before calling the registered-project compiler. It returns
+the exact check generation with no path when diagnostics prevent output, and
+does not invoke the trusted stage-population function. A denied project does
+not compile or advance its generation. A successful granted build can stage
+its bounded in-memory artifact set; errors retain existing output untouched.
+The lower-level staging function is now private to core's owner module, so
+callers cannot skip the build result gate through that API. F2.2.3 will
+replace the trusted population callback with validated artifact-to-path
+mapping before any public build route is enabled.
+
+**F2.2.3 contained artifact publication:** The owner build method no longer
+accepts a population callback. It preflights all successful compiler artifact
+IDs against the physically canonical project root, maps source `.ts` modules
+to `.js` plus optional `.js.map` and `.d.ts`, preserves declaration modules,
+and rejects aliases, escape components, mismatched artifact keys, unsupported
+source kinds, and destination collisions including file/directory ancestors.
+Only after the full plan succeeds does the atomic staging primitive create
+files under its fresh generation directory. The output grant also pins the
+Unix device/inode of its root and refuses a replacement at use time. Until a
+registered strict helper publisher and its audit are available, any emitted
+strict-runtime crossing fails closed rather than producing a broken module.
+The compiler IPC/MCP route is still query-only; F3.2 must explicitly gate any
+public build operation by the separate owner grant.
+
+**F3.1.1 scoped compiler negotiation:** The existing exact-version compiler
+Hello gives MCP a core-authored query-only manifest and per-accepted-stream
+attestation. The sealed project inventory admits only owner-exposed handles
+on that stream; a structurally valid check for one of those handles replaces
+its generation receipt and revokes earlier metadata IDs. MCP now also
+validates `DescribeProject` against the exact requested handle before
+publishing its source-free identity. A real MCP client confirms that another
+connection rejects a prior session receipt, while existing real core/cutover
+tests prove private project IDs and superseded generations cannot be
+borrowed. This negotiation grants only the fixed query vocabulary; the
+independent output-write grant is not represented by these receipts.
+
+**F3.1.2 one-shot compiler pagination:** Diagnostic, incremental work-set,
+and static metadata continuations remain core-owned cursor records, never
+numeric offsets supplied by an MCP caller. The service consumes a valid
+record once, and the accepted IPC stream requires its own previously returned
+receipt for the exact generation and collection. A rejected cross-stream or
+cross-kind use does not consume the owning stream's valid continuation;
+successful use makes replay fail. Stream closure and new checks revoke
+unused records. The added stream-bound diagnostic/work-set regression and
+existing metadata and real MCP tests cover these conditions.
+
+**F3.1.3 untrusted compiler strings:** Every compiler tool returns through
+the same MCP result formatter: project-derived entry identities, module
+names, diagnostic prose, static displays, and core error messages are JSON
+values behind an explicit untrusted-data warning and marker. The capability
+report contains only fixed core-authored session evidence. An adversarial
+project identity containing JSON delimiters, a forged session field, the
+marker, and an instruction remains a single encoded value; parsing the
+result still yields the genuine session receipt.
+
+**F3.2.1.1 independent build-authority decision:** The existing compiler
+query socket and its exact fixed manifest stay read-only. An owner must
+separately configure an output-write endpoint, which binds only physical
+projects that received `grant_output_write` at sealed startup. A dedicated
+output protocol will mint its own per-stream receipt and inventory only the
+granted, publicly exposed project IDs. A build request accepts the output
+receipt and opaque project ID, then calls the already gated core owner
+build/staging method on the session thread. Its bounded reply contains a
+compiler check and publication status, never emitted artifacts, output paths,
+or a caller-supplied destination. MCP will attach this endpoint only through
+an explicit owner path and advertise its build tool only when that attachment
+is present. A successful or failed build revokes prior query-generation
+evidence for that project; the independent receipt prevents a query session
+from being interpreted as write authority. The launcher relay, if used for
+this endpoint, must pin accepted output streams to one core generation.
+
+**F3.2.1.2.1 output wire protocol:** `compiler_output` v1 is independent of
+the query-only compiler protocol and has a 64 KiB frame limit. It admits an
+exact-version Hello only with a core-minted `ow-`-prefixed 32-byte receipt;
+the query protocol's 64-hex attestation cannot pass this receipt's structural
+check. Post-Hello requests contain only that receipt and, for build, an
+opaque project ID. Unknown path, source, resolver, and option fields are
+rejected on decode. The build result carries only its exact generation,
+bounded project fingerprint, diagnostic status, and publication bit. No
+listener consumes this new vocabulary yet; F3.2.1.2.2 must bind it to the
+sealed owner's grant map and staging method.
+
+**F3.2.1.2.2.1 sealed output owner:** The sealed core compiler session now
+handles output-protocol requests independently of its query adapter. A
+stream's output receipt must match exactly before its inventory is created;
+that inventory contains only publicly exposed projects with separate
+physical output grants. Build requires that same stream's inventoried ID,
+uses the existing staged owner build, returns only generation/fingerprint and
+publication status, and revokes old query cursor evidence because the build
+may advance the compiler generation. Diagnostic-bearing builds publish
+nothing. Closing the output session drops its project inventory. No socket
+can reach this owner handler until F3.2.1.2.2.2 connects it.
+
+**F3.2.1.2.2.2 core output socket:** Core accepts an independently configured
+`--compiler-output-socket` only with an owner catalog and at least one exposed
+physical write grant. It binds the endpoint with explicit `0600` permissions.
+Each accepted output connection mints a fresh `ow-` receipt after exact
+protocol Hello. Its worker owns framing only and queues output requests on
+the same channel that the core session thread drains for compiler queries;
+no listener thread owns compiler cache, grant map, or filesystem publisher.
+Disconnect drops the stream inventory, and core shutdown removes the socket.
+A real subprocess covers valid publication, rejection of a query receipt,
+permission mode, cleanup, and refusal to start an output listener with an
+ungranted owner catalog. MCP still has no output adapter until F3.2.1.3.
+
+**F3.2.1.3 optional MCP build attachment:** A new explicit constructor pairs
+the browser and query sockets with the separately configured output socket.
+The output client validates its independent Hello receipt, accepts only a
+well-formed granted-project inventory, and checks each build result against
+the requested project. MCP's active tool router omits output capabilities,
+output inventory, and build entirely when no output connection was attached;
+a direct call to the absent route fails. An attached client must supply the
+`ow-` output receipt and inventoried project ID to build. Before that request,
+MCP revokes its old query-generation evidence under the same lock used by
+query operations, so a build cannot leave a usable stale static receipt.
+The build result is source-free and omits the physical output path. A real
+MCP/core test covers the advertised tools, wrong query receipt, inventory
+gate, publication, and stale query generation.
+
+**F3.2.2 query receipt denial:** The read-only query attestation cannot act
+as an output receipt at either boundary. A real core output stream rejects it
+for both inventory and build after a valid output Hello; a real MCP client
+repeats it as `bluetsc_build.output_session_id` after obtaining the granted
+project inventory. Both attempts leave the output root empty, and the next
+valid build increments the compiler generation only once. The query-only MCP
+router also has no build route. This proves that a successful query check or
+project receipt never implies write authority.
+
+**F3.3.1 real MCP failure inspection:** A launcher-managed core now receives
+two owner-selected virtual projects through its sealed catalog: one produces
+a type diagnostic, and the other produces a reifiable local contract. A real
+MCP client inventories and describes both project handles, checks each
+generation, reads a nonempty diagnostic page, inventories and describes a
+static type, then validates a mismatched JSON snapshot to obtain a concrete
+contract failure. Source text and physical paths never appear in those
+replies; the exact session/project/generation receipts gate every query.
+
+**F3.3.2 real MCP check and build:** A separate real MCP/core fixture starts
+an owner-granted physical project. The client inventories the read-only
+project, checks it, then inventories the same project's independent output
+grant and builds with its `ow-` receipt. The resulting source-free build
+record repeats the observed graph/options fingerprint, advances exactly one
+generation, and reports publication without revealing the output root. The
+owner's immutable generation directory contains the emitted `main.js` for
+the authorized module. The same fixture proves old query-generation evidence
+is revoked after build.
+
+**F3.3.3 real MCP rejection coverage:** The real MCP process fixtures reject
+guessed and owner-private project IDs, unobserved static metadata IDs, wrong
+session receipts, and stale generations following another check or build.
+The output fixture rejects an unobserved output project and a read-only query
+receipt presented as write authority without publishing an artifact. A real
+client now also sends a contract string one byte over the MCP adapter's 256 KiB
+limit. The adapter returns invalid parameters before compiler validation, and
+the same session can still validate the inventoried contract afterward.
+
+**G.1.1 workspace test gate:** A full `cargo test --workspace` run exposed
+one outdated launcher assertion in the supervised-child end-to-end fixture:
+an inline BlueTS compiler rejection now carries a verified original-source
+range. The test now checks that the range is nonempty and within the exact
+inline source, then compares the other report fields as before. Its focused
+real-process test and the full workspace rerun pass. Both runs reused the
+workspace's existing target directory.
+
+**G.1.2 real-process suite gate:** The successful workspace rerun includes
+launcher broker and supervised-child tests, real core-binary tests, MCP/core
+client tests, and the launcher debugger socket suite. None of these process
+test directories has an ignored test. The workspace result therefore covers
+all four required process suites without a second build or redundant rerun.
+
+**G.2.1 formatting gate:** `cargo fmt --all -- --check` passes after the
+workspace test fix and process-suite evidence were committed.
+
+**G.2.2 Clippy gate:** `cargo clippy --workspace --all-targets -- -D warnings`
+passes after the completed workspace and formatting gates, using the existing
+shared target directory.
+
+**G.3.1 pinned TypeScript CI oracle:** The manually dispatched CI workflow
+[run 36317372058](https://github.com/ephoton0210/blueice/actions/runs/36317372058)
+checks out `a9d85172d` and its
+[oracle job](https://github.com/ephoton0210/blueice/actions/runs/36317372058/job/108614527760)
+completed successfully. The successful step runs the repository's pinned
+`typescript@5.9.3` matrix through `npm exec` with
+`BLUEICE_BLUETSC_ORACLE=tsc`; it is the opt-in test excluded from the ordinary
+workspace test command. Coverage remains a separate CI gate.
+
+**G.3.2 coverage merge failure and recovery design:** The coverage job in
+[CI run 36317372058](https://github.com/ephoton0210/blueice/actions/runs/36317372058/job/108614527803)
+ran workspace tests but failed before reporting a percentage because
+`llvm-profdata` found one raw profile with a corrupt header. An abruptly
+terminated instrumented subprocess can leave no usable profile. The CI
+coverage commands now use cargo-llvm-cov's `--failure-mode all`: valid raw
+profiles still merge, corrupt-profile warnings remain visible, and the run
+still fails if all profiles are invalid or the workspace 90% or BlueJS 88%
+line threshold is missed. This does not skip a test or lower either threshold;
+the workflow YAML parses and the installed cargo-llvm-cov CLI documents the
+selected mode. The separate CI rerun is required before G.3.2 can be checked.
+
+**G.3.2.2.1 Windows owner-output path aliases:** The same CI run exposed a
+real cross-platform gap in the artifact planner: Windows x86_64 and arm64
+accepted an existing test source spelled `nested/../main.ts` even though the
+planner requires canonical physical identities. Windows verbatim paths can
+retain raw dot segments, so `fs::canonicalize(path) == path` alone is not a
+sufficient spelling check. The planner now rejects literal `.` or `..`
+segments in the original project root or module ID before filesystem lookup;
+Windows checks both slash spellings and Unix continues to treat backslash as
+a valid filename character. The existing owner-output test covers root and
+source aliases, plus a Windows backslash spelling, while retaining the valid
+build, outside-root, collision, and strict-runtime checks. Five focused tests,
+workspace all-target Clippy, and rustfmt pass with the shared target. A
+Windows CI rerun is still required to close the platform gate. The related
+macOS arm64 debugger tests separately reached `Completed` before their pending
+breakpoints were armed, so their admission race needs its own leaf before the
+full CI rerun.
+
+**G.3.2.2.2 macOS HTTP fixture mode:** The macOS 26 x86_64 core-library job
+in the same CI run failed the real-child source-cache test when its accepted
+HTTP connection returned `WouldBlock` before any request bytes were read.
+The fixture intentionally keeps the listener nonblocking while polling for
+four connections, but each accepted connection now switches to blocking mode
+with a five-second read timeout before reading its request. This preserves
+the actual HTTP/child/cache path and bounds a stalled fixture. The focused
+real-child test passes locally in the shared target; CI must still verify
+the macOS behavior. The macOS debugger pending-admission failures remain a
+separate release-gate blocker.
+
+**G.3.2.2.3 debugger admission contract:** The completed macOS CI jobs for
+run 36317372058 show the same failure on macOS 15/26 and x86_64/arm64: 10–12
+real launcher debugger failures per job, chiefly `Completed` before an
+expected `Pending` state or `InvalidExecutionState` when arming a verified
+breakpoint. One macOS 15 x86_64 failure is a separate fixture `WouldBlock`.
+The core gives discovery/configuration replies one extra session
+turn, but the first request is often sent after its 25 ms idle poll has
+advanced the just-admitted entry. The existing 64-deferral child budget
+limits request-triggered holds; it does not cover the gap before the first
+request. Repeating a test or increasing the idle timeout would not establish
+a reliable admission boundary.
+
+Add an explicit, owner-only debugger reservation before navigation. It must
+identify one existing tab and its current document generation, apply only to
+the next generation, and have a fixed core-owned expiry. Bind its release to
+the same negotiated stream; successful entry/root/nested/source breakpoint
+arming may consume it, while an explicit same-stream release lets an inventory
+test prove ordinary completion. Stream disconnect, superseding navigation,
+and timeout must also free the hold. No unrequested page execution is delayed.
+Real-process tests must acquire it before navigation, then keep their exact
+pending, arm, pause, resume, completion, stale-handle, and refusal assertions.
+Unit tests must cover foreign-stream release refusal and automatic cleanup.
+
+**G.3.2.2.3.2 admission route:** Public debugger v43 has exact-tab
+`HoldNextDocument` and `ReleaseNextDocumentHold` requests with source-free
+acknowledgements. Only a successfully negotiated stream receives the
+core-local weak ownership marker. The core records the tab's prior document
+generation, activates the hold for one successor generation, and starts a
+five-second deadline at that admission. A reservation waiting for navigation
+also expires after 30 seconds. A foreign stream cannot release the hold or arm
+the held entry. Successful owner arming, explicit release, stream disconnect,
+document replacement, and timeout all remove it. Its idle ticks use a distinct
+executor hook, so the child's existing 64 request-triggered discovery budget
+remains independent. The focused core tests cover missing/foreign authority,
+wrong tab, duplicate reservation, generation replacement, disconnect, timeout,
+and foreign arm refusal. The IPC suite (127 cases), core debugger tests (33),
+targeted all-target Clippy, and a real launcher/core/child pending-to-completed
+module test pass from the shared `target` directory. Remaining real debugger
+fixtures must reserve before navigating and retain their exact assertions.
+
+**G.3.2.2.3.3 real debugger acceptance:** The affected launcher/core/child
+fixtures now complete their negotiated `Hello` and reserve the exact next
+document before browser navigation. This covers source and linked-source
+breakpoints, module entry and stepping, nested frames and cutover, bounded
+values, scope relations, stack coordinates, source spans, and type/value
+display. Inventory-only code explicitly releases its hold before checking
+ordinary completion. All original `Pending`, arm, pause, resume, completion,
+stale-handle, and refusal assertions remain exact. The full 33-case debugger
+suite passes without ignored cases. One macOS 15 x86_64 failure in that suite
+was separate: the policy-isolation fixture accepted a nonblocking TCP stream
+and its bounded read returned `WouldBlock`; it now makes the accepted stream
+blocking before reading.
+
+The first workspace rerun exposed four `spawn_core` ten-second reply timeouts
+when seven tests concurrently started full core/child process trees. The
+real-process test binary now serializes those trees with a local mutex; all
+seven pass with their original reply timeouts. The subsequent full workspace
+suite passes, including all 33 debugger and seven `spawn_core` cases.
+Workspace all-target Clippy with warnings as errors, rustfmt, and whitespace
+checks pass. All Cargo commands reused the existing `target` directory; no
+instrumented or alternate local build tree was created. The remaining proof
+is CI on the repaired commit for macOS, Windows, workspace coverage, and the
+independent BlueJS coverage threshold.
+
+**G.3.2.2.3.4 exact-tab reservation:** A second review found that the first
+reserved-execution hook still used the old global one-turn scheduler flag.
+It could pause unrelated tabs for the reservation's five-second window even
+though the public request identified one tab. The core now passes the tab ID
+to a separate reserved-tick hook. Both native and supervised-child execution
+drivers skip only that tab and let other live documents advance. Focused
+two-tab tests prove native `Pending`/`Completed` separation and the child's
+exact advance requests without spending its 64 request-triggered discovery
+deferrals. All focused tests and workspace all-target Clippy pass in the shared
+target. A later full workspace rerun reached 32/33 debugger cases before a
+separate one-turn transition-observation race: a real socket's immediate
+post-resume `GetExecutionState` saw `Completed` instead of the promised
+`Resuming`. G.3.2.2.3.5 will bind that short observation window to the same
+stream and exact program, with a deadline and disconnect cleanup, before the
+next full gate.
+
+**G.3.2.2.3.5 observable transitions:** The follow-up workspace run found a
+real post-resume race: `ExecutionResumed` succeeded, but the same socket's
+immediate state query sometimes saw `Completed` instead of the promised
+`Resuming` because its only scheduler hold lasted one 25 ms session turn.
+Core now records a bounded transition for the exact negotiated stream and
+program, or the linked frame for linked resume. An exact transition-state
+reply to that stream consumes the hold; a different stream or program cannot
+consume it. Disconnect, document replacement, and a one-second deadline also
+release it. The tab-scoped executor hook keeps unrelated tabs running, and a
+set of held tabs supports independent transitions on multiple live tabs.
+Direct in-process callers without a negotiated stream keep the earlier
+one-turn behavior. A real launcher/core/child test deliberately waits 75 ms
+after `ExecutionResumed`, then still requires `Resuming`; unit coverage checks
+foreign/wrong-program observations, linked-frame observation, replacement,
+timeout, and disconnect.
+
+The next full workspace run found two `broker_end_to_end` teardown checks
+failing when nine independent real launcher/core test trees ran concurrently:
+the private child socket still existed after the test's unchanged five-second
+shutdown wait. That process-heavy test binary now serializes its outer cases,
+while its simultaneous-cutover test still runs concurrent operations inside
+one case. All nine focused cases pass. The subsequent full workspace suite
+passes, including the 33-case debugger suite and seven `spawn_core` tests;
+workspace all-target Clippy with warnings as errors and rustfmt pass. CI is
+still required to prove the macOS/Windows matrix and both coverage floors on
+the repaired commit.
+
 The prioritized completion worklist is [TODO.md](TODO.md). Update it with this plan when an implementation or acceptance condition changes.
 
 The supervised-child route now also has its first concrete external-resource
@@ -1490,9 +4457,89 @@ Named local function bodies retain ordered initialized local declarations, semic
 
 Named local function bodies may also use `throw expression;`. BlueTSC retains and checks the direct expression, rejects an omitted value or a line terminator immediately after `throw`, and the bridge lowers it to BlueJS `Stmt::Throw` so the VM preserves the thrown JavaScript value. `try`/`catch`/`finally` and all other exception control flow remain outside the v1 direct subset.
 
-Named local function bodies may use a direct-expression `if` condition with braced consequent, braced `else if` branches, and an optional braced `else` body. BlueTSC retains each branch structurally and the bridge emits BlueJS `Stmt::If` nodes with explicit blocks for braced bodies, while lowering an `else if` as a direct alternate rather than inventing an artificial block scope. The checker applies its existing bounded direct-expression checks to every condition and recursively to the branch bodies; it does not claim control-flow narrowing. Unbraced branches, an `else if` with an unbraced branch, loops, and every other control-flow form remain opaque and fail closed at the direct bridge.
+Named local function bodies may use a direct-expression `if` condition with braced consequent, braced `else if` branches, and an optional braced `else` body. BlueTSC retains each branch structurally and the bridge emits BlueJS `Stmt::If` nodes with explicit blocks for braced bodies, while lowering an `else if` as a direct alternate rather than inventing an artificial block scope. The checker applies its existing bounded direct-expression checks to every condition and recursively to the branch bodies; it does not claim control-flow narrowing. At this earlier if-only step, unbraced branches, an `else if` with an unbraced branch, loops, and every other control-flow form remained opaque and failed closed at the direct bridge.
 
 For this structured function subset, an explicit return annotation that does not admit `undefined` must terminate every known path with a value `return` or `throw`. A bare `return;` is checked as `undefined`; `void`, `any`, `unknown`, and an annotation admitting `undefined` may fall through. Opaque control flow never supplies a termination proof and remains independently fail-closed at the direct bridge.
+
+### H.1.1 First loop form after release gate
+
+Choose `while (condition) { body }` inside an already structured named local function body, including an existing braced `if` branch. BlueJS already has a structured `Stmt::While` and bounded execution fuel; this form has no `for` head declaration, iterator protocol, or per-iteration binding to invent. The condition must be one supported direct expression and uses ordinary JavaScript truthiness on every iteration. The braced body may contain existing direct expression statements, `return`, `throw`, and braced `if` statements with the same body restriction. Assignments to bindings declared outside the loop are allowed. The direct bridge will lower the typed loop to a BlueJS `Stmt::While` with a real `Stmt::Block` body, without reparsing emitted JavaScript. BlueTSC will check the condition and each recognized body expression with its existing bounded rules and retain original TypeScript source spans; it will not infer control-flow narrowing from the condition.
+
+The loop may execute zero times, so it never proves a required function return, even if the condition is statically `true` or its body returns. An annotated function that requires a value must still have a return or throw path established independently of the loop under the current conservative return-path rule. Every iteration remains subject to the existing VM fuel and host deadline. H.1.2 must show zero and multiple iterations, loop-back safe-point visits that keep the same exact original-source mapping, pause/resume behavior, and a bounded endless-loop failure through the direct page path; it must compare accepted syntax and diagnostics with the pinned TypeScript oracle and deterministic runtime behavior with the direct VM.
+
+This first form excludes unbraced `while`, a second `while` nested inside a loop, body-local `var`/`let`/`const` declarations, `break`, `continue`, labels, `do...while`, classic `for`, `for...in`, `for...of`, and `for await...of`. Top-level and anonymous/arrow-function loops remain outside the current direct bridge. Excluded shapes stay opaque to direct lowering and must fail closed there; the standalone emitter's existing token preservation is not a claim that the direct page path supports them. These restrictions defer loop scope and abrupt-completion semantics until their checker, direct VM, debugger, and oracle evidence can be added together.
+
+H.1.2.1 retains a complete braced `while` as a structured named-function body item, preserving its condition tokens, nested body items, and original statement span. The bounded checker visits the condition and body with its existing direct-expression rules and treats the loop as a possible fall-through path regardless of its body returns. At this stage the direct bridge explicitly rejects the structured item at its source span; H.1.2.2 must install runtime lowering and enforce the selected body subset before a loop can execute. Public BlueTSC and direct-bridge regressions cover the accepted shape, condition/body call diagnostics, return fall-through, and the temporary execution denial.
+
+H.1.2.2 lowers that typed item directly into BlueJS `Stmt::While` with an explicit `Stmt::Block` body. Before lowering a loop, the bridge recursively checks every braced `if` branch in its body and rejects loop-local declarations, nested loops, and opaque control-flow tokens with original source spans. The parser keeps unbraced loops and other loop forms outside this structured item. Direct page-realm tests show numeric truthiness, zero and multiple iterations, a loop inside an existing `if` branch, return and throw completion, and a deliberately endless loop stopped by a small VM instruction budget. Excluded declarations, nested/unbraced loops, break/continue, labels, do-while, and classic for remain denied. H.1.2.3 still owns repeated loop-back safe-point and pause/resume evidence; this runtime result alone does not close debugger mapping.
+
+H.1.2.3 exercises the installed direct BlueTS program through the public BlueJS page-runtime nested debugger. Every paused child instruction across three loop iterations resolves through the generation-validated safe-point map to the exact original BlueTS function-declaration byte span; at least one loop-back offset is visited more than once with that same mapping. The first invocation is stepped until its child returns, then the root resumes; a second independent frame resumes directly. Old frames and map validation fail after navigation invalidates the program generation. The v1 child map's granularity remains the whole original function declaration, as specified by the existing direct-debug contract; this check does not claim a separate loop-condition or body-line source span.
+
+H.1.2.4 adds three pinned TypeScript 5.9.3 oracle fixtures for braced `while`: zero/multiple-iteration output, identical condition/body argument-mismatch diagnostic lines, and the missing-return line for a loop that may execute zero times. The full oracle matrix passed locally using an already cached 5.9.3 installation, without another Node dependency tree. The first local workspace test run reached the 60 GiB shared-target limit and was stopped by the disk guard while the host still had about 579 GiB free. Its large debug-bearing Cargo artifacts were removed with `cargo clean`; the guard now defaults local dev/test debug info to zero and suppresses transient `du` warnings for compiler files removed during its walk while still requiring a numeric size. A fresh single-target run then passed `cargo test --workspace`, workspace all-target Clippy with warnings denied, all-target build, and rustfmt; the final target was about 12 GiB with about 629 GiB host space available. This is a local gate result; CI retains its own ordinary profile, coverage thresholds, and pinned oracle job.
+
+### H.2.1 First try/catch/finally form
+
+Choose a braced `try { body } catch (error) { body }`, a braced `try { body } finally { body }`, or their combined form inside a structured named local function. At least one handler or finalizer is required. The first catch binding is exactly one unannotated identifier, bound as TypeScript `unknown` and visible only inside the catch body; it shadows an outer name there without leaking into the try or finally body. BlueJS already represents this with `Stmt::Try` and a `CatchClause` whose parameter is an identifier pattern. Every try, catch, and finally body may use existing direct expression statements, `return`, `throw`, and braced `if` branches using that same subset; assignments to bindings from the enclosing function are allowed. The direct bridge must construct the BlueJS AST from retained BlueTS tokens and source spans, without reparsing emitted JavaScript.
+
+For ordinary JavaScript completion, catch handles a thrown value from the try body and binds that exact value; it does not handle a throw from its own body. Finally runs once after normal, return, or throw completion of the try/catch path. A normal finalizer preserves the pending completion; a finalizer `return` or `throw` replaces it. Fatal VM resource limits and host failures remain terminal and are not promised catch/finally recovery. The checker validates recognized expressions and returns in each body but grants no control-flow narrowing or required-return proof from the try construct in this first form; a non-void annotated function still needs a separately established trailing return or throw path. H.2.2 must verify the catch binding's scope and unknown type, the completion precedence, direct page execution, source-bound safe points, and stale-generation denial.
+
+This form excludes bare `catch {}`, typed or destructured catch bindings, a second catch, nested try, loop statements or local declarations inside any of the three blocks, and top-level or anonymous/arrow-function try statements. Excluded shapes remain opaque to the direct bridge and fail closed. Their scope, abrupt-completion, and debugger effects need their own checker and runtime evidence before extension.
+
+H.2.2.1 preflights only a complete braced try followed by a single identifier catch, a braced finally, or both. BlueTSC retains separate structured try/catch/finally body items and their original source spans; bare or typed catch bindings and a try without handler/finalizer stay opaque. The direct bridge explicitly rejects even a structured try at its original span until H.2.2.2 checks catch scope and H.2.2.3 installs lowering. Public parser and direct-bridge regressions cover these boundaries; this intermediate parser representation alone does not claim executable try support.
+
+H.2.2.2 walks structured expression and return bodies with the lexical scope in which each item runs. The catch body shadows only its own binding with `unknown`; try, finally, and subsequent function statements retain the outer binding. Catch-origin `unknown` is strictly assignable only to `unknown`, `any`, or a bounded alias/union/intersection that accepts it. This focused rule preserves the checker's existing permissive `Unknown` fallback for expressions it cannot yet infer elsewhere. Return expressions are checked even without an explicit return annotation; required-return analysis remains conservative and grants no terminating path from try. Frontend regressions cover shadowed calls and returns, nested `if`, no-annotation return calls, accepted unknown destinations, and the separate trailing-return requirement. The direct bridge remains closed until H.2.2.3.
+
+H.2.2.3 lowers a validated structured try directly to BlueJS `Stmt::Try`, with an identifier-pattern `CatchClause` and optional finalizer. It validates all three blocks and nested braced `if` branches before constructing the AST, rejecting block-local declarations, loops, nested try, and opaque syntax at their original source spans. Page-realm regressions show exact thrown-value binding, catch shadowing with outer scope restored in finally, normal/return/throw completion, finalizer return/throw precedence, catch rethrow escape, and terminal instruction-budget failure. Direct compiler regressions cover the selected AST and excluded syntax; no emitted JavaScript is reparsed. Nested source-bound safe points, stale-generation denial, the pinned TypeScript oracle, and workspace gates remain H.2.2.4.
+
+H.2.2.4 verifies a live page-realm nested frame through the throwing try, catching branch, and finalizer. Every paused nested instruction resolves through the checked safe-point map to the original named-function declaration span; this is the current v1 child-map granularity, not a distinct try/catch/finally line span. Navigation invalidates that map, frame, and static debugger retention; attaching the same artifact again mints a separate valid generation. Two pinned TypeScript 5.9.3 oracle fixtures compare accepted try/catch/finally syntax and `7:5` emitted output plus the catch-`unknown` call-error line. The full oracle matrix, workspace tests, all-target build, all-target Clippy with warnings denied, rustfmt, and whitespace checks pass. The complete workspace test needed local Unix-socket permission for the `ai-gatekeeper` tests; its first sandboxed attempt failed there, then the same shared-target disk-budget run passed with socket access. The target remains about 13 GiB with about 629 GiB free on the host.
+
+### H.3.1 First bounded narrowing and return-path form
+
+Choose one immutable function-local `const value: string | number = expression` and a braced `if (typeof value === "string") { ... }` or `if (typeof value !== "string") { ... }`, with an optional braced `else`. The `typeof` operand must be that one local identifier; the compared literal may use either quote style. The two primitive union arms are exhaustive: the equality branch sees `string` and the other branch sees `number`, with roles reversed for `!==`. A recognized guard may appear in a named local function using the existing direct-expression, return, throw, and braced-if body subset. The checker uses branch-local type scopes for calls and returns; it never rewrites the runtime value. BlueTSC emission erases only TypeScript annotations, and the direct bridge continues to lower the existing BlueJS `Stmt::If`/`Stmt::Block` AST without reparsing JavaScript.
+
+When a guarded branch terminates with `return` or `throw`, the surviving branch's type becomes the local's type at the next sequential statement. An absent `else` counts as a surviving false branch. If both branches can continue, the post-if type remains the declared `string | number`; if both terminate, the existing structural return-path proof applies. A single guarded branch is not sufficient to prove that a non-void function returns, since both union arms are reachable. Existing opaque syntax remains unable to prove termination and the direct bridge continues to reject it. H.3.2 must test true/false branch calls and returns, an early-return guard and its residual type, both-arm completion, emitted JavaScript, direct page execution, and the pinned TypeScript oracle.
+
+This first form makes no narrowing claim for mutable `let`/`var` bindings, parameters, property reads, aliases or wider unions, equality against other `typeof` tags, compound conditions, nested or repeated guards, or guards inside a loop or try block. Those expressions may still use the previously supported bounded runtime subset, but a type obligation that depends on unimplemented narrowing must remain unproven. Assignments to the selected `const` are outside this form. The checker must not let a branch's narrowed type leak to its sibling or to a path where both branches continue.
+
+H.3.2.1 moves structured function checks out of the near-1,300-line binding file into a focused submodule, with the first guard recognizer in its own child module. The checker recognizes exactly one top-level immutable local annotated `string | number` after its declaration and partitions it for an exact `typeof` comparison against `"string"`. The expression and return walks use the same branch scopes; a terminating branch passes the surviving scope to later statements, while two continuing branches restore the union. Nested/repeated guards, mutable locals, and parameters gain no new narrowing. Public compiler regressions cover both comparison polarities, calls and returns in both arms, early return/throw residual types, non-leakage, excluded bindings, and conservative required-return rejection. The BlueTS crate tests and all-target Clippy pass under the shared-target disk guard. H.3.2.2 and H.3.2.3 still own runtime/emission and oracle/workspace evidence.
+
+H.3.2.2 confirms that BlueTSC erases the local and function annotations while preserving the original `typeof` condition in emitted JavaScript. The direct bridge reuses its existing `Stmt::If` lowering: public page-realm tests execute both `===` branches, inverted `!==` with a residual return, and a guard whose string arm throws its original value. Mutable locals or parameters whose calls still require unproven narrowing are rejected by BlueTS before a direct program can execute. The BlueTS and bridge crate tests and their all-target Clippy gates pass under the disk guard. The pinned oracle, debugger generation checks, and workspace gates remain H.3.2.3.
+
+H.3.2.3 adds two pinned TypeScript 5.9.3 fixtures: one compares emitted output for both equality and inequality guards with early returns, and the other compares the two rejected branch-call diagnostic lines. A live direct-page nested debugger pause resolves to the original guarded function declaration; this is still the v1 whole-function child-span granularity. Navigation invalidates that safe-point map, paused frame, and retained static debugger entry. The full pinned oracle matrix, workspace tests with local Unix-socket access, all-target workspace build and Clippy with warnings denied, rustfmt, and whitespace checks pass under the same shared-target disk guard. The target remains about 13 GiB with about 628 GiB free on the host.
+
+### H.4.1 First callback-bearing method overload form
+
+Choose exactly two same-named method signatures in one interface or record type, each with two required parameters and a `void` result. The first parameter is a distinct string literal tag, such as `"text"` and `"count"`; the second is a non-generic callback function accepting one annotated primitive value and returning `void`. A call supplies the tag and one named function callback. The two signatures are static-only and must be preserved together rather than collapsed to the first field. The first exact literal argument selects one signature, after which its callback parameter is checked by the existing bounded function assignability rule. The method's runtime is one ordinary JavaScript function property supplied by the page; BlueTSC erases the interface and the direct bridge lowers the existing object/member-call expressions without reparsing emitted JavaScript.
+
+A first argument typed as the union of the two literal tags cannot select one signature, even when a callback could accept both payloads. Emit one stable `BTS3003` ambiguity diagnostic at the call span, identifying the method and first-argument type; pinned TypeScript 5.9.3 must report a rejected overload call on the same source line. A tag outside both signatures produces a distinct no-matching-overload diagnostic. A selected tag with a wrong callback produces the existing argument-type mismatch. Duplicate or overlapping tags, more than two signatures, generic/optional/rest method parameters, anonymous callbacks, method inheritance or intersection receivers, and optional member calls remain outside this first overload form and must not silently pick declaration order as a winner.
+
+H.4.2 must test parser retention of both signatures, structural assignment of one runtime implementation to the interface, accepted and rejected callback selection, exact ambiguity and no-match diagnostics, erased emission, direct page execution of both tags, debugger provenance/stale-generation denial, and accepted/rejected pinned TypeScript oracle fixtures. The test runtime can use a typed object literal whose `visit` property names one ordinary implementation function; no new host capability or generated-JavaScript parse path is needed.
+
+H.4.2.1 confirms that both same-named method signatures survive the public interface and record-alias parsers. Bounded record property lookup returns their function types as an intersection in declaration order, consuming expansion fuel for each duplicate beyond the first. A single property keeps its previous lookup cost and type. Until the H.4.2.2 selector recognizes the exact supported pair, a duplicate-name member call fails closed instead of using its first signature; public compiler regressions cover overlapping tags and three signatures. BlueTS crate tests and all-target Clippy pass under the shared-target disk guard, with the existing target near 13 GiB and about 628 GiB free on the host.
+
+H.4.2.2 adds one selector shared by member-call checking and expression-result inference. It accepts only two required `void` methods with distinct unescaped string literal tags and one required named primitive-to-`void` callback parameter each. Exact tag values select a branch even when the call and declaration use different quote styles; the selected callback is checked with existing bounded function assignability. A two-tag union emits one `BTS3003` ambiguity at the exact call span, an unrelated tag emits a separate no-match diagnostic, and a wrong callback emits an argument mismatch. Opaque callbacks fail closed. Property lookup now also retains all matching properties through an intersection receiver, and the method selector refuses inherited/intersection receivers; overlapping tags, larger sets, optional parameters and wrong callback results produce an explicit unsupported-set diagnostic instead of choosing the first signature. Public compiler and checker regressions, the BlueTS crate suite, all-target Clippy, rustfmt and whitespace checks pass under the shared-target disk guard. H.4.2.3 owns erased emission and direct runtime evidence.
+
+H.4.2.3 uses one ordinary page function `dispatch(kind: string, listener: any): void` as the `visit` property of a `Visitor` object. The two `Visitor` signatures type-check that one implementation, and named callbacks for the `"text"` and `"count"` tags update a shared number to `3`. A public BlueTSC regression confirms that the interface and annotations disappear while the function, property and both calls remain in emitted JavaScript. A direct-page regression compiles the original checked BlueTS syntax to BlueJS AST and bytecode, attaches it to a page realm, and observes the final value without parsing emitted JavaScript. The BlueTS and direct bridge crate suites, all-target Clippy, rustfmt and whitespace checks pass using the same shared target and disk guard. H.4.2.4 owns the pinned oracle, debugger generation checks and full workspace gates.
+
+H.4.2.4 adds pinned TypeScript 5.9.3 oracle fixtures for the accepted object method and three rejected calls: a two-tag union, unrelated tag and wrong callback. Both compilers' accepted output prints `3`, while each rejected call yields one BlueTS `BTS3003` on the same source line as a TypeScript overload error. A direct-page debugger pause in `dispatch` maps to its original BlueTS declaration; navigation invalidates its safe-point map, paused frame and static debug record. The full pinned oracle matrix and workspace tests pass, as do all-target workspace build and Clippy with warnings denied, rustfmt and whitespace checks. All Cargo work used the same disk-budgeted target, still about 13 GiB with about 628 GiB available on the host. H.4 is complete; I.1.1 selects the next bounded expression form.
+
+### I.1.1 First optional dot-property read
+
+Select one `local?.field` expression, where `local` is a module-local immutable `const` binding annotated as exactly a non-generic record with one required primitive field plus `null` or `undefined`. A local non-generic interface with that one field may name the record arm. The property name is an identifier and the read is one suffix, not a chain or call. On the non-nullish branch the result is the field's `string`, `number` or `boolean` type; on the nullish branch the result is `undefined`. The existing `??` expression form may consume that result. BlueTSC retains the original `?.` while erasing annotations, and the direct bridge lowers the original tokens to BlueJS `Expr::OptionalMember` so its established short-circuiting bytecode runs in the page realm. This is one optional-property read, not a general optional-chain implementation.
+
+I.2 must prove parser tokens and span, checker type and missing-property diagnostics, emitted JavaScript, and direct runtime for both receiver states without parsing emitted JavaScript. I.3 must verify original-source provenance, stale debugger generation denial, contract behavior and a pinned TypeScript oracle. The unsupported boundary includes optional calls and methods, computed or nested optional chains, assignment targets, function-local or side-effecting receivers, optional fields, larger/opaque unions, generic or imported aliases, and inherited or intersection records. Those forms must not be treated as checked instances of this first form; the direct bridge remains free to reject them as unsupported runtime targets. The checker must not use its permissive `unknown` fallback to satisfy a typed obligation from an unsupported optional read.
+
+I.2.1 confirms at the public parser boundary that `receiver?.value` remains the exact identifier, `?.`, identifier token sequence, with the original byte span on the optional dot. Computed `receiver?.[key]` and call-suffix `receiver?.value()` remain distinct token sequences; they are not silently rewritten into the selected form. This leaf does not yet claim checker or direct runtime support. The BlueTS crate suite, all-target Clippy, rustfmt and whitespace checks pass with the shared disk-budgeted target.
+
+I.2.2 adds a focused checker for a top-level optional read from one preceding module-local annotated `const`. The annotation must have exactly one required primitive record field and one `null` or `undefined` arm; a non-generic local interface may name the record. The inferred type is `field | undefined`, so a bare assignment to `field` rejects and the existing `??` rule can recover a definite primitive. A missing field gets a direct property diagnostic. Computed or call suffixes, side-effecting or mutable receivers, optional fields and function-local reads fail closed instead of falling back to permissive `unknown`; the right side of `??` still receives its normal checks. Public compiler regressions, the BlueTS crate suite, all-target Clippy, rustfmt and whitespace checks pass under the shared-target disk guard. I.2.3 owns emitter evidence.
+
+I.2.3 verifies at the public BlueTSC boundary that the selected optional read keeps its original `receiver?.value ?? 0` runtime syntax after the local interface and all type annotations are erased. The BlueTS crate suite, all-target Clippy, rustfmt and whitespace checks pass under the shared disk-budgeted target. I.2.4 must lower and run both receiver states directly.
+
+I.2.4 adds one direct bridge suffix case for an identifier receiver followed by `?.` and an identifier property, producing BlueJS `Expr::OptionalMember` with a non-computed key. A structural AST regression proves the checked TypeScript tokens go directly to BlueJS without parsing emitted JavaScript. Page-realm regressions execute a known object and both `null` and `undefined` receiver values; short-circuiting plus existing `??` yields `41`. The broader template-substitution path remains outside this form and explicitly rejects optional access at the original substitution token span. BlueTS and bridge crate suites, all-target Clippy, rustfmt and whitespace checks pass with the shared disk-budgeted target. I.3.1 owns live/stale provenance and debugger evidence.
+
+I.3.1 verifies that the optional read's top-level declaration maps to its exact original BlueTS byte range and a bound root safe point. A live page debugger pause uses that safe point; after navigation the predecessor's map and static record fail validation and its root continuation cannot resume. The bridge crate tests, all-target Clippy, rustfmt and whitespace checks pass under the shared-target disk guard. I.3.2 owns contract behavior, the pinned TypeScript oracle and final workspace gates.
+
+I.3.2 confirms that a direct-page optional read over a locally constructed record has one source and no static contract entry or newly installed host callback. If the same `record | null` type is explicitly used at a data boundary, its pure `ContractPlan` accepts the record and `null` while rejecting a missing field or wrong primitive. The accepted pinned TypeScript 5.9.3 oracle fixture prints `41` from both TypeScript and BlueTSC output; rejected fixtures report `number | undefined` assigned to `number` and a missing property on the same source lines in both compilers. The complete pinned oracle matrix, workspace tests including Unix-socket integrations, all-target workspace build and Clippy with warnings denied, rustfmt and whitespace checks pass. All Cargo work reused one disk-budgeted target at about 13 GiB, leaving about 628 GiB free on the host. H and I are complete. J applies only after a user proposes a large feature; no such proposal is pending.
 
 The direct bridge lowers template substitutions containing supported direct expressions to BlueJS expression slots. It tokenizes the original substitution with BlueTS's lexer and constructs BlueJS AST directly; it never calls a BlueJS source parser on BlueTSC output. Nested templates and embedded expressions outside the direct subset remain excluded.
 
@@ -1893,6 +4940,10 @@ Acceptance: editing one module invalidates only its dependents; a cache entry ch
 
 ## Explicit non-goals for the first release
 
+These limits describe the completed first release. Phase J below schedules
+the requested language and package features for later compatibility work;
+this section does not remove them from that backlog.
+
 - Claiming full `tsc`/`tsserver` compatibility, all TypeScript syntax, all diagnostics, or all JavaScript package ecosystems.
 - Using BlueTSC as an opaque wrapper around a bundled `tsc`, or permitting its emitter to drift from BlueTS's parser/checker/lowering rules.
 - Replacing BlueJS with a TypeScript VM, preserving universal runtime type tags, or adding a type check to every local operation.
@@ -1900,6 +4951,1497 @@ Acceptance: editing one module invalidates only its dependents; a cache entry ch
 - Executing TSX/React, decorators, enums, runtime namespaces, CommonJS, Node builtins, arbitrary `node_modules`, arbitrary remote declarations, or custom compiler transformers.
 - Advertising complete web-platform typings before the corresponding BlueIce host APIs and their runtime behavior exist.
 - Exposing source text, static types, diagnostics, contracts or debugger scopes to an unauthenticated/unprivileged automation client.
+
+## Phase J — requested TypeScript 5.9.3 compatibility expansion
+
+On 2026-09-28 the user requested JSX/TSX, decorators, enums, CommonJS, and
+arbitrary package resolution as development requirements toward full
+TypeScript/`tsc` support. Classes and runtime namespaces are prerequisites
+already named by J.1 and remain in scope. The compatibility reference is the
+repository's pinned TypeScript 5.9.3 oracle. "Full" is a release claim only
+after J.6 inventories and closes the remaining compiler, configuration,
+declaration, emit, and CLI gaps; adding these named features alone is not
+sufficient. The compiler and direct-page paths share one checked IR. BlueTSC
+may emit code for a configured JavaScript host, while direct BlueTS execution
+also requires the corresponding BlueJS semantics and owner-authorized host
+bindings. A declaration or package name never creates such a binding.
+Remote declaration acquisition is a separately authorized BlueIce extension;
+it is not part of ordinary `tsc` package resolution.
+
+The following records the J.1 lowering and authority decision for each
+accepted proposal. Target-dependent transforms must use the configured
+TypeScript/ECMAScript version and retain a reproducible fingerprint.
+
+| Feature | Runtime lowering | Host authority and admission |
+| --- | --- | --- |
+| Classes | Preserve a native class when the BlueJS/output target supports its exact semantics; otherwise lower inheritance, fields, accessors, private members, parameter properties, and static initialization with versioned helpers and TypeScript-compatible order. | No new filesystem or network grant. Constructor, initializer, and computed-key effects enter the lowered capability summary and existing runtime budgets. |
+| Enums | Emit TypeScript-compatible runtime objects and numeric reverse mappings; evaluate members in declaration order. Inline `const enum` only under the matching compiler options; keep declaration output consistent. | No new host grant; computed member expressions retain their ordinary capability effects. |
+| Runtime namespaces/modules | Emit ordered namespace initialization and merge into the correct value object; ambient declarations emit no runtime object. | No new host grant. Namespace initialization executes only through the already authorized module or page. |
+| JSX/TSX | Parse `.tsx` distinctly; lower according to the selected `jsx` mode to a configured classic factory or automatic runtime import, or preserve JSX only in a non-executable output mode. Include fragments, attributes, spreads, and children. | A factory/runtime package is an ordinary executable dependency requiring resolver and page-loader authorization. JSX syntax never imports React or grants DOM capabilities by itself. |
+| Decorators | Keep standard and `experimentalDecorators` legacy semantics separate. Lower evaluation/application order, replacements, class/field/auto-accessor initialization, and the applicable metadata/parameter-decorator options with versioned helpers. | Decorator expressions are executable user code. Their helper and package effects enter the capability summary; metadata does not grant reflection or other host APIs. |
+| CommonJS | Select ESM/CJS per configured module rules; emit `require`, `exports`, `module.exports`, `import = require`, and `export =` with correct cache, cycle, and interop behavior. Direct BlueTS requires an explicit compatible loader/realm, not an ESM text rewrite. | Resolution reads only owner-authorized dependencies. Node builtins or dynamic `require` need an explicit host capability/runtime profile; a browser page receives none from CJS syntax alone. |
+| Installed packages | Resolve any package name present in the configured dependency tree using the selected TypeScript resolution mode, `package.json` conditions, declarations, `@types`, and symlink-aware canonical identities. This is a compile/resolution step, with no implicit package installation. | The owner sets canonical search roots. Imports outside those roots and source-requested package-manager hooks are refused; page execution still uses the page loader's origin and capability checks. |
+| Remote declarations | Fetch only explicitly configured declaration URLs through the existing authorizer, pin the content hash, and include it in graph/cache fingerprints. `.d.ts` has no runtime lowering. | No declaration may trigger a fetch or grant a runtime global. Network admission, size/time budgets, provenance, cache ownership, and replacement/close release remain host-owned. |
+
+The J.2 debugger, contract, and conformance decision is also per proposal:
+
+| Feature | Debugger mapping | Contract policy and conformance gate |
+| --- | --- | --- |
+| Classes | Bind constructor, methods, initializers, accessors, and generated helpers to original class/member spans or mark helper-only instructions unbound. | Preserve strict checks at constructor/field host crossings; compare class order, `this`/`super`, private access, `.js`, `.d.ts`, maps, and direct behavior with pinned `tsc` and Node/BlueJS. |
+| Enums | Map emitted member initialization and inlined references to their source declarations and uses. | Enum types do not validate foreign values automatically; compare numeric/string/reverse mapping, computed members, `const enum` options, declarations, and diagnostics. |
+| Namespaces | Map each merged declaration and generated initializer to its own source span. | Ambient declarations grant no runtime value or contract; test merging, visibility, initialization order, and emitted/declaration artifacts. |
+| JSX | Map each tag, attribute, spread, child, factory call, and generated import to its original TSX span. | Props from foreign data follow the existing strict boundary contract; test every selected JSX mode, JSX typing, factory options, emitted imports, maps, and direct execution where output is executable. |
+| Decorators | Map decorator expressions, application sites, replacement values, and helper frames to original declarations; expire maps with the program generation. | No implicit validation of decorator-produced values; test standard versus legacy order, replacement, metadata, declarations, maps, and target-specific output separately. |
+| CommonJS | Map wrapper, require call, export assignment, and interop helper to source; retain module identity across cycles. | Foreign module exports require a reviewed contract at strict boundaries; compare module mode, cache/cycle order, interop, diagnostics, CJS output, and source maps. |
+| Installed packages | Preserve canonical source identity and original positions through package declarations and selected export conditions. | Third-party types do not prove host bindings; test TypeScript resolver decisions, denied escapes, dependency changes, `@types`, conditional exports, and cold/warm cache invalidation. |
+| Remote declarations | Retain URL/hash provenance without exposing source to ungranted debugger clients. | Pinning and explicit authorization precede type use; test changed content, stale cache, denied fetch, budget exhaustion, and absence of runtime authority. |
+
+Use TypeScript's [module-resolution reference](https://www.typescriptlang.org/docs/handbook/modules/reference.html),
+[module-mode reference](https://www.typescriptlang.org/docs/handbook/modules/theory.html),
+[JSX modes](https://www.typescriptlang.org/tsconfig/jsx.html), and
+[standard-versus-legacy decorator explanation](https://www.typescriptlang.org/docs/handbook/release-notes/typescript-5-0.html)
+as versioned design inputs. The pinned 5.9.3 executable, rather than a
+floating documentation page, decides oracle expectations.
+
+Implementation order is J.3 declarations, J.4 module/package foundation,
+J.5 JSX/decorators, then J.6 compatibility closure. Each leaf needs public
+parser/checker/emit tests, direct-page or explicit target-admission tests,
+debugger/source-map and strict-boundary tests, and accepted/rejected oracle
+fixtures. J.6 must enumerate every remaining `tsc` 5.9.3 syntax, diagnostic,
+`tsconfig`, library, emit target, declaration, project-reference, and CLI gap
+before any full-compatibility claim. The existing first-release gates remain
+valid; Phase J completion requires a fresh workspace and platform gate. Local
+Rust work uses the one shared `target` through
+`scripts/test-with-disk-budget.sh`, with its target-size and free-space
+limits. Reuse cached oracle dependencies and bounded temporary fixtures;
+do not create a second Cargo target or duplicate package installations.
+
+### J.3.1.1 Named class parser shell
+
+The first class leaf is a parser representation, not an executable class
+claim. `class Name { ... }` and `export class Name extends Base { ... }`
+retain the name, optional single-identifier heritage, bounded original body
+tokens, export bit, and source spans. Missing names/bodies and unterminated
+bodies are parser errors; generics, computed heritage, and `implements` stay
+explicitly unsupported in this form. The checker reports `UnsupportedSyntax`
+for every retained class, so BlueTSC publishes no output and direct BlueTS
+cannot execute a partially erased class. The bridge also has an explicit
+class refusal if given such an unchecked module. J.3.1.2 will replace the
+opaque member tokens with checked constructor and method structures.
+Public parser tests prove the exact source spans and token body for two
+declarations, including an exported subclass, and reject incomplete,
+generic, computed, and implemented headers. A public `compile` call returns
+`UnsupportedSyntax` and no artifact for a retained class; the existing
+frontend rejection fixture now expects that precise fail-closed stage.
+The BlueTS and bridge library suites, workspace tests with local Unix-socket
+access, workspace all-target Clippy, and rustfmt pass with one disk-budgeted
+Cargo target of about 13 GiB and about 716 GiB free. A final focused parser
+test covers the added computed-heritage refusal after the workspace run.
+
+### J.3.1.2.1 Class member boundaries
+
+The class shell now partitions its original body tokens into exact member
+ranges. A `constructor(...) { ... }` or simple named `method(...) { ... }`
+gets a constructor/method tag and original byte span; a one-token return
+annotation and signature semicolon are retained as part of the same range.
+Unimplemented fields and malformed or richer member forms remain opaque.
+Each shell stores indexes into the class's bounded token vector rather than
+another token copy. This is a parsing aid only: the checker still refuses
+every class before BlueTSC emission or direct execution. A public parser
+regression verifies two member spans and that an opaque field does not hide
+a following simple method. The BlueTS crate suite, workspace all-target
+Clippy with warnings denied, rustfmt, and whitespace checks pass; the single
+guarded Cargo target remains about 13 GiB with about 716 GiB free.
+
+### J.3.1.2.2 Constructor syntax and body items
+
+The existing function parameter parser is now shared with constructor
+members, preserving its bounded type, optional/default, and erasure behavior
+without a second grammar. A constructor shell retains parsed parameters and
+either a signature-only marker or structured function-body items; its member,
+parameter, and local-variable spans remain original source ranges. The
+parser rejects incomplete parameter/body forms and a constructor return-type
+annotation. This step does not make a class executable: the checker still
+returns `UnsupportedSyntax` with no BlueTSC output, and the direct bridge
+refuses the class. Public parser and compile regressions cover retained
+annotations, two erasure positions, body items, overload signatures, empty
+bodies, malformed shapes, and no output. The full BlueTS crate and bridge
+library suites, workspace all-target Clippy, rustfmt, and whitespace checks
+pass in the shared disk-budgeted target; the final body-span assertion has a
+focused passing rerun.
+
+### J.3.1.2.3.1 Simple named methods
+
+Simple `name(parameters)` methods now reuse the shared parameter and
+function-body parser. A one-token return annotation is parsed as a type
+and erased from the eventual JavaScript; a semicolon retains a method
+overload signature, while braces retain structured body items. Each method
+keeps its original member span and name. Incomplete method headers are
+parser errors; accessor syntax and richer method shapes remain opaque until
+J.3.1.2.3.2. The class checker still returns `UnsupportedSyntax`, so neither
+an overload signature nor an implementation reaches emission or execution.
+A public parser test verifies a same-name signature/implementation pair,
+parameter/return types, four erasure positions, original span, and no
+artifact; another test covers malformed methods and opaque accessors. The
+BlueTS crate and bridge library suites, workspace all-target Clippy,
+rustfmt, and whitespace checks pass under the shared-target disk guard.
+
+### J.3.1.2.3.2 Bounded method return types and opaque routes
+
+The member boundary scan now walks bounded return-type tokens past union
+arms and balanced record types before deciding which `{` opens the method
+body. The existing type parser then retains the actual union or record
+return type and its erasure span. Richer class member syntax remains opaque:
+public/private modifiers, accessor prefixes, computed and private keys, and
+generic method heads have explicit public parser fixtures that prove they
+do not become a plain named method. Every class remains checker-rejected,
+so these opaque forms cannot execute or leak into BlueTSC output. The full
+BlueTS crate suite, workspace all-target Clippy with warnings denied,
+rustfmt, and whitespace checks pass in the shared disk-budgeted target.
+
+### J.3.1.2.3.3 Class method overload grouping and parser oracle
+
+The class parser retains contiguous same-name method signatures and their
+implementation as one group of indices into the original member vector. A
+later implementation of the same name begins a new group. Missing
+implementations and an opaque field interrupting a group remain visible to
+the later checker; no method becomes executable through this parser change.
+
+Six shared source fixtures close the parser-only oracle leaf J.3.1.2.3.3.2.
+The pinned TypeScript 5.9.3 executable accepts number/string overloads with
+a union implementation, a record return type, and a private method. BlueTS
+retains the first two as structured method groups and routes the private
+method to an opaque member pending J.3.2. The pinned compiler rejects an
+orphan signature and a signature interrupted by a field with TS2391, and an
+incompatible overload implementation with TS2394; each diagnostic is on the
+fixture's expected line. The oracle uses `--noEmit` and verifies no output
+files remain.
+
+The public BlueTS parser test reads those same sources, checks original class
+spans, method group indices, and the opaque boundary, then confirms every
+checked class has one `UnsupportedSyntax` diagnostic at that span and no
+BlueTSC artifact. J.3.1.2.3.3, J.3.1.2.3, and J.3.1.2 are complete; class
+semantic acceptance remains gated on J.3.1.3–6.
+
+J.3.1.3 is split into method-group validation, class constructor and
+instance/static binding, body and `this` checking, inheritance and `super`,
+then pinned-oracle checker closure. This order lets each checker step retain
+the current fail-closed class admission rule until the full checker, emitted
+JavaScript, and direct runtime are ready.
+
+### J.3.1.3.1 Class method-group checker gate
+
+The checker now validates retained class method groups without admitting
+classes for execution. A signature group without its immediate implementation
+reports its last signature's original span. Duplicate implementations report
+each duplicate member's span. Explicitly typed overload signatures compare
+their argument and return types to the implementation through the existing
+bounded structural relation; incompatible types and exhausted expansion
+budgets receive distinct diagnostics. The seven fixture sources compare
+accepted groups and the TS2391, TS2393, and TS2394 failure lines against the
+pinned TypeScript 5.9.3 executable under `--noEmit`.
+
+The class `UnsupportedSyntax` refusal now occurs during binding for every
+runtime policy, including `transpile-only`; a public regression verifies no
+artifact escapes through that mode. The direct BlueTS bridge continues to
+reject unchecked class nodes. The full BlueTS and bridge crate suites,
+workspace all-target Clippy, rustfmt, and whitespace checks pass using the
+same compact Cargo target and the existing pinned Test262 corpus via an
+ignored symlink. J.3.1.3.2 must add class constructor and instance/static
+types before valid classes can be checked as values.
+
+### J.3.1.3.2.1 Local class type and constructor-side binding
+
+J.3.1.3.2 is split into local dual-namespace binding, checked construction,
+and instance/static member access with closed-module imports and exports.
+The first step binds each local named class to a structural instance type
+whose method fields retain their original source spans. The separate value
+side is a constructor-side record with a `prototype` field of that instance
+type. This lets the checker distinguish `Reader.prototype` from `Reader`
+without pretending a class is a callable function. Construction and full
+member-call validation remain the next leaves.
+
+Illegal class/class, type-alias/class, and value/class collisions report the
+second name's original span. A class/interface same-name declaration is
+legal in TypeScript; either source order therefore avoids an invented
+duplicate diagnostic while actual declaration merging waits for J.3.5.
+No class symbol enters published debugger metadata and no class artifact is
+emitted while class execution remains unsupported. Seven pinned TypeScript
+5.9.3 `--noEmit` cases cover accepted instance/constructor-side assignments,
+a wrong-side TS2741, TS2300/TS2451 collisions, and both interface/class
+orders. The public BlueTS compile test reads the same fixture sources,
+checks corresponding diagnostics and exact duplicate identifier spans, and
+confirms no output. The BlueTS crate suite, workspace all-target Clippy,
+rustfmt, and whitespace checks pass with the reused compact Cargo target.
+
+### J.3.1.3.2.2 Bounded local class construction
+
+The checker now recognizes an exact `new LocalClass(...)` expression and
+infers the already-bound named instance type. A bounded scan also checks
+class construction nested in a supported expression such as a function-call
+argument. It selects declared constructor overload signatures when present,
+otherwise the implementation signature or the implicit zero-argument
+constructor. Argument count, primitive type, tuple spread, and type-expansion
+budgets use the existing function-call relation; a failure reports the
+original construction span. Eight pinned TypeScript 5.9.3 `--noEmit` cases
+cover accepted direct/overloaded calls, wrong argument and arity, an inferred
+instance-shape mismatch, and a nested invalid argument. The oracle's
+diagnostic parser now locates the source coordinate before the `error TS`
+marker, so parentheses in TypeScript diagnostic prose cannot hide a line.
+
+An inherited constructor may carry its parent's parameters. Heritage and
+`super` are J.3.1.3.4 work, so construction of a derived class remains
+checker-deferred while every class is still refused for output; a pinned
+accepted fixture prevents an invented zero-argument diagnostic. The public
+BlueTS test proves exact source spans, no artifact, and a bounded scan. The
+BlueTS and bridge crate suites, workspace all-target Clippy, rustfmt, and
+whitespace checks pass using the same compact target. J.3.1.3.2.3 must
+finish instance/static member lookup, direct class-call refusal, and
+closed-module class imports/exports.
+
+### J.3.1.3.2.3.1 Local instance member access and class-call refusal
+
+The bound instance method shape now supports a local class instance's method
+read and call. A missing instance method on the constructor side reports the
+original `Class.method` or `Class.method(...)` span. A bounded expression scan
+rejects direct and nested calls of a local class value without `new` at the
+original call span. It checks the active scope, so a parameter that shadows
+the class remains callable or constructible. The scan uses the compiler's type-expansion limit
+and reports ResourceLimit when that bound is crossed. Class output remains
+unconditionally refused.
+
+Six pinned TypeScript 5.9.3 `--noEmit` fixtures cover the accepted instance
+method read and call, both wrong-side accesses, direct and nested class calls,
+and a shadowed callable parameter. Public BlueTS tests assert accepted versus
+rejected behavior, precise spans, no artifact, and the scan budget. The BlueTS
+and bridge crate suites, workspace all-target Clippy, rustfmt, and whitespace
+checks pass using the reused compact Cargo target. Static methods and
+closed-module class bindings remain separate J.3.1.3.2.3 leaves.
+
+### J.3.1.3.2.3.2.1 Static method shell and side-aware groups
+
+The bounded class parser now recognizes `static name(...)` signatures and
+implementations as methods with an explicit static marker. The member shell
+and method retain their original source span. Method grouping keys on both
+name and side: a static overload and implementation form one group while an
+instance method of the same name remains separate. The duplicate method
+validator uses the same side-aware key, and the instance type builder omits
+static methods. A member spelled `static()` remains an instance method.
+
+The public parser boundary test checks these distinctions and confirms that
+class compilation still produces no artifact. The pinned TypeScript 5.9.3
+`--noEmit` oracle accepts the same source. The BlueTS and bridge crate suites,
+workspace all-target Clippy, rustfmt, and whitespace checks pass with the
+reused compact Cargo target. Static member type binding and call checks are
+the next leaf.
+
+### J.3.1.3.2.3.2.2 Constructor-side static method types and calls
+
+Static method signatures now extend a local class's constructor-side record
+beside its typed `prototype`; the instance record retains only instance
+methods. A single static method is checked through ordinary member-call
+validation. A multi-signature static group uses the existing bounded
+function-signature selector for argument checking and return inference.
+The implementation signature remains hidden when overloads exist. A missing
+static method on an instance, a missing instance method on the constructor,
+and bad static arguments report the original member expression or call span.
+No class artifact is admitted.
+
+Public checked-compile tests cover accepted static reads, single and
+overloaded calls, return inference, wrong-side reads and calls, invalid
+arguments, exact spans, and no output. Six pinned TypeScript 5.9.3 `--noEmit`
+fixtures match the accepted forms and TS2576, TS2345, and TS2769 rejection
+lines. The BlueTS and bridge crate suites, workspace all-target Clippy,
+rustfmt, and whitespace checks pass using the reused compact Cargo target.
+Closed-module class binding is the remaining J.3.1.3.2.3 leaf.
+
+### J.3.1.3.2.3.3.1 Closed-module class instance type imports
+
+The closed project type surface now includes an exported class's instance
+definition. A local value export alias or local `export type` alias can also
+expose the class type without exposing a private class by accident. `import
+type` binds that definition in the consuming module, allowing instance method
+reads and calls through the imported name. The value-export validator now
+recognizes a class as a local runtime declaration, while class output remains
+refused. Imported class instances use their original member spans for a
+wrong-side static method diagnostic.
+
+Public checked-compile tests use two-module graphs for direct and aliased
+imports, accepted instance methods, a rejected static method on an instance,
+and a rejected private-class import. Four pinned TypeScript 5.9.3 `--noEmit`
+graphs match acceptance and TS2576/TS2459 diagnostic lines. The BlueTS and
+bridge crate suites, workspace all-target Clippy, rustfmt, and whitespace
+checks pass using the reused compact Cargo target. Value-imported class
+constructors and static sides are the next leaf.
+
+### J.3.1.3.2.3.3.2.1 Closed class value origin and alias binding
+
+A bounded project export table now retains each directly exported or locally
+aliased class's source name, instance shape, constructor-side shape, and
+constructor signatures without copying its body tokens. Value imports bind
+the class in both type and value namespaces. The imported name replaces the
+source class's self references inside method types, `prototype`, and
+constructor signatures. Type-only imports use the same origin to specialize
+their instance method returns under local aliases; type-only export and
+re-export edges retain no runtime value authority. Class output remains
+refused throughout the closed graph.
+
+Public two-module tests check direct and aliased class value imports against
+constructor and instance shape assignments, a wrong-side constructor-value
+assignment, exact source spans, and no output. Three pinned TypeScript 5.9.3
+`--noEmit` graphs match the accepted forms and TS2741 rejection. The prior
+type-only import oracle now covers an aliased self-return. The BlueTS and
+bridge crate suites, workspace all-target Clippy, rustfmt, and whitespace
+checks pass with the reused compact target. Imported construction and member
+calls are the next leaf.
+
+### J.3.1.3.2.3.3.2.2 Imported class construction and member calls
+
+Value-imported classes now use the same bounded constructor and member-call
+relations as local classes. Direct and locally aliased imports support
+`new`, static calls, and instance calls with selected return types. Invalid
+constructor or method arguments, wrong-side member calls, and class calls
+without `new` report the original use span. A bounded runtime-expression
+scan also reports a class imported only for types, or exported only with
+`export type`, when used as a value. It respects a shadowing runtime binding
+and skips erased type-assertion operands. The closed source graph still
+refuses every class artifact.
+
+Public checked-compile tests cover three accepted and eight rejected
+two-module forms, exact source spans, and no output. Eleven pinned TypeScript
+5.9.3 `--noEmit` graphs agree on acceptance and TS2345, TS2339, TS2576,
+TS2348, TS1361, and TS1362 diagnostic lines. The BlueTS and bridge crate
+suites, workspace all-target Clippy, rustfmt, and whitespace checks pass with
+the reused compact Cargo target. The full workspace suite also passes when
+its Unix socket tests run outside the filesystem sandbox. J.3.1.3.2's local
+and closed-module type/value separation is complete; constructor and method
+body semantics follow in J.3.1.3.3.
+
+### J.3.1.3.3.1 Constructor overload and parameter validation
+
+The class checker now validates every parsed constructor parameter annotation
+and implementation default in source order. A default can read an earlier
+typed parameter, while an overload signature cannot own a default. Constructor
+signatures require one immediately following implementation; missing,
+interrupted, duplicate, and incompatible groups report original member spans.
+The compatibility relation uses the same bounded type-expansion budget as
+class method overloads. Class output remains refused.
+
+Public checked-compile coverage checks accepted overload and default forms,
+rejected parameter types/defaults and group shapes, both duplicate member
+spans, and no artifact. Nine pinned TypeScript 5.9.3 `--noEmit` cases agree on
+acceptance and TS2390, TS2392, TS2394, TS2304, TS2322, and TS2371 lines.
+The BlueTS and bridge crate suites, full workspace suite, workspace all-target
+Clippy, rustfmt, and whitespace checks pass with the reused 12 GiB Cargo
+target. Constructor body scope and return checking follow in J.3.1.3.3.2.
+
+### J.3.1.3.3.2 Constructor body scopes and returns
+
+Constructor implementations now walk their structured body in source order.
+Parameter annotations and defaults seed the scope; local declarations add
+checked annotations or inferred initializer types. Expression statements,
+throws, calls, and returns use that scope. Braced `if`, `while`, and `try`
+paths are checked recursively with local branch and catch scopes. A bare
+return and a primitive return follow TypeScript constructor behavior. Returned
+objects must fit the bounded class instance method shape, with diagnostics at
+the original return span. Class output remains refused, and inherited `super`
+is still the J.3.1.3.4 heritage task.
+
+Public checked-compile tests cover accepted typed locals and primitive or
+aliased-primitive returns; rejected locals, calls, direct object returns, and
+nested object returns check original spans and no output. Seven pinned
+TypeScript 5.9.3 `--noEmit` cases agree on acceptance and TS2322, TS2345,
+TS2741, and TS2409 diagnostic lines. BlueTS, bridge, and full workspace
+suites, workspace all-target Clippy, rustfmt, and whitespace checks pass with
+the reused 12 GiB Cargo target. Method-body checking follows in J.3.1.3.3.3.
+
+### J.3.1.3.3.3.1 Method parameters and body scopes
+
+Instance and static methods now validate every parameter annotation, bounded
+rest form, and default initializer; overload signatures reject defaults.
+Constructor and method bodies share one source-ordered structured walker,
+which checks typed local declarations, expression statements, calls, throws,
+and nested branch/loop/catch scopes. Method return expressions receive runtime
+checks here; declared return compatibility and fallthrough are the next leaf.
+An invalid overload-signature default is diagnosed at its parameter span
+without a redundant overload-compatibility error. Class output stays refused.
+
+Public checked-compile coverage checks accepted instance/static typed scopes
+and prior-parameter defaults, rejected locals, calls, parameter types and
+defaults, exact source spans, and no artifact. Seven pinned TypeScript 5.9.3
+`--noEmit` cases agree on acceptance and TS2322, TS2345, TS2304, and TS2371
+lines. BlueTS, bridge, and full workspace suites, workspace all-target Clippy,
+rustfmt, and whitespace checks pass with the reused 12 GiB Cargo target.
+
+### J.3.1.3.3.3.2 Method return annotations and flow
+
+The shared class-method IR now retains the exact source span of a return
+annotation. Instance and static method signatures validate that type, and
+implementation bodies compare source-ordered direct and nested returns with
+the declared type. Bare returns are checked as `undefined`; `void` and types
+accepting `undefined` permit fallthrough. Structured bodies that can reach
+their end without a required result report the original method span. An
+unresolved annotation reports its type name without a cascading return
+diagnostic. Overload implementation bodies follow the same checks. Class
+output remains refused.
+
+Public checked-compile cases cover accepted all-branch and `void` returns,
+invalid instance, static, bare, `void`, and overload-body returns, fallthrough,
+and an unknown annotation at exact source spans with no artifact. Eight pinned
+TypeScript 5.9.3 `--noEmit` cases agree on acceptance and TS2322, TS2366, and
+TS2304 diagnostic lines. BlueTS, bridge, and full workspace suites, workspace
+all-target Clippy, rustfmt, and whitespace checks pass in the reused 12 GiB
+Cargo target. This closes J.3.1.3.3.3; bounded `this` and overload-call
+inference remain in J.3.1.3.3.4.
+
+### J.3.1.3.3.4.1 Instance `this` in class bodies
+
+The bounded function-body parser now retains expression statements starting
+with `this`. Constructor and instance method bodies bind `this` to their
+class's instance type. Expression inference uses that binding for a bare
+`this`, member reads, and method-call results; runtime checks validate its
+method arguments and reject constructor-side methods through the same member
+relation as ordinary instances. Every diagnostic retains the original call,
+read, local declaration, or return span. Class output remains refused.
+
+Public checked-compile coverage asserts an accepted constructor call and
+self-return, wrong arguments, wrong-side call and read, incompatible inferred
+call result, incompatible `this` return, exact spans, and no artifact. Six
+pinned TypeScript 5.9.3 `--noEmit` cases agree on acceptance and TS2345,
+TS2576, and TS2322 lines. BlueTS, bridge, and full workspace suites,
+workspace all-target Clippy, rustfmt, and whitespace checks pass with the
+reused 12 GiB Cargo target. Constructor-side `this` follows in J.3.1.3.3.4.2.
+
+### J.3.1.3.3.4.2 Static `this` in class bodies
+
+Static method bodies now bind `this` to the class's constructor-side record.
+The existing member relation checks static reads and calls and rejects
+instance-only members. Calls and reads through this bound `this` keep their
+original expression span; result inference flows into local and declared
+return checks. A constructor-side value is not accepted where the instance
+type is required. Overload selection on static `this` follows in
+J.3.1.3.3.4.4, and class output remains refused.
+
+Public checked-compile cases cover an accepted static call, wrong arguments,
+wrong-side reads and calls, an incompatible inferred local, and an invalid
+constructor-side self return at exact spans with no artifact. Six pinned
+TypeScript 5.9.3 `--noEmit` cases agree on acceptance and TS2345, TS2339,
+TS2322, and TS2741 lines. BlueTS, bridge, and full workspace suites,
+workspace all-target Clippy, rustfmt, and whitespace checks pass with the
+reused 12 GiB Cargo target.
+
+### J.3.1.3.3.4.3 Instance method overload calls
+
+Bound class instances, including `this` in instance bodies, now select a
+method overload with the bounded function-signature relation. The selected
+signature supplies the inferred return type for local initializers and
+declared method returns; an unmatched argument list reports the original
+call span. This class path precedes the existing exact callback-overload
+rule, which remains available for other structural receivers. Class output
+remains refused.
+
+Public checked-compile cases cover accepted number/string overloads on an
+instance and `this`, bad arguments through both receivers, incompatible
+inferred locals and returns, exact spans, and no artifact. Five pinned
+TypeScript 5.9.3 `--noEmit` cases agree on acceptance and TS2769/TS2322
+lines. BlueTS, bridge, and full workspace suites, workspace all-target Clippy,
+rustfmt, and whitespace checks pass with the reused 12 GiB Cargo target.
+Static overload selection follows in J.3.1.3.3.4.4.
+
+### J.3.1.3.3.4.4 Static method overload calls
+
+Bound class values and static `this` in class method bodies now use the same
+bounded overload-signature selector. It checks argument lists at the original
+call span, and the selected signature supplies the inferred result for local
+initializers and declared method returns. Class output remains refused.
+
+Public checked-compile cases cover accepted number/string overload calls,
+bad arguments on both receivers, incompatible inferred locals and returns,
+exact spans, and no artifact. Five pinned TypeScript 5.9.3 `--noEmit` cases
+agree on acceptance and TS2769/TS2322 lines. This closes J.3.1.3.3;
+BlueTS, bridge, and full workspace suites, workspace all-target Clippy,
+rustfmt, and whitespace checks pass with the reused 12 GiB Cargo target.
+Inheritance, overrides, cycles, and `super` follow in J.3.1.3.4.
+
+### J.3.1.3.4 Named class inheritance sequence
+
+J.3.1.3.4 is split into heritage name/value validation, bounded cycle
+detection, inherited member and constructor surfaces, override compatibility,
+derived constructor `super` checks, and `super` member checks. Each step uses
+the shared parsed class IR and pinned TypeScript 5.9.3 diagnostics while class
+output remains refused. The first step accepts local and imported class bases,
+checks an unknown or known non-constructor base, and checks declaration order;
+cycle diagnostics remain in J.3.1.3.4.2.
+
+### J.3.1.3.4.1 Named heritage binding
+
+The checker now validates each parsed named `extends` reference after local
+and imported class values have been bound. A bound class constructor is an
+accepted base; a missing name, known non-constructor value, or local class
+declared after its derived class gets a diagnostic on the original heritage
+identifier. Opaque function, `any`, and unknown value bases remain deferred
+because the current constructor model cannot prove their runtime base shape.
+Direct and indirect cycle diagnostics follow in J.3.1.3.4.2. Class output is
+still refused.
+
+Public checked-compile coverage proves local and imported acceptance, three
+rejected forms, original spans, and no artifact. Five pinned TypeScript 5.9.3
+`--noEmit` cases agree on acceptance and TS2304/TS2507/TS2449 lines. BlueTS,
+bridge, and full workspace suites, workspace all-target Clippy, rustfmt, and
+whitespace checks pass with the reused 12 GiB Cargo target.
+
+### J.3.1.3.4.2 Bounded local heritage cycles
+
+After named class binding, the checker traverses each local class's parsed
+`extends` edges with the configured type-expansion limit. It reports a direct
+or indirect cycle on the original class name of every cycle member; a class
+that merely depends on a cycle does not get a cycle diagnostic. The existing
+forward-base check still reports its distinct heritage-name error. Longer
+chains fail with a resource-limit diagnostic instead of unbounded traversal.
+Imported base graphs remain outside this local cycle step, and class output
+remains refused.
+
+Public checked-compile tests cover a self cycle, mutual cycle with a
+dependent class, exact cycle and forward-reference spans, a one-edge scan
+budget, and no artifact. Two pinned TypeScript 5.9.3 `--noEmit` cases agree
+on TS2506/TS2449 lines. BlueTS, bridge, and full workspace suites, workspace
+all-target Clippy, rustfmt, and whitespace checks pass with the reused 12 GiB
+Cargo target.
+
+### J.3.1.3.4.3 Inherited class surfaces
+
+The inherited lookup work is split into instance methods, static methods,
+constructor signatures, and closed-module export/import propagation. Local
+and value-imported named class bases must preserve derived method shadowing
+and the existing bounded property and call relations. The checker continues
+to refuse class output until the emit and runtime leaves close.
+
+### J.3.1.3.4.3.1 Inherited instance methods
+
+Before checking class bodies and runtime expressions, the checker builds each
+local class's instance method shape from its own parsed method groups and
+unshadowed ancestors. It follows local `extends` edges up to the configured
+type-expansion limit and can terminate at a value-imported class's already
+bound instance surface. The resulting record retains original method spans
+and overload groups. Derived `this` and `new` instance values reach those
+methods through the existing bounded property lookup, call relation, and
+selected-result inference. Class output remains refused.
+
+Public checked-compile cases cover a multi-level local base, an imported
+base, an invalid inherited call, an incompatible inferred result, exact
+spans, and no artifact. Four pinned TypeScript 5.9.3 `--noEmit` cases agree
+on acceptance and TS2345/TS2322 lines. BlueTS, bridge, and full workspace
+suites, workspace all-target Clippy, rustfmt, and whitespace checks pass with
+the reused 12 GiB Cargo target.
+
+### J.3.1.3.4.3.2 Inherited static methods
+
+Each local class's constructor-side record now retains its own `prototype`
+and static methods, then appends unshadowed static methods from local or
+value-imported named bases within the type-expansion limit. Static method
+bodies bind `this` to that merged record. Class values and static `this`
+reach inherited overload groups through the existing bounded call selector,
+and the selected return type flows into local and declared return checks.
+Class output remains refused.
+
+Public checked-compile cases cover multi-level and imported bases, accepted
+static overload calls, bad arguments, incompatible inferred results, exact
+spans, and no artifact. Four pinned TypeScript 5.9.3 `--noEmit` cases agree
+on acceptance and TS2769/TS2322 lines. BlueTS, bridge, and full workspace
+suites, workspace all-target Clippy, rustfmt, and whitespace checks pass with
+the reused 12 GiB Cargo target.
+
+### J.3.1.3.4.3.3 Inherited constructor signatures
+
+After class binding, a local derived class without a constructor copies the
+resolved constructor overload signatures of its local or value-imported base.
+The copied signatures return the derived instance type and feed the existing
+bounded argument and arity selector at the original `new` call span. A
+derived class that declares its own constructor retains that signature.
+An unresolved base leaves constructor selection deferred behind the heritage
+diagnostic and class-output refusal; checking `super` in constructor bodies
+follows in J.3.1.3.4.5.
+
+Public checked-compile cases cover a multi-level local base, an imported
+base, bad arguments, missing arguments, incompatible inferred instance shape,
+explicit constructor precedence, exact spans, and no artifact. Six pinned
+TypeScript 5.9.3 `--noEmit` cases agree on acceptance and TS2769/TS2554/
+TS2741/TS2345 lines. BlueTS, bridge, and full workspace suites, workspace
+all-target Clippy, rustfmt, and whitespace checks pass with the reused 12 GiB
+Cargo target.
+
+### J.3.1.3.4.3.4 Closed-module inherited class surfaces
+
+The closed-module propagation is split into local-base derived class exports
+and derived classes whose bases are imported. The first step publishes the
+already checked local inheritance shape for direct and locally aliased value
+exports; the second carries that shape across imported bases and re-exports.
+Both keep class output refused until the shared emit and runtime paths close.
+
+J.3.1.3.4.3.4.2 is further split into direct value export/import propagation
+for a value-imported base and the supported `export type` re-export chain.
+The parser currently refuses runtime `export { value } from` syntax, so this
+phase's re-export checker gate covers the type-only form it can represent.
+
+### J.3.1.3.4.3.4.1 Local-base derived class exports
+
+The closed-module class export table now walks locally declared classes in
+source order and extends each derived export with unshadowed instance and
+static members from its resolved local base. An omitted derived constructor
+inherits the base overloads with the derived return type. The traversal is
+limited by the configured type-expansion depth; deeper or invalid heritage
+still has its checker diagnostic and class output refusal. Direct and local
+aliased value exports carry the same surface, and an importing name is
+specialized by the existing class import binder.
+
+Public checked-compile cases cover both export forms, accepted construction
+and method calls, rejected constructor/instance/static arguments, an
+incompatible selected result, exact spans, and no artifact. Six pinned
+TypeScript 5.9.3 `--noEmit` cases agree on acceptance and TS2345/TS2322
+lines. BlueTS, bridge, and full workspace suites, workspace all-target
+Clippy, rustfmt, and whitespace checks pass with the reused 12 GiB Cargo
+target.
+
+### J.3.1.3.4.3.4.2.1 Value-imported base class exports
+
+The closed-module class export table now resolves value-imported base
+surfaces through the existing project graph and advances derived surfaces
+one module edge per pass. It merges inherited instance and static members
+and omitted-constructor overloads into direct and locally aliased class
+exports. Each surface carries its heritage depth, so the configured type
+expansion bound also applies across module edges. Type-only imports cannot
+provide a runtime base.
+
+Public checked-compile cases cover accepted direct and aliased imports,
+a four-module inheritance chain, rejected constructor/instance/static
+arguments, an incompatible selected result, original diagnostic spans,
+and no artifact. Seven pinned TypeScript 5.9.3 `--noEmit` cases agree on
+acceptance and TS2345/TS2322 lines. BlueTS, bridge, and full workspace
+tests, workspace all-target Clippy, rustfmt, and whitespace checks pass
+with the reused 12 GiB Cargo target.
+
+### J.3.1.3.4.3.4.2.2 Type-only inherited class re-export chains
+
+The existing class surface and type-only re-export fixed points already
+carry an imported-base derived class's inherited instance members through
+named aliases and star re-exports. A type-only import binds the resolved
+instance surface without publishing a runtime class value. The five-module
+public checked-compile regression verifies accepted inherited member calls,
+rejected arguments and selected results at original spans, and no output.
+Three pinned TypeScript 5.9.3 `--noEmit` cases agree on acceptance and
+TS2345/TS2322 lines. BlueTS, bridge, and full workspace tests, workspace
+all-target Clippy, rustfmt, and whitespace checks pass with the reused
+12 GiB Cargo target.
+
+### J.3.1.3.4.4 Inherited method override sequence
+
+Override checks are split into direct local-base methods with one signature,
+deeper local and value-imported heritage with bounded lookup and optional,
+rest, or differing-arity parameters, and inherited overload sets. Each step
+checks instance and static sides at original member spans against pinned
+TypeScript while class output remains refused.
+
+### J.3.1.3.4.4.1 Direct local-base method overrides
+
+A separate class override checker now compares explicitly annotated,
+single-signature methods of a direct local base and derived class when their
+parameters have equal required arity. It matches instance and static sides
+separately, checks parameter types in either direction as TypeScript does for
+class methods, and requires the derived return type to fit the inherited
+return type. The existing type-expansion limit bounds the comparison. Wider
+arity, optional/rest parameters, deeper or imported bases, and overload sets
+remain in the following override leaves.
+
+Public checked-compile cases cover accepted exact and narrower parameter
+overrides, rejected instance/static parameter and result types at original
+member spans, and no artifact. Five pinned TypeScript 5.9.3 `--noEmit`
+cases agree on acceptance and TS2416/TS2417 lines. BlueTS, bridge, and full
+workspace tests, workspace all-target Clippy, rustfmt, and whitespace
+checks pass with the reused 12 GiB Cargo target.
+
+J.3.1.3.4.4.2 is further split into nearest-method lookup along bounded local
+heritage, inherited surfaces from value-imported bases, and optional/rest or
+differing-arity parameter compatibility.
+
+### J.3.1.3.4.4.2.1 Deeper local method overrides
+
+The override checker now follows local named `extends` edges up to the
+configured type-expansion limit and compares a derived method with the
+nearest inherited method on the same instance or static side. An intervening
+overload group hides older ancestors and remains for the overload-set leaf.
+Existing heritage validation diagnoses cycles and over-limit chains, while
+class output remains refused.
+
+Public checked-compile cases cover accepted instance/static overrides
+through a middle class, rejected parameter and return types, nearest-method
+shadowing, exact original member spans, and no artifact. Six pinned
+TypeScript 5.9.3 `--noEmit` cases agree on acceptance and TS2416/TS2417
+lines. BlueTS, bridge, and full workspace tests, workspace all-target
+Clippy, rustfmt, and whitespace checks pass with the reused 12 GiB Cargo
+target.
+
+### J.3.1.3.4.4.2.2 Value-imported method overrides
+
+When a local override walk reaches a value-imported class, the checker now
+reads the already bound instance or constructor-side record and compares its
+single method signature with the derived method. This covers direct imports,
+local import aliases, and class exports whose own base was imported in an
+earlier module. The same bounded local traversal and method-side separation
+apply; overload groups and optional/rest or differing arities remain in
+their dedicated leaves.
+
+Public checked-compile cases cover two accepted direct/transitive forms,
+eight rejected parameter/result/arity forms, original member spans, and no
+artifact. Ten pinned TypeScript 5.9.3 `--noEmit` cases agree on acceptance
+and TS2416/TS2417 lines. BlueTS, bridge, and full workspace tests,
+workspace all-target Clippy, rustfmt, and whitespace checks pass with the
+reused 12 GiB Cargo target.
+
+J.3.1.3.4.4.2.3 is split into optional/default and differing required
+arities, then rest arrays/tuples and fixed/rest interactions. The first step
+keeps the existing single-signature, explicitly annotated method boundary.
+
+### J.3.1.3.4.4.2.3.1 Optional and differing-arity overrides
+
+For explicitly annotated single-signature methods without rest parameters,
+the override checker now allows the derived method to omit inherited
+parameters or add omittable optional/default parameters. It rejects a
+derived method that requires more positions than the base declares and
+compares overlapping parameter types bivariantly regardless of optional
+markers, following the pinned TypeScript method relation. Return types
+remain covariant and the comparison uses the existing expansion budget.
+
+Public checked-compile cases cover three accepted local forms, four
+rejected local forms, a rejected imported-base arity, original member spans,
+and no artifact. Seven local cases and the imported companion agree with
+pinned TypeScript 5.9.3 `--noEmit` acceptance and TS2416/TS2417 lines.
+BlueTS, bridge, and full workspace tests, workspace all-target Clippy,
+rustfmt, and whitespace checks pass with the reused 12 GiB Cargo target.
+
+J.3.1.3.4.4.2.3.2 is further split into matching-prefix array rest,
+fixed/rest interactions, and tuple rest expansion. The first step uses the
+already parsed array rest annotation and keeps tuple work separate from the
+current array-only class parameter gate.
+
+### J.3.1.3.4.4.2.3.2.1 Matching-prefix array rest overrides
+
+The bounded class override comparison now handles a final array rest on
+both inherited and derived methods when their fixed parameter prefixes have
+the same length. It excludes rest from the required arity count, compares
+array element types through the existing bounded type relation, and still
+checks fixed parameters and covariant return types. Different fixed
+prefixes, one-sided rest, and tuple rest remain in their following leaves.
+
+Public checked-compile cases cover accepted instance/static overrides,
+five rejected element, prefix, and result forms at original member spans,
+and no artifact. Six pinned TypeScript 5.9.3 `--noEmit` cases agree on
+acceptance and TS2416/TS2417 lines. BlueTS, bridge, and full workspace
+tests, workspace all-target Clippy, rustfmt, and whitespace checks pass with
+the reused 12 GiB Cargo target.
+
+J.3.1.3.4.4.2.3.2.2 is split by direction: a derived array rest against
+remaining fixed base parameters, a fixed derived signature against an
+inherited array rest, and differing fixed prefixes when both sides have
+array rest. Each comparison remains at the parsed method boundary.
+
+### J.3.1.3.4.4.2.3.2.2.1 Derived array rest over fixed base parameters
+
+The override comparison now aligns a derived method's fixed prefix with the
+base's fixed parameters and then compares every remaining inherited fixed
+parameter with the derived array rest element type. The same bounded
+bivariant type relation and covariant return check apply on instance and
+static sides. A base rest or a longer derived fixed prefix remains in the
+following rest leaves.
+
+Public checked-compile cases cover accepted instance/static methods, three
+rejected element mismatches including a later fixed base position, exact
+original member spans, and no artifact. Four pinned TypeScript 5.9.3
+`--noEmit` cases agree on acceptance and TS2416/TS2417 lines. BlueTS,
+bridge, and full workspace tests, workspace all-target Clippy, rustfmt, and
+whitespace checks pass with the reused 12 GiB Cargo target.
+
+### J.3.1.3.4.4.2.3.2.2.2 Fixed derived positions over base array rest
+
+The override checker now aligns each fixed derived parameter with the
+inherited fixed prefix or, once that prefix ends, the base's array rest
+element type. It accepts a shorter derived signature, an optional position,
+and one required position at the base rest slot when their types fit;
+further required positions and type mismatches still fail under the bounded
+method relation. Both instance and static sides use the original derived
+member span. Differing fixed prefixes with rest on both sides remain in the
+next leaf.
+
+Public checked-compile cases cover two accepted source forms, four rejected
+arity or instance/static type forms including a later position, and no
+artifact. Six pinned TypeScript 5.9.3 `--noEmit` cases agree on acceptance and
+TS2416/TS2417 lines. BlueTS, bridge, and full workspace tests, workspace
+all-target Clippy, rustfmt, and whitespace checks pass with the reused
+12 GiB Cargo target.
+
+### J.3.1.3.4.4.2.3.2.2.3 Both-side array rests with shifted prefixes
+
+The bounded class override relation now aligns each fixed parameter with
+the other method's fixed parameter or array rest element, then compares the
+two rest element types. TypeScript accepts a derived method with additional
+required fixed parameters when both signatures end in array rest and those
+types fit, so this shape does not use the single-rest required-arity limit.
+The instance and static comparisons retain the original derived member span.
+Tuple rest expansion remains in the next leaf.
+
+Public checked-compile cases cover two accepted forms, including the longer
+required prefix, and three rejected prefix, element, and static forms with
+exact original spans and no artifact. Five pinned TypeScript 5.9.3 `--noEmit`
+cases agree on acceptance and TS2416/TS2417 lines. BlueTS, bridge, and full
+workspace tests, workspace all-target Clippy, rustfmt, and whitespace checks
+pass with the reused 12 GiB Cargo target.
+
+### J.3.1.3.4.4.2.3.2.3 Tuple rest expansion
+
+Tuple rest support is split into fixed-length annotation admission,
+fixed-length override comparison, and optional/labeled/variadic tuple
+syntax. The fixed-length comparison is further divided by the direction
+of the tuple rest and a both-side case. This keeps parser, validation,
+and override behavior individually reviewable against pinned TypeScript.
+
+### J.3.1.3.4.4.2.3.2.3.1 Fixed-length tuple rest annotations
+
+Class constructor, instance, and static method parameters now accept a
+parsed fixed-length tuple as a rest annotation. The shared parameter
+validator still rejects a primitive rest annotation and checks each tuple
+element type at the original parameter span. This admission does not yet
+expand tuple elements for inherited override comparison; class output
+remains refused.
+
+Public checked-compile coverage accepts all three class parameter sites,
+rejects a primitive rest and unknown tuple element at their original spans,
+and confirms no artifact. Three pinned TypeScript 5.9.3 `--noEmit` cases
+agree on acceptance and TS2370/TS2304 lines. BlueTS, bridge, and full
+workspace tests, workspace all-target Clippy, rustfmt, and whitespace checks
+pass with the reused 12 GiB Cargo target.
+
+### J.3.1.3.4.4.2.3.2.3.2.1 Derived fixed-length tuple rest overrides
+
+The bounded override relation now expands each required element of a
+derived method's fixed-length tuple rest into a positional parameter. It
+compares those positions with inherited fixed parameters or the inherited
+array rest element through the existing bivariant type relation, while
+retaining the covariant result check. A fixed inherited signature rejects
+additional required tuple positions; an inherited array rest can accept
+them when the element types agree. Unsupported inherited tuple shapes
+remain for the following leaves, and class output stays refused.
+
+Public checked-compile coverage accepts instance and static overrides,
+rejects fixed-position type, fixed arity, and later array-rest element
+mismatches at original member spans, and confirms no artifact. Four pinned
+TypeScript 5.9.3 `--noEmit` cases agree on acceptance and TS2416/TS2417
+lines. BlueTS, bridge, and full workspace tests, workspace all-target
+Clippy, rustfmt, and whitespace checks pass with the reused 12 GiB target.
+
+### J.3.1.3.4.4.2.3.2.3.2.2 Inherited fixed-length tuple rest overrides
+
+The bounded override relation now treats each inherited tuple rest element
+as a required positional parameter. A derived fixed signature compares
+only its supplied positions and cannot require more than the expanded base
+arity. A derived array rest is compared with every remaining inherited
+tuple element. Both paths use the existing bivariant parameter relation,
+covariant result check, and original derived member span. Both-side tuple
+rest compatibility remains in the next leaf, and class output stays refused.
+
+Public checked-compile coverage accepts a shorter instance signature and
+a static array rest against a homogeneous tuple, rejects fixed-position
+type, fixed arity, and later array element mismatches, and confirms no
+artifact. Four pinned TypeScript 5.9.3 `--noEmit` cases agree on acceptance
+and TS2416/TS2417 lines. The parser currently treats a parenthesized union
+array annotation as a function type, so the accepted array case uses a
+homogeneous tuple; that syntax limitation is outside this override leaf.
+BlueTS, bridge, and full workspace tests, workspace all-target Clippy,
+rustfmt, and whitespace checks pass with the reused 12 GiB target.
+
+### J.3.1.3.4.4.2.3.2.3.2.3 Both-side fixed-length tuple rests
+
+The bounded method override relation now expands fixed-length tuple rests
+on both sides and compares aligned positions through the existing
+bivariant parameter relation. It checks the derived required count against
+the inherited expanded length, allowing omitted inherited positions but
+rejecting extra required tuple elements. Return types remain covariant and
+diagnostics retain the original derived member span. Class output stays
+refused.
+
+Public checked-compile coverage accepts matching expanded signatures with
+shifted fixed prefixes on instance and static sides plus a shorter derived
+tuple. It rejects an instance element mismatch, excess required element,
+and static later-element mismatch, with no artifact. Four pinned TypeScript
+5.9.3 `--noEmit` cases agree on TS2416/TS2417 lines. BlueTS, bridge, and
+full workspace tests, workspace all-target Clippy, rustfmt, and whitespace
+checks pass with the reused 12 GiB target.
+
+The remaining tuple syntax work is split into optional, labeled, and
+variadic elements. Parenthesized union arrays are separately tracked for
+heterogeneous tuple-to-array override comparisons because the current
+type parser interprets a leading `(` as a function type.
+
+### J.3.1.3.4.4.2.3.2.3.3.1 Optional tuple element rollout
+
+The existing `Type::Tuple(Vec<Type>)` cannot distinguish an omittable
+element from a required one. Replace its element vector with a shared
+tuple-element record containing the annotation, an optional flag, an
+optional label, and a rest flag. Labels will be retained for declaration
+output but ignored by structural type compatibility. Optional and rest
+flags will affect minimum/maximum arity, indexed element types, and
+runtime contracts. This one representation will also serve the following
+labeled and variadic leaves without introducing temporary tuple variants.
+
+First migrate existing required tuples to records with all flags clear and
+prove unchanged parser, checker, emitter, and contract behavior. Keep the
+parser rejecting optional tuple syntax during this migration. Then admit
+optional syntax only after its general type relation, declaration output,
+and contract behavior have public tests; class method override expansion
+follows as a separate leaf. This sequence prevents an optional tuple from
+being silently treated as a required tuple in another BlueTS use.
+
+### J.3.1.3.4.4.2.3.2.3.3.1.2 Required tuple element metadata migration
+
+The public tuple type now stores an element record with annotation,
+optional, label, and rest metadata. Parsed type annotations and inferred
+tuple literals create required, unlabeled, non-rest elements. Type
+substitution, generic inference, assignability, indexed reads, readonly
+tracking, call spreads, declaration text, and runtime-contract lowering
+read the element annotation. The element record is re-exported so hosts can
+still construct a required tuple type through the public API. Its metadata
+fields are crate-visible with public read accessors; external callers cannot
+construct optional or rest elements before their semantics are installed.
+Optional tuple syntax remains rejected by the parser until the next leaf
+closes its semantics.
+
+Existing public BlueTS/BlueJS tests, exact-length tuple contract tests,
+class tuple-rest accepted/rejected tests, and emitter regressions pass.
+Full workspace tests, workspace all-target Clippy, rustfmt, and whitespace
+checks pass with the reused 12 GiB Cargo target.
+
+### J.3.1.3.4.4.2.3.2.3.3.1.3 Optional tuple types outside overrides
+
+The tuple type parser now accepts trailing `?` elements and diagnoses a
+required element after an optional one at its source span. Tuple
+assignability compares the required and maximum lengths and each present
+element against its expected type, allowing `undefined` at optional
+positions. Indexed reads include `undefined` for an optional position.
+Type labels, identities, and declarations retain the optional marker;
+JavaScript emission still erases it.
+
+Pure contracts lower an optional tuple to a bounded-length plan, validate
+each present element, and accept explicit `undefined` at an optional slot.
+Optional tuple spreads are rejected by the current bounded call and tuple
+literal expansion paths pending a separate step. Class override comparison
+skips optional tuple rest shapes until the next leaf; class output remains
+refused. The parser still rejects `undefined` as a binding name, so a
+shadowed `undefined` cannot be tested through admitted BlueTS source here;
+simple inference consults the local scope before using the intrinsic type.
+Public checked-compile cases cover accepted declarations and
+indexing, wrong type and invalid element order, emitted declarations, and
+no error artifact. Contract cases cover minimum and maximum lengths,
+present types, and explicit `undefined`. Five pinned TypeScript 5.9.3
+`--noEmit` cases agree on acceptance and TS2322/TS1257 lines. BlueTS,
+bridge, and full workspace tests, workspace all-target Clippy, rustfmt, and
+whitespace checks pass with the reused 12 GiB target.
+
+### J.3.1.3.4.4.2.3.2.3.3.1.4 Optional tuple rest overrides
+
+Class override checking now admits rest annotations with optional tuple
+elements. A derived tuple contributes only its required elements to the
+minimum parameter count, while every declared element of an inherited tuple
+counts toward its maximum accepted position. At an optional position, compare
+the element's value type, including `undefined`; the existing bivariant
+method-parameter relation still applies. Variadic tuple tails remain outside
+this relation until J.3.1.3.4.4.2.3.2.3.3.3.
+
+Public checked-compile cases cover accepted fixed, shorter tuple, optional
+derived, and shifted static overrides, plus instance/static element mismatches
+and an excess required argument. Four pinned TypeScript 5.9.3 `--noEmit`
+cases agree on acceptance and the TS2416/TS2417 diagnostic lines. The public
+front end reports the rejected member span and emits no artifact.
+
+### J.3.1.3.4.4.2.3.2.3.3.2.1 Labeled tuple syntax and type erasure
+
+The parser recognizes `name: T` and `name?: T` tuple positions and stores
+their labels in the shared tuple-element metadata. Labels do not participate
+in tuple assignability or type identity; positions and optionality do. The
+declaration emitter reproduces labels and places the optional marker before
+the colon, while JavaScript emission erases both. TypeScript 5.9.3 also
+accepts a tuple mixing labeled and unlabeled positions, so BlueTS admits it.
+
+Public checked-compile cases cover declaration output, assignment across
+different labels, a partly labeled tuple, and a wrong element type without an
+artifact. Three pinned TypeScript 5.9.3 `--noEmit` cases agree on acceptance
+and the TS2322 line. Labeled rest positions in class overrides are checked
+in the next leaf using the existing positional relation.
+
+### J.3.1.3.4.4.2.3.2.3.3.2.2 Labeled tuple rest overrides
+
+The class override relation already compares tuple rest elements by declared
+position and optionality, without reading the label metadata. Instance and
+static overrides may rename those labels; incompatible element types or too
+many required positions still fail. Four pinned TypeScript 5.9.3 `--noEmit`
+cases agree on valid renamed positions and TS2416/TS2417 diagnostic lines.
+Public checked-compile cases assert the rejected member spans, only the
+expected mismatch diagnostic, and no output artifact. No checker change is
+needed for this leaf; the regressions lock in positional semantics.
+
+### J.3.1.3.4.4.2.3.2.3.3.3.1 Variadic tuple rollout
+
+The shared `TupleTypeElement` already has a rest flag but the parser does not
+set it. Admission will start with one array-typed rest element at the end of
+a tuple, then extend to a rest with a required suffix, and finally to
+concrete or constrained generic tuple spreads. A rest is a symbolic tail:
+its array element type applies to arbitrarily many positions. It must not
+be expanded into an unbounded vector. The existing type-expansion budget
+continues to limit recursive type work; comparisons inspect each finite
+prefix and suffix once plus a tail relation.
+
+The parser will reject multiple rests and an optional element after a rest,
+matching TypeScript's tuple restrictions. It will keep `...T[]` and
+`...name: T[]` forms distinct only for declaration spelling; labels remain
+erased from type identity. Trailing rest admission must update tuple
+assignability, contextual tuple literals, indexed reads, type display,
+declaration output, and pure contract validation together. Runtime contracts
+will validate the finite prefix and each present tail element under their
+existing collection/node limits. Class override comparison remains
+fail-closed for rest-bearing tuples until a separate leaf installs its
+symbolic arity and element relation. A middle rest additionally needs a
+fixed suffix matched from the end, so it follows the trailing case. Concrete
+and constrained generic tuple spreads need bounded specialization before
+they can be admitted; unresolved spreads remain diagnostics.
+
+TypeScript's official tuple guidance documents open-ended trailing elements
+and leading/middle rest positions and the one-rest/no-optional-after-rest
+restrictions: https://www.typescriptlang.org/docs/handbook/release-notes/typescript-4-2.html.
+The pinned 5.9.3 oracle will determine acceptance and diagnostic lines for
+each implementation leaf. This design-only leaf admits no new syntax and
+changes no runtime behavior.
+
+### J.3.1.3.4.4.2.3.2.3.3.3.2 Trailing array rest tuple semantics
+
+Tuple parsing now admits a single trailing `...T[]` or `...name: T[]`
+element and retains its rest flag and optional label. An optional prefix may
+precede the rest. Another element after the rest is still rejected: an
+optional one is a parse error, and a required suffix stays unsupported until
+the nontrailing leaf. Non-array rest annotations remain unsupported.
+
+Tuple assignability compares finite declared positions and at most one
+symbolic repeated tail relation. A fixed tuple can fit a compatible rest
+tuple, and `[...T[]]` interchanges with `T[]` where its element types fit.
+Indexed reads beyond the finite prefix use the tail element type; type
+identity, display, and declarations retain `...`, while JavaScript erases
+the type. Pure contracts lower the finite prefix plus one tail plan and
+validate every present item using the existing collection and node budgets.
+The launcher still reports this contract as a tuple. Tuple spreads in calls
+and tuple literals remain fail-closed, and class override comparison still
+skips rest-bearing tuples until the next leaf.
+
+Public checked-compile and pure contract cases cover named, required and
+optional prefixes; empty and repeated tails; tuple/array assignments;
+tail indexed reads; wrong element types; missing required positions; a
+forbidden optional after the rest; and no error artifact. Five pinned
+TypeScript 5.9.3 `--noEmit` cases agree on acceptance and TS2322/TS1266
+lines.
+
+### J.3.1.3.4.4.2.3.2.3.3.3.3.1 Derived trailing tuple rest overrides
+
+The override checker now recognizes a derived rest parameter whose tuple
+ends in an array-typed rest element when the inherited method has fixed
+parameters or an ordinary array rest. It aligns the finite fixed positions,
+uses the repeated tuple tail type for every remaining inherited position,
+and compares the repeated tail once against an inherited array rest element.
+Only nonoptional, nonrest tuple positions contribute to derived minimum
+arity. TypeScript permits extra required derived positions when the base has
+an array rest and all aligned types fit. The existing bivariant method
+parameter and covariant result relations still apply.
+
+Inherited or both-side variadic tuple rests remain fail-closed until their
+separate leaves. Public checked-compile cases cover accepted fixed and array
+forms, including extra required derived prefix positions, and reject a
+fixed element mismatch, excess required arity against a fixed base, and a
+static array-tail mismatch at original member spans without output. Four
+pinned TypeScript 5.9.3 `--noEmit` cases agree on acceptance and TS2416/
+TS2417 diagnostic lines.
+
+### J.3.1.3.4.4.2.3.2.3.3.3.3.2 Inherited trailing tuple rest overrides
+
+The override checker now recognizes an inherited rest parameter whose tuple
+ends in an array-typed rest element when the derived method has fixed
+parameters or an ordinary array rest. It aligns each supplied derived fixed
+position with an inherited fixed or tuple position and uses the repeated
+tail type beyond that prefix. An ordinary derived array rest is also compared
+once with the inherited tail after finite positions are aligned. The
+inherited tuple rest has no maximum arity, so additional compatible required
+derived positions are accepted; the existing bivariant parameter and
+covariant result checks remain in force.
+
+Both-side tuple rest shapes remain fail-closed until the next leaf. Public
+checked-compile cases cover accepted fixed and array forms, including a
+zero-prefix inherited rest with one required derived position, and reject
+incompatible instance and static element types at the original member spans
+without output. Four pinned TypeScript 5.9.3 `--noEmit` cases agree on
+acceptance and TS2416/TS2417 lines.
+
+### J.3.1.3.4.4.2.3.2.3.3.3.3.3 Both-side trailing tuple rest overrides
+
+The override checker now admits trailing array-typed tuple rests on both
+sides. It aligns each finite fixed or tuple-prefix position with the other
+side's position or repeated tail, then compares the two repeated tail types
+once. Both signatures have unbounded maximum arity, so required prefixes do
+not impose a fixed upper arity cap; their aligned types must still agree
+under the existing bivariant method-parameter relation, and the result
+remains covariant. Prefixes may be shifted by ordinary fixed parameters.
+
+Public checked-compile cases cover accepted instance and shifted static
+forms, plus rejected tail and static prefix element mismatches at original
+member spans with no output. Three pinned TypeScript 5.9.3 `--noEmit` cases
+agree on acceptance and TS2416/TS2417 lines. Nontrailing tuple rests remain
+outside this relation until their separate leaves.
+
+### J.3.1.3.4.4.2.3.2.3.3.3.4 Nontrailing array rest tuple semantics
+
+Tuple parsing now admits one array-typed rest element followed by required
+suffix elements. A second rest and an optional element after a rest are
+parse errors. An optional prefix before a required suffix also remains a
+parse error, matching the pinned TypeScript relation. Labels and `...` stay
+in declarations and type displays, while JavaScript erases them.
+
+Tuple assignment with a middle rest checks finite witness lengths from the
+minimum admitted length through one beyond the combined declared shapes.
+That range includes every boundary where a prefix, repeated middle, or
+end-aligned suffix can change position. Each comparison consumes the shared
+type-expansion budget; no runtime-length vector is built. A fixed tuple can
+fit the required prefix and suffix, and two middle-rest tuples compare by
+position regardless of label spelling. A merely trailing rest cannot promise
+a required suffix. Existing trailing-only relations remain unchanged.
+
+At a fixed prefix index, tuple reads retain the exact declared type. At an
+index that can hold the middle or a suffix position, reads combine the
+repeated element with every suffix element that can occupy that index.
+The pure `RestTuple` contract now records a required suffix separately,
+checks minimum length, validates the finite prefix, each present middle
+item, and the suffix from the end under existing collection and node limits.
+Class override comparison still skips nontrailing tuple rest shapes until
+its separate leaf; tuple spreads in calls and literals remain fail-closed.
+
+Public checked-compile and pure contract cases cover leading and middle
+rests, empty and repeated middles, fixed/middle/trailing assignments, exact
+and uncertain indexed reads, declaration output, missing suffixes, wrong
+middle or suffix types, a second rest, and optional-before-required order.
+Ten pinned TypeScript 5.9.3 `--noEmit` cases agree on acceptance and TS2322,
+TS1265, and TS1257 diagnostic lines.
+
+### J.3.1.3.4.4.2.3.2.3.3.3.5.1 Derived nontrailing tuple rest overrides
+
+The class override gate now recognizes a final rest parameter whose tuple
+contains one array-typed rest before a required suffix when the inherited
+method has fixed parameters or an array rest. Other nontrailing override
+directions remain separate leaves. This follows the documented TypeScript
+use of nontrailing rests to express variable arguments followed by fixed
+parameters.
+
+For a fixed inherited signature, the comparison checks every arity from its
+required count through its declared count. The derived tuple must accept the
+minimum inherited arity. For an inherited array rest, it checks bounded
+witness lengths past both fixed prefixes and the derived suffix boundary;
+matching positions use the existing bivariant method parameter relation.
+Tuple positions are calculated from the total witness length, so the suffix
+always aligns from the end, while the middle element repeats symbolically.
+Each positional comparison consumes the shared type-expansion budget.
+
+Public checked-compile cases cover accepted leading, middle, and shifted
+rests, rejected middle/suffix element types, too many required arguments,
+an optional inherited argument that cannot supply the required suffix, and
+a static mismatch. The original method member receives one type diagnostic
+and no output is emitted. Six pinned TypeScript 5.9.3 `--noEmit` cases agree
+on acceptance and TS2416/TS2417 diagnostic lines.
+
+### J.3.1.3.4.4.2.3.2.3.3.3.5.2 Inherited nontrailing tuple rest overrides
+
+The inherited-side gate now recognizes a final tuple rest parameter with an
+array-typed middle and required suffix. A derived fixed signature selects
+each arity it admits, then aligns inherited tuple positions from the total
+arity, keeping the suffix anchored at the end. The fixed signature must
+supply at least the inherited minimum required positions; a longer fixed
+signature can match a longer middle segment when its positions fit.
+
+A derived array rest compares finite witness lengths through the inherited
+prefix, middle, and suffix boundaries. Its declared fixed prefix cannot move
+past the inherited fixed prefix (ordinary parameters plus fixed tuple
+elements), matching pinned TypeScript behavior for a shifted array rest.
+The remaining tail is compared through the existing bivariant method
+parameter relation. Each checked position consumes the type-expansion
+budget, and return covariance remains unchanged.
+
+Public checked-compile cases cover short and longer fixed overrides,
+leading and shifted tuple forms, homogeneous array rests, and static
+methods. Rejections cover a wrong suffix, wrong middle position, omitted
+required suffix, an optional derived position, incompatible array tail, and
+a shifted array prefix. Each reports the original member span with no output.
+Eight pinned TypeScript 5.9.3 `--noEmit` cases agree on acceptance and
+TS2416/TS2417 diagnostic lines. Both-side middle-rest comparison remains
+the next separate leaf.
+
+### J.3.1.3.4.4.2.3.2.3.3.3.5.3.1 Both-side variable tuple rest overrides
+
+When both class method rest parameters are variable tuples and at least one
+has a nontrailing array rest, the checker compares common witness lengths
+from the larger minimum arity through one beyond the combined declared
+shapes. Fixed method parameters, fixed tuple positions, repeated middle or
+trailing positions, and suffix positions are all selected from the total
+witness length. Class-method parameter bivariance applies at each position;
+each comparison consumes the shared type-expansion budget. This accepts
+compatible shifted prefixes and suffixes without assuming that either rest
+has a fixed expansion length.
+
+The first subleaf admits required-only fixed positions on both sides, which
+include mixed middle/trailing pairs. Tuple labels remain irrelevant to type
+comparison. Optional fixed positions and opposing fixed tuple rests remain
+separate leaves because their arity sets differ. Public checked-compile cases
+cover valid renamed labels, prefix/suffix shifts, both mixed trailing
+directions, and static methods, plus incompatible suffix, middle, shift,
+trailing, and static types at original member spans with no output. Six
+pinned TypeScript 5.9.3 `--noEmit` cases agree on acceptance and TS2416/
+TS2417 diagnostic lines.
+
+### J.3.1.3.4.4.2.3.2.3.3.3.5.3.2 Middle and fixed tuple rest overrides
+
+When one class method rest parameter has a nontrailing array rest and the
+opposing rest parameter has a required-only fixed tuple, the fixed tuple's
+total parameter count chooses a single witness length. The variable tuple
+must fit that length in the derived-middle direction; the derived fixed
+tuple must provide at least the inherited middle tuple's required count in
+the opposite direction. Prefix, repeated middle, and suffix positions are
+then compared at the chosen length with the existing bivariant method
+parameter relation. Each position consumes the type-expansion budget.
+
+This subleaf covers required-only tuple positions and ordinary fixed
+parameters. Public checked-compile cases cover short and longer fixed
+tuples, both inheritance directions, and static methods, plus incompatible
+suffix or middle types and insufficient required arity at original member
+spans with no output. Eight pinned TypeScript 5.9.3 `--noEmit` cases agree
+on acceptance and TS2416/TS2417 diagnostic lines. Optional fixed positions
+are handled in separate follow-up leaves.
+
+### J.3.1.3.4.4.2.3.2.3.3.3.5.3.3.1 Optional trailing tuple prefixes
+
+The both-side variable tuple rest relation now admits optional fixed tuple
+elements before a trailing array rest when the opposite tuple has a
+nontrailing rest. Its bounded common witness lengths begin at the larger
+minimum required count, so the optional prefix does not create a required
+argument. Existing tuple position selection retains the optional element's
+`undefined` alternative and checks the repeated tail beyond the prefix.
+Method parameters remain bivariant at each budgeted position.
+
+Public checked-compile cases cover a homogeneous optional prefix in both
+inheritance directions, two optional prefix elements, and a static method.
+Heterogeneous optional or shifted prefix positions report one mismatch at
+the original member span with no output. Five pinned TypeScript 5.9.3
+`--noEmit` cases agree on acceptance and TS2416/TS2417 diagnostic lines.
+Optional positions in a fixed tuple rest and ordinary method parameters
+remain separate leaves.
+
+### J.3.1.3.4.4.2.3.2.3.3.3.5.3.3.2 Optional fixed tuples against middle rests
+
+A fixed tuple rest with optional trailing elements is a distinct override
+shape from a required-only fixed tuple. When it faces a middle rest, the
+checker now emits an incompatibility at the overriding member in either
+direction. An inherited optional fixed tuple may terminate before the
+middle rest's required suffix. A derived optional fixed tuple has a bounded
+maximum and cannot match the inherited middle rest's unbounded form. The
+gate keeps the required-only fixed tuple relation separate, so it does not
+invent a required optional position to select a witness length.
+
+Public checked-compile cases cover both directions, a longer fixed tuple,
+and a static method with one mismatch at the original member span and no
+output. Four pinned TypeScript 5.9.3 `--noEmit` cases agree on TS2416/TS2417
+diagnostic lines. Optional ordinary method parameters remain the next leaf.
+
+### J.3.1.3.4.4.2.3.2.3.3.3.5.3.3.3.1 Optional ordinary prefixes with variable tuples
+
+For two variable tuple rest parameters with at least one nontrailing rest,
+ordinary optional parameters now remain in their declared prefix positions.
+The bounded witness relation starts at the larger of each side's ordinary
+prefix length plus its required tuple positions. A required suffix therefore
+retains the ordinary prefix slot even when that parameter's annotation is
+optional. At a fixed prefix position, an optional annotation also admits
+`undefined` for the existing bivariant method parameter comparison. This
+matches TypeScript's accepted interchange of an optional `number` prefix
+with a required `number` or `undefined` prefix before the same tuple rest.
+
+Public checked-compile cases cover both optional/required directions, a
+tuple prefix opposed by an ordinary optional prefix, mixed middle/trailing
+rests, and static methods. Wrong prefix, suffix, or shifted types report a
+single mismatch at the original member span with no output. Five pinned
+TypeScript 5.9.3 `--noEmit` cases agree on acceptance and TS2416/TS2417
+diagnostic lines. Optional ordinary prefixes against fixed or array rest
+signatures and fixed tuple rests remain separate leaves.
+
+### J.3.1.3.4.4.2.3.2.3.3.3.5.3.3.3.2 Optional prefixes with fixed or array rest counterparts
+
+The derived-middle and inherited-middle override relations now compare an
+ordinary optional parameter as its annotation or `undefined` before fixed
+or array rest counterparts. The tuple's required suffix still needs a
+separate position after every declared ordinary prefix slot. The arity gate
+therefore counts all ordinary prefix slots plus required tuple elements,
+even when a prefix annotation is optional. A short fixed method cannot
+silently occupy the suffix slot with that optional prefix. Array-rest
+counterparts retain their unbounded arity comparison at bounded witness
+lengths, starting after the derived middle tuple's minimum length.
+
+Public checked-compile cases cover accepted optional/`undefined` prefixes
+in derived and inherited fixed/array directions. Wrong prefix types, a
+fixed base with too few required positions, an optional fixed base, a
+fixed derived method that omits the required suffix, and a static mismatch
+report one type diagnostic at the original member span with no output.
+Nine pinned TypeScript 5.9.3 `--noEmit` cases agree on acceptance and
+TS2416/TS2417 diagnostic lines. Opposing fixed tuple rests with ordinary
+optional prefixes remain the next leaf.
+
+### J.3.1.3.4.4.2.3.2.3.3.3.5.3.3.3.3 Optional ordinary prefixes with fixed tuple rests
+
+Middle tuple rest overrides now compare an ordinary optional prefix with a
+fixed tuple rest counterpart using the annotation or `undefined`. The arity
+gate counts all declared ordinary prefix slots when the fixed tuple has
+required elements, so a required suffix cannot occupy an optional prefix's
+position. With an empty fixed tuple, the gate counts only required ordinary
+prefixes, allowing the optional prefix to be omitted.
+
+Public checked-compile cases cover accepted instance and static overrides in
+both directions, plus wrong prefix types and too-short empty-tuple cases. Each
+rejection reports one type diagnostic at the original member span without
+emitting output. Six pinned TypeScript 5.9.3 `--noEmit` cases agree on
+acceptance and TS2416/TS2417 diagnostic lines. BlueTS, bridge, and full
+workspace tests, all-target Clippy, rustfmt, and whitespace checks pass with
+the reused 12 GiB target. Concrete and constrained generic tuple spreads are
+the next leaf.
+
+### J.3.1.3.4.4.2.3.2.3.3.3.6.1 Named tuple spread admission policy
+
+A named tuple spread first resolves through the local or imported type
+definition, completes declared generic defaults, substitutes concrete type
+arguments, and expands within the existing type-expansion budget. A finite
+tuple contributes its elements at the spread position, preserving optional
+positions and labels for declarations. An array-typed spread contributes one
+symbolic tail. A tuple containing an array tail keeps that tail and any
+required suffix; neither parser nor checker constructs an unbounded element
+vector. Expansion must also charge the resulting finite positions against a
+bounded size, so a chain of aliases cannot evade the budget by multiplying
+tuple elements.
+
+The parser retains named spread syntax in the shared tuple element metadata;
+the checker resolves it before positional assignment, indexing, contextual
+tuple construction, pure contract planning, or class override comparison.
+Declaration output retains the source spelling. A concrete expanded tuple
+may use the existing tuple relations and runtime contract bounds. A generic
+spread whose type parameter has an array or tuple constraint retains its
+parameter identity during comparison: the constraint bounds possible
+elements, but replacing the parameter with that constraint would accept
+some invalid overrides. Equal symbolic parameters can be compared directly;
+other relations require a bounded proof from their constraints. Generic
+runtime contracts remain unreifiable until a concrete instantiation is
+available.
+
+An unconstrained parameter, unknown name, cyclic expansion, excessive
+expansion, or shape requiring multiple variable tails produces a diagnostic
+before artifact output. No such case is silently widened to `unknown` or an
+array. Existing array-only tuple spreads remain admitted while this work is
+staged. Local pinned TypeScript 5.9.3 `--noEmit` probes accept a concrete
+`[boolean, ...Pair]`, a concrete `Prefix<[string, boolean]>`, and a matching
+`Base<T extends string[]>` override. They report TS2322 for a missing
+concrete position, TS2574 for an unconstrained spread, and TS2416 for
+incompatible concrete and constrained-generic overrides. This decision
+changes no parser or checker behavior; the following leaves implement each
+surface with public-boundary regressions.
+
+### J.3.1.3.4.4.2.3.2.3.3.3.6.2 Concrete named tuple spreads
+
+The parser retains a named tuple rest element for checking. The checker now
+expands a concrete local alias to a finite tuple before assignment, contextual
+tuple literal comparison, and indexed reads. Each alias and emitted position
+charges the existing type-expansion budget. Nested aliases and an array alias
+resolve recursively, while cycles, unresolved names, and non-tuple or
+non-array targets report diagnostics before output. The declaration emitter
+retains the original named spread syntax.
+
+The pure contract lowerer expands the same concrete shape with a separate
+1,024-position bound and validates every resulting position. A spread tuple's
+optional element becomes required when a later suffix element is required;
+the widened element type still includes `undefined`. This keeps short tuple
+assignments and short runtime values from skipping the suffix. Class method
+rest parameters with named spreads are explicitly rejected until their
+bounded override and call relation is implemented.
+
+Public checked-compile cases cover nested aliases, direct spreads, optional
+positions, declaration output, indexed reads, type and arity errors, invalid
+and cyclic aliases, and the expansion limit. A public pure-contract case
+checks valid values and rejects wrong positions and short suffixes. Five
+pinned TypeScript 5.9.3 `--noEmit` cases agree on acceptance and TS2322
+diagnostic lines. BlueTS, bridge, and full workspace tests, all-target Clippy,
+rustfmt, and whitespace checks pass with the reused 12 GiB target. Concrete
+generic specialization is next.
+
+### J.3.1.3.4.4.2.3.2.3.3.3.6.3 Concrete generic tuple spread specialization
+
+Generic tuple alias definitions may contain a rest type parameter constrained
+to an array or tuple. The checker validates the template's shape through its
+constraint but retains the parameter in the declared type. At a concrete use,
+it completes default type arguments, substitutes them through nested generic
+aliases, and expands a finite tuple argument into positions. An array
+argument remains one symbolic tail, including when a required suffix follows
+it. Each alias and produced position consumes the existing expansion budget.
+
+Public checked-compile cases cover direct and nested alias instantiation,
+finite tuple and array arguments, defaulted arguments, tuple constraints,
+preserved declaration spelling, and rejected arity, element, tail, and
+constraint mismatches. Unconstrained parameters and aliases that resolve to
+non-tuple/non-array types still fail before output. Seven pinned TypeScript
+5.9.3 `--noEmit` cases agree on acceptance and TS2322/TS2344/TS2574
+diagnostic lines. BlueTS, bridge, and full workspace tests, all-target Clippy,
+rustfmt, and whitespace checks pass with the reused 12 GiB target. Class
+method rest parameters with these named spreads remain explicitly rejected
+until the next override-comparison leaf.
+
+### J.3.1.3.4.4.2.3.2.3.3.3.6.4 Concrete named spreads in class overrides
+
+Class rest parameter validation and inherited-method comparison now resolve a
+named alias or concrete generic instantiation to its tuple or array shape
+within the type-expansion budget. Finite named spreads contribute their
+expanded positions; an array alias remains one symbolic rest tail. Override
+arity and positional type checks reuse the existing fixed, trailing, and
+middle tuple relations after specialization. A failed or over-budget
+specialization reports a diagnostic instead of skipping the override check.
+
+Public checked-compile cases cover accepted instance overrides in both
+inheritance directions, static methods, concrete generic aliases, and an
+array-tail alias. Required arity, element, and static mismatches report a
+type diagnostic at the derived member; a small expansion budget rejects a
+large named rest. Class runtime emission remains outside this leaf, so the
+accepted fixture still has only the existing class-runtime unsupported
+diagnostics. Four pinned TypeScript 5.9.3 `--noEmit` cases agree on acceptance
+and TS2416/TS2417 diagnostic lines. BlueTS, bridge, and full workspace tests,
+all-target Clippy, rustfmt, and whitespace checks pass with the reused 12 GiB
+target. Constrained symbolic generic tuple spreads are next.
+
+### J.3.1.3.4.4.2.3.2.3.3.3.6.5.1 Generic function tuple spread constraints
+
+Generic function checking now carries array- and tuple-constrained type
+parameters into tuple spread validation and generic alias type-argument
+checks. The parameter remains symbolic in the retained annotation and
+declaration output; its constraint is used only to establish an admissible
+tuple or array shape. Function scope restoration removes those constraints
+before checking later declarations. An unconstrained spread or a type
+argument whose bound cannot satisfy an alias constraint reports a diagnostic
+before JavaScript output.
+
+Public checked-compile cases cover constrained direct tuple spreads and a
+generic tuple alias used in a function parameter, JavaScript type erasure,
+declaration spelling, and rejected unconstrained or mismatched constraints.
+Three pinned TypeScript 5.9.3 `--noEmit` cases agree on acceptance and
+TS2344/TS2574 diagnostic lines. BlueTS, bridge, and full workspace tests,
+all-target Clippy, rustfmt, and whitespace checks pass with the reused 12 GiB
+target. Symbolic assignment and return relations follow in the next leaf.
 
 ## Checklist
 

@@ -288,6 +288,25 @@ fn compile_with_limit_and_mode(
             &mut root_statement_ranges,
         )?;
     }
+    compiler.bytecode.root_declaration_binding_slots = program
+        .body
+        .iter()
+        .map(|statement| {
+            let name = match statement {
+                Stmt::VarDecl(_, declarations) => match declarations.as_slice() {
+                    [declaration] => match &declaration.pattern {
+                        Pattern::Identifier(name) => Some(name.as_str()),
+                        _ => None,
+                    },
+                    _ => None,
+                },
+                Stmt::FunctionDecl(function) => function.name.as_deref(),
+                _ => None,
+            }?;
+            let slot = *compiler.names.first()?.get(name)?;
+            (compiler.bytecode.bindings.get(slot as usize)?.name == name).then_some(slot)
+        })
+        .collect();
     compiler.bytecode.root_statement_offsets = root_statement_offsets;
     compiler.bytecode.root_statement_ranges = root_statement_ranges;
     compiler.bytecode.root_function_child_indices = root_function_child_indices;
