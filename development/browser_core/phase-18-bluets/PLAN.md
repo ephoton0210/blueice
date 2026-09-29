@@ -2340,6 +2340,26 @@ body are a separate form (J.3.7.5). Untyped function expressions are accepted
 where `tsc` under `--strict` would report an implicit `any`; that difference
 already exists for arrows.
 
+### J.3.7.4 Object-literal methods and accessors
+
+`NestedFunction` gains a `kind` (arrow, function, method, getter, setter). At a
+property position, that is, a name token right after `{` or `,` whose nearest
+enclosing bracket is a `{`, the parser looks for `name(` (a method), or
+`get`/`set` followed by a name and `(` (an accessor), takes the parameter list
+and optional result annotation through the shared helper, and requires a braced
+body; otherwise it leaves the tokens alone. A `get`/`set` directly followed by
+`(` is an ordinary method with that name. The entry is keyed by the member's
+first token. A getter must take no parameters, and a setter exactly one and no
+result annotation.
+
+The checker checks each member like a function expression over the scope of the
+object literal. Object inference reads the table by the member's first token: a
+method becomes a field with a function type, a getter a field of its result type,
+and a setter a field of its parameter type unless a getter for the same name
+exists. Before this an object with a method fell out of inference as unknown, so
+neither the method body nor calls to it were checked. `this` inside a member is
+not typed. Getter-only properties are not treated as read-only.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process

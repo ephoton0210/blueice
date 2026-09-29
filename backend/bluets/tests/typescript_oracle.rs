@@ -41,6 +41,15 @@ struct ExpectedDiagnostic {
 
 const CASES: &[OracleCase] = &[
     OracleCase {
+        name: "object-method-runtime",
+        modules: &[(
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/object-method-runtime/main.ts"),
+        )],
+        expected_stdout: Some("2\na!\n42\n7\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
         name: "function-expression-runtime",
         modules: &[(
             "memory:///main.ts",
@@ -3944,6 +3953,51 @@ fn pinned_function_expressions_match_typescript_without_emit() {
             "call-error",
             include_str!("fixtures/typescript_oracle/function-expression-call-error/main.ts"),
             &[(5, "TS2345")],
+        ),
+    ];
+    assert_pinned_no_emit_cases(&tsc, &cases);
+}
+
+#[test]
+#[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
+fn pinned_object_methods_match_typescript_without_emit() {
+    let tsc = pinned_bluetsc_oracle();
+    assert_pinned_version(&tsc);
+    let cases: [NoEmitCase; 7] = [
+        (
+            "valid",
+            include_str!("fixtures/typescript_oracle/object-method-valid/main.ts"),
+            &[],
+        ),
+        (
+            "result-error",
+            include_str!("fixtures/typescript_oracle/object-method-result-error/main.ts"),
+            &[(4, "TS2322")],
+        ),
+        (
+            "parameter-use-error",
+            include_str!("fixtures/typescript_oracle/object-method-parameter-use-error/main.ts"),
+            &[(4, "TS2322")],
+        ),
+        (
+            "missing-return-error",
+            include_str!("fixtures/typescript_oracle/object-method-missing-return-error/main.ts"),
+            &[(4, "TS2366")],
+        ),
+        (
+            "default-error",
+            include_str!("fixtures/typescript_oracle/object-method-default-error/main.ts"),
+            &[(4, "TS2322")],
+        ),
+        (
+            "call-error",
+            include_str!("fixtures/typescript_oracle/object-method-call-error/main.ts"),
+            &[(5, "TS2345")],
+        ),
+        (
+            "getter-error",
+            include_str!("fixtures/typescript_oracle/object-method-getter-error/main.ts"),
+            &[(4, "TS2322")],
         ),
     ];
     assert_pinned_no_emit_cases(&tsc, &cases);

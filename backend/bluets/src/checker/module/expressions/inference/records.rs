@@ -5,6 +5,7 @@
 //! Record literal result inference, including referenced spread fields.
 
 use super::*;
+use crate::parser::NestedFunctionKind;
 
 impl<'a> ModuleChecker<'a> {
     pub(super) fn infer_record(&self, tokens: &[Token], scope: &BTreeMap<String, Type>) -> Type {
@@ -45,6 +46,27 @@ impl<'a> ModuleChecker<'a> {
                 index = end + usize::from(tokens[end].is(","));
                 continue;
             }
+            if let Some((name, member_end, value, setter)) = self.nested_member(tokens, index) {
+                // A setter only supplies the property type when no getter did.
+                if !(setter && fields.iter().any(|field: &TypeField| field.name == name)) {
+                    insert_inferred_record_field(
+                        &mut fields,
+                        TypeField {
+                            name,
+                            readonly: false,
+                            optional: false,
+                            value,
+                            span: SourceSpan::new(
+                                "<inferred>",
+                                tokens[index].start,
+                                tokens[member_end.saturating_sub(1)].end,
+                            ),
+                        },
+                    );
+                }
+                index = member_end.saturating_add(1);
+                continue;
+            }
             let name = tokens[index].text.clone();
             let (value, value_end) = if tokens.get(index + 1).is_some_and(|token| token.is(":")) {
                 let value_start = index + 2;
@@ -83,6 +105,38 @@ impl<'a> ModuleChecker<'a> {
             index = value_end.saturating_add(1);
         }
         Type::Record(fields)
+    }
+
+    /// A structured method, getter or setter member starting at `index`, as
+    /// its property name, the index of the `,` or `}` ending it, the type it
+    /// gives the property (a function type for a method) and whether it is a
+    /// setter.
+    fn nested_member(&self, tokens: &[Token], index: usize) -> Option<(String, usize, Type, bool)> {
+        let nested = self.module.nested_functions.get(&tokens[index].start)?;
+        let end = record_member_end(tokens, index)?;
+        let result = || nested.return_type.clone().unwrap_or(Type::Unknown);
+        let (name, value, setter) = match nested.kind {
+            NestedFunctionKind::Method => (
+                tokens[index].text.clone(),
+                Type::Function {
+                    parameters: nested.parameters.clone(),
+                    result: Box::new(result()),
+                },
+                false,
+            ),
+            NestedFunctionKind::Getter => (tokens.get(index + 1)?.text.clone(), result(), false),
+            NestedFunctionKind::Setter => (
+                tokens.get(index + 1)?.text.clone(),
+                nested
+                    .parameters
+                    .first()
+                    .and_then(|parameter| parameter.annotation.clone())
+                    .unwrap_or(Type::Unknown),
+                true,
+            ),
+            _ => return None,
+        };
+        Some((name, end, value, setter))
     }
 
     fn expanded_record_fields(&self, value: Type) -> (Option<Vec<TypeField>>, bool) {

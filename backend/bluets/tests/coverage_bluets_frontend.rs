@@ -5813,8 +5813,6 @@ fn function_annotations_that_survive_erasure_are_refused_before_output() {
         "export const h = async (a: number) => a;",
         "export const h = ({ x }: { x: number }) => x;",
         "export function f() { function g(a: number): number { return a; } return g(1); }",
-        "export const o = { m(a: number): number { return a; } };",
-        "export const o = { get v(): number { return 1; } };",
         "export const o = { async m(a: number) { return a; } };",
         "export const o = { *m(a: number) { yield a; } };",
     ] {
@@ -6079,6 +6077,90 @@ fn function_expressions_are_parsed_erased_and_checked() {
         let refused = compile_source(source);
         assert!(refused.output.is_none(), "{source}");
     }
+}
+
+#[test]
+fn object_methods_and_accessors_are_parsed_erased_and_checked() {
+    let compile_source = |source: &str| {
+        compile(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+            CompilerOptions::default(),
+        )
+    };
+    let compiled = compile_source(include_str!(
+        "fixtures/typescript_oracle/object-method-runtime/main.ts"
+    ));
+    assert!(
+        compiled.diagnostics.is_empty(),
+        "{:#?}",
+        compiled.diagnostics
+    );
+    let javascript = compiled.output.unwrap().artifacts[ENTRY].javascript.clone();
+    assert_eq!(
+        normalized_javascript(&javascript),
+        "const counter = { base: 10, add(n) { return n + 1; }, \
+         label(prefix, suffix= \"!\") { return prefix + suffix; }, \
+         get answer() { return 42; }, compose(f, n) { return f(f(n)); }, }; \
+         console.log(counter.add(1)); console.log(counter.label(\"a\")); \
+         console.log(counter.answer); console.log(counter.compose(counter.add, 5));"
+    );
+
+    let accepted = compile_source(include_str!(
+        "fixtures/typescript_oracle/object-method-valid/main.ts"
+    ));
+    assert!(
+        accepted.diagnostics.is_empty(),
+        "{:#?}",
+        accepted.diagnostics
+    );
+
+    for (source, code) in [
+        (
+            include_str!("fixtures/typescript_oracle/object-method-result-error/main.ts"),
+            DiagnosticCode::ReturnTypeMismatch,
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/object-method-parameter-use-error/main.ts"),
+            DiagnosticCode::ReturnTypeMismatch,
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/object-method-missing-return-error/main.ts"),
+            DiagnosticCode::ReturnTypeMismatch,
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/object-method-default-error/main.ts"),
+            DiagnosticCode::TypeMismatch,
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/object-method-call-error/main.ts"),
+            DiagnosticCode::TypeMismatch,
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/object-method-getter-error/main.ts"),
+            DiagnosticCode::ReturnTypeMismatch,
+        ),
+    ] {
+        let rejected = compile_source(source);
+        assert!(rejected.output.is_none());
+        assert!(
+            rejected
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == code && diagnostic.span.module == ENTRY),
+            "{source}: {:#?}",
+            rejected.diagnostics
+        );
+    }
+
+    // A setter's parameter annotation is erased and typed.
+    let setter =
+        compile_source("export const o = { set v(x: number) { }, get v(): number { return 1; } };");
+    assert!(setter.diagnostics.is_empty(), "{:#?}", setter.diagnostics);
+    assert!(
+        !normalized_javascript(&setter.output.unwrap().artifacts[ENTRY].javascript)
+            .contains("number")
+    );
 }
 
 #[test]

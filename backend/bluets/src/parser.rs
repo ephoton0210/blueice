@@ -50,6 +50,7 @@ pub struct Module {
 /// expression.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NestedFunction {
+    pub kind: NestedFunctionKind,
     /// The name a function expression binds inside its own body.
     pub name: Option<String>,
     pub parameters: Vec<Parameter>,
@@ -57,6 +58,18 @@ pub struct NestedFunction {
     pub body: NestedFunctionBody,
     /// From the first token of the parameter list to the end of the body.
     pub span: SourceSpan,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NestedFunctionKind {
+    Arrow,
+    Function,
+    /// An object-literal method, `name(parameters) { .. }`.
+    Method,
+    /// `get name() { .. }` in an object literal.
+    Getter,
+    /// `set name(value) { .. }` in an object literal.
+    Setter,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

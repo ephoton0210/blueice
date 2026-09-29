@@ -27,6 +27,159 @@ impl Parser {
     ) -> Option<usize> {
         self.try_parse_arrow_function(range_start, index, end)
             .or_else(|| self.try_parse_function_expression(range_start, index, end))
+            .or_else(|| self.try_parse_object_member(range_start, index, end))
+    }
+
+    /// An object-literal method or accessor at a property position: `name(..)
+    /// [: result] { .. }`, `get name() [: result] { .. }` or `set name(value)
+    /// { .. }`. Computed and string keys, `async` and generator members are
+    /// left as tokens.
+    fn try_parse_object_member(
+        &mut self,
+        range_start: usize,
+        index: usize,
+        end: usize,
+    ) -> Option<usize> {
+        if index == range_start
+            || !matches!(self.tokens[index - 1].text.as_str(), "{" | ",")
+            || !self.directly_in_braces(range_start, index)
+        {
+            return None;
+        }
+        let is_name =
+            |token: &Token| matches!(token.kind, TokenKind::Identifier | TokenKind::Keyword);
+        if !is_name(&self.tokens[index]) {
+            return None;
+        }
+        let next = self.tokens.get(index + 1)?;
+        let (kind, name, open) = if next.is("(") {
+            (NestedFunctionKind::Method, None, index + 1)
+        } else if (self.tokens[index].is("get") || self.tokens[index].is("set"))
+            && is_name(next)
+            && self
+                .tokens
+                .get(index + 2)
+                .is_some_and(|token| token.is("("))
+        {
+            let kind = if self.tokens[index].is("get") {
+                NestedFunctionKind::Getter
+            } else {
+                NestedFunctionKind::Setter
+            };
+            (kind, None, index + 2)
+        } else {
+            return None;
+        };
+        let close = matching_close(&self.tokens, open, end)?;
+        if !self.simple_parameter_list(open, close) {
+            return None;
+        }
+        let saved_index = self.index;
+        let (parameters, return_type, body, body_end, next_index) =
+            self.parse_parameters_result_and_block(open)?;
+        let start_offset = self.tokens[index].start;
+        match kind {
+            NestedFunctionKind::Getter if !parameters.is_empty() => self.error_at(
+                SourceSpan::new(&self.id, start_offset, body_end),
+                DiagnosticCode::ParseError,
+                "a getter takes no parameters",
+            ),
+            NestedFunctionKind::Setter if parameters.len() != 1 || return_type.is_some() => self
+                .error_at(
+                    SourceSpan::new(&self.id, start_offset, body_end),
+                    DiagnosticCode::ParseError,
+                    "a setter takes exactly one parameter and no result annotation",
+                ),
+            _ => {}
+        }
+        self.nested_functions.insert(
+            start_offset,
+            NestedFunction {
+                kind,
+                name,
+                parameters,
+                return_type,
+                body,
+                span: SourceSpan::new(&self.id, start_offset, body_end),
+            },
+        );
+        self.index = saved_index;
+        Some(next_index)
+    }
+
+    /// Parses `(parameters) [: result] { body }` with the cursor placed at the
+    /// `(` at `open`, returning the parts, the end offset of the body and the
+    /// token index after it. The cursor is restored and `None` returned when no
+    /// braced body follows.
+    fn parse_parameters_result_and_block(
+        &mut self,
+        open: usize,
+    ) -> Option<(
+        Vec<Parameter>,
+        Option<Type>,
+        NestedFunctionBody,
+        usize,
+        usize,
+    )> {
+        let saved_index = self.index;
+        self.index = open;
+        let parameters = self.parse_parameters();
+        let return_start = self.current().start;
+        let return_type = if self.consume(":") {
+            let value = self.parse_type_until(&["{"]);
+            // Keep the space before `{`.
+            let return_end = self.previous().end;
+            self.edits.push(TextEdit {
+                start: return_start,
+                end: return_end,
+                replacement: String::new(),
+            });
+            Some(value)
+        } else {
+            None
+        };
+        if !self.consume("{") {
+            self.index = saved_index;
+            return None;
+        }
+        let body_start = self.previous().start;
+        let mut items = Vec::new();
+        let mut returns = Vec::new();
+        let mut locals = Vec::new();
+        self.parse_function_body(body_start, &mut items, &mut returns, &mut locals);
+        let body_end = self.previous().end;
+        let next_index = self.index;
+        self.index = saved_index;
+        Some((
+            parameters,
+            return_type,
+            NestedFunctionBody::Block {
+                items,
+                returns,
+                locals,
+            },
+            body_end,
+            next_index,
+        ))
+    }
+
+    /// Whether the nearest enclosing bracket of `index` within the range is a
+    /// `{`, that is, whether `index` sits directly in an object literal.
+    fn directly_in_braces(&self, range_start: usize, index: usize) -> bool {
+        let mut depth = 0usize;
+        for cursor in (range_start..index).rev() {
+            match self.tokens[cursor].text.as_str() {
+                ")" | "]" | "}" => depth += 1,
+                "(" | "[" | "{" => {
+                    if depth == 0 {
+                        return self.tokens[cursor].is("{");
+                    }
+                    depth -= 1;
+                }
+                _ => {}
+            }
+        }
+        false
     }
 
     /// `function [name] (parameters) [: result] { body }` at the start of an
@@ -65,45 +218,18 @@ impl Parser {
             return None;
         }
         let saved_index = self.index;
-        self.index = open;
-        let parameters = self.parse_parameters();
-        let return_start = self.current().start;
-        let return_type = if self.consume(":") {
-            let value = self.parse_type_until(&["{"]);
-            // Keep the space before `{`.
-            let return_end = self.previous().end;
-            self.edits.push(TextEdit {
-                start: return_start,
-                end: return_end,
-                replacement: String::new(),
-            });
-            Some(value)
-        } else {
-            None
-        };
-        if !self.consume("{") {
-            self.index = saved_index;
-            return None;
-        }
-        let body_start = self.previous().start;
-        let mut items = Vec::new();
-        let mut returns = Vec::new();
-        let mut locals = Vec::new();
-        self.parse_function_body(body_start, &mut items, &mut returns, &mut locals);
+        let (parameters, return_type, body, body_end, next) =
+            self.parse_parameters_result_and_block(open)?;
         let start_offset = self.tokens[index].start;
-        let next = self.index;
         self.nested_functions.insert(
             start_offset,
             NestedFunction {
+                kind: NestedFunctionKind::Function,
                 name,
                 parameters,
                 return_type,
-                body: NestedFunctionBody::Block {
-                    items,
-                    returns,
-                    locals,
-                },
-                span: SourceSpan::new(&self.id, start_offset, self.previous().end),
+                body,
+                span: SourceSpan::new(&self.id, start_offset, body_end),
             },
         );
         self.index = saved_index;
@@ -227,6 +353,7 @@ impl Parser {
         self.nested_functions.insert(
             start_offset,
             NestedFunction {
+                kind: NestedFunctionKind::Arrow,
                 name: None,
                 parameters,
                 return_type,

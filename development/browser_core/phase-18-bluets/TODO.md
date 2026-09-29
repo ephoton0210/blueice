@@ -2149,7 +2149,19 @@ done to the page-runs-and-debugs goal at the top of this file.
       acceptance and TS2322/TS2366/TS2345 lines, and a Node run gives
       identical output for BlueTSC and `tsc`. Full workspace tests, Clippy,
       rustfmt and whitespace checks pass.
-    - [ ] **J.3.7.4** Object-literal methods, getters and setters.
+    - [x] **J.3.7.4** Object-literal methods, getters and setters. A member
+      at a property position (after `{` or `,`, directly inside braces) that is
+      `name(..) [: R] { .. }`, `get name() [: R] { .. }` or `set name(v) { .. }`
+      is parsed with the same routines as a function expression and stored in
+      `nested_functions` by the offset of its first token. Object inference now
+      types a method as a function field, a getter as a property of its result
+      type and a setter as a property of its parameter type when no getter
+      exists, so `o.m("x")` is checked and an object with methods is no longer
+      unknown. A getter with parameters or a setter without exactly one
+      parameter is a parse error. `async`, generator, computed-key and
+      string-key members stay unstructured and refused. Seven pinned TypeScript
+      5.9.3 `--noEmit` cases agree on acceptance and TS2322/TS2366/TS2345
+      lines, and a Node run gives identical output for BlueTSC and `tsc`.
     - [ ] **J.3.7.5** Function declarations nested inside a body, as local
       functions callable from the rest of the body.
     - [ ] **J.3.7.6** A `catch` binding annotation (`catch (e: unknown)`),
