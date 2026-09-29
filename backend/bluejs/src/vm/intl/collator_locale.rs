@@ -10,7 +10,11 @@ impl Vm {
         value: &Value,
     ) -> Result<Rc<intl::Collator>, RuntimeError> {
         if let Value::Object(id) = value {
-            if let Some(data) = self.heap.collator(*id)? {
+            if let Some(data) = self
+                .heap
+                .collator(*id)
+                .expect("a receiver is a live object")
+            {
                 return Ok(data);
             }
         }
@@ -28,8 +32,17 @@ impl Vm {
         if let Some(function) = self.heap.collator_compare(id) {
             return Ok(Value::Object(function));
         }
-        let constructor = self.string_intrinsics()?.0;
-        let prototype = self.heap.prototype(constructor)?.unwrap();
+        // Every Intl native was installed on the Function prototype, so the
+        // String intrinsics it hangs off exist by now.
+        let constructor = self
+            .string_intrinsics()
+            .expect("the String intrinsics exist once an Intl object does")
+            .0;
+        let prototype = self
+            .heap
+            .prototype(constructor)
+            .expect("the String constructor is a live object")
+            .unwrap();
         let target = self.with_roots(|heap| {
             heap.alloc_native_function(NativeFunction::CollatorCompare, "", prototype)
         })?;
@@ -198,12 +211,16 @@ impl Vm {
                 "Intl.Locale must be called with new".into(),
             ));
         }
-        self.intl_global()?;
+        // This native only exists once the Intl namespace has been built.
         let tag = native::argument(args, 0);
         let initial_locale = match tag {
             Value::String(string) => intl::canonicalize(string)?,
             Value::Object(id) => {
-                if let Some(locale) = self.heap.intl_locale(*id)? {
+                if let Some(locale) = self
+                    .heap
+                    .intl_locale(*id)
+                    .expect("a constructor argument is a live object")
+                {
                     intl::CanonicalLocale::from(locale.as_ref())
                 } else {
                     intl::canonicalize(&self.coerce_string(tag)?)?
@@ -275,7 +292,10 @@ impl Vm {
         }
         let numeric = self.get_property(&options, &"numeric".into())?;
         if numeric != Value::Undefined {
-            let value = if self.to_boolean(&numeric)? {
+            let value = if self
+                .to_boolean(&numeric)
+                .expect("an option value is a live value")
+            {
                 UnicodeValue::default()
             } else {
                 UnicodeValue::try_from_str("false").unwrap()
@@ -302,12 +322,14 @@ impl Vm {
         let locale = if initial_name == "posix" && serialized == "und-posix" {
             intl::CanonicalLocale::from_parts(locale, initial_name)
         } else {
-            intl::canonicalize(&JsString::from(serialized))?
+            intl::canonicalize(&JsString::from(serialized))
+                .expect("a locale built from validated subtags serializes to a valid tag")
         };
         let constructor = self.globals["%Intl.Locale%"];
         let default = self
             .heap
-            .get(constructor, "prototype")?
+            .get(constructor, "prototype")
+            .expect("Intl.Locale is a live constructor")
             .object_id()
             .unwrap();
         let prototype = self.constructor_prototype(default)?;
@@ -324,9 +346,12 @@ impl Vm {
         let id = receiver.object_id().ok_or(RuntimeError::TypeError(
             "receiver is not an Intl.Locale".into(),
         ))?;
-        self.heap.intl_locale(id)?.ok_or(RuntimeError::TypeError(
-            "receiver is not an Intl.Locale".into(),
-        ))
+        self.heap
+            .intl_locale(id)
+            .expect("a receiver is a live object")
+            .ok_or(RuntimeError::TypeError(
+                "receiver is not an Intl.Locale".into(),
+            ))
     }
 
     pub(in super::super) fn locale_to_string(
@@ -345,11 +370,11 @@ impl Vm {
     ) -> Result<Value, RuntimeError> {
         let data = self.locale_data(receiver)?;
         if data.locale.as_str() == "posix" {
-            self.intl_global()?;
             let constructor = self.globals["%Intl.Locale%"];
             let prototype = self
                 .heap
-                .get(constructor, "prototype")?
+                .get(constructor, "prototype")
+                .expect("Intl.Locale is a live constructor")
                 .object_id()
                 .unwrap();
             return self.locale_instance(intl::CanonicalLocale::from(data.as_ref()), prototype);
@@ -359,11 +384,11 @@ impl Vm {
         } else {
             blueice_ecma402::minimize_locale(&data.locale)
         };
-        self.intl_global()?;
         let constructor = self.globals["%Intl.Locale%"];
         let prototype = self
             .heap
-            .get(constructor, "prototype")?
+            .get(constructor, "prototype")
+            .expect("Intl.Locale is a live constructor")
             .object_id()
             .unwrap();
         self.locale_instance(locale, prototype)

@@ -390,3 +390,46 @@ pub(crate) fn calendar_difference_date(
         calendar_difference_date_fixed_months(calendar, start, end, largest_unit)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn equal_dates_differ_by_nothing_in_every_calendar_family() {
+        let date = (2000, 6, 15);
+        for calendar in [
+            AnyCalendarKind::Persian,
+            AnyCalendarKind::Coptic,
+            AnyCalendarKind::Hebrew,
+            AnyCalendarKind::Chinese,
+        ] {
+            for unit in [DateUnit::Year, DateUnit::Month] {
+                assert_eq!(
+                    calendar_difference_date(calendar, date, date, unit),
+                    (0, 0, 0, 0),
+                    "{calendar:?} {unit:?}"
+                );
+            }
+        }
+        // The two family entry points also answer for themselves.
+        assert_eq!(
+            calendar_difference_date_fixed_months(
+                AnyCalendarKind::Persian,
+                date,
+                date,
+                DateUnit::Year
+            ),
+            (0, 0, 0, 0)
+        );
+        assert_eq!(
+            calendar_difference_date_leap_month(
+                AnyCalendarKind::Hebrew,
+                date,
+                date,
+                DateUnit::Year
+            ),
+            (0, 0, 0, 0)
+        );
+    }
+}

@@ -292,9 +292,7 @@ impl Tokenizer {
 
     pub(crate) fn regexp_at(&mut self, position: usize) -> Result<(JsString, JsString), LexError> {
         self.pos = position;
-        // First-pass tokenization already validated the trivia before `/`.
-        self.skip_trivia()
-            .expect("regexp literal trivia was validated before rescan");
+        self.skip_trivia()?;
         self.advance();
         let mut pattern = JsString::default();
         let mut class = false;
@@ -335,9 +333,7 @@ impl Tokenizer {
         position: usize,
     ) -> Result<TaggedTemplateData, LexError> {
         self.pos = position;
-        // `at_template` validated this trivia before requesting the rescan.
-        self.skip_trivia()
-            .expect("tagged template trivia was validated before rescan");
+        self.skip_trivia()?;
         self.advance();
         let mut raw = Vec::new();
         let mut current = String::new();
@@ -1936,5 +1932,146 @@ mod tests {
             .next_spanned()
             .unwrap_err();
         assert_eq!(error.message, "unexpected character '\u{10F800}'");
+    }
+
+    #[test]
+    fn re_scanning_a_template_or_regexp_reports_broken_leading_trivia() {
+        // Both re-scans first skip trivia from the position they are given.
+        assert!(Tokenizer::new("/* open").regexp_at(0).is_err());
+        assert!(Tokenizer::new("/* open").tagged_template_at(0).is_err());
+        assert!(!Tokenizer::new("/* open").at_template(0));
+        assert!(Tokenizer::new(" /a/").regexp_at(0).is_ok());
+        assert!(Tokenizer::new(" `a`").at_template(0));
+    }
+
+    #[test]
+    fn a_tagged_template_normalizes_lone_carriage_returns() {
+        for (source, raw) in [
+            ("`a\\\rb`", "a\\\nb"),
+            ("`a\\\r\nb`", "a\\\nb"),
+            ("`a\rb`", "a\nb"),
+            ("`a\r\nb`", "a\nb"),
+        ] {
+            let (raws, _, expressions) = Tokenizer::new(source).tagged_template_at(0).unwrap();
+            assert_eq!(raws, vec![JsString::from(raw)], "{source:?}");
+            assert!(expressions.is_empty());
+        }
+    }
+
+    #[test]
+    fn a_tagged_template_placeholder_must_close_and_a_trailing_escape_must_finish() {
+        assert!(Tokenizer::new("`a${ b").tagged_template_at(0).is_err());
+        assert!(Tokenizer::new("`a\\").tagged_template_at(0).is_err());
+        assert!(Tokenizer::new("`a").tagged_template_at(0).is_err());
+    }
+
+    #[test]
+    fn private_identifiers_accept_valid_unicode_escapes_only() {
+        assert_eq!(
+            tokens("#\\u0061b"),
+            vec![Token::PrivateIdentifier("ab".into()), Token::Eof]
+        );
+        assert_eq!(
+            tokens("#a\\u{62}"),
+            vec![Token::PrivateIdentifier("ab".into()), Token::Eof]
+        );
+        for source in [
+            "#\\u0031",  // a digit cannot start a name
+            "#a\\u0020", // a space cannot continue one
+            "#\\u{110000}",
+            "#\\u{zz}",
+            "#\\u{}",
+            "#\\u00zz",
+            "#\\u00",
+            "#\\u{61",
+            "#\\x0061",
+            "#\\ud800",
+            "#",
+        ] {
+            assert!(Tokenizer::new(source).next_spanned().is_err(), "{source}");
+        }
+    }
+
+    #[test]
+    fn a_string_or_template_that_ends_inside_an_escape_is_an_error() {
+        for source in [
+            "'\\",
+            "'\\x",
+            "'\\x1",
+            "'\\u",
+            "'\\u12",
+            "'\\u{",
+            "'\\u{12",
+            "'\\u{110000}'",
+            "'\\u{zz}'",
+            "'\\u{ffffffffff}'",
+            "'\\xzz'",
+            "'\\uzzzz'",
+            "`\\",
+            "`\\x1",
+            "`\\u{12",
+            "`\\u12",
+        ] {
+            assert!(Tokenizer::new(source).next_spanned().is_err(), "{source:?}");
+        }
+    }
+
+    #[test]
+    fn html_like_comments_end_at_the_line_terminator() {
+        assert_eq!(
+            tokens("<!-- comment\n1"),
+            vec![Token::Number(1.0), Token::Eof]
+        );
+        assert_eq!(
+            tokens("0\n--> comment\n1"),
+            vec![Token::Number(0.0), Token::Number(1.0), Token::Eof]
+        );
+    }
+
+    #[test]
+    fn an_identifier_escape_must_form_an_identifier_character() {
+        for source in ["\\u0031", "a\\u0020", "\\u{31}b"] {
+            let error = Tokenizer::new(source).next_spanned().unwrap_err();
+            assert_eq!(
+                error.message, "unicode escape does not form a valid identifier character",
+                "{source:?}"
+            );
+        }
+        assert_eq!(
+            tokens("\\u0061\\u{62}c"),
+            vec![Token::Identifier("abc".into()), Token::Eof]
+        );
+    }
+
+    #[test]
+    fn a_regexp_that_ends_early_is_an_error() {
+        for source in ["/abc", "/abc\\", "/a\nb/", "/a\\\nb/", "/[a"] {
+            assert!(Tokenizer::new(source).regexp_at(0).is_err(), "{source:?}");
+        }
+        assert_eq!(
+            Tokenizer::new("/a[/]b\\//gi").regexp_at(0).unwrap(),
+            (JsString::from("a[/]b\\/"), JsString::from("gi"))
+        );
+    }
+
+    #[test]
+    fn only_a_leading_hashbang_line_is_skipped() {
+        let mut tokenizer = Tokenizer::new("#!/bin/node\n1");
+        tokenizer.skip_hashbang();
+        assert_eq!(tokenizer.next_spanned().unwrap().token, Token::Number(1.0));
+        let mut tokenizer = Tokenizer::new("1 #!x");
+        tokenizer.skip_hashbang();
+        assert_eq!(tokenizer.next_spanned().unwrap().token, Token::Number(1.0));
+        assert!(tokenizer.next_spanned().is_err());
+        // Without the `!` it is the start of a private name, not a comment.
+        let mut tokenizer = Tokenizer::new("#x\n1");
+        tokenizer.skip_hashbang();
+        assert_eq!(
+            tokenizer.next_spanned().unwrap().token,
+            Token::PrivateIdentifier("x".into())
+        );
+        let mut tokenizer = Tokenizer::new("#!");
+        tokenizer.skip_hashbang();
+        assert_eq!(tokenizer.next_spanned().unwrap().token, Token::Eof);
     }
 }

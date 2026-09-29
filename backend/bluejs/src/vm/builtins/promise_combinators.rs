@@ -13,6 +13,7 @@
 //! element function's [[AlreadyCalled]] flag -- lives in one heap record
 //! (`combinator_state`) that every element function references.
 
+use super::arguments::number_or_zero;
 use super::*;
 use crate::native::PromiseElementKind;
 
@@ -60,7 +61,10 @@ impl Vm {
     /// GetPromiseResolve ( promiseConstructor ).
     fn get_promise_resolve(&mut self, constructor: &Value) -> Result<Value, RuntimeError> {
         let resolve = self.get_property(constructor, &"resolve".into())?;
-        if !self.is_callable(&resolve)? {
+        if !self
+            .is_callable(&resolve)
+            .expect("a property value is a live value")
+        {
             return Err(RuntimeError::TypeError(
                 "Promise resolve must be callable".into(),
             ));
@@ -202,7 +206,7 @@ impl Vm {
                 self.stack
                     .extend([on_fulfilled.clone(), on_rejected.clone()]);
                 if let Some(state) = state {
-                    self.combinator_adjust_remaining(state, 1)?;
+                    self.combinator_adjust_remaining(state, 1);
                 }
                 self.invoke(&next_promise, "then", vec![on_fulfilled, on_rejected])?;
                 Ok(())
@@ -222,7 +226,7 @@ impl Vm {
         state: ObjectId,
         capability: &PromiseCapability,
     ) -> Result<(), RuntimeError> {
-        if self.combinator_adjust_remaining(state, -1)? != 0.0 {
+        if self.combinator_adjust_remaining(state, -1) != 0.0 {
             return Ok(());
         }
         if kind == Combinator::Any {
@@ -327,7 +331,7 @@ impl Vm {
                 };
                 self.stack
                     .extend([on_fulfilled.clone(), on_rejected.clone()]);
-                self.combinator_adjust_remaining(state, 1)?;
+                self.combinator_adjust_remaining(state, 1);
                 self.invoke(&next_promise, "then", vec![on_fulfilled, on_rejected])?;
                 Ok(())
             })();
@@ -369,42 +373,43 @@ impl Vm {
         state: ObjectId,
         key: Option<Value>,
     ) -> Result<u32, RuntimeError> {
-        let count = self.combinator_count(state)?;
-        let values = self.combinator_list(state, "values")?;
+        let count = self.combinator_count(state);
+        let values = self.combinator_list(state, "values");
         self.promise_state_set(values, count.to_string(), Value::Undefined)?;
         if let Some(key) = key {
-            let keys = self.combinator_list(state, "keys")?;
+            let keys = self.combinator_list(state, "keys");
             self.promise_state_set(keys, count.to_string(), key)?;
         }
-        self.promise_state_set(state, "count", Value::Number(f64::from(count) + 1.0))?;
+        self.promise_state_set(state, "count", Value::Number(f64::from(count) + 1.0))
+            .expect("replacing a Number with a Number needs no new room");
         Ok(count)
     }
 
-    fn combinator_count(&self, state: ObjectId) -> Result<u32, RuntimeError> {
-        match self.promise_state_get(state, "count")? {
-            Value::Number(count) => Ok(count as u32),
-            _ => unreachable!("combinator state always holds a count"),
-        }
+    /// A field of a combinator state record. The record is rooted on the VM
+    /// stack for the whole call, and only this module writes to it.
+    pub(in super::super) fn state_get(&self, state: ObjectId, name: &str) -> Value {
+        self.promise_state_get(state, name)
+            .expect("a combinator state record is a live object")
     }
 
-    fn combinator_list(&self, state: ObjectId, name: &str) -> Result<ObjectId, RuntimeError> {
-        self.promise_state_get(state, name)?
+    fn combinator_count(&self, state: ObjectId) -> u32 {
+        number_or_zero(&self.state_get(state, "count")) as u32
+    }
+
+    fn combinator_list(&self, state: ObjectId, name: &str) -> ObjectId {
+        self.state_get(state, name)
             .object_id()
-            .ok_or_else(|| RuntimeError::TypeError("combinator state has no such list".into()))
+            .expect("a combinator state record holds its lists")
     }
 
     /// Adds `delta` to `remainingElementsCount` and returns the new value.
-    fn combinator_adjust_remaining(
-        &mut self,
-        state: ObjectId,
-        delta: i32,
-    ) -> Result<f64, RuntimeError> {
-        let Value::Number(current) = self.promise_state_get(state, "remaining")? else {
-            unreachable!("combinator state always holds a remaining count");
-        };
+    /// The count is replaced by another Number, which needs no new room.
+    fn combinator_adjust_remaining(&mut self, state: ObjectId, delta: i32) -> f64 {
+        let current = number_or_zero(&self.state_get(state, "remaining"));
         let updated = current + f64::from(delta);
-        self.promise_state_set(state, "remaining", Value::Number(updated))?;
-        Ok(updated)
+        self.promise_state_set(state, "remaining", Value::Number(updated))
+            .expect("replacing a Number with a Number needs no new room");
+        updated
     }
 
     /// A resolve/reject element function for the entry at `index`.
@@ -428,7 +433,7 @@ impl Vm {
         argument: &Value,
     ) -> Result<Value, RuntimeError> {
         let flag = format!("called{index}");
-        if self.promise_state_get(state, &flag)? == Value::Bool(true) {
+        if self.state_get(state, &flag) == Value::Bool(true) {
             return Ok(Value::Undefined);
         }
         self.promise_state_set(state, flag, Value::Bool(true))?;
@@ -445,20 +450,20 @@ impl Vm {
                 }
             };
             self.stack.push(stored.clone());
-            let values = self.combinator_list(state, "values")?;
+            let values = self.combinator_list(state, "values");
             self.promise_state_set(values, index.to_string(), stored)?;
-            if self.combinator_adjust_remaining(state, -1)? != 0.0 {
+            if self.combinator_adjust_remaining(state, -1) != 0.0 {
                 return Ok(Value::Undefined);
             }
             if kind == PromiseElementKind::AnyReject {
                 let error = self.combinator_aggregate_error(state)?;
                 self.stack.push(error.clone());
-                let reject = self.promise_state_get(state, "reject")?;
+                let reject = self.state_get(state, "reject");
                 return self.call_native(reject, Value::Undefined, vec![error], false);
             }
             let result = self.combinator_result(state)?;
             self.stack.push(result.clone());
-            let resolve = self.promise_state_get(state, "resolve")?;
+            let resolve = self.state_get(state, "resolve");
             self.call_native(resolve, Value::Undefined, vec![result], false)
         })();
         self.stack.truncate(base);
@@ -466,11 +471,11 @@ impl Vm {
     }
 
     /// The recorded values, in index order.
-    fn combinator_values(&self, state: ObjectId) -> Result<Vec<Value>, RuntimeError> {
-        let count = self.combinator_count(state)?;
-        let values = self.combinator_list(state, "values")?;
+    fn combinator_values(&self, state: ObjectId) -> Vec<Value> {
+        let count = self.combinator_count(state);
+        let values = self.combinator_list(state, "values");
         (0..count)
-            .map(|index| self.promise_state_get(values, &index.to_string()))
+            .map(|index| self.state_get(values, &index.to_string()))
             .collect()
     }
 
@@ -478,16 +483,18 @@ impl Vm {
     /// CreateKeyedPromiseCombinatorResultObject: a null-prototype object with
     /// one data property per recorded key.
     fn combinator_result(&mut self, state: ObjectId) -> Result<Value, RuntimeError> {
-        let values = self.combinator_values(state)?;
-        let Some(keys) = self.promise_state_get(state, "keys")?.object_id() else {
+        let values = self.combinator_values(state);
+        let Some(keys) = self.state_get(state, "keys").object_id() else {
             return self.array_from(values);
         };
         let object = self.with_roots(|heap| heap.alloc_object(None))?;
         self.stack.push(Value::Object(object));
         let result = (|| {
             for (index, value) in values.into_iter().enumerate() {
-                let key = self.promise_state_get(keys, &index.to_string())?;
-                let key = self.coerce_property_key(&key)?;
+                let key = self.state_get(keys, &index.to_string());
+                let key = self
+                    .coerce_property_key(&key)
+                    .expect("a recorded key is a String or a Symbol");
                 self.define_data(object, key, value, true, true, true)?;
             }
             Ok(Value::Object(object))
@@ -498,7 +505,7 @@ impl Vm {
 
     /// A newly created AggregateError whose `errors` is the recorded list.
     fn combinator_aggregate_error(&mut self, state: ObjectId) -> Result<Value, RuntimeError> {
-        let errors = self.combinator_values(state)?;
+        let errors = self.combinator_values(state);
         let base = self.stack.len();
         self.stack.extend(errors.iter().cloned());
         let result = (|| {
@@ -506,7 +513,8 @@ impl Vm {
             self.stack.push(list.clone());
             let constructor = self.error_global("AggregateError")?;
             let prototype = self
-                .get_property(&constructor, &"prototype".into())?
+                .get_property(&constructor, &"prototype".into())
+                .expect("AggregateError.prototype is a plain data property")
                 .object_id();
             let error = self.with_roots(|heap| heap.alloc_error(prototype))?;
             self.stack.push(Value::Object(error));

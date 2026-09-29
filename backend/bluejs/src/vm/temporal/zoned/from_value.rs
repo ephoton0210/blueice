@@ -20,23 +20,24 @@ pub(in super::super::super) struct ParsedZonedDateTimeString {
 }
 
 impl Vm {
-    /// Brand check shared by every `Temporal.ZonedDateTime.prototype` method.
+    /// The `ZonedDateTime` a `Temporal.ZonedDateTime.prototype` method was
+    /// called on. The brand check itself (`RequireInternalSlot`) already ran,
+    /// ahead of any argument access, in `native_call` for every native listed
+    /// by `NativeFunction::temporal_receiver_kind`, and every caller of this
+    /// is such a native: a receiver that is not a `ZonedDateTime` never gets
+    /// this far.
     pub(in super::super::super) fn temporal_zoned_date_time_receiver(
         &mut self,
         receiver: &Value,
     ) -> Result<TemporalValue, RuntimeError> {
-        let object = receiver.object_id().ok_or_else(|| {
-            RuntimeError::TypeError("Temporal.ZonedDateTime method requires a receiver".into())
-        })?;
-        let value = self.heap.temporal_value(object)?.ok_or_else(|| {
-            RuntimeError::TypeError("Temporal.ZonedDateTime method requires a receiver".into())
-        })?;
-        if value.kind != TemporalKind::ZonedDateTime {
-            return Err(RuntimeError::TypeError(
-                "Temporal.ZonedDateTime method requires a receiver".into(),
-            ));
-        }
-        Ok(value)
+        let object = receiver
+            .object_id()
+            .expect("the receiver brand check accepts only objects");
+        Ok(self
+            .heap
+            .temporal_value(object)
+            .expect("the receiver is a live object")
+            .expect("the receiver brand check accepts only Temporal values"))
     }
 
     /// `ToTemporalOffset`: reads the `offset` option, one of `"prefer"`/
@@ -67,7 +68,11 @@ impl Vm {
         options: &Value,
     ) -> Result<TemporalValue, RuntimeError> {
         if let Some(object) = value.object_id() {
-            if let Some(temporal) = self.heap.temporal_value(object)? {
+            if let Some(temporal) = self
+                .heap
+                .temporal_value(object)
+                .expect("an argument object is live")
+            {
                 if temporal.kind == TemporalKind::ZonedDateTime {
                     // Options are still read (for validation/ordering parity)
                     // even though a `ZonedDateTime` argument is used as-is.
@@ -87,12 +92,12 @@ impl Vm {
         // are all `TypeError`s even though the latter would otherwise parse
         // as a valid-looking string). Matches `temporal_to_plain_date`'s own
         // identical guard.
-        if !matches!(value, Value::String(_)) {
+        let Value::String(source) = value else {
             return Err(RuntimeError::TypeError(
                 "Temporal.ZonedDateTime-like value must be an object or a string".into(),
             ));
-        }
-        let source = self.coerce_string(value)?.to_utf8().map_err(|_| {
+        };
+        let source = source.to_utf8().map_err(|_| {
             RuntimeError::RangeError("invalid Temporal.ZonedDateTime string".into())
         })?;
         let parsed = Self::temporal_parse_zoned_date_time_string(&source)?;

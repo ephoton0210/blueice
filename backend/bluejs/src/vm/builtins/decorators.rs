@@ -26,10 +26,9 @@
 //! bookkeeping are read and written through own data properties only, never
 //! through `Array.prototype`, so user code cannot observe or interfere.
 
+use super::arguments::number_or_zero;
 use super::*;
-use crate::bytecode::decoration::{
-    ACCESSOR, FIELD, GETTER, KIND_MASK, METHOD, PRIVATE, SETTER, STATIC,
-};
+use crate::bytecode::decoration::{FIELD, GETTER, KIND_MASK, METHOD, PRIVATE, SETTER, STATIC};
 use crate::native::DecoratorAccessOp;
 
 /// The kind of class element a decorator is applied to (the low bits of a
@@ -50,8 +49,8 @@ impl ElementKind {
             GETTER => Self::Getter,
             SETTER => Self::Setter,
             FIELD => Self::Field,
-            ACCESSOR => Self::Accessor,
-            other => unreachable!("the compiler emits element kind {other}"),
+            // `ACCESSOR`: the compiler emits no other element kind.
+            _ => Self::Accessor,
         }
     }
 
@@ -75,6 +74,16 @@ impl ElementKind {
     }
 }
 
+/// The name a private element is stored under: the string the compiler puts
+/// in the element's key slot. Any other key names no private element.
+fn private_name_of(key: &Value) -> JsString {
+    if let Value::String(name) = key {
+        name.clone()
+    } else {
+        JsString::default()
+    }
+}
+
 impl Vm {
     /// A fresh, empty Array used as an internal list. The result is unrooted;
     /// the caller must push it before allocating again.
@@ -90,24 +99,26 @@ impl Vm {
 
     /// The number of entries of a plain list (a decorator list holds two per
     /// decorator: the function and its receiver).
-    fn decorator_list_len(&self, list: &Value) -> Result<usize, RuntimeError> {
+    fn decorator_list_len(&self, list: &Value) -> usize {
         let id = list
             .object_id()
             .expect("the compiler passes decorator lists as Arrays");
-        match self.heap.get(id, "length")? {
-            Value::Number(length) => Ok(length as usize),
-            _ => Ok(0),
-        }
+        number_or_zero(
+            &self
+                .heap
+                .get(id, "length")
+                .expect("a decorator list is a live object"),
+        ) as usize
     }
 
-    fn decorator_list_get(&self, list: &Value, index: usize) -> Result<Value, RuntimeError> {
+    fn decorator_list_get(&self, list: &Value, index: usize) -> Value {
         let id = list
             .object_id()
             .expect("the compiler passes decorator lists as Arrays");
-        Ok(self
-            .heap
-            .get_own(id, index.to_string())?
-            .unwrap_or(Value::Undefined))
+        self.heap
+            .get_own(id, index.to_string())
+            .expect("a decorator list is a live object")
+            .unwrap_or(Value::Undefined)
     }
 
     /// A native function whose `name` and `length` are the given ones. The
@@ -118,7 +129,11 @@ impl Vm {
         name: &str,
         length: u32,
     ) -> Result<Value, RuntimeError> {
-        let prototype = self.function_prototype()?;
+        // A class being decorated has already had its methods created, so the
+        // Function prototype exists.
+        let prototype = self
+            .function_prototype()
+            .expect("the Function prototype exists once a class is being defined");
         let id = self.with_roots(|heap| heap.alloc_native_function(function, name, prototype))?;
         self.stack.push(Value::Object(id));
         let result = (|| {
@@ -148,17 +163,20 @@ impl Vm {
             .and_then(Value::object_id)
             .expect("the compiler emits CreateMetadata with the class on the stack");
         let base = self.stack.len();
-        let mut parent_metadata = None;
-        if let Some(parent) = self.object_get_prototype(class)? {
-            let inherited = self.get_property(
-                &Value::Object(parent),
-                &JsSymbol::well_known("metadata").into(),
-            )?;
-            // A getter may have produced a fresh object: keep it rooted
-            // across the allocation below.
-            self.stack.push(inherited.clone());
-            parent_metadata = inherited.object_id();
-        }
+        // A class constructor inherits from its superclass, or from the
+        // Function prototype when it has none.
+        let parent = self
+            .object_get_prototype(class)
+            .expect("a class constructor is an ordinary function object")
+            .expect("a class constructor has a [[Prototype]]");
+        let inherited = self.get_property(
+            &Value::Object(parent),
+            &JsSymbol::well_known("metadata").into(),
+        )?;
+        // A getter may have produced a fresh object: keep it rooted across
+        // the allocation below.
+        self.stack.push(inherited.clone());
+        let parent_metadata = inherited.object_id();
         let metadata = self.with_roots(|heap| heap.alloc_object(parent_metadata))?;
         self.stack.truncate(base);
         self.stack.push(Value::Object(metadata));
@@ -202,13 +220,14 @@ impl Vm {
     /// `this`, but keeps the undecorated class as its home object.
     pub(in super::super) fn call_decorated_static_element(&mut self) -> Result<(), RuntimeError> {
         let base = self.stack.len() - 3;
-        let Value::Object(class) = self.stack[base].clone() else {
-            unreachable!("class constructors are objects")
-        };
+        let class = self.stack[base]
+            .object_id()
+            .expect("class constructors are objects");
         let (receiver, function) = (self.stack[base + 1].clone(), self.stack[base + 2].clone());
-        if let Value::Object(function) = function {
-            self.with_roots(|heap| heap.set_closure_home(function, class))?;
-        }
+        let closure = function
+            .object_id()
+            .expect("the function of a decorated static element is a closure");
+        self.with_roots(|heap| heap.set_closure_home(closure, class))?;
         self.call_native(function, receiver, Vec::new(), false)?;
         self.stack.truncate(base + 1);
         Ok(())
@@ -216,11 +235,11 @@ impl Vm {
 
     /// The `index`th decorator of a decorator list and the `this` value it is
     /// called with.
-    fn decorator_entry(&self, list: &Value, index: usize) -> Result<(Value, Value), RuntimeError> {
-        Ok((
-            self.decorator_list_get(list, 2 * index)?,
-            self.decorator_list_get(list, 2 * index + 1)?,
-        ))
+    fn decorator_entry(&self, list: &Value, index: usize) -> (Value, Value) {
+        (
+            self.decorator_list_get(list, 2 * index),
+            self.decorator_list_get(list, 2 * index + 1),
+        )
     }
 
     /// Builds the context object of one decorator application and leaves it on
@@ -338,7 +357,8 @@ impl Vm {
         state: ObjectId,
     ) -> Result<Value, RuntimeError> {
         let result = self.call_native(decorator, receiver, vec![value, context], false);
-        self.promise_state_set(state, "finished", Value::Bool(true))?;
+        self.promise_state_set(state, "finished", Value::Bool(true))
+            .expect("replacing a Boolean with a Boolean needs no new room");
         result
     }
 
@@ -352,8 +372,9 @@ impl Vm {
         Ok(state)
     }
 
-    fn decorator_is_callable(&self, value: &Value) -> Result<bool, RuntimeError> {
+    fn decorator_is_callable(&self, value: &Value) -> bool {
         self.is_callable(value)
+            .expect("a value a decorator produced is live")
     }
 
     /// `DecorateElement`. The operands, deepest first, are the element's
@@ -386,10 +407,10 @@ impl Vm {
         let initializers = self.decorator_list()?;
         self.stack.push(initializers.clone());
         // The list is in source order; the last decorator applies first.
-        for index in (0..self.decorator_list_len(&decorators)? / 2).rev() {
+        for index in (0..self.decorator_list_len(&decorators) / 2).rev() {
             self.charge_step()?;
-            let entry = self.decorator_entry(&decorators, index)?;
-            if !self.decorator_is_callable(&entry.0)? {
+            let entry = self.decorator_entry(&decorators, index);
+            if !self.decorator_is_callable(&entry.0) {
                 return Err(RuntimeError::TypeError(
                     "a decorator must be a function".into(),
                 ));
@@ -459,7 +480,7 @@ impl Vm {
         }
         match kind {
             ElementKind::Method | ElementKind::Getter | ElementKind::Setter => {
-                if !self.decorator_is_callable(result)? {
+                if !self.decorator_is_callable(result) {
                     return Err(RuntimeError::TypeError(
                         "a method, getter or setter decorator must return a function or undefined"
                             .into(),
@@ -468,7 +489,7 @@ impl Vm {
                 self.stack[base + 4] = result.clone();
             }
             ElementKind::Field => {
-                if !self.decorator_is_callable(result)? {
+                if !self.decorator_is_callable(result) {
                     return Err(RuntimeError::TypeError(
                         "a field decorator must return a function or undefined".into(),
                     ));
@@ -490,7 +511,7 @@ impl Vm {
                     if matches!(value, Value::Undefined) {
                         continue;
                     }
-                    if !self.decorator_is_callable(&value)? {
+                    if !self.decorator_is_callable(&value) {
                         return Err(RuntimeError::TypeError(format!(
                             "an accessor decorator's `{property}` must be a function or undefined"
                         )));
@@ -516,10 +537,10 @@ impl Vm {
         let metadata = self.stack[base + 3].clone();
         let extras = self.decorator_list()?;
         self.stack.push(extras.clone());
-        for index in (0..self.decorator_list_len(&decorators)? / 2).rev() {
+        for index in (0..self.decorator_list_len(&decorators) / 2).rev() {
             self.charge_step()?;
-            let entry = self.decorator_entry(&decorators, index)?;
-            if !self.decorator_is_callable(&entry.0)? {
+            let entry = self.decorator_entry(&decorators, index);
+            if !self.decorator_is_callable(&entry.0) {
                 return Err(RuntimeError::TypeError(
                     "a decorator must be a function".into(),
                 ));
@@ -531,7 +552,7 @@ impl Vm {
             let class = self.stack[base].clone();
             let result = self.call_decorator(entry, class, context, state)?;
             if !matches!(result, Value::Undefined) {
-                if !self.decorator_is_callable(&result)? {
+                if !self.decorator_is_callable(&result) {
                     return Err(RuntimeError::TypeError(
                         "a class decorator must return a function or undefined".into(),
                     ));
@@ -557,20 +578,17 @@ impl Vm {
         state: ObjectId,
         initializer: &Value,
     ) -> Result<Value, RuntimeError> {
-        if matches!(
-            self.promise_state_get(state, "finished")?,
-            Value::Bool(true)
-        ) {
+        if matches!(self.state_get(state, "finished"), Value::Bool(true)) {
             return Err(RuntimeError::TypeError(
                 "addInitializer cannot be called after the decorator has finished".into(),
             ));
         }
-        if !self.decorator_is_callable(initializer)? {
+        if !self.decorator_is_callable(initializer) {
             return Err(RuntimeError::TypeError(
                 "an initializer must be a function".into(),
             ));
         }
-        let list = self.promise_state_get(state, "initializers")?;
+        let list = self.state_get(state, "initializers");
         self.decorator_list_push(&list, initializer)?;
         Ok(Value::Undefined)
     }
@@ -584,8 +602,8 @@ impl Vm {
         state: ObjectId,
         args: &[Value],
     ) -> Result<Value, RuntimeError> {
-        let owner = self.promise_state_get(state, "owner")?;
-        let key = self.promise_state_get(state, "key")?;
+        let owner = self.state_get(state, "owner");
+        let key = self.state_get(state, "key");
         let receiver = native::argument(args, 0).clone();
         let Some(object) = receiver.object_id() else {
             return Err(RuntimeError::TypeError(
@@ -593,9 +611,7 @@ impl Vm {
             ));
         };
         if let Some(owner) = owner.object_id() {
-            let Value::String(name) = key else {
-                unreachable!("a private name is a string");
-            };
+            let name = private_name_of(&key);
             return match op {
                 DecoratorAccessOp::Get => self.private_get(&receiver, owner, &name),
                 DecoratorAccessOp::Set => {
@@ -607,18 +623,29 @@ impl Vm {
                     // PrivateElementFind: a field is present once it has been
                     // added; methods and accessors come with the brand.
                     Ok(Value::Bool(
-                        match self.heap.private_element(owner, &name)? {
-                            Some(PrivateElement::Field) => {
-                                self.heap.private_slot(object, owner, &name)?.is_some()
-                            }
-                            Some(_) => self.heap.has_private_brand(object, owner)?,
-                            None => false,
+                        match self
+                            .heap
+                            .private_element(owner, &name)
+                            .expect("a private name owner is a live class")
+                            .expect("a decorated private element is declared on its owner")
+                        {
+                            PrivateElement::Field => self
+                                .heap
+                                .private_slot(object, owner, &name)
+                                .expect("the receiver is a live object")
+                                .is_some(),
+                            _ => self
+                                .heap
+                                .has_private_brand(object, owner)
+                                .expect("the receiver is a live object"),
                         },
                     ))
                 }
             };
         }
-        let key = self.coerce_property_key(&key)?;
+        let key = self
+            .coerce_property_key(&key)
+            .expect("an element key is a String or a Symbol");
         match op {
             DecoratorAccessOp::Get => self.get_property(&receiver, &key),
             DecoratorAccessOp::Set => {
@@ -660,9 +687,10 @@ impl Vm {
             return Ok(());
         }
         if flags & PRIVATE != 0 {
-            let Value::String(name) = key else {
-                unreachable!("a private name is a string");
-            };
+            let name = private_name_of(&key);
+            // The class definition already put a function of the same kind
+            // under this private name, so replacing it with another function
+            // needs no new room.
             self.with_roots(|heap| match kind {
                 ElementKind::Getter => {
                     heap.define_private_accessor(target, name, replacement, false)
@@ -671,10 +699,16 @@ impl Vm {
                     heap.define_private_accessor(target, name, replacement, true)
                 }
                 _ => heap.define_private_method(target, name, replacement),
-            })?;
+            })
+            .expect("a decorated private element replaces one the class definition made");
         } else {
-            let key = self.coerce_property_key(&key)?;
-            let current = self.heap.get_own_property_descriptor(target, key.clone())?;
+            let key = self
+                .coerce_property_key(&key)
+                .expect("an element key is a String or a Symbol");
+            let current = self
+                .heap
+                .get_own_property_descriptor(target, key.clone())
+                .expect("the class being defined is a live object");
             let still_original = current.is_some_and(|descriptor| {
                 let holder = match kind {
                     ElementKind::Getter => descriptor.get,
@@ -699,11 +733,13 @@ impl Vm {
                     },
                     _ => PropertyDescriptor::data(replacement, true, false, true),
                 };
-                if !self.with_roots(|heap| heap.define_own_property(target, key, descriptor))? {
-                    return Err(RuntimeError::TypeError(
-                        "cannot redefine a decorated class element".into(),
-                    ));
-                }
+                // A class element's property is configurable (only `prototype`
+                // is not, and it cannot be an element), so it accepts its
+                // replacement, which is another function in the same place.
+                let defined = self
+                    .with_roots(|heap| heap.define_own_property(target, key, descriptor))
+                    .expect("a decorated public element replaces one the class definition made");
+                assert!(defined, "a decorated class element accepts its replacement");
             }
         }
         self.stack.truncate(base);
@@ -715,9 +751,9 @@ impl Vm {
         let base = self.stack.len() - 2;
         let receiver = self.stack[base].clone();
         let list = self.stack[base + 1].clone();
-        for index in 0..self.decorator_list_len(&list)? {
+        for index in 0..self.decorator_list_len(&list) {
             self.charge_step()?;
-            let initializer = self.decorator_list_get(&list, index)?;
+            let initializer = self.decorator_list_get(&list, index);
             self.call_native(initializer, receiver.clone(), Vec::new(), false)?;
         }
         self.stack.truncate(base);
@@ -733,14 +769,28 @@ impl Vm {
         let base = self.stack.len() - 3;
         let receiver = self.stack[base + 1].clone();
         let list = self.stack[base + 2].clone();
-        for index in (0..self.decorator_list_len(&list)?).rev() {
+        for index in (0..self.decorator_list_len(&list)).rev() {
             self.charge_step()?;
-            let initializer = self.decorator_list_get(&list, index)?;
+            let initializer = self.decorator_list_get(&list, index);
             let value = self.stack[base].clone();
             let next = self.call_native(initializer, receiver.clone(), vec![value], false)?;
             self.stack[base] = next;
         }
         self.stack.truncate(base + 1);
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_private_name_is_the_string_in_the_key_slot() {
+        assert_eq!(
+            private_name_of(&Value::String("#x".into())),
+            JsString::from("#x")
+        );
+        assert_eq!(private_name_of(&Value::Undefined), JsString::default());
     }
 }

@@ -258,15 +258,23 @@ impl SourceText {
     /// they yield the default, textless value before checking text boundaries.
     pub(crate) fn range(text: &Arc<str>, start: usize, end: usize) -> Self {
         debug_assert!(start <= end);
-        match (u32::try_from(start), u32::try_from(end)) {
-            (Ok(start_u32), Ok(end_u32)) => {
-                debug_assert!(text.is_char_boundary(start) && text.is_char_boundary(end));
-                Self {
-                    text: Some(Arc::clone(text)),
-                    start: start_u32,
-                    end: end_u32,
-                }
-            }
+        let start_u32 = u32::try_from(start).ok();
+        let end_u32 = u32::try_from(end).ok();
+        if start_u32.is_some() && end_u32.is_some() {
+            debug_assert!(text.is_char_boundary(start) && text.is_char_boundary(end));
+        }
+        Self::range_u32(text, start_u32, end_u32)
+    }
+
+    /// `range` after the offsets have been narrowed to `u32`; `None` for
+    /// either offset means it did not fit, which yields the textless default.
+    fn range_u32(text: &Arc<str>, start: Option<u32>, end: Option<u32>) -> Self {
+        match (start, end) {
+            (Some(start), Some(end)) => Self {
+                text: Some(Arc::clone(text)),
+                start,
+                end,
+            },
             _ => Self::default(),
         }
     }
@@ -1347,6 +1355,47 @@ mod tests {
             SourceText::range(&text, too_large, too_large).as_str(),
             None
         );
+    }
+
+    #[test]
+    fn source_text_offsets_beyond_u32_yield_the_textless_default() {
+        let text: Arc<str> = Arc::from("function () {}");
+        assert_eq!(SourceText::range_u32(&text, None, Some(3)).as_str(), None);
+        assert_eq!(SourceText::range_u32(&text, Some(0), None).as_str(), None);
+        assert_eq!(
+            SourceText::range_u32(&text, Some(0), Some(8)).as_str(),
+            Some("function")
+        );
+    }
+
+    fn class_of(source: &str) -> Class {
+        // The leading `0;` is not a class: it makes the search skip a statement.
+        crate::parse(&format!("0; {source}"))
+            .unwrap()
+            .body
+            .into_iter()
+            .find_map(|statement| match statement {
+                Stmt::ClassDecl(class) => Some(class),
+                _ => None,
+            })
+            .unwrap()
+    }
+
+    #[test]
+    fn class_arguments_scanner_checks_computed_keys_and_skips_static_blocks() {
+        let quiet = class_of("class C { static {} m() {} x = 1; }");
+        assert!(!class_contains_arguments(&quiet, SuperSearch::Arguments));
+        for source in [
+            "class C { [arguments]() {} }",
+            "class C { get [arguments]() {} }",
+            "class C { [arguments] = 1; }",
+        ] {
+            let class = class_of(source);
+            assert!(
+                class_contains_arguments(&class, SuperSearch::Arguments),
+                "{source}"
+            );
+        }
     }
 
     fn super_member() -> Expr {

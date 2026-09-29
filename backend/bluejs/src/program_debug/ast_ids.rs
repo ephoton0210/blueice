@@ -480,4 +480,158 @@ mod tests {
             ]
         );
     }
+
+    fn counts(program: &BlueJsProgramV1) -> (usize, usize) {
+        let nodes = collect_ast_nodes(program);
+        let statements = nodes
+            .iter()
+            .filter(|node| node.kind == BlueJsAstNodeKind::Statement)
+            .count();
+        let expressions = nodes
+            .iter()
+            .filter(|node| node.kind == BlueJsAstNodeKind::Expression)
+            .count();
+        (statements, expressions)
+    }
+
+    fn script_counts(source: &str) -> (usize, usize) {
+        counts(&BlueJsProgramV1::Script(parse(source).unwrap()))
+    }
+
+    #[test]
+    fn statement_forms_contribute_their_executable_children() {
+        // (source, statement nodes, expression nodes), root excluded.
+        let cases: &[(&str, usize, usize)] = &[
+            (";", 1, 0),
+            ("throw 1;", 1, 1),
+            ("a: while(1) { continue a; }", 4, 1),
+            ("a: while(1) break a;", 3, 1),
+            (
+                "var [a=1,,{b:c=2,...d}]=[1,...x],{e,[k]:f=3,...g}={};",
+                1,
+                8,
+            ),
+            ("if(a) b; else c;", 3, 3),
+            ("if(a) b;", 2, 2),
+            ("for(;;){}", 2, 0),
+            ("for(var i=0;i<1;i++) ;", 2, 6),
+            ("for(i=0;;) ;", 2, 3),
+            ("for(var x in o) ;", 2, 1),
+            ("for(x of o) ;", 2, 2),
+            ("for([a=1] of o) ;", 2, 3),
+            ("for(var x=1 in o) ;", 2, 2),
+            // Annex B: a call is accepted as a for-in target in sloppy code.
+            ("for(f() in o) ;", 2, 3),
+            ("var a;", 1, 0),
+            ("for(var i;;) ;", 2, 0),
+            ("do ; while(a);", 2, 1),
+            ("while(a) ;", 2, 1),
+            ("switch(a){case b: c; default: d;}", 3, 4),
+            ("try{a;}catch({b}){c;}finally{d;}", 4, 3),
+            ("try{}catch{}", 1, 0),
+            ("try{}finally{}", 1, 0),
+            ("with(a) b;", 2, 2),
+            ("function f(a=1,[b]){return;}", 2, 1),
+            ("function g(){return 1;}", 2, 1),
+        ];
+        let actual: Vec<_> = cases
+            .iter()
+            .map(|(source, ..)| (*source, script_counts(source)))
+            .collect();
+        let expected: Vec<_> = cases
+            .iter()
+            .map(|(source, statements, expressions)| (*source, (*statements, *expressions)))
+            .collect();
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn expression_forms_contribute_their_executable_children() {
+        let cases: &[(&str, usize, usize)] = &[
+            ("1;'s';1n;true;null;this;x;/r/;", 8, 8),
+            ("function f(){new.target;}", 2, 1),
+            ("({m(){super.x;}});", 2, 4),
+            ("(a);", 1, 1),
+            ("(a) = 1;", 1, 4),
+            ("(a?.b).c;", 1, 6),
+            ("async function f(){await a;}", 2, 2),
+            ("`a${b}c${d}`;", 1, 3),
+            ("t`a${b}`;", 1, 3),
+            ("[1,,...a];", 1, 3),
+            (
+                "({a:1,[k]:2,...s,m(){},get g(){return 1},set g(v){}});",
+                2,
+                6,
+            ),
+            ("(function(){});(class{});", 2, 2),
+            ("function*g(){yield;yield 1;}", 3, 3),
+            ("import('a');import('a',b);", 2, 5),
+            ("((a,b=1)=>a);(()=>{c;});", 3, 5),
+            ("!a;a++;", 2, 4),
+            ("a+b;a&&b;", 2, 6),
+            ("a,b;", 1, 3),
+            ("a=1;", 1, 3),
+            ("[a]=b;", 1, 3),
+            ("({a:b=1,...c}=d);", 1, 5),
+            ("({a:b}=c);", 1, 3),
+            ("a?b:c;", 1, 4),
+            ("f(a,...b);f?.(c);new F(d);", 3, 10),
+            ("a.b;a?.b;a[c];", 3, 9),
+            ("class C{#p;m(o){#p in o;}}", 2, 2),
+            ("[[a=1],{b:c=2,...d}]=e;", 1, 7),
+        ];
+        let actual: Vec<_> = cases
+            .iter()
+            .map(|(source, ..)| (*source, script_counts(source)))
+            .collect();
+        let expected: Vec<_> = cases
+            .iter()
+            .map(|(source, statements, expressions)| (*source, (*statements, *expressions)))
+            .collect();
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn class_elements_contribute_decorators_keys_and_bodies() {
+        let source = "@e class C extends B { @d m(){} static x=1; y; [k](){} \
+                      @g get z(){return 1} static {a;} @f accessor w = 2; @h v; }";
+        // Statements: the declaration, the getter's return, the static block.
+        // Expressions: e, B, d, x's initializer, k, g, 1, a, f, 2, h.
+        assert_eq!(script_counts(source), (3, 11));
+    }
+
+    #[test]
+    fn module_roots_and_default_functions_are_inventoried() {
+        let module = crate::parse_module("export default function(a=1){ a; }").unwrap();
+        let program = BlueJsProgramV1::Module(module);
+        let kinds: Vec<_> = collect_ast_nodes(&program)
+            .into_iter()
+            .map(|node| node.kind)
+            .collect();
+        assert_eq!(
+            kinds,
+            vec![
+                BlueJsAstNodeKind::Module,
+                BlueJsAstNodeKind::Statement,
+                BlueJsAstNodeKind::Expression,
+                BlueJsAstNodeKind::Statement,
+                BlueJsAstNodeKind::Expression,
+            ]
+        );
+    }
+
+    #[test]
+    fn compiler_internal_statements_are_transparent_wrappers() {
+        let mut program = parse("1;").unwrap();
+        program.body = vec![
+            Stmt::ClassPrivateBrand("brand".to_string()),
+            Stmt::ClassExtraInitializers("record".to_string()),
+            Stmt::ClassDecoratedField {
+                field: Box::new(Stmt::ClassField(Box::new(Stmt::Expr(Expr::Null)))),
+                record: "record".to_string(),
+            },
+        ];
+        // Two leaf markers, then decorated field -> field -> expression.
+        assert_eq!(counts(&BlueJsProgramV1::Script(program)), (5, 1));
+    }
 }
