@@ -220,7 +220,7 @@ pub(crate) fn parse_offset_string_nanoseconds(source: &str) -> Option<i64> {
 
 #[cfg(test)]
 mod tests {
-    use super::{resolve_time_zone_offset, scan_offset, Cursor};
+    use super::*;
     use num_bigint::BigInt;
 
     #[test]
@@ -238,6 +238,74 @@ mod tests {
                 resolve_time_zone_offset(source, &epoch),
                 Err(()),
                 "{source}"
+            );
+        }
+    }
+
+    fn scan(source: &str, sub_minute: bool) -> Option<(i64, bool)> {
+        scan_offset(&mut Cursor::new(source), sub_minute)
+    }
+
+    #[test]
+    fn scanned_offsets_reject_truncated_and_out_of_range_fields() {
+        assert_eq!(scan("+01:30", false), Some((5_400_000_000_000, false)));
+        assert_eq!(scan("-0130", false), Some((-5_400_000_000_000, false)));
+        assert_eq!(scan("+01", false), Some((3_600_000_000_000, false)));
+        assert_eq!(scan("+01:00:30.5", true), Some((3_630_500_000_000, true)));
+        assert_eq!(scan("+01:00:30", false), None);
+        assert_eq!(scan("+24:00", false), None);
+        assert_eq!(scan("+01:60", false), None);
+        assert_eq!(scan("+01:00:60", true), None);
+        assert_eq!(scan("+1", false), None);
+        assert_eq!(scan("+01:", false), None);
+        assert_eq!(scan("+01:00:x", true), None);
+        assert_eq!(scan("+01:00:00.", true), None);
+        assert_eq!(scan("01:00", false), None);
+    }
+
+    #[test]
+    fn whole_string_offsets_must_be_fully_consumed() {
+        assert_eq!(
+            parse_offset_string_nanoseconds("+00:44:30"),
+            Some(2_670_000_000_000)
+        );
+        assert_eq!(parse_offset_string_nanoseconds("+00:44x"), None);
+    }
+
+    #[test]
+    fn time_zone_offsets_resolve_from_identifiers_and_date_times() {
+        let epoch = BigInt::from(0);
+        assert_eq!(
+            resolve_time_zone_offset("+01:00", &epoch),
+            Ok(3_600_000_000_000)
+        );
+        assert_eq!(resolve_time_zone_offset("UTC", &epoch), Ok(0));
+        assert_eq!(resolve_time_zone_offset("utc", &epoch), Ok(0));
+        assert_eq!(resolve_time_zone_offset("2020-01-01T00:00Z", &epoch), Ok(0));
+        assert_eq!(
+            resolve_time_zone_offset("2020-01-01T00:00+02:00", &epoch),
+            Ok(7_200_000_000_000)
+        );
+        assert_eq!(
+            resolve_time_zone_offset("2020-01-01T00:00[Etc/GMT+5]", &epoch),
+            Ok(-18_000_000_000_000)
+        );
+        // Not a time zone at all: no date, no `T`, no time, a sub-minute
+        // offset, a malformed annotation, no offset, or an unknown zone.
+        for invalid in [
+            "not a zone",
+            "2020-01-01",
+            "2020-01-01Tx",
+            "2020-01-01 xx",
+            "2020-01-01T00:00+02:00:30",
+            "2020-01-01T00:00[",
+            "2020-01-01T00:00",
+            "2020-01-01T00:00[No/Such_Zone]",
+        ] {
+            assert_eq!(
+                resolve_time_zone_offset(invalid, &epoch),
+                Err(()),
+                "{invalid}"
             );
         }
     }

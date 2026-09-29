@@ -48,7 +48,7 @@ impl Vm {
                 SetMethod::IsSubsetOf => self.set_is_subset_of(set, &record),
                 SetMethod::IsSupersetOf => self.set_is_superset_of(set, &record),
                 SetMethod::IsDisjointFrom => self.set_is_disjoint_from(set, &record),
-                _ => unreachable!("not a set-algebra method"),
+                _ => Err(RuntimeError::TypeError("not a set-algebra method".into())),
             }
         })();
         self.stack.truncate(base);
@@ -125,24 +125,50 @@ impl Vm {
     /// A new `%Set.prototype%` object holding the live entries of `set`
     /// (`copy`) or nothing, already pushed on the stack.
     fn set_algebra_result(&mut self, set: ObjectId, copy: bool) -> Result<ObjectId, RuntimeError> {
-        let prototype = self.collection_prototype(false)?;
+        // `set` exists, and the Set constructor materializes `%Set.prototype%`
+        // before it allocates one, so this lookup only reads the cache.
+        let prototype = self
+            .collection_prototype(false)
+            .expect("%Set.prototype% is materialized once a Set exists");
         let result = self.with_roots(|heap| heap.alloc_set(Some(prototype)))?;
         self.stack.push(Value::Object(result));
         if copy {
-            for member in self.set_members(set)? {
+            for member in self.set_members(set) {
                 self.with_roots(|heap| heap.set_add(result, member))?;
             }
         }
         Ok(result)
     }
 
+    // The receiver and every result set are live Set objects, so the heap
+    // lookups below can only fail on a dangling handle.
+    const SET_LIVE: &'static str = "a receiver or result Set is a live Set object";
+
+    fn set_entry(&self, set: ObjectId, index: usize) -> CollectionEntry {
+        self.heap
+            .collection_entry_at(set, index)
+            .expect(Self::SET_LIVE)
+    }
+
+    fn set_len(&self, set: ObjectId) -> f64 {
+        self.heap.set_size(set).expect(Self::SET_LIVE) as f64
+    }
+
+    fn set_contains(&self, set: ObjectId, member: &Value) -> bool {
+        self.heap.set_has(set, member).expect(Self::SET_LIVE)
+    }
+
+    fn set_remove(&mut self, set: ObjectId, member: &Value) {
+        self.heap.set_delete(set, member).expect(Self::SET_LIVE);
+    }
+
     /// The live members of `set` in insertion order.
-    fn set_members(&mut self, set: ObjectId) -> Result<Vec<Value>, RuntimeError> {
+    fn set_members(&self, set: ObjectId) -> Vec<Value> {
         let mut members = Vec::new();
         let mut index = 0;
         loop {
-            match self.heap.collection_entry_at(set, index)? {
-                CollectionEntry::End => return Ok(members),
+            match self.set_entry(set, index) {
+                CollectionEntry::End => return members,
                 CollectionEntry::Deleted => {}
                 CollectionEntry::Present(member, _) => members.push(member),
             }
@@ -160,7 +186,7 @@ impl Vm {
     ) -> Result<Option<T>, RuntimeError> {
         let mut index = 0;
         loop {
-            match self.heap.collection_entry_at(set, index)? {
+            match self.set_entry(set, index) {
                 CollectionEntry::End => return Ok(None),
                 CollectionEntry::Deleted => {}
                 CollectionEntry::Present(member, _) => {
@@ -196,9 +222,9 @@ impl Vm {
         record: &SetRecord,
     ) -> Result<Value, RuntimeError> {
         let result = self.set_algebra_result(set, false)?;
-        if (self.heap.set_size(set)? as f64) <= record.size {
+        if self.set_len(set) <= record.size {
             self.set_walk_live(set, |vm, member| {
-                if vm.set_record_has(record, &member)? && !vm.heap.set_has(result, &member)? {
+                if vm.set_record_has(record, &member)? && !vm.set_contains(result, &member) {
                     vm.with_roots(|heap| heap.set_add(result, member))?;
                 }
                 Ok(None::<()>)
@@ -209,7 +235,7 @@ impl Vm {
                 let base = self.stack.len();
                 self.stack.push(next.clone());
                 let outcome: Result<(), RuntimeError> = (|| {
-                    if self.heap.set_has(set, &next)? && !self.heap.set_has(result, &next)? {
+                    if self.set_contains(set, &next) && !self.set_contains(result, &next) {
                         self.with_roots(|heap| heap.set_add(result, next))?;
                     }
                     Ok(())
@@ -223,15 +249,15 @@ impl Vm {
 
     fn set_difference(&mut self, set: ObjectId, record: &SetRecord) -> Result<Value, RuntimeError> {
         let result = self.set_algebra_result(set, true)?;
-        if (self.heap.set_size(set)? as f64) <= record.size {
+        if self.set_len(set) <= record.size {
             // The copy fixes which elements are probed, whatever `has`
             // does to the receiver meanwhile.
-            for member in self.set_members(set)? {
+            for member in self.set_members(set) {
                 let base = self.stack.len();
                 self.stack.push(member.clone());
                 let outcome: Result<(), RuntimeError> = (|| {
                     if self.set_record_has(record, &member)? {
-                        self.heap.set_delete(result, &member)?;
+                        self.set_remove(result, &member);
                     }
                     Ok(())
                 })();
@@ -241,7 +267,7 @@ impl Vm {
         } else {
             let keys = self.set_record_keys(record)?;
             while let Some(next) = self.iterator_step(&keys, true)? {
-                self.heap.set_delete(result, &next)?;
+                self.set_remove(result, &next);
             }
         }
         Ok(Value::Object(result))
@@ -258,10 +284,10 @@ impl Vm {
             let base = self.stack.len();
             self.stack.push(next.clone());
             let outcome: Result<(), RuntimeError> = (|| {
-                let already_in_result = self.heap.set_has(result, &next)?;
-                if self.heap.set_has(set, &next)? {
+                let already_in_result = self.set_contains(result, &next);
+                if self.set_contains(set, &next) {
                     if already_in_result {
-                        self.heap.set_delete(result, &next)?;
+                        self.set_remove(result, &next);
                     }
                 } else if !already_in_result {
                     self.with_roots(|heap| heap.set_add(result, next))?;
@@ -279,7 +305,7 @@ impl Vm {
         set: ObjectId,
         record: &SetRecord,
     ) -> Result<Value, RuntimeError> {
-        if (self.heap.set_size(set)? as f64) > record.size {
+        if self.set_len(set) > record.size {
             return Ok(Value::Bool(false));
         }
         let missing = self.set_walk_live(set, |vm, member| {
@@ -293,12 +319,12 @@ impl Vm {
         set: ObjectId,
         record: &SetRecord,
     ) -> Result<Value, RuntimeError> {
-        if (self.heap.set_size(set)? as f64) < record.size {
+        if self.set_len(set) < record.size {
             return Ok(Value::Bool(false));
         }
         let keys = self.set_record_keys(record)?;
         while let Some(next) = self.iterator_step(&keys, true)? {
-            if !self.heap.set_has(set, &next)? {
+            if !self.set_contains(set, &next) {
                 self.iterator_close(&keys)?;
                 return Ok(Value::Bool(false));
             }
@@ -311,7 +337,7 @@ impl Vm {
         set: ObjectId,
         record: &SetRecord,
     ) -> Result<Value, RuntimeError> {
-        if (self.heap.set_size(set)? as f64) <= record.size {
+        if self.set_len(set) <= record.size {
             let shared = self.set_walk_live(set, |vm, member| {
                 Ok(vm.set_record_has(record, &member)?.then_some(()))
             })?;
@@ -319,11 +345,60 @@ impl Vm {
         }
         let keys = self.set_record_keys(record)?;
         while let Some(next) = self.iterator_step(&keys, true)? {
-            if self.heap.set_has(set, &next)? {
+            if self.set_contains(set, &next) {
                 self.iterator_close(&keys)?;
                 return Ok(Value::Bool(false));
             }
         }
         Ok(Value::Bool(true))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{compile, parse};
+
+    #[test]
+    fn only_the_seven_algebra_methods_are_dispatched() {
+        let mut vm = Vm::default();
+        let pair = vm
+            .execute(
+                &compile(
+                    &parse(
+                        "[new Set([1]), { size: 0, has() { return false; }, keys() { return [].values(); } }]",
+                    )
+                    .unwrap(),
+                )
+                .unwrap(),
+            )
+            .unwrap()
+            .object_id()
+            .unwrap();
+        let set = vm.heap().get(pair, "0").unwrap().object_id().unwrap();
+        let other = vm.heap().get(pair, "1").unwrap();
+        assert_eq!(
+            vm.set_algebra_method(SetMethod::Add, set, &other),
+            Err(RuntimeError::TypeError("not a set-algebra method".into()))
+        );
+        assert_eq!(
+            vm.set_algebra_method(SetMethod::IsDisjointFrom, set, &other),
+            Ok(Value::Bool(true))
+        );
+        for method in [
+            SetMethod::Union,
+            SetMethod::Intersection,
+            SetMethod::Difference,
+            SetMethod::SymmetricDifference,
+            SetMethod::IsSubsetOf,
+            SetMethod::IsSupersetOf,
+            SetMethod::IsDisjointFrom,
+        ] {
+            assert!(vm.set_algebra_method(method, set, &other).is_ok());
+            // A set-like operand that is not an object fails before any work.
+            assert!(vm
+                .set_algebra_method(method, set, &Value::Undefined)
+                .is_err());
+        }
     }
 }

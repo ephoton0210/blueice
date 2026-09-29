@@ -1772,26 +1772,28 @@ impl Vm {
         continuation_state: AsyncContinuation,
         promise: ObjectId,
     ) -> Result<(), RuntimeError> {
-        self.suspend_async_frame(continuation_state, promise);
-        Ok(())
+        self.suspend_async_frame(continuation_state, promise)
     }
 
     /// Registers an ordinary async-function frame on the Promise it awaits.
     /// A fulfilled input still goes through the job queue, preserving the
     /// required asynchronous boundary before the frame resumes.
-    fn suspend_async_frame(&mut self, continuation_state: AsyncContinuation, promise: ObjectId) {
+    fn suspend_async_frame(
+        &mut self,
+        continuation_state: AsyncContinuation,
+        promise: ObjectId,
+    ) -> Result<(), RuntimeError> {
         let continuation = self.next_async_continuation;
-        // The counter is a u64: it cannot run out.
         self.next_async_continuation = self
             .next_async_continuation
             .checked_add(1)
-            .expect("continuation numbers cannot run out");
+            .ok_or(RuntimeError::InstructionLimit)?;
         self.async_continuations
             .insert(continuation, continuation_state);
         let status = self
             .promises
             .get(&promise)
-            .expect("PromiseResolve returns a Promise this VM tracks")
+            .ok_or(RuntimeError::TypeError("invalid await Promise".into()))?
             .status
             .clone_for_await();
         match status {
@@ -1816,6 +1818,7 @@ impl Vm {
                 });
             }
         }
+        Ok(())
     }
 
     /// Continues a suspended ordinary async function in its own Promise job
@@ -1900,7 +1903,7 @@ impl Vm {
                 };
                 self.restore_module_execution(ambient);
                 self.call_depth = ambient_call_depth;
-                self.suspend_async_frame(state, promise);
+                self.suspend_async_frame(state, promise)?;
                 Ok(())
             }
             Err(error) => {
@@ -2053,7 +2056,7 @@ impl Vm {
                 };
                 self.restore_module_execution(ambient);
                 self.call_depth = ambient_call_depth;
-                self.suspend_async_frame(state, promise);
+                self.suspend_async_frame(state, promise)?;
                 Ok(())
             }
             Err(error) => {

@@ -2,7 +2,65 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use super::{Bytecode, Opcode};
+use super::{Bytecode, Opcode, MAY_USE_INLINE_CACHE};
+
+fn code(bytes: &[u8]) -> Bytecode {
+    let mut bytecode = Bytecode::empty();
+    bytecode.code = bytes.to_vec();
+    bytecode
+}
+
+#[test]
+fn decodes_an_instruction_with_and_without_an_operand() {
+    let bytecode = code(&[Opcode::Constant as u8, 7, 0, 0, 0, Opcode::Pop as u8]);
+    let constant = bytecode.instruction(0).unwrap();
+    assert_eq!(
+        (constant.opcode, constant.operand),
+        (Opcode::Constant, Some(7))
+    );
+    let pop = bytecode.instruction(5).unwrap();
+    assert_eq!((pop.opcode, pop.operand), (Opcode::Pop, None));
+    assert_eq!(bytecode.instructions().count(), 2);
+}
+
+#[test]
+fn malformed_code_decodes_to_no_instruction() {
+    // Past the end, an unassigned opcode byte, and an operand cut short.
+    let bytecode = code(&[Opcode::Pop as u8, 0xFF, Opcode::Constant as u8, 1, 2]);
+    assert!(bytecode.instruction(9).is_none());
+    assert!(bytecode.instruction(1).is_none());
+    assert!(bytecode.instruction(2).is_none());
+    // The iterator stops at the first byte it cannot decode.
+    assert_eq!(bytecode.instructions().count(), 1);
+}
+
+#[test]
+fn an_empty_program_exposes_no_metadata() {
+    let bytecode = Bytecode::empty();
+    assert_eq!(bytecode.bytes(), &[] as &[u8]);
+    assert!(bytecode.constants().is_empty());
+    assert!(bytecode.root_statement_offsets().is_empty());
+    assert_eq!(bytecode.child_code_units().count(), 0);
+}
+
+#[test]
+fn opcode_metadata_reports_width_and_inline_cache_use() {
+    assert_eq!((Opcode::Pop.width(), Opcode::Pop.flags()), (1, 0));
+    assert_eq!(Opcode::Constant.width(), 5);
+    assert_eq!(Opcode::GetProperty.flags(), MAY_USE_INLINE_CACHE);
+}
+
+#[test]
+fn exactly_the_assigned_opcode_bytes_decode() {
+    let decoded = (0..=u8::MAX).filter_map(Opcode::decode).collect::<Vec<_>>();
+    // Bytes are assigned to opcodes densely from zero, in table order.
+    assert_eq!(decoded.first(), Some(&Opcode::Constant));
+    assert!(decoded
+        .iter()
+        .enumerate()
+        .all(|(index, opcode)| *opcode as usize == index));
+    assert!(Opcode::decode(decoded.len() as u8).is_none());
+}
 
 #[test]
 fn decoder_rejects_unknown_opcodes_and_truncated_operands() {

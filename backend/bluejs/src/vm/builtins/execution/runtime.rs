@@ -1679,3 +1679,128 @@ impl Vm {
         Ok(())
     }
 }
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{compile, parse};
+
+    /// An iterable whose iterators would throw if `next` were ever called.
+    const IMPOSSIBLE: &str = "({ [Symbol.iterator]() { return { next() { throw 'called'; } }; },
+        [Symbol.asyncIterator]() { return { next() { throw 'called'; } }; } })";
+
+    #[test]
+    fn a_finished_iterator_record_answers_done_without_calling_next() {
+        let mut vm = Vm::default();
+        let iterable = vm
+            .execute(&compile(&parse(IMPOSSIBLE).unwrap()).unwrap())
+            .unwrap();
+        vm.stack.push(iterable.clone());
+        let done = |vm: &mut Vm, result: Value| {
+            vm.stack.push(result.clone());
+            let done = vm.get_property(&result, &"done".into()).unwrap();
+            let value = vm.get_property(&result, &"value".into()).unwrap();
+            (done, value)
+        };
+
+        let record = vm.get_iterator(&iterable).unwrap();
+        vm.stack.push(record.clone());
+        vm.iterator_close(&record).unwrap();
+        let result = vm.iterator_next(&record, None).unwrap();
+        assert_eq!(done(&mut vm, result), (Value::Bool(true), Value::Undefined));
+
+        let record = vm.get_async_iterator(&iterable).unwrap();
+        vm.stack.push(record.clone());
+        vm.iterator_close(&record).unwrap();
+        let result = vm.async_iterator_next(&record, None).unwrap();
+        assert_eq!(done(&mut vm, result), (Value::Bool(true), Value::Undefined));
+    }
+
+    /// An iterable (sync and async) whose `next` answers with its argument.
+    const ECHO: &str =
+        "({ [Symbol.iterator]() { return { next(a) { return { value: a, done: false }; } }; },
+        [Symbol.asyncIterator]() { return { next(a) { return { value: a, done: false }; } }; } })";
+
+    /// The value of the iterator result `result`, which stays on the stack.
+    fn value_of(vm: &mut Vm, result: Value) -> Value {
+        vm.stack.push(result.clone());
+        vm.get_property(&result, &"value".into()).unwrap()
+    }
+
+    fn evaluate(vm: &mut Vm, source: &str) -> Value {
+        let value = vm
+            .execute(&compile(&parse(source).unwrap()).unwrap())
+            .unwrap();
+        vm.stack.push(value.clone());
+        value
+    }
+
+    #[test]
+    fn iterator_next_forwards_its_argument_to_the_iterators_next_method() {
+        let mut vm = Vm::default();
+        let iterable = evaluate(&mut vm, ECHO);
+        let record = vm.get_iterator(&iterable).unwrap();
+        vm.stack.push(record.clone());
+        let result = vm.iterator_next(&record, Some(Value::Number(5.0))).unwrap();
+        assert_eq!(value_of(&mut vm, result), Value::Number(5.0));
+        let result = vm.iterator_next(&record, None).unwrap();
+        assert_eq!(value_of(&mut vm, result), Value::Undefined);
+    }
+
+    #[test]
+    fn async_iterator_next_returns_what_an_async_iterator_answers() {
+        let mut vm = Vm::default();
+        let iterable = evaluate(&mut vm, ECHO);
+        let record = vm.get_async_iterator(&iterable).unwrap();
+        vm.stack.push(record.clone());
+        let result = vm
+            .async_iterator_next(&record, Some(Value::Number(7.0)))
+            .unwrap();
+        assert_eq!(value_of(&mut vm, result), Value::Number(7.0));
+    }
+
+    #[test]
+    fn async_iterator_next_over_a_sync_iterator_answers_with_a_promise() {
+        let mut vm = Vm::default();
+        let sync_only = evaluate(
+            &mut vm,
+            "({ [Symbol.iterator]() { return { next(a) { return { value: a, done: false }; } }; } })",
+        );
+        let record = vm.get_async_iterator(&sync_only).unwrap();
+        vm.stack.push(record.clone());
+        let promise = vm
+            .async_iterator_next(&record, Some(Value::Number(1.0)))
+            .unwrap();
+        assert!(vm.promises.contains_key(&promise.object_id().unwrap()));
+    }
+
+    #[test]
+    fn async_iterator_next_over_a_sync_iterator_answers_a_throwing_next_with_a_promise() {
+        let mut vm = Vm::default();
+        let throwing = evaluate(
+            &mut vm,
+            "({ [Symbol.iterator]() { return { next() { throw 'boom'; } }; } })",
+        );
+        let record = vm.get_async_iterator(&throwing).unwrap();
+        vm.stack.push(record.clone());
+        let promise = vm.async_iterator_next(&record, None).unwrap();
+        assert!(vm.promises.contains_key(&promise.object_id().unwrap()));
+    }
+
+    #[test]
+    fn async_iterator_next_does_not_reject_over_an_uncatchable_error() {
+        let mut vm = Vm::default();
+        let endless = evaluate(
+            &mut vm,
+            "({ [Symbol.iterator]() { return { next() { for (;;) {} } }; } })",
+        );
+        let record = vm.get_async_iterator(&endless).unwrap();
+        vm.stack.push(record.clone());
+        vm.remaining_instructions = 1_000;
+        assert_eq!(
+            vm.async_iterator_next(&record, None),
+            Err(RuntimeError::InstructionLimit)
+        );
+    }
+}

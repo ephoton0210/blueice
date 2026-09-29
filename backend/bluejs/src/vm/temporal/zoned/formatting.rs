@@ -218,4 +218,18 @@ mod tests {
             "-05:30:12.3456"
         );
     }
+
+    #[test]
+    fn exact_offsets_show_seconds_and_a_trimmed_fraction() {
+        assert_eq!(format_offset_nanoseconds_exact(3_600_000_000_000), "+01:00");
+        assert_eq!(
+            format_offset_nanoseconds_exact(-2_670_000_000_000),
+            "-00:44:30"
+        );
+        assert_eq!(
+            format_offset_nanoseconds_exact(-2_670_500_000_000),
+            "-00:44:30.5"
+        );
+        assert_eq!(format_offset_nanoseconds_exact(1), "+00:00:00.000000001");
+    }
 }
