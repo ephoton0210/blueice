@@ -383,6 +383,25 @@ fn default_rendezvous_socket_path_is_per_user_not_system_wide() {
 }
 
 #[test]
+fn rendezvous_socket_dir_prefers_xdg_runtime_dir_when_set() {
+    // SAFETY: no other test in this crate reads or writes `XDG_RUNTIME_DIR`,
+    // and this crate's own binaries never run in-process during unit tests.
+    let previous = std::env::var_os("XDG_RUNTIME_DIR");
+    unsafe {
+        std::env::set_var("XDG_RUNTIME_DIR", "/tmp/blueice-xdg-test-runtime-dir");
+    }
+    let dir = rendezvous_socket_dir();
+    match previous {
+        Some(value) => unsafe { std::env::set_var("XDG_RUNTIME_DIR", value) },
+        None => unsafe { std::env::remove_var("XDG_RUNTIME_DIR") },
+    }
+    assert_eq!(
+        dir,
+        PathBuf::from("/tmp/blueice-xdg-test-runtime-dir").join("blueice")
+    );
+}
+
+#[test]
 fn sibling_core_binary_sits_next_to_the_launcher_binary() {
     let exe = PathBuf::from("/some/target/debug/blueice-launcher");
     assert_eq!(
@@ -470,6 +489,21 @@ fn prepare_stable_endpoint_rejects_relative_oversized_and_parentless_or_missing_
             .unwrap_err()
             .kind(),
         io::ErrorKind::NotFound
+    );
+}
+
+#[test]
+fn prepare_stable_endpoint_surfaces_a_non_not_found_stat_error_verbatim() {
+    use std::os::unix::ffi::OsStrExt;
+
+    // An interior NUL byte makes the path un-stat-able with a non-`NotFound`
+    // `InvalidInput` error, distinct from a merely-absent socket.
+    let path = PathBuf::from("/tmp").join(std::ffi::OsStr::from_bytes(b"blueice-nul-\0-test"));
+    assert_eq!(
+        prepare_stable_endpoint(&path, "test")
+            .unwrap_err()
+            .kind(),
+        io::ErrorKind::InvalidInput
     );
 }
 
