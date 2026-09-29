@@ -23,7 +23,7 @@ impl<'a> ModuleChecker<'a> {
         {
             return Type::Unknown;
         }
-        if let Some(function) = self.arrow_function_type(strip_outer_parentheses(tokens), scope) {
+        if let Some(function) = self.nested_function_type(strip_outer_parentheses(tokens), scope) {
             return function;
         }
         if tokens

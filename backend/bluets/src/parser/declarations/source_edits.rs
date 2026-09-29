@@ -15,7 +15,7 @@ impl Parser {
         self.diagnose_unsupported_opaque_syntax(start, end);
         let mut index = start;
         while index < end {
-            if let Some(next) = self.try_parse_arrow_function(start, index, end) {
+            if let Some(next) = self.try_parse_nested_function(start, index, end) {
                 index = next;
                 continue;
             }

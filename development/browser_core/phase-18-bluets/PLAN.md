@@ -2296,7 +2296,7 @@ the arrow. A braced body is parsed with `parse_function_body` into the same
 structured items, returns and locals as a named function; a concise body keeps
 its expression tokens and the scan continues inside it, so an arrow inside an
 arrow is found by the same pass. Each arrow is stored in `Module::arrow_functions`
-by the byte offset of its first token, spanning the head to the end of the body.
+by the byte offset of its first token, spanning the head to the end of the body. The table is `Module::nested_functions` and also holds function expressions (J.3.7.3).
 
 A parameter list is left unstructured when any parameter is a destructuring
 pattern, when the arrow is `async` (its result is a Promise, which BlueTS does
@@ -2323,6 +2323,22 @@ same name. A callee in scope with any other type has an unknown result; before,
 its own type was returned as the call result. The direct bridge has no arrow
 node in its expression grammar and refuses every arrow, which a bridge test now
 pins.
+
+### J.3.7.3 Function expressions
+
+`function [name] (parameters) [: result] { body }` at the start of an operand
+uses the same side table as an arrow: the parameter list goes through
+`parse_parameters`, a result annotation is erased through its last token so the
+space before `{` stays, and the body is parsed with `parse_function_body`. The
+entry is keyed by the `function` token and carries the optional name. The
+checker checks it like an arrow, and additionally binds a name inside its own
+body as a function type, so `function fact(n: number): number { return n ? n *
+fact(n - 1) : 1; }` type-checks. Generators, `async`, generic function
+expressions and destructured parameters are left as tokens and refused by the
+erasure audit when annotated. Statement-level function declarations inside a
+body are a separate form (J.3.7.5). Untyped function expressions are accepted
+where `tsc` under `--strict` would report an implicit `any`; that difference
+already exists for arrows.
 
 ## Checklist
 

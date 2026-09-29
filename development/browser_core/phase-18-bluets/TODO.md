@@ -2139,8 +2139,16 @@ done to the page-runs-and-debugs goal at the top of this file.
       type as its result and skipped argument checks; it now checks arity and
       argument types against the function type and yields its result type. A
       value in scope shadows a module function of the same name.
-    - [ ] **J.3.7.3** Function expressions (`function (a: T): R { .. }`,
-      named or anonymous), including as call arguments.
+    - [x] **J.3.7.3** Function expressions (`function (a: T): R { .. }`,
+      named or anonymous), including as call arguments. They share the arrow
+      side table (now `Module::nested_functions`, keyed by the `function`
+      token) and the same erasure and checking; a named expression is bound
+      inside its own body, so recursion type-checks. Generators, `async`,
+      generic expressions and destructured parameters stay unstructured and
+      refused. Eight pinned TypeScript 5.9.3 `--noEmit` cases agree on
+      acceptance and TS2322/TS2366/TS2345 lines, and a Node run gives
+      identical output for BlueTSC and `tsc`. Full workspace tests, Clippy,
+      rustfmt and whitespace checks pass.
     - [ ] **J.3.7.4** Object-literal methods, getters and setters.
     - [ ] **J.3.7.5** Function declarations nested inside a body, as local
       functions callable from the rest of the body.

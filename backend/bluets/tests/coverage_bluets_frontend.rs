@@ -5812,10 +5812,6 @@ fn function_annotations_that_survive_erasure_are_refused_before_output() {
         "export const h = async (a: number): Promise<number> => a;",
         "export const h = async (a: number) => a;",
         "export const h = ({ x }: { x: number }) => x;",
-        "export const h = function (a: number): number { return a; };",
-        "export const h = function named(a: number) { return a; };",
-        "export const h = function (a?) { return a; };",
-        "export function f(xs: number[]) { return xs.map(function (x: number) { return x; }); }",
         "export function f() { function g(a: number): number { return a; } return g(1); }",
         "export const o = { m(a: number): number { return a; } };",
         "export const o = { get v(): number { return 1; } };",
@@ -5979,6 +5975,109 @@ fn typed_arrow_functions_are_parsed_erased_and_checked() {
                 .any(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
             "{source}"
         );
+    }
+}
+
+#[test]
+fn function_expressions_are_parsed_erased_and_checked() {
+    let compile_source = |source: &str| {
+        compile(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+            CompilerOptions::default(),
+        )
+    };
+    let compiled = compile_source(include_str!(
+        "fixtures/typescript_oracle/function-expression-runtime/main.ts"
+    ));
+    assert!(
+        compiled.diagnostics.is_empty(),
+        "{:#?}",
+        compiled.diagnostics
+    );
+    let javascript = compiled.output.unwrap().artifacts[ENTRY].javascript.clone();
+    assert_eq!(
+        normalized_javascript(&javascript),
+        "const double = function (n) { return n * 2; }; \
+         const greet = function named(name, punct= \"!\") { return \"hi \" + name + punct; }; \
+         const twice = function (f, n) { return f(f(n)); }; \
+         const xs = [1, 2, 3].map(function (n) { return n + 1; }); \
+         console.log(double(4)); console.log(greet(\"a\")); \
+         console.log(twice(double, 3)); console.log(xs[2]);"
+    );
+
+    let accepted = compile_source(include_str!(
+        "fixtures/typescript_oracle/function-expression-valid/main.ts"
+    ));
+    assert!(
+        accepted.diagnostics.is_empty(),
+        "{:#?}",
+        accepted.diagnostics
+    );
+
+    for (source, code) in [
+        (
+            include_str!("fixtures/typescript_oracle/function-expression-result-error/main.ts"),
+            DiagnosticCode::ReturnTypeMismatch,
+        ),
+        (
+            include_str!(
+                "fixtures/typescript_oracle/function-expression-missing-return-error/main.ts"
+            ),
+            DiagnosticCode::ReturnTypeMismatch,
+        ),
+        (
+            include_str!(
+                "fixtures/typescript_oracle/function-expression-parameter-use-error/main.ts"
+            ),
+            DiagnosticCode::ReturnTypeMismatch,
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/function-expression-closure-error/main.ts"),
+            DiagnosticCode::ReturnTypeMismatch,
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/function-expression-default-error/main.ts"),
+            DiagnosticCode::TypeMismatch,
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/function-expression-assign-error/main.ts"),
+            DiagnosticCode::TypeMismatch,
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/function-expression-call-error/main.ts"),
+            DiagnosticCode::TypeMismatch,
+        ),
+    ] {
+        let rejected = compile_source(source);
+        assert!(rejected.output.is_none());
+        assert!(
+            rejected
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == code && diagnostic.span.module == ENTRY),
+            "{source}: {:#?}",
+            rejected.diagnostics
+        );
+    }
+
+    // A named expression is visible inside its own body only.
+    let recursive = compile_source(
+        "export const f = function fact(n: number): number { return n ? n * fact(n - 1) : 1; };",
+    );
+    assert!(
+        recursive.diagnostics.is_empty(),
+        "{:#?}",
+        recursive.diagnostics
+    );
+
+    // Generators and generic function expressions stay refused.
+    for source in [
+        "export const h = function* (a: number) { yield a; };",
+        "export const h = function <T>(a: T): T { return a; };",
+    ] {
+        let refused = compile_source(source);
+        assert!(refused.output.is_none(), "{source}");
     }
 }
 

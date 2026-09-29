@@ -2,20 +2,21 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Checking of arrow functions parsed inside runtime expressions.
+//! Checking of arrow functions and function expressions parsed inside runtime
+//! expressions.
 //!
-//! An arrow is checked as an anonymous function whose body sees the scope it
-//! appears in, so its parameters, result type and closed-over variables follow
+//! A nested function is checked as an anonymous function whose body sees the
+//! scope it appears in, so its parameters, result type and closed-over variables follow
 //! the same rules as a named function. Its type is a function type built from
 //! its parameters and result annotation.
 
 use super::*;
-use crate::parser::{ArrowBody, ArrowFunction};
+use crate::parser::{NestedFunction, NestedFunctionBody};
 
 impl ModuleChecker<'_> {
     /// Checks every outermost arrow function inside `tokens`. An arrow nested
     /// in another arrow's body is checked when that body is.
-    pub(in crate::checker::module) fn check_arrow_functions_in(
+    pub(in crate::checker::module) fn check_nested_functions_in(
         &mut self,
         tokens: &[Token],
         scope: &BTreeMap<String, Type>,
@@ -25,21 +26,21 @@ impl ModuleChecker<'_> {
         };
         let module = self.module;
         let mut cursor = first.start;
-        for (_, arrow) in module.arrow_functions.range(first.start..last.end) {
+        for (_, arrow) in module.nested_functions.range(first.start..last.end) {
             if arrow.span.start < cursor || arrow.span.end > last.end {
                 continue;
             }
             cursor = arrow.span.end;
-            if !self.checked_arrows.insert(arrow.span.start) {
+            if !self.checked_nested_functions.insert(arrow.span.start) {
                 continue;
             }
-            self.check_arrow_function(arrow, scope);
+            self.check_nested_function(arrow, scope);
         }
     }
 
-    fn check_arrow_function(&mut self, arrow: &ArrowFunction, scope: &BTreeMap<String, Type>) {
+    fn check_nested_function(&mut self, arrow: &NestedFunction, scope: &BTreeMap<String, Type>) {
         let (body, returns, locals) = match &arrow.body {
-            ArrowBody::Expression(tokens) => (
+            NestedFunctionBody::Expression(tokens) => (
                 vec![FunctionBodyItem::Return {
                     tokens: tokens.clone(),
                     span: arrow.span.clone(),
@@ -47,7 +48,7 @@ impl ModuleChecker<'_> {
                 vec![tokens.clone()],
                 Vec::new(),
             ),
-            ArrowBody::Block {
+            NestedFunctionBody::Block {
                 items,
                 returns,
                 locals,
@@ -69,23 +70,34 @@ impl ModuleChecker<'_> {
             overload: false,
             span: arrow.span.clone(),
         };
-        self.check_function_in_scope(&function, scope.clone());
+        let mut body_scope = scope.clone();
+        if let Some(name) = &arrow.name {
+            // A named function expression is visible inside its own body.
+            body_scope.insert(
+                name.clone(),
+                Type::Function {
+                    parameters: arrow.parameters.clone(),
+                    result: Box::new(arrow.return_type.clone().unwrap_or(Type::Unknown)),
+                },
+            );
+        }
+        self.check_function_in_scope(&function, body_scope);
     }
 
     /// The function type of `tokens` when they are exactly one arrow function.
-    pub(in crate::checker::module) fn arrow_function_type(
+    pub(in crate::checker::module) fn nested_function_type(
         &self,
         tokens: &[Token],
         scope: &BTreeMap<String, Type>,
     ) -> Option<Type> {
         let (first, last) = (tokens.first()?, tokens.last()?);
-        let arrow = self.module.arrow_functions.get(&first.start)?;
+        let arrow = self.module.nested_functions.get(&first.start)?;
         if arrow.span.end != last.end {
             return None;
         }
         let result = match (&arrow.return_type, &arrow.body) {
             (Some(return_type), _) => return_type.clone(),
-            (None, ArrowBody::Expression(body)) => {
+            (None, NestedFunctionBody::Expression(body)) => {
                 let mut inner = scope.clone();
                 for parameter in &arrow.parameters {
                     inner.insert(
@@ -95,7 +107,7 @@ impl ModuleChecker<'_> {
                 }
                 self.infer_expression(body, &inner)
             }
-            (None, ArrowBody::Block { .. }) => Type::Unknown,
+            (None, NestedFunctionBody::Block { .. }) => Type::Unknown,
         };
         Some(Type::Function {
             parameters: arrow.parameters.clone(),

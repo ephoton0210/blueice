@@ -31,7 +31,7 @@ pub(super) struct ModuleChecker<'a> {
     class_emit: bool,
     /// Arrow functions already checked, by start offset, so an expression
     /// visited from several checks reports its body once.
-    checked_arrows: BTreeSet<usize>,
+    checked_nested_functions: BTreeSet<usize>,
     pub(super) diagnostics: Vec<Diagnostic>,
     pub(super) symbols: Vec<Symbol>,
     types: BTreeMap<String, TypeDefinition>,

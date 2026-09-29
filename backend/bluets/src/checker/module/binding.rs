@@ -6,9 +6,9 @@
 
 use super::*;
 
-mod arrows;
 mod classes;
 mod functions;
+mod nested_functions;
 pub(in crate::checker) use classes::{class_export, class_instance_type};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -46,7 +46,7 @@ impl<'a> ModuleChecker<'a> {
             enforce_types: policy.enforce_types,
             require_declared_global_calls: policy.require_declared_global_calls,
             class_emit: policy.class_emit,
-            checked_arrows: BTreeSet::new(),
+            checked_nested_functions: BTreeSet::new(),
             diagnostics: Vec::new(),
             symbols: Vec::new(),
             types: BTreeMap::new(),
@@ -790,7 +790,7 @@ impl<'a> ModuleChecker<'a> {
             return;
         }
         let before_arrows = self.diagnostics.len();
-        self.check_arrow_functions_in(tokens, scope);
+        self.check_nested_functions_in(tokens, scope);
         self.dedupe_diagnostics_since(before_arrows);
         if tokens
             .iter()

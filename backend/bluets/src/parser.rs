@@ -39,25 +39,28 @@ pub struct Module {
     /// callee token's source-byte offset. They are static-only and erased from
     /// JavaScript, but retained for the checker to validate a local call.
     pub(crate) generic_call_type_arguments: BTreeMap<usize, Vec<Type>>,
-    /// Structured arrow functions found inside runtime expressions, keyed by
-    /// the byte offset of the arrow's first token. Their annotations are
-    /// erased through `edits`; the checker reads parameters, result type and
-    /// body from here.
-    pub(crate) arrow_functions: BTreeMap<usize, ArrowFunction>,
+    /// Structured arrow functions and function expressions found inside
+    /// runtime expressions, keyed by the byte offset of their first token.
+    /// Their annotations are erased through `edits`; the checker reads
+    /// parameters, result type and body from here.
+    pub(crate) nested_functions: BTreeMap<usize, NestedFunction>,
 }
 
-/// An arrow function parsed inside a runtime expression.
+/// An arrow function or function expression parsed inside a runtime
+/// expression.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ArrowFunction {
+pub struct NestedFunction {
+    /// The name a function expression binds inside its own body.
+    pub name: Option<String>,
     pub parameters: Vec<Parameter>,
     pub return_type: Option<Type>,
-    pub body: ArrowBody,
+    pub body: NestedFunctionBody,
     /// From the first token of the parameter list to the end of the body.
     pub span: SourceSpan,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ArrowBody {
+pub enum NestedFunctionBody {
     /// The expression tokens of a concise body.
     Expression(Vec<Token>),
     /// A braced body, in the same structured form as a named function.
