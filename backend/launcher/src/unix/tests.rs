@@ -29,6 +29,32 @@ fn supervise_out_of_process_bluejs_builders_set_their_own_fields() {
 }
 
 #[test]
+fn generation_pinned_relay_fails_closed_before_any_generation_is_activated() {
+    let path = unique_internal_socket_path();
+    let relay =
+        GenerationPinnedUnixRelay::bind(&path, "test", Arc::new(Mutex::new(()))).unwrap();
+    let mut client = UnixStream::connect(&path).unwrap();
+    let mut buf = [0u8; 1];
+    // No target generation has been activated yet: the accept loop must
+    // close the connection rather than hang or forward it anywhere.
+    assert_eq!(std::io::Read::read(&mut client, &mut buf).unwrap(), 0);
+    relay.close();
+}
+
+#[test]
+fn generation_pinned_relay_close_is_idempotent_and_drop_calls_close() {
+    let path = unique_internal_socket_path();
+    let relay =
+        GenerationPinnedUnixRelay::bind(&path, "test", Arc::new(Mutex::new(()))).unwrap();
+    assert!(path.exists());
+    relay.close();
+    assert!(!path.exists());
+    // A second close() must be a no-op, not a panic or a hang.
+    relay.close();
+    drop(relay);
+}
+
+#[test]
 fn forward_client_to_core_relays_one_message_then_stops_on_disconnect() {
     let (client_side, mut client_observed) = UnixStream::pair().unwrap();
     let (core_side, mut core_observed) = UnixStream::pair().unwrap();
