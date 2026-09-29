@@ -3765,6 +3765,60 @@ fn pinned_tuple_literal_returns_match_typescript_without_emit() {
 
 #[test]
 #[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
+fn pinned_tuple_literal_arguments_match_typescript_without_emit() {
+    let tsc = pinned_bluetsc_oracle();
+    assert_pinned_version(&tsc);
+    let cases: [NoEmitCase; 8] = [
+        (
+            "valid",
+            include_str!("fixtures/typescript_oracle/tuple-literal-argument-valid/main.ts"),
+            &[],
+        ),
+        (
+            "class-valid",
+            include_str!("fixtures/typescript_oracle/tuple-literal-argument-class-valid/main.ts"),
+            &[],
+        ),
+        (
+            "type-error",
+            include_str!("fixtures/typescript_oracle/tuple-literal-argument-type-error/main.ts"),
+            &[(5, "TS2322")],
+        ),
+        (
+            "short-error",
+            include_str!("fixtures/typescript_oracle/tuple-literal-argument-short-error/main.ts"),
+            &[(5, "TS2345")],
+        ),
+        (
+            "overload-error",
+            include_str!(
+                "fixtures/typescript_oracle/tuple-literal-argument-overload-error/main.ts"
+            ),
+            &[(7, "TS2769")],
+        ),
+        (
+            "method-error",
+            include_str!("fixtures/typescript_oracle/tuple-literal-argument-method-error/main.ts"),
+            &[(5, "TS2322")],
+        ),
+        (
+            "constructor-error",
+            include_str!(
+                "fixtures/typescript_oracle/tuple-literal-argument-constructor-error/main.ts"
+            ),
+            &[(5, "TS2322")],
+        ),
+        (
+            "super-error",
+            include_str!("fixtures/typescript_oracle/tuple-literal-argument-super-error/main.ts"),
+            &[(5, "TS2322")],
+        ),
+    ];
+    assert_pinned_no_emit_cases(&tsc, &cases);
+}
+
+#[test]
+#[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
 fn pinned_local_class_method_sides_match_typescript_without_emit() {
     let tsc = pinned_bluetsc_oracle();
     assert_pinned_version(&tsc);

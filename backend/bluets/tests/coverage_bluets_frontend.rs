@@ -5751,6 +5751,54 @@ fn returns_use_the_declared_tuple_as_literal_context() {
 }
 
 #[test]
+fn call_arguments_use_the_parameter_tuple_as_literal_context() {
+    let compile_source = |source: &str| {
+        compile(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+            CompilerOptions::default(),
+        )
+    };
+    let accepted = compile_source(include_str!(
+        "fixtures/typescript_oracle/tuple-literal-argument-valid/main.ts"
+    ));
+    assert!(
+        accepted.diagnostics.is_empty(),
+        "{:#?}",
+        accepted.diagnostics
+    );
+    let classes = compile_source(include_str!(
+        "fixtures/typescript_oracle/tuple-literal-argument-class-valid/main.ts"
+    ));
+    assert!(
+        classes
+            .diagnostics
+            .iter()
+            .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+        "{:#?}",
+        classes.diagnostics
+    );
+    for source in [
+        include_str!("fixtures/typescript_oracle/tuple-literal-argument-type-error/main.ts"),
+        include_str!("fixtures/typescript_oracle/tuple-literal-argument-short-error/main.ts"),
+        include_str!("fixtures/typescript_oracle/tuple-literal-argument-overload-error/main.ts"),
+        include_str!("fixtures/typescript_oracle/tuple-literal-argument-method-error/main.ts"),
+        include_str!("fixtures/typescript_oracle/tuple-literal-argument-constructor-error/main.ts"),
+        include_str!("fixtures/typescript_oracle/tuple-literal-argument-super-error/main.ts"),
+    ] {
+        let rejected = compile_source(source);
+        assert!(rejected.output.is_none());
+        assert!(
+            rejected.diagnostics.iter().any(|diagnostic| {
+                diagnostic.code == DiagnosticCode::TypeMismatch && diagnostic.span.module == ENTRY
+            }),
+            "{source}: {:#?}",
+            rejected.diagnostics
+        );
+    }
+}
+
+#[test]
 fn middle_tuple_rest_checks_suffix_and_emits_at_public_boundary() {
     let source = include_str!("fixtures/typescript_oracle/tuple-rest-middle-valid/main.ts");
     let accepted = compile(

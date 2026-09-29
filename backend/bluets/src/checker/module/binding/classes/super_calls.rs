@@ -222,7 +222,8 @@ impl ModuleChecker<'_> {
             self.dedupe_diagnostics_since(before);
             return;
         }
-        let Ok(actuals) = self.expanded_call_argument_types(&arguments, scope) else {
+        let Ok(actuals) = self.expanded_call_argument_types_for(&arguments, scope, &signatures)
+        else {
             self.type_error(
                 span,
                 "a `super` call spread must have a fixed-length tuple type".to_string(),

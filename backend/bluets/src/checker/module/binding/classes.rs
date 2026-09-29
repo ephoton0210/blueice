@@ -1044,7 +1044,9 @@ impl ModuleChecker<'_> {
             self.dedupe_diagnostics_since(before);
             return;
         }
-        let Ok(actuals) = self.expanded_call_argument_types(&arguments, scope) else {
+        let signatures = binding.signatures.clone();
+        let Ok(actuals) = self.expanded_call_argument_types_for(&arguments, scope, &signatures)
+        else {
             self.type_error(
                 &call_span,
                 "a class constructor spread must have a fixed-length tuple type".to_string(),

@@ -153,7 +153,20 @@ impl<'a> ModuleChecker<'a> {
             self.dedupe_diagnostics_since(before);
             return;
         }
-        let Ok(actuals) = self.expanded_call_argument_types(&arguments, scope) else {
+        let context_signatures = match &member_type {
+            Type::Function { parameters, result } => vec![FunctionSignature {
+                parameters: parameters.clone(),
+                type_parameters: Vec::new(),
+                return_type: (**result).clone(),
+            }],
+            Type::Intersection(overloads) => {
+                method_overload_signatures(overloads).unwrap_or_default()
+            }
+            _ => Vec::new(),
+        };
+        let Ok(actuals) =
+            self.expanded_call_argument_types_for(&arguments, scope, &context_signatures)
+        else {
             self.type_error(
                 span,
                 format!(

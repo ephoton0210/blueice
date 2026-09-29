@@ -56,7 +56,8 @@ impl<'a> ModuleChecker<'a> {
                 Type::Unknown
             };
         }
-        let Ok(actuals) = self.expanded_call_argument_types(&arguments, scope) else {
+        let Ok(actuals) = self.expanded_call_argument_types_for(&arguments, scope, signatures)
+        else {
             return Type::Unknown;
         };
         let Ok(Some(signature)) =
@@ -111,7 +112,7 @@ impl<'a> ModuleChecker<'a> {
             self.dedupe_diagnostics_since(before);
             return;
         }
-        let actuals = match self.expanded_call_argument_types(&arguments, scope) {
+        let actuals = match self.expanded_call_argument_types_for(&arguments, scope, &signatures) {
             Ok(actuals) => actuals,
             Err(()) => {
                 self.type_error(
@@ -292,6 +293,64 @@ impl<'a> ModuleChecker<'a> {
                 index += 1;
             }
         }
+    }
+
+    /// Argument types where a bracketed literal takes its type from the
+    /// parameter it is passed to. Each candidate signature is tried in order
+    /// and the first parameter type that accepts the literal, read against
+    /// that type, is used; otherwise the literal keeps its plain inferred
+    /// type, so context can only turn a rejection into an acceptance. After a
+    /// spread argument, later positions have no fixed parameter and use plain
+    /// inference.
+    pub(super) fn expanded_call_argument_types_for(
+        &self,
+        arguments: &[&[Token]],
+        scope: &BTreeMap<String, Type>,
+        signatures: &[FunctionSignature],
+    ) -> Result<Vec<Type>, ()> {
+        let mut actuals = Vec::new();
+        let mut positions_known = true;
+        for argument in arguments {
+            if argument.first().is_some_and(|token| token.is("...")) {
+                positions_known = false;
+                actuals.extend(self.expanded_call_argument_types(&[argument], scope)?);
+                continue;
+            }
+            let contextual = (positions_known
+                && argument.first().is_some_and(|token| token.is("[")))
+            .then(|| self.contextual_argument_type(argument, scope, actuals.len(), signatures))
+            .flatten();
+            match contextual {
+                Some(actual) => actuals.push(actual),
+                None => actuals.extend(self.expanded_call_argument_types(&[argument], scope)?),
+            }
+        }
+        Ok(actuals)
+    }
+
+    fn contextual_argument_type(
+        &self,
+        argument: &[Token],
+        scope: &BTreeMap<String, Type>,
+        index: usize,
+        signatures: &[FunctionSignature],
+    ) -> Option<Type> {
+        for signature in signatures {
+            let parameter = function_parameter_for_argument(signature, index)?;
+            let expected = call_parameter_expected_type(parameter, &BTreeMap::new());
+            let actual = self.infer_in_context(argument, scope, &expected);
+            let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
+            if is_assignable(
+                &actual,
+                &expected,
+                &self.types,
+                &mut HashSet::new(),
+                &mut budget,
+            ) {
+                return Some(actual);
+            }
+        }
+        None
     }
 
     pub(super) fn expanded_call_argument_types(

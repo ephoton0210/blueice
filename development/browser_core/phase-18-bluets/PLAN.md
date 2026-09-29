@@ -2229,6 +2229,34 @@ because the literal was widened to an array. Positions other than these three
 (call arguments, object properties, assignments, arrow returns) still widen and
 are tracked as J.3.6.
 
+### J.3.6.1 Tuple literal context for call arguments
+
+`expanded_call_argument_types_for` types the arguments of a call against the
+callee's candidate signatures. A bracketed literal at a position still known is
+inferred against each candidate's parameter type at that position, in order (a
+rest parameter supplies its element type), and takes the first whose result is
+assignable to it; if none accepts it, the literal keeps its plain inferred
+type. Context therefore only turns a rejection into an acceptance. After a
+spread argument, later positions have no fixed parameter and use plain
+inference. Function calls, function return inference, member calls (instance and
+static, single and overloaded), constructors and `super` calls all use it; the
+optional-spread per-length scopes are unaffected.
+
+Rejected cases keep their existing wording, and a failing tuple literal is still
+reported with its widened array type; showing the tuple type is a message-quality
+improvement, not a behaviour change. Function `rest` parameters annotated with
+a tuple are still refused (only class methods accept them), and object-literal
+arguments have no record context yet (J.3.6.2).
+
+### J.3.7 Function-expression bodies are unchecked
+
+Arrow functions and function expressions are kept as tokens; only named
+function and class-method bodies are structured and checked. Every error `tsc`
+reports inside an arrow or function-expression body (wrong return type, a
+parameter used at the wrong type) is accepted without a diagnostic. This is a
+missing check, not a context gap, and needs a structured body in the parser
+first.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process

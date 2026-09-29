@@ -2088,11 +2088,26 @@ done to the page-runs-and-debugs goal at the top of this file.
   - [ ] **J.3.5** Implement runtime namespaces/modules and declaration merging,
     including initialization order, export visibility, nested maps, direct
     execution, and oracle parity.
-  - [ ] **J.3.6** Extend tuple-literal context to the remaining positions:
-    call arguments (`take([1, "a"])`), object-literal properties, assignments
-    and arrow-function returns, each against pinned TypeScript. Today these
-    infer a widened array, so a valid tuple literal in one of them is
-    rejected.
+  - [ ] **J.3.6** Extend tuple-literal context to the remaining positions,
+    each against pinned TypeScript. Where context is missing, a valid tuple
+    literal infers a widened array and is rejected.
+    - [x] **J.3.6.1** Call arguments (`take([1, "a"])`) for function, overload,
+      method, static method, constructor and `super` calls. A bracketed
+      literal argument is read against each candidate signature's parameter
+      type in order and takes the first that accepts it; otherwise it keeps its
+      plain type, so context only turns a rejection into an acceptance.
+      Positions after a spread argument use plain inference. Eight pinned
+      TypeScript 5.9.3 `--noEmit` cases agree on acceptance and
+      TS2322/TS2345/TS2769 lines. BlueTS and bridge crate tests and
+      workspace Clippy pass; the full workspace suite was not repeated.
+    - [ ] **J.3.6.2** Object-literal properties (`{ p: [1, "a"] }`) against a
+      record type, including nested records and tuples.
+    - [ ] **J.3.6.3** Assignments (`p = [1, "a"]`) against the target type.
+  - [ ] **J.3.7** Check arrow-function and function-expression bodies. Their
+    bodies are kept only as tokens today, so no return, parameter or scope
+    check runs: every error `tsc` reports inside one (a wrong return type, a
+    parameter misuse) is silently accepted. This needs a structured body in
+    the parser and the same return/scope checks named functions get.
 - [ ] **J.4** Implement the module and package ecosystem without widening
   page or MCP authority through type declarations.
   - [ ] **J.4.1** Add TypeScript 5.9.3 module-mode selection and CommonJS
