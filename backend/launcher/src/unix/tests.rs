@@ -430,6 +430,50 @@ fn unique_compiler_mcp_test_path(label: &str) -> PathBuf {
 }
 
 #[test]
+fn prepare_stable_endpoint_rejects_relative_oversized_and_parentless_or_missing_paths() {
+    assert_eq!(
+        prepare_stable_endpoint(Path::new("relative/path.sock"), "test")
+            .unwrap_err()
+            .kind(),
+        io::ErrorKind::InvalidInput
+    );
+
+    let oversized =
+        PathBuf::from("/").join("a".repeat(MAX_STABLE_ENDPOINT_SOCKET_PATH_BYTES + 1));
+    assert_eq!(
+        prepare_stable_endpoint(&oversized, "test")
+            .unwrap_err()
+            .kind(),
+        io::ErrorKind::InvalidInput
+    );
+
+    // The filesystem root has no parent directory at all.
+    assert_eq!(
+        prepare_stable_endpoint(Path::new("/"), "test")
+            .unwrap_err()
+            .kind(),
+        io::ErrorKind::InvalidInput
+    );
+
+    let missing_parent = PathBuf::from("/tmp")
+        .join(format!(
+            "blueice-launcher-test-missing-parent-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ))
+        .join("socket.sock");
+    assert_eq!(
+        prepare_stable_endpoint(&missing_parent, "test")
+            .unwrap_err()
+            .kind(),
+        io::ErrorKind::NotFound
+    );
+}
+
+#[test]
 fn compiler_mcp_endpoint_validation_rejects_non_socket_paths_without_unlinking_them() {
     let path = unique_compiler_mcp_test_path("regular-file");
     std::fs::write(&path, b"do not remove").unwrap();
