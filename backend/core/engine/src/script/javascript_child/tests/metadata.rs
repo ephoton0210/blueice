@@ -439,6 +439,10 @@ enum MetadataProbeTarget {
     ContractDisplay,
     ContractValidation,
     SymbolDisplay,
+    SymbolLocation,
+    ContractLocation,
+    SymbolType,
+    SymbolContract,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -450,6 +454,12 @@ enum MetadataProbeFault {
     ExceedsMax,
     EmptyDisplay,
     DisplayTooLong,
+    /// The reply is structurally well-formed (valid coordinates/echoed
+    /// tab/generation/program/metadata) but names a different relation than
+    /// the one requested (e.g. a contract/source ID that doesn't match).
+    MismatchedRelation,
+    /// No fault: the probed method should return a fully well-formed reply.
+    None,
 }
 
 /// A hostile-or-buggy private child that behaves correctly for every step of
@@ -560,6 +570,22 @@ impl PageHostClient for MetadataProbeChild {
         true
     }
 
+    fn debugger_bluets_metadata_symbol_location_available(&self) -> bool {
+        true
+    }
+
+    fn debugger_bluets_metadata_contract_location_available(&self) -> bool {
+        true
+    }
+
+    fn debugger_bluets_metadata_symbol_type_available(&self) -> bool {
+        true
+    }
+
+    fn debugger_bluets_metadata_symbol_contract_available(&self) -> bool {
+        true
+    }
+
     fn debugger_bluets_metadata(
         &mut self,
         tab_id: u64,
@@ -628,7 +654,10 @@ impl PageHostClient for MetadataProbeChild {
                     },
                 ],
             },
-            MetadataProbeFault::EmptyDisplay | MetadataProbeFault::DisplayTooLong => {
+            MetadataProbeFault::EmptyDisplay
+            | MetadataProbeFault::DisplayTooLong
+            | MetadataProbeFault::MismatchedRelation
+            | MetadataProbeFault::None => {
                 unreachable!("fault not applicable to the inventory probe")
             }
         })
@@ -1077,6 +1106,208 @@ impl PageHostClient for MetadataProbeChild {
                 },
             },
             _ => unreachable!("fault not applicable to the symbol-display probe"),
+        })
+    }
+
+    fn debugger_bluets_metadata_symbol_location(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+        symbol_id: u32,
+    ) -> io::Result<PageHostReply> {
+        if self.target != MetadataProbeTarget::SymbolLocation {
+            return Self::not_under_test();
+        }
+        let well_formed_location = || page_host::PageHostDebuggerBlueTsMetadataSymbolLocation {
+            symbol_id,
+            source_id: 3,
+            start_byte: 2,
+            end_byte: 8,
+            coordinates: blueice_ipc::debugger::DebuggerSourceCoordinates {
+                start_line: 0,
+                start_column_utf16: 2,
+                end_line: 0,
+                end_column_utf16: 8,
+            },
+        };
+        Ok(match self.fault {
+            MetadataProbeFault::WrongVariant => Self::wrong_variant_reply(),
+            MetadataProbeFault::MismatchedTuple => PageHostReply::DebuggerBlueTsMetadataSymbolLocation {
+                tab_id: tab_id.wrapping_add(1),
+                document_generation,
+                program,
+                metadata,
+                location: well_formed_location(),
+            },
+            MetadataProbeFault::NotWellFormed => PageHostReply::DebuggerBlueTsMetadataSymbolLocation {
+                tab_id,
+                document_generation,
+                program,
+                metadata,
+                location: page_host::PageHostDebuggerBlueTsMetadataSymbolLocation {
+                    symbol_id: symbol_id.wrapping_add(1),
+                    ..well_formed_location()
+                },
+            },
+            _ => PageHostReply::DebuggerBlueTsMetadataSymbolLocation {
+                tab_id,
+                document_generation,
+                program,
+                metadata,
+                location: well_formed_location(),
+            },
+        })
+    }
+
+    fn debugger_bluets_metadata_contract_location(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+        contract_id: u32,
+    ) -> io::Result<PageHostReply> {
+        if self.target != MetadataProbeTarget::ContractLocation {
+            return Self::not_under_test();
+        }
+        let well_formed_location = || page_host::PageHostDebuggerBlueTsMetadataContractLocation {
+            contract_id,
+            source_id: 3,
+            start_byte: 2,
+            end_byte: 8,
+            coordinates: blueice_ipc::debugger::DebuggerSourceCoordinates {
+                start_line: 0,
+                start_column_utf16: 2,
+                end_line: 0,
+                end_column_utf16: 8,
+            },
+        };
+        Ok(match self.fault {
+            MetadataProbeFault::WrongVariant => Self::wrong_variant_reply(),
+            MetadataProbeFault::MismatchedTuple => PageHostReply::DebuggerBlueTsMetadataContractLocation {
+                tab_id: tab_id.wrapping_add(1),
+                document_generation,
+                program,
+                metadata,
+                location: well_formed_location(),
+            },
+            MetadataProbeFault::NotWellFormed => PageHostReply::DebuggerBlueTsMetadataContractLocation {
+                tab_id,
+                document_generation,
+                program,
+                metadata,
+                location: page_host::PageHostDebuggerBlueTsMetadataContractLocation {
+                    start_byte: 8,
+                    end_byte: 2,
+                    ..well_formed_location()
+                },
+            },
+            MetadataProbeFault::MismatchedRelation => {
+                PageHostReply::DebuggerBlueTsMetadataContractLocation {
+                    tab_id,
+                    document_generation,
+                    program,
+                    metadata,
+                    location: page_host::PageHostDebuggerBlueTsMetadataContractLocation {
+                        contract_id: contract_id.wrapping_add(1),
+                        ..well_formed_location()
+                    },
+                }
+            }
+            _ => PageHostReply::DebuggerBlueTsMetadataContractLocation {
+                tab_id,
+                document_generation,
+                program,
+                metadata,
+                location: well_formed_location(),
+            },
+        })
+    }
+
+    fn debugger_bluets_metadata_symbol_type(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+        symbol_id: u32,
+        type_id: u32,
+    ) -> io::Result<PageHostReply> {
+        if self.target != MetadataProbeTarget::SymbolType {
+            return Self::not_under_test();
+        }
+        let well_formed = || page_host::PageHostDebuggerBlueTsMetadataSymbolType { symbol_id, type_id };
+        Ok(match self.fault {
+            MetadataProbeFault::WrongVariant => Self::wrong_variant_reply(),
+            MetadataProbeFault::MismatchedTuple => PageHostReply::DebuggerBlueTsMetadataSymbolType {
+                tab_id: tab_id.wrapping_add(1),
+                document_generation,
+                program,
+                metadata,
+                symbol_type: well_formed(),
+            },
+            MetadataProbeFault::NotWellFormed => PageHostReply::DebuggerBlueTsMetadataSymbolType {
+                tab_id,
+                document_generation,
+                program,
+                metadata,
+                symbol_type: page_host::PageHostDebuggerBlueTsMetadataSymbolType {
+                    symbol_id: symbol_id.wrapping_add(1),
+                    type_id,
+                },
+            },
+            _ => PageHostReply::DebuggerBlueTsMetadataSymbolType {
+                tab_id,
+                document_generation,
+                program,
+                metadata,
+                symbol_type: well_formed(),
+            },
+        })
+    }
+
+    fn debugger_bluets_metadata_symbol_contract(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+        symbol_id: u32,
+        contract_id: u32,
+    ) -> io::Result<PageHostReply> {
+        if self.target != MetadataProbeTarget::SymbolContract {
+            return Self::not_under_test();
+        }
+        let well_formed =
+            || page_host::PageHostDebuggerBlueTsMetadataSymbolContract { symbol_id, contract_id };
+        Ok(match self.fault {
+            MetadataProbeFault::WrongVariant => Self::wrong_variant_reply(),
+            MetadataProbeFault::MismatchedTuple => PageHostReply::DebuggerBlueTsMetadataSymbolContract {
+                tab_id: tab_id.wrapping_add(1),
+                document_generation,
+                program,
+                metadata,
+                symbol_contract: well_formed(),
+            },
+            MetadataProbeFault::NotWellFormed => PageHostReply::DebuggerBlueTsMetadataSymbolContract {
+                tab_id,
+                document_generation,
+                program,
+                metadata,
+                symbol_contract: page_host::PageHostDebuggerBlueTsMetadataSymbolContract {
+                    symbol_id: symbol_id.wrapping_add(1),
+                    contract_id,
+                },
+            },
+            _ => PageHostReply::DebuggerBlueTsMetadataSymbolContract {
+                tab_id,
+                document_generation,
+                program,
+                metadata,
+                symbol_contract: well_formed(),
+            },
         })
     }
 }
@@ -1950,4 +2181,410 @@ fn core_rejects_every_static_metadata_operation_when_its_capability_is_unavailab
         symbol_id: 1,
     };
     assert_no_live_realm!(executor.debugger_static_metadata_symbol_display(tab_id, 1, symbol_target));
+
+    let symbol_location_target = JavaScriptPageDebuggerStaticMetadataSymbolLocationTarget {
+        program_handle: 1,
+        program_generation: 1,
+        metadata_handle: 1,
+        metadata_generation: 1,
+        symbol_id: 1,
+        source_id: 1,
+    };
+    assert_no_live_realm!(
+        executor.debugger_static_metadata_symbol_location(tab_id, 1, symbol_location_target)
+    );
+    let contract_location_target = JavaScriptPageDebuggerStaticMetadataContractLocationTarget {
+        program_handle: 1,
+        program_generation: 1,
+        metadata_handle: 1,
+        metadata_generation: 1,
+        contract_id: 1,
+        source_id: 1,
+    };
+    assert_no_live_realm!(
+        executor.debugger_static_metadata_contract_location(tab_id, 1, contract_location_target)
+    );
+    let symbol_type_target = JavaScriptPageDebuggerStaticMetadataSymbolTypeTarget {
+        program_handle: 1,
+        program_generation: 1,
+        metadata_handle: 1,
+        metadata_generation: 1,
+        symbol_id: 1,
+        type_id: 1,
+    };
+    assert_no_live_realm!(executor.debugger_static_metadata_symbol_type(tab_id, 1, symbol_type_target));
+    let symbol_contract_target = JavaScriptPageDebuggerStaticMetadataSymbolContractTarget {
+        program_handle: 1,
+        program_generation: 1,
+        metadata_handle: 1,
+        metadata_generation: 1,
+        symbol_id: 1,
+        contract_id: 1,
+    };
+    assert_no_live_realm!(executor
+        .debugger_static_metadata_symbol_contract(tab_id, 1, symbol_contract_target));
+}
+
+#[test]
+fn core_resolves_a_live_bluets_symbol_location() {
+    let (mut executor, tab_id, target) =
+        probe_executor(MetadataProbeTarget::SymbolLocation, MetadataProbeFault::None);
+    let location_target = JavaScriptPageDebuggerStaticMetadataSymbolLocationTarget {
+        program_handle: target.program_handle,
+        program_generation: target.program_generation,
+        metadata_handle: target.metadata_handle,
+        metadata_generation: target.metadata_generation,
+        symbol_id: 7,
+        source_id: 3,
+    };
+    assert_eq!(
+        executor.debugger_static_metadata_symbol_location(tab_id, 1, location_target),
+        Ok(JavaScriptPageDebuggerStaticMetadataSymbolLocation {
+            symbol_id: 7,
+            source_id: 3,
+            start_byte: 2,
+            end_byte: 8,
+            coordinates: blueice_ipc::debugger::DebuggerSourceCoordinates {
+                start_line: 0,
+                start_column_utf16: 2,
+                end_line: 0,
+                end_column_utf16: 8,
+            },
+        })
+    );
+}
+
+#[test]
+fn core_rejects_a_symbol_location_reply_of_the_wrong_variant() {
+    let (mut executor, tab_id, target) = probe_executor(
+        MetadataProbeTarget::SymbolLocation,
+        MetadataProbeFault::WrongVariant,
+    );
+    let location_target = JavaScriptPageDebuggerStaticMetadataSymbolLocationTarget {
+        program_handle: target.program_handle,
+        program_generation: target.program_generation,
+        metadata_handle: target.metadata_handle,
+        metadata_generation: target.metadata_generation,
+        symbol_id: 7,
+        source_id: 3,
+    };
+    assert_eq!(
+        executor.debugger_static_metadata_symbol_location(tab_id, 1, location_target),
+        Err(JavaScriptPageDebuggerError::NoLiveRealm)
+    );
+}
+
+#[test]
+fn core_rejects_a_symbol_location_reply_echoing_the_wrong_tab() {
+    let (mut executor, tab_id, target) = probe_executor(
+        MetadataProbeTarget::SymbolLocation,
+        MetadataProbeFault::MismatchedTuple,
+    );
+    let location_target = JavaScriptPageDebuggerStaticMetadataSymbolLocationTarget {
+        program_handle: target.program_handle,
+        program_generation: target.program_generation,
+        metadata_handle: target.metadata_handle,
+        metadata_generation: target.metadata_generation,
+        symbol_id: 7,
+        source_id: 3,
+    };
+    assert_eq!(
+        executor.debugger_static_metadata_symbol_location(tab_id, 1, location_target),
+        Err(JavaScriptPageDebuggerError::NoLiveRealm)
+    );
+}
+
+#[test]
+fn core_rejects_a_symbol_location_reply_echoing_the_wrong_symbol_id() {
+    let (mut executor, tab_id, target) = probe_executor(
+        MetadataProbeTarget::SymbolLocation,
+        MetadataProbeFault::NotWellFormed,
+    );
+    let location_target = JavaScriptPageDebuggerStaticMetadataSymbolLocationTarget {
+        program_handle: target.program_handle,
+        program_generation: target.program_generation,
+        metadata_handle: target.metadata_handle,
+        metadata_generation: target.metadata_generation,
+        symbol_id: 7,
+        source_id: 3,
+    };
+    assert_eq!(
+        executor.debugger_static_metadata_symbol_location(tab_id, 1, location_target),
+        Err(JavaScriptPageDebuggerError::NoLiveRealm)
+    );
+}
+
+#[test]
+fn core_resolves_a_live_bluets_contract_location() {
+    let (mut executor, tab_id, target) = probe_executor(
+        MetadataProbeTarget::ContractLocation,
+        MetadataProbeFault::None,
+    );
+    let location_target = JavaScriptPageDebuggerStaticMetadataContractLocationTarget {
+        program_handle: target.program_handle,
+        program_generation: target.program_generation,
+        metadata_handle: target.metadata_handle,
+        metadata_generation: target.metadata_generation,
+        contract_id: 11,
+        source_id: 3,
+    };
+    assert_eq!(
+        executor.debugger_static_metadata_contract_location(tab_id, 1, location_target),
+        Ok(JavaScriptPageDebuggerStaticMetadataContractLocation {
+            contract_id: 11,
+            source_id: 3,
+            start_byte: 2,
+            end_byte: 8,
+            coordinates: blueice_ipc::debugger::DebuggerSourceCoordinates {
+                start_line: 0,
+                start_column_utf16: 2,
+                end_line: 0,
+                end_column_utf16: 8,
+            },
+        })
+    );
+}
+
+#[test]
+fn core_rejects_a_contract_location_reply_of_the_wrong_variant() {
+    let (mut executor, tab_id, target) = probe_executor(
+        MetadataProbeTarget::ContractLocation,
+        MetadataProbeFault::WrongVariant,
+    );
+    let location_target = JavaScriptPageDebuggerStaticMetadataContractLocationTarget {
+        program_handle: target.program_handle,
+        program_generation: target.program_generation,
+        metadata_handle: target.metadata_handle,
+        metadata_generation: target.metadata_generation,
+        contract_id: 11,
+        source_id: 3,
+    };
+    assert_eq!(
+        executor.debugger_static_metadata_contract_location(tab_id, 1, location_target),
+        Err(JavaScriptPageDebuggerError::NoLiveRealm)
+    );
+}
+
+#[test]
+fn core_rejects_a_contract_location_reply_echoing_the_wrong_tab() {
+    let (mut executor, tab_id, target) = probe_executor(
+        MetadataProbeTarget::ContractLocation,
+        MetadataProbeFault::MismatchedTuple,
+    );
+    let location_target = JavaScriptPageDebuggerStaticMetadataContractLocationTarget {
+        program_handle: target.program_handle,
+        program_generation: target.program_generation,
+        metadata_handle: target.metadata_handle,
+        metadata_generation: target.metadata_generation,
+        contract_id: 11,
+        source_id: 3,
+    };
+    assert_eq!(
+        executor.debugger_static_metadata_contract_location(tab_id, 1, location_target),
+        Err(JavaScriptPageDebuggerError::NoLiveRealm)
+    );
+}
+
+#[test]
+fn core_rejects_a_contract_location_reply_with_an_inverted_byte_range() {
+    let (mut executor, tab_id, target) = probe_executor(
+        MetadataProbeTarget::ContractLocation,
+        MetadataProbeFault::NotWellFormed,
+    );
+    let location_target = JavaScriptPageDebuggerStaticMetadataContractLocationTarget {
+        program_handle: target.program_handle,
+        program_generation: target.program_generation,
+        metadata_handle: target.metadata_handle,
+        metadata_generation: target.metadata_generation,
+        contract_id: 11,
+        source_id: 3,
+    };
+    assert_eq!(
+        executor.debugger_static_metadata_contract_location(tab_id, 1, location_target),
+        Err(JavaScriptPageDebuggerError::NoLiveRealm)
+    );
+}
+
+#[test]
+fn core_rejects_a_well_formed_contract_location_reply_naming_the_wrong_contract() {
+    let (mut executor, tab_id, target) = probe_executor(
+        MetadataProbeTarget::ContractLocation,
+        MetadataProbeFault::MismatchedRelation,
+    );
+    let location_target = JavaScriptPageDebuggerStaticMetadataContractLocationTarget {
+        program_handle: target.program_handle,
+        program_generation: target.program_generation,
+        metadata_handle: target.metadata_handle,
+        metadata_generation: target.metadata_generation,
+        contract_id: 11,
+        source_id: 3,
+    };
+    assert_eq!(
+        executor.debugger_static_metadata_contract_location(tab_id, 1, location_target),
+        Err(JavaScriptPageDebuggerError::UnknownProgram)
+    );
+}
+
+#[test]
+fn core_resolves_a_live_bluets_symbol_type() {
+    let (mut executor, tab_id, target) =
+        probe_executor(MetadataProbeTarget::SymbolType, MetadataProbeFault::None);
+    let type_target = JavaScriptPageDebuggerStaticMetadataSymbolTypeTarget {
+        program_handle: target.program_handle,
+        program_generation: target.program_generation,
+        metadata_handle: target.metadata_handle,
+        metadata_generation: target.metadata_generation,
+        symbol_id: 7,
+        type_id: 13,
+    };
+    assert_eq!(
+        executor.debugger_static_metadata_symbol_type(tab_id, 1, type_target),
+        Ok(JavaScriptPageDebuggerStaticMetadataSymbolType {
+            symbol_id: 7,
+            type_id: 13,
+        })
+    );
+}
+
+#[test]
+fn core_rejects_a_symbol_type_reply_of_the_wrong_variant() {
+    let (mut executor, tab_id, target) = probe_executor(
+        MetadataProbeTarget::SymbolType,
+        MetadataProbeFault::WrongVariant,
+    );
+    let type_target = JavaScriptPageDebuggerStaticMetadataSymbolTypeTarget {
+        program_handle: target.program_handle,
+        program_generation: target.program_generation,
+        metadata_handle: target.metadata_handle,
+        metadata_generation: target.metadata_generation,
+        symbol_id: 7,
+        type_id: 13,
+    };
+    assert_eq!(
+        executor.debugger_static_metadata_symbol_type(tab_id, 1, type_target),
+        Err(JavaScriptPageDebuggerError::UnknownProgram)
+    );
+}
+
+#[test]
+fn core_rejects_a_symbol_type_reply_echoing_the_wrong_tab() {
+    let (mut executor, tab_id, target) = probe_executor(
+        MetadataProbeTarget::SymbolType,
+        MetadataProbeFault::MismatchedTuple,
+    );
+    let type_target = JavaScriptPageDebuggerStaticMetadataSymbolTypeTarget {
+        program_handle: target.program_handle,
+        program_generation: target.program_generation,
+        metadata_handle: target.metadata_handle,
+        metadata_generation: target.metadata_generation,
+        symbol_id: 7,
+        type_id: 13,
+    };
+    assert_eq!(
+        executor.debugger_static_metadata_symbol_type(tab_id, 1, type_target),
+        Err(JavaScriptPageDebuggerError::NoLiveRealm)
+    );
+}
+
+#[test]
+fn core_rejects_a_symbol_type_reply_echoing_the_wrong_type_id() {
+    let (mut executor, tab_id, target) = probe_executor(
+        MetadataProbeTarget::SymbolType,
+        MetadataProbeFault::NotWellFormed,
+    );
+    let type_target = JavaScriptPageDebuggerStaticMetadataSymbolTypeTarget {
+        program_handle: target.program_handle,
+        program_generation: target.program_generation,
+        metadata_handle: target.metadata_handle,
+        metadata_generation: target.metadata_generation,
+        symbol_id: 7,
+        type_id: 13,
+    };
+    assert_eq!(
+        executor.debugger_static_metadata_symbol_type(tab_id, 1, type_target),
+        Err(JavaScriptPageDebuggerError::NoLiveRealm)
+    );
+}
+
+#[test]
+fn core_resolves_a_live_bluets_symbol_contract() {
+    let (mut executor, tab_id, target) = probe_executor(
+        MetadataProbeTarget::SymbolContract,
+        MetadataProbeFault::None,
+    );
+    let contract_target = JavaScriptPageDebuggerStaticMetadataSymbolContractTarget {
+        program_handle: target.program_handle,
+        program_generation: target.program_generation,
+        metadata_handle: target.metadata_handle,
+        metadata_generation: target.metadata_generation,
+        symbol_id: 7,
+        contract_id: 11,
+    };
+    assert_eq!(
+        executor.debugger_static_metadata_symbol_contract(tab_id, 1, contract_target),
+        Ok(JavaScriptPageDebuggerStaticMetadataSymbolContract {
+            symbol_id: 7,
+            contract_id: 11,
+        })
+    );
+}
+
+#[test]
+fn core_rejects_a_symbol_contract_reply_of_the_wrong_variant() {
+    let (mut executor, tab_id, target) = probe_executor(
+        MetadataProbeTarget::SymbolContract,
+        MetadataProbeFault::WrongVariant,
+    );
+    let contract_target = JavaScriptPageDebuggerStaticMetadataSymbolContractTarget {
+        program_handle: target.program_handle,
+        program_generation: target.program_generation,
+        metadata_handle: target.metadata_handle,
+        metadata_generation: target.metadata_generation,
+        symbol_id: 7,
+        contract_id: 11,
+    };
+    assert_eq!(
+        executor.debugger_static_metadata_symbol_contract(tab_id, 1, contract_target),
+        Err(JavaScriptPageDebuggerError::UnknownProgram)
+    );
+}
+
+#[test]
+fn core_rejects_a_symbol_contract_reply_echoing_the_wrong_tab() {
+    let (mut executor, tab_id, target) = probe_executor(
+        MetadataProbeTarget::SymbolContract,
+        MetadataProbeFault::MismatchedTuple,
+    );
+    let contract_target = JavaScriptPageDebuggerStaticMetadataSymbolContractTarget {
+        program_handle: target.program_handle,
+        program_generation: target.program_generation,
+        metadata_handle: target.metadata_handle,
+        metadata_generation: target.metadata_generation,
+        symbol_id: 7,
+        contract_id: 11,
+    };
+    assert_eq!(
+        executor.debugger_static_metadata_symbol_contract(tab_id, 1, contract_target),
+        Err(JavaScriptPageDebuggerError::NoLiveRealm)
+    );
+}
+
+#[test]
+fn core_rejects_a_symbol_contract_reply_echoing_the_wrong_contract_id() {
+    let (mut executor, tab_id, target) = probe_executor(
+        MetadataProbeTarget::SymbolContract,
+        MetadataProbeFault::NotWellFormed,
+    );
+    let contract_target = JavaScriptPageDebuggerStaticMetadataSymbolContractTarget {
+        program_handle: target.program_handle,
+        program_generation: target.program_generation,
+        metadata_handle: target.metadata_handle,
+        metadata_generation: target.metadata_generation,
+        symbol_id: 7,
+        contract_id: 11,
+    };
+    assert_eq!(
+        executor.debugger_static_metadata_symbol_contract(tab_id, 1, contract_target),
+        Err(JavaScriptPageDebuggerError::NoLiveRealm)
+    );
 }
