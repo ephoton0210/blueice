@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use super::normalized_exponential;
+use super::*;
 
 #[test]
 fn exponential_formatting_normalizes_sign_and_optional_precision() {
@@ -10,4 +10,14 @@ fn exponential_formatting_normalizes_sign_and_optional_precision() {
     assert_eq!(normalized_exponential(1.25, Some(2)), "1.25e+0");
     assert_eq!(normalized_exponential(0.00125, None), "1.25e-3");
     assert_eq!(normalized_exponential(0.0, None), "0e+0");
+}
+
+#[test]
+fn a_number_that_cannot_be_formatted_is_a_range_error() {
+    assert_eq!(
+        number_format_error(blueice_ecma402::NumberFormatError::FormattingFailed),
+        RuntimeError::RangeError(
+            blueice_ecma402::NumberFormatError::FormattingFailed.to_string()
+        )
+    );
 }

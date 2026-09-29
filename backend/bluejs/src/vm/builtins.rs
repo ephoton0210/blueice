@@ -107,9 +107,16 @@ fn number_radix_string(number: f64, radix: u32) -> String {
     let lower = &numerator + previous;
     let upper = &numerator + next;
     let inclusive_boundary = magnitude.to_bits() & 1 == 0;
-    let mut power = BigUint::one();
+    // The value is not an integer, so no digit-free candidate rounds back to
+    // it: the search starts with one fractional digit.
+    let mut power = BigUint::from(radix);
 
-    for fraction_digits in 0..=DENOMINATOR_BITS + 1 {
+    let mut fraction_digits = 1;
+    loop {
+        debug_assert!(
+            fraction_digits <= DENOMINATOR_BITS + 1,
+            "every finite Number has a shortest radix representation"
+        );
         let scaled = &numerator * &power;
         let mut candidate = &scaled >> DENOMINATOR_BITS;
         let remainder = scaled - (&candidate << DENOMINATOR_BITS);
@@ -129,9 +136,7 @@ fn number_radix_string(number: f64, radix: u32) -> String {
         let below_upper = upper_order.is_lt() || (inclusive_boundary && upper_order.is_eq());
         if above_lower && below_upper {
             let digits = candidate.to_str_radix(radix);
-            let output = if fraction_digits == 0 {
-                digits
-            } else if digits.len() <= fraction_digits {
+            let output = if digits.len() <= fraction_digits {
                 format!("0.{}{}", "0".repeat(fraction_digits - digits.len()), digits)
             } else {
                 let split_at = digits.len() - fraction_digits;
@@ -144,9 +149,8 @@ fn number_radix_string(number: f64, radix: u32) -> String {
             };
         }
         power *= radix;
+        fraction_digits += 1;
     }
-
-    unreachable!("every finite Number has a shortest radix representation")
 }
 
 /// Validate the non-mutating part of ValidateAndApplyPropertyDescriptor.
@@ -256,9 +260,9 @@ fn data_view_number(bytes: &[u8], signed: bool, floating: bool, little_endian: b
             (2, false) => f16_bits_to_f64(u16::from_be_bytes(bytes.try_into().unwrap())),
             (4, true) => f32::from_le_bytes(bytes.try_into().unwrap()) as f64,
             (4, false) => f32::from_be_bytes(bytes.try_into().unwrap()) as f64,
-            (8, true) => f64::from_le_bytes(bytes.try_into().unwrap()),
-            (8, false) => f64::from_be_bytes(bytes.try_into().unwrap()),
-            _ => unreachable!("DataView floating-point access is 16, 32, or 64 bits"),
+            // The remaining width is 64 bits.
+            (_, true) => f64::from_le_bytes(bytes.try_into().unwrap()),
+            (_, false) => f64::from_be_bytes(bytes.try_into().unwrap()),
         };
     }
     match (bytes.len(), signed, little_endian) {
@@ -268,11 +272,11 @@ fn data_view_number(bytes: &[u8], signed: bool, floating: bool, little_endian: b
         (2, false, true) => u16::from_le_bytes(bytes.try_into().unwrap()) as f64,
         (2, true, false) => i16::from_be_bytes(bytes.try_into().unwrap()) as f64,
         (2, false, false) => u16::from_be_bytes(bytes.try_into().unwrap()) as f64,
-        (4, true, true) => i32::from_le_bytes(bytes.try_into().unwrap()) as f64,
-        (4, false, true) => u32::from_le_bytes(bytes.try_into().unwrap()) as f64,
-        (4, true, false) => i32::from_be_bytes(bytes.try_into().unwrap()) as f64,
-        (4, false, false) => u32::from_be_bytes(bytes.try_into().unwrap()) as f64,
-        _ => unreachable!("DataView only installs fixed integer widths"),
+        // The remaining widths are 32 bits.
+        (_, true, true) => i32::from_le_bytes(bytes.try_into().unwrap()) as f64,
+        (_, false, true) => u32::from_le_bytes(bytes.try_into().unwrap()) as f64,
+        (_, true, false) => i32::from_be_bytes(bytes.try_into().unwrap()) as f64,
+        (_, false, false) => u32::from_be_bytes(bytes.try_into().unwrap()) as f64,
     }
 }
 
@@ -300,6 +304,15 @@ fn data_view_value(
     Value::Number(data_view_number(bytes, signed, floating, little_endian))
 }
 
+/// The number a BigInt value holds, if it is one.
+fn bigint_of(value: &Value) -> Option<&BigInt> {
+    if let Value::BigInt(value) = value {
+        Some(value)
+    } else {
+        None
+    }
+}
+
 fn data_view_bytes(
     value: &Value,
     width: usize,
@@ -309,9 +322,7 @@ fn data_view_bytes(
     bigint: bool,
 ) -> Vec<u8> {
     if bigint {
-        let Value::BigInt(value) = value else {
-            unreachable!("BigInt DataView writes receive a BigInt value");
-        };
+        let value = bigint_of(value).expect("BigInt DataView writes receive a BigInt value");
         let source = value.to_signed_bytes_le();
         let fill = if value.sign() == num_bigint::Sign::Minus {
             0xff
@@ -327,19 +338,16 @@ fn data_view_bytes(
             bytes.into_iter().rev().collect()
         };
     }
-    let Value::Number(value) = value else {
-        unreachable!("numeric DataView writes receive a Number value");
-    };
-    let value = *value;
+    let value = primitive::number(value).expect("numeric DataView writes receive a Number value");
     if floating {
         return match (width, little_endian) {
             (2, true) => f64_to_f16_bits(value).to_le_bytes().to_vec(),
             (2, false) => f64_to_f16_bits(value).to_be_bytes().to_vec(),
             (4, true) => (value as f32).to_le_bytes().to_vec(),
             (4, false) => (value as f32).to_be_bytes().to_vec(),
-            (8, true) => value.to_le_bytes().to_vec(),
-            (8, false) => value.to_be_bytes().to_vec(),
-            _ => unreachable!("DataView floating-point access is 16, 32, or 64 bits"),
+            // The remaining width is 64 bits.
+            (_, true) => value.to_le_bytes().to_vec(),
+            (_, false) => value.to_be_bytes().to_vec(),
         };
     }
     let integer = (if value.is_finite() {
@@ -354,11 +362,11 @@ fn data_view_bytes(
         (2, false, true) => (integer as u16).to_le_bytes().to_vec(),
         (2, true, false) => (integer as i16).to_be_bytes().to_vec(),
         (2, false, false) => (integer as u16).to_be_bytes().to_vec(),
-        (4, true, true) => (integer as i32).to_le_bytes().to_vec(),
-        (4, false, true) => (integer as u32).to_le_bytes().to_vec(),
-        (4, true, false) => (integer as i32).to_be_bytes().to_vec(),
-        (4, false, false) => (integer as u32).to_be_bytes().to_vec(),
-        _ => unreachable!("DataView only installs fixed integer widths"),
+        // The remaining widths are 32 bits.
+        (_, true, true) => (integer as i32).to_le_bytes().to_vec(),
+        (_, false, true) => (integer as u32).to_le_bytes().to_vec(),
+        (_, true, false) => (integer as i32).to_be_bytes().to_vec(),
+        (_, false, false) => (integer as u32).to_be_bytes().to_vec(),
     }
 }
 
@@ -466,3 +474,17 @@ fn strip_dynamic_function_html_comments(source: &str) -> String {
 #[cfg(test)]
 #[path = "builtins/tests.rs"]
 mod tests;
+
+#[cfg(test)]
+mod bigint_of_tests {
+    use super::*;
+
+    #[test]
+    fn only_a_bigint_value_holds_a_bigint() {
+        assert_eq!(
+            bigint_of(&Value::BigInt(BigInt::from(7))),
+            Some(&BigInt::from(7))
+        );
+        assert_eq!(bigint_of(&Value::Number(7.0)), None);
+    }
+}

@@ -154,10 +154,10 @@ fn validate_private_for_init(init: &ForInit, names: &HashSet<String>) -> Result<
 fn validate_private_for_head(head: &ForHead, names: &HashSet<String>) -> Result<(), CompileError> {
     match head {
         ForHead::Decl(_, pattern) => validate_private_pattern(pattern, names),
-        ForHead::AnnexBVarInit(pattern, initializer) => {
-            validate_private_pattern(pattern, names)?;
-            validate_private_expression(initializer, names)
-        }
+        // An Annex B initializer belongs to a plain identifier binding, which
+        // has nothing to validate.
+        ForHead::AnnexBVarInit(pattern, initializer) => validate_private_pattern(pattern, names)
+            .and(validate_private_expression(initializer, names)),
         ForHead::Assignment(pattern) => validate_private_assignment_pattern(pattern, names),
         ForHead::Expr(expression) => validate_private_expression(expression, names),
     }
@@ -426,16 +426,15 @@ fn validate_private_expression(expr: &Expr, names: &HashSet<String>) -> Result<(
             if *computed {
                 validate_private_expression(property, names)?;
             }
-            if !*computed {
-                if let Expr::Identifier(name) = property.as_ref() {
-                    if let Some(name) = name.strip_prefix('#') {
-                        if matches!(object.as_ref(), Expr::Super) {
-                            return Err(CompileError::InvalidSyntax(
-                                "super cannot access a private element",
-                            ));
-                        }
-                        validate_private_name(name, names)?;
+            // A non-computed property is always an identifier.
+            if let (false, Expr::Identifier(name)) = (*computed, property.as_ref()) {
+                if let Some(name) = name.strip_prefix('#') {
+                    if matches!(object.as_ref(), Expr::Super) {
+                        return Err(CompileError::InvalidSyntax(
+                            "super cannot access a private element",
+                        ));
                     }
+                    validate_private_name(name, names)?;
                 }
             }
             Ok(())
