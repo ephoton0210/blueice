@@ -263,6 +263,8 @@ mod function_body;
 mod imports_exports;
 #[path = "declarations/nested_functions.rs"]
 mod nested_functions;
+#[path = "declarations/patterns.rs"]
+mod patterns;
 #[path = "declarations/source_edits.rs"]
 mod source_edits;
 #[path = "declarations/typed_declarations.rs"]

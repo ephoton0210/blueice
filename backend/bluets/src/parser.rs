@@ -297,6 +297,32 @@ pub struct VariableDeclaration {
     pub span: SourceSpan,
 }
 
+/// A destructuring pattern in the supported subset: shorthand, renamed and
+/// defaulted object properties, and named, defaulted or skipped array
+/// elements. Nested patterns, rest elements and computed keys are outside it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BindingPattern {
+    Object(Vec<ObjectBinding>),
+    Array(Vec<Option<ElementBinding>>),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ObjectBinding {
+    /// The property read from the value.
+    pub key: String,
+    /// The local name it is bound to.
+    pub name: String,
+    pub default: Option<Vec<Token>>,
+    pub span: SourceSpan,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ElementBinding {
+    pub name: String,
+    pub default: Option<Vec<Token>>,
+    pub span: SourceSpan,
+}
+
 /// The runtime binding form retained for declaration output.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum VariableKind {
@@ -347,7 +373,11 @@ pub struct FunctionDeclaration {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Parameter {
+    /// The parameter's name, or for a destructured parameter the source text
+    /// of its pattern (which is also how a declaration prints it).
     pub name: String,
+    /// The destructuring pattern, for a parameter written `{ a, b }` or `[a, b]`.
+    pub pattern: Option<BindingPattern>,
     pub rest: bool,
     pub optional: bool,
     pub annotation: Option<Type>,

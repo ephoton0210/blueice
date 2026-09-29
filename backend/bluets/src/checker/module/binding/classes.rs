@@ -771,6 +771,23 @@ impl ModuleChecker<'_> {
     fn class_body_parameter_scope(&self, parameters: &[Parameter]) -> BTreeMap<String, Type> {
         let mut scope = self.values.clone();
         for parameter in parameters {
+            if let Some(pattern) = &parameter.pattern {
+                // A destructured class parameter binds its names untyped.
+                let names: Vec<&String> = match pattern {
+                    BindingPattern::Object(bindings) => {
+                        bindings.iter().map(|binding| &binding.name).collect()
+                    }
+                    BindingPattern::Array(elements) => elements
+                        .iter()
+                        .flatten()
+                        .map(|element| &element.name)
+                        .collect(),
+                };
+                for name in names {
+                    scope.insert(name.clone(), Type::Unknown);
+                }
+                continue;
+            }
             let value = parameter
                 .annotation
                 .clone()

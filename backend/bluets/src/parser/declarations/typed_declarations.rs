@@ -255,7 +255,36 @@ impl Parser {
         while !self.at_eof() && !self.consume(")") {
             let parameter_start = self.current().start;
             let rest = self.consume("...");
-            let parameter_name = self.require_identifier("expected a parameter name");
+            let mut pattern = None;
+            let parameter_name = if !rest && (self.peek("{") || self.peek("[")) {
+                let open = self.index;
+                match patterns::parse_binding_pattern(&self.tokens, open, &self.id) {
+                    Some((parsed, close)) => {
+                        let text = self.source[self.tokens[open].start..self.tokens[close].end]
+                            .to_string();
+                        self.index = close + 1;
+                        pattern = Some(parsed);
+                        text
+                    }
+                    None => {
+                        self.unsupported(
+                            self.current().span(&self.id),
+                            "this destructuring pattern is not supported yet",
+                        );
+                        // Skip the pattern so parsing can continue.
+                        let end = find_balanced_delimiter(
+                            &self.tokens,
+                            open,
+                            self.tokens.len() - 1,
+                            &[",", ")", ":", "=", "?"],
+                        );
+                        self.index = end.max(open + 1);
+                        "<pattern>".to_string()
+                    }
+                }
+            } else {
+                self.require_identifier("expected a parameter name")
+            };
             let optional_start = self.current().start;
             let mut optional = self.consume("?");
             if optional {
@@ -301,6 +330,7 @@ impl Parser {
             let parameter_end = self.previous().end;
             parameters.push(Parameter {
                 name: parameter_name,
+                pattern,
                 rest,
                 optional,
                 annotation,

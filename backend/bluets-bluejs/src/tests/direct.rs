@@ -368,6 +368,19 @@ fn direct_route_refuses_arrow_functions_instead_of_lowering_their_tokens() {
 }
 
 #[test]
+fn direct_route_refuses_destructured_parameters_instead_of_lowering_a_name() {
+    // A destructured parameter has no name to lower; it must be refused, not
+    // lowered as a parameter called by its pattern text.
+    let source = "function f({ a }: { a: number }): number { return a; } f({ a: 1 });";
+    let result = compile_direct_script(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+        CompilerOptions::default(),
+    );
+    assert!(result.is_err(), "{:?}", result.map(|_| ()));
+}
+
+#[test]
 fn rejects_object_methods_without_reparsing_emitted_javascript() {
     let result = compile_direct_script(
         ENTRY,

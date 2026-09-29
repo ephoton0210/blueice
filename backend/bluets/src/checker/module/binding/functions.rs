@@ -87,16 +87,25 @@ impl<'a> ModuleChecker<'a> {
                     );
                 }
             }
-            if let Some(annotation) = &parameter.annotation {
-                self.check_type(annotation, &parameter.span);
-                let parameter_type = if parameter.optional && parameter.default.is_none() {
-                    Type::Union(vec![annotation.clone(), Type::Undefined])
-                } else {
-                    annotation.clone()
-                };
-                scope.insert(parameter.name.clone(), parameter_type);
-            } else {
-                scope.insert(parameter.name.clone(), Type::Unknown);
+            let parameter_type = match &parameter.annotation {
+                Some(annotation) => {
+                    self.check_type(annotation, &parameter.span);
+                    if parameter.optional && parameter.default.is_none() {
+                        Type::Union(vec![annotation.clone(), Type::Undefined])
+                    } else {
+                        annotation.clone()
+                    }
+                }
+                None => Type::Unknown,
+            };
+            match &parameter.pattern {
+                // A destructured parameter binds the names in its pattern.
+                Some(pattern) => {
+                    self.bind_pattern(pattern, &parameter_type, &parameter.span, &mut scope)
+                }
+                None => {
+                    scope.insert(parameter.name.clone(), parameter_type);
+                }
             }
         }
         for local in &function.locals {
@@ -164,6 +173,138 @@ impl<'a> ModuleChecker<'a> {
         self.type_parameters = previous_parameters;
         self.allowed_tuple_spread_parameters = previous_spreads;
         self.async_context = previous_async;
+    }
+
+    /// Binds the names of a destructured parameter, typing each from the value
+    /// type: an object pattern reads the property of the same key (an absent
+    /// one is an error, an optional one may be `undefined` unless defaulted),
+    /// and an array pattern reads the tuple element at its position.
+    fn bind_pattern(
+        &mut self,
+        pattern: &BindingPattern,
+        value: &Type,
+        span: &SourceSpan,
+        scope: &mut BTreeMap<String, Type>,
+    ) {
+        let mut resolved = value.clone();
+        let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
+        let mut visited = HashSet::new();
+        while let Some(expanded) =
+            instantiate_named(&resolved, &self.types, &mut visited, &mut budget, "pattern")
+        {
+            resolved = expanded;
+        }
+        match pattern {
+            BindingPattern::Object(bindings) => {
+                for binding in bindings {
+                    let mut lookup_budget = TypeExpansionBudget::new(self.max_type_expansions);
+                    let found = property_type(
+                        &resolved,
+                        &binding.key,
+                        &self.types,
+                        &mut HashSet::new(),
+                        &mut lookup_budget,
+                    );
+                    let bound = match found {
+                        PropertyType::Found { value, .. } => value,
+                        PropertyType::Missing if matches!(resolved, Type::Record(_)) => {
+                            self.type_error(
+                                &binding.span,
+                                format!(
+                                    "property `{}` does not exist on type `{}`",
+                                    binding.key,
+                                    type_label(value)
+                                ),
+                                DiagnosticCode::TypeMismatch,
+                            );
+                            Type::Unknown
+                        }
+                        _ => Type::Unknown,
+                    };
+                    let bound =
+                        self.defaulted_binding_type(bound, &binding.default, &binding.span, scope);
+                    scope.insert(binding.name.clone(), bound);
+                }
+            }
+            BindingPattern::Array(elements) => {
+                for (index, element) in elements.iter().enumerate() {
+                    let Some(element) = element else {
+                        continue;
+                    };
+                    let bound = match &resolved {
+                        Type::Tuple(items) => match items.get(index) {
+                            Some(item) if item.rest => match &item.annotation {
+                                Type::Array(inner) => (**inner).clone(),
+                                _ => Type::Unknown,
+                            },
+                            Some(item) if item.optional => {
+                                Type::Union(vec![item.annotation.clone(), Type::Undefined])
+                            }
+                            Some(item) => item.annotation.clone(),
+                            None => {
+                                self.type_error(
+                                    &element.span,
+                                    format!(
+                                        "tuple type `{}` has no element at index {index}",
+                                        type_label(value)
+                                    ),
+                                    DiagnosticCode::TypeMismatch,
+                                );
+                                Type::Unknown
+                            }
+                        },
+                        Type::Array(inner) => (**inner).clone(),
+                        _ => Type::Unknown,
+                    };
+                    let bound =
+                        self.defaulted_binding_type(bound, &element.default, &element.span, scope);
+                    scope.insert(element.name.clone(), bound);
+                }
+            }
+        }
+        let _ = span;
+    }
+
+    /// The type a binding has once its default is applied: the default must fit
+    /// the value type, and `undefined` is no longer possible.
+    fn defaulted_binding_type(
+        &mut self,
+        bound: Type,
+        default: &Option<Vec<Token>>,
+        span: &SourceSpan,
+        scope: &BTreeMap<String, Type>,
+    ) -> Type {
+        let Some(default) = default else {
+            return bound;
+        };
+        let without_undefined = match &bound {
+            Type::Union(options) => {
+                let kept: Vec<Type> = options
+                    .iter()
+                    .filter(|option| !matches!(option, Type::Undefined))
+                    .cloned()
+                    .collect();
+                match kept.len() {
+                    0 => bound.clone(),
+                    1 => kept[0].clone(),
+                    _ => Type::Union(kept),
+                }
+            }
+            _ => bound.clone(),
+        };
+        let actual = self.infer_expression(default, scope);
+        if !self.is_assignable_bounded(&actual, &without_undefined, span) {
+            self.type_error(
+                span,
+                format!(
+                    "default initializer has type `{}`, which is not assignable to `{}`",
+                    type_label(&actual),
+                    type_label(&without_undefined)
+                ),
+                DiagnosticCode::TypeMismatch,
+            );
+        }
+        without_undefined
     }
 
     /// Whether an explicit return annotation permits the JavaScript

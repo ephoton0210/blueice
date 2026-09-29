@@ -194,6 +194,7 @@ impl<'a> ModuleChecker<'a> {
         let span = SourceSpan::new("<builtin>", 0, 0);
         let parameter = |name: &str, annotation: Type| Parameter {
             name: name.to_string(),
+            pattern: None,
             rest: false,
             optional: false,
             annotation: Some(annotation),

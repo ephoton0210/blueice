@@ -41,6 +41,15 @@ struct ExpectedDiagnostic {
 
 const CASES: &[OracleCase] = &[
     OracleCase {
+        name: "destructured-parameter-runtime",
+        modules: &[(
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/destructured-parameter-runtime/main.ts"),
+        )],
+        expected_stdout: Some("25\nnone\nL\ns1\nk:2:2\n6\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
         name: "async-nested-runtime",
         modules: &[(
             "memory:///main.ts",
@@ -4253,6 +4262,46 @@ fn pinned_async_nested_functions_match_typescript_without_emit() {
         (
             "value-error",
             include_str!("fixtures/typescript_oracle/async-nested-value-error/main.ts"),
+            &[(5, "TS2322")],
+        ),
+    ];
+    assert_pinned_no_emit_cases(&tsc, &cases);
+}
+
+#[test]
+#[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
+fn pinned_destructured_parameters_match_typescript_without_emit() {
+    let tsc = pinned_bluetsc_oracle();
+    assert_pinned_version(&tsc);
+    let cases: [NoEmitCase; 6] = [
+        (
+            "valid",
+            include_str!("fixtures/typescript_oracle/destructured-parameter-valid/main.ts"),
+            &[],
+        ),
+        (
+            "use-error",
+            include_str!("fixtures/typescript_oracle/destructured-parameter-use-error/main.ts"),
+            &[(5, "TS2322")],
+        ),
+        (
+            "missing-error",
+            include_str!("fixtures/typescript_oracle/destructured-parameter-missing-error/main.ts"),
+            &[(5, "TS2339")],
+        ),
+        (
+            "call-error",
+            include_str!("fixtures/typescript_oracle/destructured-parameter-call-error/main.ts"),
+            &[(5, "TS2322")],
+        ),
+        (
+            "tuple-error",
+            include_str!("fixtures/typescript_oracle/destructured-parameter-tuple-error/main.ts"),
+            &[(4, "TS2322")],
+        ),
+        (
+            "named-error",
+            include_str!("fixtures/typescript_oracle/destructured-parameter-named-error/main.ts"),
             &[(5, "TS2322")],
         ),
     ];

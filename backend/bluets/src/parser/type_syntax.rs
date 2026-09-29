@@ -26,6 +26,7 @@ impl Parser {
             let end = self.previous().end;
             parameters.push(Parameter {
                 name,
+                pattern: None,
                 rest: false,
                 optional,
                 annotation: Some(annotation),
@@ -257,6 +258,7 @@ impl Parser {
                 let end = self.previous().end;
                 parameters.push(Parameter {
                     name,
+                    pattern: None,
                     rest: false,
                     optional,
                     annotation: Some(annotation),

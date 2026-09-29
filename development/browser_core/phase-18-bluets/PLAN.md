@@ -2498,6 +2498,37 @@ in their own context, so `[async () => 1, await f()]` in a sync function is now
 refused. An async form the parser still leaves as tokens (an async generator, an
 async arrow with a destructured parameter) keeps the old skip.
 
+### J.3.7.7.2 Destructured parameters
+
+`Parameter` gains an optional `pattern` (`BindingPattern`: a flat object pattern
+of `key`, bound `name` and default, or a flat array pattern of named, defaulted
+or skipped elements). A destructured parameter's `name` is the source text of its
+pattern, so the existing declaration printer, which writes `name: Type`, produces
+`{ a, b }: Props` with no special case, and the scope, which would otherwise gain
+a bogus entry, binds the pattern's names instead.
+
+`parse_binding_pattern` parses the supported subset from tokens and does not
+touch parser state, so the pre-scan that decides whether an arrow, function
+expression or method can be structured (`simple_parameter_list`) and
+`parse_parameters` share it. A pattern outside the subset (nested, rest,
+computed or string key) makes the pre-scan refuse to structure the form, which
+leaves it to the erasure audit; in a named function declaration, where
+`parse_parameters` runs directly, it is an unsupported-syntax error.
+
+The checker types the bindings from the annotation, expanding aliases. An object
+pattern reads each key through the ordinary property lookup, so an optional
+property is `T | undefined` unless the binding has a default; a key the record
+does not have is an error. An array pattern reads the tuple element at its
+index (an optional one adds `undefined`, a rest element gives its array's element
+type, an index past the end is an error) or an array's element type. A default
+must be assignable to the value type and removes `undefined`. Without an
+annotation the names are `unknown`. Class methods and constructors bind pattern
+names as `unknown`, since their scope is built without error reporting.
+
+The direct bridge lowers parameters by name and has no pattern support, so it
+refuses a destructured parameter rather than lowering the pattern text as a
+name; a bridge test pins this.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process

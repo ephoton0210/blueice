@@ -4340,10 +4340,6 @@ fn syntax_errors_carry_a_precise_expectation() {
         ("type = number;", "expected a type alias name"),
         ("type A<T> = ;", "expected a type"),
         ("type A = ", "expected a type"),
-        (
-            "function f({ a }: { a: number }): number { return a; }",
-            "expected a parameter name",
-        ),
         ("function () {}", "expected a function name"),
         ("function f(: number) {}", "expected a parameter name"),
         ("function f(a: number", "expected `)`"),
@@ -4368,6 +4364,13 @@ fn syntax_errors_carry_a_precise_expectation() {
     ] {
         assert_rejected(source, "BTS1000", message);
     }
+    // A flat destructured parameter is valid; a nested one is unsupported syntax.
+    assert_accepted("function f({ a }: { a: number }): number { return a; }");
+    assert_rejected(
+        "function f({ a: { b } }: { a: { b: number } }): number { return b; }",
+        "BTS1001",
+        "this destructuring pattern is not supported yet",
+    );
 }
 
 #[test]
@@ -5803,8 +5806,7 @@ fn function_annotations_that_survive_erasure_are_refused_before_output() {
     // not structurally erase. Emitting it would produce invalid JavaScript, so
     // it must be refused instead.
     for source in [
-        "export const h = ({ x }: { x: number }) => x;",
-        "export const h = <T>({ x }) => x;",
+        "export const h = <T>({ x: { y } }) => y;",
         "export const o = { *m(a: number) { yield a; } };",
     ] {
         let result = compile(
@@ -5950,15 +5952,16 @@ fn typed_arrow_functions_are_parsed_erased_and_checked() {
 
     // Shapes the structured parser does not take stay refused rather than
     // reaching the output with their annotations.
-    let destructured = "export const h = ({ x }: { x: number }) => x;";
-    let refused = compile_source(destructured);
-    assert!(refused.output.is_none(), "{destructured}");
+    // A nested pattern is outside the supported subset and stays refused.
+    let nested = "export const h = ({ x: { y } }: { x: { y: number } }) => y;";
+    let refused = compile_source(nested);
+    assert!(refused.output.is_none(), "{nested}");
     assert!(
         refused
             .diagnostics
             .iter()
             .any(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
-        "{destructured}"
+        "{nested}"
     );
 }
 
@@ -6571,6 +6574,100 @@ fn async_nested_functions_are_parsed_erased_typed_and_checked() {
          export function g() { const xs = [async () => 1, await f()]; return xs; }",
     );
     assert!(mixed.output.is_none());
+}
+
+#[test]
+fn destructured_parameters_are_parsed_erased_typed_and_checked() {
+    let compile_source = |source: &str| {
+        compile(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+            CompilerOptions {
+                declaration: true,
+                ..CompilerOptions::default()
+            },
+        )
+    };
+    let compiled = compile_source(include_str!(
+        "fixtures/typescript_oracle/destructured-parameter-runtime/main.ts"
+    ));
+    assert!(
+        compiled.diagnostics.is_empty(),
+        "{:#?}",
+        compiled.diagnostics
+    );
+    let javascript = compiled.output.unwrap().artifacts[ENTRY].javascript.clone();
+    let normalized = normalized_javascript(&javascript);
+    for expected in [
+        "const norm = ({ x, y }) => x * x + y * y;",
+        "const first = ([a, b]) => b + a;",
+        "function describe({ x, y }, [k])",
+        "const renamed = ({ x: px, y: py = 5 }) => px + py;",
+    ] {
+        assert!(normalized.contains(expected), "{expected}\n{normalized}");
+    }
+    assert!(!normalized.contains("Point"), "{normalized}");
+
+    let accepted = compile_source(include_str!(
+        "fixtures/typescript_oracle/destructured-parameter-valid/main.ts"
+    ));
+    assert!(
+        accepted.diagnostics.is_empty(),
+        "{:#?}",
+        accepted.diagnostics
+    );
+    let declaration = accepted.output.unwrap().artifacts[ENTRY]
+        .declaration
+        .clone()
+        .unwrap();
+    assert!(
+        declaration.contains("export declare function h({ a, b }: Props): number;"),
+        "{declaration}"
+    );
+
+    for (source, code) in [
+        (
+            include_str!("fixtures/typescript_oracle/destructured-parameter-use-error/main.ts"),
+            DiagnosticCode::ReturnTypeMismatch,
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/destructured-parameter-missing-error/main.ts"),
+            DiagnosticCode::TypeMismatch,
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/destructured-parameter-call-error/main.ts"),
+            DiagnosticCode::TypeMismatch,
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/destructured-parameter-tuple-error/main.ts"),
+            DiagnosticCode::ReturnTypeMismatch,
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/destructured-parameter-named-error/main.ts"),
+            DiagnosticCode::ReturnTypeMismatch,
+        ),
+    ] {
+        let rejected = compile_source(source);
+        assert!(rejected.output.is_none());
+        assert!(
+            rejected
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == code && diagnostic.span.module == ENTRY),
+            "{source}: {:#?}",
+            rejected.diagnostics
+        );
+    }
+
+    // Rest, computed and nested patterns are outside the supported subset.
+    for source in [
+        "export const h = ({ a, ...rest }: { a: number; b: number }) => a;",
+        "export const h = ({ [\"a\"]: a }: { a: number }) => a;",
+        "export const h = ([a, [b]]: [number, [number]]) => a;",
+    ] {
+        let refused = compile_source(source);
+        assert!(refused.output.is_none(), "{source}");
+    }
 }
 
 #[test]

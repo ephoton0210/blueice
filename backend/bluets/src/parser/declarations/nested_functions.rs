@@ -456,6 +456,7 @@ impl Parser {
             self.index = index + 1;
             vec![Parameter {
                 name,
+                pattern: None,
                 rest: false,
                 optional: false,
                 annotation: None,
@@ -541,23 +542,41 @@ impl Parser {
         Some(next)
     }
 
-    /// Every parameter in `(` .. `)` is a plain name, optionally a rest, with
-    /// an annotation, an optional marker or a default. A destructuring pattern
-    /// makes the list unsupported here.
+    /// Every parameter in `(` .. `)` is a plain name or a pattern in the
+    /// supported subset, optionally a rest name, with an annotation, an optional
+    /// marker or a default. A pattern outside the subset makes the list
+    /// unsupported here.
     fn simple_parameter_list(&self, open: usize, close: usize) -> bool {
-        let mut depth = 0usize;
+        let mut index = open + 1;
         let mut at_parameter_start = true;
-        for token in &self.tokens[open + 1..close] {
+        let mut depth = 0usize;
+        while index < close {
+            let token = &self.tokens[index];
+            if token.is("...")
+                && self
+                    .tokens
+                    .get(index + 1)
+                    .is_some_and(|next| next.is("{") || next.is("["))
+            {
+                // A destructured rest parameter is outside the subset.
+                return false;
+            }
+            if at_parameter_start && depth == 0 && (token.is("{") || token.is("[")) {
+                let Some((_, pattern_close)) =
+                    patterns::parse_binding_pattern(&self.tokens, index, &self.id)
+                else {
+                    return false;
+                };
+                index = pattern_close + 1;
+                at_parameter_start = false;
+                continue;
+            }
             match token.text.as_str() {
-                "(" | "[" | "{" => {
-                    if at_parameter_start && depth == 0 {
-                        return false;
-                    }
-                    depth += 1;
-                }
+                "(" | "[" | "{" => depth += 1,
                 ")" | "]" | "}" => depth = depth.saturating_sub(1),
                 "," if depth == 0 => {
                     at_parameter_start = true;
+                    index += 1;
                     continue;
                 }
                 _ => {}
@@ -565,6 +584,7 @@ impl Parser {
             if depth == 0 && !token.is("...") {
                 at_parameter_start = false;
             }
+            index += 1;
         }
         true
     }

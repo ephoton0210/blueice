@@ -2210,8 +2210,22 @@ done to the page-runs-and-debugs goal at the top of this file.
         operand. Five pinned TypeScript 5.9.3 `--noEmit` cases agree on
         acceptance and TS2322/TS2304 lines, and a Node run gives identical
         output for BlueTSC and `tsc`.
-      - [ ] **J.3.7.7.2** Destructured parameters (`({ a, b }: T) => ..`), with
-        the pattern's bindings typed from the annotation.
+      - [x] **J.3.7.7.2** Destructured parameters (`({ a, b }: T) => ..`), with
+        the pattern's bindings typed from the annotation. A parameter may be a
+        flat object pattern (shorthand, renamed, defaulted properties) or a
+        flat array pattern (names, defaults, skipped elements), on named
+        functions, arrows, function expressions, nested declarations and object
+        methods. `Parameter` carries the pattern and, as its name, the pattern's
+        source text, so declaration output prints `{ a, b }: Props` unchanged.
+        An object pattern reads each property from the annotation (a missing
+        one is an error, an optional one may be `undefined` unless defaulted)
+        and an array pattern reads the tuple element at its position; defaults
+        are checked against the value type. Nested patterns, rest elements,
+        computed and string keys stay refused. The direct bridge refuses a
+        destructured parameter. Six pinned TypeScript 5.9.3 `--noEmit` cases
+        agree on acceptance and TS2322/TS2339 lines, and a Node run gives
+        identical output for BlueTSC and `tsc`. Class methods bind pattern
+        names untyped.
       - [ ] **J.3.7.7.3** `async` functions and `await`, which need a
         `Promise` type.
         - [x] **J.3.7.7.3.1** A built-in generic `Promise<T>`, named `async`

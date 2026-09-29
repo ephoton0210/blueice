@@ -242,6 +242,12 @@ fn lower_function(
 ) -> Result<bluejs::Stmt, BridgeError> {
     let mut params = Vec::with_capacity(function.parameters.len());
     for (index, parameter) in function.parameters.iter().enumerate() {
+        if parameter.pattern.is_some() {
+            return Err(unsupported(
+                parameter.span.clone(),
+                "destructured parameters are not yet in the v1 direct bridge subset",
+            ));
+        }
         if parameter.rest && index + 1 != function.parameters.len() {
             return Err(unsupported(
                 parameter.span.clone(),
