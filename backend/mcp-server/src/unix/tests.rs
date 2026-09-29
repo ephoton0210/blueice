@@ -133,6 +133,38 @@ fn navigate_failure_is_reported_but_still_returns_the_current_snapshot() {
 }
 
 #[test]
+fn send_and_drain_reports_gatekeeper_blocked_as_an_error() {
+    let (client, server) = UnixStream::pair().unwrap();
+    fake_core(
+        server,
+        vec![
+            Box::new(|msg, s| {
+                assert!(matches!(msg, ClientMessage::Navigate { .. }));
+                reply(
+                    s,
+                    &ServerMessage::GatekeeperBlocked {
+                        reason: "denied".to_string(),
+                        category: "policy".to_string(),
+                        url: "https://bad.example".to_string(),
+                    },
+                );
+            }),
+            Box::new(|msg, s| {
+                assert!(matches!(msg, ClientMessage::GetRepresentation));
+                reply(s, &ServerMessage::Representation(sample_snapshot(0)));
+            }),
+        ],
+    );
+
+    let mut conn = CoreConnection::new(client);
+    let outcome = conn.navigate("https://bad.example", None).unwrap();
+    let error = outcome.error.expect("gatekeeper block must surface as an error");
+    assert!(error.contains("denied"));
+    assert!(error.contains("policy"));
+    assert!(error.contains("https://bad.example"));
+}
+
+#[test]
 fn act_on_click_with_no_navigable_effect_still_returns_cleanly() {
     // the real ambiguity this design exists to avoid: an ActOn
     // Click that doesn't land on a link produces zero replies of
@@ -245,12 +277,61 @@ fn representation_alone_sends_no_prior_action() {
 }
 
 #[test]
+fn representation_ignores_a_mismatched_id_and_an_unrelated_reply() {
+    let (client, server) = UnixStream::pair().unwrap();
+    fake_core(
+        server,
+        vec![Box::new(|msg, s| {
+            assert!(matches!(msg, ClientMessage::GetRepresentation));
+            blueice_ipc::write_server_message_with_id(
+                s,
+                Some(9_999),
+                &ServerMessage::Error {
+                    message: "unrelated client's failure".to_string(),
+                },
+            )
+            .unwrap();
+            reply(s, &ServerMessage::Tabs(Vec::new()));
+            reply(s, &ServerMessage::Representation(sample_snapshot(2)));
+        })],
+    );
+
+    let mut conn = CoreConnection::new(client);
+    let snap = conn.representation(None).unwrap();
+    assert_eq!(snap.generation, 2);
+}
+
+#[test]
 fn dom_alone_sends_no_prior_action() {
     let (client, server) = UnixStream::pair().unwrap();
     fake_core(
         server,
         vec![Box::new(|msg, s| {
             assert!(matches!(msg, ClientMessage::GetDom));
+            reply(s, &ServerMessage::Dom("| <html>\n".to_string()));
+        })],
+    );
+
+    let mut conn = CoreConnection::new(client);
+    assert_eq!(conn.dom(None).unwrap(), "| <html>\n");
+}
+
+#[test]
+fn dom_ignores_a_mismatched_id_and_an_unrelated_reply() {
+    let (client, server) = UnixStream::pair().unwrap();
+    fake_core(
+        server,
+        vec![Box::new(|msg, s| {
+            assert!(matches!(msg, ClientMessage::GetDom));
+            blueice_ipc::write_server_message_with_id(
+                s,
+                Some(9_999),
+                &ServerMessage::Error {
+                    message: "unrelated client's failure".to_string(),
+                },
+            )
+            .unwrap();
+            reply(s, &ServerMessage::Tabs(Vec::new()));
             reply(s, &ServerMessage::Dom("| <html>\n".to_string()));
         })],
     );
@@ -821,6 +902,142 @@ fn close_tab_returns_error_for_an_unknown_tab() {
         conn.close_tab(999).unwrap(),
         CloseTabOutcome::Error("unknown tab 999".to_string())
     );
+}
+
+#[test]
+fn close_tab_still_caches_a_frame_ready_seen_along_the_way() {
+    let (client, server) = UnixStream::pair().unwrap();
+    fake_core(
+        server,
+        vec![Box::new(|msg, s| {
+            assert!(matches!(msg, ClientMessage::CloseTab));
+            blueice_ipc::write_server_message_with_id(
+                s,
+                Some(9_999),
+                &ServerMessage::Error {
+                    message: "unrelated client's failure".to_string(),
+                },
+            )
+            .unwrap();
+            reply_tab(
+                s,
+                1,
+                &ServerMessage::FrameReady {
+                    shm_path: "/tmp/close".to_string(),
+                    width: 1,
+                    height: 1,
+                    generation: 9,
+                },
+            );
+            reply(s, &ServerMessage::TabClosed { tab_id: 2 });
+        })],
+    );
+
+    let mut conn = CoreConnection::new(client);
+    assert_eq!(conn.close_tab(2).unwrap(), CloseTabOutcome::Closed);
+    assert_eq!(conn.last_frame(None).unwrap().generation, 9);
+}
+
+#[test]
+fn list_tabs_still_caches_a_frame_ready_seen_along_the_way() {
+    let (client, server) = UnixStream::pair().unwrap();
+    fake_core(
+        server,
+        vec![Box::new(|msg, s| {
+            assert!(matches!(msg, ClientMessage::ListTabs));
+            reply_tab(
+                s,
+                1,
+                &ServerMessage::FrameReady {
+                    shm_path: "/tmp/list".to_string(),
+                    width: 1,
+                    height: 1,
+                    generation: 11,
+                },
+            );
+            reply(s, &ServerMessage::Tabs(vec![TabSummary { id: 1, url: None }]));
+        })],
+    );
+
+    let mut conn = CoreConnection::new(client);
+    let tabs = conn.list_tabs().unwrap();
+    assert_eq!(tabs, vec![TabSummary { id: 1, url: None }]);
+    assert_eq!(conn.last_frame(None).unwrap().generation, 11);
+}
+
+#[test]
+fn open_tab_reports_gatekeeper_blocked_as_an_error() {
+    let (client, server) = UnixStream::pair().unwrap();
+    fake_core(
+        server,
+        vec![Box::new(|msg, s| {
+            assert!(matches!(msg, ClientMessage::OpenTab { .. }));
+            reply(
+                s,
+                &ServerMessage::GatekeeperBlocked {
+                    reason: "denied".to_string(),
+                    category: "policy".to_string(),
+                    url: "https://bad.example".to_string(),
+                },
+            );
+        })],
+    );
+
+    let mut conn = CoreConnection::new(client);
+    let outcome = conn.open_tab(Some("https://bad.example")).unwrap();
+    let OpenTabOutcome::Error(message) = outcome else {
+        panic!("expected an error outcome, got {outcome:?}");
+    };
+    assert!(message.contains("denied"));
+    assert!(message.contains("policy"));
+    assert!(message.contains("https://bad.example"));
+}
+
+#[test]
+fn open_tab_keeps_waiting_past_a_frame_ready_seen_before_tab_opened() {
+    let (client, server) = UnixStream::pair().unwrap();
+    fake_core(
+        server,
+        vec![Box::new(|msg, s| {
+            assert!(matches!(msg, ClientMessage::OpenTab { .. }));
+            blueice_ipc::write_server_message_with_id(
+                s,
+                Some(9_999),
+                &ServerMessage::Error {
+                    message: "unrelated client's failure".to_string(),
+                },
+            )
+            .unwrap();
+            reply(s, &ServerMessage::Tabs(Vec::new()));
+            reply_tab(
+                s,
+                1,
+                &ServerMessage::FrameReady {
+                    shm_path: "/tmp/premature".to_string(),
+                    width: 1,
+                    height: 1,
+                    generation: 3,
+                },
+            );
+            reply(
+                s,
+                &ServerMessage::TabOpened {
+                    tab_id: 2,
+                    url: None,
+                },
+            );
+        })],
+    );
+
+    let mut conn = CoreConnection::new(client);
+    assert_eq!(
+        conn.open_tab(None).unwrap(),
+        OpenTabOutcome::Opened {
+            tab_id: 2,
+            url: None
+        }
+    );
+    assert_eq!(conn.last_frame(None).unwrap().generation, 3);
 }
 
 #[test]
