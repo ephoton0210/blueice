@@ -2227,8 +2227,20 @@ done to the page-runs-and-debugs goal at the top of this file.
           emit invalid JavaScript. Seven pinned TypeScript 5.9.3 `--noEmit`
           cases agree on acceptance and TS2322/TS1064/TS1308/TS2366 lines, and
           a Node run gives identical output for BlueTSC and `tsc`.
-        - [ ] **J.3.7.7.3.2** `async` arrows, function expressions, nested
-          declarations and object methods, and their function types.
+        - [x] **J.3.7.7.3.2** `async` arrows (with or without parentheses and
+          type parameters), function expressions, nested declarations and
+          object methods. The `async` token belongs to the entry, so its span
+          and key start there, and the flag reaches the checker, which applies
+          the same `Promise<T>` return and `await` rules as a named async
+          function. A function value's type keeps a declared `Promise<T>`, and
+          gives an unannotated one a `Promise` of its body's result, so
+          `f(1)` is a promise and `await f(1)` its value. The `await` context
+          check no longer skips an expression only because it holds an
+          `async` token: one that starts a structured nested function is
+          judged in that function's own context, which narrows the earlier
+          known hole. Seven pinned TypeScript 5.9.3 `--noEmit` cases agree on
+          acceptance and TS2322/TS2345/TS1064/TS1308 lines, and a Node run
+          mixing all five forms gives identical output for BlueTSC and `tsc`.
         - [ ] **J.3.7.7.3.3** Top-level `await` in a module.
       - [ ] **J.3.7.7.4** Generator functions, which need `Generator` and
         `yield`.

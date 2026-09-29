@@ -50,10 +50,16 @@ impl ModuleChecker<'_> {
         if self.async_context == Some(true) || !tokens.iter().any(|token| token.is("await")) {
             return;
         }
-        if tokens.iter().any(|token| token.is("async")) {
+        let module = self.module;
+        // An `async` token that starts a structured nested function is judged
+        // in that function's own context; any other may begin an async form the
+        // parser left unstructured, which can hold an `await`.
+        if tokens
+            .iter()
+            .any(|token| token.is("async") && !module.nested_functions.contains_key(&token.start))
+        {
             return;
         }
-        let module = self.module;
         let range_start = tokens.first().map_or(0, |token| token.start);
         // Only a function that starts inside the checked tokens is nested in
         // them; one that encloses them is the function being checked.
@@ -103,7 +109,7 @@ impl ModuleChecker<'_> {
         };
         let function = FunctionDeclaration {
             name: "<arrow>".to_string(),
-            async_function: false,
+            async_function: arrow.async_function,
             body_open: None,
             type_parameters: arrow.type_parameters.clone(),
             parameters: arrow.parameters.clone(),
@@ -124,7 +130,10 @@ impl ModuleChecker<'_> {
                 name.clone(),
                 erased_function_type(
                     &arrow.parameters,
-                    arrow.return_type.clone().unwrap_or(Type::Unknown),
+                    async_result(
+                        arrow.return_type.clone().unwrap_or(Type::Unknown),
+                        arrow.async_function && arrow.return_type.is_none(),
+                    ),
                     &arrow.type_parameters,
                 ),
             );
@@ -159,9 +168,22 @@ impl ModuleChecker<'_> {
         };
         Some(erased_function_type(
             &arrow.parameters,
-            result,
+            async_result(result, arrow.async_function && arrow.return_type.is_none()),
             &arrow.type_parameters,
         ))
+    }
+}
+
+/// The result of an unannotated `async` function is a promise of its body's
+/// result; an annotated one already states `Promise<T>`.
+pub(in crate::checker::module) fn async_result(result: Type, wrap: bool) -> Type {
+    if wrap {
+        Type::Named {
+            name: "Promise".to_string(),
+            arguments: vec![result],
+        }
+    } else {
+        result
     }
 }
 

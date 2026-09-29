@@ -117,10 +117,16 @@ impl<'a> ModuleChecker<'a> {
         let result = || nested.return_type.clone().unwrap_or(Type::Unknown);
         let (name, value, setter) = match nested.kind {
             NestedFunctionKind::Method => (
-                tokens[index].text.clone(),
+                // `async name(..)` starts at the `async` token.
+                tokens[index + usize::from(nested.async_function)]
+                    .text
+                    .clone(),
                 Type::Function {
                     parameters: nested.parameters.clone(),
-                    result: Box::new(result()),
+                    result: Box::new(super::super::super::binding::async_result(
+                        result(),
+                        nested.async_function && nested.return_type.is_none(),
+                    )),
                 },
                 false,
             ),

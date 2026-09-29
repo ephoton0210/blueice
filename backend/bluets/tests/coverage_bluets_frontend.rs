@@ -5803,12 +5803,8 @@ fn function_annotations_that_survive_erasure_are_refused_before_output() {
     // not structurally erase. Emitting it would produce invalid JavaScript, so
     // it must be refused instead.
     for source in [
-        "export const h = async (a: number): Promise<number> => a;",
-        "export const h = async (a: number) => a;",
         "export const h = ({ x }: { x: number }) => x;",
-        "export const h = async <T>(a) => a;",
         "export const h = <T>({ x }) => x;",
-        "export const o = { async m(a: number) { return a; } };",
         "export const o = { *m(a: number) { yield a; } };",
     ] {
         let result = compile(
@@ -5954,20 +5950,16 @@ fn typed_arrow_functions_are_parsed_erased_and_checked() {
 
     // Shapes the structured parser does not take stay refused rather than
     // reaching the output with their annotations.
-    for source in [
-        "export const h = ({ x }: { x: number }) => x;",
-        "export const h = async (a: number): Promise<number> => a;",
-    ] {
-        let refused = compile_source(source);
-        assert!(refused.output.is_none(), "{source}");
-        assert!(
-            refused
-                .diagnostics
-                .iter()
-                .any(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
-            "{source}"
-        );
-    }
+    let destructured = "export const h = ({ x }: { x: number }) => x;";
+    let refused = compile_source(destructured);
+    assert!(refused.output.is_none(), "{destructured}");
+    assert!(
+        refused
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+        "{destructured}"
+    );
 }
 
 #[test]
@@ -6237,14 +6229,9 @@ fn nested_function_declarations_are_parsed_erased_hoisted_and_checked() {
     );
     assert!(scoped.diagnostics.is_empty(), "{:#?}", scoped.diagnostics);
 
-    // Generators and async declarations stay refused.
-    for source in [
-        "export function outer() { function* g(a: number) { yield a; } return g; }",
-        "export function outer() { async function g(a: number) { return a; } return g; }",
-    ] {
-        let refused = compile_source(source);
-        assert!(refused.output.is_none(), "{source}");
-    }
+    // Generators stay refused.
+    let generator = "export function outer() { function* g(a: number) { yield a; } return g; }";
+    assert!(compile_source(generator).output.is_none(), "{generator}");
 }
 
 #[test]
@@ -6499,6 +6486,91 @@ fn async_functions_and_await_are_typed_against_promise() {
         },
     );
     assert!(hosted.diagnostics.is_empty(), "{:#?}", hosted.diagnostics);
+}
+
+#[test]
+fn async_nested_functions_are_parsed_erased_typed_and_checked() {
+    let compile_source = |source: &str| {
+        compile(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+            CompilerOptions::default(),
+        )
+    };
+    let compiled = compile_source(include_str!(
+        "fixtures/typescript_oracle/async-nested-runtime/main.ts"
+    ));
+    assert!(
+        compiled.diagnostics.is_empty(),
+        "{:#?}",
+        compiled.diagnostics
+    );
+    let javascript = compiled.output.unwrap().artifacts[ENTRY].javascript.clone();
+    for expected in [
+        "const arrow = async (n) => (await base(n)) * 2;",
+        "const expr = async function (n) {",
+        "const named = async function twice(n) {",
+        "async m(n) {",
+        "async function local(n) {",
+    ] {
+        assert!(javascript.contains(expected), "{expected}\n{javascript}");
+    }
+    assert!(!javascript.contains("Promise"), "{javascript}");
+
+    let accepted = compile_source(include_str!(
+        "fixtures/typescript_oracle/async-nested-valid/main.ts"
+    ));
+    assert!(
+        accepted.diagnostics.is_empty(),
+        "{:#?}",
+        accepted.diagnostics
+    );
+
+    for (source, code) in [
+        (
+            include_str!("fixtures/typescript_oracle/async-nested-return-error/main.ts"),
+            DiagnosticCode::ReturnTypeMismatch,
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/async-nested-annotation-error/main.ts"),
+            DiagnosticCode::TypeMismatch,
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/async-nested-await-type-error/main.ts"),
+            DiagnosticCode::TypeMismatch,
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/async-nested-sync-await-error/main.ts"),
+            DiagnosticCode::TypeMismatch,
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/async-nested-call-error/main.ts"),
+            DiagnosticCode::TypeMismatch,
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/async-nested-value-error/main.ts"),
+            DiagnosticCode::TypeMismatch,
+        ),
+    ] {
+        let rejected = compile_source(source);
+        assert!(rejected.output.is_none());
+        assert!(
+            rejected
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == code && diagnostic.span.module == ENTRY),
+            "{source}: {:#?}",
+            rejected.diagnostics
+        );
+    }
+
+    // An await in a sync function is still refused next to a structured
+    // async arrow in the same expression.
+    let mixed = compile_source(
+        "async function f(): Promise<number> { return 1; } \
+         export function g() { const xs = [async () => 1, await f()]; return xs; }",
+    );
+    assert!(mixed.output.is_none());
 }
 
 #[test]

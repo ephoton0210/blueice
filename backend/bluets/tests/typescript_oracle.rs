@@ -41,6 +41,15 @@ struct ExpectedDiagnostic {
 
 const CASES: &[OracleCase] = &[
     OracleCase {
+        name: "async-nested-runtime",
+        modules: &[(
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/async-nested-runtime/main.ts"),
+        )],
+        expected_stdout: Some("4:e3:6:5\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
         name: "async-function-runtime",
         modules: &[(
             "memory:///main.ts",
@@ -4200,6 +4209,51 @@ fn pinned_async_functions_match_typescript_without_emit() {
                 "fixtures/typescript_oracle/async-function-promise-mismatch-error/main.ts"
             ),
             &[(4, "TS2322")],
+        ),
+    ];
+    assert_pinned_no_emit_cases(&tsc, &cases);
+}
+
+#[test]
+#[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
+fn pinned_async_nested_functions_match_typescript_without_emit() {
+    let tsc = pinned_bluetsc_oracle();
+    assert_pinned_version(&tsc);
+    let cases: [NoEmitCase; 7] = [
+        (
+            "valid",
+            include_str!("fixtures/typescript_oracle/async-nested-valid/main.ts"),
+            &[],
+        ),
+        (
+            "return-error",
+            include_str!("fixtures/typescript_oracle/async-nested-return-error/main.ts"),
+            &[(4, "TS2322")],
+        ),
+        (
+            "annotation-error",
+            include_str!("fixtures/typescript_oracle/async-nested-annotation-error/main.ts"),
+            &[(4, "TS1064")],
+        ),
+        (
+            "await-type-error",
+            include_str!("fixtures/typescript_oracle/async-nested-await-type-error/main.ts"),
+            &[(5, "TS2322")],
+        ),
+        (
+            "sync-await-error",
+            include_str!("fixtures/typescript_oracle/async-nested-sync-await-error/main.ts"),
+            &[(5, "TS1308")],
+        ),
+        (
+            "call-error",
+            include_str!("fixtures/typescript_oracle/async-nested-call-error/main.ts"),
+            &[(5, "TS2322"), (5, "TS2345")],
+        ),
+        (
+            "value-error",
+            include_str!("fixtures/typescript_oracle/async-nested-value-error/main.ts"),
+            &[(5, "TS2322")],
         ),
     ];
     assert_pinned_no_emit_cases(&tsc, &cases);

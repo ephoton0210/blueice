@@ -9,6 +9,7 @@ use super::*;
 mod classes;
 mod functions;
 pub(in crate::checker::module) use functions::promise_value_type;
+pub(in crate::checker::module) use nested_functions::async_result;
 mod nested_functions;
 pub(in crate::checker) use classes::{class_export, class_instance_type};
 

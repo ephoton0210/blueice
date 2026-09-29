@@ -134,10 +134,26 @@ impl Parser {
                 continue;
             }
             if parentheses == 0 && brackets == 0 && self.peek("function") {
-                if let Some(item) = self.try_parse_local_function() {
+                if let Some(item) = self.try_parse_local_function(false) {
                     body.push(item);
                     continue;
                 }
+            }
+            if parentheses == 0
+                && brackets == 0
+                && self.peek("async")
+                && self
+                    .tokens
+                    .get(self.index + 1)
+                    .is_some_and(|token| token.is("function"))
+            {
+                let saved = self.index;
+                self.bump();
+                if let Some(item) = self.try_parse_local_function(true) {
+                    body.push(item);
+                    continue;
+                }
+                self.index = saved;
             }
             if self.peek("as") || self.peek("satisfies") {
                 body.push(FunctionBodyItem::Opaque(self.current().span(&self.id)));

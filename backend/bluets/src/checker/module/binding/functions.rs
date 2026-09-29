@@ -584,7 +584,10 @@ pub(in crate::checker::module) fn hoist_local_functions(
                     function.name.clone(),
                     super::nested_functions::erased_function_type(
                         &function.parameters,
-                        function.return_type.clone().unwrap_or(Type::Unknown),
+                        super::nested_functions::async_result(
+                            function.return_type.clone().unwrap_or(Type::Unknown),
+                            function.async_function && function.return_type.is_none(),
+                        ),
                         &function.type_parameters,
                     ),
                 );

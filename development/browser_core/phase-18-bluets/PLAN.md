@@ -2472,6 +2472,32 @@ The result type of a call is the declared `Promise<T>`, so `run().then(..)`
 type-checks against the built-in methods. `Promise` values from other sources
 (`Promise.resolve`, `new Promise`) are not modeled and have unknown type.
 
+### J.3.7.7.3.2 Async nested functions
+
+`NestedFunction` gains an `async_function` flag, and the four parsers now take an
+`async` that immediately precedes the function head as part of it: an arrow (with
+parentheses or a lone name, with or without type parameters), a function
+expression, an object member written `async name(..)` (a method named `async` has
+`(` right after it), and a nested declaration (recognized where the statement
+loop meets the `async` token, so no stray opaque item is left in the body). The
+entry's span and key start at the `async` token, which keeps the exact-match
+lookup that types an arrow expression working. Erasure is unchanged: `async`
+stays and the annotations go.
+
+The checker copies the flag into the `FunctionDeclaration` it builds, so the
+`Promise<T>` return rules and the await context of J.3.7.7.3.1 apply. A function
+value's type keeps a declared `Promise<T>` result and wraps an unannotated async
+function's body result in `Promise`, for expression-bodied arrows, hoisted
+declarations and object methods alike. For an object method the property name is
+the token after `async`.
+
+The await context check used to skip any expression holding an `async` token,
+because that token could begin an unstructured async form. It now counts only an
+`async` token that does not start a structured nested function; those are judged
+in their own context, so `[async () => 1, await f()]` in a sync function is now
+refused. An async form the parser still leaves as tokens (an async generator, an
+async arrow with a destructured parameter) keeps the old skip.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process

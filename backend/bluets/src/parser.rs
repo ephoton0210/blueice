@@ -51,6 +51,8 @@ pub struct Module {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NestedFunction {
     pub kind: NestedFunctionKind,
+    /// Declared `async`: its span starts at the `async` token.
+    pub async_function: bool,
     /// The name a function expression binds inside its own body.
     pub name: Option<String>,
     /// Erased type parameters (`<T>` on an arrow or function).

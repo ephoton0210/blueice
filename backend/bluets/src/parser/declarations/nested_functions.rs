@@ -63,11 +63,10 @@ impl Parser {
     /// token path.
     pub(in crate::parser::implementation) fn try_parse_local_function(
         &mut self,
+        async_function: bool,
     ) -> Option<FunctionBodyItem> {
         let start_index = self.index;
-        if !self.tokens[start_index].is("function")
-            || start_index > 0 && self.tokens[start_index - 1].is("async")
-        {
+        if !self.tokens[start_index].is("function") {
             return None;
         }
         let name_token = self.tokens.get(start_index + 1)?;
@@ -113,11 +112,11 @@ impl Parser {
         else {
             return None;
         };
-        let start_offset = self.tokens[start_index].start;
+        let start_offset = self.tokens[start_index - usize::from(async_function)].start;
         self.index = next;
         Some(FunctionBodyItem::Function(Box::new(FunctionDeclaration {
             name,
-            async_function: false,
+            async_function,
             body_open: None,
             type_parameters,
             parameters,
@@ -154,8 +153,18 @@ impl Parser {
         if !is_name(&self.tokens[index]) {
             return None;
         }
+        // `async name(..)` starts at `async`; a method named `async` has `(`
+        // right after it.
+        let async_method = self.tokens[index].is("async")
+            && self.tokens.get(index + 1).is_some_and(is_name)
+            && self
+                .tokens
+                .get(index + 2)
+                .is_some_and(|token| token.is("("));
         let next = self.tokens.get(index + 1)?;
-        let (kind, name, open) = if next.is("(") {
+        let (kind, name, open) = if async_method {
+            (NestedFunctionKind::Method, None, index + 2)
+        } else if next.is("(") {
             (NestedFunctionKind::Method, None, index + 1)
         } else if (self.tokens[index].is("get") || self.tokens[index].is("set"))
             && is_name(next)
@@ -204,6 +213,7 @@ impl Parser {
             start_offset,
             NestedFunction {
                 kind,
+                async_function: async_method,
                 name,
                 type_parameters: Vec::new(),
                 parameters,
@@ -297,10 +307,11 @@ impl Parser {
         if !self.tokens[index].is("function") {
             return None;
         }
+        let async_function = index > range_start && self.tokens[index - 1].is("async");
+        let head = if async_function { index - 1 } else { index };
         let starts_operand =
-            index == range_start || !token_ends_runtime_primary(&self.tokens[index - 1]);
-        let async_function = index > 0 && self.tokens[index - 1].is("async");
-        if !starts_operand || async_function {
+            head == range_start || !token_ends_runtime_primary(&self.tokens[head - 1]);
+        if !starts_operand {
             return None;
         }
         let mut cursor = index + 1;
@@ -349,11 +360,12 @@ impl Parser {
             body_end,
             next_index: next,
         } = self.parse_parameters_result_and_block(open)?;
-        let start_offset = self.tokens[index].start;
+        let start_offset = self.tokens[head].start;
         self.nested_functions.insert(
             start_offset,
             NestedFunction {
                 kind: NestedFunctionKind::Function,
+                async_function,
                 name,
                 type_parameters,
                 parameters,
@@ -372,11 +384,12 @@ impl Parser {
         index: usize,
         end: usize,
     ) -> Option<usize> {
+        // An `async` prefix belongs to the arrow, so the operand starts there.
+        let async_arrow = index > range_start && self.tokens[index - 1].is("async");
+        let head = if async_arrow { index - 1 } else { index };
         let starts_operand =
-            index == range_start || !token_ends_runtime_primary(&self.tokens[index - 1]);
-        // An `async` arrow's result is a Promise, which BlueTS does not model.
-        let async_arrow = index > 0 && self.tokens[index - 1].is("async");
-        if !starts_operand || async_arrow {
+            head == range_start || !token_ends_runtime_primary(&self.tokens[head - 1]);
+        if !starts_operand {
             return None;
         }
         let generic_open = if self.tokens[index].is("<") {
@@ -473,7 +486,7 @@ impl Parser {
             self.index = saved_index;
             return None;
         }
-        let start_offset = self.tokens[index].start;
+        let start_offset = self.tokens[head].start;
         let (body, body_end, next) = if self.consume("{") {
             let body_start = self.previous().start;
             let mut items = Vec::new();
@@ -515,6 +528,7 @@ impl Parser {
             start_offset,
             NestedFunction {
                 kind: NestedFunctionKind::Arrow,
+                async_function: async_arrow,
                 name: None,
                 type_parameters,
                 parameters,
