@@ -841,6 +841,35 @@ Do not open a new tuple/spread leaf. Continue with J.3.1.3.4.4.3, then
 J.3.1.4 onward (emit, lowering, debugger evidence) before adding more checker
 breadth.
 
+**J milestones (added 2026-09-29).** The remaining J leaves are too large and
+too open-ended to close as one block, so they are ordered into milestones with
+an observable exit. A milestone closes on its exit test, not on covering every
+`tsc` corner. Each keeps its existing leaf IDs.
+
+- **M1 — Classes run in a real page.** J.3.1.3.4.4.3, J.3.1.3.4.5,
+  J.3.1.3.4.6, J.3.1.3.5, J.3.1.4, J.3.1.5, J.3.1.6. Exit: a BlueTS page
+  declaring a class with a constructor, methods, single inheritance and
+  `super` builds with BlueTSC, runs through the real page runtime, hits a
+  breakpoint mapped to the original source, and is refused after navigation;
+  the accepted/rejected matrix agrees with pinned `tsc` on that class subset.
+- **M2 — Everyday class and declaration features.** J.3.2 (fields, accessors,
+  private members, parameter properties), J.3.3 (target-dependent emit), J.3.4
+  (enums, `const enum`), J.3.5 (namespaces, merging). Exit: each form has its
+  own accepted/rejected, emit and direct-runtime case against `tsc`.
+- **M3 — Modules and packages.** J.4.1–J.4.4, in that order, without widening
+  page or MCP authority. Exit: an authorized project resolves an installed
+  package and a CommonJS module, with symlink/path-escape refusal tested.
+- **M4 — JSX and decorators.** J.5.1–J.5.4; standard decorators before legacy.
+  Exit: a `.tsx` page and a decorated class run with an authorized factory.
+- **M5 — Measured compatibility claim.** J.6 is a measured inventory, not
+  "complete parity". Exit: an inventory of remaining gaps and a differential
+  pass rate over an explicit, versioned `tsc` case list, with every open gap
+  named. Advertise only what that inventory supports; the words "full parity"
+  stay off until J.6.1–J.6.3 are literally complete.
+
+M1 comes first: it is the only milestone that connects the checker work already
+done to the page-runs-and-debugs goal at the top of this file.
+
 - [x] **J.1** Record runtime lowering and host authority impact for each
   requested feature before implementation.
   - [x] **J.1.1** Record runtime lowering for classes, enums, decorators,
