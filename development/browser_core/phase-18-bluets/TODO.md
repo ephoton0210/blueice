@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: J.3.1.3.4.4.2.3.2.3.3.3.6.5.3.** H and I are complete. The requested class, enum,
+**Current leaf: J.3.1.3.4.4.3.** H and I are complete. The requested class, enum,
 decorator, namespace, JSX, CommonJS, and package-resolution expansion has
 passed J.1/J.2 planning; implementation and pinned-`tsc` parity remain open.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
@@ -825,14 +825,21 @@ All implementation leaves below remain open until public-boundary evidence
 exists. A passed first form does not close its whole feature family.
 
 **Stop-loss (added 2026-09-29).** J.3.1.3.4.4.2.3.2.3 (tuple rest/spread
-overrides) has reached 14 levels of nesting and is chasing `tsc` edge cases
-rather than page-facing behavior. Finish the open leaves through
-J.3.1.3.4.4.2.3.2.3.3.3.6.5.3 to close the concrete-spread comparison, then
-stop deepening tuple work. The remaining sibling leaves
-(`…3.3.4`, `…3.4`) and any new tuple/spread leaf enter the backlog only if a
-real BlueTS page or an accepted/rejected-matrix case (J.3.1.3.5) needs them.
-Resume J.3.1.4 onward (emit, lowering, debugger evidence) before adding more
-checker breadth.
+overrides) reached 14 levels of nesting chasing `tsc` edge cases rather than
+page-facing behavior. It is now closed at J.3.1.3.4.4.2.3.2.3.3.3.6.5.3. Two
+sibling leaves were moved out of the required tree so their parents could
+close; they re-enter the backlog only if a real BlueTS page or an
+accepted/rejected-matrix case (J.3.1.3.5) needs them:
+
+- Deferred D1: expand optional tuple spreads in bounded call arguments and
+  tuple literals without inventing required positions (was `…3.3.4`).
+- Deferred D2: parse parenthesized union array annotations needed to compare
+  heterogeneous tuple rest elements with an array-rest counterpart (was
+  `…3.4`).
+
+Do not open a new tuple/spread leaf. Continue with J.3.1.3.4.4.3, then
+J.3.1.4 onward (emit, lowering, debugger evidence) before adding more checker
+breadth.
 
 - [x] **J.1** Record runtime lowering and host authority impact for each
   requested feature before implementation.
@@ -1321,7 +1328,7 @@ checker breadth.
             and TS2416/TS2417 lines. BlueTS, bridge, and full workspace
             tests, all-target Clippy, rustfmt, and whitespace checks pass
             with the reused 12 GiB target.
-          - [ ] **J.3.1.3.4.4.2** Validate overrides across deeper local and
+          - [x] **J.3.1.3.4.4.2** Validate overrides across deeper local and
             value-imported bases with bounded lookup and optional/rest or
             differing-arity method parameters against pinned TypeScript.
             - [x] **J.3.1.3.4.4.2.1** Resolve deeper local class heritage to
@@ -1348,7 +1355,7 @@ checker breadth.
               agree on acceptance and TS2416/TS2417 lines. BlueTS, bridge,
               and full workspace tests, all-target Clippy, rustfmt, and
               whitespace checks pass with the reused 12 GiB target.
-            - [ ] **J.3.1.3.4.4.2.3** Validate optional, rest, and differing
+            - [x] **J.3.1.3.4.4.2.3** Validate optional, rest, and differing
               method arities under TypeScript's override variance at original
               member spans.
               - [x] **J.3.1.3.4.4.2.3.1** Validate optional/default and
@@ -1365,7 +1372,7 @@ checker breadth.
                 `--noEmit` acceptance and TS2416/TS2417 lines. BlueTS,
                 bridge, and full workspace tests, all-target Clippy, rustfmt,
                 and whitespace checks pass with the reused 12 GiB target.
-              - [ ] **J.3.1.3.4.4.2.3.2** Validate array and tuple rest
+              - [x] **J.3.1.3.4.4.2.3.2** Validate array and tuple rest
                 method parameters and their interactions with fixed
                 parameters against pinned TypeScript.
                 - [x] **J.3.1.3.4.4.2.3.2.1** Validate array rest overrides
@@ -1424,7 +1431,7 @@ checker breadth.
                     BlueTS, bridge, and full workspace tests, all-target
                     Clippy, rustfmt, and whitespace checks pass with the
                     reused 12 GiB target.
-                - [ ] **J.3.1.3.4.4.2.3.2.3** Validate tuple rest expansion
+                - [x] **J.3.1.3.4.4.2.3.2.3** Validate tuple rest expansion
                   and bounded override compatibility against pinned
                   TypeScript.
                   - [x] **J.3.1.3.4.4.2.3.2.3.1** Accept fixed-length tuple
@@ -1480,7 +1487,7 @@ checker breadth.
                       and TS2416/TS2417 lines. BlueTS, bridge, and full
                       workspace tests, all-target Clippy, rustfmt, and
                       whitespace checks pass with the reused 12 GiB target.
-                  - [ ] **J.3.1.3.4.4.2.3.2.3.3** Parse and check optional,
+                  - [x] **J.3.1.3.4.4.2.3.2.3.3** Parse and check optional,
                     labeled, and variadic tuple rest elements, including
                     their override arity and element-type compatibility.
                     - [x] **J.3.1.3.4.4.2.3.2.3.3.1** Parse optional tuple
@@ -1566,7 +1573,7 @@ checker breadth.
                         agree on TS2416/TS2417 lines. BlueTS, bridge, and
                         full workspace tests, all-target Clippy, rustfmt, and
                         whitespace checks pass with the reused 12 GiB target.
-                    - [ ] **J.3.1.3.4.4.2.3.2.3.3.3** Parse variadic tuple
+                    - [x] **J.3.1.3.4.4.2.3.2.3.3.3** Parse variadic tuple
                       elements and compare bounded rest tails and arity.
                       - [x] **J.3.1.3.4.4.2.3.2.3.3.3.1** Choose a symbolic
                         rest-tail representation and fail-closed rollout.
@@ -1826,7 +1833,7 @@ checker breadth.
                                 and full workspace tests, all-target Clippy,
                                 rustfmt, and whitespace checks pass with the
                                 reused 12 GiB target.
-                      - [ ] **J.3.1.3.4.4.2.3.2.3.3.3.6** Resolve concrete
+                      - [x] **J.3.1.3.4.4.2.3.2.3.3.3.6** Resolve concrete
                         and constrained generic tuple spreads in admitted
                         type uses and override comparison, with bounded
                         expansion and explicit rejection of unresolved forms.
@@ -1899,7 +1906,7 @@ checker breadth.
                           BlueTS, bridge, and full workspace tests,
                           all-target Clippy, rustfmt, and whitespace checks
                           pass with the reused 12 GiB target.
-                        - [ ] **J.3.1.3.4.4.2.3.2.3.3.3.6.5** Compare
+                        - [x] **J.3.1.3.4.4.2.3.2.3.3.3.6.5** Compare
                           constrained generic tuple spreads symbolically and
                           reject unresolved, cyclic, or unsupported shapes
                           before output.
@@ -1931,16 +1938,18 @@ checker breadth.
                             crate Clippy, rustfmt and whitespace checks pass;
                             the full workspace run is not repeated for this
                             leaf.
-                          - [ ] **J.3.1.3.4.4.2.3.2.3.3.3.6.5.3** Close
+                          - [x] **J.3.1.3.4.4.2.3.2.3.3.3.6.5.3** Close
                             unresolved, cyclic, unsupported, and over-budget
                             symbolic spread cases with public diagnostics
                             and pinned TypeScript comparison.
-                    - [ ] **J.3.1.3.4.4.2.3.2.3.3.4** Expand optional tuple
-                      spreads in bounded call arguments and tuple literals
-                      without inventing required positions.
-                  - [ ] **J.3.1.3.4.4.2.3.2.3.4** Parse parenthesized union
-                    array annotations needed to compare heterogeneous tuple
-                    rest elements with an array-rest counterpart.
+                            Unresolved names, cycles and non-array constraints
+                            are rejected before output and agree with pinned
+                            TypeScript 5.9.3 (TS2304, TS2456/TS2315, TS2574).
+                            Two symbolic rests and union constraints are
+                            accepted by `tsc` but deliberately fail closed in
+                            BlueTS; the generic-expansion budget reports a
+                            resource-limit diagnostic. Existing behaviour, so
+                            this leaf adds evidence only.
           - [ ] **J.3.1.3.4.4.3** Validate inherited method overload-set
             compatibility, including implementation and signature selection,
             against pinned TypeScript.

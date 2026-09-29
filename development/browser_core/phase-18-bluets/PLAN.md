@@ -2042,6 +2042,19 @@ rustfmt and whitespace checks pass; a full workspace run was not repeated for
 this leaf. Unresolved, cyclic, unsupported and over-budget symbolic cases
 close in the next leaf.
 
+### J.3.1.3.4.4.2.3.2.3.3.3.6.5.3 Symbolic tuple spread closure
+
+Unresolved names, cyclic aliases and non-array constraints are rejected before
+output and agree with pinned TypeScript 5.9.3 (TS2304, TS2456/TS2315, TS2574).
+A nested alias spread of a constrained parameter is accepted by both. Two
+symbolic rests and a union constraint are accepted by `tsc` but rejected by
+BlueTS before output because no bounded comparison exists for them; this is a
+deliberate, documented fail-closed divergence. The generic-expansion limit
+reports a resource-limit diagnostic. This leaf changed no behaviour; it pins
+the boundary with public tests and a pinned-`tsc` comparison, and closes the
+tuple rest/spread family. Optional tuple spread expansion and parenthesized
+union array annotations are deferred (see the TODO stop-loss).
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process

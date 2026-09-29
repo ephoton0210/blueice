@@ -5155,6 +5155,91 @@ fn symbolic_tuple_spreads_compare_identical_tails_and_safe_widening() {
 }
 
 #[test]
+fn symbolic_tuple_spreads_close_unresolved_cyclic_unsupported_and_over_budget() {
+    let compile_source = |source: &str, max_type_expansions: usize| {
+        compile(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+            CompilerOptions {
+                limits: CompilerLimits {
+                    max_type_expansions,
+                    ..CompilerLimits::default()
+                },
+                ..CompilerOptions::default()
+            },
+        )
+    };
+    let accepted = compile_source(
+        include_str!("fixtures/typescript_oracle/tuple-spread-symbolic-close-nested-valid/main.ts"),
+        256,
+    );
+    assert!(
+        accepted.diagnostics.is_empty(),
+        "{:#?}",
+        accepted.diagnostics
+    );
+    assert!(accepted.output.is_some());
+
+    // Rejected by both BlueTS and pinned TypeScript.
+    for source in [
+        include_str!(
+            "fixtures/typescript_oracle/tuple-spread-symbolic-close-unresolved-error/main.ts"
+        ),
+        include_str!("fixtures/typescript_oracle/tuple-spread-symbolic-close-cyclic-error/main.ts"),
+        include_str!(
+            "fixtures/typescript_oracle/tuple-spread-symbolic-close-nonarray-error/main.ts"
+        ),
+    ] {
+        let rejected = compile_source(source, 256);
+        assert!(rejected.output.is_none(), "{source}");
+        assert!(
+            rejected
+                .diagnostics
+                .iter()
+                .all(|diagnostic| diagnostic.span.module == ENTRY),
+            "{:#?}",
+            rejected.diagnostics
+        );
+        assert!(!rejected.diagnostics.is_empty(), "{source}");
+    }
+
+    // Accepted by pinned TypeScript, deliberately rejected by BlueTS before
+    // output: two symbolic rests and a union constraint have no bounded
+    // comparison yet.
+    for (source, code) in [
+        (
+            "export function f<T extends string[], U extends number[]>(v: [...T, ...U]): void {}",
+            DiagnosticCode::ParseError,
+        ),
+        (
+            "export function f<T extends string[] | number[]>(v: [...T]): void {}",
+            DiagnosticCode::UnsupportedSyntax,
+        ),
+    ] {
+        let rejected = compile_source(source, 256);
+        assert!(rejected.output.is_none(), "{source}");
+        assert!(
+            rejected
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == code),
+            "{source}: {:#?}",
+            rejected.diagnostics
+        );
+    }
+
+    let bounded = compile_source(
+        include_str!("fixtures/typescript_oracle/tuple-spread-symbolic-close-nested-valid/main.ts"),
+        1,
+    );
+    assert!(bounded.output.is_none());
+    assert!(bounded
+        .diagnostics
+        .iter()
+        .any(|diagnostic| diagnostic.code == DiagnosticCode::ResourceLimit));
+}
+
+#[test]
 fn middle_tuple_rest_checks_suffix_and_emits_at_public_boundary() {
     let source = include_str!("fixtures/typescript_oracle/tuple-rest-middle-valid/main.ts");
     let accepted = compile(
