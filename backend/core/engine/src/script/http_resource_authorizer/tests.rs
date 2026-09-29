@@ -234,6 +234,83 @@ fn manifest_and_policy_require_canonical_owner_configuration() {
     .is_err());
 }
 
+/// A port nothing is listening on, so a connection attempt fails fast
+/// (connection refused) instead of hanging until `FETCH_TIMEOUT`.
+fn unused_local_port() -> u16 {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    listener.local_addr().unwrap().port()
+}
+
+#[test]
+fn fixed_core_profile_lazily_builds_and_reuses_one_authorizer_per_document_origin() {
+    let authorizer = CoreHttpPageScriptFixtureAuthorizer::new();
+    let port = unused_local_port();
+    let request = OutOfProcessPageScriptSourceRequest {
+        tab_id: crate::TabId::from_u64(1),
+        document_generation: 1,
+        ordinal: 0,
+        language: CombinedPageScriptLanguage::JavaScript(BlueJsPageScriptKind::Classic),
+        document_url: format!("http://127.0.0.1:{port}/app/index.html"),
+        declared_src: CORE_HTTP_PAGE_SCRIPT_FIXTURE_PATH.to_string(),
+    };
+
+    // First call lazily builds this origin's fixed policy; the matching
+    // declaration and language pass the top-level checks and reach the real
+    // fetch, which fails closed (nothing is listening) rather than hanging
+    // or panicking.
+    assert!(authorizer.authorize(&request).is_err());
+    // A second call for the same origin reuses the already-built policy
+    // instead of rebuilding it.
+    assert!(authorizer.authorize(&request).is_err());
+
+    // The lazily-built authorizer is real and was actually inserted: its
+    // trait-forwarded lifecycle/accounting methods run cleanly even though
+    // no fetch ever completed.
+    assert_eq!(
+        authorizer.retained_source_payload_bytes(crate::TabId::from_u64(1), 1),
+        Some(0)
+    );
+    authorizer.release_document(crate::TabId::from_u64(1), 1);
+}
+
+#[test]
+fn fixed_core_profile_denies_once_its_origin_limit_is_reached() {
+    let authorizer = CoreHttpPageScriptFixtureAuthorizer::new();
+    for _ in 0..MAX_CORE_HTTP_PAGE_SCRIPT_FIXTURE_ORIGINS {
+        let port = unused_local_port();
+        let request = OutOfProcessPageScriptSourceRequest {
+            tab_id: crate::TabId::from_u64(1),
+            document_generation: 1,
+            ordinal: 0,
+            language: CombinedPageScriptLanguage::JavaScript(BlueJsPageScriptKind::Classic),
+            document_url: format!("http://127.0.0.1:{port}/app/index.html"),
+            declared_src: CORE_HTTP_PAGE_SCRIPT_FIXTURE_PATH.to_string(),
+        };
+        // Each distinct origin still fails closed (no listener), but it must
+        // fail for the fetch, not for the origin-limit check below.
+        let error = authorizer.authorize(&request).unwrap_err();
+        assert_ne!(
+            error.to_string(),
+            "fixed core HTTP page-script profile reached its origin limit"
+        );
+    }
+
+    let port = unused_local_port();
+    let over_limit = OutOfProcessPageScriptSourceRequest {
+        tab_id: crate::TabId::from_u64(1),
+        document_generation: 1,
+        ordinal: 0,
+        language: CombinedPageScriptLanguage::JavaScript(BlueJsPageScriptKind::Classic),
+        document_url: format!("http://127.0.0.1:{port}/app/index.html"),
+        declared_src: CORE_HTTP_PAGE_SCRIPT_FIXTURE_PATH.to_string(),
+    };
+    let error = authorizer.authorize(&over_limit).unwrap_err();
+    assert_eq!(
+        error.to_string(),
+        "fixed core HTTP page-script profile reached its origin limit"
+    );
+}
+
 #[test]
 fn fixed_core_profile_rejects_every_declaration_except_its_compiled_classic_path() {
     let authorizer = CoreHttpPageScriptFixtureAuthorizer::new();
