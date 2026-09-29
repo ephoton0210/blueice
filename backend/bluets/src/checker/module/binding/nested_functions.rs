@@ -58,7 +58,7 @@ impl ModuleChecker<'_> {
             name: "<arrow>".to_string(),
             async_function: false,
             body_open: None,
-            type_parameters: Vec::new(),
+            type_parameters: arrow.type_parameters.clone(),
             parameters: arrow.parameters.clone(),
             return_type: arrow.return_type.clone(),
             body,
@@ -75,10 +75,11 @@ impl ModuleChecker<'_> {
             // A named function expression is visible inside its own body.
             body_scope.insert(
                 name.clone(),
-                Type::Function {
-                    parameters: arrow.parameters.clone(),
-                    result: Box::new(arrow.return_type.clone().unwrap_or(Type::Unknown)),
-                },
+                erased_function_type(
+                    &arrow.parameters,
+                    arrow.return_type.clone().unwrap_or(Type::Unknown),
+                    &arrow.type_parameters,
+                ),
             );
         }
         self.check_function_in_scope(&function, body_scope);
@@ -109,9 +110,42 @@ impl ModuleChecker<'_> {
             }
             (None, NestedFunctionBody::Block { .. }) => Type::Unknown,
         };
-        Some(Type::Function {
-            parameters: arrow.parameters.clone(),
+        Some(erased_function_type(
+            &arrow.parameters,
+            result,
+            &arrow.type_parameters,
+        ))
+    }
+}
+
+/// The function type of a nested function. Its type parameters are erased to
+/// their constraints (or `unknown`), so a call site is checked against the
+/// widest types the function accepts and cannot be rejected for passing a
+/// concrete argument where the declaration says `T`. The result type is erased
+/// the same way, so a generic result is not more precise than its constraint.
+pub(in crate::checker::module) fn erased_function_type(
+    parameters: &[Parameter],
+    result: Type,
+    type_parameters: &[TypeParameter],
+) -> Type {
+    if type_parameters.is_empty() {
+        return Type::Function {
+            parameters: parameters.to_vec(),
             result: Box::new(result),
-        })
+        };
+    }
+    let substitutions = type_parameter_constraint_substitutions(type_parameters);
+    Type::Function {
+        parameters: parameters
+            .iter()
+            .map(|parameter| Parameter {
+                annotation: parameter
+                    .annotation
+                    .as_ref()
+                    .map(|annotation| substitute_type(annotation, &substitutions)),
+                ..parameter.clone()
+            })
+            .collect(),
+        result: Box::new(substitute_type(&result, &substitutions)),
     }
 }

@@ -2414,6 +2414,31 @@ callback checking, because module function names also appear in the scope
 map, so the two cannot be told apart that way; a fix needs to know which scope
 entries are real locals.
 
+### J.3.7.7.1 Generic nested functions
+
+The three nested-function parsers accept `<..>` where a generic function has it:
+an arrow head that starts with `<` and whose matching `>` is followed by `(`, a
+function expression with `<..>` before its parameter list (after an optional
+name), and a nested declaration with `<..>` after its name. The list is parsed
+with the named-function routine and erased through the `>`; the type parameters
+stay on the entry (`NestedFunction::type_parameters`, or the declaration's own
+field), so the checker's existing generic handling applies: the parameters are in
+scope for the parameter and result annotations, unknown names are reported, and
+constraints are checked.
+
+A generic function used as a value would otherwise reject a valid call, because
+its parameter type is the name `T`. Its function type therefore substitutes each
+type parameter with its constraint, or `unknown`, in the parameter and result
+types. That is permissive and sound for arguments but loses precision: the
+result of `identity(1)` is `unknown`, not `number`, where `tsc` infers `T`.
+Inference of type arguments for a value call is a separate feature.
+
+The old refusal of a generic arrow ran over raw tokens before any parsing and
+missed a result annotation. It is removed, and the erasure audit now refuses a
+`<..>` still present in front of a parameter list at the start of an operand, so
+a shape that is not structured (`async <T>(a) => a`, a destructured parameter
+list) stays refused instead of reaching the output.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process

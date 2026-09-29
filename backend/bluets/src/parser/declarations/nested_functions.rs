@@ -41,6 +41,22 @@ impl Parser {
             .or_else(|| self.try_parse_object_member(range_start, index, end))
     }
 
+    /// Parses and erases the `<..>` at the cursor, returning its type
+    /// parameters, or `None` when it is not a parameter list.
+    fn parse_erased_type_parameters(&mut self) -> Option<Vec<TypeParameter>> {
+        let start = self.current().start;
+        let parameters = self.parse_type_parameters();
+        if parameters.is_empty() {
+            return None;
+        }
+        self.edits.push(TextEdit {
+            start,
+            end: self.current().start,
+            replacement: String::new(),
+        });
+        Some(parameters)
+    }
+
     /// `function name(parameters) [: result] { body }` at a statement position
     /// inside a function body, returning the item to add. Generators, `async`
     /// and generic declarations and destructured parameters are left to the
@@ -55,16 +71,33 @@ impl Parser {
             return None;
         }
         let name_token = self.tokens.get(start_index + 1)?;
-        let open_token = self.tokens.get(start_index + 2)?;
-        if name_token.kind != TokenKind::Identifier || !open_token.is("(") {
+        if name_token.kind != TokenKind::Identifier {
             return None;
         }
         let name = name_token.text.clone();
-        let open = start_index + 2;
-        let close = matching_close(&self.tokens, open, self.tokens.len() - 1)?;
+        let limit = self.tokens.len() - 1;
+        let generic = self.tokens.get(start_index + 2)?.is("<");
+        let open = if generic {
+            matching_angle_bracket(&self.tokens, start_index + 2, limit)? + 1
+        } else {
+            start_index + 2
+        };
+        if !self.tokens.get(open)?.is("(") {
+            return None;
+        }
+        let close = matching_close(&self.tokens, open, limit)?;
         if !self.simple_parameter_list(open, close) {
             return None;
         }
+        let type_parameters = if generic {
+            let saved = self.index;
+            self.index = start_index + 2;
+            let parsed = self.parse_erased_type_parameters();
+            self.index = saved;
+            parsed?
+        } else {
+            Vec::new()
+        };
         let ParsedFunctionTail {
             parameters,
             return_type,
@@ -86,7 +119,7 @@ impl Parser {
             name,
             async_function: false,
             body_open: None,
-            type_parameters: Vec::new(),
+            type_parameters,
             parameters,
             return_type,
             body: items,
@@ -172,6 +205,7 @@ impl Parser {
             NestedFunction {
                 kind,
                 name,
+                type_parameters: Vec::new(),
                 parameters,
                 return_type,
                 body,
@@ -269,15 +303,27 @@ impl Parser {
         if !starts_operand || async_function {
             return None;
         }
-        let mut open = index + 1;
-        let name = if self.tokens.get(open).is_some_and(|token| {
+        let mut cursor = index + 1;
+        let name = if self.tokens.get(cursor).is_some_and(|token| {
             token.kind == TokenKind::Identifier
-                && self.tokens.get(open + 1).is_some_and(|next| next.is("("))
+                && self
+                    .tokens
+                    .get(cursor + 1)
+                    .is_some_and(|next| next.is("(") || next.is("<"))
         }) {
-            open += 1;
-            Some(self.tokens[open - 1].text.clone())
+            cursor += 1;
+            Some(self.tokens[cursor - 1].text.clone())
         } else {
             None
+        };
+        let generic_start = self
+            .tokens
+            .get(cursor)
+            .is_some_and(|token| token.is("<"))
+            .then_some(cursor);
+        let open = match generic_start {
+            Some(angle) => matching_angle_bracket(&self.tokens, angle, end)? + 1,
+            None => cursor,
         };
         if !self.tokens.get(open).is_some_and(|token| token.is("(")) {
             return None;
@@ -287,6 +333,15 @@ impl Parser {
             return None;
         }
         let saved_index = self.index;
+        let type_parameters = match generic_start {
+            Some(angle) => {
+                self.index = angle;
+                let parsed = self.parse_erased_type_parameters();
+                self.index = saved_index;
+                parsed?
+            }
+            None => Vec::new(),
+        };
         let ParsedFunctionTail {
             parameters,
             return_type,
@@ -300,6 +355,7 @@ impl Parser {
             NestedFunction {
                 kind: NestedFunctionKind::Function,
                 name,
+                type_parameters,
                 parameters,
                 return_type,
                 body,
@@ -323,7 +379,25 @@ impl Parser {
         if !starts_operand || async_arrow {
             return None;
         }
-        let (parameters_close, single_name) = if self.tokens[index].is("(") {
+        let generic_open = if self.tokens[index].is("<") {
+            let open = matching_angle_bracket(&self.tokens, index, end)? + 1;
+            self.tokens
+                .get(open)
+                .is_some_and(|token| token.is("("))
+                .then_some(open)
+        } else {
+            None
+        };
+        if self.tokens[index].is("<") && generic_open.is_none() {
+            return None;
+        }
+        let (parameters_close, single_name) = if let Some(open) = generic_open {
+            let close = matching_close(&self.tokens, open, end)?;
+            if !self.simple_parameter_list(open, close) {
+                return None;
+            }
+            (close, false)
+        } else if self.tokens[index].is("(") {
             let close = matching_close(&self.tokens, index, end)?;
             if !self.simple_parameter_list(index, close) {
                 return None;
@@ -350,6 +424,19 @@ impl Parser {
         let saved_diagnostics = self.diagnostics.len();
         let saved_edits = self.edits.len();
         self.index = index;
+        let type_parameters = if generic_open.is_some() {
+            match self.parse_erased_type_parameters() {
+                Some(parsed) => parsed,
+                None => {
+                    self.diagnostics.truncate(saved_diagnostics);
+                    self.edits.truncate(saved_edits);
+                    self.index = saved_index;
+                    return None;
+                }
+            }
+        } else {
+            Vec::new()
+        };
         let parameters = if single_name {
             let name = self.tokens[index].text.clone();
             let span = self.tokens[index].span(&self.id);
@@ -429,6 +516,7 @@ impl Parser {
             NestedFunction {
                 kind: NestedFunctionKind::Arrow,
                 name: None,
+                type_parameters,
                 parameters,
                 return_type,
                 body,

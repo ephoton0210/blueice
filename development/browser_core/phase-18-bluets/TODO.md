@@ -2193,9 +2193,29 @@ done to the page-runs-and-debugs goal at the top of this file.
       TypeScript 5.9.3 `--noEmit` cases agree on acceptance and
       TS1196/TS2322/TS2366 lines, and a Node run gives identical output for
       BlueTSC and `tsc`.
-    - [ ] **J.3.7.7** Destructured parameters, `async` and generic arrows and
-      functions, each with its own result-type model (`async` needs a Promise
-      type).
+    - [ ] **J.3.7.7** The nested-function forms still refused. Each is
+      fail-closed today (refused, never emitted with its annotations) and needs
+      its own model:
+      - [x] **J.3.7.7.1** Type parameters on arrows, function expressions and
+        nested declarations (`<T>(a: T): T => a`, `function <A, B>(..)`,
+        `function first<T>(..)`). The `<..>` is parsed and erased with the
+        head, kept as `type_parameters`, and checked like a named generic
+        function (unknown type names in the body are rejected, constraints
+        apply). A function value's type erases its type parameters to their
+        constraints or `unknown`, so a call site is never rejected for a
+        concrete argument where the declaration says `T`; the price is that a
+        generic result is no more precise than its constraint. The token-level
+        refusal of generic arrows is replaced by the erasure audit, which
+        refuses any `<..>` left before a parameter list at the start of an
+        operand. Five pinned TypeScript 5.9.3 `--noEmit` cases agree on
+        acceptance and TS2322/TS2304 lines, and a Node run gives identical
+        output for BlueTSC and `tsc`.
+      - [ ] **J.3.7.7.2** Destructured parameters (`({ a, b }: T) => ..`), with
+        the pattern's bindings typed from the annotation.
+      - [ ] **J.3.7.7.3** `async` functions and arrows, which need a `Promise`
+        type and `await`.
+      - [ ] **J.3.7.7.4** Generator functions, which need `Generator` and
+        `yield`.
 - [ ] **J.4** Implement the module and package ecosystem without widening
   page or MCP authority through type declarations.
   - [ ] **J.4.1** Add TypeScript 5.9.3 module-mode selection and CommonJS

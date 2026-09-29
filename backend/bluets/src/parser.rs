@@ -53,6 +53,8 @@ pub struct NestedFunction {
     pub kind: NestedFunctionKind,
     /// The name a function expression binds inside its own body.
     pub name: Option<String>,
+    /// Erased type parameters (`<T>` on an arrow or function).
+    pub type_parameters: Vec<TypeParameter>,
     pub parameters: Vec<Parameter>,
     pub return_type: Option<Type>,
     pub body: NestedFunctionBody,

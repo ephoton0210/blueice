@@ -192,6 +192,15 @@ fn annotated_function_tokens(tokens: &[Token]) -> Vec<usize> {
             }
             continue;
         }
+        // Type parameters left in front of a parameter list at the start of an
+        // operand: a generic arrow that was not structured.
+        if token.is("<")
+            && (index == 0 || !ends_primary(&tokens[index - 1]))
+            && closes_type_parameters_before_parameters(tokens, index)
+        {
+            flagged.push(index);
+            continue;
+        }
         // A generic function expression or nested declaration.
         if token.is("function") {
             let next =
@@ -206,4 +215,41 @@ fn annotated_function_tokens(tokens: &[Token]) -> Vec<usize> {
         }
     }
     flagged
+}
+
+/// Whether a token can end an operand, so a following `<` is a comparison.
+fn ends_primary(token: &Token) -> bool {
+    matches!(
+        token.kind,
+        TokenKind::Identifier | TokenKind::Number | TokenKind::String | TokenKind::Template
+    ) || matches!(
+        token.text.as_str(),
+        ")" | "]" | "true" | "false" | "null" | "undefined" | "this" | "super"
+    )
+}
+
+/// Whether the `<` at `open` closes with a `>` that is followed by `(`, within
+/// a short distance. `>>` and `>>>` close two and three levels.
+fn closes_type_parameters_before_parameters(tokens: &[Token], open: usize) -> bool {
+    let mut depth = 0usize;
+    for (offset, token) in tokens[open..].iter().take(64).enumerate() {
+        match token.text.as_str() {
+            "<" => depth += 1,
+            ">" | ">>" | ">>>" => {
+                let closers = token.text.len();
+                if closers > depth {
+                    return false;
+                }
+                depth -= closers;
+                if depth == 0 {
+                    return tokens
+                        .get(open + offset + 1)
+                        .is_some_and(|next| next.is("("));
+                }
+            }
+            ";" | "{" | "}" => return false,
+            _ => {}
+        }
+    }
+    false
 }

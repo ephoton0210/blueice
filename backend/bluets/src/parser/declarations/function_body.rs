@@ -22,12 +22,6 @@ impl Parser {
                 self.index,
                 self.index.saturating_add(2).min(self.tokens.len()),
             );
-            if is_generic_arrow_function(&self.tokens, self.index, self.tokens.len() - 1) {
-                self.unsupported(
-                    self.tokens[self.index].span(&self.id),
-                    "generic arrow functions are not in the initial BlueTS matrix",
-                );
-            }
             if parentheses == 0
                 && brackets == 0
                 && is_direct_braced_if_statement(&self.tokens, self.index)

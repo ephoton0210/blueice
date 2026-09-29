@@ -562,10 +562,11 @@ pub(in crate::checker::module) fn hoist_local_functions(
             FunctionBodyItem::Function(function) => {
                 scope.insert(
                     function.name.clone(),
-                    Type::Function {
-                        parameters: function.parameters.clone(),
-                        result: Box::new(function.return_type.clone().unwrap_or(Type::Unknown)),
-                    },
+                    super::nested_functions::erased_function_type(
+                        &function.parameters,
+                        function.return_type.clone().unwrap_or(Type::Unknown),
+                        &function.type_parameters,
+                    ),
                 );
             }
             FunctionBodyItem::If(statement) => hoist_from_if(statement, scope),

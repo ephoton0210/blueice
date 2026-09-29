@@ -4247,18 +4247,6 @@ fn unsupported_and_misplaced_syntax_is_diagnosed_not_passed_through() {
             "optional variables are not valid TypeScript declarations",
         ),
         (
-            "const identity = <T>(value) => value;",
-            "generic arrow functions are not in the initial BlueTS matrix",
-        ),
-        (
-            "function make() { return <T>(value) => value; }",
-            "generic arrow functions are not in the initial BlueTS matrix",
-        ),
-        (
-            "function make() { let identity; identity = <T>(value) => value; }",
-            "generic arrow functions are not in the initial BlueTS matrix",
-        ),
-        (
             "a as number;",
             "TypeScript assertions outside a supported declaration",
         ),
@@ -5818,6 +5806,8 @@ fn function_annotations_that_survive_erasure_are_refused_before_output() {
         "export const h = async (a: number): Promise<number> => a;",
         "export const h = async (a: number) => a;",
         "export const h = ({ x }: { x: number }) => x;",
+        "export const h = async <T>(a) => a;",
+        "export const h = <T>({ x }) => x;",
         "export const o = { async m(a: number) { return a; } };",
         "export const o = { *m(a: number) { yield a; } };",
     ] {
@@ -5967,7 +5957,6 @@ fn typed_arrow_functions_are_parsed_erased_and_checked() {
     for source in [
         "export const h = ({ x }: { x: number }) => x;",
         "export const h = async (a: number): Promise<number> => a;",
-        "export const h = <T>(a: T) => a;",
     ] {
         let refused = compile_source(source);
         assert!(refused.output.is_none(), "{source}");
@@ -6074,14 +6063,9 @@ fn function_expressions_are_parsed_erased_and_checked() {
         recursive.diagnostics
     );
 
-    // Generators and generic function expressions stay refused.
-    for source in [
-        "export const h = function* (a: number) { yield a; };",
-        "export const h = function <T>(a: T): T { return a; };",
-    ] {
-        let refused = compile_source(source);
-        assert!(refused.output.is_none(), "{source}");
-    }
+    // Generators stay refused.
+    let generator = "export const h = function* (a: number) { yield a; };";
+    assert!(compile_source(generator).output.is_none(), "{generator}");
 }
 
 #[test]
@@ -6253,11 +6237,10 @@ fn nested_function_declarations_are_parsed_erased_hoisted_and_checked() {
     );
     assert!(scoped.diagnostics.is_empty(), "{:#?}", scoped.diagnostics);
 
-    // Generators, async and generic declarations stay refused.
+    // Generators and async declarations stay refused.
     for source in [
         "export function outer() { function* g(a: number) { yield a; } return g; }",
         "export function outer() { async function g(a: number) { return a; } return g; }",
-        "export function outer() { function g<T>(a: T): T { return a; } return g; }",
     ] {
         let refused = compile_source(source);
         assert!(refused.output.is_none(), "{source}");
@@ -6323,6 +6306,96 @@ fn catch_binding_annotations_are_erased_and_try_termination_is_analyzed() {
                 .any(|diagnostic| diagnostic.code == code && diagnostic.span.module == ENTRY),
             "{source}: {:#?}",
             rejected.diagnostics
+        );
+    }
+}
+
+#[test]
+fn generic_nested_functions_are_parsed_erased_and_checked() {
+    let compile_source = |source: &str| {
+        compile(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+            CompilerOptions::default(),
+        )
+    };
+    let compiled = compile_source(include_str!(
+        "fixtures/typescript_oracle/generic-nested-runtime/main.ts"
+    ));
+    assert!(
+        compiled.diagnostics.is_empty(),
+        "{:#?}",
+        compiled.diagnostics
+    );
+    let javascript = compiled.output.unwrap().artifacts[ENTRY].javascript.clone();
+    assert_eq!(
+        normalized_javascript(&javascript),
+        "const identity = (value) => value; \
+         const pair = function (a, b) { return [a, b]; }; \
+         const named = function pick(xs) { return xs[0]; }; \
+         function outer(){ function first(xs) { return xs[0]; } return first([1, 2]); } \
+         console.log(identity(1)); console.log(pair(\"a\", 2)[1]); \
+         console.log(named([7, 8])); console.log(outer());"
+    );
+
+    let accepted = compile_source(include_str!(
+        "fixtures/typescript_oracle/generic-nested-valid/main.ts"
+    ));
+    assert!(
+        accepted.diagnostics.is_empty(),
+        "{:#?}",
+        accepted.diagnostics
+    );
+
+    for (source, code) in [
+        (
+            include_str!("fixtures/typescript_oracle/generic-nested-result-error/main.ts"),
+            DiagnosticCode::ReturnTypeMismatch,
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/generic-nested-parameter-use-error/main.ts"),
+            DiagnosticCode::ReturnTypeMismatch,
+        ),
+        (
+            include_str!(
+                "fixtures/typescript_oracle/generic-nested-unknown-parameter-error/main.ts"
+            ),
+            DiagnosticCode::UnknownType,
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/generic-nested-constraint-error/main.ts"),
+            DiagnosticCode::ReturnTypeMismatch,
+        ),
+    ] {
+        let rejected = compile_source(source);
+        assert!(rejected.output.is_none());
+        assert!(
+            rejected
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == code && diagnostic.span.module == ENTRY),
+            "{source}: {:#?}",
+            rejected.diagnostics
+        );
+    }
+
+    // Untyped generic arrows are erased too, in any expression position.
+    for source in [
+        "export const identity = <T>(value) => value;",
+        "export function make() { return <T>(value) => value; }",
+        "export function make() { let identity; identity = <T>(value) => value; return identity; }",
+    ] {
+        let result = compile_source(source);
+        assert!(
+            result.diagnostics.is_empty(),
+            "{source}: {:#?}",
+            result.diagnostics
+        );
+        assert!(
+            !result.output.unwrap().artifacts[ENTRY]
+                .javascript
+                .contains("<T>"),
+            "{source}"
         );
     }
 }

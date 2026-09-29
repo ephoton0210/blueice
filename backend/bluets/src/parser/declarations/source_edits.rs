@@ -119,8 +119,6 @@ impl Parser {
                 })
             {
                 Some("`module` is not in the initial BlueTS matrix")
-            } else if is_generic_arrow_function(&self.tokens, index, end) {
-                Some("generic arrow functions are not in the initial BlueTS matrix")
             } else {
                 None
             };
