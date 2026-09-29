@@ -717,7 +717,7 @@ mod tests {
         let far_past = -(BigInt::from(8_640_000_000_000_000_i64) * 1_000_000_u32);
         let projected = TimeZone::Iana("Europe/Madrid").offset_nanoseconds_for(&far_past);
         assert!(
-            projected == 3_600_000_000_000 || projected == 2 * 3_600_000_000_000,
+            [3_600_000_000_000, 2 * 3_600_000_000_000].contains(&projected),
             "projected offset should still be a real Madrid offset, got {projected}",
         );
     }

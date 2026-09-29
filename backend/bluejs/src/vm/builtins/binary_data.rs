@@ -1764,3 +1764,72 @@ impl Vm {
         Ok(result)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn number(value: f64) -> Value {
+        Value::Number(value)
+    }
+
+    fn bigint(value: i64) -> Value {
+        Value::BigInt(value.into())
+    }
+
+    #[test]
+    fn numeric_atomic_operations_wrap_at_the_element_width() {
+        let apply = |operation| {
+            Vm::atomics_binary_value(
+                TypedArrayKind::Int32,
+                &number(12.0),
+                &number(10.0),
+                operation,
+            )
+        };
+        assert_eq!(apply(AtomicOp::Add), number(22.0));
+        assert_eq!(apply(AtomicOp::And), number(8.0));
+        assert_eq!(apply(AtomicOp::Or), number(14.0));
+        assert_eq!(apply(AtomicOp::Sub), number(2.0));
+        assert_eq!(apply(AtomicOp::Xor), number(6.0));
+    }
+
+    #[test]
+    fn bigint_atomic_operations_are_exact() {
+        let apply = |operation| {
+            Vm::atomics_binary_value(
+                TypedArrayKind::BigInt64,
+                &bigint(12),
+                &bigint(10),
+                operation,
+            )
+        };
+        assert_eq!(apply(AtomicOp::Add), bigint(22));
+        assert_eq!(apply(AtomicOp::And), bigint(8));
+        assert_eq!(apply(AtomicOp::Or), bigint(14));
+        assert_eq!(apply(AtomicOp::Sub), bigint(2));
+        assert_eq!(apply(AtomicOp::Xor), bigint(6));
+    }
+
+    #[test]
+    #[should_panic(expected = "BigInt atomic operations have BigInt operands")]
+    fn a_bigint_element_never_meets_a_number_operand() {
+        Vm::atomics_binary_value(
+            TypedArrayKind::BigInt64,
+            &bigint(1),
+            &number(1.0),
+            AtomicOp::Add,
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "numeric atomic operations have Number operands")]
+    fn a_numeric_element_never_meets_a_bigint_operand() {
+        Vm::atomics_binary_value(
+            TypedArrayKind::Int32,
+            &number(1.0),
+            &bigint(1),
+            AtomicOp::Add,
+        );
+    }
+}

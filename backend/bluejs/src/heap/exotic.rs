@@ -32,14 +32,14 @@ impl Heap {
         &self,
         object: ObjectId,
     ) -> Result<Option<(ObjectId, ObjectId)>, HeapError> {
-        Ok(match self.object(object)?.kind {
+        self.object(object).and_then(|stored| match stored.kind {
             ObjectKind::Proxy {
                 target: Some(target),
                 handler: Some(handler),
                 ..
-            } => Some((target, handler)),
-            ObjectKind::Proxy { .. } => return Err(HeapError::RevokedProxy),
-            _ => None,
+            } => Ok(Some((target, handler))),
+            ObjectKind::Proxy { .. } => Err(HeapError::RevokedProxy),
+            _ => Ok(None),
         })
     }
 
@@ -47,7 +47,7 @@ impl Heap {
         &self,
         object: ObjectId,
     ) -> Result<Option<(bool, bool)>, HeapError> {
-        Ok(match self.object(object)?.kind {
+        self.object(object).map(|stored| match stored.kind {
             ObjectKind::Proxy {
                 callable,
                 constructible,
@@ -113,7 +113,7 @@ impl Heap {
         &self,
         object: ObjectId,
     ) -> Result<Option<NativeFunction>, HeapError> {
-        Ok(match self.object(object)?.kind {
+        self.object(object).map(|stored| match stored.kind {
             ObjectKind::NativeFunction { function, .. } => Some(function),
             _ => None,
         })
@@ -137,14 +137,14 @@ impl Heap {
         &self,
         object: ObjectId,
     ) -> Result<Option<JsString>, HeapError> {
-        Ok(match &self.object(object)?.kind {
+        self.object(object).map(|stored| match &stored.kind {
             ObjectKind::Closure { code, .. } => code.source_text.to_js_string(),
             _ => None,
         })
     }
 
     pub(crate) fn boxed_string(&self, object: ObjectId) -> Result<Option<&JsString>, HeapError> {
-        Ok(match &self.object(object)?.kind {
+        self.object(object).map(|stored| match &stored.kind {
             ObjectKind::String(string) => Some(string),
             _ => None,
         })
@@ -200,10 +200,8 @@ impl Heap {
 
     /// Whether `object` carries generator internal slots (sync or async).
     pub(crate) fn is_generator(&self, object: ObjectId) -> Result<bool, HeapError> {
-        Ok(matches!(
-            self.object(object)?.kind,
-            ObjectKind::Generator { .. }
-        ))
+        self.object(object)
+            .map(|stored| matches!(stored.kind, ObjectKind::Generator { .. }))
     }
 
     pub(crate) fn generator_state_is_done(&self, object: ObjectId) -> Result<bool, HeapError> {
@@ -360,7 +358,7 @@ impl Heap {
         &self,
         object: ObjectId,
     ) -> Result<Option<&BoundFunction>, HeapError> {
-        Ok(match &self.object(object)?.kind {
+        self.object(object).map(|stored| match &stored.kind {
             ObjectKind::BoundFunction(bound) => Some(bound),
             _ => None,
         })
@@ -383,7 +381,7 @@ impl Heap {
         &self,
         object: ObjectId,
     ) -> Result<Option<Rc<crate::intl::Collator>>, HeapError> {
-        Ok(match &self.object(object)?.kind {
+        self.object(object).map(|stored| match &stored.kind {
             ObjectKind::Collator { data, .. } => Some(data.clone()),
             _ => None,
         })
@@ -419,7 +417,7 @@ impl Heap {
         &self,
         object: ObjectId,
     ) -> Result<Option<Rc<crate::intl::NumberFormat>>, HeapError> {
-        Ok(match &self.object(object)?.kind {
+        self.object(object).map(|stored| match &stored.kind {
             ObjectKind::NumberFormat { data, .. } => Some(data.clone()),
             _ => None,
         })
@@ -457,7 +455,7 @@ impl Heap {
         &self,
         object: ObjectId,
     ) -> Result<Option<Rc<crate::intl::DateTimeFormat>>, HeapError> {
-        Ok(match &self.object(object)?.kind {
+        self.object(object).map(|stored| match &stored.kind {
             ObjectKind::DateTimeFormat { data, .. } => Some(data.clone()),
             _ => None,
         })
@@ -492,7 +490,7 @@ impl Heap {
         &self,
         object: ObjectId,
     ) -> Result<Option<Rc<crate::intl::DisplayNames>>, HeapError> {
-        Ok(match &self.object(object)?.kind {
+        self.object(object).map(|stored| match &stored.kind {
             ObjectKind::DisplayNames(data) => Some(data.clone()),
             _ => None,
         })
@@ -510,7 +508,7 @@ impl Heap {
         &self,
         object: ObjectId,
     ) -> Result<Option<Rc<crate::intl::DurationFormat>>, HeapError> {
-        Ok(match &self.object(object)?.kind {
+        self.object(object).map(|stored| match &stored.kind {
             ObjectKind::DurationFormat(data) => Some(data.clone()),
             _ => None,
         })
@@ -528,7 +526,7 @@ impl Heap {
         &self,
         object: ObjectId,
     ) -> Result<Option<Rc<crate::intl::ListFormat>>, HeapError> {
-        Ok(match &self.object(object)?.kind {
+        self.object(object).map(|stored| match &stored.kind {
             ObjectKind::ListFormat(data) => Some(data.clone()),
             _ => None,
         })
@@ -546,7 +544,7 @@ impl Heap {
         &self,
         object: ObjectId,
     ) -> Result<Option<Rc<crate::intl::PluralRules>>, HeapError> {
-        Ok(match &self.object(object)?.kind {
+        self.object(object).map(|stored| match &stored.kind {
             ObjectKind::PluralRules(data) => Some(data.clone()),
             _ => None,
         })
@@ -564,7 +562,7 @@ impl Heap {
         &self,
         object: ObjectId,
     ) -> Result<Option<Rc<crate::intl::RelativeTimeFormat>>, HeapError> {
-        Ok(match &self.object(object)?.kind {
+        self.object(object).map(|stored| match &stored.kind {
             ObjectKind::RelativeTimeFormat(data) => Some(data.clone()),
             _ => None,
         })
@@ -582,7 +580,7 @@ impl Heap {
         &self,
         object: ObjectId,
     ) -> Result<Option<Rc<crate::intl::Segmenter>>, HeapError> {
-        Ok(match &self.object(object)?.kind {
+        self.object(object).map(|stored| match &stored.kind {
             ObjectKind::Segmenter(data) => Some(data.clone()),
             _ => None,
         })
@@ -600,7 +598,7 @@ impl Heap {
         &self,
         object: ObjectId,
     ) -> Result<Option<Rc<crate::intl::Segments>>, HeapError> {
-        Ok(match &self.object(object)?.kind {
+        self.object(object).map(|stored| match &stored.kind {
             ObjectKind::Segments(data) => Some(data.clone()),
             _ => None,
         })
@@ -651,7 +649,7 @@ impl Heap {
         &self,
         object: ObjectId,
     ) -> Result<Option<Rc<crate::intl::Locale>>, HeapError> {
-        Ok(match &self.object(object)?.kind {
+        self.object(object).map(|stored| match &stored.kind {
             ObjectKind::IntlLocale(data) => Some(data.clone()),
             _ => None,
         })
@@ -672,7 +670,7 @@ impl Heap {
         self.alloc(ObjectKind::BoxedPrimitive(value), Some(prototype))
     }
     pub(crate) fn boxed_primitive(&self, object: ObjectId) -> Result<Option<Value>, HeapError> {
-        Ok(match &self.object(object)?.kind {
+        self.object(object).map(|stored| match &stored.kind {
             ObjectKind::BoxedPrimitive(value) => Some(value.clone()),
             _ => None,
         })
@@ -697,7 +695,7 @@ impl Heap {
         &self,
         id: ObjectId,
     ) -> Result<Option<(ObjectId, u64, bool, ArrayIteratorKind)>, HeapError> {
-        Ok(match self.object(id)?.kind {
+        self.object(id).map(|stored| match stored.kind {
             ObjectKind::ArrayIterator {
                 object,
                 index,
@@ -736,7 +734,7 @@ impl Heap {
         &self,
         id: ObjectId,
     ) -> Result<Option<(ObjectId, Value)>, HeapError> {
-        Ok(match &self.object(id)?.kind {
+        self.object(id).map(|stored| match &stored.kind {
             ObjectKind::IteratorWrapper { iterator, next } => Some((*iterator, next.clone())),
             _ => None,
         })
@@ -765,7 +763,7 @@ impl Heap {
         &self,
         id: ObjectId,
     ) -> Result<Option<IteratorHelperState>, HeapError> {
-        Ok(match &self.object(id)?.kind {
+        self.object(id).map(|stored| match &stored.kind {
             ObjectKind::IteratorHelper {
                 record,
                 callback,
@@ -884,7 +882,7 @@ impl Heap {
         &self,
         object: ObjectId,
     ) -> Result<Option<Rc<crate::regexp::RegExp>>, HeapError> {
-        Ok(match &self.object(object)?.kind {
+        self.object(object).map(|stored| match &stored.kind {
             ObjectKind::RegExp(regexp) => Some(regexp.clone()),
             _ => None,
         })
@@ -912,7 +910,7 @@ impl Heap {
         &self,
         object: ObjectId,
     ) -> Result<Option<RegExpIteratorState>, HeapError> {
-        Ok(match &self.object(object)?.kind {
+        self.object(object).map(|stored| match &stored.kind {
             ObjectKind::RegExpIterator {
                 matcher,
                 string,
@@ -933,7 +931,7 @@ impl Heap {
     }
 
     pub(crate) fn closure(&self, object: ObjectId) -> Result<Option<ClosureState>, HeapError> {
-        Ok(match &self.object(object)?.kind {
+        self.object(object).map(|stored| match &stored.kind {
             ObjectKind::Closure {
                 code,
                 captures,
