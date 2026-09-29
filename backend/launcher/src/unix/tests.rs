@@ -792,6 +792,42 @@ fn capture_v1_tabs_fails_if_no_reply_arrives_within_the_timeout() {
 }
 
 #[test]
+fn capture_v1_tabs_fails_if_its_own_registered_sender_is_dropped_while_waiting() {
+    // Distinct from the broadcast-connection-ends case below: here the
+    // initial `ListTabs` write to `core` succeeds (the pair stays open),
+    // but the `Sender` `capture_v1_tabs` itself registered in `clients`
+    // is dropped out from under it -- the `mpsc::RecvTimeoutError::
+    // Disconnected` branch, not a write failure or the plain deadline.
+    let (core_side, _core_observed) = UnixStream::pair().unwrap();
+    let core_writer = Arc::new(Mutex::new(core_side));
+    let clients: Arc<Mutex<Vec<Sender<TaggedServerMessage>>>> = Arc::new(Mutex::new(Vec::new()));
+
+    let waiter_clients = Arc::clone(&clients);
+    let waiter = thread::spawn(move || {
+        capture_v1_tabs(&core_writer, &waiter_clients, Duration::from_secs(5))
+    });
+
+    loop {
+        if clients
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .len()
+            == 1
+        {
+            break;
+        }
+        thread::sleep(Duration::from_millis(1));
+    }
+    clients
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .clear();
+
+    let err = waiter.join().unwrap().unwrap_err();
+    assert!(err.contains("ended while waiting"));
+}
+
+#[test]
 fn capture_v1_tabs_fails_if_the_broadcast_connection_ends_before_a_reply_arrives() {
     let (core_side, core_observed) = UnixStream::pair().unwrap();
     drop(core_observed); // "core" is already gone before ever replying
@@ -1093,6 +1129,111 @@ fn replay_tabs_ignores_a_reply_carrying_a_mismatched_request_id() {
     });
 
     replay_tabs(&mut stream, &tabs).unwrap();
+    responder.join().unwrap();
+}
+
+#[test]
+fn replay_tabs_first_tab_skips_a_premature_frame_ready_and_an_unrelated_reply() {
+    // `expect_navigate_success` must not mistake a `FrameReady` that
+    // arrives before `Navigated`, or any other reply shape entirely, for
+    // the real completion signal -- both are simply noise to wait past.
+    let (mut stream, mut server) = UnixStream::pair().unwrap();
+    let tabs = vec![TabSummary {
+        id: 1,
+        url: Some("about:blank".to_string()),
+    }];
+    let responder = thread::spawn(move || {
+        let (_, req, msg) = read_client_message_with_ids(&mut server).unwrap();
+        assert!(matches!(msg, ClientMessage::Navigate { .. }));
+        write_server_message_with_id(
+            &mut server,
+            req,
+            &ServerMessage::FrameReady {
+                shm_path: "premature".into(),
+                width: 1,
+                height: 1,
+                generation: 0,
+            },
+        )
+        .unwrap();
+        write_server_message_with_id(&mut server, req, &ServerMessage::Tabs(Vec::new())).unwrap();
+        write_server_message_with_id(
+            &mut server,
+            req,
+            &ServerMessage::Navigated {
+                url: "about:blank".to_string(),
+            },
+        )
+        .unwrap();
+        write_server_message_with_id(
+            &mut server,
+            req,
+            &ServerMessage::FrameReady {
+                shm_path: "x".into(),
+                width: 1,
+                height: 1,
+                generation: 1,
+            },
+        )
+        .unwrap();
+    });
+
+    replay_tabs(&mut stream, &tabs).unwrap();
+    responder.join().unwrap();
+}
+
+#[test]
+fn replay_tabs_later_tab_skips_a_mismatched_id_and_a_premature_frame_ready_then_reports_an_error()
+{
+    // The same request-id filtering and premature-`FrameReady` tolerance
+    // as the first-tab `Navigate` path above, exercised on the later-tab
+    // `OpenTab` path (`expect_open_tab_success`), plus a reply shape
+    // that matches neither of its named arms at all, ending in a plain
+    // `Error` reply rather than `GatekeeperBlocked`.
+    let (mut stream, mut server) = UnixStream::pair().unwrap();
+    let tabs = vec![
+        TabSummary { id: 1, url: None },
+        TabSummary {
+            id: 2,
+            url: Some("http://bad".to_string()),
+        },
+    ];
+    let responder = thread::spawn(move || {
+        let (_, req, msg) = read_client_message_with_ids(&mut server).unwrap();
+        assert!(matches!(msg, ClientMessage::OpenTab { .. }));
+        write_server_message_with_id(&mut server, req, &ServerMessage::Tabs(Vec::new())).unwrap();
+        write_server_message_with_id(
+            &mut server,
+            Some(999_999),
+            &ServerMessage::TabOpened {
+                tab_id: 2,
+                url: Some("http://bad".to_string()),
+            },
+        )
+        .unwrap();
+        write_server_message_with_id(
+            &mut server,
+            req,
+            &ServerMessage::FrameReady {
+                shm_path: "premature".into(),
+                width: 1,
+                height: 1,
+                generation: 0,
+            },
+        )
+        .unwrap();
+        write_server_message_with_id(
+            &mut server,
+            req,
+            &ServerMessage::Error {
+                message: "second boom".to_string(),
+            },
+        )
+        .unwrap();
+    });
+
+    let err = replay_tabs(&mut stream, &tabs).unwrap_err();
+    assert!(err.contains("second boom"));
     responder.join().unwrap();
 }
 
