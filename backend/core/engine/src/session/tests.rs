@@ -211,6 +211,43 @@ fn http_external_graph_page_executor(
 }
 
 #[test]
+fn multiple_page_script_runtime_owners_are_rejected_before_any_stream_io() {
+    let dir = temp_frame_dir("multi-owner-rejection");
+    let gatekeeper = clearing_gatekeeper("multi-owner-rejection");
+    let (_client, mut server) = client_pair();
+    let mut tabs = TabManager::new(320.0, 200.0);
+    let tab_id = tabs.default_tab();
+    default_page(&mut tabs).load_html_str(
+        "<main id=\"app\"></main><script type=\"application/x-blueice-typescript\">42;</script>",
+        Some("https://example.test/".to_string()),
+    );
+    let mut host = admitted_direct_page_host(&tabs, tab_id);
+    let mut executor = inline_page_executor();
+    let mut generation = 0u64;
+
+    let error = run_session_with_script_runtime(
+        &mut tabs,
+        &mut server,
+        &dir,
+        &mut generation,
+        &gatekeeper,
+        CoreSessionRequests::default(),
+        PageScriptRuntime {
+            direct_page_host: Some(&mut host),
+            inline_page_executor: Some(&mut executor),
+            javascript_executor: None,
+        },
+    )
+    .unwrap_err();
+
+    assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
+    assert_eq!(
+        error.to_string(),
+        "page-script runtime owners cannot share one session"
+    );
+}
+
+#[test]
 fn inline_blue_ts_scripts_execute_after_a_real_session_navigation() {
     let dir = temp_frame_dir("inline-blue-ts-page-pipeline");
     std::fs::create_dir_all(&dir).unwrap();
