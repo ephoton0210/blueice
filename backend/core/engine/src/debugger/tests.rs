@@ -11,6 +11,7 @@ mod metadata_grants;
 mod metadata_locations;
 mod metadata_relations;
 mod native_execution;
+mod request_channel;
 mod source_span_step;
 mod type_display;
 mod value_scopes;
