@@ -7,6 +7,8 @@
 use super::*;
 use crate::parser::{ClassMethodGroup, Parameter};
 
+mod overloads;
+
 struct InheritedMethod<'a> {
     base_name: String,
     parameters: &'a [Parameter],
@@ -79,7 +81,7 @@ impl ModuleChecker<'_> {
         class: &ClassDeclaration,
     ) {
         for group in &class.method_groups {
-            if !group.signature_member_indices.is_empty() {
+            if self.validate_overload_set_override(class, group) {
                 continue;
             }
             let Some(derived) = group

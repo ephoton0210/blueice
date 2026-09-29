@@ -2055,6 +2055,29 @@ the boundary with public tests and a pinned-`tsc` comparison, and closes the
 tuple rest/spread family. Optional tuple spread expansion and parenthesized
 union array annotations are deferred (see the TODO stop-loss).
 
+### J.3.1.3.4.4.3 Inherited method overload-set compatibility
+
+An override is compared with the nearest earlier local ancestor declaring the
+same method side. Each side exposes its overload signatures, or its single
+implementation when it has none; an overloaded declaration never exposes its
+implementation signature. Every inherited signature must be matched by some
+overriding signature: the overriding signature may not require more
+arguments than the inherited one can supply, parameters compare bivariantly,
+and the result must be assignable to the inherited result unless that result
+is `void`. A failure reports `TypeMismatch` at the overriding group, and an
+exhausted generic-expansion budget reports a resource-limit diagnostic.
+
+The new comparison lives in `classes/overrides/overloads.rs`, because
+`overrides.rs` already exceeds the file-size guideline. Signatures with rest
+parameters or missing annotations, and bases reached only through an imported
+class, stay outside the compared subset and keep the earlier single-signature
+behaviour; classes are still refused before output by the existing
+class-runtime diagnostic. Eight pinned TypeScript 5.9.3 `--noEmit` cases
+(valid overload sets, edge cases with `void` and optional extras, a single
+wide override, a missing overload, a wrong result, a static side, an ancestor
+past an intermediate class, and extra required parameters) agree on
+acceptance and TS2416/TS2417 lines.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process

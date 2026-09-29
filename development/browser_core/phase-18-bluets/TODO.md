@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: J.3.1.3.4.4.3.** H and I are complete. The requested class, enum,
+**Current leaf: J.3.1.3.4.5.** H and I are complete. The requested class, enum,
 decorator, namespace, JSX, CommonJS, and package-resolution expansion has
 passed J.1/J.2 planning; implementation and pinned-`tsc` parity remain open.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
@@ -1341,7 +1341,7 @@ done to the page-runs-and-debugs goal at the top of this file.
                 lines. BlueTS, bridge, and full workspace tests, all-target
                 Clippy, rustfmt, and whitespace checks pass with the reused
                 12 GiB target.
-        - [ ] **J.3.1.3.4.4** Validate inherited method overrides and overload
+        - [x] **J.3.1.3.4.4** Validate inherited method overrides and overload
           compatibility at original member spans against pinned TypeScript.
           - [x] **J.3.1.3.4.4.1** Validate direct local-base instance and
             static method overrides with explicitly annotated single
@@ -1979,9 +1979,20 @@ done to the page-runs-and-debugs goal at the top of this file.
                             BlueTS; the generic-expansion budget reports a
                             resource-limit diagnostic. Existing behaviour, so
                             this leaf adds evidence only.
-          - [ ] **J.3.1.3.4.4.3** Validate inherited method overload-set
+          - [x] **J.3.1.3.4.4.3** Validate inherited method overload-set
             compatibility, including implementation and signature selection,
             against pinned TypeScript.
+            Every inherited overload signature must be matched by some
+            overriding signature (parameters bivariant, result covariant,
+            optional extras allowed, `void` results accepted); an overloaded
+            declaration exposes only its overload signatures. Instance and
+            static sides and ancestors past a method-free intermediate class
+            are covered. Eight pinned TypeScript 5.9.3 `--noEmit` cases agree
+            on acceptance and TS2416/TS2417 lines. Signatures with rest
+            parameters or missing annotations, and imported-class bases, are
+            not compared and stay with the existing single-signature check.
+            BlueTS crate tests, crate Clippy, rustfmt and whitespace checks
+            pass.
         - [ ] **J.3.1.3.4.5** Check derived constructor `super` calls, arguments,
           and required placement against pinned TypeScript.
         - [ ] **J.3.1.3.4.6** Check instance and static `super` method reads and

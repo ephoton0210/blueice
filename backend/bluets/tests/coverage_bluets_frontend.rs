@@ -5240,6 +5240,80 @@ fn symbolic_tuple_spreads_close_unresolved_cyclic_unsupported_and_over_budget() 
 }
 
 #[test]
+fn class_overrides_compare_inherited_overload_sets() {
+    let compile_source = |source: &str| {
+        compile(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+            CompilerOptions::default(),
+        )
+    };
+    for source in [
+        include_str!("fixtures/typescript_oracle/class-override-overload-valid/main.ts"),
+        include_str!("fixtures/typescript_oracle/class-override-overload-edge-valid/main.ts"),
+        // Rest-bearing signatures are outside the compared subset.
+        "class A { m(...a: string[]): void; m(a: number): void; m(a: any): void {} } \
+         class B extends A { m(a: string): void { } }",
+    ] {
+        let accepted = compile_source(source);
+        assert!(accepted.output.is_none());
+        assert!(
+            accepted
+                .diagnostics
+                .iter()
+                .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+            "{source}: {:#?}",
+            accepted.diagnostics
+        );
+    }
+
+    for source in [
+        include_str!(
+            "fixtures/typescript_oracle/class-override-overload-single-wide-error/main.ts"
+        ),
+        include_str!("fixtures/typescript_oracle/class-override-overload-missing-error/main.ts"),
+        include_str!("fixtures/typescript_oracle/class-override-overload-return-error/main.ts"),
+        include_str!("fixtures/typescript_oracle/class-override-overload-static-error/main.ts"),
+        include_str!("fixtures/typescript_oracle/class-override-overload-ancestor-error/main.ts"),
+        include_str!("fixtures/typescript_oracle/class-override-overload-required-error/main.ts"),
+    ] {
+        let rejected = compile_source(source);
+        assert!(rejected.output.is_none());
+        assert!(
+            rejected.diagnostics.iter().any(|diagnostic| {
+                diagnostic.code == DiagnosticCode::TypeMismatch
+                    && diagnostic.span.module == ENTRY
+                    && diagnostic.message.contains("inherited overload set")
+            }),
+            "{source}: {:#?}",
+            rejected.diagnostics
+        );
+    }
+
+    let bounded = compile(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(
+            ENTRY,
+            "type N = number; \
+             class A { m(a: N): N; m(a: string): string; m(a: N | string): N | string { return a; } } \
+             class B extends A { m(a: number): number; m(a: string): string; \
+             m(a: number | string): number | string { return a; } }",
+        )]),
+        CompilerOptions {
+            limits: CompilerLimits {
+                max_type_expansions: 1,
+                ..CompilerLimits::default()
+            },
+            ..CompilerOptions::default()
+        },
+    );
+    assert!(bounded.diagnostics.iter().any(|diagnostic| {
+        diagnostic.code == DiagnosticCode::ResourceLimit
+            && diagnostic.message.contains("overload comparison")
+    }));
+}
+
+#[test]
 fn middle_tuple_rest_checks_suffix_and_emits_at_public_boundary() {
     let source = include_str!("fixtures/typescript_oracle/tuple-rest-middle-valid/main.ts");
     let accepted = compile(
