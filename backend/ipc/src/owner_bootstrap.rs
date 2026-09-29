@@ -257,4 +257,84 @@ mod tests {
         let oversized = u32::try_from(MAX_OWNER_BOOTSTRAP_FRAME_BYTES + 1).unwrap();
         assert!(read_core_owner_bootstrap(&mut oversized.to_le_bytes().as_slice()).is_err());
     }
+
+    #[test]
+    fn owner_http_policy_from_json_slice_round_trips_and_fails_closed() {
+        let policy = fixture_policy();
+        let bytes = serde_json::to_vec(&policy).unwrap();
+        assert_eq!(
+            OwnerHttpPolicyBootstrap::from_json_slice(&bytes).unwrap(),
+            policy
+        );
+        assert!(OwnerHttpPolicyBootstrap::from_json_slice(&[]).is_err());
+        assert!(OwnerHttpPolicyBootstrap::from_json_slice(b"not json").is_err());
+        let oversized = vec![b' '; MAX_OWNER_HTTP_POLICY_BYTES + 1];
+        assert!(OwnerHttpPolicyBootstrap::from_json_slice(&oversized).is_err());
+    }
+
+    #[test]
+    fn owner_http_policy_rejects_every_other_malformed_shape() {
+        // Empty resources.
+        let mut policy = fixture_policy();
+        policy.resources.clear();
+        assert!(policy.validate().is_err());
+
+        // Too many resources.
+        let mut policy = fixture_policy();
+        policy.resources = (0..=MAX_OWNER_HTTP_RESOURCES)
+            .map(|index| OwnerHttpResource {
+                canonical_url: format!("https://example.test/app-{index}.js"),
+                integrity: format!("sha256:{}", "a".repeat(64)),
+            })
+            .collect();
+        assert!(policy.validate().is_err());
+
+        // Malformed exact-origin: empty, oversized, and containing a NUL byte.
+        for origin in [
+            String::new(),
+            "a".repeat(MAX_OWNER_HTTP_URL_BYTES + 1),
+            "https://example.test\0".to_string(),
+        ] {
+            let mut policy = fixture_policy();
+            policy.origin_rule = OwnerHttpOriginRule::ExactOrigin(origin);
+            assert!(policy.validate().is_err());
+        }
+
+        // Integrity missing the required "sha256:" prefix entirely.
+        let mut policy = fixture_policy();
+        policy.resources[0].integrity = format!("md5:{}", "a".repeat(32));
+        assert!(policy.validate().is_err());
+
+        // Encoded policy exceeds its own fixed byte bound.
+        let mut policy = fixture_policy();
+        policy.resources = (0..MAX_OWNER_HTTP_RESOURCES)
+            .map(|index| OwnerHttpResource {
+                canonical_url: format!(
+                    "https://example.test/{}-{index}.js",
+                    "a".repeat(MAX_OWNER_HTTP_URL_BYTES / 2)
+                ),
+                integrity: format!("sha256:{}", "a".repeat(64)),
+            })
+            .collect();
+        assert!(policy.validate().is_err());
+    }
+
+    #[test]
+    fn read_core_owner_bootstrap_rejects_trailing_data_after_a_valid_frame() {
+        let bootstrap = CoreOwnerBootstrap {
+            version: CORE_OWNER_BOOTSTRAP_VERSION,
+            compiler_catalog: None,
+            page_http_policy: Some(fixture_policy()),
+        };
+        let mut bytes = Vec::new();
+        write_core_owner_bootstrap(&mut bytes, &bootstrap).unwrap();
+        bytes.push(0);
+        assert!(read_core_owner_bootstrap(&mut bytes.as_slice()).is_err());
+    }
+
+    #[test]
+    fn capped_payload_flushes_as_a_no_op() {
+        let mut payload = CappedPayload::default();
+        payload.flush().unwrap();
+    }
 }
