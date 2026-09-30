@@ -49,11 +49,15 @@ impl<'a> ModuleChecker<'a> {
             enforce_types: policy.enforce_types,
             require_declared_global_calls: policy.require_declared_global_calls,
             define_class_fields: policy.define_class_fields,
+            isolated_modules: policy.isolated_modules,
             checked_nested_functions: BTreeSet::new(),
             async_context: None,
             constructor_readonly_fields: None,
             access_class: None,
             enum_members: BTreeMap::new(),
+            const_enums: BTreeSet::new(),
+            type_only_enums: BTreeSet::new(),
+            ambient_const_enums: BTreeSet::new(),
             enum_evaluations: Vec::new(),
             restricted_member_names: BTreeSet::new(),
             diagnostics: Vec::new(),
@@ -513,6 +517,16 @@ impl<'a> ModuleChecker<'a> {
                     }
                     continue;
                 }
+                if let Some(enum_) = self
+                    .exports
+                    .enums
+                    .get(resolved)
+                    .and_then(|enums| enums.get(&binding.imported))
+                    .cloned()
+                {
+                    self.bind_imported_enum(&binding.local, &enum_, &import.span, false);
+                    continue;
+                }
                 let Some(source_type) = exported.and_then(|types| types.get(&binding.imported))
                 else {
                     self.diagnostics.push(Diagnostic::error(
@@ -544,6 +558,26 @@ impl<'a> ModuleChecker<'a> {
                     false,
                 );
             } else {
+                // A value import must name something the module exports.
+                if binding.imported != "*"
+                    && binding.imported != "default"
+                    && !is_declaration_module(resolved)
+                    && self
+                        .exports
+                        .exported_names
+                        .get(resolved)
+                        .is_some_and(|(names, open)| !open && !names.contains(&binding.imported))
+                {
+                    self.diagnostics.push(Diagnostic::error(
+                        DiagnosticCode::UnknownName,
+                        import.span.clone(),
+                        format!(
+                            "module `{}` has no exported member `{}`",
+                            import.specifier, binding.imported
+                        ),
+                    ));
+                    continue;
+                }
                 if let Some(class) = exported_classes
                     .and_then(|classes| classes.get(&binding.imported))
                     .cloned()
@@ -568,6 +602,16 @@ impl<'a> ModuleChecker<'a> {
                             false,
                         );
                     }
+                    continue;
+                }
+                if let Some(enum_) = self
+                    .exports
+                    .enums
+                    .get(resolved)
+                    .and_then(|enums| enums.get(&binding.imported))
+                    .cloned()
+                {
+                    self.bind_imported_enum(&binding.local, &enum_, &import.span, true);
                     continue;
                 }
                 self.insert_value(
@@ -965,6 +1009,8 @@ impl<'a> ModuleChecker<'a> {
         self.check_member_assignment(tokens, scope, span);
         self.check_restricted_member_access(tokens, scope, span);
         self.check_enum_index_uses(tokens, scope, span);
+        self.check_const_enum_uses(tokens, scope, span);
+        self.check_type_only_enum_value_uses(tokens, scope, span);
         self.check_arithmetic_operators(tokens, scope, span);
     }
 

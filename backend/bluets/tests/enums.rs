@@ -328,11 +328,6 @@ fn initializer_and_declaration_errors() {
 #[test]
 fn what_is_not_supported_yet_is_refused_not_approximated() {
     assert_rejected(
-        "const enum E { A }",
-        DiagnosticCode::UnsupportedSyntax,
-        "`const enum` is not supported yet",
-    );
-    assert_rejected(
         "declare function f(n: number): number; enum E { A = 1, B = f(A) }",
         DiagnosticCode::UnsupportedSyntax,
         "must write it as `E.A`",
@@ -361,4 +356,274 @@ fn an_enum_works_across_functions_classes_and_object_values() {
          const s: string = describe(Level.High) + describe(1);",
     );
     assert_accepted("enum E { A, B } const o = E; const n: number = o.A;");
+}
+
+fn compile_modules(
+    modules: &[(&str, &str)],
+    options: CompilerOptions,
+) -> blueice_bluets::Compilation {
+    let sources: Vec<ModuleSource> = modules
+        .iter()
+        .map(|(file, text)| ModuleSource::new(format!("memory:///{file}"), *text))
+        .collect();
+    compile("memory:///main.ts", &MapLoader::from(sources), options)
+}
+
+fn emitted(compilation: &blueice_bluets::Compilation, module: &str) -> String {
+    assert!(
+        compilation.diagnostics.is_empty(),
+        "{:?}",
+        compilation.diagnostics
+    );
+    compilation.output.as_ref().unwrap().artifacts[&format!("memory:///{module}")]
+        .javascript
+        .clone()
+}
+
+fn options(preserve: bool, isolated: bool) -> CompilerOptions {
+    CompilerOptions {
+        preserve_const_enums: preserve,
+        isolated_modules: isolated,
+        ..CompilerOptions::default()
+    }
+}
+
+#[test]
+fn a_const_enum_is_erased_and_its_uses_become_values_with_a_comment() {
+    let output = javascript(
+        "const enum E { A = 1, B, S = 's', 'x-y' = 7, N = -3, F = 1.5 } \
+         const a: number = E.A; const b: number = E['B'] + E['x-y']; const s: string = E.S; \
+         const t: string = `${E.A}:${E.S}`; const n: number = E.N; const f: number = E.F;",
+    );
+    assert!(
+        !output.contains("var E"),
+        "the declaration is erased: {output}"
+    );
+    for expected in [
+        "const a= 1 /* E.A */;",
+        "2 /* E[\"B\"] */ + 7 /* E[\"x-y\"] */",
+        "\"s\" /* E.S */",
+        "`${1 /* E.A */}:${\"s\" /* E.S */}`",
+        "(-3 /* E.N */)",
+        "1.5 /* E.F */",
+    ] {
+        assert!(
+            output.contains(expected),
+            "`{expected}` missing from {output}"
+        );
+    }
+}
+
+#[test]
+fn a_negative_or_non_finite_value_is_parenthesized_so_the_output_stays_valid() {
+    let output = javascript(
+        "const enum E { N = -3, Z = 1 / 0 } const a: number = E.N ** 2; const b: number = -E.N; \
+         const c: number = E.Z;",
+    );
+    assert!(output.contains("(-3 /* E.N */) ** 2"), "{output}");
+    assert!(output.contains("-(-3 /* E.N */)"), "{output}");
+    assert!(output.contains("(Infinity /* E.Z */)"), "{output}");
+}
+
+#[test]
+fn preserve_const_enums_keeps_the_object_and_isolated_modules_stops_inlining() {
+    let source = "const enum E { A = 1 } const a: number = E.A;";
+    let preserved = emitted(
+        &compile_modules(&[("main.ts", source)], options(true, false)),
+        "main.ts",
+    );
+    assert!(
+        preserved.contains("var E;") && preserved.contains("const a= 1 /* E.A */;"),
+        "{preserved}"
+    );
+    let isolated = emitted(
+        &compile_modules(&[("main.ts", source)], options(false, true)),
+        "main.ts",
+    );
+    assert!(
+        isolated.contains("var E;") && isolated.contains("const a= E.A;"),
+        "{isolated}"
+    );
+    // Without types (transpile-only) the value cannot be known either.
+    let transpile = emitted(
+        &compile_modules(
+            &[("main.ts", source)],
+            CompilerOptions {
+                runtime_policy: blueice_bluets::RuntimePolicy::TranspileOnly,
+                ..CompilerOptions::default()
+            },
+        ),
+        "main.ts",
+    );
+    assert!(
+        transpile.contains("var E;") && transpile.contains("const a= E.A;"),
+        "{transpile}"
+    );
+}
+
+#[test]
+fn an_ambient_const_enum_is_inlined_but_not_when_modules_are_isolated() {
+    let source = "declare const enum E { A, B = 2 } const n: number = E.A + E.B;";
+    let output = emitted(
+        &compile_modules(&[("main.ts", source)], options(false, false)),
+        "main.ts",
+    );
+    assert!(output.contains("0 /* E.A */ + 2 /* E.B */"), "{output}");
+    assert!(!output.contains("var E"), "{output}");
+    let isolated = compile_modules(&[("main.ts", source)], options(false, true));
+    assert!(
+        isolated.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == DiagnosticCode::TypeMismatch
+                && diagnostic.message.contains("ambient const enum")
+        }),
+        "{:?}",
+        isolated.diagnostics
+    );
+}
+
+#[test]
+fn a_const_enum_can_only_be_used_by_a_member_name() {
+    assert_rejected(
+        "const enum E { A, B } const x = E[0];",
+        DiagnosticCode::TypeMismatch,
+        "can only be accessed with a string literal",
+    );
+    assert_rejected(
+        "const enum E { A } declare const k: string; const x = E[k];",
+        DiagnosticCode::TypeMismatch,
+        "can only be accessed with a string literal",
+    );
+    assert_rejected(
+        "const enum E { A } const v = E;",
+        DiagnosticCode::TypeMismatch,
+        "can only be used in a property or index access",
+    );
+    assert_rejected(
+        "declare function f(n: number): number; const enum E { A = f(1) }",
+        DiagnosticCode::TypeMismatch,
+        "must be a constant expression",
+    );
+    assert_rejected(
+        "const enum E { A } E.A = 1;",
+        DiagnosticCode::TypeMismatch,
+        "cannot mutate readonly property `A`",
+    );
+    // A local of the same name is its own value.
+    assert_accepted("const enum E { A } function f(E: number): number { return E; }");
+}
+
+#[test]
+fn const_enum_declarations_merge_and_type_like_regular_ones() {
+    assert_accepted("const enum E { A } const enum E { B = 1 } const n: number = E.A + E.B;");
+    assert_accepted("const enum E { A = 1 << 2, B = A | 1, C = 's' + 't' } const n: number = E.B; const s: string = E.C;");
+    assert_rejected(
+        "const enum E { A } const a: E = 4;",
+        DiagnosticCode::TypeMismatch,
+        "not assignable to `E`",
+    );
+}
+
+#[test]
+fn an_enum_crosses_modules_with_its_members_and_its_object() {
+    let colors = "export const enum Color { Red, Green = 5 } export enum Mode { Fast = 'fast' } \
+                  const enum Hidden { X = 9 } export function hidden(): number { return Hidden.X; }";
+    let main = "import { Color, Mode, hidden } from './colors.ts'; \
+                const c: Color = Color.Green; const n: number = c + hidden(); const m: Mode = Mode.Fast;";
+    let compilation = compile_modules(
+        &[("main.ts", main), ("colors.ts", colors)],
+        options(false, false),
+    );
+    let main_output = emitted(&compilation, "main.ts");
+    assert!(
+        main_output.contains("const c= 5 /* Color.Green */;"),
+        "{main_output}"
+    );
+    assert!(
+        main_output.contains("Mode.Fast"),
+        "a regular enum is used through its object: {main_output}"
+    );
+    let colors_output = emitted(&compilation, "colors.ts");
+    assert!(
+        colors_output.contains("export var Color;"),
+        "an exported const enum keeps its object so importers stay valid: {colors_output}"
+    );
+    assert!(
+        !colors_output.contains("var Hidden"),
+        "a private const enum is erased: {colors_output}"
+    );
+    assert!(
+        colors_output.contains("9 /* Hidden.X */"),
+        "{colors_output}"
+    );
+    // The type of an imported enum is the enum's.
+    for (program, message) in [
+        (
+            "import { Color } from './colors.ts'; const c: Color = 99;",
+            "not assignable to `Color`",
+        ),
+        (
+            "import { Color } from './colors.ts'; const s = Color[0];",
+            "can only be accessed",
+        ),
+        (
+            "import { Color } from './colors.ts'; const v = Color;",
+            "can only be used in a property",
+        ),
+        (
+            "import { Missing } from './colors.ts'; const m = Missing.A;",
+            "has no exported member `Missing`",
+        ),
+        (
+            "import { Hidden } from './colors.ts'; const n = Hidden.X;",
+            "has no exported member `Hidden`",
+        ),
+        (
+            "import type { Mode } from './colors.ts'; const m = Mode.Fast;",
+            "imported with `import type`",
+        ),
+    ] {
+        let found = compile_modules(
+            &[("main.ts", program), ("colors.ts", colors)],
+            options(false, false),
+        );
+        assert!(
+            found
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.message.contains(message)),
+            "`{program}`: expected `{message}` in {:?}",
+            found.diagnostics
+        );
+    }
+    let types_only = compile_modules(
+        &[
+            (
+                "main.ts",
+                "import type { Color, Mode } from './colors.ts'; declare const c: Color; \
+                 declare const m: Mode; const n: number = c; const s: string = m;",
+            ),
+            ("colors.ts", colors),
+        ],
+        options(false, false),
+    );
+    assert!(
+        types_only.diagnostics.is_empty(),
+        "{:?}",
+        types_only.diagnostics
+    );
+}
+
+#[test]
+fn the_const_enum_options_are_part_of_the_fingerprint() {
+    let source = "const enum E { A } const n: number = E.A;";
+    let fingerprint = |options| {
+        compile_modules(&[("main.ts", source)], options)
+            .output
+            .unwrap()
+            .fingerprint
+    };
+    let base = fingerprint(options(false, false));
+    assert_ne!(base, fingerprint(options(true, false)));
+    assert_ne!(base, fingerprint(options(false, true)));
+    assert_eq!(base, fingerprint(options(false, false)));
 }

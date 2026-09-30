@@ -345,6 +345,99 @@ fn lowered_private_names_build_for_es2020_run_under_node_and_the_manifest_names_
 }
 
 #[test]
+fn const_enums_build_inlined_preserved_or_isolated_and_the_manifest_says_which() {
+    let temporary = unique_test_directory();
+    let root = temporary.join("project");
+    fs::create_dir_all(root.join("src")).unwrap();
+    fs::write(
+        root.join("src/main.ts"),
+        "const enum E { A = 1, B }\nconsole.log(E.A + E.B, E['B']);\n",
+    )
+    .unwrap();
+    let cases: [(&[&str], bool, bool, bool); 3] = [
+        (&[], false, true, false),
+        (&["--preserve-const-enums"], true, true, true),
+        (&["--isolated-modules"], false, false, true),
+    ];
+    for (index, (flags, preserve, inline, object)) in cases.iter().enumerate() {
+        let output = temporary.join(format!("out-{index}"));
+        let built = Command::new(env!("CARGO_BIN_EXE_bluetsc"))
+            .args([
+                "build",
+                root.join("src/main.ts").to_str().unwrap(),
+                "--project-root",
+                root.to_str().unwrap(),
+                "--out-dir",
+                output.to_str().unwrap(),
+            ])
+            .args(*flags)
+            .output()
+            .unwrap();
+        assert!(
+            built.status.success(),
+            "{}",
+            String::from_utf8_lossy(&built.stderr)
+        );
+        let javascript = fs::read_to_string(output.join("src/main.js")).unwrap();
+        assert_eq!(
+            javascript.contains("var E;"),
+            *object,
+            "{flags:?}: {javascript}"
+        );
+        assert_eq!(
+            javascript.contains("/* E.A */"),
+            *inline,
+            "{flags:?}: {javascript}"
+        );
+        let manifest: serde_json::Value =
+            serde_json::from_slice(&fs::read(output.join("bluetsc.manifest.json")).unwrap())
+                .unwrap();
+        assert_eq!(manifest["preserveConstEnums"], *preserve, "{flags:?}");
+        assert_eq!(manifest["inlineConstEnums"], *inline, "{flags:?}");
+        if Command::new("node").arg("--version").output().is_ok() {
+            fs::write(output.join("package.json"), r#"{"type":"module"}"#).unwrap();
+            let executed = Command::new("node")
+                .arg(output.join("src/main.js"))
+                .output()
+                .unwrap();
+            assert_eq!(
+                String::from_utf8_lossy(&executed.stdout).trim(),
+                "3 2",
+                "{flags:?}"
+            );
+        }
+    }
+    // The same choices through a configuration file.
+    let config = root.join("bluetsc.json");
+    fs::write(
+        &config,
+        serde_json::to_vec_pretty(&serde_json::json!({
+            "entries": ["src/main.ts"],
+            "outDir": "dist-config",
+            "isolatedModules": true,
+            "preserveConstEnums": true,
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    let built = Command::new(env!("CARGO_BIN_EXE_bluetsc"))
+        .args(["build", "--config", config.to_str().unwrap()])
+        .output()
+        .unwrap();
+    assert!(
+        built.status.success(),
+        "{}",
+        String::from_utf8_lossy(&built.stderr)
+    );
+    let manifest: serde_json::Value =
+        serde_json::from_slice(&fs::read(root.join("dist-config/bluetsc.manifest.json")).unwrap())
+            .unwrap();
+    assert_eq!(manifest["inlineConstEnums"], false);
+    assert_eq!(manifest["preserveConstEnums"], true);
+    fs::remove_dir_all(temporary).unwrap();
+}
+
+#[test]
 fn strict_config_builds_only_complete_string_boundaries_for_both_targets() {
     let temporary = unique_test_directory();
     let root = temporary.join("project");

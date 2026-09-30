@@ -129,6 +129,13 @@ fn evaluate_declaration(
                 }
             },
         };
+        if declaration.is_const && member.initializer.is_some() && value.is_none() {
+            errors.push((
+                member.span.clone(),
+                "a const enum member initializer must be a constant expression".to_string(),
+                DiagnosticCode::TypeMismatch,
+            ));
+        }
         next = match &value {
             Some(EnumValue::Number(number)) => Some(number + 1.0),
             Some(EnumValue::Text(_)) | None => None,

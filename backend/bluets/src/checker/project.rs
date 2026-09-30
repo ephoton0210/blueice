@@ -470,3 +470,114 @@ pub(super) fn expand_exported_heritage(
         _ => value.clone(),
     }
 }
+
+/// The enums each module exports, by exported name. A declaration counts as
+/// exported when it is written `export enum`, or named in an `export { .. }`.
+pub(super) fn exported_enums(
+    project: &Project,
+) -> BTreeMap<String, BTreeMap<String, ExportedEnum>> {
+    let mut modules = BTreeMap::new();
+    for (id, module) in &project.modules {
+        let evaluated = crate::enum_eval::evaluate_enums(module);
+        let mut evaluations = evaluated.iter();
+        let mut merged: BTreeMap<String, (ExportedEnum, bool)> = BTreeMap::new();
+        for declaration in &module.declarations {
+            let Declaration::Enum(enum_declaration) = declaration else {
+                continue;
+            };
+            let evaluation = evaluations.next().expect("every enum was evaluated");
+            let entry = merged
+                .entry(enum_declaration.name.clone())
+                .or_insert_with(|| {
+                    (
+                        ExportedEnum {
+                            is_const: enum_declaration.is_const,
+                            declared: enum_declaration.declared,
+                            members: Vec::new(),
+                        },
+                        false,
+                    )
+                });
+            entry.0.members.extend(evaluation.members.iter().cloned());
+            entry.1 |= enum_declaration.exported;
+        }
+        let mut exported = BTreeMap::new();
+        for (name, (value, is_exported)) in &merged {
+            if *is_exported {
+                exported.insert(name.clone(), value.clone());
+            }
+        }
+        for declaration in &module.declarations {
+            if let Declaration::ValueExport(export) = declaration {
+                for binding in &export.bindings {
+                    if let Some((value, _)) = merged.get(&binding.local) {
+                        exported.insert(binding.exported.clone(), value.clone());
+                    }
+                }
+            }
+        }
+        modules.insert(id.clone(), exported);
+    }
+    modules
+}
+
+/// The names each module exports, as values or as types, and whether the set is
+/// open (a type re-export from another module could add more). Value
+/// re-exports from another module are not supported, so only types can.
+pub(super) fn exported_names(project: &Project) -> BTreeMap<String, (BTreeSet<String>, bool)> {
+    let mut modules = BTreeMap::new();
+    for (id, module) in &project.modules {
+        let mut names = BTreeSet::new();
+        let mut open = false;
+        for declaration in &module.declarations {
+            match declaration {
+                Declaration::Variable(variable) if variable.exported => {
+                    names.insert(variable.name.clone());
+                }
+                Declaration::Function(function) if function.exported => {
+                    names.insert(function.name.clone());
+                }
+                Declaration::Class(class) if class.exported => {
+                    names.insert(class.name.clone());
+                }
+                Declaration::Enum(declaration) if declaration.exported => {
+                    names.insert(declaration.name.clone());
+                }
+                Declaration::TypeAlias(alias) if alias.exported => {
+                    names.insert(alias.name.clone());
+                }
+                Declaration::Interface(interface) if interface.exported => {
+                    names.insert(interface.name.clone());
+                }
+                Declaration::ValueExport(export) => {
+                    names.extend(
+                        export
+                            .bindings
+                            .iter()
+                            .map(|binding| binding.exported.clone()),
+                    );
+                }
+                Declaration::TypeExport(export) => {
+                    if export.specifier.is_some() {
+                        open = true;
+                    }
+                    for binding in &export.bindings {
+                        let exported = binding
+                            .split_once(" as ")
+                            .map_or(binding.as_str(), |(_, exported)| exported);
+                        names.insert(exported.to_string());
+                    }
+                }
+                Declaration::DefaultExport(_) => {
+                    names.insert("default".to_string());
+                }
+                Declaration::Function(function) if function.default_export => {
+                    names.insert("default".to_string());
+                }
+                _ => {}
+            }
+        }
+        modules.insert(id.clone(), (names, open));
+    }
+    modules
+}

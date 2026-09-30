@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: J.3.4.3.** H and I are complete. The requested class, enum,
+**Current leaf: J.3.4.4.** H and I are complete. The requested class, enum,
 decorator, namespace, JSX, CommonJS, and package-resolution expansion has
 passed J.1/J.2 planning; implementation and pinned-`tsc` parity remain open.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
@@ -2403,9 +2403,33 @@ done to the page-runs-and-debugs goal at the top of this file.
       evaluator unit tests and 2 parser tests pin the codes, messages and text.
       Known gaps: comparing two enum members that cannot overlap (TS2367) and
       `switch` exhaustiveness are not diagnosed.
-    - [ ] **J.3.4.3** `const enum`: inlined uses, no runtime object, the
-      TypeScript restrictions (no reverse index, not a value), cross-module use,
-      `declare const enum`, and the `preserveConstEnums` option.
+    - [x] **J.3.4.3** `const enum`, cross-module enums and the options. A
+      const enum is erased, and each `E.A` or `E["A"]` (also inside a template
+      substitution) becomes the member's value followed by a comment naming it
+      (`1 /* E.A */`, `"s" /* E.S */`, `2 /* E["B"] */`); a negative or
+      non-finite value is parenthesized, which keeps `E.N ** 2` and `-E.N`
+      valid where pinned tsc's own output is a syntax error. The restrictions
+      are TypeScript's: no reverse or dynamic index, no use as a value, every
+      initializer a constant expression, members readonly, and a local of the
+      same name shadows it. `preserveConstEnums` (`--preserve-const-enums`,
+      config `preserveConstEnums`) also emits the object; `isolatedModules`
+      (`--isolated-modules`, `isolatedModules`) makes a const enum an ordinary
+      enum reached through its object and refuses an ambient const enum, and
+      transpile-only, which has no types, behaves the same way; both are in the
+      fingerprint and the manifest (`preserveConstEnums`, `inlineConstEnums`).
+      An exported const enum always keeps its object, so a module importing it
+      stays a valid ES module without rewriting its import. Enums now cross
+      modules: an imported enum brings its type, member types and (unless
+      `import type`) object, typed from the exporting module's evaluated
+      members, and a type-only import used as a value is an error. While doing
+      this, a value import of a name the module does not export was found to be
+      accepted as an untyped value; it is now an error (no member, or a
+      non-exported one). BlueTSC output for single and multi-module programs
+      (const and regular, inlined, string, negative, float and large values)
+      prints the same under Node as pinned tsc's under default,
+      `preserveConstEnums`, `isolatedModules` and both together; 18 more enum
+      matrix entries (56 in all) agree with tsc, and 8 public tests, 2 CLI
+      tests and a CLI parse test pin the text and the options.
     - [ ] **J.3.4.4** Declaration output and isolation options.
     - [ ] **J.3.4.5** Direct runtime (bridge) and Node/pinned-tsc parity.
   - [ ] **J.3.5** Implement runtime namespaces/modules and declaration merging,

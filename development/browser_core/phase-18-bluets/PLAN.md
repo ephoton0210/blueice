@@ -2933,6 +2933,41 @@ Not modelled, and refused or recorded instead: `const enum` (its own leaf), an e
 imported from another module, an enum in a declaration module, an enum declared
 inside a body, and a computed initializer that names a sibling member bare.
 
+### J.3.4.3 const enum, cross-module enums and options
+
+A `const enum` has no runtime object of its own. Its declaration is erased and each
+use, `E.A` or `E["A"]`, is replaced by the member's constant followed by a comment
+naming the member, as TypeScript does. The emitter reads the module's tokens again
+(including the substitutions inside template literals) and replaces each
+occurrence that is not itself a property of something else; an occurrence inside
+erased text, such as a type annotation, is dropped with it. A negative or
+non-finite value is parenthesized, which TypeScript does not do and which makes
+`E.N ** 2` a syntax error in its own output.
+
+The checker adds the restrictions that follow from the object not existing: a bare
+`E`, a dynamic or numeric index, and a non-constant initializer are errors, and a
+local variable or parameter of the same name is left alone. Two options choose
+what "emitted on its own" means. `preserveConstEnums` also emits the object, for a
+consumer that reads it at run time. `isolatedModules` (and transpile-only, which has
+no types) stops inlining, since another module's values are not assumed known, and
+emits the enum as an ordinary one, and an ambient const enum, whose values only a
+type check can supply, cannot then be used.
+
+An exported const enum always keeps its object. TypeScript removes the importing
+module's import instead, but that needs a specifier-level edit of the import
+statement, which has no recorded source span; keeping the object makes every
+importer a valid ES module with the import left as written, and the importer still
+inlines.
+
+Enums cross modules through the same evaluated members the exporting module uses: an
+export map (the module's enums by exported name, including `export { E }`) is built
+once per project, an import binds the same four names as a local enum, and an
+`import type` binds the types only. Checking this found that a value import of a name
+the module does not export was accepted as an untyped value, so the checker now
+compares a value import with the module's exported value names (variables,
+functions, classes, enums, `export { .. }`, default); value re-exports from another
+module are not supported, so that set is closed.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process

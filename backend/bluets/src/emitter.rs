@@ -100,12 +100,14 @@ pub(crate) fn emit(
     options: &CompilerOptions,
 ) -> Result<BuildOutput, Diagnostic> {
     let build_fingerprint = fingerprint(project, options);
+    let exported_enums = crate::checker::exported_enums(project);
     let artifacts = checked
         .modules
         .iter()
         .filter(|(id, _)| !is_declaration_module(id))
         .map(|(id, checked_module)| {
-            let (emitted, strict_runtime) = emit_javascript(&checked_module.module, options)?;
+            let (emitted, strict_runtime) =
+                emit_javascript(&checked_module.module, project, &exported_enums, options)?;
             if options.source_map
                 && emitted.provenance.len() > options.limits.max_source_map_segments
             {
@@ -239,6 +241,8 @@ struct ProvenanceSegment {
 
 fn emit_javascript(
     module: &Module,
+    project: &Project,
+    exported_enums: &BTreeMap<String, BTreeMap<String, crate::checker::ExportedEnum>>,
     options: &CompilerOptions,
 ) -> Result<(EmittedJavaScript, Option<EmittedStrictModule>), Diagnostic> {
     let mut edits = module.edits.clone();
@@ -268,7 +272,7 @@ fn emit_javascript(
     }
     edits.extend(classes::overload_signature_erasures(module));
     class_lowering::lower_class_members(module, options, &mut edits)?;
-    enums::lower_enums(module, &mut edits)?;
+    enums::lower_enums(module, project, exported_enums, options, &mut edits)?;
     let plan = strict_boundaries::plan_emission(module, options)?;
     let mut strict_runtime = None;
     if let Some((strict_edits, record)) = plan {

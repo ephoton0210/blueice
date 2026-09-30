@@ -15,12 +15,15 @@ enum RecordSpreadFailure {
 
 /// Per-project checking policy shared by every module checker.
 #[derive(Clone, Copy)]
-pub(super) struct CheckerPolicy {
-    pub(super) enforce_types: bool,
-    pub(super) require_declared_global_calls: bool,
+pub(crate) struct CheckerPolicy {
+    pub(crate) enforce_types: bool,
+    pub(crate) require_declared_global_calls: bool,
     /// Class fields are defined, not assigned, so a derived redeclaration
     /// without an initializer overwrites the base's value.
-    pub(super) define_class_fields: bool,
+    pub(crate) define_class_fields: bool,
+    /// Modules are emitted one at a time, so an ambient `const enum` cannot be
+    /// used.
+    pub(crate) isolated_modules: bool,
 }
 
 pub(super) struct ModuleChecker<'a> {
@@ -31,6 +34,7 @@ pub(super) struct ModuleChecker<'a> {
     enforce_types: bool,
     require_declared_global_calls: bool,
     define_class_fields: bool,
+    isolated_modules: bool,
     /// Arrow functions already checked, by start offset, so an expression
     /// visited from several checks reports its body once.
     checked_nested_functions: BTreeSet<usize>,
@@ -44,6 +48,11 @@ pub(super) struct ModuleChecker<'a> {
     access_class: Option<String>,
     /// The members of each enum bound so far, for merged declarations.
     enum_members: BTreeMap<String, Vec<crate::enum_eval::EvaluatedMember>>,
+    /// The local names of the `const enum`s in scope, and those among them that
+    /// are ambient.
+    const_enums: BTreeSet<String>,
+    type_only_enums: BTreeSet<String>,
+    ambient_const_enums: BTreeSet<String>,
     /// Every enum declaration of the module, evaluated, in source order.
     enum_evaluations: Vec<crate::enum_eval::EvaluatedEnum>,
     /// Names of every private or protected class member in scope.

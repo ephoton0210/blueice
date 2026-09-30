@@ -96,6 +96,14 @@ pub struct CompilerOptions {
     /// `Some(false)` assigns them in the constructor, and `None` follows the
     /// target, as TypeScript does (define for ES2022, assign for ES2020).
     pub use_define_for_class_fields: Option<bool>,
+    /// Emit the runtime object of a `const enum` even though its uses are
+    /// replaced by their values (TypeScript's `preserveConstEnums`).
+    pub preserve_const_enums: bool,
+    /// Each module must be emittable on its own (TypeScript's `isolatedModules`,
+    /// for enums): a `const enum` is emitted as an ordinary enum and referenced
+    /// through its object, never inlined, and an ambient `const enum` cannot be
+    /// used, since another module's values are not assumed to be known.
+    pub isolated_modules: bool,
     pub runtime_policy: RuntimePolicy,
     pub source_map: bool,
     pub declaration: bool,
@@ -120,6 +128,12 @@ pub struct CompilerOptions {
 }
 
 impl CompilerOptions {
+    /// Whether a use of a `const enum` member is replaced by its value.
+    /// Transpile-only compiles without types, so it cannot know the value.
+    pub fn inlines_const_enums(&self) -> bool {
+        !self.isolated_modules && self.runtime_policy != RuntimePolicy::TranspileOnly
+    }
+
     /// Whether class fields are defined rather than assigned, once the target's
     /// default is applied.
     pub fn defines_class_fields(&self) -> bool {
@@ -133,6 +147,8 @@ impl Default for CompilerOptions {
         Self {
             target: EcmaTarget::Es2022,
             use_define_for_class_fields: None,
+            preserve_const_enums: false,
+            isolated_modules: false,
             runtime_policy: RuntimePolicy::Checked,
             source_map: false,
             declaration: false,
@@ -367,9 +383,12 @@ fn compile_with_cache(
 
     let (checked, checker_diagnostics) = checker::check_incremental(
         &project,
-        !matches!(options.runtime_policy, RuntimePolicy::TranspileOnly),
-        options.require_declared_global_calls,
-        options.defines_class_fields(),
+        checker::CheckerPolicy {
+            enforce_types: !matches!(options.runtime_policy, RuntimePolicy::TranspileOnly),
+            require_declared_global_calls: options.require_declared_global_calls,
+            define_class_fields: options.defines_class_fields(),
+            isolated_modules: options.isolated_modules,
+        },
         previous_checked,
         &rechecked_modules,
         options.limits.max_type_expansions,
@@ -779,6 +798,16 @@ pub(crate) fn fingerprint(project: &Project, options: &CompilerOptions) -> Strin
         "assign-class-fields"
     });
     add(crate::emitter::CLASS_HELPER_V1_VERSION);
+    add(if options.preserve_const_enums {
+        "preserve-const-enums"
+    } else {
+        "erase-const-enums"
+    });
+    add(if options.inlines_const_enums() {
+        "inline-const-enums"
+    } else {
+        "object-const-enums"
+    });
     add(options.runtime_policy.as_str());
     add(&options.resolver_fingerprint);
     add(&options.require_declared_global_calls.to_string());

@@ -71,6 +71,10 @@ struct BlueTscConfig {
     #[serde(default)]
     use_define_for_class_fields: Option<bool>,
     #[serde(default)]
+    preserve_const_enums: bool,
+    #[serde(default)]
+    isolated_modules: bool,
+    #[serde(default)]
     runtime_policy: Option<String>,
     #[serde(default)]
     imports: BTreeMap<String, String>,
@@ -223,6 +227,8 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
                     other => return Err(format!("unsupported target `{other}`; expected es2020 or es2022")),
                 }
             }
+            "--preserve-const-enums" => options.preserve_const_enums = true,
+            "--isolated-modules" => options.isolated_modules = true,
             "--use-define-for-class-fields" => {
                 options.use_define_for_class_fields = Some(match value()?.as_str() {
                     "true" => true,
@@ -268,7 +274,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
 }
 
 fn usage() -> &'static str {
-    "Usage:\n  bluetsc check <entry.ts> [--project-root <directory>] [--target es2020|es2022] [--use-define-for-class-fields true|false] [--runtime-policy transpile-only|checked|strict-runtime]\n  bluetsc build <entry.ts> --out-dir <directory> [--project-root <directory>] [--source-map] [--declaration] [--target es2020|es2022] [--use-define-for-class-fields true|false] [--runtime-policy transpile-only|checked|strict-runtime]\n  bluetsc check --config <bluetsc.json>\n  bluetsc build --config <bluetsc.json>\n\nConfig fields: entries, projectRoot, outDir, sourceMap, declaration, target, useDefineForClassFields, runtimePolicy, imports, strictBoundaries."
+    "Usage:\n  bluetsc check <entry.ts> [--project-root <directory>] [--target es2020|es2022] [--use-define-for-class-fields true|false] [--preserve-const-enums] [--isolated-modules] [--runtime-policy transpile-only|checked|strict-runtime]\n  bluetsc build <entry.ts> --out-dir <directory> [--project-root <directory>] [--source-map] [--declaration] [--target es2020|es2022] [--use-define-for-class-fields true|false] [--preserve-const-enums] [--isolated-modules] [--runtime-policy transpile-only|checked|strict-runtime]\n  bluetsc check --config <bluetsc.json>\n  bluetsc build --config <bluetsc.json>\n\nConfig fields: entries, projectRoot, outDir, sourceMap, declaration, target, useDefineForClassFields, preserveConstEnums, isolatedModules, runtimePolicy, imports, strictBoundaries."
 }
 
 #[derive(Debug)]
@@ -289,6 +295,10 @@ struct BuildMetadata {
     /// Whether class fields are defined rather than assigned, with the
     /// target's default applied.
     use_define_for_class_fields: bool,
+    /// Whether a `const enum`'s object is emitted and whether its uses are
+    /// replaced by values.
+    preserve_const_enums: bool,
+    inline_const_enums: bool,
     /// The version of the private-name helper text an artifact may embed.
     class_helper_version: &'static str,
     runtime_policy: &'static str,
@@ -464,6 +474,8 @@ fn build_metadata(invocation: &Invocation, summary: &CompileSummary) -> BuildMet
         fingerprint: summary.fingerprint.clone(),
         target: invocation.options.target.as_str(),
         use_define_for_class_fields: invocation.options.defines_class_fields(),
+        preserve_const_enums: invocation.options.preserve_const_enums,
+        inline_const_enums: invocation.options.inlines_const_enums(),
         class_helper_version: blueice_bluets::CLASS_HELPER_V1_VERSION,
         runtime_policy: invocation.options.runtime_policy.as_str(),
         runtime_helper: (invocation.options.runtime_policy == RuntimePolicy::StrictRuntime)
@@ -636,6 +648,8 @@ fn resolve_config_invocation(path: PathBuf) -> Result<Invocation, String> {
     let options = CompilerOptions {
         target: parse_target(config.target.as_deref())?,
         use_define_for_class_fields: config.use_define_for_class_fields,
+        preserve_const_enums: config.preserve_const_enums,
+        isolated_modules: config.isolated_modules,
         runtime_policy: parse_runtime_policy(config.runtime_policy.as_deref())?,
         source_map: config.source_map,
         declaration: config.declaration,

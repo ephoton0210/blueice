@@ -116,7 +116,26 @@ struct ExportedClass {
     heritage_depth: usize,
 }
 
+/// An enum another module can import: its members, evaluated.
+#[derive(Clone)]
+pub(crate) struct ExportedEnum {
+    pub(crate) is_const: bool,
+    pub(crate) declared: bool,
+    pub(crate) members: Vec<crate::enum_eval::EvaluatedMember>,
+}
+
+/// The enums each module exports, by module and exported name.
+pub(crate) fn exported_enums(
+    project: &Project,
+) -> BTreeMap<String, BTreeMap<String, ExportedEnum>> {
+    project::exported_enums(project)
+}
+
 struct ProjectExports {
+    /// The names each module exports (and whether more may be re-exported), to
+    /// check what is imported.
+    exported_names: BTreeMap<String, (BTreeSet<String>, bool)>,
+    enums: BTreeMap<String, BTreeMap<String, ExportedEnum>>,
     types: BTreeMap<String, BTreeMap<String, TypeDefinition>>,
     classes: BTreeMap<String, BTreeMap<String, ExportedClass>>,
 }
@@ -140,9 +159,7 @@ struct AmbientDeclarations {
 /// include every reverse dependency of a changed module in `rechecked`.
 pub(crate) fn check_incremental(
     project: &Project,
-    enforce_types: bool,
-    require_declared_global_calls: bool,
-    define_class_fields: bool,
+    policy: module::CheckerPolicy,
     previous: Option<&CheckedProject>,
     rechecked: &BTreeSet<String>,
     max_type_expansions: usize,
@@ -153,6 +170,8 @@ pub(crate) fn check_incremental(
     let exports = ProjectExports {
         types: project::exported_types(project),
         classes: project::exported_classes(project, max_type_expansions),
+        enums: project::exported_enums(project),
+        exported_names: project::exported_names(project),
     };
     let mut checked_modules = BTreeMap::new();
 
@@ -168,15 +187,11 @@ pub(crate) fn check_incremental(
             module,
             &exports,
             (!project.ambient_declaration_modules.contains(module_id)).then_some(&ambient),
-            module::CheckerPolicy {
-                enforce_types,
-                require_declared_global_calls,
-                define_class_fields,
-            },
+            policy,
             max_type_expansions,
         );
         checker.bind();
-        if enforce_types {
+        if policy.enforce_types {
             checker.check_types();
         }
         diagnostics.extend(checker.diagnostics);
@@ -308,6 +323,7 @@ fn insert_ambient_function(
 }
 
 mod module;
+pub(crate) use module::CheckerPolicy;
 mod project;
 
 fn interface_value(interface: &InterfaceDeclaration) -> Type {

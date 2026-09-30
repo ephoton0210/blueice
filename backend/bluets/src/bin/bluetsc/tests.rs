@@ -67,6 +67,27 @@ fn parses_the_class_field_semantics_flag_and_rejects_other_values() {
 }
 
 #[test]
+fn parses_the_const_enum_flags() {
+    let Input::Entry { options, .. } = args(&["check", "main.ts"]).unwrap().input else {
+        panic!("expected explicit entry input");
+    };
+    assert!(!options.preserve_const_enums && !options.isolated_modules);
+    let Input::Entry { options, .. } = args(&[
+        "check",
+        "main.ts",
+        "--preserve-const-enums",
+        "--isolated-modules",
+    ])
+    .unwrap()
+    .input
+    else {
+        panic!("expected explicit entry input");
+    };
+    assert!(options.preserve_const_enums && options.isolated_modules);
+    assert!(!options.inlines_const_enums());
+}
+
+#[test]
 fn config_mode_has_no_flag_escape_hatch() {
     assert_eq!(
         args(&["check", "--config", "bluetsc.json", "--source-map"]),
@@ -197,6 +218,8 @@ fn test_metadata() -> BuildMetadata {
         fingerprint: "bts-project-test".to_string(),
         target: "es2022",
         use_define_for_class_fields: true,
+        preserve_const_enums: false,
+        inline_const_enums: true,
         class_helper_version: "bluets-class-helper-v1",
         runtime_policy: "checked",
         runtime_helper: None,

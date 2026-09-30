@@ -141,6 +141,11 @@ impl ModuleChecker<'_> {
                     continue;
                 }
             }
+            // A const enum has no object to map a number back through; the
+            // use is reported by the const enum checks.
+            if self.const_enums.contains(&token.text) {
+                continue;
+            }
             let index_type = self.infer_expression(inside, scope);
             let numeric = self.is_assignable_bounded(&index_type, &Type::Number, span);
             if !(numeric && self.enum_has_numeric_member(&enum_name)) {

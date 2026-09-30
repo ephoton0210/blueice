@@ -12,7 +12,7 @@
 //! merge.
 
 use super::*;
-use crate::enum_eval::{js_number_text, EnumValue, EvaluatedEnum};
+use crate::enum_eval::{js_number_text, EnumValue, EvaluatedEnum, EvaluatedMember};
 use crate::parser::EnumDeclaration;
 
 /// A member's constant as the literal type that stands for it.
@@ -39,20 +39,68 @@ impl ModuleChecker<'_> {
         let members = self.enum_members.entry(name.clone()).or_default();
         members.extend(evaluated.members.iter().cloned());
         let members = members.clone();
+        let spans: BTreeMap<String, SourceSpan> = declaration
+            .members
+            .iter()
+            .map(|member| (member.name.clone(), member.name_span.clone()))
+            .collect();
+        self.bind_enum_members(
+            &name,
+            &members,
+            &spans,
+            declaration.name_span.clone(),
+            declaration.is_const,
+            declaration.declared,
+            true,
+        );
+    }
 
-        let mut fields = Vec::new();
+    /// Binds an enum imported from another module. `with_value` is false for a
+    /// type-only import, which brings the types and not the object.
+    pub(super) fn bind_imported_enum(
+        &mut self,
+        local: &str,
+        exported: &ExportedEnum,
+        span: &SourceSpan,
+        with_value: bool,
+    ) {
+        let existing = self.types.get(local).map(|definition| definition.kind);
+        if existing.is_some() || (with_value && self.values.contains_key(local)) {
+            self.duplicate(local, span.clone());
+            return;
+        }
+        self.bind_enum_members(
+            local,
+            &exported.members,
+            &BTreeMap::new(),
+            span.clone(),
+            exported.is_const,
+            exported.declared,
+            with_value,
+        );
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn bind_enum_members(
+        &mut self,
+        name: &str,
+        members: &[EvaluatedMember],
+        spans: &BTreeMap<String, SourceSpan>,
+        fallback_span: SourceSpan,
+        is_const: bool,
+        declared: bool,
+        with_value: bool,
+    ) {
+        let name = name.to_string();
+        let mut fields: Vec<TypeField> = Vec::new();
         let mut member_types = Vec::new();
         let mut has_text = false;
         let mut has_computed = false;
-        for member in &members {
-            let span = declaration
-                .members
-                .iter()
-                .find(|candidate| candidate.name == member.name)
-                .map_or_else(
-                    || declaration.name_span.clone(),
-                    |candidate| candidate.name_span.clone(),
-                );
+        for member in members {
+            let span = spans
+                .get(&member.name)
+                .cloned()
+                .unwrap_or_else(|| fallback_span.clone());
             let value = match &member.value {
                 Some(value) => {
                     has_text |= matches!(value, EnumValue::Text(_));
@@ -77,10 +125,7 @@ impl ModuleChecker<'_> {
                     }
                 }
             };
-            if fields
-                .iter()
-                .any(|field: &TypeField| field.name == member.name)
-            {
+            if fields.iter().any(|field| field.name == member.name) {
                 continue;
             }
             fields.push(TypeField {
@@ -119,26 +164,30 @@ impl ModuleChecker<'_> {
                 value: Type::Record(fields),
             },
         );
-        self.values.insert(
-            name,
-            Type::Named {
-                name: object,
-                arguments: Vec::new(),
-            },
-        );
+        if is_const {
+            self.const_enums.insert(name.clone());
+            if declared {
+                self.ambient_const_enums.insert(name.clone());
+            }
+        }
+        if !with_value {
+            self.type_only_enums.insert(name.clone());
+        }
+        if with_value {
+            self.values.insert(
+                name,
+                Type::Named {
+                    name: object,
+                    arguments: Vec::new(),
+                },
+            );
+        }
     }
 
     /// The diagnostics of one enum declaration: its own evaluation errors, a
     /// computed member in an enum with text members, a computed initializer
     /// that is not a number, and a sibling referenced without its enum name.
     pub(super) fn check_enum(&mut self, declaration: &EnumDeclaration, evaluated: &EvaluatedEnum) {
-        if declaration.is_const {
-            self.diagnostics.push(Diagnostic::error(
-                DiagnosticCode::UnsupportedSyntax,
-                declaration.span.clone(),
-                "`const enum` is not supported yet",
-            ));
-        }
         for (span, message, code) in &evaluated.errors {
             self.type_error(span, message.clone(), *code);
         }
@@ -185,6 +234,104 @@ impl ModuleChecker<'_> {
                     DiagnosticCode::TypeMismatch,
                 );
             }
+        }
+    }
+
+    /// A `const enum` exists only at compile time, so it can be used only as
+    /// `E.A` or `E["A"]`, never as a value and never by reverse lookup; and
+    /// when modules are emitted one at a time an ambient one cannot be used at
+    /// all, since its values are not known to the module that uses it.
+    pub(in crate::checker::module) fn check_const_enum_uses(
+        &mut self,
+        tokens: &[Token],
+        scope: &BTreeMap<String, Type>,
+        span: &SourceSpan,
+    ) {
+        if self.const_enums.is_empty() {
+            return;
+        }
+        for (index, token) in tokens.iter().enumerate() {
+            if token.kind != TokenKind::Identifier
+                || !self.const_enums.contains(&token.text)
+                || index
+                    .checked_sub(1)
+                    .and_then(|before| tokens.get(before))
+                    .is_some_and(|before| before.is("."))
+                || scope.get(&token.text) != self.values.get(&token.text)
+            {
+                continue;
+            }
+            let token_span = SourceSpan::new(&span.module, token.start, token.end);
+            if self.isolated_modules && self.ambient_const_enums.contains(&token.text) {
+                self.type_error(
+                    &token_span,
+                    format!(
+                        "the ambient const enum `{}` cannot be used when modules are isolated",
+                        token.text
+                    ),
+                    DiagnosticCode::TypeMismatch,
+                );
+            }
+            match tokens.get(index + 1) {
+                Some(next) if next.is(".") => {}
+                Some(next) if next.is("[") => {
+                    let literal_key = tokens
+                        .get(index + 2)
+                        .is_some_and(|key| key.kind == TokenKind::String)
+                        && tokens.get(index + 3).is_some_and(|close| close.is("]"));
+                    if !literal_key {
+                        self.type_error(
+                            &token_span,
+                            format!(
+                                "a member of the const enum `{}` can only be accessed with a \
+                                 string literal",
+                                token.text
+                            ),
+                            DiagnosticCode::TypeMismatch,
+                        );
+                    }
+                }
+                _ => self.type_error(
+                    &token_span,
+                    format!(
+                        "the const enum `{}` can only be used in a property or index access",
+                        token.text
+                    ),
+                    DiagnosticCode::TypeMismatch,
+                ),
+            }
+        }
+    }
+
+    /// An enum imported with `import type` has no runtime object.
+    pub(in crate::checker::module) fn check_type_only_enum_value_uses(
+        &mut self,
+        tokens: &[Token],
+        scope: &BTreeMap<String, Type>,
+        span: &SourceSpan,
+    ) {
+        if self.type_only_enums.is_empty() {
+            return;
+        }
+        for (index, token) in tokens.iter().enumerate() {
+            if token.kind != TokenKind::Identifier
+                || !self.type_only_enums.contains(&token.text)
+                || scope.contains_key(&token.text)
+                || index
+                    .checked_sub(1)
+                    .and_then(|before| tokens.get(before))
+                    .is_some_and(|before| before.is("."))
+            {
+                continue;
+            }
+            self.type_error(
+                &SourceSpan::new(&span.module, token.start, token.end),
+                format!(
+                    "`{}` was imported with `import type` and cannot be used as a value",
+                    token.text
+                ),
+                DiagnosticCode::UnknownName,
+            );
         }
     }
 }
