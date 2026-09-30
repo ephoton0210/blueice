@@ -1253,6 +1253,8 @@ fn get_dom_returns_the_full_tree_unfiltered_by_the_ai_representation() {
     let _ = std::fs::remove_dir_all(dir);
 }
 
+#[path = "tests/dispatch_gaps.rs"]
+mod dispatch_gaps;
 #[path = "tests/navigation.rs"]
 mod navigation;
 #[path = "tests/session_actions.rs"]
