@@ -47,7 +47,6 @@ impl<'a> ModuleChecker<'a> {
             ambient,
             enforce_types: policy.enforce_types,
             require_declared_global_calls: policy.require_declared_global_calls,
-            class_emit: policy.class_emit,
             checked_nested_functions: BTreeSet::new(),
             async_context: None,
             diagnostics: Vec::new(),
@@ -161,14 +160,29 @@ impl<'a> ModuleChecker<'a> {
                 }
                 Declaration::Class(class) => {
                     self.bind_class(class);
-                    // Output is admitted only under the staging switch and
-                    // only when every member has a structured form, so
-                    // emitted JavaScript never carries unerased TypeScript.
-                    if !(self.class_emit && classes::class_is_fully_structured(class)) {
+                    // TypeScript merges a class with an interface of the same
+                    // name; BlueTS does not model the merge, so it refuses the
+                    // pair rather than typing only the class.
+                    if self.module.declarations.iter().any(|other| {
+                        matches!(other, Declaration::Interface(interface)
+                            if interface.name == class.name)
+                    }) {
                         self.diagnostics.push(Diagnostic::error(
                             DiagnosticCode::UnsupportedSyntax,
                             class.span.clone(),
-                            "class members and runtime semantics are not installed yet",
+                            "a class and an interface with the same name merge their \
+                             declarations, which is not supported yet",
+                        ));
+                    }
+                    // Only a class whose every member has a structured form
+                    // (constructors and methods) is admitted, so emitted
+                    // JavaScript never carries unerased TypeScript.
+                    if !classes::class_is_fully_structured(class) {
+                        self.diagnostics.push(Diagnostic::error(
+                            DiagnosticCode::UnsupportedSyntax,
+                            class.span.clone(),
+                            "a class member other than a constructor or method (a field, \
+                             accessor or private member) is not supported yet",
                         ));
                     }
                 }

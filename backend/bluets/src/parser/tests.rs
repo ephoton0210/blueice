@@ -156,7 +156,7 @@ fn retains_named_class_headers_and_bodies_without_claiming_class_semantics() {
 }
 
 #[test]
-fn class_header_errors_and_unimplemented_forms_fail_closed() {
+fn class_header_errors_and_unimplemented_forms_fail_closed_and_a_plain_class_compiles() {
     for source in [
         "class Missing",
         "class { }",
@@ -178,12 +178,8 @@ fn class_header_errors_and_unimplemented_forms_fail_closed() {
         )]),
         crate::CompilerOptions::default(),
     );
-    assert!(compilation.has_errors());
-    assert!(compilation.output.is_none());
-    assert_eq!(
-        compilation.diagnostics[0].code,
-        DiagnosticCode::UnsupportedSyntax
-    );
+    assert!(!compilation.has_errors(), "{:#?}", compilation.diagnostics);
+    assert!(compilation.output.is_some());
 }
 
 #[test]
@@ -222,7 +218,7 @@ fn partitions_constructor_method_and_opaque_class_members_at_source_spans() {
 }
 
 #[test]
-fn parses_constructor_parameters_and_body_without_accepting_class_execution() {
+fn parses_constructor_parameters_and_body_and_compiles_the_class() {
     let source = "class Counter { constructor(value: number) { const next: number = value; return; } read() {} }";
     let module = parse_module("memory:///counter.ts", source).unwrap();
     let Declaration::Class(class) = &module.declarations[0] else {
@@ -263,8 +259,8 @@ fn parses_constructor_parameters_and_body_without_accepting_class_execution() {
         &crate::MapLoader::from([crate::ModuleSource::new("memory:///counter.ts", source)]),
         crate::CompilerOptions::default(),
     );
-    assert!(compilation.has_errors());
-    assert!(compilation.output.is_none());
+    assert!(!compilation.has_errors(), "{:#?}", compilation.diagnostics);
+    assert!(compilation.output.is_some());
 }
 
 #[test]
@@ -329,8 +325,8 @@ fn parses_simple_named_method_signatures_and_bodies_at_original_spans() {
         &crate::MapLoader::from([crate::ModuleSource::new("memory:///methods.ts", source)]),
         crate::CompilerOptions::default(),
     );
-    assert!(compilation.has_errors());
-    assert!(compilation.output.is_none());
+    assert!(!compilation.has_errors(), "{:#?}", compilation.diagnostics);
+    assert!(compilation.output.is_some());
 }
 
 #[test]

@@ -317,33 +317,33 @@ fn module_function_source_breakpoint_selects_child_entry_over_declaration_root()
 }
 
 #[test]
-fn direct_admission_refuses_checker_accepted_classes() {
-    // Sources the class checker accepts, and that pinned TypeScript accepts
-    // (see BlueTS `class-checker-matrix.tsv`). Emit and runtime are not
-    // installed, so every direct route must still refuse them.
+fn direct_admission_lowers_or_refuses_checker_accepted_classes_but_never_mislowers() {
+    // Classes the checker accepts and pinned TypeScript accepts (see BlueTS
+    // `class-checker-matrix.tsv`). Each direct route either lowers the class
+    // to a BlueJS class declaration or refuses the program for a shape the
+    // bridge cannot lower; it never reports a class as unsupported by the
+    // checker and never lowers one wrongly.
     for source in [
         include_str!("../../../bluets/tests/fixtures/typescript_oracle/class-super-call-valid/main.ts"),
         include_str!("../../../bluets/tests/fixtures/typescript_oracle/class-super-member-valid/main.ts"),
         include_str!("../../../bluets/tests/fixtures/typescript_oracle/class-override-overload-valid/main.ts"),
     ] {
         let loader = MapLoader::from([ModuleSource::new(ENTRY, source)]);
-        for result in [
-            compile_direct_script(ENTRY, &loader, CompilerOptions::default()).map(|_| ()),
-            compile_direct_module(ENTRY, &loader, CompilerOptions::default()).map(|_| ()),
-        ] {
-            let Err(error) = result else {
-                panic!("a class must not reach BlueJS before emit and runtime exist");
-            };
-            let refused = match &error {
-                BridgeError::BlueTs(diagnostics) => diagnostics
-                    .iter()
-                    .any(|diagnostic| diagnostic.message.contains("class members")),
-                BridgeError::UnsupportedRuntimeTarget { message, .. } => {
-                    message.contains("class members")
-                }
-                _ => false,
-            };
-            assert!(refused, "{error:?}");
+        match compile_direct_script(ENTRY, &loader, CompilerOptions::default()) {
+            Ok(artifact) => {
+                let bluejs::BlueJsProgramV1::Script(program) = &artifact.program else {
+                    panic!("expected a script program");
+                };
+                assert!(
+                    program
+                        .body
+                        .iter()
+                        .any(|statement| matches!(statement, bluejs::Stmt::ClassDecl(_))),
+                    "{source}"
+                );
+            }
+            Err(BridgeError::UnsupportedRuntimeTarget { .. }) => {}
+            Err(error) => panic!("{source}: {error:?}"),
         }
     }
 }
@@ -391,7 +391,6 @@ fn lowers_a_checked_class_to_a_bluejs_class_declaration() {
              class B extends A { constructor() { super(1); } }",
         )]),
         CompilerOptions {
-            class_emit: true,
             ..CompilerOptions::default()
         },
     )
@@ -441,7 +440,6 @@ fn an_exported_class_lowers_to_a_module_class_and_export() {
             "export class A { m(): number { return 1; } } class B extends A {} export { B };",
         )]),
         CompilerOptions {
-            class_emit: true,
             ..CompilerOptions::default()
         },
     )
@@ -470,7 +468,6 @@ fn a_class_script_with_an_exported_class_needs_the_module_bridge() {
         ENTRY,
         &MapLoader::from([ModuleSource::new(ENTRY, "export class A {}")]),
         CompilerOptions {
-            class_emit: true,
             ..CompilerOptions::default()
         },
     );
@@ -489,7 +486,6 @@ fn class_bodies_with_shapes_the_bridge_cannot_lower_are_refused() {
             ENTRY,
             &MapLoader::from([ModuleSource::new(ENTRY, source)]),
             CompilerOptions {
-                class_emit: true,
                 ..CompilerOptions::default()
             },
         );

@@ -18,7 +18,6 @@ enum RecordSpreadFailure {
 pub(super) struct CheckerPolicy {
     pub(super) enforce_types: bool,
     pub(super) require_declared_global_calls: bool,
-    pub(super) class_emit: bool,
 }
 
 pub(super) struct ModuleChecker<'a> {
@@ -28,7 +27,6 @@ pub(super) struct ModuleChecker<'a> {
     ambient: Option<&'a AmbientDeclarations>,
     enforce_types: bool,
     require_declared_global_calls: bool,
-    class_emit: bool,
     /// Arrow functions already checked, by start offset, so an expression
     /// visited from several checks reports its body once.
     checked_nested_functions: BTreeSet<usize>,

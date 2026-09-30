@@ -203,19 +203,31 @@ fn class_method_oracle_fixtures_remain_source_bound_and_emit_nothing() {
             _ => unreachable!(),
         }
         let compilation = compile_with_helper(source);
-        assert!(compilation.output.is_none(), "{name} emitted an artifact");
         let unsupported = compilation
             .diagnostics
             .iter()
             .filter(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax)
-            .collect::<Vec<_>>();
-        assert_eq!(
-            unsupported.len(),
-            1,
-            "{name}: {:#?}",
-            compilation.diagnostics
-        );
-        assert_eq!(unsupported[0].span, class.span, "{name}");
+            .count();
+        let has_unstructured_member = class
+            .members
+            .iter()
+            .any(|member| member.kind == ClassMemberKind::Opaque);
+        if has_unstructured_member {
+            // A member other than a constructor or method (here a private
+            // member or a field between signatures) has no structured form yet
+            // (J.3.2), so the class is refused.
+            assert_eq!(unsupported, 1, "{name}: {:#?}", compilation.diagnostics);
+            assert!(compilation.output.is_none(), "{name}");
+        } else {
+            // The class itself is admitted: no refusal diagnostic, and an
+            // artifact exactly when nothing else is wrong.
+            assert_eq!(unsupported, 0, "{name}: {:#?}", compilation.diagnostics);
+            assert_eq!(
+                compilation.output.is_some(),
+                !compilation.has_errors(),
+                "{name}"
+            );
+        }
     }
 }
 
@@ -270,7 +282,11 @@ fn class_method_groups_report_original_source_checker_failures() {
     ];
     for (name, source, expected) in cases {
         let compilation = compile_with_helper(source);
-        assert!(compilation.output.is_none(), "{name} emitted an artifact");
+        assert_eq!(
+            compilation.output.is_some(),
+            !compilation.has_errors(),
+            "{name}: an artifact exists exactly when nothing failed"
+        );
         let found = compilation
             .diagnostics
             .iter()
@@ -291,18 +307,26 @@ fn class_method_groups_report_original_source_checker_failures() {
 }
 
 #[test]
-fn transpile_only_does_not_emit_unchecked_classes() {
-    let source = include_str!("fixtures/typescript_oracle/class-method-overloads/main.ts");
-    let result = compile(
-        ENTRY,
-        &MapLoader::from([ModuleSource::new(ENTRY, source)]),
-        CompilerOptions {
-            runtime_policy: RuntimePolicy::TranspileOnly,
-            ..CompilerOptions::default()
-        },
-    );
-    assert!(result.output.is_none());
-    assert!(result
+fn transpile_only_emits_structured_classes_and_still_refuses_unstructured_ones() {
+    let compile_transpile = |source: &str| {
+        compile(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+            CompilerOptions {
+                runtime_policy: RuntimePolicy::TranspileOnly,
+                ..CompilerOptions::default()
+            },
+        )
+    };
+    // Erasing a constructor-and-method class needs no checking.
+    let structured = compile_transpile(include_str!(
+        "fixtures/typescript_oracle/class-method-overloads/main.ts"
+    ));
+    assert!(structured.output.is_some(), "{:#?}", structured.diagnostics);
+    // A member the parser cannot erase is refused even without checking.
+    let unstructured = compile_transpile("class A { x: number = 1; }");
+    assert!(unstructured.output.is_none());
+    assert!(unstructured
         .diagnostics
         .iter()
         .any(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax));
@@ -344,7 +368,11 @@ fn class_type_and_constructor_value_bind_separately_at_original_spans() {
     ];
     for (name, source, expected) in cases {
         let compilation = compile_with_helper(source);
-        assert!(compilation.output.is_none(), "{name} emitted an artifact");
+        assert_eq!(
+            compilation.output.is_some(),
+            !compilation.has_errors(),
+            "{name}: an artifact exists exactly when nothing failed"
+        );
         for diagnostic in &compilation.diagnostics {
             if diagnostic.code == DiagnosticCode::DuplicateDeclaration {
                 assert_eq!(
@@ -383,13 +411,23 @@ fn class_type_and_constructor_value_bind_separately_at_original_spans() {
         "class Reader {} interface Reader {}",
     ] {
         let compilation = compile_with_helper(source);
+        // TypeScript merges the two declarations, which BlueTS does not model
+        // yet, so it refuses the pair rather than typing only the class.
         assert!(compilation.output.is_none());
         assert!(
             compilation
                 .diagnostics
                 .iter()
-                .all(|diagnostic| diagnostic.code != DiagnosticCode::DuplicateDeclaration),
-            "class/interface merging is a later leaf, not an illegal name collision: {:#?}",
+                .all(|diagnostic| { diagnostic.code != DiagnosticCode::DuplicateDeclaration }),
+            "class/interface merging is not an illegal name collision: {:#?}",
+            compilation.diagnostics
+        );
+        assert!(
+            compilation.diagnostics.iter().any(|diagnostic| {
+                diagnostic.code == DiagnosticCode::UnsupportedSyntax
+                    && diagnostic.message.contains("merge")
+            }),
+            "{:#?}",
             compilation.diagnostics
         );
     }
@@ -403,12 +441,9 @@ fn class_construction_checks_arguments_and_infers_instance_shape() {
         include_str!("fixtures/typescript_oracle/class-construction-inherited-deferred/main.ts"),
     ] {
         let compilation = compile_with_helper(source);
-        assert!(compilation.output.is_none());
+        assert!(compilation.output.is_some());
         assert!(
-            compilation
-                .diagnostics
-                .iter()
-                .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+            compilation.diagnostics.is_empty(),
             "accepted constructor shapes have no additional diagnostic: {:#?}",
             compilation.diagnostics
         );
@@ -525,7 +560,11 @@ fn class_constructor_groups_and_parameters_are_checked_at_source_spans() {
     ];
     for (name, source, code, expected_span) in cases {
         let compilation = compile_with_helper(source);
-        assert!(compilation.output.is_none(), "{name} emitted an artifact");
+        assert_eq!(
+            compilation.output.is_some(),
+            !compilation.has_errors(),
+            "{name}: an artifact exists exactly when nothing failed"
+        );
         let failures = compilation
             .diagnostics
             .iter()
@@ -542,19 +581,21 @@ fn class_constructor_groups_and_parameters_are_checked_at_source_spans() {
     let accepted = compile_with_helper(include_str!(
         "fixtures/typescript_oracle/class-construction-overloads/main.ts"
     ));
-    assert!(accepted.output.is_none());
-    assert!(accepted
-        .diagnostics
-        .iter()
-        .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax));
+    assert!(accepted.output.is_some());
+    assert!(
+        accepted.diagnostics.is_empty(),
+        "{:#?}",
+        accepted.diagnostics
+    );
     let accepted = compile_with_helper(include_str!(
         "fixtures/typescript_oracle/class-constructor-valid-default/main.ts"
     ));
-    assert!(accepted.output.is_none());
-    assert!(accepted
-        .diagnostics
-        .iter()
-        .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax));
+    assert!(accepted.output.is_some());
+    assert!(
+        accepted.diagnostics.is_empty(),
+        "{:#?}",
+        accepted.diagnostics
+    );
 
     let source = include_str!(
         "fixtures/typescript_oracle/class-constructor-duplicate-implementation/main.ts"
@@ -585,12 +626,9 @@ fn constructor_bodies_use_typed_scopes_and_check_object_returns() {
         ),
     ] {
         let compilation = compile_with_helper(source);
-        assert!(compilation.output.is_none());
+        assert!(compilation.output.is_some());
         assert!(
-            compilation
-                .diagnostics
-                .iter()
-                .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+            compilation.diagnostics.is_empty(),
             "{:#?}",
             compilation.diagnostics
         );
@@ -642,12 +680,9 @@ fn class_method_parameters_and_bodies_use_typed_scopes_on_both_sides() {
     let accepted = compile_with_helper(include_str!(
         "fixtures/typescript_oracle/class-method-body-scopes/main.ts"
     ));
-    assert!(accepted.output.is_none());
+    assert!(accepted.output.is_some());
     assert!(
-        accepted
-            .diagnostics
-            .iter()
-            .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+        accepted.diagnostics.is_empty(),
         "{:#?}",
         accepted.diagnostics
     );
@@ -710,12 +745,9 @@ fn class_method_declared_returns_use_original_spans() {
     let accepted = compile_with_helper(include_str!(
         "fixtures/typescript_oracle/class-method-returns-valid/main.ts"
     ));
-    assert!(accepted.output.is_none());
+    assert!(accepted.output.is_some());
     assert!(
-        accepted
-            .diagnostics
-            .iter()
-            .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+        accepted.diagnostics.is_empty(),
         "{:#?}",
         accepted.diagnostics
     );
@@ -781,12 +813,9 @@ fn instance_this_in_class_bodies_uses_instance_members_at_source_spans() {
     let accepted = compile_with_helper(include_str!(
         "fixtures/typescript_oracle/class-instance-this-valid/main.ts"
     ));
-    assert!(accepted.output.is_none());
+    assert!(accepted.output.is_some());
     assert!(
-        accepted
-            .diagnostics
-            .iter()
-            .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+        accepted.diagnostics.is_empty(),
         "{:#?}",
         accepted.diagnostics
     );
@@ -844,12 +873,9 @@ fn static_this_in_class_bodies_uses_constructor_side_members_at_source_spans() {
     let accepted = compile_with_helper(include_str!(
         "fixtures/typescript_oracle/class-static-this-valid/main.ts"
     ));
-    assert!(accepted.output.is_none());
+    assert!(accepted.output.is_some());
     assert!(
-        accepted
-            .diagnostics
-            .iter()
-            .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+        accepted.diagnostics.is_empty(),
         "{:#?}",
         accepted.diagnostics
     );
@@ -904,12 +930,9 @@ fn instance_method_overload_calls_select_returns_at_original_spans() {
     let accepted = compile_with_helper(include_str!(
         "fixtures/typescript_oracle/class-instance-overload-valid/main.ts"
     ));
-    assert!(accepted.output.is_none());
+    assert!(accepted.output.is_some());
     assert!(
-        accepted
-            .diagnostics
-            .iter()
-            .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+        accepted.diagnostics.is_empty(),
         "{:#?}",
         accepted.diagnostics
     );
@@ -965,12 +988,9 @@ fn static_method_overload_calls_select_returns_on_values_and_this() {
     let accepted = compile_with_helper(include_str!(
         "fixtures/typescript_oracle/class-static-overload-this-valid/main.ts"
     ));
-    assert!(accepted.output.is_none());
+    assert!(accepted.output.is_some());
     assert!(
-        accepted
-            .diagnostics
-            .iter()
-            .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+        accepted.diagnostics.is_empty(),
         "{:#?}",
         accepted.diagnostics
     );
@@ -1024,12 +1044,9 @@ fn named_class_heritage_validates_base_names_and_declaration_order() {
     let accepted = compile_with_helper(include_str!(
         "fixtures/typescript_oracle/class-heritage-local-valid/main.ts"
     ));
-    assert!(accepted.output.is_none());
+    assert!(accepted.output.is_some());
     assert!(
-        accepted
-            .diagnostics
-            .iter()
-            .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+        accepted.diagnostics.is_empty(),
         "{:#?}",
         accepted.diagnostics
     );
@@ -1037,12 +1054,9 @@ fn named_class_heritage_validates_base_names_and_declaration_order() {
         include_str!("fixtures/typescript_oracle/class-heritage-imported-valid/main.ts"),
         include_str!("fixtures/typescript_oracle/class-heritage-imported-valid/box.ts"),
     );
-    assert!(imported.output.is_none());
+    assert!(imported.output.is_some());
     assert!(
-        imported
-            .diagnostics
-            .iter()
-            .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+        imported.diagnostics.is_empty(),
         "{:#?}",
         imported.diagnostics
     );
@@ -1169,12 +1183,9 @@ fn inherited_instance_methods_work_through_local_and_imported_class_bases() {
             ),
         ),
     ] {
-        assert!(accepted.output.is_none());
+        assert!(accepted.output.is_some());
         assert!(
-            accepted
-                .diagnostics
-                .iter()
-                .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+            accepted.diagnostics.is_empty(),
             "{:#?}",
             accepted.diagnostics
         );
@@ -1223,12 +1234,9 @@ fn inherited_static_overloads_work_through_class_values_and_static_this() {
             include_str!("fixtures/typescript_oracle/class-inherited-imported-static-valid/box.ts"),
         ),
     ] {
-        assert!(accepted.output.is_none());
+        assert!(accepted.output.is_some());
         assert!(
-            accepted
-                .diagnostics
-                .iter()
-                .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+            accepted.diagnostics.is_empty(),
             "{:#?}",
             accepted.diagnostics
         );
@@ -1277,12 +1285,9 @@ fn omitted_derived_constructor_reuses_local_and_imported_base_signatures() {
             ),
         ),
     ] {
-        assert!(accepted.output.is_none());
+        assert!(accepted.output.is_some());
         assert!(
-            accepted
-                .diagnostics
-                .iter()
-                .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+            accepted.diagnostics.is_empty(),
             "{:#?}",
             accepted.diagnostics
         );
@@ -1343,12 +1348,9 @@ fn exported_local_derived_classes_retain_inherited_surfaces_across_imports() {
         ),
     ] {
         let accepted = compile_class_module_pair(main, box_module);
-        assert!(accepted.output.is_none());
+        assert!(accepted.output.is_some());
         assert!(
-            accepted
-                .diagnostics
-                .iter()
-                .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+            accepted.diagnostics.is_empty(),
             "{:#?}",
             accepted.diagnostics
         );
@@ -1411,12 +1413,9 @@ fn exported_imported_base_derived_classes_retain_inherited_surfaces() {
         ),
     ] {
         let accepted = compile_class_module_triplet(main, box_module, base);
-        assert!(accepted.output.is_none());
+        assert!(accepted.output.is_some());
         assert!(
-            accepted
-                .diagnostics
-                .iter()
-                .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+            accepted.diagnostics.is_empty(),
             "{:#?}",
             accepted.diagnostics
         );
@@ -1444,15 +1443,8 @@ fn exported_imported_base_derived_classes_retain_inherited_surfaces() {
         ]),
         CompilerOptions::default(),
     );
-    assert!(chained.output.is_none());
-    assert!(
-        chained
-            .diagnostics
-            .iter()
-            .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
-        "{:#?}",
-        chained.diagnostics
-    );
+    assert!(chained.output.is_some());
+    assert!(chained.diagnostics.is_empty(), "{:#?}", chained.diagnostics);
     for (main, expected_span) in [
         (
             include_str!(
@@ -1502,12 +1494,9 @@ fn imported_base_derived_instance_surfaces_survive_type_reexport_chains() {
     let accepted = compile_imported_base_type_reexport(include_str!(
         "fixtures/typescript_oracle/class-imported-base-type-reexport/valid.ts"
     ));
-    assert!(accepted.output.is_none());
+    assert!(accepted.output.is_some());
     assert!(
-        accepted
-            .diagnostics
-            .iter()
-            .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+        accepted.diagnostics.is_empty(),
         "{:#?}",
         accepted.diagnostics
     );
@@ -1551,12 +1540,9 @@ fn local_class_method_overrides_check_instance_and_static_signatures() {
         &MapLoader::from([ModuleSource::new(ENTRY, valid)]),
         CompilerOptions::default(),
     );
-    assert!(accepted.output.is_none());
+    assert!(accepted.output.is_some());
     assert!(
-        accepted
-            .diagnostics
-            .iter()
-            .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+        accepted.diagnostics.is_empty(),
         "{:#?}",
         accepted.diagnostics
     );
@@ -1616,12 +1602,9 @@ fn ancestor_class_method_overrides_find_inherited_instance_and_static_signatures
         &MapLoader::from([ModuleSource::new(ENTRY, valid)]),
         CompilerOptions::default(),
     );
-    assert!(accepted.output.is_none());
+    assert!(accepted.output.is_some());
     assert!(
-        accepted
-            .diagnostics
-            .iter()
-            .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+        accepted.diagnostics.is_empty(),
         "{:#?}",
         accepted.diagnostics
     );
@@ -1686,12 +1669,9 @@ fn imported_class_method_overrides_check_direct_and_transitive_base_surfaces() {
         include_str!("fixtures/typescript_oracle/class-override-imported/transitive-valid.ts"),
     ] {
         let accepted = compile_imported_base_override(main);
-        assert!(accepted.output.is_none());
+        assert!(accepted.output.is_some());
         assert!(
-            accepted
-                .diagnostics
-                .iter()
-                .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+            accepted.diagnostics.is_empty(),
             "{:#?}",
             accepted.diagnostics
         );
@@ -1764,12 +1744,9 @@ fn class_method_overrides_check_optional_and_differing_required_arities() {
             &MapLoader::from([ModuleSource::new(ENTRY, valid)]),
             CompilerOptions::default(),
         );
-        assert!(accepted.output.is_none());
+        assert!(accepted.output.is_some());
         assert!(
-            accepted
-                .diagnostics
-                .iter()
-                .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+            accepted.diagnostics.is_empty(),
             "{:#?}",
             accepted.diagnostics
         );
@@ -1830,12 +1807,9 @@ fn class_method_overrides_check_matching_prefix_array_rest_signatures() {
         &MapLoader::from([ModuleSource::new(ENTRY, valid)]),
         CompilerOptions::default(),
     );
-    assert!(accepted.output.is_none());
+    assert!(accepted.output.is_some());
     assert!(
-        accepted
-            .diagnostics
-            .iter()
-            .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+        accepted.diagnostics.is_empty(),
         "{:#?}",
         accepted.diagnostics
     );
@@ -1902,12 +1876,9 @@ fn derived_array_rest_overrides_cover_remaining_fixed_base_parameters() {
         &MapLoader::from([ModuleSource::new(ENTRY, valid)]),
         CompilerOptions::default(),
     );
-    assert!(accepted.output.is_none());
+    assert!(accepted.output.is_some());
     assert!(
-        accepted
-            .diagnostics
-            .iter()
-            .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+        accepted.diagnostics.is_empty(),
         "{:#?}",
         accepted.diagnostics
     );
@@ -1964,12 +1935,9 @@ fn fixed_derived_overrides_compare_base_array_rest_positions() {
             &MapLoader::from([ModuleSource::new(ENTRY, valid)]),
             CompilerOptions::default(),
         );
-        assert!(accepted.output.is_none());
+        assert!(accepted.output.is_some());
         assert!(
-            accepted
-                .diagnostics
-                .iter()
-                .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+            accepted.diagnostics.is_empty(),
             "{:#?}",
             accepted.diagnostics
         );
@@ -2035,12 +2003,9 @@ fn shifted_array_rest_overrides_align_fixed_and_element_types() {
             &MapLoader::from([ModuleSource::new(ENTRY, valid)]),
             CompilerOptions::default(),
         );
-        assert!(accepted.output.is_none());
+        assert!(accepted.output.is_some());
         assert!(
-            accepted
-                .diagnostics
-                .iter()
-                .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+            accepted.diagnostics.is_empty(),
             "{:#?}",
             accepted.diagnostics
         );
@@ -2089,12 +2054,9 @@ fn class_parameters_accept_fixed_tuple_rest_annotations() {
         &MapLoader::from([ModuleSource::new(ENTRY, valid)]),
         CompilerOptions::default(),
     );
-    assert!(accepted.output.is_none());
+    assert!(accepted.output.is_some());
     assert!(
-        accepted
-            .diagnostics
-            .iter()
-            .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+        accepted.diagnostics.is_empty(),
         "{:#?}",
         accepted.diagnostics
     );
@@ -2138,12 +2100,9 @@ fn derived_tuple_rest_overrides_align_expanded_positions() {
         &MapLoader::from([ModuleSource::new(ENTRY, valid)]),
         CompilerOptions::default(),
     );
-    assert!(accepted.output.is_none());
+    assert!(accepted.output.is_some());
     assert!(
-        accepted
-            .diagnostics
-            .iter()
-            .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+        accepted.diagnostics.is_empty(),
         "{:#?}",
         accepted.diagnostics
     );
@@ -2198,12 +2157,9 @@ fn inherited_tuple_rest_overrides_align_fixed_and_array_positions() {
         &MapLoader::from([ModuleSource::new(ENTRY, valid)]),
         CompilerOptions::default(),
     );
-    assert!(accepted.output.is_none());
+    assert!(accepted.output.is_some());
     assert!(
-        accepted
-            .diagnostics
-            .iter()
-            .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+        accepted.diagnostics.is_empty(),
         "{:#?}",
         accepted.diagnostics
     );
@@ -2258,12 +2214,9 @@ fn both_tuple_rest_overrides_compare_expanded_positions() {
         &MapLoader::from([ModuleSource::new(ENTRY, valid)]),
         CompilerOptions::default(),
     );
-    assert!(accepted.output.is_none());
+    assert!(accepted.output.is_some());
     assert!(
-        accepted
-            .diagnostics
-            .iter()
-            .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+        accepted.diagnostics.is_empty(),
         "{:#?}",
         accepted.diagnostics
     );
@@ -2317,12 +2270,9 @@ fn optional_tuple_rest_overrides_compare_declared_positions() {
         &MapLoader::from([ModuleSource::new(ENTRY, valid)]),
         CompilerOptions::default(),
     );
-    assert!(accepted.output.is_none());
+    assert!(accepted.output.is_some());
     assert!(
-        accepted
-            .diagnostics
-            .iter()
-            .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+        accepted.diagnostics.is_empty(),
         "{:#?}",
         accepted.diagnostics
     );
@@ -2372,12 +2322,9 @@ fn labeled_tuple_rest_overrides_compare_positions_not_names() {
         &MapLoader::from([ModuleSource::new(ENTRY, valid)]),
         CompilerOptions::default(),
     );
-    assert!(accepted.output.is_none());
+    assert!(accepted.output.is_some());
     assert!(
-        accepted
-            .diagnostics
-            .iter()
-            .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+        accepted.diagnostics.is_empty(),
         "{:#?}",
         accepted.diagnostics
     );
@@ -2433,12 +2380,9 @@ fn derived_trailing_tuple_rest_overrides_compare_repeated_tail() {
         &MapLoader::from([ModuleSource::new(ENTRY, valid)]),
         CompilerOptions::default(),
     );
-    assert!(accepted.output.is_none());
+    assert!(accepted.output.is_some());
     assert!(
-        accepted
-            .diagnostics
-            .iter()
-            .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+        accepted.diagnostics.is_empty(),
         "{:#?}",
         accepted.diagnostics
     );
@@ -2488,12 +2432,9 @@ fn derived_middle_tuple_rest_overrides_align_required_suffixes() {
         &MapLoader::from([ModuleSource::new(ENTRY, valid)]),
         CompilerOptions::default(),
     );
-    assert!(accepted.output.is_none());
+    assert!(accepted.output.is_some());
     assert!(
-        accepted
-            .diagnostics
-            .iter()
-            .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+        accepted.diagnostics.is_empty(),
         "{:#?}",
         accepted.diagnostics
     );
@@ -2553,12 +2494,9 @@ fn inherited_trailing_tuple_rest_overrides_compare_repeated_tail() {
             &MapLoader::from([ModuleSource::new(ENTRY, valid)]),
             CompilerOptions::default(),
         );
-        assert!(accepted.output.is_none());
+        assert!(accepted.output.is_some());
         assert!(
-            accepted
-                .diagnostics
-                .iter()
-                .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+            accepted.diagnostics.is_empty(),
             "{:#?}",
             accepted.diagnostics
         );
@@ -2604,12 +2542,9 @@ fn inherited_middle_tuple_rest_overrides_align_required_suffixes() {
         &MapLoader::from([ModuleSource::new(ENTRY, valid)]),
         CompilerOptions::default(),
     );
-    assert!(accepted.output.is_none());
+    assert!(accepted.output.is_some());
     assert!(
-        accepted
-            .diagnostics
-            .iter()
-            .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+        accepted.diagnostics.is_empty(),
         "{:#?}",
         accepted.diagnostics
     );
@@ -2688,12 +2623,9 @@ fn both_trailing_tuple_rest_overrides_align_prefixes_and_tails() {
         &MapLoader::from([ModuleSource::new(ENTRY, valid)]),
         CompilerOptions::default(),
     );
-    assert!(accepted.output.is_none());
+    assert!(accepted.output.is_some());
     assert!(
-        accepted
-            .diagnostics
-            .iter()
-            .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+        accepted.diagnostics.is_empty(),
         "{:#?}",
         accepted.diagnostics
     );
@@ -2742,12 +2674,9 @@ fn both_variable_tuple_rest_overrides_align_middle_and_suffixes() {
         &MapLoader::from([ModuleSource::new(ENTRY, valid)]),
         CompilerOptions::default(),
     );
-    assert!(accepted.output.is_none());
+    assert!(accepted.output.is_some());
     assert!(
-        accepted
-            .diagnostics
-            .iter()
-            .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+        accepted.diagnostics.is_empty(),
         "{:#?}",
         accepted.diagnostics
     );
@@ -2815,12 +2744,9 @@ fn optional_trailing_tuple_prefixes_compare_with_middle_rests() {
         &MapLoader::from([ModuleSource::new(ENTRY, valid)]),
         CompilerOptions::default(),
     );
-    assert!(accepted.output.is_none());
+    assert!(accepted.output.is_some());
     assert!(
-        accepted
-            .diagnostics
-            .iter()
-            .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+        accepted.diagnostics.is_empty(),
         "{:#?}",
         accepted.diagnostics
     );
@@ -2925,12 +2851,9 @@ fn optional_ordinary_prefixes_align_before_variable_tuple_rests() {
         &MapLoader::from([ModuleSource::new(ENTRY, valid)]),
         CompilerOptions::default(),
     );
-    assert!(accepted.output.is_none());
+    assert!(accepted.output.is_some());
     assert!(
-        accepted
-            .diagnostics
-            .iter()
-            .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+        accepted.diagnostics.is_empty(),
         "{:#?}",
         accepted.diagnostics
     );
@@ -2985,12 +2908,9 @@ fn optional_ordinary_prefixes_align_with_fixed_and_array_rest_bases() {
         &MapLoader::from([ModuleSource::new(ENTRY, valid)]),
         CompilerOptions::default(),
     );
-    assert!(accepted.output.is_none());
+    assert!(accepted.output.is_some());
     assert!(
-        accepted
-            .diagnostics
-            .iter()
-            .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+        accepted.diagnostics.is_empty(),
         "{:#?}",
         accepted.diagnostics
     );
@@ -3061,12 +2981,9 @@ fn optional_ordinary_prefixes_align_with_fixed_tuple_rests() {
         &MapLoader::from([ModuleSource::new(ENTRY, valid)]),
         CompilerOptions::default(),
     );
-    assert!(accepted.output.is_none());
+    assert!(accepted.output.is_some());
     assert!(
-        accepted
-            .diagnostics
-            .iter()
-            .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+        accepted.diagnostics.is_empty(),
         "{:#?}",
         accepted.diagnostics
     );
@@ -3124,12 +3041,9 @@ fn middle_and_fixed_tuple_rest_overrides_align_total_arity() {
         &MapLoader::from([ModuleSource::new(ENTRY, valid)]),
         CompilerOptions::default(),
     );
-    assert!(accepted.output.is_none());
+    assert!(accepted.output.is_some());
     assert!(
-        accepted
-            .diagnostics
-            .iter()
-            .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+        accepted.diagnostics.is_empty(),
         "{:#?}",
         accepted.diagnostics
     );
@@ -3221,12 +3135,9 @@ fn local_class_method_uses_keep_instance_and_constructor_sides_separate() {
         include_str!("fixtures/typescript_oracle/class-local-shadowed-call/main.ts"),
     ] {
         let compilation = compile_with_helper(accepted);
-        assert!(compilation.output.is_none());
+        assert!(compilation.output.is_some());
         assert!(
-            compilation
-                .diagnostics
-                .iter()
-                .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+            compilation.diagnostics.is_empty(),
             "{:#?}",
             compilation.diagnostics
         );
@@ -3356,12 +3267,9 @@ fn static_class_method_shells_keep_sides_and_source_spans() {
         ]
     );
     let compilation = compile_with_helper(source);
-    assert!(compilation.output.is_none());
+    assert!(compilation.output.is_some());
     assert!(
-        compilation
-            .diagnostics
-            .iter()
-            .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+        compilation.diagnostics.is_empty(),
         "{:#?}",
         compilation.diagnostics
     );
@@ -3374,12 +3282,9 @@ fn static_class_methods_bind_to_constructor_side_and_check_calls() {
         include_str!("fixtures/typescript_oracle/class-static-overload-binding/main.ts"),
     ] {
         let compilation = compile_with_helper(accepted);
-        assert!(compilation.output.is_none());
+        assert!(compilation.output.is_some());
         assert!(
-            compilation
-                .diagnostics
-                .iter()
-                .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+            compilation.diagnostics.is_empty(),
             "{:#?}",
             compilation.diagnostics
         );
@@ -3450,12 +3355,9 @@ fn closed_module_type_imports_retain_class_instance_method_shapes() {
         ),
     ] {
         let compilation = compile_class_module_pair(main, box_module);
-        assert!(compilation.output.is_none());
+        assert!(compilation.output.is_some());
         assert!(
-            compilation
-                .diagnostics
-                .iter()
-                .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+            compilation.diagnostics.is_empty(),
             "{:#?}",
             compilation.diagnostics
         );
@@ -3506,12 +3408,9 @@ fn closed_module_value_imports_bind_both_class_sides_with_local_names() {
         ),
     ] {
         let compilation = compile_class_module_pair(main, box_module);
-        assert!(compilation.output.is_none());
+        assert!(compilation.output.is_some());
         assert!(
-            compilation
-                .diagnostics
-                .iter()
-                .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+            compilation.diagnostics.is_empty(),
             "{:#?}",
             compilation.diagnostics
         );
@@ -3555,12 +3454,9 @@ fn closed_module_class_value_calls_check_both_sides_and_type_only_use() {
         ),
     ] {
         let compilation = compile_class_module_pair(main, box_module);
-        assert!(compilation.output.is_none());
+        assert!(compilation.output.is_some());
         assert!(
-            compilation
-                .diagnostics
-                .iter()
-                .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+            compilation.diagnostics.is_empty(),
             "{:#?}",
             compilation.diagnostics
         );
@@ -4190,8 +4086,8 @@ fn unsupported_and_misplaced_syntax_is_diagnosed_not_passed_through() {
             "decorators and TSX/JSX are not in the initial BlueTS matrix",
         ),
         (
-            "class A {}",
-            "class members and runtime semantics are not installed yet",
+            "class A { x = 1; }",
+            "a class member other than a constructor or method",
         ),
         (
             "abstract class A {}",
@@ -5014,12 +4910,9 @@ fn named_tuple_spread_class_overrides_compare_expanded_positions() {
         &MapLoader::from([ModuleSource::new(ENTRY, source)]),
         CompilerOptions::default(),
     );
-    assert!(accepted.output.is_none());
+    assert!(accepted.output.is_some());
     assert!(
-        accepted
-            .diagnostics
-            .iter()
-            .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+        accepted.diagnostics.is_empty(),
         "{:#?}",
         accepted.diagnostics
     );
@@ -5258,12 +5151,9 @@ fn class_overrides_compare_inherited_overload_sets() {
          class B extends A { m(a: string): void { } }",
     ] {
         let accepted = compile_source(source);
-        assert!(accepted.output.is_none());
+        assert!(accepted.output.is_some());
         assert!(
-            accepted
-                .diagnostics
-                .iter()
-                .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+            accepted.diagnostics.is_empty(),
             "{source}: {:#?}",
             accepted.diagnostics
         );
@@ -5334,12 +5224,9 @@ fn derived_constructors_check_super_calls_and_placement() {
         include_str!("fixtures/typescript_oracle/class-super-call-valid/main.ts"),
         256,
     );
-    assert!(accepted.output.is_none());
+    assert!(accepted.output.is_some());
     assert!(
-        accepted
-            .diagnostics
-            .iter()
-            .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+        accepted.diagnostics.is_empty(),
         "{:#?}",
         accepted.diagnostics
     );
@@ -5387,12 +5274,9 @@ fn super_member_reads_and_calls_use_the_base_side() {
     let accepted = compile_source(include_str!(
         "fixtures/typescript_oracle/class-super-member-valid/main.ts"
     ));
-    assert!(accepted.output.is_none());
+    assert!(accepted.output.is_some());
     assert!(
-        accepted
-            .diagnostics
-            .iter()
-            .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+        accepted.diagnostics.is_empty(),
         "{:#?}",
         accepted.diagnostics
     );
@@ -5450,9 +5334,8 @@ fn super_member_reads_and_calls_use_the_base_side() {
     }
 }
 
-fn class_emit_options() -> CompilerOptions {
+fn emit_all_artifacts_options() -> CompilerOptions {
     CompilerOptions {
-        class_emit: true,
         source_map: true,
         declaration: true,
         ..CompilerOptions::default()
@@ -5471,24 +5354,12 @@ fn normalized_javascript(javascript: &str) -> String {
 }
 
 #[test]
-fn class_emit_erases_types_and_overload_signatures() {
+fn class_output_erases_types_and_overload_signatures() {
     let source = include_str!("fixtures/typescript_oracle/class-emit-runtime/main.ts");
-    // The staging switch is off by default: classes are still refused.
-    let refused = compile(
-        ENTRY,
-        &MapLoader::from([ModuleSource::new(ENTRY, source)]),
-        CompilerOptions::default(),
-    );
-    assert!(refused.output.is_none());
-    assert!(refused
-        .diagnostics
-        .iter()
-        .any(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax));
-
     let compiled = compile(
         ENTRY,
         &MapLoader::from([ModuleSource::new(ENTRY, source)]),
-        class_emit_options(),
+        emit_all_artifacts_options(),
     );
     assert!(
         compiled.diagnostics.is_empty(),
@@ -5517,7 +5388,7 @@ fn class_declaration_emit_matches_typescript_shape() {
     let compiled = compile(
         ENTRY,
         &MapLoader::from([ModuleSource::new(ENTRY, source)]),
-        class_emit_options(),
+        emit_all_artifacts_options(),
     );
     assert!(
         compiled.diagnostics.is_empty(),
@@ -5539,7 +5410,7 @@ fn class_declaration_emit_matches_typescript_shape() {
 }
 
 #[test]
-fn class_emit_stays_atomic_and_refuses_unstructured_classes() {
+fn class_output_stays_atomic_and_refuses_unstructured_classes() {
     // A checker error suppresses all output, even with the switch on.
     let rejected = compile(
         ENTRY,
@@ -5548,7 +5419,7 @@ fn class_emit_stays_atomic_and_refuses_unstructured_classes() {
             "class A { constructor(x: number) {} } \
              class B extends A { constructor() { super('a'); } }",
         )]),
-        class_emit_options(),
+        emit_all_artifacts_options(),
     );
     assert!(rejected.output.is_none());
     assert!(rejected
@@ -5561,7 +5432,7 @@ fn class_emit_stays_atomic_and_refuses_unstructured_classes() {
     let opaque = compile(
         ENTRY,
         &MapLoader::from([ModuleSource::new(ENTRY, "class A { value = 1; }")]),
-        class_emit_options(),
+        emit_all_artifacts_options(),
     );
     assert!(opaque.output.is_none());
     assert!(opaque
@@ -5576,7 +5447,7 @@ fn class_emit_stays_atomic_and_refuses_unstructured_classes() {
             ENTRY,
             "export class A { m() { return 1; } }",
         )]),
-        class_emit_options(),
+        emit_all_artifacts_options(),
     );
     assert!(untyped.output.is_none());
 }
@@ -5622,10 +5493,7 @@ fn parenthesized_types_group_unions_and_function_types() {
         CompilerOptions::default(),
     );
     assert!(
-        accepted
-            .diagnostics
-            .iter()
-            .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+        accepted.diagnostics.is_empty(),
         "{:#?}",
         accepted.diagnostics
     );
@@ -5671,10 +5539,7 @@ fn optional_tuple_spreads_check_every_possible_length() {
         "fixtures/typescript_oracle/tuple-spread-optional-valid/main.ts"
     ));
     assert!(
-        accepted
-            .diagnostics
-            .iter()
-            .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+        accepted.diagnostics.is_empty(),
         "{:#?}",
         accepted.diagnostics
     );
@@ -5721,14 +5586,7 @@ fn returns_use_the_declared_tuple_as_literal_context() {
     let classes = compile_source(include_str!(
         "fixtures/typescript_oracle/tuple-literal-return-class-valid/main.ts"
     ));
-    assert!(
-        classes
-            .diagnostics
-            .iter()
-            .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
-        "{:#?}",
-        classes.diagnostics
-    );
+    assert!(classes.diagnostics.is_empty(), "{:#?}", classes.diagnostics);
 
     for source in [
         include_str!("fixtures/typescript_oracle/tuple-literal-return-type-error/main.ts"),
@@ -5772,14 +5630,7 @@ fn call_arguments_use_the_parameter_tuple_as_literal_context() {
     let classes = compile_source(include_str!(
         "fixtures/typescript_oracle/tuple-literal-argument-class-valid/main.ts"
     ));
-    assert!(
-        classes
-            .diagnostics
-            .iter()
-            .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
-        "{:#?}",
-        classes.diagnostics
-    );
+    assert!(classes.diagnostics.is_empty(), "{:#?}", classes.diagnostics);
     for source in [
         include_str!("fixtures/typescript_oracle/tuple-literal-argument-type-error/main.ts"),
         include_str!("fixtures/typescript_oracle/tuple-literal-argument-short-error/main.ts"),

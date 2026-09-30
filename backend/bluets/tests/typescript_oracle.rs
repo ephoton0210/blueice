@@ -1044,8 +1044,8 @@ fn pinned_bluetsc_oracle_matches_the_supported_fixture_matrix() {
     }
 }
 
-/// Class fixtures compare TypeScript syntax and overload rules.
-/// BlueTS must still reject every class before output until J.3.1.3–J.3.1.6.
+/// Class fixtures compare TypeScript syntax and overload rules against the
+/// pinned compiler without emitting.
 #[test]
 #[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
 fn pinned_class_method_boundary_matches_typescript_without_emit() {
@@ -4654,7 +4654,6 @@ fn run_case(case: &OracleCase, tsc: &Path, node: &std::ffi::OsStr) {
     let options = CompilerOptions {
         source_map: true,
         declaration: expected_declaration.is_some(),
-        class_emit: case.name.starts_with("class-emit"),
         ..CompilerOptions::default()
     };
     let compilation = compile("memory:///main.ts", &MapLoader::from(sources), options);

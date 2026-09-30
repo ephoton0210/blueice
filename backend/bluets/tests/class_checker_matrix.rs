@@ -8,8 +8,10 @@
 //! pinned TypeScript 5.9.3 accepts or rejects it. The ordinary test compares
 //! BlueTSC's verdict with that record, and the ignored oracle test re-derives
 //! the record from the pinned compiler, so the two compilers agree
-//! transitively. Class output stays refused until the emit and runtime leaves
-//! are complete, so BlueTSC must never succeed on any entry.
+//! transitively. Classes are admitted, so BlueTSC succeeds on exactly the
+//! entries pinned TypeScript accepts and fails on the rest, except a short
+//! deferred list of accepted entries that use a member BlueTS cannot erase yet:
+//! those must fail with the unsupported-syntax code and nothing else.
 //!
 //! To regenerate the record after adding a class fixture, run the oracle test
 //! with `BLUEICE_WRITE_CLASS_MATRIX=1`.
@@ -21,7 +23,18 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
 const MATRIX: &str = include_str!("fixtures/typescript_oracle/class-checker-matrix.tsv");
-const CLASS_UNSUPPORTED_CODE: &str = "BTS1001";
+/// Entries pinned TypeScript accepts that BlueTS deliberately refuses, only as
+/// unsupported syntax, until the feature they use exists (J.3.2).
+const DEFERRED: &str = include_str!("fixtures/typescript_oracle/class-checker-matrix-deferred.txt");
+const UNSUPPORTED_CODE: &str = "BTS1001";
+
+fn deferred_entries() -> BTreeSet<String> {
+    DEFERRED
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .map(str::to_string)
+        .collect()
+}
 
 fn fixtures() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/typescript_oracle")
@@ -99,7 +112,23 @@ fn matrix_lists_every_class_fixture_entry() {
 }
 
 #[test]
+fn deferred_entries_are_a_subset_of_the_accepted_rows() {
+    let accepted: BTreeSet<String> = recorded_rows()
+        .into_iter()
+        .filter(|(_, accepts)| *accepts)
+        .map(|(path, _)| path)
+        .collect();
+    for entry in deferred_entries() {
+        assert!(
+            accepted.contains(&entry),
+            "{entry} is deferred but pinned TypeScript does not accept it"
+        );
+    }
+}
+
+#[test]
 fn bluetsc_verdicts_match_the_recorded_pinned_typescript_verdicts() {
+    let deferred = deferred_entries();
     for (path, accepts) in recorded_rows() {
         let output = Command::new(env!("CARGO_BIN_EXE_bluetsc"))
             .arg("check")
@@ -107,31 +136,41 @@ fn bluetsc_verdicts_match_the_recorded_pinned_typescript_verdicts() {
             .output()
             .unwrap();
         let codes = diagnostic_codes(&output);
-        assert!(
-            !output.status.success(),
-            "{path}: classes must stay refused before output"
-        );
-        assert!(
-            codes.contains(CLASS_UNSUPPORTED_CODE) || !accepts,
-            "{path}: an accepted class must report only the class-runtime refusal, got {codes:?}"
-        );
-        let checker_rejects = codes.iter().any(|code| code != CLASS_UNSUPPORTED_CODE);
+        if deferred.contains(&path) {
+            assert!(
+                !output.status.success(),
+                "{path}: a deferred entry must fail"
+            );
+            assert_eq!(
+                codes,
+                BTreeSet::from([UNSUPPORTED_CODE.to_string()]),
+                "{path}: a deferred entry may fail only as unsupported syntax"
+            );
+            continue;
+        }
         assert_eq!(
-            checker_rejects, !accepts,
+            output.status.success(),
+            accepts,
             "{path}: BlueTSC {codes:?} disagrees with pinned TypeScript (accepts: {accepts})"
+        );
+        assert!(
+            !accepts || codes.is_empty(),
+            "{path}: an accepted class must report no diagnostic, got {codes:?}"
+        );
+        assert!(
+            accepts || !codes.is_empty(),
+            "{path}: a rejected class must report a diagnostic"
         );
     }
 }
 
 #[test]
-fn bluetsc_build_refuses_every_accepted_class_fixture_without_output() {
+fn bluetsc_build_emits_every_accepted_class_fixture_and_nothing_for_a_rejected_one() {
     let root = env::temp_dir().join(format!("bluets-class-matrix-{}", std::process::id()));
     let _ = fs::remove_dir_all(&root);
-    for (index, (path, _)) in recorded_rows()
-        .into_iter()
-        .filter(|(_, accepts)| *accepts)
-        .enumerate()
-    {
+    let deferred = deferred_entries();
+    for (index, (path, accepts)) in recorded_rows().into_iter().enumerate() {
+        let accepts = accepts && !deferred.contains(&path);
         let out_dir = root.join(index.to_string());
         let built = Command::new(env!("CARGO_BIN_EXE_bluetsc"))
             .arg("build")
@@ -140,12 +179,15 @@ fn bluetsc_build_refuses_every_accepted_class_fixture_without_output() {
             .arg(&out_dir)
             .output()
             .unwrap();
-        assert!(!built.status.success(), "{path}: build must be refused");
+        assert_eq!(built.status.success(), accepts, "{path}");
         let produced = out_dir.exists()
             && fs::read_dir(&out_dir)
                 .map(|mut entries| entries.next().is_some())
                 .unwrap_or(true);
-        assert!(!produced, "{path}: a refused build must leave no output");
+        assert_eq!(
+            produced, accepts,
+            "{path}: output exists exactly when the class is accepted"
+        );
     }
     let _ = fs::remove_dir_all(&root);
 }

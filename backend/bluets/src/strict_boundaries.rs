@@ -678,10 +678,10 @@ mod tests {
     }
 
     #[test]
-    fn a_class_in_an_emitted_strict_module_is_refused_even_when_classes_are_admitted() {
+    fn a_class_in_an_emitted_strict_module_is_refused() {
         // The strict profile admits only the selected string functions; a class
-        // (which the staging switch would otherwise let through) has no
-        // boundary, so the module is refused rather than emitted half-guarded.
+        // has no boundary, so the module is refused rather than emitted
+        // half-guarded.
         let source =
             "export function echo(value: string): string { return value; }\nclass Helper { m(): number { return 1; } }\n";
         let loader = MapLoader::from([ModuleSource::new(MODULE, source)]);
@@ -693,7 +693,6 @@ mod tests {
             CompilerOptions {
                 runtime_policy: RuntimePolicy::StrictRuntime,
                 strict_runtime_boundaries: vec![selected],
-                class_emit: true,
                 ..CompilerOptions::default()
             },
         );

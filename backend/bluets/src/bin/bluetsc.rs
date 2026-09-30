@@ -625,9 +625,6 @@ fn resolve_config_invocation(path: PathBuf) -> Result<Invocation, String> {
         ambient_declaration_modules: Vec::new(),
         require_declared_global_calls: false,
         strict_runtime_boundaries,
-        // Classes stay refused by the CLI until J.3.1.6 removes the staging
-        // switch.
-        class_emit: false,
         limits: CompilerLimits::default(),
     };
     Ok(Invocation {

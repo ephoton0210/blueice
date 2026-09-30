@@ -36,7 +36,8 @@ fn unique_socket_path(label: &str) -> PathBuf {
 fn wait_for(path: &std::path::Path, timeout: Duration) -> bool {
     let deadline = Instant::now() + timeout;
     while Instant::now() < deadline {
-        if path.exists() {
+        // Existence alone is a race: bind creates the file before listen.
+        if UnixStream::connect(path).is_ok() {
             return true;
         }
         thread::sleep(Duration::from_millis(20));

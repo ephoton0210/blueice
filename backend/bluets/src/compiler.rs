@@ -111,12 +111,6 @@ pub struct CompilerOptions {
     /// Explicit emitted crossings. Direct page hosts leave this empty because
     /// their runtime contract inventory is owned and checked separately.
     pub strict_runtime_boundaries: Vec<StrictRuntimeBoundary>,
-    /// Staging switch for J.3.1.4: admit fully structured classes (constructors
-    /// and methods only) to JavaScript and declaration output. Off by default,
-    /// so a class is still refused before output until the direct-lowering and
-    /// verification leaves (J.3.1.5-J.3.1.6) make classes generally available,
-    /// at which point this option is removed.
-    pub class_emit: bool,
     pub limits: CompilerLimits,
 }
 
@@ -131,7 +125,6 @@ impl Default for CompilerOptions {
             ambient_declaration_modules: Vec::new(),
             require_declared_global_calls: false,
             strict_runtime_boundaries: Vec::new(),
-            class_emit: false,
             limits: CompilerLimits::default(),
         }
     }
@@ -361,7 +354,6 @@ fn compile_with_cache(
         &project,
         !matches!(options.runtime_policy, RuntimePolicy::TranspileOnly),
         options.require_declared_global_calls,
-        options.class_emit,
         previous_checked,
         &rechecked_modules,
         options.limits.max_type_expansions,
@@ -768,7 +760,6 @@ pub(crate) fn fingerprint(project: &Project, options: &CompilerOptions) -> Strin
     add(options.runtime_policy.as_str());
     add(&options.resolver_fingerprint);
     add(&options.require_declared_global_calls.to_string());
-    add(&options.class_emit.to_string());
     for boundary in &options.strict_runtime_boundaries {
         add(&boundary.contract_id);
         add(&boundary.function);

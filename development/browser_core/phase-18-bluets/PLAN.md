@@ -2153,7 +2153,7 @@ classes the checker binds today; fields, accessors and private members
 
 ### J.3.1.4 Class JavaScript and declaration output
 
-Output is gated by a temporary, default-off `CompilerOptions::class_emit`
+(Superseded: the switch described here was removed in J.3.1.6.) Output was gated by a temporary, default-off `CompilerOptions::class_emit`
 switch (part of the build fingerprint). With it on, the checker drops the
 class-runtime refusal only for a class whose every member is a parsed
 constructor or method; a field, accessor or any other member still keeps the
@@ -2549,7 +2549,7 @@ target, so `super(..)` is an ordinary `Call` on that node and `super.m(..)` a
 placement. A destructured parameter, a nested declaration or an object-literal
 form inside a method is refused by the same paths as in a function.
 
-The checker admits a class only under the `class_emit` staging switch, so the
+(Superseded by J.3.1.6, which removed the switch.) The checker admitted a class only under the `class_emit` staging switch, so the
 direct route reaches this lowering only when the caller's options set it, and
 `CompilerOptions::default()` still refuses classes. J.3.1.6 verifies the
 strict-boundary, debugger and stale-generation behaviour and removes the switch.
@@ -2582,6 +2582,34 @@ Strict boundaries. An emitted strict module admits only the owner-selected
 string functions and refuses every other runtime declaration, so a class in such
 a module is refused with an invalid-contract diagnostic even when classes are
 admitted; a test pins it.
+
+### J.3.1.6b Classes are admitted by default
+
+The `class_emit` staging switch is gone. The checker admits a class whose every
+member is a parsed constructor or method, in every entry point: `compile`, the
+BlueTSC CLI, declaration output and the direct bridge. A class with any other
+member, that is a field, accessor, private member or anything else the parser
+keeps as opaque tokens, is still refused as unsupported syntax, with a message
+that names what is missing, because emitting it would copy TypeScript into the
+output; J.3.2 adds those members.
+
+A class and an interface with the same name are also refused. TypeScript merges
+the two declarations, so `interface Reader { extra: number } class Reader {}`
+gives `Reader` the `extra` property. BlueTS does not model the merge, so admitting
+the pair would type only the class and quietly drop the interface's members.
+The refusal is unsupported syntax, not a duplicate-declaration error, because the
+pair is legal.
+
+The class matrix changes from "BlueTSC never succeeds on a class" to "BlueTSC
+succeeds on exactly what pinned TypeScript accepts and BlueTS supports". A
+separate hand-maintained deferred list names the accepted entries BlueTS cannot
+erase yet (one, a private member); each must fail with only the unsupported
+syntax code, and the list must be a subset of the accepted rows so it cannot hide
+a real disagreement.
+
+Tests that used a class's refusal as their evidence were updated: an accepted
+class now expects no diagnostics and an artifact, a checker error expects none,
+and tests that listed a class among refused shapes now use a class with a field.
 
 ## Checklist
 

@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: J.3.1.5.** H and I are complete. The requested class, enum,
+**Current leaf: J.3.2.** H and I are complete. The requested class, enum,
 decorator, namespace, JSX, CommonJS, and package-resolution expansion has
 passed J.1/J.2 planning; implementation and pinned-`tsc` parity remain open.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
@@ -875,7 +875,7 @@ done to the page-runs-and-debugs goal at the top of this file.
     design records stays out of the implementation backlog.
 - [ ] **J.3** Implement runtime-bearing TypeScript declarations using the
   shared BlueTS/BlueTSC front end and direct BlueJS lowering.
-  - [ ] **J.3.1** Add class declarations, constructors, methods,
+  - [x] **J.3.1** Add class declarations, constructors, methods,
     inheritance, and `super` through checker, BlueTSC emit, direct page
     execution, source maps, strict boundaries, and pinned-oracle fixtures.
     - [x] **J.3.1.1** Retain a bounded named class declaration, optional
@@ -2087,9 +2087,25 @@ done to the page-runs-and-debugs goal at the top of this file.
       inheritance, `super()` and instance and static `super.m()` runs in a
       real BlueJS page realm to `165`, the same result Node gives for the
       program. Bridge and BlueTS crate tests, workspace Clippy and rustfmt pass.
-    - [ ] **J.3.1.6** Verify strict-boundary policy, original-source debugger
+    - [x] **J.3.1.6** Verify strict-boundary policy, original-source debugger
       mapping, stale-generation refusal, pinned-oracle parity, and the
       disk-budgeted workspace gates before checking off J.3.1.
+      A frame paused inside a class method now maps to the original class
+      declaration (BlueJS records the child closures each root statement
+      created, and the bridge maps their safe points), and after navigation the
+      frame, the safe-point map and the debug registry entry are refused, as for
+      a function. A class in an emitted strict module is refused as an invalid
+      contract, since that profile admits only the selected string functions.
+      The `class_emit` staging switch is removed: a class whose every member is
+      a constructor or method is admitted by default in the checker, BlueTSC,
+      the emitter and the direct bridge, and a class with any other member (a
+      field, accessor or private member) is refused as unsupported syntax
+      until J.3.2. A class and an interface with the same name are refused too,
+      since TypeScript merges them and BlueTS does not yet. The class matrix
+      now requires BlueTSC to succeed on exactly the 309 entries pinned
+      TypeScript accepts and BlueTS supports and to fail on the rest, with one
+      accepted entry (a private member) deferred and allowed to fail only as
+      unsupported syntax.
   - [ ] **J.3.2** Add fields, accessors, private members, parameter
     properties, and static initialization in separately tested forms;
     verify order, visibility, declarations, and debugger provenance.
