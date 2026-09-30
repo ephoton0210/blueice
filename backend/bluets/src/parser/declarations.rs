@@ -148,11 +148,27 @@ impl Parser {
                         .get(self.index + 1)
                         .is_some_and(|token| token.is("enum"))
                 {
-                    self.unsupported(
-                        self.tokens[self.index + 1].span(&self.id),
-                        "`enum` is not in the initial BlueTS matrix",
-                    );
-                    self.skip_statement();
+                    if async_start {
+                        self.unsupported(
+                            self.previous().span(&self.id),
+                            "an async enum is not valid",
+                        );
+                        self.skip_statement();
+                    } else {
+                        self.bump();
+                        self.bump();
+                        self.parse_enum(start, exported, declared, true);
+                    }
+                } else if self.consume("enum") {
+                    if async_start {
+                        self.unsupported(
+                            self.previous().span(&self.id),
+                            "an async enum is not valid",
+                        );
+                        self.skip_statement();
+                    } else {
+                        self.parse_enum(start, exported, declared, false);
+                    }
                 } else if self.peek("const") || self.peek("let") || self.peek("var") {
                     let kind = match self.current().text.as_str() {
                         "const" => VariableKind::Const,
@@ -163,7 +179,6 @@ impl Parser {
                     self.bump();
                     self.parse_variable(start, exported, declared, kind);
                 } else if self.peek_any(&[
-                    "enum",
                     "namespace",
                     "module",
                     "abstract",
@@ -257,6 +272,8 @@ impl Parser {
 
 #[path = "declarations/class.rs"]
 mod class;
+#[path = "declarations/enums.rs"]
+mod enums;
 #[path = "declarations/erasure_audit.rs"]
 mod erasure_audit;
 #[path = "declarations/function_body.rs"]

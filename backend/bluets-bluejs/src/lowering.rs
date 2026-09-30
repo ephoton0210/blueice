@@ -74,6 +74,12 @@ pub(super) fn lower_script(
                     "an exported class requires the module bridge",
                 ));
             }
+            Declaration::Enum(declaration) => {
+                return Err(unsupported(
+                    declaration.span.clone(),
+                    "an enum has no direct lowering yet",
+                ));
+            }
         }
     }
     Ok((body, finalize_provenance(module, provenance)?))
@@ -199,6 +205,12 @@ pub(super) fn lower_module(
                         local_name: class.name.clone(),
                     });
                 }
+            }
+            Declaration::Enum(declaration) => {
+                return Err(unsupported(
+                    declaration.span.clone(),
+                    "an enum has no direct lowering yet",
+                ));
             }
         }
     }

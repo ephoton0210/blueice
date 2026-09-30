@@ -2891,6 +2891,48 @@ public and private interleaved as declared. After the class come the `WeakMap`s 
 order. The lowering declares `_C_x`-style variables and refuses a source that already
 uses one, or one of the helper names.
 
+### J.3.4.1 and J.3.4.2 Enums
+
+`enum` declarations are parsed into `EnumDeclaration` with their members and
+their initializers' original tokens. Everything about a member's value comes from
+one evaluator (`enum_eval.rs`) that the checker and the emitter both call, in
+source order over the module so a later declaration of a name sees the earlier
+one. A member's value is constant when its initializer is a constant expression
+in TypeScript's sense and otherwise computed. JavaScript's number semantics are
+reproduced where they differ from Rust's: bitwise and shift operators go through
+`ToInt32`/`ToUint32` with the shift count masked to 5 bits, `**` has JavaScript's
+special cases, and numbers print as `Number.prototype.toString` prints them
+(`1e+21`, `-1`, `0.5`, `Infinity`). The parser presents `>>` and `>>>` as separate
+`>` tokens one byte apart (for generic closers), which the evaluator puts back
+together.
+
+Emit is TypeScript's own shape: a `var` and an immediately called function that
+fills the object, called with the object itself or a new one so declarations of a
+name merge. The replacement text keeps the declaration's line count, spread over
+its parts, so no later source line moves.
+
+For typing, an enum binds four names: the type `E` (the union of the member types,
+or `number` with a computed member), one type `E.A` per constant member, the
+object type `typeof E` with readonly members, and the value `E`. A member type is
+the literal type spelled `E.A`, so it is distinct from the number `0`, and its
+definition records the member's constant so the relation rules can compare it:
+`(E.A, number)` is assignable by the member's value, `(E.A, string)` for a string
+member, and `E.A` to `E.B` is not. The assignability rules that are specific to
+enums sit in front of the general ones: a numeric enum accepts any `number` and
+a number literal only when some member has that value, and a string enum accepts
+only its own members. Because inference widens a bare number literal to `number`,
+a literal read where an enum is expected (a declaration, a return, an argument,
+an assignment) keeps its value as a literal type; an arithmetic result is a plain
+number, which TypeScript also accepts.
+
+`E[n]` is typed by a special case in the indexing path: a number-like index on an
+enum object with a numeric member is the member's name, and everything else that
+is not a member name is an error.
+
+Not modelled, and refused or recorded instead: `const enum` (its own leaf), an enum
+imported from another module, an enum in a declaration module, an enum declared
+inside a body, and a computed initializer that names a sibling member bare.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process

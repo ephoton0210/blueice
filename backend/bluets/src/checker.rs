@@ -80,6 +80,14 @@ enum TypeDefinitionKind {
     Alias,
     Interface,
     Class,
+    /// An enum type: the union of its member types.
+    Enum,
+    /// One member of an enum, keyed `E.A`. Its value is the member's constant
+    /// as a literal type (`0`, `"a"`); the type the member has in annotations
+    /// and expressions is the literal type named `E.A`.
+    EnumMember,
+    /// The value `E`: an object with the enum's members, keyed `typeof E`.
+    EnumObject,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

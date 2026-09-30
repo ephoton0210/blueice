@@ -108,7 +108,7 @@ impl Parser {
             } else if self.tokens[index].is("enum")
                 && next.is_some_and(|token| token.kind == TokenKind::Identifier)
             {
-                Some("`enum` is not in the initial BlueTS matrix")
+                Some("an `enum` declared inside a body is not supported yet")
             } else if self.tokens[index].is("namespace")
                 && next.is_some_and(|token| token.kind == TokenKind::Identifier)
             {

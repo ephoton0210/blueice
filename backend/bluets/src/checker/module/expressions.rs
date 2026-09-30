@@ -338,6 +338,18 @@ impl<'a> ModuleChecker<'a> {
                 actuals.extend(self.expanded_call_argument_types(&[argument], scope)?);
                 continue;
             }
+            // A number literal passed where an enum is expected stays a literal.
+            if positions_known {
+                let enum_literal = signatures.iter().find_map(|signature| {
+                    let parameter = function_parameter_for_argument(signature, actuals.len())?;
+                    let expected = call_parameter_expected_type(parameter, &BTreeMap::new());
+                    self.enum_literal_for(argument, &expected)
+                });
+                if let Some(literal) = enum_literal {
+                    actuals.push(literal);
+                    continue;
+                }
+            }
             let contextual = (positions_known
                 && argument.first().is_some_and(|token| token.is("[")))
             .then(|| self.contextual_argument_type(argument, scope, actuals.len(), signatures))
@@ -562,6 +574,7 @@ fn erased_assertion_operand(tokens: &[Token]) -> Option<&[Token]> {
 /// other keys remain dynamic rather than guessed.
 mod arithmetic;
 mod calls;
+mod enum_access;
 mod mutation;
 
 use mutation::{contains_readonly_member, member_access_target, unescaped_property_name};

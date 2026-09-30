@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: J.3.4.** H and I are complete. The requested class, enum,
+**Current leaf: J.3.4.3.** H and I are complete. The requested class, enum,
 decorator, namespace, JSX, CommonJS, and package-resolution expansion has
 passed J.1/J.2 planning; implementation and pinned-`tsc` parity remain open.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
@@ -2356,6 +2356,58 @@ done to the page-runs-and-debugs goal at the top of this file.
   - [ ] **J.3.4** Implement numeric/string/heterogeneous enums and `const enum`
     semantics, including evaluation, reverse mapping, declaration emit,
     isolation options, direct runtime, and oracle parity.
+    - [x] **J.3.4.1** Parse `[export] [declare] [const] enum Name { .. }`:
+      member names (identifier, keyword or string), optional initializers,
+      trailing comma. Constant initializers are evaluated as TypeScript
+      evaluates them: numeric literals (decimal with separators, exponent,
+      `0x`/`0o`/`0b`, `.5`, `5.`), string and plain template literals with their
+      escapes, unary `+ - ~`, the binary arithmetic, bitwise and shift
+      operators with JavaScript's `ToInt32` semantics (`1 << 33` is 2), `**`,
+      string concatenation with strings and numbers, parentheses, and
+      references to earlier members as `A`, `E.A` or `E["A"]`; a member with no
+      initializer is the previous numeric value plus one. Emit is TypeScript's
+      (`var E; (function (E) { E[E["A"] = 0] = "A"; })(E || (E = {}));`, string
+      members without a reverse mapping, `export var` for an exported enum, one
+      `var` for merged declarations, nothing for `declare enum`), a constant
+      member is written as its folded value (numbers as JavaScript prints them,
+      `Infinity`, `NaN`), a computed one keeps its initializer with erased
+      types, and the text keeps the declaration's line count. The checker and the
+      emitter share one evaluator, so the value a member is typed with is the
+      value the object holds. The BlueTSC output for a program of numeric,
+      string, heterogeneous, folded, quoted-name and merged enums prints
+      exactly what pinned tsc's output prints under Node.
+    - [x] **J.3.4.2** Typing. An enum `E` is the union of its member literal
+      types (`E.A`, distinct from the number `0`); with a computed member it is
+      plain `number` (or `number | string`). Assignability is TypeScript's:
+      a member to its enum, to `number` or `string` by its value, never to
+      another member or enum; a number literal to a numeric enum only if some
+      member has that value (`const e: E = 1` yes, `= 5` no, in a declaration,
+      a call argument, a return and an assignment), any `number` to a numeric
+      enum, nothing but its own members to a string enum. `E.A` reads a member,
+      `E["A"]` by name, `E[n]` maps a number to its name (a string) only in an
+      enum with numeric members; a missing member, a bad index and assigning a
+      member are errors. The enum value `E` is an object of readonly members.
+      Errors: duplicate member, a member after a computed or string member with
+      no initializer, a forward reference, two declarations of one enum where
+      the second omits its first initializer, a computed member that is not a
+      number, and an enum that collides with another declaration. Merged
+      declarations accumulate members. What is refused as unsupported instead of
+      approximated: `const enum` (J.3.4.3), a computed initializer that names a
+      sibling without `E.`, an enum inside a body, an enum in a declaration
+      module, and importing an enum from another module (J.3.4.3). A string
+      literal or `"x".length` inferred type was wrong before (every expression
+      that began with a literal was that literal's type); a literal now stands
+      for the whole expression only when nothing follows it. 38 `enum-*`
+      entries are a pinned-TypeScript matrix in its own file (all agree), a
+      runtime case compares stdout with pinned tsc, and 14 public tests, 4
+      evaluator unit tests and 2 parser tests pin the codes, messages and text.
+      Known gaps: comparing two enum members that cannot overlap (TS2367) and
+      `switch` exhaustiveness are not diagnosed.
+    - [ ] **J.3.4.3** `const enum`: inlined uses, no runtime object, the
+      TypeScript restrictions (no reverse index, not a value), cross-module use,
+      `declare const enum`, and the `preserveConstEnums` option.
+    - [ ] **J.3.4.4** Declaration output and isolation options.
+    - [ ] **J.3.4.5** Direct runtime (bridge) and Node/pinned-tsc parity.
   - [ ] **J.3.5** Implement runtime namespaces/modules and declaration merging,
     including initialization order, export visibility, nested maps, direct
     execution, and oracle parity.

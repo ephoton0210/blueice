@@ -137,7 +137,7 @@ impl<'a> ModuleChecker<'a> {
                 if !mutation.operator.is("=") {
                     return;
                 }
-                let actual = self.infer_expression(mutation.value, scope);
+                let actual = self.infer_in_context(mutation.value, scope, &expected);
                 if !self.is_assignable_bounded(&actual, &expected, span) {
                     self.type_error(
                         span,

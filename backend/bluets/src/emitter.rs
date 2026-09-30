@@ -15,6 +15,7 @@ pub use private_lowering::CLASS_HELPER_V1_VERSION;
 
 mod class_lowering;
 mod classes;
+mod enums;
 mod private_lowering;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -267,6 +268,7 @@ fn emit_javascript(
     }
     edits.extend(classes::overload_signature_erasures(module));
     class_lowering::lower_class_members(module, options, &mut edits)?;
+    enums::lower_enums(module, &mut edits)?;
     let plan = strict_boundaries::plan_emission(module, options)?;
     let mut strict_runtime = None;
     if let Some((strict_edits, record)) = plan {

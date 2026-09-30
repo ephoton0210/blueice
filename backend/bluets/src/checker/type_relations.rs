@@ -152,6 +152,9 @@ pub(super) fn is_assignable(
     if actual == expected {
         return true;
     }
+    if let Some(result) = enum_assignability(actual, expected, aliases) {
+        return result;
+    }
     if let Some(expanded) = instantiate_named(actual, aliases, visited, budget, "actual") {
         return is_assignable(&expanded, expected, aliases, visited, budget);
     }
@@ -195,8 +198,19 @@ pub(super) fn is_assignable(
             .any(|part| is_assignable(part, expected, aliases, &mut visited.clone(), budget));
     }
     match (actual, expected) {
-        (Type::Literal(value), Type::String) => value.starts_with('\'') || value.starts_with('\"'),
-        (Type::Literal(value), Type::Number) => value.parse::<f64>().is_ok(),
+        (Type::Literal(value), Type::String) => {
+            value.starts_with('\'')
+                || value.starts_with('\"')
+                || enum_member_value(aliases, value).is_some_and(
+                    |member| matches!(member, Type::Literal(text) if text.starts_with('"')),
+                )
+        }
+        (Type::Literal(value), Type::Number) => {
+            value.parse::<f64>().is_ok()
+                || enum_member_value(aliases, value).is_some_and(
+                    |member| matches!(member, Type::Literal(text) if text.parse::<f64>().is_ok()),
+                )
+        }
         (Type::Literal(value), Type::Boolean) => matches!(value.as_str(), "true" | "false"),
         (Type::Array(actual), Type::Array(expected)) => {
             is_assignable(actual, expected, aliases, visited, budget)
@@ -300,6 +314,67 @@ pub(super) fn is_assignable(
                 .unwrap_or(expected_field.optional)
         }),
         _ => actual == expected,
+    }
+}
+
+/// The constant a member type `E.A` stands for, as a literal type.
+fn enum_member_value<'a>(
+    aliases: &'a BTreeMap<String, TypeDefinition>,
+    literal: &str,
+) -> Option<&'a Type> {
+    aliases
+        .get(literal)
+        .filter(|definition| definition.kind == TypeDefinitionKind::EnumMember)
+        .map(|definition| &definition.value)
+}
+
+/// What a number (or a number literal) may be assigned to an enum: a numeric
+/// enum accepts any `number`, and a number literal only when it is the value
+/// of one of its members. A string enum accepts no string literal; only its
+/// own members, which are handled by ordinary union assignability.
+///
+/// `None` leaves the question to the general rules.
+fn enum_assignability(
+    actual: &Type,
+    expected: &Type,
+    aliases: &BTreeMap<String, TypeDefinition>,
+) -> Option<bool> {
+    let Type::Named { name, .. } = expected else {
+        return None;
+    };
+    let definition = aliases.get(name)?;
+    if definition.kind != TypeDefinitionKind::Enum {
+        return None;
+    }
+    let members: Vec<&Type> = match &definition.value {
+        Type::Union(options) => options
+            .iter()
+            .filter_map(|option| match option {
+                Type::Literal(text) => enum_member_value(aliases, text),
+                _ => None,
+            })
+            .collect(),
+        _ => Vec::new(),
+    };
+    let numeric =
+        |value: &&Type| matches!(value, Type::Literal(text) if text.parse::<f64>().is_ok());
+    let all_numeric = !members.is_empty() && members.iter().all(numeric);
+    // An enum with a computed member is typed as a plain number or string.
+    let open_number = matches!(definition.value, Type::Number);
+    match actual {
+        Type::Number if all_numeric || open_number => Some(true),
+        Type::Literal(text) if text.parse::<f64>().is_ok() => {
+            if open_number {
+                return Some(true);
+            }
+            let value = text.parse::<f64>().ok()?;
+            Some(members.iter().any(|member| {
+                matches!(member, Type::Literal(candidate) if candidate.parse::<f64>().ok() == Some(value))
+            }))
+        }
+        Type::Literal(text) if text.starts_with('"') || text.starts_with('\'') => Some(false),
+        Type::String => Some(false),
+        _ => None,
     }
 }
 
@@ -495,6 +570,10 @@ pub(super) fn instantiate_named(
         return None;
     };
     let definition = aliases.get(name)?;
+    if definition.kind == TypeDefinitionKind::EnumMember {
+        // A member used as a type is the enum literal type, not its value.
+        return Some(Type::Literal(name.clone()));
+    }
     let arguments = complete_type_arguments(&definition.parameters, arguments)?;
     let key = format!("{side}:{}", type_identity(value));
     if !visited.insert(key) {

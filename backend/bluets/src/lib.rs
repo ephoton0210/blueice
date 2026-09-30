@@ -24,6 +24,7 @@ mod contracts;
 mod debug_info;
 mod diagnostic;
 mod emitter;
+mod enum_eval;
 mod parser;
 mod strict_boundaries;
 mod syntax;
@@ -52,12 +53,13 @@ pub use emitter::{
 };
 pub use parser::{
     parse_module, ClassAccessor, ClassConstructor, ClassDeclaration, ClassField, ClassMemberKind,
-    ClassMemberShell, ClassMethod, ClassMethodGroup, Declaration, FunctionBodyItem,
-    FunctionCatchClause, FunctionDeclaration, FunctionElseBranch, FunctionIfStatement,
-    FunctionTryStatement, FunctionWhileStatement, ImportDeclaration, InterfaceDeclaration, Module,
-    Parameter, ParameterProperty, ParameterPropertyInsertion, ParserLimits, RawDeclaration,
-    TupleTypeElement, TypeAliasDeclaration, TypeExportDeclaration, TypeParameter,
-    ValueExportBinding, ValueExportDeclaration, VariableDeclaration, VariableKind, Visibility,
+    ClassMemberShell, ClassMethod, ClassMethodGroup, Declaration, EnumDeclaration, EnumMember,
+    FunctionBodyItem, FunctionCatchClause, FunctionDeclaration, FunctionElseBranch,
+    FunctionIfStatement, FunctionTryStatement, FunctionWhileStatement, ImportDeclaration,
+    InterfaceDeclaration, Module, Parameter, ParameterProperty, ParameterPropertyInsertion,
+    ParserLimits, RawDeclaration, TupleTypeElement, TypeAliasDeclaration, TypeExportDeclaration,
+    TypeParameter, ValueExportBinding, ValueExportDeclaration, VariableDeclaration, VariableKind,
+    Visibility,
 };
 pub use syntax::{lex, Token, TokenKind};
 

@@ -42,6 +42,10 @@ pub(super) struct ModuleChecker<'a> {
     constructor_readonly_fields: Option<BTreeSet<String>>,
     /// The class whose body is being checked, for `private`/`protected` access.
     access_class: Option<String>,
+    /// The members of each enum bound so far, for merged declarations.
+    enum_members: BTreeMap<String, Vec<crate::enum_eval::EvaluatedMember>>,
+    /// Every enum declaration of the module, evaluated, in source order.
+    enum_evaluations: Vec<crate::enum_eval::EvaluatedEnum>,
     /// Names of every private or protected class member in scope.
     restricted_member_names: BTreeSet<String>,
     pub(super) diagnostics: Vec<Diagnostic>,

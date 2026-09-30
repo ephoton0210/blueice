@@ -4119,7 +4119,7 @@ fn unsupported_and_misplaced_syntax_is_diagnosed_not_passed_through() {
         ),
         (
             "if (true) { enum State { Ready } }",
-            "`enum` is not in the initial BlueTS matrix",
+            "an `enum` declared inside a body is not supported yet",
         ),
         (
             "const make = () => { namespace Internal {} };",
@@ -4133,11 +4133,6 @@ fn unsupported_and_misplaced_syntax_is_diagnosed_not_passed_through() {
             "const decorated = () => { @sealed class A {} };",
             "decorators and TSX/JSX are not in the initial BlueTS matrix",
         ),
-        (
-            "const enum State { Ready }",
-            "`enum` is not in the initial BlueTS matrix",
-        ),
-        ("enum E { A }", "`enum` is not in the initial BlueTS matrix"),
         (
             "namespace N {}",
             "`namespace` is not in the initial BlueTS matrix",

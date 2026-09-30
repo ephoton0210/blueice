@@ -251,6 +251,15 @@ const CASES: &[OracleCase] = &[
         expected_diagnostics: &[],
     },
     OracleCase {
+        name: "enum-runtime-basic",
+        modules: &[(
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/enum-runtime-basic/main.ts"),
+        )],
+        expected_stdout: Some("0 5 6 Red Green Blue 5\na b 1 s 2 N M\n4 5 10 14 14 -1 -6 1 2 3\n0,5,6,Red,Green,Blue {\"A\":\"a\",\"B\":\"b\"} {\"4\":\"A\",\"5\":\"B\",\"10\":\"C\",\"14\":\"E\",\"A\":4,\"B\":5,\"C\":10,\"D\":14,\"E\":14,\"F\":-1,\"-1\":\"F\",\"G\":-6,\"-6\":\"G\"} 1,2,3,a-b,c d,plain\n6 7 a object 1,2,N,S,M\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
         name: "generic-property",
         modules: &[(
             "memory:///main.ts",

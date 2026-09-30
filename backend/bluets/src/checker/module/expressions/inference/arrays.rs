@@ -17,6 +17,9 @@ impl<'a> ModuleChecker<'a> {
         scope: &BTreeMap<String, Type>,
         expected: &Type,
     ) -> Type {
+        if let Some(literal) = self.enum_literal_for(tokens, expected) {
+            return literal;
+        }
         let mut contextual = expected.clone();
         let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
         let mut visited = HashSet::new();

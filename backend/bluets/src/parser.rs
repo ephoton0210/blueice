@@ -99,6 +99,7 @@ pub enum Declaration {
     Variable(VariableDeclaration),
     Function(FunctionDeclaration),
     Class(ClassDeclaration),
+    Enum(EnumDeclaration),
     Raw(RawDeclaration),
 }
 
@@ -114,6 +115,7 @@ impl Declaration {
             Self::Variable(declaration) => &declaration.span,
             Self::Function(declaration) => &declaration.span,
             Self::Class(declaration) => &declaration.span,
+            Self::Enum(declaration) => &declaration.span,
             Self::Raw(declaration) => &declaration.span,
         }
     }
@@ -246,6 +248,31 @@ pub struct ClassMemberShell {
     pub field: Option<ClassField>,
     pub accessor: Option<ClassAccessor>,
     pub static_block: Option<ClassStaticBlock>,
+}
+
+/// `[export] [declare] [const] enum Name { A, B = 1, "c" = "x" }`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EnumDeclaration {
+    pub name: String,
+    pub name_span: SourceSpan,
+    pub exported: bool,
+    /// `declare enum`: an ambient declaration with no runtime form.
+    pub declared: bool,
+    /// `const enum`: uses are replaced by the member's value.
+    pub is_const: bool,
+    pub members: Vec<EnumMember>,
+    pub body_span: SourceSpan,
+    pub span: SourceSpan,
+}
+
+/// One member of an enum, with its initializer's original tokens if written.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EnumMember {
+    /// The member's name, unquoted when written as a string.
+    pub name: String,
+    pub name_span: SourceSpan,
+    pub initializer: Option<Vec<Token>>,
+    pub span: SourceSpan,
 }
 
 /// A `static { .. }` initialization block.

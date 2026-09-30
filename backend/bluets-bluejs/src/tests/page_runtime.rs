@@ -420,6 +420,22 @@ fn direct_page_define_semantics_keeps_the_field_that_assign_semantics_drops() {
 }
 
 #[test]
+fn direct_routes_refuse_an_enum_until_it_has_a_lowering() {
+    let source = "enum E { A, B } E.B;";
+    let loader = MapLoader::from([ModuleSource::new(ENTRY, source)]);
+    let script = compile_direct_script(ENTRY, &loader, CompilerOptions::default());
+    assert!(matches!(
+        script,
+        Err(BridgeError::UnsupportedRuntimeTarget { .. })
+    ));
+    let module = compile_direct_module(ENTRY, &loader, CompilerOptions::default());
+    assert!(matches!(
+        module,
+        Err(BridgeError::UnsupportedRuntimeTarget { .. })
+    ));
+}
+
+#[test]
 fn direct_page_while_runs_zero_and_multiple_iterations() {
     let artifact = compile_direct_script(
         ENTRY,

@@ -112,9 +112,54 @@ fn retains_array_holes_in_variable_initializer_tokens() {
 }
 
 #[test]
-fn rejects_runtime_enums_explicitly() {
-    let diagnostics = parse_module("memory:///app.ts", "enum Colour { Red }").unwrap_err();
+fn parses_enum_declarations_with_their_members_and_modifiers() {
+    let module = parse_module(
+        "memory:///app.ts",
+        "export enum Colour { Red, Green = 2, \"a-b\" = Green + 1, }\n\
+         declare const enum Flag { On = 1 }",
+    )
+    .unwrap();
+    let [Declaration::Enum(colour), Declaration::Enum(flag)] = module.declarations.as_slice()
+    else {
+        panic!("expected two enums");
+    };
+    assert_eq!(colour.name, "Colour");
+    assert!(colour.exported && !colour.declared && !colour.is_const);
+    let names: Vec<&str> = colour
+        .members
+        .iter()
+        .map(|member| member.name.as_str())
+        .collect();
+    assert_eq!(names, ["Red", "Green", "a-b"]);
+    assert!(colour.members[0].initializer.is_none());
+    assert_eq!(
+        colour.members[2].initializer.as_ref().map(|tokens| tokens
+            .iter()
+            .map(|token| token.text.as_str())
+            .collect::<Vec<_>>()),
+        Some(vec!["Green", "+", "1"])
+    );
+    assert!(!flag.exported && flag.declared && flag.is_const);
+    // An enum declared inside a body is not supported yet.
+    let diagnostics =
+        parse_module("memory:///inner.ts", "function f() { enum Inner { A } }").unwrap_err();
     assert_eq!(diagnostics[0].code, DiagnosticCode::UnsupportedSyntax);
+}
+
+#[test]
+fn enum_declaration_errors_are_parse_errors() {
+    for source in [
+        "enum { A }",
+        "enum E",
+        "enum E { A B }",
+        "enum E { 1 }",
+        "enum E { A = }",
+    ] {
+        assert!(
+            parse_module("memory:///bad.ts", source).is_err(),
+            "{source}"
+        );
+    }
 }
 
 #[test]

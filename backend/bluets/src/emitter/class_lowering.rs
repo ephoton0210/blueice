@@ -403,14 +403,14 @@ fn replace_member(edits: &mut Vec<TextEdit>, member: &ClassMemberShell, text: St
 }
 
 /// The source text of `tokens` with the recorded edits inside it applied.
-fn render_tokens(source: &str, edits: &[TextEdit], tokens: &[Token]) -> String {
+pub(super) fn render_tokens(source: &str, edits: &[TextEdit], tokens: &[Token]) -> String {
     match (tokens.first(), tokens.last()) {
         (Some(first), Some(last)) => render_span(source, edits, first.start, last.end),
         _ => String::new(),
     }
 }
 
-fn render_span(source: &str, edits: &[TextEdit], start: usize, end: usize) -> String {
+pub(super) fn render_span(source: &str, edits: &[TextEdit], start: usize, end: usize) -> String {
     let inner: Vec<TextEdit> = edits
         .iter()
         .filter(|edit| edit.start >= start && edit.end <= end)

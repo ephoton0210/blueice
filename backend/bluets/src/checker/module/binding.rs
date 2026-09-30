@@ -7,6 +7,7 @@
 use super::*;
 
 mod classes;
+mod enums;
 mod functions;
 pub(in crate::checker::module) use functions::promise_value_type;
 pub(in crate::checker::module) use nested_functions::async_result;
@@ -52,6 +53,8 @@ impl<'a> ModuleChecker<'a> {
             async_context: None,
             constructor_readonly_fields: None,
             access_class: None,
+            enum_members: BTreeMap::new(),
+            enum_evaluations: Vec::new(),
             restricted_member_names: BTreeSet::new(),
             diagnostics: Vec::new(),
             symbols: Vec::new(),
@@ -70,8 +73,15 @@ impl<'a> ModuleChecker<'a> {
     }
 
     pub(crate) fn bind(&mut self) {
+        self.enum_evaluations = crate::enum_eval::evaluate_enums(self.module);
+        let mut enum_index = 0usize;
         for declaration in &self.module.declarations {
             match declaration {
+                Declaration::Enum(declaration) => {
+                    let evaluated = self.enum_evaluations[enum_index].clone();
+                    enum_index += 1;
+                    self.bind_enum(declaration, &evaluated);
+                }
                 Declaration::Import(import) => self.bind_import(import),
                 Declaration::TypeExport(export) => self.bind_type_export(export),
                 Declaration::DefaultExport(_) => {}
@@ -661,8 +671,14 @@ impl<'a> ModuleChecker<'a> {
         self.bind_inherited_class_static_methods();
         self.bind_inherited_class_constructors();
         self.collect_restricted_member_names();
+        let mut enum_index = 0usize;
         for declaration in &self.module.declarations {
             match declaration {
+                Declaration::Enum(declaration) => {
+                    let evaluated = self.enum_evaluations[enum_index].clone();
+                    enum_index += 1;
+                    self.check_enum(declaration, &evaluated);
+                }
                 Declaration::TypeAlias(alias) => {
                     let previous_spreads = self.allowed_tuple_spread_parameters.clone();
                     self.allowed_tuple_spread_parameters = alias
@@ -948,6 +964,7 @@ impl<'a> ModuleChecker<'a> {
         self.check_direct_property_access(tokens, scope, span);
         self.check_member_assignment(tokens, scope, span);
         self.check_restricted_member_access(tokens, scope, span);
+        self.check_enum_index_uses(tokens, scope, span);
         self.check_arithmetic_operators(tokens, scope, span);
     }
 

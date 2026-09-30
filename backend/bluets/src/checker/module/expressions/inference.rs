@@ -295,10 +295,14 @@ impl<'a> ModuleChecker<'a> {
         if matches!(first.text.as_str(), "+" | "-" | "~") {
             return Type::Number;
         }
-        if first.kind == TokenKind::String || first.kind == TokenKind::Template {
+        // A literal only stands for the whole expression when nothing follows
+        // it: `"x".length` is a member read, not a string.
+        if (first.kind == TokenKind::String || first.kind == TokenKind::Template)
+            && tokens.len() == 1
+        {
             return Type::String;
         }
-        if first.kind == TokenKind::Number {
+        if first.kind == TokenKind::Number && tokens.len() == 1 {
             return Type::Number;
         }
         if let [receiver, optional, property] = tokens {
@@ -330,6 +334,12 @@ impl<'a> ModuleChecker<'a> {
                 .is_some_and(|token| token.is("]"))
                 .then(|| canonical_index_key(&tokens[receiver.len() + 1..tokens.len() - 1]))
                 .flatten();
+            if property.is_none() && tokens.last().is_some_and(|token| token.is("]")) {
+                let inside = &tokens[receiver.len() + 1..tokens.len() - 1];
+                if let Some(result) = self.enum_index_type(&owner, inside, scope) {
+                    return result;
+                }
+            }
             if property.is_none() || index.is_some() {
                 // A computed receiver may still have a known element type.
                 // Retaining it lets a later `.readonlyField` write reach the

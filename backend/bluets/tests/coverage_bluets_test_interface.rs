@@ -130,7 +130,7 @@ fn each_diagnostic_code_maps_to_a_stable_phase_and_kind() {
             "BTS1000",
         ),
         (
-            json!({"source": "enum Colour { Red }"}),
+            json!({"source": "function f() { enum Colour { Red } }"}),
             "unsupported",
             "parse",
             "BTS1001",
