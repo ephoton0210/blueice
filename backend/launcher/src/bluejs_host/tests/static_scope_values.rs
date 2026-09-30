@@ -46,6 +46,50 @@ fn private_static_scope_wire_rejects_missing_realm() {
 }
 
 #[test]
+fn private_static_scope_linked_relation_rejects_a_non_linked_target() {
+    // `debugger_static_scope_linked_relation` is only ever reached, in
+    // production, through `debugger_static_scope_relation`'s own `Linked`
+    // match arm -- so the destructuring `else` branch that rejects any
+    // other variant can only be driven directly, as a private crate-
+    // internal call, exactly like the other private helpers this test
+    // module already calls without going through the wire protocol.
+    let host = BlueJsChildHost::default();
+    let program = PageHostDebuggerProgram {
+        program_handle: 11,
+        program_generation: 13,
+    };
+    let target = page_host::PageHostDebuggerStaticScopeTarget::Ordinary {
+        metadata: PageHostDebuggerMetadataHandle {
+            metadata_handle: 17,
+            metadata_generation: 19,
+        },
+        target: PageHostDebuggerValueTarget {
+            tab_id: 7,
+            document_generation: 3,
+            program,
+            frame: None,
+            frame_index: 0,
+            safe_point: PageHostDebuggerSafePoint {
+                program,
+                code_unit_ordinal: 0,
+                bytecode_offset: 4,
+            },
+            scope_entry: PageHostDebuggerScopeEntry {
+                slot_ordinal: 2,
+                scope_depth: 0,
+            },
+        },
+    };
+    assert!(matches!(
+        host.debugger_static_scope_linked_relation(target),
+        PageHostReply::Error {
+            code: PageHostErrorCode::InvalidRequest,
+            ..
+        }
+    ));
+}
+
+#[test]
 fn private_static_scope_ordinary_root_relates_only_one_live_compiler_slot() {
     let mut host = BlueJsChildHost::default();
     assert!(matches!(
