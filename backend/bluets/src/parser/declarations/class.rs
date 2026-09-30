@@ -64,6 +64,17 @@ impl Parser {
             } else if member.kind == ClassMemberKind::Method {
                 self.parse_class_method(opening + 1 + member.token_start, member);
             } else if member.kind == ClassMemberKind::Opaque
+                && !body
+                    .get(member.token_start + 1)
+                    .is_some_and(|token| token.is("("))
+                && self.parse_class_field(
+                    opening + 1 + member.token_start,
+                    opening + 1 + member.token_end,
+                    member,
+                )
+            {
+                member.kind = ClassMemberKind::Field;
+            } else if member.kind == ClassMemberKind::Opaque
                 && matches!(
                     body[member.token_start].kind,
                     TokenKind::Identifier | TokenKind::Keyword
@@ -126,6 +137,121 @@ impl Parser {
             body,
             span: member.span.clone(),
         });
+    }
+
+    /// Parses `[public] [static] [readonly] name[?|!][: T] [= init][;]` between
+    /// token indices `start..end`, erasing the modifiers other than `static`
+    /// and the optional marker and annotation. Any other shape (other
+    /// modifiers, accessors, computed or private names) is left opaque, and
+    /// records no edit, so it is refused as unsupported syntax rather than
+    /// emitted half-erased.
+    fn parse_class_field(
+        &mut self,
+        start: usize,
+        end: usize,
+        member: &mut ClassMemberShell,
+    ) -> bool {
+        let name_like = |token: Option<&Token>| {
+            token.is_some_and(|token| {
+                matches!(token.kind, TokenKind::Identifier | TokenKind::Keyword)
+            })
+        };
+        let mut index = start;
+        let mut erased_modifiers = Vec::new();
+        if self.tokens[index].is("public") && name_like(self.tokens.get(index + 1)) {
+            erased_modifiers.push((self.tokens[index].start, self.tokens[index + 1].start));
+            index += 1;
+        }
+        let is_static = self.tokens[index].is("static") && name_like(self.tokens.get(index + 1));
+        if is_static {
+            index += 1;
+        }
+        let readonly = self.tokens[index].is("readonly") && name_like(self.tokens.get(index + 1));
+        if readonly {
+            erased_modifiers.push((self.tokens[index].start, self.tokens[index + 1].start));
+            index += 1;
+        }
+        let name_token = self.tokens[index].clone();
+        if !name_like(Some(&name_token)) || name_token.is("constructor") || index >= end {
+            return false;
+        }
+        index += 1;
+        let optional = self.tokens.get(index).is_some_and(|token| token.is("?")) && index < end;
+        let definite = self.tokens.get(index).is_some_and(|token| token.is("!")) && index < end;
+        let marker_end = (optional || definite).then(|| self.tokens[index].end);
+        if optional || definite {
+            index += 1;
+        }
+        let mut annotation = None;
+        let mut annotation_span = None;
+        let mut erased_end = marker_end;
+        if index < end && self.tokens[index].is(":") {
+            self.index = index + 1;
+            let type_start = self.current().start;
+            let value = self.parse_type_until(&["=", ";"]);
+            let type_end = self.previous().end;
+            annotation = Some(value);
+            annotation_span = Some(SourceSpan::new(&self.id, type_start, type_end));
+            erased_end = Some(type_end);
+            index = self.index;
+        }
+        let mut initializer_range = None;
+        if index < end && self.tokens[index].is("=") {
+            let initializer_start = index + 1;
+            let initializer_end = if self.tokens[end - 1].is(";") {
+                end - 1
+            } else {
+                end
+            };
+            if initializer_start >= initializer_end {
+                self.error_at(
+                    member.span.clone(),
+                    DiagnosticCode::ParseError,
+                    "expected a class field initializer",
+                );
+                return false;
+            }
+            initializer_range = Some((initializer_start, initializer_end));
+            index = initializer_end;
+        }
+        if index < end && self.tokens[index].is(";") {
+            index += 1;
+        }
+        if index != end {
+            return false;
+        }
+        for (modifier_start, modifier_end) in erased_modifiers {
+            self.edits.push(TextEdit {
+                start: modifier_start,
+                end: modifier_end,
+                replacement: String::new(),
+            });
+        }
+        if let Some(erased_end) = erased_end {
+            self.edits.push(TextEdit {
+                start: name_token.end,
+                end: erased_end,
+                replacement: String::new(),
+            });
+        }
+        let initializer = initializer_range.map(|(initializer_start, initializer_end)| {
+            self.collect_expression_type_edits(initializer_start, initializer_end);
+            self.tokens[initializer_start..initializer_end].to_vec()
+        });
+        member.name = Some(name_token.text.clone());
+        member.field = Some(ClassField {
+            name: name_token.text.clone(),
+            name_span: name_token.span(&self.id),
+            is_static,
+            readonly,
+            optional,
+            definite,
+            annotation,
+            annotation_span,
+            initializer,
+            span: member.span.clone(),
+        });
+        true
     }
 
     fn parse_class_method(&mut self, start: usize, member: &mut ClassMemberShell) {
@@ -347,5 +473,6 @@ fn class_member_shell(
         span: SourceSpan::new(module, tokens[start].start, tokens[end - 1].end),
         constructor: None,
         method: None,
+        field: None,
     }
 }

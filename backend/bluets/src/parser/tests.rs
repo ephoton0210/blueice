@@ -213,8 +213,25 @@ fn partitions_constructor_method_and_opaque_class_members_at_source_spans() {
         panic!("expected a class");
     };
     assert_eq!(class.members.len(), 2);
-    assert_eq!(class.members[0].kind, ClassMemberKind::Opaque);
+    assert_eq!(class.members[0].kind, ClassMemberKind::Field);
+    let field = class.members[0].field.as_ref().unwrap();
+    assert_eq!(field.name, "field");
+    assert!(!field.is_static && !field.readonly && !field.optional && !field.definite);
+    assert_eq!(field.declared_type(), Some(Type::Number));
     assert_eq!(class.members[1].kind, ClassMemberKind::Method);
+
+    // An accessor is not a field and stays opaque.
+    let module = parse_module(
+        "memory:///accessor.ts",
+        "class Other { get field() { return 1; } method() {} }",
+    )
+    .unwrap();
+    let Declaration::Class(class) = &module.declarations[0] else {
+        panic!("expected a class");
+    };
+    // Until accessors are structured, an opaque member runs to the next `;`.
+    assert_eq!(class.members.len(), 1);
+    assert_eq!(class.members[0].kind, ClassMemberKind::Opaque);
 }
 
 #[test]

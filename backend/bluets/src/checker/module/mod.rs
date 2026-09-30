@@ -32,6 +32,10 @@ pub(super) struct ModuleChecker<'a> {
     checked_nested_functions: BTreeSet<usize>,
     /// Whether the function being checked is `async`; `None` at module level.
     async_context: Option<bool>,
+    /// The readonly fields the running class constructor's own body may still
+    /// assign through `this`; `None` outside a constructor and inside any
+    /// function nested in one.
+    constructor_readonly_fields: Option<BTreeSet<String>>,
     pub(super) diagnostics: Vec<Diagnostic>,
     pub(super) symbols: Vec<Symbol>,
     types: BTreeMap<String, TypeDefinition>,

@@ -117,7 +117,13 @@ impl<'a> ModuleChecker<'a> {
                 value: expected,
                 readonly,
             } => {
-                if readonly {
+                let own_constructor_field = mutation.operator.is("=")
+                    && matches!(mutation.receiver, [receiver] if receiver.is("this"))
+                    && self
+                        .constructor_readonly_fields
+                        .as_ref()
+                        .is_some_and(|fields| fields.contains(property));
+                if readonly && !own_constructor_field {
                     self.type_error(
                         span,
                         format!("cannot mutate readonly property `{property}`"),

@@ -261,6 +261,7 @@ fn emit_javascript(
             replacement: format!("{quote}{emitted_specifier}{quote}"),
         });
     }
+    classes::refuse_fields_below_es2022(module, options.target)?;
     edits.extend(classes::overload_signature_erasures(module));
     let plan = strict_boundaries::plan_emission(module, options)?;
     let mut strict_runtime = None;

@@ -192,7 +192,7 @@ fn class_method_oracle_fixtures_remain_source_bound_and_emit_nothing() {
             "interrupted-signature" => {
                 assert_eq!(class.method_groups.len(), 2);
                 assert_eq!(class.method_groups[0].implementation_member_index, None);
-                assert_eq!(class.members[1].kind, ClassMemberKind::Opaque);
+                assert_eq!(class.members[1].kind, ClassMemberKind::Field);
                 assert_eq!(class.method_groups[1].implementation_member_index, Some(2));
             }
             "incompatible-overload" => {
@@ -324,7 +324,7 @@ fn transpile_only_emits_structured_classes_and_still_refuses_unstructured_ones()
     ));
     assert!(structured.output.is_some(), "{:#?}", structured.diagnostics);
     // A member the parser cannot erase is refused even without checking.
-    let unstructured = compile_transpile("class A { x: number = 1; }");
+    let unstructured = compile_transpile("class A { get x() { return 1; } }");
     assert!(unstructured.output.is_none());
     assert!(unstructured
         .diagnostics
@@ -4086,8 +4086,8 @@ fn unsupported_and_misplaced_syntax_is_diagnosed_not_passed_through() {
             "decorators and TSX/JSX are not in the initial BlueTS matrix",
         ),
         (
-            "class A { x = 1; }",
-            "a class member other than a constructor or method",
+            "class A { get x() { return 1; } }",
+            "a class member other than a constructor, method or public field",
         ),
         (
             "abstract class A {}",
@@ -5431,7 +5431,10 @@ fn class_output_stays_atomic_and_refuses_unstructured_classes() {
     // faithfully, so it stays refused.
     let opaque = compile(
         ENTRY,
-        &MapLoader::from([ModuleSource::new(ENTRY, "class A { value = 1; }")]),
+        &MapLoader::from([ModuleSource::new(
+            ENTRY,
+            "class A { get value() { return 1; } }",
+        )]),
         emit_all_artifacts_options(),
     );
     assert!(opaque.output.is_none());

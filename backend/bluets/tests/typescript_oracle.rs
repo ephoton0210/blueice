@@ -140,6 +140,24 @@ const CASES: &[OracleCase] = &[
         expected_diagnostics: &[],
     },
     OracleCase {
+        name: "class-field-emit-runtime",
+        modules: &[(
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/class-field-emit-runtime/main.ts"),
+        )],
+        expected_stdout: Some("2 c 7 true n 5 11 10\ncount,label,id,tag,name,extra\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
+        name: "class-field-emit-declaration",
+        modules: &[(
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/class-field-emit-declaration/main.ts"),
+        )],
+        expected_stdout: Some(""),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
         name: "generic-property",
         modules: &[(
             "memory:///main.ts",
@@ -4774,6 +4792,11 @@ fn expected_declaration(case: &OracleCase) -> Option<&'static str> {
              static create(name: string): string;\n}\n\
              export declare class Square extends Shape {\n    constructor();\n    \
              describe(prefix: string): string;\n}\n",
+        ),
+        "class-field-emit-declaration" => Some(
+            "export declare class Shape {\n    count: number;\n    static total: number;\n    \
+             label: string;\n    readonly id: number;\n    tag?: string;\n    name: string;\n    \
+             static readonly kind = \"shape\";\n    describe(): string;\n}\n",
         ),
         _ => None,
     }

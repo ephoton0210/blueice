@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: J.3.2.** H and I are complete. The requested class, enum,
+**Current leaf: J.3.2.2.** H and I are complete. The requested class, enum,
 decorator, namespace, JSX, CommonJS, and package-resolution expansion has
 passed J.1/J.2 planning; implementation and pinned-`tsc` parity remain open.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
@@ -2109,6 +2109,50 @@ done to the page-runs-and-debugs goal at the top of this file.
   - [ ] **J.3.2** Add fields, accessors, private members, parameter
     properties, and static initialization in separately tested forms;
     verify order, visibility, declarations, and debugger provenance.
+    - [x] **J.3.2.1** Public instance and static fields:
+      `[public] [static] [readonly] name[?|!][: T] [= init];`. The parser
+      structures the field and erases the modifiers (other than `static`), the
+      `?`/`!` marker and the annotation, so a field is emitted as a native
+      ES2022 class field (`tag?: string;` becomes `tag;`, as tsc does for
+      ES2022). The checker types a field from its annotation, or from a
+      number, string or boolean literal initializer (kept literal when
+      `readonly`); any other unannotated initializer is refused as unsupported
+      syntax and an unannotated field with no initializer is an implicit-`any`
+      error. Initializers are checked against the annotation with `this` bound
+      to the instance or the constructor side; a field may not read a later
+      field. `strictPropertyInitialization` is modelled: a non-optional
+      instance field with no initializer, `!`, or `undefined`-admitting type
+      must be assigned at the top level of the constructor (an assignment only
+      in a branch is refused as unsupported, none at all is TS2564). A
+      `readonly` field can be assigned through `this` only in its own class's
+      constructor body, not in a nested function. Duplicate names, a field
+      that shadows a method, `static prototype`, an incompatible override and
+      a field replacing a base method are rejected; a field redeclared over an
+      imported base's member is refused as unsupported. Declaration output
+      prints `name: T`, `readonly name = <literal>` for an unannotated
+      readonly literal (as tsc does), and re-quotes a single-quoted string.
+      Fields are refused on an ES2020 target until J.3.3 supplies the
+      lowering. The direct bridge lowers a field to a BlueJS class field and
+      the debugger maps every closure the class produces (constructor, method,
+      instance and static initializers) to the whole class. Fifteen
+      `class-field-*` fixtures are rows of the pinned-TypeScript class matrix
+      (all agree), two more compare emitted JavaScript stdout and the `.d.ts`
+      with pinned tsc, and 12 public tests plus 2 bridge tests pin codes,
+      messages and emitted text. Nothing else in the workspace changed except
+      a fixed listener race in `extension_host_binary`'s `wait_for`.
+    - [ ] **J.3.2.2** Member visibility modifiers (`private`, `protected`),
+      including the nominal-style assignability TypeScript gives a class with
+      a private member, access checks from outside and from subclasses, and
+      declaration output.
+    - [ ] **J.3.2.3** Constructor parameter properties (`constructor(public x:
+      number)`): erasure, the synthesized field and the assignment emitted
+      after `super(..)`, readonly parameter properties, and declaration
+      output.
+    - [ ] **J.3.2.4** Accessors (`get`/`set`, static, paired types, getter-only
+      readonly semantics, override rules) and their declaration output.
+    - [ ] **J.3.2.5** ECMAScript private names (`#x` fields, methods,
+      accessors, `#x in obj`) and their brand behaviour.
+    - [ ] **J.3.2.6** Static blocks and static initialization order.
   - [ ] **J.3.3** Complete target-dependent native/downlevel class emit,
     versioned helpers, option interactions, and Node/BlueJS parity.
   - [ ] **J.3.4** Implement numeric/string/heterogeneous enums and `const enum`

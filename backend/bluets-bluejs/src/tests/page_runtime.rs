@@ -122,6 +122,82 @@ fn direct_page_classes_construct_call_methods_inherit_and_use_super() {
 }
 
 #[test]
+fn direct_page_class_fields_initialize_in_order_and_run_like_node() {
+    let source = "class Counter { \
+        count: number = 1; static total: number = 10; readonly id: number = 7; tag?: string; \
+        constructor() { this.count = this.count + 1; } \
+        step(): number { this.count = this.count + this.id; return this.count; } } \
+        class Sub extends Counter { extra: number = 5; static made: number = Counter.total + 1; } \
+        const s = new Sub(); \
+        s.step() + s.extra + Sub.made + Counter.total + (s.tag === undefined ? 1000 : 0);";
+    let artifact = compile_direct_script(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+        class_options(),
+    )
+    .unwrap();
+    let mut owner = DirectPageRealmOwner::default();
+    owner.open_realm(7, origin()).unwrap();
+    let attachment = owner.attach_script(&artifact, 7, &origin()).unwrap();
+    // Node runs the same program (types erased) to 1035.
+    assert_eq!(
+        owner.execute_program(7, &attachment).unwrap(),
+        bluejs::Value::Number(1035.0)
+    );
+}
+
+#[test]
+fn direct_page_class_field_initializers_map_to_the_original_class() {
+    let source = "class Holder { a: number = 1; static s: number = 2; m(): number { return this.a; } } new Holder().m() + Holder.s;";
+    let class_end = source.find(" new Holder").unwrap();
+    let artifact = compile_direct_script(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+        class_options(),
+    )
+    .unwrap();
+    let mut runtime = bluejs::BlueJsPageRuntime::default();
+    runtime.open_realm(7, origin()).unwrap();
+    let mut debug = DirectDebugRegistry::default();
+    let attachment = artifact
+        .attach_debug_in_page_realm(&mut runtime, 7, &origin(), &mut debug)
+        .unwrap();
+    attachment
+        .safe_point_map
+        .validate_against(runtime.program_registry(), attachment.handle)
+        .unwrap();
+    // Each closure the class produced is mapped to the whole class: the
+    // synthesized constructor, the method, and the instance and static field
+    // initializers.
+    let class_units: std::collections::BTreeSet<_> = attachment
+        .safe_point_map
+        .entries
+        .iter()
+        .filter(|entry| {
+            entry.code_unit.ordinal() > 0
+                && attachment
+                    .safe_point_map
+                    .source_span_for_safe_point(entry.code_unit.ordinal(), entry.bytecode_offset)
+                    .is_some_and(|mapped| (mapped.start_byte, mapped.end_byte) == (0, class_end))
+        })
+        .map(|entry| entry.code_unit.ordinal())
+        .collect();
+    assert_eq!(
+        class_units.len(),
+        4,
+        "constructor, method, instance initializer, static initializer: {class_units:?}"
+    );
+    // The script still runs to the value Node computes (1 + 2).
+    let mut owner = DirectPageRealmOwner::default();
+    owner.open_realm(8, origin()).unwrap();
+    let plain = owner.attach_script(&artifact, 8, &origin()).unwrap();
+    assert_eq!(
+        owner.execute_program(8, &plain).unwrap(),
+        bluejs::Value::Number(3.0)
+    );
+}
+
+#[test]
 fn direct_page_while_runs_zero_and_multiple_iterations() {
     let artifact = compile_direct_script(
         ENTRY,

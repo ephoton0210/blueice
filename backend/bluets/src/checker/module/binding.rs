@@ -49,6 +49,7 @@ impl<'a> ModuleChecker<'a> {
             require_declared_global_calls: policy.require_declared_global_calls,
             checked_nested_functions: BTreeSet::new(),
             async_context: None,
+            constructor_readonly_fields: None,
             diagnostics: Vec::new(),
             symbols: Vec::new(),
             types: BTreeMap::new(),
@@ -181,8 +182,8 @@ impl<'a> ModuleChecker<'a> {
                         self.diagnostics.push(Diagnostic::error(
                             DiagnosticCode::UnsupportedSyntax,
                             class.span.clone(),
-                            "a class member other than a constructor or method (a field, \
-                             accessor or private member) is not supported yet",
+                            "a class member other than a constructor, method or public field \
+                             (an accessor or private member) is not supported yet",
                         ));
                     }
                 }
@@ -706,6 +707,7 @@ impl<'a> ModuleChecker<'a> {
                 Declaration::Class(class) => {
                     self.validate_class_heritage_name(class);
                     self.validate_class_constructor_group(class);
+                    self.validate_class_fields(class);
                     self.validate_class_method_groups(class);
                     self.validate_class_method_overrides(class);
                     self.check_class_constructor_bodies(class);

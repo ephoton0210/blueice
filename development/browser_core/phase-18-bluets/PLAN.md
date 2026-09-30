@@ -2611,6 +2611,46 @@ Tests that used a class's refusal as their evidence were updated: an accepted
 class now expects no diagnostics and an artifact, a checker error expects none,
 and tests that listed a class among refused shapes now use a class with a field.
 
+### J.3.2.1 Public class fields
+
+A member of the form `[public] [static] [readonly] name[?|!][: T] [= init];` is
+now a `ClassField` with a structured annotation and initializer. Erasure removes
+`public`, `readonly`, the `?`/`!` marker and the annotation and keeps `static`,
+so the output is a native class field. That is exactly what tsc emits for
+ES2022 (`tag?: string;` becomes `tag;`), and initialization order, including
+base-then-derived field order, is the engine's own. An ES2020 target would need
+constructor assignments instead, so a field is refused there until J.3.3 rather
+than emitted with the wrong semantics.
+
+Typing. The instance record gains the instance fields and the constructor side
+gains the static ones, so `this.x`, `obj.x`, `Class.x`, inheritance through the
+existing record merge and the existing readonly/property checks all apply
+unchanged. A field's type is its annotation, or the widened type of a number,
+string or boolean literal initializer (literal when `readonly`). Inferring from
+any other initializer needs expression inference at bind time, before the
+checker has a scope, so it is refused as unsupported syntax and an annotation is
+the fix; an unannotated field with no initializer is TypeScript's implicit-`any`
+error.
+
+`strictPropertyInitialization` is modelled conservatively. An assignment at the
+top level of a constructor body counts. An assignment only in an `if`, `while`
+or `try` may or may not cover every path, and proving that is definite-assignment
+analysis, so it is refused as unsupported rather than guessed; no assignment at
+all is TS2564.
+
+Readonly. TypeScript lets a constructor assign its own class's readonly fields.
+The checker carries the set of those fields for the constructor being checked
+and consults it only for a plain `=` on a bare `this`, and clears it inside any
+nested function, since a closure is not the constructor.
+
+Overrides. A derived field must be assignable to the base property; a field
+cannot replace a base method; a field redeclared over a member of an imported
+base is refused, because only that base's type surface is known and a method
+cannot be told from a function-typed field there.
+
+The direct bridge lowers a field to a BlueJS class field, so the class-wide
+debugger mapping from J.3.1.6a covers the initializer closures as well.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process

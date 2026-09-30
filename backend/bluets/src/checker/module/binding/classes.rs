@@ -8,6 +8,7 @@ use super::functions::hoist_local_functions;
 use super::*;
 use crate::parser::{ClassConstructor, ClassDeclaration, ClassMemberKind, ClassMethod};
 
+mod fields;
 mod overrides;
 mod super_calls;
 
@@ -684,6 +685,15 @@ impl ModuleChecker<'_> {
             }
             hoist_local_functions(body, &mut scope);
             self.check_constructor_super_placement(class, constructor, body);
+            self.constructor_readonly_fields = Some(
+                class
+                    .members
+                    .iter()
+                    .filter_map(|member| member.field.as_ref())
+                    .filter(|field| field.readonly && !field.is_static)
+                    .map(|field| field.name.clone())
+                    .collect(),
+            );
             self.check_class_body_items(
                 body,
                 &scope,
@@ -693,6 +703,7 @@ impl ModuleChecker<'_> {
                     super_base: class.extends_name.as_deref(),
                 },
             );
+            self.constructor_readonly_fields = None;
         }
     }
 
@@ -1247,6 +1258,7 @@ pub(in crate::checker::module) fn class_is_fully_structured(class: &ClassDeclara
     class.members.iter().all(|member| match member.kind {
         ClassMemberKind::Constructor => member.constructor.is_some(),
         ClassMemberKind::Method => member.method.is_some(),
+        ClassMemberKind::Field => member.field.is_some(),
         ClassMemberKind::Opaque => false,
     })
 }
@@ -1277,7 +1289,7 @@ pub(in crate::checker) fn class_instance_type(class: &ClassDeclaration) -> Type 
 }
 
 fn class_method_fields(class: &ClassDeclaration, is_static: bool) -> Vec<TypeField> {
-    let mut fields = Vec::new();
+    let mut fields = fields::class_field_type_fields(class, is_static);
     for group in &class.method_groups {
         if group.is_static != is_static {
             continue;

@@ -51,12 +51,13 @@ pub use emitter::{
     SourceMap,
 };
 pub use parser::{
-    parse_module, ClassConstructor, ClassDeclaration, ClassMemberKind, ClassMemberShell,
-    ClassMethod, ClassMethodGroup, Declaration, FunctionBodyItem, FunctionCatchClause,
-    FunctionDeclaration, FunctionElseBranch, FunctionIfStatement, FunctionTryStatement,
-    FunctionWhileStatement, ImportDeclaration, InterfaceDeclaration, Module, Parameter,
-    ParserLimits, RawDeclaration, TupleTypeElement, TypeAliasDeclaration, TypeExportDeclaration,
-    TypeParameter, ValueExportBinding, ValueExportDeclaration, VariableDeclaration, VariableKind,
+    parse_module, ClassConstructor, ClassDeclaration, ClassField, ClassMemberKind,
+    ClassMemberShell, ClassMethod, ClassMethodGroup, Declaration, FunctionBodyItem,
+    FunctionCatchClause, FunctionDeclaration, FunctionElseBranch, FunctionIfStatement,
+    FunctionTryStatement, FunctionWhileStatement, ImportDeclaration, InterfaceDeclaration, Module,
+    Parameter, ParserLimits, RawDeclaration, TupleTypeElement, TypeAliasDeclaration,
+    TypeExportDeclaration, TypeParameter, ValueExportBinding, ValueExportDeclaration,
+    VariableDeclaration, VariableKind,
 };
 pub use syntax::{lex, Token, TokenKind};
 

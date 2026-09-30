@@ -4,14 +4,16 @@
 
 //! Class erasure edits and declaration output.
 //!
-//! Only fully structured classes (constructors and methods) reach the emitter,
+//! Only fully structured classes (constructors, methods and public fields)
+//! reach the emitter,
 //! so JavaScript output is the original text with type annotations already
 //! erased by the parser plus the overload signatures erased here, and
 //! declaration output is derived from the same parsed members.
 
 use super::{type_to_ts, Module, TextEdit};
+use crate::compiler::EcmaTarget;
 use crate::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
-use crate::parser::{ClassDeclaration, ClassMemberShell, Declaration, Parameter};
+use crate::parser::{ClassDeclaration, ClassMemberShell, Declaration, Parameter, Type};
 
 /// Erase every constructor and method overload signature: a declaration with
 /// no body has no JavaScript form.
@@ -40,6 +42,54 @@ pub(super) fn overload_signature_erasures(module: &Module) -> Vec<TextEdit> {
         }
     }
     edits
+}
+
+/// A field is emitted as a native class field, which is the ES2022 form. Older
+/// targets need the constructor-assignment lowering (J.3.3), so a field there
+/// is refused rather than emitted with the wrong semantics.
+pub(super) fn refuse_fields_below_es2022(
+    module: &Module,
+    target: EcmaTarget,
+) -> Result<(), Diagnostic> {
+    if target != EcmaTarget::Es2020 {
+        return Ok(());
+    }
+    for declaration in &module.declarations {
+        let Declaration::Class(class) = declaration else {
+            continue;
+        };
+        if let Some(field) = class
+            .members
+            .iter()
+            .find_map(|member| member.field.as_ref())
+        {
+            return Err(Diagnostic::error(
+                DiagnosticCode::UnsupportedSyntax,
+                field.span.clone(),
+                "class fields need the ES2022 target; lowering them for ES2020 is not supported yet",
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// A literal spelled for a declaration file: TypeScript prints strings with
+/// double quotes.
+fn declaration_literal(literal: &str, span: &SourceSpan) -> Result<String, Diagnostic> {
+    let Some(inner) = literal
+        .strip_prefix('\'')
+        .and_then(|rest| rest.strip_suffix('\''))
+    else {
+        return Ok(literal.to_string());
+    };
+    if inner.contains(['"', '\\']) {
+        return Err(Diagnostic::error(
+            DiagnosticCode::UnsupportedSyntax,
+            span.clone(),
+            "declaration output for this string literal field needs an annotation",
+        ));
+    }
+    Ok(format!("\"{inner}\""))
 }
 
 fn parameters_to_ts(parameters: &[Parameter]) -> String {
@@ -133,6 +183,37 @@ pub(super) fn emit_class_declaration(
                 output.push_str(&parameters_to_ts(&constructor.parameters));
                 output.push_str(";\n");
             }
+        } else if let Some(field) = &member.field {
+            let Some(value) = field.declared_type() else {
+                return Err(Diagnostic::error(
+                    DiagnosticCode::UnsupportedSyntax,
+                    field.span.clone(),
+                    "declaration output requires a class field type",
+                ));
+            };
+            output.push_str("    ");
+            if field.is_static {
+                output.push_str("static ");
+            }
+            if field.readonly {
+                output.push_str("readonly ");
+            }
+            output.push_str(&field.name);
+            if field.optional {
+                output.push('?');
+            }
+            // TypeScript prints a `readonly` field with a literal initializer
+            // and no annotation as its literal value, not as a type.
+            if let (true, None, Type::Literal(literal)) =
+                (field.readonly, &field.annotation, &value)
+            {
+                output.push_str(" = ");
+                output.push_str(&declaration_literal(literal, &field.span)?);
+            } else {
+                output.push_str(": ");
+                output.push_str(&type_to_ts(&value));
+            }
+            output.push_str(";\n");
         } else if member.method.is_some() {
             let Some(group) = class.method_groups.iter().find(|group| {
                 group.signature_member_indices.contains(&index)

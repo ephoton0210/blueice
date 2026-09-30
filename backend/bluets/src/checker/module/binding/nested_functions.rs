@@ -92,6 +92,18 @@ impl ModuleChecker<'_> {
     }
 
     fn check_nested_function(&mut self, arrow: &NestedFunction, scope: &BTreeMap<String, Type>) {
+        // A nested function is not the constructor: it may not assign readonly
+        // fields even when it is written inside one.
+        let constructor_readonly = self.constructor_readonly_fields.take();
+        self.check_nested_function_body(arrow, scope);
+        self.constructor_readonly_fields = constructor_readonly;
+    }
+
+    fn check_nested_function_body(
+        &mut self,
+        arrow: &NestedFunction,
+        scope: &BTreeMap<String, Type>,
+    ) {
         let (body, returns, locals) = match &arrow.body {
             NestedFunctionBody::Expression(tokens) => (
                 vec![FunctionBodyItem::Return {

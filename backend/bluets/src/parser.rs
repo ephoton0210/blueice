@@ -205,6 +205,7 @@ pub struct ClassDeclaration {
 pub enum ClassMemberKind {
     Constructor,
     Method,
+    Field,
     Opaque,
 }
 
@@ -221,6 +222,68 @@ pub struct ClassMemberShell {
     /// shell.
     pub constructor: Option<ClassConstructor>,
     pub method: Option<ClassMethod>,
+    pub field: Option<ClassField>,
+}
+
+/// A public instance or static property declaration:
+/// `[static] [readonly] name[?|!][: T] [= initializer];`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ClassField {
+    pub name: String,
+    pub name_span: SourceSpan,
+    pub is_static: bool,
+    pub readonly: bool,
+    pub optional: bool,
+    /// Written `name!: T`, asserting the field is assigned before use.
+    pub definite: bool,
+    pub annotation: Option<Type>,
+    pub annotation_span: Option<SourceSpan>,
+    /// Original runtime tokens of the initializer, without the `=`.
+    pub initializer: Option<Vec<Token>>,
+    pub span: SourceSpan,
+}
+
+impl ClassField {
+    /// The type a field carries: its annotation, or, without one, the widened
+    /// type of a literal initializer (kept literal for a `readonly` field, as
+    /// TypeScript does). `None` for an unannotated field whose type would need
+    /// general expression inference at bind time.
+    pub fn declared_type(&self) -> Option<Type> {
+        if let Some(annotation) = &self.annotation {
+            return Some(annotation.clone());
+        }
+        let tokens = self.initializer.as_deref()?;
+        let (negative, literal) = match tokens {
+            [sign, literal] if sign.is("-") => (true, literal),
+            [literal] => (false, literal),
+            _ => return None,
+        };
+        let keeps_literal = self.readonly;
+        match literal.kind {
+            TokenKind::Number => Some(if keeps_literal {
+                Type::Literal(format!(
+                    "{}{}",
+                    if negative { "-" } else { "" },
+                    literal.text
+                ))
+            } else {
+                Type::Number
+            }),
+            TokenKind::String if !negative => Some(if keeps_literal {
+                Type::Literal(literal.text.clone())
+            } else {
+                Type::String
+            }),
+            _ if !negative && (literal.is("true") || literal.is("false")) => {
+                Some(if keeps_literal {
+                    Type::Literal(literal.text.clone())
+                } else {
+                    Type::Boolean
+                })
+            }
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

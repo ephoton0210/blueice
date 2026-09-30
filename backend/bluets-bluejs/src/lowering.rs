@@ -262,6 +262,20 @@ fn lower_function(
 fn lower_class(module: &Module, class: &ClassDeclaration) -> Result<bluejs::Stmt, BridgeError> {
     let mut elements = Vec::new();
     for member in &class.members {
+        if let Some(field) = &member.field {
+            elements.push(bluejs::ClassElement::Field {
+                key: bluejs::PropertyKey::Identifier(field.name.clone()),
+                initializer: field
+                    .initializer
+                    .as_deref()
+                    .map(|tokens| ExpressionLowerer::new(&module.id, tokens).parse())
+                    .transpose()?,
+                is_static: field.is_static,
+                accessor: false,
+                decorators: Vec::new(),
+            });
+            continue;
+        }
         let (name, is_static, parameters, body) = if let Some(constructor) = &member.constructor {
             (
                 "constructor".to_string(),
