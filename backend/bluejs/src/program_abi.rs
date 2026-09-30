@@ -54,7 +54,21 @@ mod tests {
         let program = BlueJsProgramV1::Script(Program {
             body: vec![Stmt::Expr(Expr::Number(42.0))],
         });
+        assert!(program.owned_heap_payload_bytes().is_some());
         let code = program.compile().unwrap();
         assert_eq!(Vm::default().execute(&code).unwrap(), Value::Number(42.0));
+    }
+
+    #[test]
+    fn compiles_a_structured_module_without_a_source_parser() {
+        let module = BlueJsProgramV1::Module(crate::Module {
+            body: vec![Stmt::Expr(Expr::Number(7.0))],
+            imports: Vec::new(),
+            exports: Vec::new(),
+            requests: Vec::new(),
+        });
+        assert!(module.owned_heap_payload_bytes().is_some());
+        let code = module.compile().unwrap();
+        assert_eq!(Vm::default().execute(&code).unwrap(), Value::Number(7.0));
     }
 }
