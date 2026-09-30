@@ -176,6 +176,24 @@ const CASES: &[OracleCase] = &[
         expected_diagnostics: &[],
     },
     OracleCase {
+        name: "class-param-property-emit-runtime",
+        modules: &[(
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/class-param-property-emit-runtime/main.ts"),
+        )],
+        expected_stdout: Some("12 none 43 4 5\nx,y,w,v,z x,y,w,v,z,q,hidden,r\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
+        name: "class-param-property-emit-declaration",
+        modules: &[(
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/class-param-property-emit-declaration/main.ts"),
+        )],
+        expected_stdout: Some(""),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
         name: "generic-property",
         modules: &[(
             "memory:///main.ts",
@@ -4825,6 +4843,16 @@ fn expected_declaration(case: &OracleCase) -> Option<&'static str> {
              protected constructor(seed: number);\n    static make(): Vault;\n}\n\
              export declare class Sealed {\n    private constructor();\n    \
              static create(): Sealed;\n}\n",
+        ),
+        "class-param-property-emit-declaration" => Some(
+            "export declare class Base {\n    x: number;\n    private y;\n    \
+             protected readonly w: number;\n    readonly v?: string | undefined;\n    \
+             flag: boolean;\n    z: number;\n    \
+             constructor(x: number, y: string, w?: number, v?: string | undefined, flag?: boolean);\n    \
+             m(): number;\n}\n\
+             export declare class Derived extends Base {\n    q: number;\n    \
+             protected r?: number | undefined;\n    constructor(q: number, r?: number | undefined);\n}\n\
+             export declare class Plain {\n    constructor(a: number, b?: string);\n}\n",
         ),
         _ => None,
     }

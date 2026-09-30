@@ -18,6 +18,10 @@ pub(super) struct Parser {
     diagnostics: Vec<Diagnostic>,
     max_type_depth: usize,
     type_depth: usize,
+    /// Set while a class constructor's parameters are parsed, where an
+    /// accessibility modifier or `readonly` declares a property.
+    parameter_property_mode: bool,
+    parameter_properties: Vec<ParameterProperty>,
 }
 
 #[path = "declarations.rs"]

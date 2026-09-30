@@ -263,6 +263,7 @@ fn emit_javascript(
     }
     classes::refuse_fields_below_es2022(module, options.target)?;
     edits.extend(classes::overload_signature_erasures(module));
+    edits.extend(classes::parameter_property_insertions(module)?);
     let plan = strict_boundaries::plan_emission(module, options)?;
     let mut strict_runtime = None;
     if let Some((strict_edits, record)) = plan {

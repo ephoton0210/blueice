@@ -2697,6 +2697,35 @@ Declaration output follows tsc: a private member is `private name;` with no type
 (`private constructor();`, overloads once), protected members keep their types,
 and `public` is omitted.
 
+### J.3.2.3 Constructor parameter properties
+
+`constructor(public x: number)` declares a property `x` and assigns it from the
+argument. The parser reads `[accessibility] [readonly]` before a parameter only
+while parsing a class constructor's parameter list; the same words in any other
+parameter list stay a parse error, which is how a parameter property on a method
+or function is refused. Each recognized parameter is recorded in
+`ClassConstructor::parameter_properties`, together with the insertion point for
+its assignment, and the modifiers are erased.
+
+TypeScript's ES2022 output is reproduced: the field declarations `x; y;` come
+first in the class body, before declared fields, because they are class fields
+initialized to `undefined` before the constructor body runs; the assignments
+`this.x = x;` come at the start of a base constructor body or straight after the
+derived class's `super(...)` statement. The emitter inserts both as zero-width
+edits on the line they land in, so no later line, and no source-map line, moves.
+A derived constructor with no top-level `super(...)` statement has nowhere fixed
+to put them and is refused as unsupported (TypeScript accepts a `super` in each
+branch of an `if`).
+
+For checking, the properties are synthesized as `ClassField`s
+(`ClassDeclaration::parameter_property_fields`): typing, duplicates, visibility,
+nominal assignability, overrides, and assignment of a `readonly` property in the
+constructor all come from the field rules of J.3.2.1 and J.3.2.2. A literal
+default gives the widened type (not the literal, unlike a `readonly` field), an
+optional property is `T | undefined`, and an unannotated non-literal default
+needs an annotation. Declaration output lists the properties first, in parameter
+order.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process

@@ -261,6 +261,17 @@ fn lower_function(
 /// `constructor`, as BlueJS represents it.
 fn lower_class(module: &Module, class: &ClassDeclaration) -> Result<bluejs::Stmt, BridgeError> {
     let mut elements = Vec::new();
+    // A constructor's parameter properties declare fields ahead of every
+    // other member, as TypeScript emits them.
+    for field in class.parameter_property_fields() {
+        elements.push(bluejs::ClassElement::Field {
+            key: bluejs::PropertyKey::Identifier(field.name),
+            initializer: None,
+            is_static: false,
+            accessor: false,
+            decorators: Vec::new(),
+        });
+    }
     for member in &class.members {
         if let Some(field) = &member.field {
             elements.push(bluejs::ClassElement::Field {
@@ -299,9 +310,13 @@ fn lower_class(module: &Module, class: &ClassDeclaration) -> Result<bluejs::Stmt
         let Some(body) = body else {
             continue;
         };
+        let mut function = lower_function_value(module, Some(name.clone()), parameters, body)?;
+        if let Some(constructor) = &member.constructor {
+            insert_parameter_property_assignments(module, constructor, body, &mut function)?;
+        }
         elements.push(bluejs::ClassElement::Method {
             key: bluejs::PropertyKey::Identifier(name.clone()),
-            function: lower_function_value(module, Some(name), parameters, body)?,
+            function,
             is_static,
             decorators: Vec::new(),
         });
@@ -317,6 +332,51 @@ fn lower_class(module: &Module, class: &ClassDeclaration) -> Result<bluejs::Stmt
         // Synthesized from BlueTSC's own lowered AST: no `[[SourceText]]`.
         source_text: Default::default(),
     }))
+}
+
+/// `this.p = p;` for each parameter property, after the `super(...)` statement
+/// or at the start of the body, matching where the emitter inserts the text.
+fn insert_parameter_property_assignments(
+    module: &Module,
+    constructor: &ClassConstructor,
+    body_items: &[FunctionBodyItem],
+    function: &mut bluejs::Function,
+) -> Result<(), BridgeError> {
+    if constructor.parameter_properties.is_empty() {
+        return Ok(());
+    }
+    let Some(insertion) = constructor.parameter_property_insertion else {
+        return Err(unsupported(
+            constructor.span.clone(),
+            "parameter properties need a top-level super call to follow in a derived class",
+        ));
+    };
+    let assignments: Vec<bluejs::Stmt> = constructor
+        .parameter_properties
+        .iter()
+        .map(|property| {
+            let name = constructor.parameters[property.parameter_index]
+                .name
+                .clone();
+            bluejs::Stmt::Expr(bluejs::Expr::Assign {
+                op: bluejs::AssignOp::Assign,
+                target: Box::new(bluejs::Expr::Member {
+                    object: Box::new(bluejs::Expr::This),
+                    property: Box::new(bluejs::Expr::Identifier(name.clone())),
+                    computed: false,
+                }),
+                value: Box::new(bluejs::Expr::Identifier(name)),
+            })
+        })
+        .collect();
+    let mut body = lower_function_body(module, &body_items[..insertion.item_index])?;
+    body.extend(assignments);
+    body.extend(lower_function_body(
+        module,
+        &body_items[insertion.item_index..],
+    )?);
+    function.body = body;
+    Ok(())
 }
 
 fn lower_function_value(

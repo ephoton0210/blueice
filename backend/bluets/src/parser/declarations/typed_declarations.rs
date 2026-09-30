@@ -249,10 +249,73 @@ impl Parser {
             }));
     }
 
+    /// `[public|protected|private] [readonly]` before a constructor parameter,
+    /// erased from the output. `None` when the parameter has neither, so it is
+    /// an ordinary parameter. A modifier word counts only when a parameter
+    /// follows it; `constructor(readonly)` names a parameter `readonly`.
+    fn consume_parameter_property_modifiers(&mut self) -> Option<(Visibility, bool)> {
+        let starts_parameter = |token: Option<&Token>| {
+            token.is_some_and(|token| {
+                matches!(token.kind, TokenKind::Identifier | TokenKind::Keyword)
+                    || token.is("...")
+                    || token.is("{")
+                    || token.is("[")
+            })
+        };
+        let first = self.index;
+        let mut visibility = None;
+        let mut readonly = false;
+        let mut misplaced = false;
+        while starts_parameter(self.tokens.get(self.index + 1)) {
+            let word = self.tokens[self.index].text.as_str();
+            match word {
+                "public" | "protected" | "private" => {
+                    misplaced |= visibility.is_some() || readonly;
+                    visibility = Some(match word {
+                        "protected" => Visibility::Protected,
+                        "private" => Visibility::Private,
+                        _ => Visibility::Public,
+                    });
+                }
+                "readonly" => {
+                    misplaced |= readonly;
+                    readonly = true;
+                }
+                _ => break,
+            }
+            self.index += 1;
+        }
+        if self.index == first {
+            return None;
+        }
+        if misplaced {
+            self.error_at(
+                SourceSpan::new(
+                    &self.id,
+                    self.tokens[first].start,
+                    self.tokens[self.index - 1].end,
+                ),
+                DiagnosticCode::ParseError,
+                "parameter modifiers must be an accessibility modifier, then `readonly`, each at most once",
+            );
+        }
+        self.edits.push(TextEdit {
+            start: self.tokens[first].start,
+            end: self.current().start,
+            replacement: String::new(),
+        });
+        Some((visibility.unwrap_or_default(), readonly))
+    }
+
     pub(in crate::parser::implementation) fn parse_parameters(&mut self) -> Vec<Parameter> {
         self.expect("(");
         let mut parameters = Vec::new();
         while !self.at_eof() && !self.consume(")") {
+            let property_modifiers = if self.parameter_property_mode {
+                self.consume_parameter_property_modifiers()
+            } else {
+                None
+            };
             let parameter_start = self.current().start;
             let rest = self.consume("...");
             let mut pattern = None;
@@ -328,6 +391,20 @@ impl Parser {
                 None
             };
             let parameter_end = self.previous().end;
+            if let Some((visibility, readonly)) = property_modifiers {
+                if rest || pattern.is_some() {
+                    self.error_at(
+                        SourceSpan::new(&self.id, parameter_start, parameter_end),
+                        DiagnosticCode::ParseError,
+                        "a parameter property cannot be a rest parameter or a binding pattern",
+                    );
+                }
+                self.parameter_properties.push(ParameterProperty {
+                    parameter_index: parameters.len(),
+                    visibility,
+                    readonly,
+                });
+            }
             parameters.push(Parameter {
                 name: parameter_name,
                 pattern,

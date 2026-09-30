@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: J.3.2.3.** H and I are complete. The requested class, enum,
+**Current leaf: J.3.2.4.** H and I are complete. The requested class, enum,
 decorator, namespace, JSX, CommonJS, and package-resolution expansion has
 passed J.1/J.2 planning; implementation and pinned-`tsc` parity remain open.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
@@ -2173,10 +2173,36 @@ done to the page-runs-and-debugs goal at the top of this file.
       members only, and the general case is left as a known gap. A method
       named with a contextual keyword (`get`, `set`) is not recognized by
       member-call inference (`S.get()` is typed as a record); also left open.
-    - [ ] **J.3.2.3** Constructor parameter properties (`constructor(public x:
-      number)`): erasure, the synthesized field and the assignment emitted
-      after `super(..)`, readonly parameter properties, and declaration
-      output.
+    - [x] **J.3.2.3** Constructor parameter properties (`constructor(public
+      x: number, private y = 1, protected readonly z?: string)`). The parser
+      recognizes `[accessibility] [readonly]` before a constructor parameter
+      (each at most once and in that order), erases it, and records the
+      parameter as a property plus where its assignment goes. Emission matches
+      tsc for ES2022: a field declaration for each property at the start of
+      the class body, before the declared fields, and `this.p = p;` at the
+      start of a base class constructor body or immediately after a derived
+      class's top-level `super(...)` statement, so code before `super` and
+      code after both keep their order; both insertions stay on the line they
+      are inserted into so no later line moves. A derived constructor with no
+      top-level `super(...)` (for example one in each branch of an `if`, which
+      TypeScript accepts) is refused as unsupported. The checker synthesizes
+      the properties as fields, so typing (annotation, or the widened literal
+      default; an unannotated non-literal default needs an annotation),
+      duplicates, visibility, nominal assignability, override rules,
+      readonly-in-constructor and the ES2020 refusal all reuse the field
+      rules. A parameter property on an overload signature, on a method, a
+      rest parameter or a binding pattern is an error, as in TypeScript.
+      Declaration output lists the properties first, in parameter order, and
+      prints an optional one as `T | undefined` on both the property and the
+      constructor parameter; a literal default now gives the parameter its
+      widened type instead of `unknown`. The direct bridge lowers the fields
+      and assignment statements at the same positions. 26 `class-param-
+      property-*` entries join the pinned-TypeScript class matrix (all agree,
+      one accepted-by-TypeScript entry deferred as unsupported), two more
+      compare emitted stdout and the `.d.ts` with pinned tsc, and 10 public
+      tests plus a bridge test with Node parity pin codes and text. A
+      parameter named with a contextual keyword (`readonly`, `public`) is not
+      accepted as a parameter name; that pre-dates this work and is left open.
     - [ ] **J.3.2.4** Accessors (`get`/`set`, static, paired types, getter-only
       readonly semantics, override rules) and their declaration output.
     - [ ] **J.3.2.5** ECMAScript private names (`#x` fields, methods,

@@ -14,11 +14,20 @@ pub(in crate::checker) fn class_field_type(field: &ClassField) -> Option<Type> {
 
 /// The instance or static fields of a class as record members.
 pub(super) fn class_field_type_fields(class: &ClassDeclaration, is_static: bool) -> Vec<TypeField> {
-    class
-        .members
+    let parameter_properties = if is_static {
+        Vec::new()
+    } else {
+        class.parameter_property_fields()
+    };
+    parameter_properties
         .iter()
-        .filter_map(|member| member.field.as_ref())
-        .filter(|field| field.is_static == is_static)
+        .chain(
+            class
+                .members
+                .iter()
+                .filter_map(|member| member.field.as_ref())
+                .filter(|field| field.is_static == is_static),
+        )
         .map(|field| TypeField {
             name: visibility::member_field_name(class, field.visibility, &field.name),
             readonly: field.readonly,
@@ -31,10 +40,15 @@ pub(super) fn class_field_type_fields(class: &ClassDeclaration, is_static: bool)
 
 impl ModuleChecker<'_> {
     pub(in crate::checker::module) fn validate_class_fields(&mut self, class: &ClassDeclaration) {
-        let fields: Vec<&ClassField> = class
-            .members
+        let parameter_properties = class.parameter_property_fields();
+        let fields: Vec<&ClassField> = parameter_properties
             .iter()
-            .filter_map(|member| member.field.as_ref())
+            .chain(
+                class
+                    .members
+                    .iter()
+                    .filter_map(|member| member.field.as_ref()),
+            )
             .collect();
         if fields.is_empty() {
             return;
@@ -57,7 +71,7 @@ impl ModuleChecker<'_> {
                 self.check_type(annotation, span);
             }
             if field.annotation.is_none() && class_field_type(field).is_none() {
-                if field.initializer.is_none() {
+                if field.initializer.is_none() && !field.from_default {
                     self.type_error(
                         &field.name_span,
                         format!("class field `{}` implicitly has an `any` type", field.name),
@@ -69,7 +83,7 @@ impl ModuleChecker<'_> {
                         field.span.clone(),
                         format!(
                             "class field `{}` needs a type annotation unless its initializer \
-                             is a number, string or boolean literal",
+                             or default is a number, string or boolean literal",
                             field.name
                         ),
                     ));
@@ -113,10 +127,13 @@ impl ModuleChecker<'_> {
         for group in &class.method_groups {
             method_groups.insert((group.is_static, group.name.clone()));
         }
-        for member in &class.members {
-            let Some(field) = &member.field else {
-                continue;
-            };
+        let parameter_properties = class.parameter_property_fields();
+        for field in parameter_properties.iter().chain(
+            class
+                .members
+                .iter()
+                .filter_map(|member| member.field.as_ref()),
+        ) {
             let key = (field.is_static, field.name.clone());
             if !seen.insert(key.clone()) || method_groups.contains(&key) {
                 self.duplicate(&field.name, field.name_span.clone());

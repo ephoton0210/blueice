@@ -260,7 +260,86 @@ pub struct ClassField {
     pub annotation_span: Option<SourceSpan>,
     /// Original runtime tokens of the initializer, without the `=`.
     pub initializer: Option<Vec<Token>>,
+    /// A parameter property whose only type source is a default value.
+    pub from_default: bool,
     pub span: SourceSpan,
+}
+
+impl ClassDeclaration {
+    /// The properties the constructor's parameter properties declare, as
+    /// fields, in parameter order. A default initializer with no annotation
+    /// gives the widened type of a literal default; readonly does not keep the
+    /// literal, unlike a `readonly` field declaration.
+    pub fn parameter_property_fields(&self) -> Vec<ClassField> {
+        let Some(constructor) = self
+            .members
+            .iter()
+            .filter_map(|member| member.constructor.as_ref())
+            .find(|constructor| constructor.body.is_some())
+        else {
+            return Vec::new();
+        };
+        constructor
+            .parameter_properties
+            .iter()
+            .map(|property| {
+                let parameter = &constructor.parameters[property.parameter_index];
+                let annotation = parameter.annotation.clone().or_else(|| {
+                    parameter
+                        .default
+                        .as_deref()
+                        .and_then(|tokens| widen_literal_tokens(tokens, false))
+                });
+                ClassField {
+                    name: parameter.name.clone(),
+                    name_span: parameter.span.clone(),
+                    visibility: property.visibility,
+                    is_static: false,
+                    readonly: property.readonly,
+                    optional: parameter.optional && parameter.default.is_none(),
+                    // Assigned by the synthesized constructor statement.
+                    definite: true,
+                    annotation,
+                    annotation_span: None,
+                    initializer: None,
+                    from_default: parameter.default.is_some(),
+                    span: parameter.span.clone(),
+                }
+            })
+            .collect()
+    }
+}
+
+/// The type of a lone number, string or boolean literal (signed for a number),
+/// widened unless `keep_literal`.
+pub fn widen_literal_tokens(tokens: &[Token], keep_literal: bool) -> Option<Type> {
+    let (negative, literal) = match tokens {
+        [sign, literal] if sign.is("-") => (true, literal),
+        [literal] => (false, literal),
+        _ => return None,
+    };
+    match literal.kind {
+        TokenKind::Number => Some(if keep_literal {
+            Type::Literal(format!(
+                "{}{}",
+                if negative { "-" } else { "" },
+                literal.text
+            ))
+        } else {
+            Type::Number
+        }),
+        TokenKind::String if !negative => Some(if keep_literal {
+            Type::Literal(literal.text.clone())
+        } else {
+            Type::String
+        }),
+        _ if !negative && (literal.is("true") || literal.is("false")) => Some(if keep_literal {
+            Type::Literal(literal.text.clone())
+        } else {
+            Type::Boolean
+        }),
+        _ => None,
+    }
 }
 
 impl ClassField {
@@ -272,37 +351,7 @@ impl ClassField {
         if let Some(annotation) = &self.annotation {
             return Some(annotation.clone());
         }
-        let tokens = self.initializer.as_deref()?;
-        let (negative, literal) = match tokens {
-            [sign, literal] if sign.is("-") => (true, literal),
-            [literal] => (false, literal),
-            _ => return None,
-        };
-        let keeps_literal = self.readonly;
-        match literal.kind {
-            TokenKind::Number => Some(if keeps_literal {
-                Type::Literal(format!(
-                    "{}{}",
-                    if negative { "-" } else { "" },
-                    literal.text
-                ))
-            } else {
-                Type::Number
-            }),
-            TokenKind::String if !negative => Some(if keeps_literal {
-                Type::Literal(literal.text.clone())
-            } else {
-                Type::String
-            }),
-            _ if !negative && (literal.is("true") || literal.is("false")) => {
-                Some(if keeps_literal {
-                    Type::Literal(literal.text.clone())
-                } else {
-                    Type::Boolean
-                })
-            }
-            _ => None,
-        }
+        widen_literal_tokens(self.initializer.as_deref()?, self.readonly)
     }
 }
 
@@ -310,10 +359,37 @@ impl ClassField {
 pub struct ClassConstructor {
     pub visibility: Visibility,
     pub parameters: Vec<Parameter>,
+    /// Parameters written with an accessibility modifier or `readonly`, each
+    /// of which also declares a property assigned from its argument.
+    pub parameter_properties: Vec<ParameterProperty>,
+    /// Where those assignments go, when the constructor has properties and
+    /// the place can be found (see `ParameterPropertyInsertion`).
+    pub parameter_property_insertion: Option<ParameterPropertyInsertion>,
     /// `None` denotes a signature declaration; `Some` retains body items,
     /// including an empty implementation body.
     pub body: Option<Vec<FunctionBodyItem>>,
     pub span: SourceSpan,
+}
+
+/// A constructor parameter that also declares a property:
+/// `constructor(private x: number)`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ParameterProperty {
+    /// Index into the constructor's `parameters`.
+    pub parameter_index: usize,
+    pub visibility: Visibility,
+    pub readonly: bool,
+}
+
+/// The point in a constructor body after which `this.p = p;` is emitted for
+/// each parameter property: the start of the body in a base class, just after
+/// the `super(...)` statement in a derived one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ParameterPropertyInsertion {
+    /// How many top-level body items come before the assignments.
+    pub item_index: usize,
+    /// The source offset the assignment text is inserted at.
+    pub offset: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

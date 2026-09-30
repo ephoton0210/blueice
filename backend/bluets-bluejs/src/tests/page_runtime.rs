@@ -228,6 +228,35 @@ fn direct_page_private_and_protected_members_run_like_node() {
 }
 
 #[test]
+fn direct_page_parameter_properties_assign_after_super_like_node() {
+    let source = "class Base { z: number = 5; \
+        constructor(public x: number, private y: number, protected readonly w: number = 3) { \
+          this.z = this.z + this.x; } \
+        sum(): number { return this.x + this.y + this.w + this.z; } } \
+        class Derived extends Base { r: number = 9; \
+        constructor(public q: number, private hidden: number) { \
+          const seed: number = q + 1; super(seed, 2); \
+          this.r = this.r + this.q + this.hidden; } \
+        total(): number { return this.sum() + this.r + this.hidden; } } \
+        const b = new Base(1, 2); const d = new Derived(4, 5); \
+        b.sum() + d.total() + d.q + d.x;";
+    let artifact = compile_direct_script(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+        class_options(),
+    )
+    .unwrap();
+    let mut owner = DirectPageRealmOwner::default();
+    owner.open_realm(7, origin()).unwrap();
+    let attachment = owner.attach_script(&artifact, 7, &origin()).unwrap();
+    // Node runs the same program, properties written out by hand, to 64.
+    assert_eq!(
+        owner.execute_program(7, &attachment).unwrap(),
+        bluejs::Value::Number(64.0)
+    );
+}
+
+#[test]
 fn direct_page_while_runs_zero_and_multiple_iterations() {
     let artifact = compile_direct_script(
         ENTRY,

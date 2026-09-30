@@ -146,15 +146,19 @@ impl ModuleChecker<'_> {
         class: &ClassDeclaration,
     ) {
         let mut members: Vec<(String, bool, Visibility, SourceSpan)> = Vec::new();
-        for member in &class.members {
-            if let Some(field) = &member.field {
-                members.push((
-                    field.name.clone(),
-                    field.is_static,
-                    field.visibility,
-                    field.name_span.clone(),
-                ));
-            }
+        let parameter_properties = class.parameter_property_fields();
+        for field in parameter_properties.iter().chain(
+            class
+                .members
+                .iter()
+                .filter_map(|member| member.field.as_ref()),
+        ) {
+            members.push((
+                field.name.clone(),
+                field.is_static,
+                field.visibility,
+                field.name_span.clone(),
+            ));
         }
         for group in &class.method_groups {
             let indices: Vec<usize> = group

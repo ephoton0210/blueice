@@ -60,7 +60,11 @@ impl Parser {
         let mut members = class_member_shells(&self.id, &body);
         for member in &mut members {
             if member.kind == ClassMemberKind::Constructor {
-                self.parse_class_constructor(opening + 1 + member.token_start, member);
+                self.parse_class_constructor(
+                    opening + 1 + member.token_start,
+                    member,
+                    heritage.is_some(),
+                );
             } else if member.kind == ClassMemberKind::Method {
                 self.parse_class_method(opening + 1 + member.token_start, member);
             } else if member.kind == ClassMemberKind::Opaque
@@ -120,16 +124,27 @@ impl Parser {
         }
     }
 
-    fn parse_class_constructor(&mut self, start: usize, member: &mut ClassMemberShell) {
+    fn parse_class_constructor(
+        &mut self,
+        start: usize,
+        member: &mut ClassMemberShell,
+        derived: bool,
+    ) {
         let end = start + (member.token_end - member.token_start);
         let Some(modifiers) = scan_member_modifiers(&self.tokens, start, end) else {
             return;
         };
         self.erase_visibility_keyword(&modifiers);
         self.index = modifiers.name_index + 1;
+        self.parameter_property_mode = true;
+        self.parameter_properties.clear();
         let parameters = self.parse_parameters();
+        self.parameter_property_mode = false;
+        let parameter_properties = std::mem::take(&mut self.parameter_properties);
+        let mut body_open = 0;
         let body = if self.consume("{") {
             let body_start = self.previous().start;
+            body_open = body_start;
             let mut body = Vec::new();
             let mut returns = Vec::new();
             let mut locals = Vec::new();
@@ -149,9 +164,22 @@ impl Parser {
             );
             return;
         }
+        if !parameter_properties.is_empty() && body.is_none() {
+            self.error_at(
+                member.span.clone(),
+                DiagnosticCode::ParseError,
+                "a parameter property is only allowed in a constructor implementation",
+            );
+        }
+        let parameter_property_insertion = match (&body, parameter_properties.is_empty()) {
+            (Some(items), false) => parameter_property_insertion(items, body_open, derived),
+            _ => None,
+        };
         member.constructor = Some(ClassConstructor {
             visibility: modifiers.visibility,
             parameters,
+            parameter_properties,
+            parameter_property_insertion,
             body,
             span: member.span.clone(),
         });
@@ -264,6 +292,7 @@ impl Parser {
             annotation,
             annotation_span,
             initializer,
+            from_default: false,
             span: member.span.clone(),
         });
         true
@@ -391,6 +420,33 @@ fn scan_member_modifiers(tokens: &[Token], start: usize, end: usize) -> Option<M
     }
     modifiers.name_index = index;
     Some(modifiers)
+}
+
+/// Where a constructor's parameter-property assignments go: the start of the
+/// body in a base class, just after the top-level `super(...)` statement in a
+/// derived one. A derived constructor with no such statement has no place.
+fn parameter_property_insertion(
+    items: &[FunctionBodyItem],
+    body_open: usize,
+    derived: bool,
+) -> Option<ParameterPropertyInsertion> {
+    if !derived {
+        return Some(ParameterPropertyInsertion {
+            item_index: 0,
+            offset: body_open + 1,
+        });
+    }
+    items.iter().enumerate().find_map(|(index, item)| {
+        let FunctionBodyItem::Expression { tokens, span } = item else {
+            return None;
+        };
+        (tokens.first().is_some_and(|token| token.is("super"))
+            && tokens.get(1).is_some_and(|token| token.is("(")))
+        .then_some(ParameterPropertyInsertion {
+            item_index: index + 1,
+            offset: span.end,
+        })
+    })
 }
 
 fn class_method_groups(module: &str, members: &[ClassMemberShell]) -> Vec<ClassMethodGroup> {

@@ -13,11 +13,12 @@
 
 use blueice_bluejs as bluejs;
 use blueice_bluets::{
-    compile, lex, source_locations_for_spans, BlueTsDebugInfo, ClassDeclaration, CompilerOptions,
-    DebugSourceLocation, Declaration, Diagnostic, FunctionBodyItem, FunctionDeclaration,
-    FunctionElseBranch, FunctionIfStatement, FunctionTryStatement, FunctionWhileStatement, Module,
-    ModuleLoader, Parameter, Project, SourceId, SourceSpan, SymbolId, SymbolKind, Token, TokenKind,
-    TypeId, VariableDeclaration, VariableKind, LANGUAGE_VERSION,
+    compile, lex, source_locations_for_spans, BlueTsDebugInfo, ClassConstructor, ClassDeclaration,
+    CompilerOptions, DebugSourceLocation, Declaration, Diagnostic, FunctionBodyItem,
+    FunctionDeclaration, FunctionElseBranch, FunctionIfStatement, FunctionTryStatement,
+    FunctionWhileStatement, Module, ModuleLoader, Parameter, Project, SourceId, SourceSpan,
+    SymbolId, SymbolKind, Token, TokenKind, TypeId, VariableDeclaration, VariableKind,
+    LANGUAGE_VERSION,
 };
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt;

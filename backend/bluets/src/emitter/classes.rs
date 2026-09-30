@@ -13,7 +13,10 @@
 use super::{type_to_ts, Module, TextEdit};
 use crate::compiler::EcmaTarget;
 use crate::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
-use crate::parser::{ClassDeclaration, ClassMemberShell, Declaration, Parameter, Type, Visibility};
+use crate::parser::{
+    widen_literal_tokens, ClassDeclaration, ClassMemberShell, Declaration, Parameter, Type,
+    Visibility,
+};
 
 /// Erase every constructor and method overload signature: a declaration with
 /// no body has no JavaScript form.
@@ -44,6 +47,57 @@ pub(super) fn overload_signature_erasures(module: &Module) -> Vec<TextEdit> {
     edits
 }
 
+/// The text a constructor's parameter properties add: a field declaration for
+/// each at the start of the class body, and `this.p = p;` for each after the
+/// `super(...)` statement, or at the start of the constructor body in a base
+/// class. Both stay on the line they are inserted into, so no later source
+/// line moves.
+pub(super) fn parameter_property_insertions(module: &Module) -> Result<Vec<TextEdit>, Diagnostic> {
+    let mut edits = Vec::new();
+    for declaration in &module.declarations {
+        let Declaration::Class(class) = declaration else {
+            continue;
+        };
+        let fields = class.parameter_property_fields();
+        if fields.is_empty() {
+            continue;
+        }
+        let constructor = class
+            .members
+            .iter()
+            .filter_map(|member| member.constructor.as_ref())
+            .find(|constructor| constructor.body.is_some())
+            .expect("parameter properties belong to a constructor implementation");
+        let Some(insertion) = constructor.parameter_property_insertion else {
+            return Err(Diagnostic::error(
+                DiagnosticCode::UnsupportedSyntax,
+                constructor.span.clone(),
+                "a derived constructor with parameter properties needs a top-level \
+                 `super(...)` statement to place their assignments after",
+            ));
+        };
+        let declarations: String = fields
+            .iter()
+            .map(|field| format!(" {};", field.name))
+            .collect();
+        edits.push(TextEdit {
+            start: class.body_span.start + 1,
+            end: class.body_span.start + 1,
+            replacement: declarations,
+        });
+        let assignments: String = fields
+            .iter()
+            .map(|field| format!(" this.{0} = {0};", field.name))
+            .collect();
+        edits.push(TextEdit {
+            start: insertion.offset,
+            end: insertion.offset,
+            replacement: assignments,
+        });
+    }
+    Ok(edits)
+}
+
 /// A field is emitted as a native class field, which is the ES2022 form. Older
 /// targets need the constructor-assignment lowering (J.3.3), so a field there
 /// is refused rather than emitted with the wrong semantics.
@@ -62,6 +116,8 @@ pub(super) fn refuse_fields_below_es2022(
             .members
             .iter()
             .find_map(|member| member.field.as_ref())
+            .cloned()
+            .or_else(|| class.parameter_property_fields().into_iter().next())
         {
             return Err(Diagnostic::error(
                 DiagnosticCode::UnsupportedSyntax,
@@ -101,6 +157,38 @@ fn visibility_prefix(visibility: Visibility) -> &'static str {
     }
 }
 
+/// An optional property's type includes `undefined`, which TypeScript prints
+/// for the property and for its constructor parameter.
+fn with_undefined_if(value: Type, optional: bool) -> Type {
+    if !optional {
+        return value;
+    }
+    match value {
+        Type::Union(members) if members.contains(&Type::Undefined) => Type::Union(members),
+        Type::Union(mut members) => {
+            members.push(Type::Undefined);
+            Type::Union(members)
+        }
+        other => Type::Union(vec![other, Type::Undefined]),
+    }
+}
+
+/// A constructor's parameter list; an optional parameter property is printed
+/// with its `undefined`.
+fn constructor_parameters_to_ts(constructor: &crate::parser::ClassConstructor) -> String {
+    let mut parameters = constructor.parameters.clone();
+    for property in &constructor.parameter_properties {
+        let parameter = &mut parameters[property.parameter_index];
+        if parameter.optional && parameter.default.is_none() {
+            parameter.annotation = parameter
+                .annotation
+                .take()
+                .map(|annotation| with_undefined_if(annotation, true));
+        }
+    }
+    parameters_to_ts(&parameters)
+}
+
 fn parameters_to_ts(parameters: &[Parameter]) -> String {
     let rendered = parameters
         .iter()
@@ -114,10 +202,18 @@ fn parameters_to_ts(parameters: &[Parameter]) -> String {
                 } else {
                     ""
                 },
+                // An unannotated parameter with a literal default has the
+                // default's widened type, as TypeScript infers it.
                 parameter
                     .annotation
-                    .as_ref()
-                    .map(type_to_ts)
+                    .clone()
+                    .or_else(|| {
+                        parameter
+                            .default
+                            .as_deref()
+                            .and_then(|tokens| widen_literal_tokens(tokens, false))
+                    })
+                    .map(|annotation| type_to_ts(&annotation))
                     .unwrap_or_else(|| "unknown".to_string())
             )
         })
@@ -157,6 +253,31 @@ pub(super) fn emit_class_declaration(
         output.push_str(base);
     }
     output.push_str(" {\n");
+    for field in class.parameter_property_fields() {
+        output.push_str("    ");
+        output.push_str(visibility_prefix(field.visibility));
+        if field.readonly {
+            output.push_str("readonly ");
+        }
+        output.push_str(&field.name);
+        if field.optional {
+            output.push('?');
+        }
+        if field.visibility == Visibility::Private {
+            output.push_str(";\n");
+            continue;
+        }
+        let Some(value) = field.declared_type() else {
+            return Err(Diagnostic::error(
+                DiagnosticCode::UnsupportedSyntax,
+                field.span.clone(),
+                "declaration output requires a parameter property type",
+            ));
+        };
+        output.push_str(": ");
+        output.push_str(&type_to_ts(&with_undefined_if(value, field.optional)));
+        output.push_str(";\n");
+    }
     let constructors: Vec<usize> = class
         .members
         .iter()
@@ -197,7 +318,7 @@ pub(super) fn emit_class_declaration(
                     output.push_str("();\n");
                     break;
                 }
-                output.push_str(&parameters_to_ts(&constructor.parameters));
+                output.push_str(&constructor_parameters_to_ts(constructor));
                 output.push_str(";\n");
             }
         } else if let Some(field) = &member.field {

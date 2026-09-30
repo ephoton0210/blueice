@@ -694,6 +694,7 @@ impl ModuleChecker<'_> {
                     .members
                     .iter()
                     .filter_map(|member| member.field.as_ref())
+                    .chain(class.parameter_property_fields().iter())
                     .filter(|field| field.readonly && !field.is_static)
                     .map(|field| field.name.clone())
                     .collect(),
