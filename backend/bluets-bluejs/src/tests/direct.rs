@@ -381,6 +381,123 @@ fn direct_route_refuses_destructured_parameters_instead_of_lowering_a_name() {
 }
 
 #[test]
+fn lowers_a_checked_class_to_a_bluejs_class_declaration() {
+    let artifact = compile_direct_script(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(
+            ENTRY,
+            "class A { constructor(n: number) {} m(a: number): number; m(a: string): string; \
+             m(a: any): any { return a; } static s(): number { return 1; } } \
+             class B extends A { constructor() { super(1); } }",
+        )]),
+        CompilerOptions {
+            class_emit: true,
+            ..CompilerOptions::default()
+        },
+    )
+    .unwrap();
+    let bluejs::BlueJsProgramV1::Script(program) = &artifact.program else {
+        panic!("expected a script program");
+    };
+    let [bluejs::Stmt::ClassDecl(a), bluejs::Stmt::ClassDecl(b)] = program.body.as_slice() else {
+        panic!("expected two class declarations: {:?}", program.body);
+    };
+    assert_eq!(a.name.as_deref(), Some("A"));
+    assert!(a.extends.is_none());
+    // Overload signatures have no runtime form: constructor, `m`, static `s`.
+    let names: Vec<(String, bool)> = a
+        .elements
+        .iter()
+        .map(|element| match element {
+            bluejs::ClassElement::Method {
+                key: bluejs::PropertyKey::Identifier(name),
+                is_static,
+                ..
+            } => (name.clone(), *is_static),
+            other => panic!("unexpected element {other:?}"),
+        })
+        .collect();
+    assert_eq!(
+        names,
+        vec![
+            ("constructor".to_string(), false),
+            ("m".to_string(), false),
+            ("s".to_string(), true)
+        ]
+    );
+    assert_eq!(b.name.as_deref(), Some("B"));
+    assert!(matches!(
+        b.extends.as_deref(),
+        Some(bluejs::Expr::Identifier(name)) if name == "A"
+    ));
+}
+
+#[test]
+fn an_exported_class_lowers_to_a_module_class_and_export() {
+    let artifact = compile_direct_module(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(
+            ENTRY,
+            "export class A { m(): number { return 1; } } class B extends A {} export { B };",
+        )]),
+        CompilerOptions {
+            class_emit: true,
+            ..CompilerOptions::default()
+        },
+    )
+    .unwrap();
+    let bluejs::BlueJsProgramV1::Module(module) = &artifact.program else {
+        panic!("expected a module program");
+    };
+    assert!(matches!(
+        module.body.as_slice(),
+        [bluejs::Stmt::ClassDecl(_), bluejs::Stmt::ClassDecl(_)]
+    ));
+    let exported: Vec<&str> = module
+        .exports
+        .iter()
+        .filter_map(|entry| match entry {
+            bluejs::ExportEntry::Local { export_name, .. } => Some(export_name.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(exported, ["A", "B"]);
+}
+
+#[test]
+fn a_class_script_with_an_exported_class_needs_the_module_bridge() {
+    let result = compile_direct_script(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(ENTRY, "export class A {}")]),
+        CompilerOptions {
+            class_emit: true,
+            ..CompilerOptions::default()
+        },
+    );
+    assert!(result.is_err());
+}
+
+#[test]
+fn class_bodies_with_shapes_the_bridge_cannot_lower_are_refused() {
+    for source in [
+        // A destructured parameter has no name to lower.
+        "class A { m({ a }: { a: number }): number { return a; } }",
+        // A nested function declaration has no direct lowering yet.
+        "class A { m(): number { function f(): number { return 1; } return f(); } }",
+    ] {
+        let result = compile_direct_script(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+            CompilerOptions {
+                class_emit: true,
+                ..CompilerOptions::default()
+            },
+        );
+        assert!(result.is_err(), "{source}");
+    }
+}
+
+#[test]
 fn rejects_object_methods_without_reparsing_emitted_javascript() {
     let result = compile_direct_script(
         ENTRY,

@@ -2529,6 +2529,31 @@ The direct bridge lowers parameters by name and has no pattern support, so it
 refuses a destructured parameter rather than lowering the pattern text as a
 name; a bridge test pins this.
 
+### J.3.1.5 Direct lowering of classes
+
+A checked class lowers to BlueJS's own class node, `Stmt::ClassDecl`. Each
+constructor and method member with a body becomes a `ClassElement::Method` whose
+function is built by the same parameter and body lowering as a function
+declaration (`lower_function_value`, split out of `lower_function`): the
+constructor is a non-static method with the key `constructor`, as BlueJS's own
+parser represents it, methods keep their `static` flag, overload signatures have
+no body and are skipped, and `extends` is the base class name as an identifier.
+The class has no decorators and no source text, so `toString` reports a native
+function, as for every synthesized function. A script refuses an exported class;
+the module bridge lowers it and adds an export entry under its name.
+
+The bridge's expression grammar had no `this` or `super`. It now lowers `this`
+to `Expr::This` and `super` to `Expr::Super`, and accepts `super` as a call
+target, so `super(..)` is an ordinary `Call` on that node and `super.m(..)` a
+`Member` call, which is how BlueJS represents them and validates their
+placement. A destructured parameter, a nested declaration or an object-literal
+form inside a method is refused by the same paths as in a function.
+
+The checker admits a class only under the `class_emit` staging switch, so the
+direct route reaches this lowering only when the caller's options set it, and
+`CompilerOptions::default()` still refuses classes. J.3.1.6 verifies the
+strict-boundary, debugger and stale-generation behaviour and removes the switch.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process

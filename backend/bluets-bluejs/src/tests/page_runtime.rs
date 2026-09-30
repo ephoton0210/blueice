@@ -83,6 +83,57 @@ fn direct_script_uses_the_page_realms_exact_generation_and_static_metadata() {
     );
 }
 
+const CLASS_SOURCE: &str = "\
+class Base {
+  constructor(n: number) {}
+  add(a: number): number { return a + 1; }
+  static id(a: number): number { return a; }
+  twice(a: number): number { return this.add(a) + this.add(a); }
+}
+class Derived extends Base {
+  constructor() { super(1); }
+  add(a: number): number { return super.add(a) * 10; }
+  static id(a: number): number { return super.id(a) + 100; }
+}
+const d = new Derived();
+d.twice(2) + Derived.id(5);";
+
+fn class_options() -> CompilerOptions {
+    CompilerOptions {
+        class_emit: true,
+        ..CompilerOptions::default()
+    }
+}
+
+#[test]
+fn direct_page_classes_construct_call_methods_inherit_and_use_super() {
+    let artifact = compile_direct_script(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(ENTRY, CLASS_SOURCE)]),
+        class_options(),
+    )
+    .unwrap();
+    let mut owner = DirectPageRealmOwner::default();
+    owner.open_realm(7, origin()).unwrap();
+    let attachment = owner.attach_script(&artifact, 7, &origin()).unwrap();
+    // Derived.add(2) is (2 + 1) * 10, called twice through `this`, plus
+    // Derived.id(5) is 5 + 100; Node runs the same program to 165.
+    assert_eq!(
+        owner.execute_program(7, &attachment).unwrap(),
+        bluejs::Value::Number(165.0)
+    );
+}
+
+#[test]
+fn direct_route_still_refuses_classes_unless_the_staging_switch_is_on() {
+    let result = compile_direct_script(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(ENTRY, CLASS_SOURCE)]),
+        CompilerOptions::default(),
+    );
+    assert!(result.is_err());
+}
+
 #[test]
 fn direct_page_while_runs_zero_and_multiple_iterations() {
     let artifact = compile_direct_script(

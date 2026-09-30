@@ -2072,8 +2072,21 @@ done to the page-runs-and-debugs goal at the top of this file.
       direct bridge keep refusing classes (the switch is off there) until
       J.3.1.6 removes it. Full workspace tests, Clippy, rustfmt and whitespace
       checks pass.
-    - [ ] **J.3.1.5** Lower checked classes directly to BlueJS class AST;
+    - [x] **J.3.1.5** Lower checked classes directly to BlueJS class AST;
       verify page-realm construction, method calls, inheritance, and `super`.
+      A checked class lowers to `Stmt::ClassDecl`: the constructor is the
+      non-static method named `constructor`, methods keep their `static` side,
+      overload signatures are skipped, and `extends` is the base name; an
+      exported class lowers in the module bridge with a matching export entry
+      (a script refuses one). The expression lowering gains `this`, `super`,
+      and `super(..)` calls; parameters and bodies reuse the function lowering,
+      so a destructured parameter or nested declaration inside a method is
+      refused. Classes are reached only when the caller's options set
+      `class_emit`, so the default direct route still refuses them. A program
+      with construction, instance and static methods, `this` calls, single
+      inheritance, `super()` and instance and static `super.m()` runs in a
+      real BlueJS page realm to `165`, the same result Node gives for the
+      program. Bridge and BlueTS crate tests, workspace Clippy and rustfmt pass.
     - [ ] **J.3.1.6** Verify strict-boundary policy, original-source debugger
       mapping, stale-generation refusal, pinned-oracle parity, and the
       disk-budgeted workspace gates before checking off J.3.1.

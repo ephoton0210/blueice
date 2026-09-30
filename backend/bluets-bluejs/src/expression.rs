@@ -515,6 +515,10 @@ impl<'a> ExpressionLowerer<'a> {
                 "null" => Ok(bluejs::Expr::Null),
                 "undefined" => Ok(bluejs::Expr::Identifier("undefined".to_string())),
                 "new" => self.parse_new_expression(token),
+                "this" => Ok(bluejs::Expr::This),
+                // `super(..)` and `super.member` are an ordinary call and
+                // member access on this node; BlueJS checks where it may occur.
+                "super" => Ok(bluejs::Expr::Super),
                 _ => Err(unsupported(
                     self.token_span(token),
                     format!(
@@ -897,7 +901,7 @@ impl<'a> ExpressionLowerer<'a> {
             }
             if !matches!(
                 &expression,
-                bluejs::Expr::Identifier(_) | bluejs::Expr::Member { .. }
+                bluejs::Expr::Identifier(_) | bluejs::Expr::Member { .. } | bluejs::Expr::Super
             ) {
                 return Err(unsupported(
                     self.token_span(token),

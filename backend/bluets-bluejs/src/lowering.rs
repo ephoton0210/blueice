@@ -63,10 +63,14 @@ pub(super) fn lower_script(
                     "declared, overloaded, or exported functions require a non-script bridge mode",
                 ));
             }
+            Declaration::Class(class) if !class.exported => {
+                body.push(lower_class(module, class)?);
+                provenance.push((class.span.clone(), LoweringProvenanceKind::LoweredSyntax));
+            }
             Declaration::Class(class) => {
                 return Err(unsupported(
                     class.span.clone(),
-                    "class members and runtime semantics are not installed yet",
+                    "an exported class requires the module bridge",
                 ));
             }
         }
@@ -185,10 +189,14 @@ pub(super) fn lower_module(
                 ));
             }
             Declaration::Class(class) => {
-                return Err(unsupported(
-                    class.span.clone(),
-                    "class members and runtime semantics are not installed yet",
-                ));
+                body.push(lower_class(module, class)?);
+                provenance.push((class.span.clone(), LoweringProvenanceKind::LoweredSyntax));
+                if class.exported {
+                    exports.push(bluejs::ExportEntry::Local {
+                        export_name: class.name.clone(),
+                        local_name: class.name.clone(),
+                    });
+                }
             }
         }
     }
@@ -240,15 +248,78 @@ fn lower_function(
     module: &Module,
     function: &FunctionDeclaration,
 ) -> Result<bluejs::Stmt, BridgeError> {
-    let mut params = Vec::with_capacity(function.parameters.len());
-    for (index, parameter) in function.parameters.iter().enumerate() {
+    Ok(bluejs::Stmt::FunctionDecl(lower_function_value(
+        module,
+        Some(function.name.clone()),
+        &function.parameters,
+        &function.body,
+    )?))
+}
+
+/// A class as a BlueJS class declaration. Overload signatures have no runtime
+/// form and are skipped; the constructor is the non-static method named
+/// `constructor`, as BlueJS represents it.
+fn lower_class(module: &Module, class: &ClassDeclaration) -> Result<bluejs::Stmt, BridgeError> {
+    let mut elements = Vec::new();
+    for member in &class.members {
+        let (name, is_static, parameters, body) = if let Some(constructor) = &member.constructor {
+            (
+                "constructor".to_string(),
+                false,
+                &constructor.parameters,
+                &constructor.body,
+            )
+        } else if let Some(method) = &member.method {
+            (
+                method.name.clone(),
+                method.is_static,
+                &method.parameters,
+                &method.body,
+            )
+        } else {
+            return Err(unsupported(
+                member.span.clone(),
+                "this class member has no direct lowering",
+            ));
+        };
+        let Some(body) = body else {
+            continue;
+        };
+        elements.push(bluejs::ClassElement::Method {
+            key: bluejs::PropertyKey::Identifier(name.clone()),
+            function: lower_function_value(module, Some(name), parameters, body)?,
+            is_static,
+            decorators: Vec::new(),
+        });
+    }
+    Ok(bluejs::Stmt::ClassDecl(bluejs::Class {
+        name: Some(class.name.clone()),
+        extends: class
+            .extends_name
+            .as_ref()
+            .map(|base| Box::new(bluejs::Expr::Identifier(base.clone()))),
+        elements,
+        decorators: Vec::new(),
+        // Synthesized from BlueTSC's own lowered AST: no `[[SourceText]]`.
+        source_text: Default::default(),
+    }))
+}
+
+fn lower_function_value(
+    module: &Module,
+    name: Option<String>,
+    parameters: &[Parameter],
+    body_items: &[FunctionBodyItem],
+) -> Result<bluejs::Function, BridgeError> {
+    let mut params = Vec::with_capacity(parameters.len());
+    for (index, parameter) in parameters.iter().enumerate() {
         if parameter.pattern.is_some() {
             return Err(unsupported(
                 parameter.span.clone(),
                 "destructured parameters are not yet in the v1 direct bridge subset",
             ));
         }
-        if parameter.rest && index + 1 != function.parameters.len() {
+        if parameter.rest && index + 1 != parameters.len() {
             return Err(unsupported(
                 parameter.span.clone(),
                 "a rest parameter must be the final direct function parameter",
@@ -265,10 +336,10 @@ fn lower_function(
         });
     }
 
-    let body = lower_function_body(module, &function.body)?;
+    let body = lower_function_body(module, body_items)?;
 
-    Ok(bluejs::Stmt::FunctionDecl(bluejs::Function {
-        name: Some(function.name.clone()),
+    Ok(bluejs::Function {
+        name,
         params,
         body,
         generator: false,
@@ -279,7 +350,7 @@ fn lower_function(
         // NativeFunction, matching how the compiler treats every other
         // synthesized function.
         source_text: Default::default(),
-    }))
+    })
 }
 
 fn lower_function_body(
