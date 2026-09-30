@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: J.3.4.5.** H and I are complete. The requested class, enum,
+**Current leaf: J.3.5.** H and I are complete. The requested class, enum,
 decorator, namespace, JSX, CommonJS, and package-resolution expansion has
 passed J.1/J.2 planning; implementation and pinned-`tsc` parity remain open.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
@@ -2353,7 +2353,7 @@ done to the page-runs-and-debugs goal at the top of this file.
       program. This closes J.3.3; what is deliberately narrow (the token-based
       private-name rewrite, a derived constructor needing a top-level `super`) is
       refused as unsupported and recorded above rather than approximated.
-  - [ ] **J.3.4** Implement numeric/string/heterogeneous enums and `const enum`
+  - [x] **J.3.4** Implement numeric/string/heterogeneous enums and `const enum`
     semantics, including evaluation, reverse mapping, declaration emit,
     isolation options, direct runtime, and oracle parity.
     - [x] **J.3.4.1** Parse `[export] [declare] [const] enum Name { .. }`:
@@ -2444,7 +2444,18 @@ done to the page-runs-and-debugs goal at the top of this file.
       the const-enum options; an incremental session recompiles when they
       change. Ambient enums declared in a host `.d.ts` module stay refused,
       since their values would have to reach the emitter for inlining.
-    - [ ] **J.3.4.5** Direct runtime (bridge) and Node/pinned-tsc parity.
+    - [x] **J.3.4.5** Direct runtime (bridge) and Node/pinned-tsc parity. The
+      bridge lowers every runtime enum declaration to one root statement,
+      `var E = (function (E) { E[E["A"] = 0] = "A"; ...; return E; })(E || {});`
+      (a string member without the reverse entry, a computed member through its
+      own initializer), so merged declarations reuse the object and `E.A`,
+      `E[0]`, imports and exports read the real object; an exported enum gets a
+      local export entry (script routes refuse it, as they refuse any export).
+      A `const enum` is read through its object, which prints what the inlined
+      emit prints. An ambient `enum` has no runtime form and is erased; an
+      ambient `const enum`, whose uses would need inlining, is refused. The
+      numbers the tests expect were computed by running the same program under
+      Node; the emit-path parity with pinned tsc stays covered by `enum_oracle`.
   - [ ] **J.3.5** Implement runtime namespaces/modules and declaration merging,
     including initialization order, export visibility, nested maps, direct
     execution, and oracle parity.

@@ -420,17 +420,19 @@ fn direct_page_define_semantics_keeps_the_field_that_assign_semantics_drops() {
 }
 
 #[test]
-fn direct_routes_refuse_an_enum_until_it_has_a_lowering() {
-    let source = "enum E { A, B } E.B;";
-    let loader = MapLoader::from([ModuleSource::new(ENTRY, source)]);
-    let script = compile_direct_script(ENTRY, &loader, CompilerOptions::default());
+fn direct_routes_refuse_what_an_enum_lowering_cannot_inline() {
+    let loader = MapLoader::from([ModuleSource::new(
+        ENTRY,
+        "declare const enum E { A, B } E.B;",
+    )]);
     assert!(matches!(
-        script,
+        compile_direct_script(ENTRY, &loader, CompilerOptions::default()),
         Err(BridgeError::UnsupportedRuntimeTarget { .. })
     ));
-    let module = compile_direct_module(ENTRY, &loader, CompilerOptions::default());
+    // An exported enum needs the module bridge.
+    let exported = MapLoader::from([ModuleSource::new(ENTRY, "export enum E { A } E.A;")]);
     assert!(matches!(
-        module,
+        compile_direct_script(ENTRY, &exported, CompilerOptions::default()),
         Err(BridgeError::UnsupportedRuntimeTarget { .. })
     ));
 }
@@ -1515,4 +1517,41 @@ fn direct_module_graph_debug_failure_forgets_records_and_discards_every_program(
     let stats = runtime.realm_stats(7).unwrap();
     assert_eq!(stats.program_count, 0);
     assert_eq!(stats.bytecode_bytes, 0);
+}
+
+fn run_direct_page_script(source: &str) -> bluejs::Value {
+    let artifact = compile_direct_script(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+        class_options(),
+    )
+    .unwrap();
+    let mut owner = DirectPageRealmOwner::default();
+    owner.open_realm(7, origin()).unwrap();
+    let attachment = owner.attach_script(&artifact, 7, &origin()).unwrap();
+    owner.execute_program(7, &attachment).unwrap()
+}
+
+#[test]
+fn direct_page_enums_build_reverse_maps_merge_and_run_like_node() {
+    let source = "function seed(): number { return 7; } \
+        enum Color { Red, Green = 5, Blue } \
+        enum M { A = 1 } enum M { B = 2 } \
+        enum Comp { A = seed(), B = Comp.A * 2 } \
+        enum S { X = 'x', Y = 'yy' } \
+        Color.Blue + Color[5].length + M.A * 100 + M.B * 1000 + Comp.B + S.Y.length \
+            + Object.keys(M).length * 10000;";
+    // Node runs the same program (the enum IIFEs tsc prints) to 42127.
+    assert_eq!(
+        run_direct_page_script(source),
+        bluejs::Value::Number(42127.0)
+    );
+}
+
+#[test]
+fn direct_page_const_enums_read_their_object_and_ambient_enums_are_erased() {
+    let source = "const enum K { A = 1, B = A << 2 } \
+        declare enum Host { Q } \
+        K.B + K.A;";
+    assert_eq!(run_direct_page_script(source), bluejs::Value::Number(5.0));
 }

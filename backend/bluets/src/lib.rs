@@ -51,6 +51,7 @@ pub use emitter::{
     BuildArtifact, BuildOutput, EmittedRuntimeBoundary, EmittedRuntimeSite, EmittedStrictModule,
     SourceMap, CLASS_HELPER_V1_VERSION,
 };
+pub use enum_eval::{evaluate_enums, EnumValue, EvaluatedEnum, EvaluatedMember};
 pub use parser::{
     parse_module, ClassAccessor, ClassConstructor, ClassDeclaration, ClassField, ClassMemberKind,
     ClassMemberShell, ClassMethod, ClassMethodGroup, Declaration, EnumDeclaration, EnumMember,

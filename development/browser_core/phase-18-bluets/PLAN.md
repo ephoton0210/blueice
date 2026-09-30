@@ -3004,3 +3004,27 @@ module are not supported, so that set is closed.
 - [x] Bound the pure contract validator's depth, collection, node-fuel and string-byte work with caller-visible limits
 - [x] Add an opt-in, TypeScript-5.9.3-pinned external-oracle job for the implemented initial matrix
 - [ ] Add real-process page, debugger, contract, resource, policy and multi-tab regression coverage
+
+### J.3.4.4 Enum declaration output
+
+An exported enum, or a local one named in `export { .. }`, prints as
+`[export ]declare [const ]enum E { .. }`, one member per line: a constant member
+as `name = value` (numbers as JavaScript prints them, so `1e+21`, `Infinity`,
+`NaN`; strings double-quoted; a non-identifier name quoted), a computed or
+uninitialized ambient member by name alone, merged declarations printed
+separately, an empty body as `{` newline `}`. The shared evaluator in
+`enum_eval.rs` supplies the values, so the declaration and the JavaScript can
+never disagree. The declaration does not read the const-enum options; both
+options are in the fingerprint, so an incremental session recompiles when one
+changes. A local enum can now be the target of `export { Local }`.
+
+### J.3.4.5 Direct runtime for enums
+
+The bridge lowers a runtime enum to one root statement,
+`var E = (function (E) { ...; return E; })(E || {});`, the same shape as the
+emit path, so merged declarations share one object and imports and exports read
+it. The evaluator (now public, `blueice_bluets::evaluate_enums`) supplies the
+constants; a computed member keeps its own initializer. A `const enum` is read
+through its object, which is observably the same as inlining it; an ambient
+`enum` is erased; an ambient `const enum` is refused because its uses would need
+inlining. Script routes refuse an exported enum like any export.

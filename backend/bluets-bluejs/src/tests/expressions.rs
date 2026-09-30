@@ -904,3 +904,38 @@ fn direct_graph_retains_host_authorized_canonical_module_records() {
         bluejs::Value::Number(42.0)
     );
 }
+
+#[test]
+fn a_direct_module_graph_exports_and_imports_enums_like_node() {
+    let graph = compile_direct_module_graph(
+        GRAPH_ENTRY,
+        &MapLoader::from([
+            ModuleSource::new(
+                GRAPH_ENTRY,
+                "import { Level, Mode } from './dep.ts'; \
+                 export const answer: number = Level.High * 10 + Mode.Fast.length + Level[1].length; answer;",
+            ),
+            ModuleSource::new(
+                "graph/dep.ts",
+                "export enum Level { Low = 1, High = 2 } \
+                 export const enum Mode { Fast = 'fast', Slow = 'slow' }",
+            ),
+        ]),
+        CompilerOptions::default(),
+    )
+    .unwrap();
+    let bluejs::BlueJsProgramV1::Module(dependency) = &graph.modules["graph/dep.ts"].program else {
+        panic!("the dependency must lower to a BlueJS module AST");
+    };
+    assert!(dependency.exports.iter().any(|entry| matches!(
+        entry,
+        bluejs::ExportEntry::Local { export_name, .. } if export_name == "Level"
+    )));
+    // Node runs the same program (Level.High * 10 + "fast".length + "Low".length) to 27.
+    assert_eq!(
+        bluejs::Vm::default()
+            .execute_module_graph(&graph.entry, &graph.bytecode_map())
+            .unwrap(),
+        bluejs::Value::Number(27.0)
+    );
+}

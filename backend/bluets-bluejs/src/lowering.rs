@@ -4,6 +4,7 @@
 
 use super::expression::ExpressionLowerer;
 use super::*;
+use blueice_bluets::evaluate_enums;
 
 pub(super) fn lower_script(
     module: &Module,
@@ -11,6 +12,7 @@ pub(super) fn lower_script(
 ) -> Result<(Vec<bluejs::Stmt>, Vec<LoweringProvenance>), BridgeError> {
     let mut body = Vec::new();
     let mut provenance = Vec::new();
+    let mut evaluations = evaluate_enums(module).into_iter();
     for declaration in &module.declarations {
         match declaration {
             Declaration::TypeAlias(_) | Declaration::Interface(_) | Declaration::TypeExport(_) => {}
@@ -75,10 +77,19 @@ pub(super) fn lower_script(
                 ));
             }
             Declaration::Enum(declaration) => {
-                return Err(unsupported(
-                    declaration.span.clone(),
-                    "an enum has no direct lowering yet",
-                ));
+                if declaration.exported {
+                    return Err(unsupported(
+                        declaration.span.clone(),
+                        "an exported enum requires the module bridge",
+                    ));
+                }
+                if let Some(statement) = lower_enum(module, declaration, &mut evaluations)? {
+                    body.push(statement);
+                    provenance.push((
+                        declaration.span.clone(),
+                        LoweringProvenanceKind::LoweredSyntax,
+                    ));
+                }
             }
         }
     }
@@ -95,6 +106,7 @@ pub(super) fn lower_module(
     let mut exports = Vec::new();
     let mut requests = Vec::new();
     let mut provenance = Vec::new();
+    let mut evaluations = evaluate_enums(module).into_iter();
     for declaration in &module.declarations {
         match declaration {
             Declaration::TypeAlias(_) | Declaration::Interface(_) | Declaration::TypeExport(_) => {}
@@ -207,10 +219,24 @@ pub(super) fn lower_module(
                 }
             }
             Declaration::Enum(declaration) => {
-                return Err(unsupported(
-                    declaration.span.clone(),
-                    "an enum has no direct lowering yet",
-                ));
+                if let Some(statement) = lower_enum(module, declaration, &mut evaluations)? {
+                    body.push(statement);
+                    provenance.push((
+                        declaration.span.clone(),
+                        LoweringProvenanceKind::LoweredSyntax,
+                    ));
+                    if declaration.exported
+                        && !exports.iter().any(|entry| {
+                            matches!(entry, bluejs::ExportEntry::Local { export_name, .. }
+                                if *export_name == declaration.name)
+                        })
+                    {
+                        exports.push(bluejs::ExportEntry::Local {
+                            export_name: declaration.name.clone(),
+                            local_name: declaration.name.clone(),
+                        });
+                    }
+                }
             }
         }
     }
@@ -422,6 +448,112 @@ fn lower_class(
         // Synthesized from BlueTSC's own lowered AST: no `[[SourceText]]`.
         source_text: Default::default(),
     }))
+}
+
+/// An enum as `var E = (function (E) { E[E["A"] = 0] = "A"; ...; return E; })(E || {});`.
+/// One statement per declaration keeps a root statement and its source span one
+/// to one, and merged declarations reuse the object through `E || {}`. A
+/// `const enum` is lowered like any other: its object exists at run time and
+/// every use reads it, which behaves as the inlined emit does. An ambient enum
+/// has no runtime form (`None`), except an ambient `const enum`, whose uses
+/// would need their values inlined, which the bridge does not do.
+fn lower_enum(
+    module: &Module,
+    declaration: &blueice_bluets::EnumDeclaration,
+    evaluations: &mut std::vec::IntoIter<blueice_bluets::EvaluatedEnum>,
+) -> Result<Option<bluejs::Stmt>, BridgeError> {
+    let evaluation = evaluations
+        .next()
+        .expect("every enum declaration was evaluated");
+    if declaration.declared {
+        if declaration.is_const {
+            return Err(unsupported(
+                declaration.span.clone(),
+                "an ambient const enum needs its uses inlined, which the direct bridge does not do",
+            ));
+        }
+        return Ok(None);
+    }
+    let name = declaration.name.clone();
+    let string = |text: &str| bluejs::Expr::String(bluejs::JsString::from(text));
+    let object = || bluejs::Expr::Identifier(name.clone());
+    let member_key = |member: &str| bluejs::Expr::Member {
+        object: Box::new(object()),
+        property: Box::new(string(member)),
+        computed: true,
+    };
+    let assign = |target: bluejs::Expr, value: bluejs::Expr| bluejs::Expr::Assign {
+        op: bluejs::AssignOp::Assign,
+        target: Box::new(target),
+        value: Box::new(value),
+    };
+    let mut statements = Vec::new();
+    for (member, evaluated) in declaration.members.iter().zip(&evaluation.members) {
+        let statement = match &evaluated.value {
+            Some(blueice_bluets::EnumValue::Number(number)) => {
+                // E[E["A"] = 0] = "A"
+                let forward = assign(member_key(&member.name), bluejs::Expr::Number(*number));
+                assign(
+                    bluejs::Expr::Member {
+                        object: Box::new(object()),
+                        property: Box::new(forward),
+                        computed: true,
+                    },
+                    string(&member.name),
+                )
+            }
+            Some(blueice_bluets::EnumValue::Text(text)) => {
+                assign(member_key(&member.name), string(text))
+            }
+            None => {
+                let value = member
+                    .initializer
+                    .as_deref()
+                    .map(|tokens| ExpressionLowerer::new(&module.id, tokens).parse())
+                    .transpose()?
+                    .unwrap_or(bluejs::Expr::Identifier("undefined".to_string()));
+                let forward = assign(member_key(&member.name), value);
+                assign(
+                    bluejs::Expr::Member {
+                        object: Box::new(object()),
+                        property: Box::new(forward),
+                        computed: true,
+                    },
+                    string(&member.name),
+                )
+            }
+        };
+        statements.push(bluejs::Stmt::Expr(statement));
+    }
+    statements.push(bluejs::Stmt::Return(Some(object())));
+    let function = bluejs::Function {
+        name: None,
+        params: vec![bluejs::Param {
+            pattern: bluejs::Pattern::Identifier(name.clone()),
+            default: None,
+            rest: false,
+        }],
+        body: statements,
+        generator: false,
+        is_async: false,
+        source_text: Default::default(),
+    };
+    let argument = bluejs::Expr::Logical {
+        op: bluejs::LogicalOp::Or,
+        left: Box::new(object()),
+        right: Box::new(bluejs::Expr::Object(Vec::new())),
+    };
+    let call = bluejs::Expr::Call {
+        callee: Box::new(bluejs::Expr::Function(function)),
+        args: vec![bluejs::Argument::Normal(argument)],
+    };
+    Ok(Some(bluejs::Stmt::VarDecl(
+        bluejs::DeclKind::Var,
+        vec![bluejs::VarDeclarator {
+            pattern: bluejs::Pattern::Identifier(name),
+            init: Some(call),
+        }],
+    )))
 }
 
 /// `this.name = value;`

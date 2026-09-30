@@ -23,28 +23,28 @@ use crate::syntax::{Token, TokenKind};
 
 /// The value of a constant member.
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum EnumValue {
+pub enum EnumValue {
     Number(f64),
     Text(String),
 }
 
 /// One evaluated member: its constant value, or `None` when it is computed.
 #[derive(Debug, Clone)]
-pub(crate) struct EvaluatedMember {
-    pub(crate) name: String,
-    pub(crate) value: Option<EnumValue>,
+pub struct EvaluatedMember {
+    pub name: String,
+    pub value: Option<EnumValue>,
 }
 
 /// One enum declaration, evaluated.
 #[derive(Debug, Clone)]
-pub(crate) struct EvaluatedEnum {
-    pub(crate) members: Vec<EvaluatedMember>,
-    pub(crate) errors: Vec<(SourceSpan, String, DiagnosticCode)>,
+pub struct EvaluatedEnum {
+    pub members: Vec<EvaluatedMember>,
+    pub errors: Vec<(SourceSpan, String, DiagnosticCode)>,
 }
 
 /// Evaluates every enum declaration of `module`, in source order, so a later
 /// declaration of the same enum sees the earlier one's members.
-pub(crate) fn evaluate_enums(module: &Module) -> Vec<EvaluatedEnum> {
+pub fn evaluate_enums(module: &Module) -> Vec<EvaluatedEnum> {
     // Each enum's members so far, by name.
     let mut known: BTreeMap<String, Vec<EvaluatedMember>> = BTreeMap::new();
     let mut result = Vec::new();
