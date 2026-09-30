@@ -230,6 +230,27 @@ const CASES: &[OracleCase] = &[
         expected_diagnostics: &[],
     },
     OracleCase {
+        name: "class-static-block-emit-runtime",
+        modules: &[(
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/class-static-block-emit-runtime/main.ts"),
+        )],
+        expected_stdout: Some(
+            "a,block1,local11,b,hidden,block2,child21\n\
+             a,block1,local11,b,hidden,block2,child21,instance,instance\n",
+        ),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
+        name: "class-static-block-emit-declaration",
+        modules: &[(
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/class-static-block-emit-declaration/main.ts"),
+        )],
+        expected_stdout: Some(""),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
         name: "generic-property",
         modules: &[(
             "memory:///main.ts",
@@ -4902,6 +4923,9 @@ fn expected_declaration(case: &OracleCase) -> Option<&'static str> {
              export declare class C extends A {\n    #private;\n}\n\
              export declare class D {\n    #private;\n    e: number;\n    private p;\n}\n\
              export declare class E {\n    #private;\n    open: number;\n    constructor(open: number);\n}\n",
+        ),
+        "class-static-block-emit-declaration" => Some(
+            "export declare class A {\n    static count: number;\n    a: number;\n}\n",
         ),
         _ => None,
     }

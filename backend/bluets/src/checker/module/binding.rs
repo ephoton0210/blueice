@@ -718,6 +718,7 @@ impl<'a> ModuleChecker<'a> {
                         checker.validate_class_fields(class);
                         checker.check_class_constructor_bodies(class);
                         checker.check_class_method_bodies(class);
+                        checker.check_class_static_blocks(class);
                     });
                 }
                 Declaration::Import(_)

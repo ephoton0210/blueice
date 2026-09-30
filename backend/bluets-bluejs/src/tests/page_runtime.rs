@@ -320,6 +320,37 @@ fn direct_page_private_names_fields_methods_accessors_and_brand_checks_run_like_
 }
 
 #[test]
+fn direct_page_static_blocks_and_fields_initialize_in_source_order_like_node() {
+    let source = "class Order { \
+        static log: number = 0; \
+        static a: number = Order.note(1); \
+        static { Order.note(10); const local: number = this.a + 100; Order.log = Order.log + local; } \
+        static b: number = Order.note(2); \
+        static #hidden: number = Order.note(3); \
+        static { Order.log = Order.log * 2 + Order.#hidden + this.b; } \
+        instance: number = Order.note(4); \
+        static note(step: number): number { Order.log = Order.log * 10 + step; return step; } } \
+        class Child extends Order { static extra: number = Order.a + 1; \
+        static { Order.log = Order.log + this.extra + super.a; } } \
+        const before: number = Order.log; new Order(); new Child(); \
+        before + Order.log;";
+    let artifact = compile_direct_script(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+        class_options(),
+    )
+    .unwrap();
+    let mut owner = DirectPageRealmOwner::default();
+    owner.open_realm(7, origin()).unwrap();
+    let attachment = owner.attach_script(&artifact, 7, &origin()).unwrap();
+    // Node runs the same program (annotations erased) to 2449698.
+    assert_eq!(
+        owner.execute_program(7, &attachment).unwrap(),
+        bluejs::Value::Number(2449698.0)
+    );
+}
+
+#[test]
 fn direct_page_while_runs_zero_and_multiple_iterations() {
     let artifact = compile_direct_script(
         ENTRY,

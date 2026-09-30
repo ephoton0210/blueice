@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: J.3.2.6.** H and I are complete. The requested class, enum,
+**Current leaf: J.3.3.** H and I are complete. The requested class, enum,
 decorator, namespace, JSX, CommonJS, and package-resolution expansion has
 passed J.1/J.2 planning; implementation and pinned-`tsc` parity remain open.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
@@ -2106,7 +2106,7 @@ done to the page-runs-and-debugs goal at the top of this file.
       TypeScript accepts and BlueTS supports and to fail on the rest, with one
       accepted entry (a private member) deferred and allowed to fail only as
       unsupported syntax.
-  - [ ] **J.3.2** Add fields, accessors, private members, parameter
+  - [x] **J.3.2** Add fields, accessors, private members, parameter
     properties, and static initialization in separately tested forms;
     verify order, visibility, declarations, and debugger provenance.
     - [x] **J.3.2.1** Public instance and static fields:
@@ -2257,7 +2257,28 @@ done to the page-runs-and-debugs goal at the top of this file.
       plus a bridge test with Node parity pin codes and text. Known gap: the type
       of `#x in o` is not computed (it reads as unknown), so assigning it to a
       non-boolean is not diagnosed.
-    - [ ] **J.3.2.6** Static blocks and static initialization order.
+    - [x] **J.3.2.6** Static blocks and static initialization order. `static { .. }`
+      is a structured member whose body is checked as a function body with
+      `this` bound to the class's constructor side (so static members and
+      private static names are reachable, instance members are not),
+      `super` bound to the base's static side, no `return`, and no `await`. It
+      is emitted as written (the body's annotations erased) and, like any static
+      initializer, runs in source order among the static fields at class
+      definition, before any instance field initializer; the order is checked
+      against Node by comparing stdout with pinned tsc, including a derived
+      class's blocks. A static initializer or block may not read a static field
+      declared after it (`this.later`, or `Class.later` in a static initializer);
+      a read hidden inside a nested function or arrow is refused as unsupported
+      because whether it runs early is not modelled. ES2020 targets are refused
+      (J.3.3), declaration output omits blocks, and the direct bridge lowers a
+      block to a BlueJS static block. 19 `class-static-*` entries
+      join the pinned-TypeScript class matrix (all agree), two more compare
+      emitted stdout and the `.d.ts` with pinned tsc, and 10 public tests plus a
+      bridge test with Node parity pin codes and text. Found while doing this,
+      and left open: BlueTS reports no error for an unknown identifier at all,
+      at the top level or in a body (`const n: number = missing;` compiles),
+      where TypeScript reports TS2304; two fixtures that depended on it were
+      not added.
   - [ ] **J.3.3** Complete target-dependent native/downlevel class emit,
     versioned helpers, option interactions, and Node/BlueJS parity.
   - [ ] **J.3.4** Implement numeric/string/heterogeneous enums and `const enum`

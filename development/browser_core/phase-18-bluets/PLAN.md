@@ -2794,6 +2794,24 @@ WeakMap lowering, so it is refused until J.3.3. Declaration output is one
 `#private;` at the top of each class that declares any private name, and none of
 the names.
 
+### J.3.2.6 Static blocks and static initialization order
+
+`static { .. }` is recognized where `static` is followed by `{`, so a member merely
+named `static` is unaffected. Its body is parsed as a function body, so annotations
+inside it are erased like any other, and checked with the class body machinery:
+`this` is the constructor side (static members and private static names in, instance
+members out), `super` is the base's static side, `return` is an error, and `await`
+is an error because the block is checked as a non-async function.
+
+Initialization order is the engine's, as in TypeScript's ES2022 output: static fields
+and blocks run in source order when the class is defined, then instance field
+initializers run at each construction, with a derived class's statics after its
+base's. The checker enforces the one static ordering rule TypeScript does: an
+initializer or block may not read a static field declared after it, by `this` or by
+the class name. Both forms are refused as unsupported instead of modelled when the
+read sits in a nested function or arrow, because whether such a function runs before
+the field is initialized depends on its callers.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process

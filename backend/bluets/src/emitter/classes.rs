@@ -125,6 +125,18 @@ pub(super) fn refuse_fields_below_es2022(
                 "class fields need the ES2022 target; lowering them for ES2020 is not supported yet",
             ));
         }
+        // A static block is ES2022 syntax too.
+        if let Some(member) = class
+            .members
+            .iter()
+            .find(|member| member.static_block.is_some())
+        {
+            return Err(Diagnostic::error(
+                DiagnosticCode::UnsupportedSyntax,
+                member.span.clone(),
+                "static blocks need the ES2022 target; lowering them for ES2020 is not supported yet",
+            ));
+        }
         // A private-name method or accessor is ES2022 syntax too.
         if let Some(span) = class.members.iter().find_map(|member| {
             let name = member

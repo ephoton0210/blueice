@@ -15,7 +15,10 @@ use crate::parser::{FunctionElseBranch, FunctionIfStatement};
 
 /// Every expression-bearing statement of a body in source order, descending
 /// into braced blocks.
-fn statements<'a>(items: &'a [FunctionBodyItem], out: &mut Vec<(&'a [Token], &'a SourceSpan)>) {
+pub(super) fn statements<'a>(
+    items: &'a [FunctionBodyItem],
+    out: &mut Vec<(&'a [Token], &'a SourceSpan)>,
+) {
     for item in items {
         match item {
             FunctionBodyItem::Variable(variable) => {

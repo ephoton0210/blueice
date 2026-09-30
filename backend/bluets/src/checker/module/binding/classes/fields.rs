@@ -90,7 +90,13 @@ impl ModuleChecker<'_> {
                 }
             }
             if let Some(initializer) = &field.initializer {
-                self.check_field_initializer_order(&fields, position, field, initializer);
+                self.check_field_initializer_order(
+                    &class.name,
+                    &fields,
+                    position,
+                    field,
+                    initializer,
+                );
                 let mut scope = self.values.clone();
                 scope.insert(
                     "this".to_string(),
@@ -117,6 +123,62 @@ impl ModuleChecker<'_> {
         }
         self.check_definite_assignment(class, &fields);
         self.check_class_field_overrides(class, &fields);
+        self.check_static_block_order(class);
+    }
+
+    /// A static block runs at its place among the static fields, so it cannot
+    /// read a static field declared after it.
+    fn check_static_block_order(&mut self, class: &ClassDeclaration) {
+        for (block_index, member) in class.members.iter().enumerate() {
+            let Some(block) = &member.static_block else {
+                continue;
+            };
+            let later: BTreeSet<&str> = class
+                .members
+                .iter()
+                .skip(block_index + 1)
+                .filter_map(|other| other.field.as_ref())
+                .filter(|field| field.is_static)
+                .map(|field| field.name.as_str())
+                .collect();
+            if later.is_empty() {
+                continue;
+            }
+            let mut flat = Vec::new();
+            super::super_calls::statements(&block.body, &mut flat);
+            for (tokens, span) in flat {
+                let defers = tokens
+                    .iter()
+                    .any(|token| token.is("=>") || token.is("function"));
+                for (index, token) in tokens.iter().enumerate() {
+                    if !(token.is("this") || token.text == class.name)
+                        || !tokens.get(index + 1).is_some_and(|dot| dot.is("."))
+                    {
+                        continue;
+                    }
+                    let Some(name) = tokens
+                        .get(index + 2)
+                        .filter(|name| later.contains(name.text.as_str()))
+                    else {
+                        continue;
+                    };
+                    if defers {
+                        self.diagnostics.push(Diagnostic::error(
+                            DiagnosticCode::UnsupportedSyntax,
+                            span.clone(),
+                            "a static block that refers to a later static field inside a nested \
+                             function is not supported yet",
+                        ));
+                    } else {
+                        self.type_error(
+                            &SourceSpan::new(&span.module, name.start, name.end),
+                            format!("property `{}` is used before its initialization", name.text),
+                            DiagnosticCode::TypeMismatch,
+                        );
+                    }
+                }
+            }
+        }
     }
 
     /// A field may not share a name and placement with another field or a
@@ -141,9 +203,11 @@ impl ModuleChecker<'_> {
         }
     }
 
-    /// `this.later` in an initializer that runs before `later` is defined.
+    /// `this.later` (or `Class.later` in a static initializer) in an
+    /// initializer that runs before `later` is defined.
     fn check_field_initializer_order(
         &mut self,
+        class_name: &str,
         fields: &[&ClassField],
         position: usize,
         field: &ClassField,
@@ -153,7 +217,8 @@ impl ModuleChecker<'_> {
             .iter()
             .any(|token| token.is("=>") || token.is("function"));
         for (index, token) in initializer.iter().enumerate() {
-            if !token.is("this") || !initializer.get(index + 1).is_some_and(|dot| dot.is(".")) {
+            let names_the_class = token.is("this") || (field.is_static && token.text == class_name);
+            if !names_the_class || !initializer.get(index + 1).is_some_and(|dot| dot.is(".")) {
                 continue;
             }
             let Some(name) = initializer.get(index + 2) else {

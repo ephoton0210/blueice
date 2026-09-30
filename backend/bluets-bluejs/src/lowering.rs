@@ -273,6 +273,13 @@ fn lower_class(module: &Module, class: &ClassDeclaration) -> Result<bluejs::Stmt
         });
     }
     for member in &class.members {
+        if let Some(block) = &member.static_block {
+            elements.push(bluejs::ClassElement::StaticBlock(lower_function_body(
+                module,
+                &block.body,
+            )?));
+            continue;
+        }
         if let Some(accessor) = &member.accessor {
             elements.push(bluejs::ClassElement::Accessor {
                 key: bluejs::PropertyKey::Identifier(accessor.name.clone()),

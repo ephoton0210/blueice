@@ -226,6 +226,7 @@ pub enum ClassMemberKind {
     Method,
     Field,
     Accessor,
+    StaticBlock,
     Opaque,
 }
 
@@ -244,6 +245,14 @@ pub struct ClassMemberShell {
     pub method: Option<ClassMethod>,
     pub field: Option<ClassField>,
     pub accessor: Option<ClassAccessor>,
+    pub static_block: Option<ClassStaticBlock>,
+}
+
+/// A `static { .. }` initialization block.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ClassStaticBlock {
+    pub body: Vec<FunctionBodyItem>,
+    pub span: SourceSpan,
 }
 
 /// A `get name(): T { .. }` or `set name(value: T) { .. }` member.

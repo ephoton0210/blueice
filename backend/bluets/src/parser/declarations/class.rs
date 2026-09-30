@@ -69,6 +69,8 @@ impl Parser {
                 self.parse_class_method(opening + 1 + member.token_start, member);
             } else if member.kind == ClassMemberKind::Accessor {
                 self.parse_class_accessor(opening + 1 + member.token_start, member);
+            } else if member.kind == ClassMemberKind::StaticBlock {
+                self.parse_class_static_block(opening + 1 + member.token_start, member);
             } else if member.kind == ClassMemberKind::Opaque
                 && !body
                     .get(member.token_start + 1)
@@ -322,6 +324,32 @@ impl Parser {
             span: member.span.clone(),
         });
         true
+    }
+
+    /// `static { .. }`: the statements run once, when the class is defined.
+    fn parse_class_static_block(&mut self, start: usize, member: &mut ClassMemberShell) {
+        // `start` is the `static` token; the block opens right after it.
+        self.index = start + 1;
+        if !self.consume("{") {
+            return;
+        }
+        let body_start = self.previous().start;
+        let mut body = Vec::new();
+        let mut returns = Vec::new();
+        let mut locals = Vec::new();
+        self.parse_function_body(body_start, &mut body, &mut returns, &mut locals);
+        if self.previous().end != member.span.end {
+            self.error_at(
+                member.span.clone(),
+                DiagnosticCode::ParseError,
+                "static block did not match its source boundary",
+            );
+            return;
+        }
+        member.static_block = Some(ClassStaticBlock {
+            body,
+            span: member.span.clone(),
+        });
     }
 
     /// `[accessibility] [static] get|set name(..) [: T] { .. }`. The result
@@ -600,6 +628,23 @@ fn class_member_shells(module: &str, tokens: &[Token]) -> Vec<ClassMemberShell> 
             continue;
         }
         let start = index;
+        // `static { .. }` is an initialization block, not a member with a name.
+        if tokens[index].is("static") && tokens.get(index + 1).is_some_and(|token| token.is("{")) {
+            if let Some(closing) =
+                matching_closing_delimiter(tokens, index + 1, tokens.len(), "{", "}")
+            {
+                members.push(class_member_shell(
+                    module,
+                    tokens,
+                    start,
+                    closing + 1,
+                    ClassMemberKind::StaticBlock,
+                    None,
+                ));
+                index = closing + 1;
+                continue;
+            }
+        }
         let modifiers = scan_member_modifiers(tokens, index, tokens.len());
         let static_modifier = modifiers
             .as_ref()
@@ -738,5 +783,6 @@ fn class_member_shell(
         method: None,
         field: None,
         accessor: None,
+        static_block: None,
     }
 }

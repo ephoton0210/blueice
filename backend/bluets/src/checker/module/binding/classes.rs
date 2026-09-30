@@ -26,6 +26,8 @@ enum ClassBodyReturnRule<'a> {
         return_type: Option<&'a Type>,
         allows_implicit_undefined: bool,
     },
+    /// A `static { .. }` block, which cannot `return`.
+    StaticBlock,
 }
 
 fn specialize_class_rest_annotation(
@@ -787,6 +789,31 @@ impl ModuleChecker<'_> {
         }
     }
 
+    /// Each `static { .. }` block runs once with `this` bound to the class
+    /// constructor. It is a function body that cannot `return` or `await`.
+    pub(super) fn check_class_static_blocks(&mut self, class: &ClassDeclaration) {
+        let constructor_side = self
+            .values
+            .get(&class.name)
+            .cloned()
+            .unwrap_or_else(|| class_constructor_side_type(class));
+        for block in class
+            .members
+            .iter()
+            .filter_map(|member| member.static_block.as_ref())
+        {
+            let mut scope = self.values.clone();
+            if let Some(base) = self.super_scope_type(class, true) {
+                scope.insert("super".to_string(), base);
+            }
+            hoist_local_functions(&block.body, &mut scope);
+            scope.insert("this".to_string(), constructor_side.clone());
+            let previous_async = self.async_context.replace(false);
+            self.check_class_body_items(&block.body, &scope, ClassBodyReturnRule::StaticBlock);
+            self.async_context = previous_async;
+        }
+    }
+
     fn class_body_parameter_scope(&self, parameters: &[Parameter]) -> BTreeMap<String, Type> {
         let mut scope = self.values.clone();
         for parameter in parameters {
@@ -908,6 +935,12 @@ impl ModuleChecker<'_> {
                                 );
                             }
                         }
+                        ClassBodyReturnRule::StaticBlock => self.type_error(
+                            span,
+                            "a return statement cannot be used inside a class static block"
+                                .to_string(),
+                            DiagnosticCode::ReturnTypeMismatch,
+                        ),
                         ClassBodyReturnRule::Constructor { .. }
                         | ClassBodyReturnRule::Method {
                             return_type: None, ..
@@ -1283,6 +1316,7 @@ pub(in crate::checker::module) fn class_is_fully_structured(class: &ClassDeclara
         ClassMemberKind::Method => member.method.is_some(),
         ClassMemberKind::Field => member.field.is_some(),
         ClassMemberKind::Accessor => member.accessor.is_some(),
+        ClassMemberKind::StaticBlock => member.static_block.is_some(),
         ClassMemberKind::Opaque => false,
     })
 }
