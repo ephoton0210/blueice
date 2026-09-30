@@ -48,7 +48,7 @@ pub use debug_info::{
 pub use diagnostic::{Diagnostic, DiagnosticCode, Severity, SourceSpan};
 pub use emitter::{
     BuildArtifact, BuildOutput, EmittedRuntimeBoundary, EmittedRuntimeSite, EmittedStrictModule,
-    SourceMap,
+    SourceMap, CLASS_HELPER_V1_VERSION,
 };
 pub use parser::{
     parse_module, ClassAccessor, ClassConstructor, ClassDeclaration, ClassField, ClassMemberKind,

@@ -28,7 +28,7 @@ use crate::Token;
 
 /// The version of the emitted private-name helper text. It is part of the
 /// build fingerprint, so a change to the helpers is a change to the artifact.
-pub(crate) const CLASS_HELPER_V1_VERSION: &str = "bluets-class-helper-v1";
+pub const CLASS_HELPER_V1_VERSION: &str = "bluets-class-helper-v1";
 
 const GET_HELPER: &str = "__bluetsClassPrivateGet";
 const SET_HELPER: &str = "__bluetsClassPrivateSet";

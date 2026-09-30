@@ -289,6 +289,8 @@ struct BuildMetadata {
     /// Whether class fields are defined rather than assigned, with the
     /// target's default applied.
     use_define_for_class_fields: bool,
+    /// The version of the private-name helper text an artifact may embed.
+    class_helper_version: &'static str,
     runtime_policy: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
     runtime_helper: Option<RuntimeHelperIdentity>,
@@ -462,6 +464,7 @@ fn build_metadata(invocation: &Invocation, summary: &CompileSummary) -> BuildMet
         fingerprint: summary.fingerprint.clone(),
         target: invocation.options.target.as_str(),
         use_define_for_class_fields: invocation.options.defines_class_fields(),
+        class_helper_version: blueice_bluets::CLASS_HELPER_V1_VERSION,
         runtime_policy: invocation.options.runtime_policy.as_str(),
         runtime_helper: (invocation.options.runtime_policy == RuntimePolicy::StrictRuntime)
             .then(runtime_helper_v1_identity),

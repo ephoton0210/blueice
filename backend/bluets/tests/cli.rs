@@ -281,6 +281,70 @@ fn class_fields_build_for_es2020_under_either_semantics_and_the_manifest_records
 }
 
 #[test]
+fn lowered_private_names_build_for_es2020_run_under_node_and_the_manifest_names_the_helper_version()
+{
+    let temporary = unique_test_directory();
+    let root = temporary.join("project");
+    fs::create_dir_all(root.join("src")).unwrap();
+    fs::write(
+        root.join("src/main.ts"),
+        "class Counter {\n    #n: number = 0;\n    static #made: number = 0;\n    \
+         static make(): Counter { Counter.#made += 1; return new Counter(); }\n    \
+         bump(by: number): number { this.#n += by; return this.#n; }\n    \
+         static get made(): number { return Counter.#made; }\n    \
+         static has(o: any): boolean { return #n in o; }\n}\n\
+         const c = Counter.make();\n\
+         console.log(c.bump(2), c.bump(3), Counter.made, Counter.has(c), Counter.has({}));\n",
+    )
+    .unwrap();
+    for target in ["es2020", "es2022"] {
+        let output = temporary.join(format!("out-{target}"));
+        let built = Command::new(env!("CARGO_BIN_EXE_bluetsc"))
+            .args([
+                "build",
+                root.join("src/main.ts").to_str().unwrap(),
+                "--project-root",
+                root.to_str().unwrap(),
+                "--out-dir",
+                output.to_str().unwrap(),
+                "--target",
+                target,
+            ])
+            .output()
+            .unwrap();
+        assert!(
+            built.status.success(),
+            "{}",
+            String::from_utf8_lossy(&built.stderr)
+        );
+        let javascript = fs::read_to_string(output.join("src/main.js")).unwrap();
+        assert_eq!(
+            javascript.contains("#n"),
+            target == "es2022",
+            "{target}: {javascript}"
+        );
+        let manifest: serde_json::Value =
+            serde_json::from_slice(&fs::read(output.join("bluetsc.manifest.json")).unwrap())
+                .unwrap();
+        assert_eq!(manifest["classHelperVersion"], "bluets-class-helper-v1");
+        if Command::new("node").arg("--version").output().is_ok() {
+            fs::write(output.join("package.json"), r#"{"type":"module"}"#).unwrap();
+            let executed = Command::new("node")
+                .arg(output.join("src/main.js"))
+                .output()
+                .unwrap();
+            assert_eq!(
+                String::from_utf8_lossy(&executed.stdout).trim(),
+                "2 5 1 true false",
+                "{target}: {}",
+                String::from_utf8_lossy(&executed.stderr)
+            );
+        }
+    }
+    fs::remove_dir_all(temporary).unwrap();
+}
+
+#[test]
 fn strict_config_builds_only_complete_string_boundaries_for_both_targets() {
     let temporary = unique_test_directory();
     let root = temporary.join("project");

@@ -197,6 +197,7 @@ fn test_metadata() -> BuildMetadata {
         fingerprint: "bts-project-test".to_string(),
         target: "es2022",
         use_define_for_class_fields: true,
+        class_helper_version: "bluets-class-helper-v1",
         runtime_policy: "checked",
         runtime_helper: None,
         strict_boundaries: Vec::new(),

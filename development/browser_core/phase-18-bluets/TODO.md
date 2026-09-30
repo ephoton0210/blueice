@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: J.3.3.3.** H and I are complete. The requested class, enum,
+**Current leaf: J.3.4.** H and I are complete. The requested class, enum,
 decorator, namespace, JSX, CommonJS, and package-resolution expansion has
 passed J.1/J.2 planning; implementation and pinned-`tsc` parity remain open.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
@@ -2279,7 +2279,7 @@ done to the page-runs-and-debugs goal at the top of this file.
       at the top level or in a body (`const n: number = missing;` compiles),
       where TypeScript reports TS2304; two fixtures that depended on it were
       not added.
-  - [ ] **J.3.3** Complete target-dependent native/downlevel class emit,
+  - [x] **J.3.3** Complete target-dependent native/downlevel class emit,
     versioned helpers, option interactions, and Node/BlueJS parity.
     - [x] **J.3.3.1** `useDefineForClassFields` and downlevel class fields.
       A new option (`CompilerOptions::use_define_for_class_fields`, BlueTSC
@@ -2337,9 +2337,22 @@ done to the page-runs-and-debugs goal at the top of this file.
       brand checks, a subclass with a same-named private) are compiled by
       BlueTSC and pinned tsc in five modes and print the same under Node, and 7
       public tests pin the emitted text and each refusal.
-    - [ ] **J.3.3.3** Option interactions (declaration and source-map output,
-      strict-runtime, incremental cache keys) and remaining Node/BlueJS
-      parity across every target and semantics.
+    - [x] **J.3.3.3** Option interactions and remaining Node/BlueJS parity. The
+      class-field semantics are part of the incremental-session cache key, so
+      changing them recompiles instead of reusing a result, and the same source
+      that assign semantics accepts is an error under define semantics; the
+      version of the private-name helper text is recorded in the BlueTSC
+      manifest (`classHelperVersion`) as well as the fingerprint. Declaration
+      output is identical across every target and semantics; every emitted line
+      of a class program lowered for each target and semantics maps to a real
+      source line (decoded from the source map); transpile-only lowers classes
+      without checking them. A `bluetsc build` of a class using private names,
+      static members and a brand check runs under Node with the same output
+      for ES2020 (lowered) and ES2022 (native). The direct bridge, which is
+      target-independent, gives the values Node gives for both semantics of one
+      program. This closes J.3.3; what is deliberately narrow (the token-based
+      private-name rewrite, a derived constructor needing a top-level `super`) is
+      refused as unsupported and recorded above rather than approximated.
   - [ ] **J.3.4** Implement numeric/string/heterogeneous enums and `const enum`
     semantics, including evaluation, reverse mapping, declaration emit,
     isolation options, direct runtime, and oracle parity.

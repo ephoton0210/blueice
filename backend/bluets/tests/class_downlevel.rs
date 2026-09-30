@@ -486,3 +486,132 @@ fn source_maps_and_declarations_are_unaffected_by_the_lowering() {
         "{declarations:?}"
     );
 }
+
+#[test]
+fn an_incremental_session_recompiles_when_the_class_field_semantics_change() {
+    use blueice_bluets::IncrementalCompiler;
+    let source = "class B { x: number = 1; } class D extends B { x!: number; y: number = 2; }";
+    let loader = MapLoader::from([ModuleSource::new(ENTRY, source)]);
+    let mut session = IncrementalCompiler::new();
+    // Assign semantics accepts the redeclaration and emits it away.
+    let assign = session.compile(ENTRY, &loader, options(ES2020, None));
+    assert!(
+        !assign.compilation.has_errors(),
+        "{:?}",
+        assign.compilation.diagnostics
+    );
+    assert!(!assign.cache_hit);
+    let again = session.compile(ENTRY, &loader, options(ES2020, None));
+    assert!(again.cache_hit, "the same options reuse the cache");
+    // Define semantics is a different compilation: the option is part of the
+    // cache key, and the same source is now an error.
+    let define = session.compile(ENTRY, &loader, options(ES2020, Some(true)));
+    assert!(
+        !define.cache_hit,
+        "changed semantics must not reuse the cache"
+    );
+    assert!(define.compilation.has_errors());
+    assert!(define.compilation.output.is_none());
+}
+
+/// Decodes a source map's `mappings` into per-line lists of source lines.
+fn mapped_source_lines(mappings: &str) -> Vec<Vec<i64>> {
+    const ALPHABET: &str = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let value = |character: char| ALPHABET.find(character).expect("base64 digit") as i64;
+    let (mut source_line, mut lines) = (0i64, Vec::new());
+    for line in mappings.split(';') {
+        let mut mapped = Vec::new();
+        for segment in line.split(',').filter(|segment| !segment.is_empty()) {
+            let mut fields = Vec::new();
+            let (mut shift, mut accumulator) = (0u32, 0i64);
+            for character in segment.chars() {
+                let digit = value(character);
+                accumulator |= (digit & 31) << shift;
+                if digit & 32 == 0 {
+                    let negative = accumulator & 1 == 1;
+                    let magnitude = accumulator >> 1;
+                    fields.push(if negative { -magnitude } else { magnitude });
+                    accumulator = 0;
+                    shift = 0;
+                } else {
+                    shift += 5;
+                }
+            }
+            if fields.len() >= 4 {
+                source_line += fields[2];
+                mapped.push(source_line);
+            }
+        }
+        lines.push(mapped);
+    }
+    lines
+}
+
+#[test]
+fn every_emitted_line_of_lowered_classes_maps_to_a_real_source_line() {
+    let source =
+        "class Base {\n    x: number = 1;\n    static s: number = 2;\n    #p: number = 3;\n    \
+                  static { Base.s = 4; }\n    constructor(public q: number) {}\n    \
+                  get(): number { return this.#p; }\n}\nclass Derived extends Base {\n    \
+                  y: number = this.x;\n}\n";
+    let source_lines = source.lines().count() as i64;
+    for (target, define) in [
+        (ES2022, None),
+        (ES2022, Some(false)),
+        (ES2020, None),
+        (ES2020, Some(true)),
+    ] {
+        let compiled = compile_with(
+            source,
+            CompilerOptions {
+                source_map: true,
+                ..options(target, define)
+            },
+        );
+        assert!(
+            compiled.diagnostics.is_empty(),
+            "{target:?} {define:?}: {:?}",
+            compiled.diagnostics
+        );
+        let artifact = &compiled.output.unwrap().artifacts[ENTRY];
+        let mapped = mapped_source_lines(&artifact.source_map.as_ref().unwrap().mappings);
+        let emitted: Vec<&str> = artifact.javascript.lines().collect();
+        for (index, text) in emitted.iter().enumerate() {
+            if text.trim().is_empty() || text.trim_start().starts_with("//") {
+                continue;
+            }
+            let lines = mapped.get(index).map(Vec::as_slice).unwrap_or(&[]);
+            assert!(
+                !lines.is_empty(),
+                "{target:?} {define:?}: emitted line {index} `{text}` has no mapping"
+            );
+            assert!(
+                lines.iter().all(|line| (0..source_lines).contains(line)),
+                "{target:?} {define:?}: line {index} maps outside the source: {lines:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn transpile_only_lowers_classes_without_checking_them() {
+    use blueice_bluets::RuntimePolicy;
+    let compiled = compile_with(
+        "class A { x: number = 1; #p: number = 2; static s: number = 3; get(): number { return this.#p; } }",
+        CompilerOptions {
+            runtime_policy: RuntimePolicy::TranspileOnly,
+            ..options(ES2020, None)
+        },
+    );
+    assert!(
+        compiled.diagnostics.is_empty(),
+        "{:?}",
+        compiled.diagnostics
+    );
+    let output = compiled.output.unwrap().artifacts[ENTRY].javascript.clone();
+    assert!(
+        output.contains("this.x = 1;") && output.contains("A.s = 3;"),
+        "{output}"
+    );
+    assert!(output.contains("_A_p.set(this, 2);"), "{output}");
+}
