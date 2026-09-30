@@ -81,6 +81,9 @@ impl ModuleChecker<'_> {
         class: &ClassDeclaration,
     ) {
         for group in &class.method_groups {
+            if group.name.starts_with('#') {
+                continue;
+            }
             if self.validate_overload_set_override(class, group) {
                 continue;
             }

@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: J.3.2.5.** H and I are complete. The requested class, enum,
+**Current leaf: J.3.2.6.** H and I are complete. The requested class, enum,
 decorator, namespace, JSX, CommonJS, and package-resolution expansion has
 passed J.1/J.2 planning; implementation and pinned-`tsc` parity remain open.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
@@ -2230,8 +2230,33 @@ done to the page-runs-and-debugs goal at the top of this file.
       (all agree; three accepted by TypeScript are deferred as unsupported),
       two more compare emitted stdout and the `.d.ts` with pinned tsc, and 12
       public tests plus a bridge test with Node parity pin codes and text.
-    - [ ] **J.3.2.5** ECMAScript private names (`#x` fields, methods,
-      accessors, `#x in obj`) and their brand behaviour.
+    - [x] **J.3.2.5** ECMAScript private names: `#field`, `#method()`,
+      `get #a()` / `set #a(v)`, their `static` forms, and `#name in object`.
+      A `#` and the name right after it are joined into one identifier token
+      before parsing, so `this.#x` is an ordinary member access to every
+      existing check (typing, readonly, compound assignment, calls, definite
+      assignment) and emission, which copies source text, is unchanged. A
+      private-name member is private by construction, so it uses the machinery
+      of J.3.2.2: it exists in the type record only under a marker carrying its
+      declaring class, is exposed under its name only inside that class's body,
+      is never visible to a subclass or outside, and makes the class nominal.
+      It differs from `private` in that a subclass may declare a `#x` of its own
+      (nothing is overridden, so no override rule applies). A stray `#name`, one
+      that does not exist on the receiver, `o?.#x` and `#x in o` outside a class
+      that declares `#x` are errors; an accessibility keyword on a private name
+      and `#constructor` are parse errors. A private field follows
+      `strictPropertyInitialization` and the `readonly` constructor rule like any
+      field. ES2020 targets are refused (TypeScript lowers to WeakMaps; that is
+      J.3.3), and `accessor #x` stays unsupported. Declaration output matches
+      tsc: one `#private;` first in each class that declares any private name,
+      none of the names themselves. The direct bridge lowers the members with
+      their `#` keys and `#x in o` to a BlueJS `PrivateIn`. 33
+      `class-private-name-*` entries join the pinned-TypeScript class matrix (all
+      agree; one accepted by TypeScript is deferred as unsupported), two more
+      compare emitted stdout and the `.d.ts` with pinned tsc, and 12 public tests
+      plus a bridge test with Node parity pin codes and text. Known gap: the type
+      of `#x in o` is not computed (it reads as unknown), so assigning it to a
+      non-boolean is not diagnosed.
     - [ ] **J.3.2.6** Static blocks and static initialization order.
   - [ ] **J.3.3** Complete target-dependent native/downlevel class emit,
     versioned helpers, option interactions, and Node/BlueJS parity.

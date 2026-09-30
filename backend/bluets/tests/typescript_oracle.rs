@@ -212,6 +212,24 @@ const CASES: &[OracleCase] = &[
         expected_diagnostics: &[],
     },
     OracleCase {
+        name: "class-private-name-emit-runtime",
+        modules: &[(
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/class-private-name-emit-runtime/main.ts"),
+        )],
+        expected_stdout: Some("16 true false s true\nlabel {\"label\":\"c\"}\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
+        name: "class-private-name-emit-declaration",
+        modules: &[(
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/class-private-name-emit-declaration/main.ts"),
+        )],
+        expected_stdout: Some(""),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
         name: "generic-property",
         modules: &[(
             "memory:///main.ts",
@@ -4877,6 +4895,13 @@ fn expected_declaration(case: &OracleCase) -> Option<&'static str> {
              get ro(): string;\n    set wo(x: number);\n    static get count(): number;\n    \
              static set count(x: number);\n    protected get p(): number;\n    private get hidden();\n    \
              private set hidden(value);\n    set both(x: number);\n    get both(): number;\n}\n",
+        ),
+        "class-private-name-emit-declaration" => Some(
+            "export declare class A {\n    #private;\n    a: number;\n    b(): number;\n    c: number;\n}\n\
+             export declare class B extends A {\n    d: number;\n}\n\
+             export declare class C extends A {\n    #private;\n}\n\
+             export declare class D {\n    #private;\n    e: number;\n    private p;\n}\n\
+             export declare class E {\n    #private;\n    open: number;\n    constructor(open: number);\n}\n",
         ),
         _ => None,
     }

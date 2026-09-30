@@ -125,6 +125,26 @@ pub(super) fn refuse_fields_below_es2022(
                 "class fields need the ES2022 target; lowering them for ES2020 is not supported yet",
             ));
         }
+        // A private-name method or accessor is ES2022 syntax too.
+        if let Some(span) = class.members.iter().find_map(|member| {
+            let name = member
+                .method
+                .as_ref()
+                .map(|method| method.name.as_str())
+                .or_else(|| {
+                    member
+                        .accessor
+                        .as_ref()
+                        .map(|accessor| accessor.name.as_str())
+                })?;
+            name.starts_with('#').then(|| member.span.clone())
+        }) {
+            return Err(Diagnostic::error(
+                DiagnosticCode::UnsupportedSyntax,
+                span,
+                "private names need the ES2022 target; lowering them for ES2020 is not supported yet",
+            ));
+        }
     }
     Ok(())
 }
@@ -146,6 +166,16 @@ fn declaration_literal(literal: &str, span: &SourceSpan) -> Result<String, Diagn
         ));
     }
     Ok(format!("\"{inner}\""))
+}
+
+/// Whether the class declares any `#name` member.
+fn declares_private_name(class: &ClassDeclaration) -> bool {
+    class.members.iter().any(|member| {
+        member
+            .name
+            .as_deref()
+            .is_some_and(|name| name.starts_with('#'))
+    })
 }
 
 /// A declaration file writes `public` as nothing.
@@ -253,6 +283,9 @@ pub(super) fn emit_class_declaration(
         output.push_str(base);
     }
     output.push_str(" {\n");
+    if declares_private_name(class) {
+        output.push_str("    #private;\n");
+    }
     for field in class.parameter_property_fields() {
         output.push_str("    ");
         output.push_str(visibility_prefix(field.visibility));
@@ -296,6 +329,14 @@ pub(super) fn emit_class_declaration(
         })
         .collect();
     for (index, member) in class.members.iter().enumerate() {
+        // A private name is declared once, as `#private;`, not member by member.
+        if member
+            .name
+            .as_deref()
+            .is_some_and(|name| name.starts_with('#'))
+        {
+            continue;
+        }
         if member.constructor.is_some() {
             // One block at the first constructor member.
             if constructors.first() != Some(&index) {

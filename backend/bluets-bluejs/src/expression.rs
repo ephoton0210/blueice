@@ -277,7 +277,28 @@ impl<'a> ExpressionLowerer<'a> {
     }
 
     pub(super) fn parse_relational(&mut self) -> Result<bluejs::Expr, BridgeError> {
-        let mut expression = self.parse_shift()?;
+        // `#name in object` is a distinct relational form: a private name
+        // cannot otherwise begin an expression. BlueJS keeps the name without
+        // its `#`.
+        let mut expression = if let Some(name) = self
+            .tokens
+            .get(self.index)
+            .filter(|token| token.text.starts_with('#'))
+            .filter(|_| {
+                self.tokens
+                    .get(self.index + 1)
+                    .is_some_and(|next| next.text == "in")
+            })
+            .map(|token| token.text[1..].to_string())
+        {
+            self.index += 2;
+            bluejs::Expr::PrivateIn {
+                name,
+                object: Box::new(self.parse_shift()?),
+            }
+        } else {
+            self.parse_shift()?
+        };
         while let Some(token) = self.tokens.get(self.index) {
             if self.shift_operator_at(self.index).is_some() {
                 break;

@@ -47,6 +47,30 @@ pub(in crate::checker) fn super_type_name(class: &ClassDeclaration) -> String {
     format!("super {}", class_owner_key(class))
 }
 
+/// Whether the class body itself declares the private name.
+fn class_declares_private_name(class: &ClassDeclaration, name: &str) -> bool {
+    let parameter_properties = class.parameter_property_fields();
+    parameter_properties
+        .iter()
+        .chain(
+            class
+                .members
+                .iter()
+                .filter_map(|member| member.field.as_ref()),
+        )
+        .any(|field| field.name == name)
+        || class
+            .members
+            .iter()
+            .filter_map(|member| member.method.as_ref())
+            .any(|method| method.name == name)
+        || class
+            .members
+            .iter()
+            .filter_map(|member| member.accessor.as_ref())
+            .any(|accessor| accessor.name == name)
+}
+
 /// The token index where the receiver expression ending just before the `.`
 /// at `dot` begins: a chain of names, calls, index accesses and `new`.
 fn receiver_start(tokens: &[Token], dot: usize) -> Option<usize> {
@@ -238,6 +262,11 @@ impl ModuleChecker<'_> {
             );
         }
         for (name, is_static, visibility, span) in members {
+            // A private name belongs to its own class: a subclass may declare
+            // one of the same spelling, and it never overrides.
+            if name.starts_with('#') {
+                continue;
+            }
             let record = if is_static {
                 self.values.get(base_name)
             } else {
@@ -314,6 +343,52 @@ impl ModuleChecker<'_> {
         }
     }
 
+    /// A `#name` may follow a `.` (checked by the member scan) or start an
+    /// `#name in object` brand check inside a class that declares it; anywhere
+    /// else it is not an expression.
+    fn check_private_identifier_positions(&mut self, tokens: &[Token], span: &SourceSpan) {
+        for (index, token) in tokens.iter().enumerate() {
+            if token.kind != TokenKind::Identifier || !token.text.starts_with('#') {
+                continue;
+            }
+            let after_dot = index
+                .checked_sub(1)
+                .and_then(|before| tokens.get(before))
+                .is_some_and(|before| before.is(".") || before.is("?."));
+            if after_dot {
+                continue;
+            }
+            let brand_check = tokens.get(index + 1).is_some_and(|next| next.is("in"));
+            let token_span = SourceSpan::new(&span.module, token.start, token.end);
+            if !brand_check {
+                self.type_error(
+                    &token_span,
+                    format!(
+                        "private identifier `{}` is only allowed after a `.` or before `in`",
+                        token.text
+                    ),
+                    DiagnosticCode::TypeMismatch,
+                );
+                continue;
+            }
+            let declared = self
+                .access_class
+                .as_deref()
+                .and_then(|name| self.local_class(name))
+                .is_some_and(|class| class_declares_private_name(class, &token.text));
+            if !declared {
+                self.type_error(
+                    &token_span,
+                    format!(
+                        "private identifier `{}` is not declared by the enclosing class",
+                        token.text
+                    ),
+                    DiagnosticCode::UnknownName,
+                );
+            }
+        }
+    }
+
     /// The names of every private or protected member of any class in scope,
     /// used to find the member accesses that need an accessibility check.
     pub(in crate::checker::module) fn collect_restricted_member_names(&mut self) {
@@ -379,16 +454,33 @@ impl ModuleChecker<'_> {
         scope: &BTreeMap<String, Type>,
         span: &SourceSpan,
     ) {
-        if self.restricted_member_names.is_empty() {
+        self.check_private_identifier_positions(tokens, span);
+        if self.restricted_member_names.is_empty()
+            && !tokens.iter().any(|token| token.text.starts_with('#'))
+        {
             return;
         }
         for (index, token) in tokens.iter().enumerate() {
             if !(token.is(".") || token.is("?.")) {
                 continue;
             }
+            // TypeScript does not allow a private name in an optional chain.
+            if token.is("?.")
+                && tokens
+                    .get(index + 1)
+                    .is_some_and(|member| member.text.starts_with('#'))
+            {
+                self.type_error(
+                    span,
+                    "an optional chain cannot contain a private identifier".to_string(),
+                    DiagnosticCode::TypeMismatch,
+                );
+                continue;
+            }
             let Some(member) = tokens.get(index + 1).filter(|member| {
                 matches!(member.kind, TokenKind::Identifier | TokenKind::Keyword)
-                    && self.restricted_member_names.contains(&member.text)
+                    && (member.text.starts_with('#')
+                        || self.restricted_member_names.contains(&member.text))
             }) else {
                 continue;
             };
@@ -423,6 +515,16 @@ impl ModuleChecker<'_> {
                                 "property `{}` is {} and only accessible within class `{owner}`",
                                 member.text,
                                 visibility.keyword(),
+                            ),
+                            DiagnosticCode::TypeMismatch,
+                        );
+                    } else if member.text.starts_with('#') {
+                        self.type_error(
+                            &member_span,
+                            format!(
+                                "private identifier `{}` does not exist on type `{}`",
+                                member.text,
+                                type_label(&receiver)
                             ),
                             DiagnosticCode::TypeMismatch,
                         );

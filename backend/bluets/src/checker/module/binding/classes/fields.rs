@@ -264,6 +264,9 @@ impl ModuleChecker<'_> {
                     _ => None,
                 });
         for field in fields {
+            if field.name.starts_with('#') {
+                continue;
+            }
             let Some(own_type) = class_field_type(field) else {
                 continue;
             };

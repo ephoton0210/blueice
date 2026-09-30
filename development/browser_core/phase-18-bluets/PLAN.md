@@ -2765,6 +2765,35 @@ Declaration output follows tsc: each accessor is `get name(): T;` or
 `set name(param: T);` in source order, a private one is `private get name();` and
 `private set name(value);`, with the setter's parameter renamed as tsc does.
 
+### J.3.2.5 ECMAScript private names
+
+The lexer reads `#` as punctuation, so the parser first joins a `#` and the name
+written immediately after it into one identifier token `#name` whose span covers
+both. `this.#x` is then a normal member access and `#x` a normal member name for
+every member parser and for every check that looks at `a.b`, and the emitted text
+is still the original source.
+
+A private-name member is `private` by construction: the parser gives it private
+visibility (an accessibility keyword on it is an error) and everything from
+J.3.2.2 applies. It exists in the class's type record only under a marker that
+names its declaring class, becomes visible under its plain name only while that
+class's body is checked, is invisible to subclasses and to the outside, and makes
+the class nominal. The differences from the `private` modifier are the two
+places TypeScript treats them differently: a subclass may declare its own `#x`
+(the names are per class, so nothing is overridden and the override and
+kind-conflict rules skip a `#` name), and `o?.#x` is an error.
+
+`#x in object` is a brand check. It is valid only inside a class body that
+declares `#x` itself; the scan of member accesses reports a `#name` that is not
+after a `.` and not before `in`, and one that names nothing the enclosing class
+declares. The bridge lowers it to `PrivateIn`, whose name BlueJS keeps without
+the `#`. The checker does not compute its type, so it reads as unknown.
+
+ES2022 emits private names natively, and an ES2020 target would need TypeScript's
+WeakMap lowering, so it is refused until J.3.3. Declaration output is one
+`#private;` at the top of each class that declares any private name, and none of
+the names.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process

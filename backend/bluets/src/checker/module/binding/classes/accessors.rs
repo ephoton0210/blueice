@@ -332,6 +332,9 @@ impl ModuleChecker<'_> {
             ));
         }
         for (kind, name, is_static, span) in own {
+            if name.starts_with('#') {
+                continue;
+            }
             let base_kind = match self.base_member_kind(class, &name, is_static) {
                 Ok(None) => continue,
                 Ok(Some(base_kind)) => base_kind,
@@ -374,6 +377,9 @@ impl ModuleChecker<'_> {
         if let Some(base_name) = class.extends_name.as_deref() {
             for is_static in [false, true] {
                 for (name, group) in accessor_groups(class, is_static) {
+                    if name.starts_with('#') {
+                        continue;
+                    }
                     let Some(own_type) = group_type(&group) else {
                         continue;
                     };

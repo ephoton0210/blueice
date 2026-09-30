@@ -271,11 +271,11 @@ fn fields_are_refused_for_an_es2020_target_until_they_can_be_lowered() {
 }
 
 #[test]
-fn ecmascript_private_names_and_computed_members_are_still_refused() {
+fn computed_and_generator_members_are_still_refused() {
     for source in [
-        "class A { #x = 1; }",
-        "class A { #m() {} }",
         "class A { ['computed'] = 1; }",
+        "class A { ['m']() {} }",
+        "class A { *generate() {} }",
     ] {
         let compiled = compile_with(source, CompilerOptions::default());
         assert!(

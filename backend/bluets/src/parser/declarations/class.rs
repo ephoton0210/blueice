@@ -114,6 +114,29 @@ impl Parser {
         }));
     }
 
+    /// A `#name` member is private by construction: an accessibility keyword
+    /// on it is an error, and `#constructor` is not a valid name.
+    fn private_name_visibility(&mut self, name: &Token, modifiers: &MemberModifiers) -> Visibility {
+        if !name.text.starts_with('#') {
+            return modifiers.visibility;
+        }
+        if let Some(keyword) = modifiers.visibility_token {
+            self.error_at(
+                self.tokens[keyword].span(&self.id),
+                DiagnosticCode::ParseError,
+                "an accessibility modifier cannot be used with a private identifier",
+            );
+        }
+        if name.text == "#constructor" {
+            self.error_at(
+                name.span(&self.id),
+                DiagnosticCode::ParseError,
+                "`#constructor` is not a valid private name",
+            );
+        }
+        Visibility::Private
+    }
+
     /// Erases an explicit `public`/`protected`/`private` keyword and the gap
     /// after it; accessibility is checked, never emitted.
     fn erase_visibility_keyword(&mut self, modifiers: &MemberModifiers) {
@@ -219,6 +242,7 @@ impl Parser {
         {
             return false;
         }
+        let visibility = self.private_name_visibility(&name_token, &modifiers);
         index += 1;
         let optional = self.tokens.get(index).is_some_and(|token| token.is("?")) && index < end;
         let definite = self.tokens.get(index).is_some_and(|token| token.is("!")) && index < end;
@@ -286,7 +310,7 @@ impl Parser {
         member.field = Some(ClassField {
             name: name_token.text.clone(),
             name_span: name_token.span(&self.id),
-            visibility: modifiers.visibility,
+            visibility,
             is_static,
             readonly,
             optional,
@@ -312,6 +336,7 @@ impl Parser {
         let keyword = modifiers.name_index;
         let getter = self.tokens[keyword].is("get");
         let name_token = self.tokens[keyword + 1].clone();
+        let visibility = self.private_name_visibility(&name_token, &modifiers);
         self.index = keyword + 2;
         let parameters = self.parse_parameters();
         let return_start = self.current().start;
@@ -368,7 +393,7 @@ impl Parser {
         member.accessor = Some(ClassAccessor {
             name: name_token.text.clone(),
             name_span: name_token.span(&self.id),
-            visibility: modifiers.visibility,
+            visibility,
             is_static: modifiers.is_static,
             getter,
             parameters,
@@ -388,6 +413,7 @@ impl Parser {
         let is_static = modifiers.is_static;
         let name_index = modifiers.name_index;
         let name = self.tokens[name_index].text.clone();
+        let visibility = self.private_name_visibility(&self.tokens[name_index].clone(), &modifiers);
         self.index = name_index + 1;
         let parameters = self.parse_parameters();
         let return_start = self.current().start;
@@ -430,7 +456,7 @@ impl Parser {
         }
         member.method = Some(ClassMethod {
             name,
-            visibility: modifiers.visibility,
+            visibility,
             is_static,
             parameters,
             return_type,

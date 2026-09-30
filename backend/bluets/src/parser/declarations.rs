@@ -23,7 +23,7 @@ impl Parser {
             // runtime expressions from this token stream (the emitter keeps
             // their original source), so present each closer independently to
             // the type grammar while retaining its exact source span.
-            tokens: split_generic_closers(tokens),
+            tokens: split_generic_closers(merge_private_names(tokens)),
             index: 0,
             declarations: Vec::new(),
             edits: Vec::new(),

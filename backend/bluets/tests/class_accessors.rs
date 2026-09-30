@@ -292,7 +292,6 @@ fn auto_accessors_and_computed_accessor_names_are_refused() {
     for source in [
         "class A { accessor v: number = 1; }",
         "class A { get [k](): number { return 1; } }",
-        "class A { get #p(): number { return 1; } }",
     ] {
         let compiled = compile_with(source, CompilerOptions::default());
         assert!(

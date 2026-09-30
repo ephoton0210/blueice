@@ -289,6 +289,37 @@ fn direct_page_accessors_get_set_static_and_inherit_like_node() {
 }
 
 #[test]
+fn direct_page_private_names_fields_methods_accessors_and_brand_checks_run_like_node() {
+    let source = "class Counter { \
+        #count: number = 0; static #made: number = 0; label: number = 1; \
+        #bump(step: number): number { this.#count = this.#count + step; return this.#count; } \
+        get #double(): number { return this.#count * 2; } \
+        set #double(value: number) { this.#count = value / 2; } \
+        static #make(): Counter { Counter.#made = Counter.#made + 1; return new Counter(); } \
+        static has(value: any): boolean { return #count in value; } \
+        run(other: Counter): number { this.#double = 8; \
+          return this.#bump(1) + other.#count + this.#double + Counter.#make().#count; } \
+        static made(): number { return Counter.#made; } } \
+        class Sub extends Counter { #count: number = 100; sub(): number { return this.#count; } } \
+        const c = new Counter(); \
+        c.run(new Counter()) + Counter.made() + new Sub().sub() + (Counter.has(c) ? 1000 : 0) + (Counter.has({}) ? 10000 : 0);";
+    let artifact = compile_direct_script(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+        class_options(),
+    )
+    .unwrap();
+    let mut owner = DirectPageRealmOwner::default();
+    owner.open_realm(7, origin()).unwrap();
+    let attachment = owner.attach_script(&artifact, 7, &origin()).unwrap();
+    // Node runs the same program (annotations erased) to 1116.
+    assert_eq!(
+        owner.execute_program(7, &attachment).unwrap(),
+        bluejs::Value::Number(1116.0)
+    );
+}
+
+#[test]
 fn direct_page_while_runs_zero_and_multiple_iterations() {
     let artifact = compile_direct_script(
         ENTRY,

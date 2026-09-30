@@ -242,8 +242,29 @@ fn partitions_constructor_method_and_opaque_class_members_at_source_spans() {
     assert_eq!(setter.parameters.len(), 1);
     assert_eq!(class.members[2].kind, ClassMemberKind::Method);
 
-    // An ECMAScript private name is not a member this parser structures.
-    let module = parse_module("memory:///private-name.ts", "class Other { #field = 1; }").unwrap();
+    // An ECMAScript private name is a member like any other, and private.
+    let module = parse_module(
+        "memory:///private-name.ts",
+        "class Other { #field = 1; static #make() {} get #g(): number { return 1; } }",
+    )
+    .unwrap();
+    let Declaration::Class(class) = &module.declarations[0] else {
+        panic!("expected a class");
+    };
+    assert_eq!(class.members.len(), 3);
+    assert_eq!(class.members[0].kind, ClassMemberKind::Field);
+    let field = class.members[0].field.as_ref().unwrap();
+    assert_eq!(field.name, "#field");
+    assert_eq!(field.visibility, crate::Visibility::Private);
+    assert_eq!(class.members[1].kind, ClassMemberKind::Method);
+    assert_eq!(
+        class.members[1].method.as_ref().unwrap().visibility,
+        crate::Visibility::Private
+    );
+    assert_eq!(class.members[2].kind, ClassMemberKind::Accessor);
+
+    // A computed member is not one this parser structures.
+    let module = parse_module("memory:///computed.ts", "class Other { ['field'] = 1; }").unwrap();
     let Declaration::Class(class) = &module.declarations[0] else {
         panic!("expected a class");
     };
@@ -364,7 +385,7 @@ fn parses_simple_named_method_signatures_and_bodies_at_original_spans() {
 }
 
 #[test]
-fn incomplete_methods_fail_and_ecmascript_private_names_remain_opaque() {
+fn incomplete_methods_fail_and_computed_members_remain_opaque() {
     for source in [
         "class Bad { read(value: ) {} }",
         "class Bad { read(value: number) }",
@@ -375,7 +396,7 @@ fn incomplete_methods_fail_and_ecmascript_private_names_remain_opaque() {
             "{source}"
         );
     }
-    let module = parse_module("memory:///opaque.ts", "class C { #value = 1; }").unwrap();
+    let module = parse_module("memory:///opaque.ts", "class C { ['value'] = 1; }").unwrap();
     let Declaration::Class(class) = &module.declarations[0] else {
         panic!("expected a class");
     };
@@ -462,11 +483,11 @@ fn opaque_class_member_interrupts_method_overload_group() {
 #[test]
 fn routes_unimplemented_class_member_shapes_to_opaque_shells() {
     for source in [
-        "class C { #field = 1; }",
+        "class C { ['field'] = 1; }",
         "class C { static private read() {} }",
         "class C { async read() {} }",
         "class C { [key]() {} }",
-        "class C { #secret() {} }",
+        "class C { *generate() {} }",
         "class C { generic<T>() {} }",
     ] {
         let module = parse_module("memory:///opaque.ts", source).unwrap();

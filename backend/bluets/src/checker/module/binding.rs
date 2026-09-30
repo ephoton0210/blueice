@@ -185,7 +185,7 @@ impl<'a> ModuleChecker<'a> {
                             DiagnosticCode::UnsupportedSyntax,
                             class.span.clone(),
                             "a class member other than a constructor, method, field or accessor \
-                             (an ECMAScript private name or a computed member) is not supported yet",
+                             (a computed, generator or `accessor` member) is not supported yet",
                         ));
                     }
                 }
