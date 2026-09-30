@@ -36,6 +36,14 @@ const FIXTURES: &[(&str, &str)] = &[
         include_str!("fixtures/typescript_oracle/class-downlevel-no-constructor/main.ts"),
     ),
     (
+        "class-downlevel-private-names",
+        include_str!("fixtures/typescript_oracle/class-downlevel-private-names/main.ts"),
+    ),
+    (
+        "class-downlevel-private-static",
+        include_str!("fixtures/typescript_oracle/class-downlevel-private-static/main.ts"),
+    ),
+    (
         "class-downlevel-accessors-and-methods",
         include_str!("fixtures/typescript_oracle/class-downlevel-accessors-and-methods/main.ts"),
     ),

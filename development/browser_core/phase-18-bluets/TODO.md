@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: J.3.3.2.** H and I are complete. The requested class, enum,
+**Current leaf: J.3.3.3.** H and I are complete. The requested class, enum,
 decorator, namespace, JSX, CommonJS, and package-resolution expansion has
 passed J.1/J.2 planning; implementation and pinned-`tsc` parity remain open.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
@@ -2314,9 +2314,29 @@ done to the page-runs-and-debugs goal at the top of this file.
       matrix (all agree), and 15 public tests, a CLI test through both the flag
       and the config file, and a bridge test with Node parity pin the emitted
       text and the option.
-    - [ ] **J.3.3.2** Private names below ES2022: `WeakMap`/`WeakSet` lowering
-      with versioned inline helpers, for fields, methods, accessors, static
-      forms and `#x in o`.
+    - [x] **J.3.3.2** Private names below ES2022. `#field`, `#method()`,
+      `get #a()` / `set #a(v)`, their `static` forms and `#x in o` are lowered
+      the way TypeScript does, to state kept outside the object: a `WeakMap`
+      per instance private field, one `WeakSet` brand per class for its
+      private methods and accessors (added to in the constructor before any
+      field initializer), a function per method or accessor moved after the
+      class, and a `{ value }` holder per static field, with each access
+      rewritten to one of three helpers (`__bluetsClassPrivateGet`, `Set`,
+      `In`). The helper text is written from the specified semantics (it is not
+      tslib's), is versioned (`bluets-class-helper-v1`, in the build
+      fingerprint and as a leading comment), and is emitted once per module,
+      only the ones used, ahead of the first class that needs them. The rewrite
+      is token-based, so it is narrow on purpose: a receiver must be `this` or a
+      plain identifier (so repeating it changes nothing); an assignment,
+      compound assignment or increment must be a whole statement; `#x in o`
+      needs a plain `o`; a logical assignment is refused. Anything else is
+      refused as unsupported below ES2022, and so is a source that already
+      spells a name the lowering must declare. ES2022 keeps private names native,
+      including beside assign-semantics fields. Two `class-downlevel-private-*`
+      programs (instance and static, methods, accessors, compound assignment,
+      brand checks, a subclass with a same-named private) are compiled by
+      BlueTSC and pinned tsc in five modes and print the same under Node, and 7
+      public tests pin the emitted text and each refusal.
     - [ ] **J.3.3.3** Option interactions (declaration and source-map output,
       strict-runtime, incremental cache keys) and remaining Node/BlueJS
       parity across every target and semantics.

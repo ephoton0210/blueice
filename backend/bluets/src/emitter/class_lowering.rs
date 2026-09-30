@@ -22,6 +22,11 @@
 //! with the recorded type-erasing edits applied to it; everything is inserted
 //! on the line it lands in, so no later source line moves.
 
+use std::collections::BTreeSet;
+
+use super::private_lowering::{
+    helper_definitions, refuse_helper_name_collisions, Helper, PrivateNames,
+};
 use super::{apply_edits, Module, TextEdit};
 use crate::compiler::{CompilerOptions, EcmaTarget};
 use crate::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
@@ -53,36 +58,41 @@ pub(super) fn lower_class_members(
         es2022: options.target == EcmaTarget::Es2022,
         define: options.defines_class_fields(),
     };
+    let mut needed: BTreeSet<Helper> = BTreeSet::new();
+    let mut first_private_class: Option<usize> = None;
     for declaration in &module.declarations {
         let Declaration::Class(class) = declaration else {
             continue;
         };
-        if !emit.es2022 {
-            refuse_es2022_syntax(class)?;
-        }
         if emit.native() {
             native_parameter_properties(class, edits)?;
-        } else {
-            lower_class(module, class, emit, edits)?;
+            continue;
         }
+        // Below ES2022 a private name is lowered to external state; on ES2022
+        // with assign semantics it stays native beside the lowered fields.
+        let private = if emit.es2022 {
+            None
+        } else {
+            PrivateNames::collect(module, class)?
+        };
+        if let Some(private) = &private {
+            refuse_helper_name_collisions(module)?;
+            private.rewrite_accesses(module, edits, &mut needed)?;
+            insert(
+                edits,
+                class.span.start,
+                format!("var {}; ", private.variables().join(", ")),
+            );
+            first_private_class =
+                Some(first_private_class.map_or(class.span.start, |at| at.min(class.span.start)));
+        }
+        lower_class(module, class, emit, private.as_ref(), edits)?;
     }
-    Ok(())
-}
-
-/// Private names are ES2022 syntax the ES2020 lowering does not cover yet.
-fn refuse_es2022_syntax(class: &ClassDeclaration) -> Result<(), Diagnostic> {
-    let private = class.members.iter().find(|member| {
-        member
-            .name
-            .as_deref()
-            .is_some_and(|name| name.starts_with('#'))
-    });
-    if let Some(member) = private {
-        return Err(Diagnostic::error(
-            DiagnosticCode::UnsupportedSyntax,
-            member.span.clone(),
-            "private names need the ES2022 target; lowering them for ES2020 is not supported yet",
-        ));
+    if let Some(at) = first_private_class {
+        let definitions = helper_definitions(&needed);
+        if !definitions.is_empty() {
+            insert(edits, at, definitions);
+        }
     }
     Ok(())
 }
@@ -119,13 +129,17 @@ fn lower_class(
     module: &Module,
     class: &ClassDeclaration,
     emit: FieldEmit,
+    private: Option<&PrivateNames<'_>>,
     edits: &mut Vec<TextEdit>,
 ) -> Result<(), Diagnostic> {
     let source = &module.source;
     let class_name = &class.name;
 
-    // Instance side: parameter properties first, then declared fields.
-    let mut prologue = String::new();
+    // Instance side: the private brand, then parameter properties, then
+    // declared fields in source order.
+    let mut prologue = private
+        .map(PrivateNames::brand_statement)
+        .unwrap_or_default();
     for property in class.parameter_property_fields() {
         prologue.push_str(&store_this(
             emit,
@@ -137,13 +151,19 @@ fn lower_class(
         let Some(field) = member.field.as_ref().filter(|field| !field.is_static) else {
             continue;
         };
-        if is_private_name(field) {
-            continue;
-        }
         let value = field
             .initializer
             .as_deref()
             .map(|tokens| render_tokens(source, edits, tokens));
+        if is_private_name(field) {
+            // Below ES2022 it is stored outside the object; otherwise the
+            // native private field stays where it is.
+            if let Some(private) = private {
+                prologue.push_str(&private.field_store(&field.name, value));
+                erase_member(edits, member);
+            }
+            continue;
+        }
         if value.is_some() || emit.define {
             prologue.push_str(&store_this(emit, &field.name, value));
         }
@@ -153,18 +173,29 @@ fn lower_class(
         insert_prologue(class, &prologue, edits)?;
     }
 
-    // Static side.
-    let mut after_class = String::new();
+    // After the class: the private storage and functions first (a static
+    // initializer may use them), then the static members in source order.
+    let mut after_class = private
+        .map(PrivateNames::instance_setup)
+        .unwrap_or_default();
+    let mut statics = String::new();
     for member in &class.members {
         if let Some(field) = member.field.as_ref().filter(|field| field.is_static) {
-            if is_private_name(field) {
-                continue;
-            }
             let value = field
                 .initializer
                 .as_deref()
                 .map(|tokens| render_tokens(source, edits, tokens));
-            if emit.es2022 {
+            if is_private_name(field) {
+                let Some(private) = private else {
+                    continue;
+                };
+                let value = value
+                    .map(|value| bind_static_this(class_name, tokens_of(field), &value))
+                    .transpose()
+                    .map_err(|()| unsupported_super(&member.span))?;
+                statics.push_str(&private.static_field_store(&field.name, value));
+                erase_member(edits, member);
+            } else if emit.es2022 {
                 // ES2022 with assign semantics: a static block in place.
                 replace_member(
                     edits,
@@ -179,7 +210,7 @@ fn lower_class(
                         .map(|value| bind_static_this(class_name, tokens_of(field), &value))
                         .transpose()
                         .map_err(|()| unsupported_super(&member.span))?;
-                    after_class.push_str(&store_static(emit, class_name, &field.name, value));
+                    statics.push_str(&store_static(emit, class_name, &field.name, value));
                 }
                 erase_member(edits, member);
             }
@@ -197,10 +228,27 @@ fn lower_class(
             if mentions(inner, "super") {
                 return Err(unsupported_super(&member.span));
             }
-            after_class.push_str(&format!(" (function () {{{inner}}}).call({class_name});"));
+            statics.push_str(&format!(" (function () {{{inner}}}).call({class_name});"));
             erase_member(edits, member);
+        } else if let Some(private) = private {
+            let name = member
+                .method
+                .as_ref()
+                .map(|method| method.name.as_str())
+                .or_else(|| {
+                    member
+                        .accessor
+                        .as_ref()
+                        .map(|accessor| accessor.name.as_str())
+                });
+            if name.is_some_and(|name| name.starts_with('#')) {
+                let rendered = render_span(source, edits, member.span.start, member.span.end);
+                after_class.push_str(&private.function_definition(member, &rendered)?);
+                erase_member(edits, member);
+            }
         }
     }
+    after_class.push_str(&statics);
     if !after_class.is_empty() {
         insert(edits, class.span.end, after_class);
     }

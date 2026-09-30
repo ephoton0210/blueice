@@ -11,8 +11,11 @@ use crate::parser::{Declaration, Module, TextEdit, Type, TypeParameter};
 use crate::strict_boundaries;
 use std::collections::BTreeMap;
 
+pub(crate) use private_lowering::CLASS_HELPER_V1_VERSION;
+
 mod class_lowering;
 mod classes;
+mod private_lowering;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BuildOutput {

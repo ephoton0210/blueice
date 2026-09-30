@@ -778,6 +778,7 @@ pub(crate) fn fingerprint(project: &Project, options: &CompilerOptions) -> Strin
     } else {
         "assign-class-fields"
     });
+    add(crate::emitter::CLASS_HELPER_V1_VERSION);
     add(options.runtime_policy.as_str());
     add(&options.resolver_fingerprint);
     add(&options.require_declared_global_calls.to_string());

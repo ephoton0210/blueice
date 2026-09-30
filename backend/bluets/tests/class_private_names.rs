@@ -275,11 +275,11 @@ fn private_names_and_parameter_properties_coexist() {
 }
 
 #[test]
-fn private_names_are_refused_on_an_es2020_target() {
+fn private_names_are_lowered_on_an_es2020_target() {
     for source in [
-        "class A { #x: number = 1; }",
-        "class A { #m(): void {} }",
-        "class A { get #g(): number { return 1; } }",
+        "class A { #x: number = 1; get(): number { return this.#x; } }",
+        "class A { #m(): number { return 1; } run(): number { return this.#m(); } }",
+        "class A { get #g(): number { return 1; } run(): number { return this.#g; } }",
     ] {
         let compiled = compile_with(
             source,
@@ -288,15 +288,17 @@ fn private_names_are_refused_on_an_es2020_target() {
                 ..CompilerOptions::default()
             },
         );
-        assert!(compiled.output.is_none(), "`{source}`");
         assert!(
-            compiled
-                .diagnostics
-                .iter()
-                .any(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+            compiled.diagnostics.is_empty(),
             "`{source}`: {:?}",
             compiled.diagnostics
         );
+        let output = compiled.output.unwrap().artifacts[ENTRY].javascript.clone();
+        assert!(
+            !output.contains('#'),
+            "`{source}` still has a private name: {output}"
+        );
+        assert!(output.contains("__bluetsClassPrivateGet"), "{output}");
     }
 }
 

@@ -2857,6 +2857,40 @@ TypeScript for ES2022, ES2022 with assign semantics, ES2020, ES2020 with define
 semantics, and ES2020 with assign semantics, and must print the same thing under
 Node.
 
+### J.3.3.2 Private names below ES2022
+
+A private name cannot be lowered to a property, so it is lowered to state the
+object does not carry, which is what makes it private: a `WeakMap` from instance to
+value for each field, one `WeakSet` of instances per class (the brand) for its
+private methods and accessors, the method and accessor bodies as plain functions
+called with the instance, and for a static member the class itself as the brand
+with a `{ value }` holder for a field. Each read, write and brand check becomes a
+call of one of three helpers that check the brand and throw a `TypeError` as the
+specification does. The helpers are written here from those semantics, carry a
+version (`bluets-class-helper-v1`) that is part of the build fingerprint and a
+leading comment in the output, and are defined once per module (only those used) ahead
+of the first class that needs them, as `var`s so they exist by the time any class
+runs.
+
+The rewrite works on tokens, not on an expression tree, so it does only what it can do
+without changing meaning. A private access is `RECV.#x` with `RECV` either `this` or
+one plain identifier, which may therefore be repeated (the helper takes it twice for a
+read-modify-write and a method call) without evaluating anything twice. Assignment,
+compound assignment (`+=`, `-=` and so on, with the right side parenthesized) and
+`++`/`--` are supported only as whole statements, since replacing them inside a larger
+expression needs the value they produce; logical assignment, an increment used as a
+value, and any other receiver are refused, as unsupported below ES2022, instead of
+guessed. `#x in o` needs a plain `o`. Accesses are rewritten last to first so an
+assignment's right side is already rewritten when the assignment's text is built, and
+moved method and initializer text is rendered with every recorded edit applied.
+
+Statements that must run in the constructor go there in this order: the brand
+(`_C_instances.add(this)`), parameter properties, then fields in source order,
+public and private interleaved as declared. After the class come the `WeakMap`s and
+`WeakSet`, then the method and accessor functions, then the static members in source
+order. The lowering declares `_C_x`-style variables and refuses a source that already
+uses one, or one of the helper names.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process

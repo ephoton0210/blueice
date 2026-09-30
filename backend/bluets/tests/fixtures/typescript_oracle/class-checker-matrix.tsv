@@ -60,6 +60,8 @@ class-derived-own-constructor-argument-error/main.ts	reject
 class-downlevel-accessors-and-methods/main.ts	accept
 class-downlevel-fields/main.ts	accept
 class-downlevel-no-constructor/main.ts	accept
+class-downlevel-private-names/main.ts	accept
+class-downlevel-private-static/main.ts	accept
 class-downlevel-static-order/main.ts	accept
 class-dual-binding-wrong-side/main.ts	reject
 class-dual-binding/main.ts	accept

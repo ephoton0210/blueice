@@ -248,25 +248,154 @@ fn moved_initializers_keep_their_erased_annotations() {
 }
 
 #[test]
-fn private_names_still_need_es2022() {
-    let compiled = compile_with("class A { #x: number = 1; }", options(ES2020, None));
-    assert!(compiled.output.is_none());
-    assert!(compiled.diagnostics.iter().any(|diagnostic| {
-        diagnostic.code == DiagnosticCode::UnsupportedSyntax
-            && diagnostic
-                .message
-                .contains("private names need the ES2022 target")
-    }));
-    // With assign semantics on ES2022 they stay native beside the lowered fields.
+fn private_names_below_es2022_use_weak_state_and_versioned_helpers() {
     let output = emit(
+        "class A { #x: number = 1; #y?: string; static #s: number = 2; \
+         #m(k: number): number { return this.#x * k; } \
+         get #g(): number { return this.#x; } set #g(v: number) { this.#x = v; } \
+         static #sm(): number { return A.#s; } \
+         run(o: A): number { this.#x += 2; this.#x++; this.#g = 3; \
+           return this.#m(2) + o.#x + this.#g + A.#sm() + (#x in o ? 1 : 0); } }",
+        ES2020,
+        None,
+    );
+    assert!(!output.contains('#'), "no private name is left: {output}");
+    assert!(
+        output.starts_with("/* bluets-class-helper-v1 */")
+            || output.contains("/* bluets-class-helper-v1 */"),
+        "{output}"
+    );
+    for expected in [
+        "var _A_instances, _A_x, _A_y, _A_s, _A_m, _A_g_get, _A_g_set, _A_sm;",
+        "_A_instances.add(this); _A_x.set(this, 1); _A_y.set(this, void 0);",
+        "_A_x = new WeakMap(); _A_y = new WeakMap(); _A_instances = new WeakSet();",
+        "_A_m = function _A_m(k)",
+        "_A_g_get = function _A_g_get()",
+        "_A_g_set = function _A_g_set(v)",
+        "_A_sm = function _A_sm()",
+        "_A_s = { value: 2 };",
+        "__bluetsClassPrivateSet(this, _A_x, __bluetsClassPrivateGet(this, _A_x, \"f\") + (2), \"f\")",
+        "__bluetsClassPrivateGet(this, _A_instances, \"m\", _A_m).call(this, 2)",
+        "__bluetsClassPrivateSet(this, _A_instances, 3, \"a\", _A_g_set)",
+        "__bluetsClassPrivateGet(this, _A_instances, \"a\", _A_g_get)",
+        "__bluetsClassPrivateGet(A, A, \"m\", _A_sm).call(A)",
+        "__bluetsClassPrivateIn(_A_x, o)",
+    ] {
+        assert!(output.contains(expected), "`{expected}` missing from {output}");
+    }
+    // Each helper is defined once.
+    for helper in ["Get", "Set", "In"] {
+        let definition = format!("var __bluetsClassPrivate{helper} =");
+        assert_eq!(output.matches(&definition).count(), 1, "{helper}: {output}");
+    }
+}
+
+#[test]
+fn helpers_are_emitted_once_per_module_and_only_when_used() {
+    let two = emit(
+        "class A { #x: number = 1; get(): number { return this.#x; } } \
+         class B { #y: number = 2; get(): number { return this.#y; } }",
+        ES2020,
+        None,
+    );
+    assert_eq!(
+        two.matches("var __bluetsClassPrivateGet =").count(),
+        1,
+        "{two}"
+    );
+    assert!(
+        !two.contains("__bluetsClassPrivateSet"),
+        "unused helpers are not emitted: {two}"
+    );
+    let none = emit("class A { x: number = 1; }", ES2020, None);
+    assert!(!none.contains("__bluets"), "{none}");
+    // ES2022 keeps private names native, with or without assign semantics.
+    let native = emit(
+        "class A { #x: number = 1; get(): number { return this.#x; } }",
+        ES2022,
+        None,
+    );
+    assert!(
+        native.contains("#x = 1;") && native.contains("this.#x"),
+        "{native}"
+    );
+    let assign = emit(
         "class A { #x: number = 1; y: number = 2; }",
         ES2022,
         Some(false),
     );
     assert!(
-        output.contains("#x = 1;") && output.contains("this.y = 2;"),
-        "{output}"
+        assign.contains("#x = 1;") && assign.contains("this.y = 2;"),
+        "{assign}"
     );
+}
+
+#[test]
+fn forms_the_token_rewrite_cannot_do_safely_are_refused_below_es2022() {
+    for (source, what) in [
+        (
+            "class A { #x: number = 1; list: A[] = []; run(): number { return this.list[0].#x; } }",
+            "accessed through anything but `this` or a plain identifier",
+        ),
+        (
+            "class A { #x: number = 1; run(o: A): number { return o.self().#x; } self(): A { return this; } }",
+            "accessed through anything but `this` or a plain identifier",
+        ),
+        (
+            "class A { #x: number = 1; run(): number { let y: number = 0; y = this.#x++; return y; } }",
+            "an increment or decrement used as a value",
+        ),
+        (
+            "class A { #x: number = 1; run(): number { return ++this.#x; } }",
+            "an increment or decrement used as a value",
+        ),
+        (
+            "class A { #x: number = 1; run(): number { let y: number = 0; y = this.#x = 2; return y; } }",
+            "an assignment used as a value",
+        ),
+        (
+            "class A { #x: number | undefined; run(): void { this.#x ??= 1; } }",
+            "a logical assignment",
+        ),
+        (
+            "class A { #x: number = 1; run(o: A[]): boolean { return #x in o[0]; } }",
+            "a brand check on a complex operand",
+        ),
+    ] {
+        let compiled = compile_with(source, options(ES2020, None));
+        assert!(compiled.output.is_none(), "`{source}` must not emit");
+        assert!(
+            compiled.diagnostics.iter().any(|diagnostic| {
+                diagnostic.code == DiagnosticCode::UnsupportedSyntax
+                    && diagnostic.message.contains(what)
+                    && diagnostic.message.contains("below ES2022")
+            }),
+            "`{source}`: {:?}",
+            compiled.diagnostics
+        );
+        // The same program is fine where private names are native.
+        assert!(compile_with(source, options(ES2022, None)).output.is_some(), "`{source}`");
+    }
+}
+
+#[test]
+fn a_name_the_lowering_needs_may_not_already_be_used() {
+    for source in [
+        "class A { #x: number = 1; get(): number { return this.#x; } } const _A_x = 1;",
+        "class A { #x: number = 1; get(): number { return this.#x; } } const __bluetsClassPrivateGet = 1;",
+    ] {
+        let compiled = compile_with(source, options(ES2020, None));
+        assert!(compiled.output.is_none(), "`{source}`");
+        assert!(
+            compiled.diagnostics.iter().any(|diagnostic| {
+                diagnostic.code == DiagnosticCode::UnsupportedSyntax
+                    && (diagnostic.message.contains("already used")
+                        || diagnostic.message.contains("reserved"))
+            }),
+            "`{source}`: {:?}",
+            compiled.diagnostics
+        );
+    }
 }
 
 #[test]
