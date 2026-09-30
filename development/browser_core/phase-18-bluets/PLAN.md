@@ -2812,6 +2812,51 @@ the class name. Both forms are refused as unsupported instead of modelled when t
 read sits in a nested function or arrow, because whether such a function runs before
 the field is initialized depends on its callers.
 
+### J.3.3.1 `useDefineForClassFields` and downlevel class fields
+
+TypeScript has two meanings for a class field. With `useDefineForClassFields` the
+field is defined (native ES2022 class field syntax, or `Object.defineProperty`
+below ES2022), which creates the property even when there is no initializer.
+Without it the field is assigned in the constructor, so a field with no initializer
+does not exist and a setter on the prototype chain runs. The default follows the
+target: define for ES2022, assign for ES2020. BlueTS takes the same option and the
+same default, and records the resolved choice in the fingerprint and the manifest.
+
+ES2022 with define semantics keeps the source text and only adds text for
+parameter properties. Every other combination lowers fields by moving text:
+
+- Instance fields go to the start of the constructor, after the parameter
+  properties and, in a derived class, after the top-level `super(...)`. A class with
+  no constructor gets one, with `super(...arguments)` when derived. A derived
+  constructor with no top-level `super` has nowhere to put them and is refused.
+- Static fields become a static block in place (ES2022, assign) or statements after
+  the class (ES2020). A static block below ES2022 becomes
+  `(function () { .. }).call(Class);`.
+- `this` in a static initializer means the class. Rather than rewrite `this` tokens,
+  which would also rewrite the `this` of a method or function nested in the
+  initializer, the initializer that mentions `this` is evaluated as a function called
+  on the class. `super` has no such form, so it is refused.
+- The text that moves is the original source with the erasing edits recorded for
+  it applied, cut out with `apply_edits` over just that range, and inserted on the
+  line it lands on so no later line moves.
+
+The checker gains the one diagnostic that depends on the option: under define
+semantics a derived class that redeclares a base instance property with no
+initializer and no constructor assignment overwrites the base value with
+`undefined`, which TypeScript reports as TS2612. It does not apply to static
+fields, private names, or a property assigned in the constructor.
+
+The direct bridge reads the same option. For define semantics it keeps BlueJS
+fields (which define). For assign semantics it emits the constructor assignments,
+static blocks, and a synthesized constructor as AST, in the same positions as the
+emitter.
+
+The proof is behavioural: four programs whose output depends on which properties
+exist, their order, and initialization order run through BlueTSC and pinned
+TypeScript for ES2022, ES2022 with assign semantics, ES2020, ES2020 with define
+semantics, and ES2020 with assign semantics, and must print the same thing under
+Node.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process

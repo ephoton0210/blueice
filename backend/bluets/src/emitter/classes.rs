@@ -11,7 +11,6 @@
 //! declaration output is derived from the same parsed members.
 
 use super::{type_to_ts, Module, TextEdit};
-use crate::compiler::EcmaTarget;
 use crate::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
 use crate::parser::{
     widen_literal_tokens, ClassDeclaration, ClassMemberShell, Declaration, Parameter, Type,
@@ -45,120 +44,6 @@ pub(super) fn overload_signature_erasures(module: &Module) -> Vec<TextEdit> {
         }
     }
     edits
-}
-
-/// The text a constructor's parameter properties add: a field declaration for
-/// each at the start of the class body, and `this.p = p;` for each after the
-/// `super(...)` statement, or at the start of the constructor body in a base
-/// class. Both stay on the line they are inserted into, so no later source
-/// line moves.
-pub(super) fn parameter_property_insertions(module: &Module) -> Result<Vec<TextEdit>, Diagnostic> {
-    let mut edits = Vec::new();
-    for declaration in &module.declarations {
-        let Declaration::Class(class) = declaration else {
-            continue;
-        };
-        let fields = class.parameter_property_fields();
-        if fields.is_empty() {
-            continue;
-        }
-        let constructor = class
-            .members
-            .iter()
-            .filter_map(|member| member.constructor.as_ref())
-            .find(|constructor| constructor.body.is_some())
-            .expect("parameter properties belong to a constructor implementation");
-        let Some(insertion) = constructor.parameter_property_insertion else {
-            return Err(Diagnostic::error(
-                DiagnosticCode::UnsupportedSyntax,
-                constructor.span.clone(),
-                "a derived constructor with parameter properties needs a top-level \
-                 `super(...)` statement to place their assignments after",
-            ));
-        };
-        let declarations: String = fields
-            .iter()
-            .map(|field| format!(" {};", field.name))
-            .collect();
-        edits.push(TextEdit {
-            start: class.body_span.start + 1,
-            end: class.body_span.start + 1,
-            replacement: declarations,
-        });
-        let assignments: String = fields
-            .iter()
-            .map(|field| format!(" this.{0} = {0};", field.name))
-            .collect();
-        edits.push(TextEdit {
-            start: insertion.offset,
-            end: insertion.offset,
-            replacement: assignments,
-        });
-    }
-    Ok(edits)
-}
-
-/// A field is emitted as a native class field, which is the ES2022 form. Older
-/// targets need the constructor-assignment lowering (J.3.3), so a field there
-/// is refused rather than emitted with the wrong semantics.
-pub(super) fn refuse_fields_below_es2022(
-    module: &Module,
-    target: EcmaTarget,
-) -> Result<(), Diagnostic> {
-    if target != EcmaTarget::Es2020 {
-        return Ok(());
-    }
-    for declaration in &module.declarations {
-        let Declaration::Class(class) = declaration else {
-            continue;
-        };
-        if let Some(field) = class
-            .members
-            .iter()
-            .find_map(|member| member.field.as_ref())
-            .cloned()
-            .or_else(|| class.parameter_property_fields().into_iter().next())
-        {
-            return Err(Diagnostic::error(
-                DiagnosticCode::UnsupportedSyntax,
-                field.span.clone(),
-                "class fields need the ES2022 target; lowering them for ES2020 is not supported yet",
-            ));
-        }
-        // A static block is ES2022 syntax too.
-        if let Some(member) = class
-            .members
-            .iter()
-            .find(|member| member.static_block.is_some())
-        {
-            return Err(Diagnostic::error(
-                DiagnosticCode::UnsupportedSyntax,
-                member.span.clone(),
-                "static blocks need the ES2022 target; lowering them for ES2020 is not supported yet",
-            ));
-        }
-        // A private-name method or accessor is ES2022 syntax too.
-        if let Some(span) = class.members.iter().find_map(|member| {
-            let name = member
-                .method
-                .as_ref()
-                .map(|method| method.name.as_str())
-                .or_else(|| {
-                    member
-                        .accessor
-                        .as_ref()
-                        .map(|accessor| accessor.name.as_str())
-                })?;
-            name.starts_with('#').then(|| member.span.clone())
-        }) {
-            return Err(Diagnostic::error(
-                DiagnosticCode::UnsupportedSyntax,
-                span,
-                "private names need the ES2022 target; lowering them for ES2020 is not supported yet",
-            ));
-        }
-    }
-    Ok(())
 }
 
 /// A literal spelled for a declaration file: TypeScript prints strings with

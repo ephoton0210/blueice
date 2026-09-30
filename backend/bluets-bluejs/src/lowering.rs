@@ -7,6 +7,7 @@ use super::*;
 
 pub(super) fn lower_script(
     module: &Module,
+    define_class_fields: bool,
 ) -> Result<(Vec<bluejs::Stmt>, Vec<LoweringProvenance>), BridgeError> {
     let mut body = Vec::new();
     let mut provenance = Vec::new();
@@ -64,7 +65,7 @@ pub(super) fn lower_script(
                 ));
             }
             Declaration::Class(class) if !class.exported => {
-                body.push(lower_class(module, class)?);
+                body.push(lower_class(module, class, define_class_fields)?);
                 provenance.push((class.span.clone(), LoweringProvenanceKind::LoweredSyntax));
             }
             Declaration::Class(class) => {
@@ -81,6 +82,7 @@ pub(super) fn lower_script(
 pub(super) fn lower_module(
     project: Option<&Project>,
     module: &Module,
+    define_class_fields: bool,
 ) -> Result<(bluejs::Module, Vec<LoweringProvenance>), BridgeError> {
     let mut body = Vec::new();
     let mut imports = Vec::new();
@@ -189,7 +191,7 @@ pub(super) fn lower_module(
                 ));
             }
             Declaration::Class(class) => {
-                body.push(lower_class(module, class)?);
+                body.push(lower_class(module, class, define_class_fields)?);
                 provenance.push((class.span.clone(), LoweringProvenanceKind::LoweredSyntax));
                 if class.exported {
                     exports.push(bluejs::ExportEntry::Local {
@@ -259,18 +261,48 @@ fn lower_function(
 /// A class as a BlueJS class declaration. Overload signatures have no runtime
 /// form and are skipped; the constructor is the non-static method named
 /// `constructor`, as BlueJS represents it.
-fn lower_class(module: &Module, class: &ClassDeclaration) -> Result<bluejs::Stmt, BridgeError> {
+///
+/// With `define_class_fields` the fields are BlueJS class fields, which have
+/// define semantics. Without it they are lowered as TypeScript does for
+/// `useDefineForClassFields: false`: an instance field becomes `this.x = init`
+/// at the start of the constructor (after `super(...)`), a static field a
+/// static block that assigns it, and a field with no initializer disappears.
+fn lower_class(
+    module: &Module,
+    class: &ClassDeclaration,
+    define_class_fields: bool,
+) -> Result<bluejs::Stmt, BridgeError> {
     let mut elements = Vec::new();
-    // A constructor's parameter properties declare fields ahead of every
-    // other member, as TypeScript emits them.
-    for field in class.parameter_property_fields() {
-        elements.push(bluejs::ClassElement::Field {
-            key: bluejs::PropertyKey::Identifier(field.name),
-            initializer: None,
-            is_static: false,
-            accessor: false,
-            decorators: Vec::new(),
-        });
+    let properties = class.parameter_property_fields();
+    // A constructor's parameter properties declare fields ahead of every other
+    // member, as TypeScript emits them, when fields are defined.
+    if define_class_fields {
+        for field in &properties {
+            elements.push(bluejs::ClassElement::Field {
+                key: bluejs::PropertyKey::Identifier(field.name.clone()),
+                initializer: None,
+                is_static: false,
+                accessor: false,
+                decorators: Vec::new(),
+            });
+        }
+    }
+    // Instance fields lowered to constructor assignments, in source order. All
+    // of them are known before any member is lowered, since the constructor may
+    // be written ahead of the fields.
+    let mut field_assignments = Vec::new();
+    if !define_class_fields {
+        for field in class
+            .members
+            .iter()
+            .filter_map(|member| member.field.as_ref())
+            .filter(|field| !field.is_static && !field.name.starts_with('#'))
+        {
+            if let Some(tokens) = field.initializer.as_deref() {
+                let initializer = ExpressionLowerer::new(&module.id, tokens).parse()?;
+                field_assignments.push(assign_this_member(&field.name, initializer));
+            }
+        }
     }
     for member in &class.members {
         if let Some(block) = &member.static_block {
@@ -296,17 +328,25 @@ fn lower_class(module: &Module, class: &ClassDeclaration) -> Result<bluejs::Stmt
             continue;
         }
         if let Some(field) = &member.field {
-            elements.push(bluejs::ClassElement::Field {
-                key: bluejs::PropertyKey::Identifier(field.name.clone()),
-                initializer: field
-                    .initializer
-                    .as_deref()
-                    .map(|tokens| ExpressionLowerer::new(&module.id, tokens).parse())
-                    .transpose()?,
-                is_static: field.is_static,
-                accessor: false,
-                decorators: Vec::new(),
-            });
+            let initializer = field
+                .initializer
+                .as_deref()
+                .map(|tokens| ExpressionLowerer::new(&module.id, tokens).parse())
+                .transpose()?;
+            if define_class_fields || field.name.starts_with('#') {
+                elements.push(bluejs::ClassElement::Field {
+                    key: bluejs::PropertyKey::Identifier(field.name.clone()),
+                    initializer,
+                    is_static: field.is_static,
+                    accessor: false,
+                    decorators: Vec::new(),
+                });
+            } else if let (true, Some(initializer)) = (field.is_static, initializer) {
+                elements.push(bluejs::ClassElement::StaticBlock(vec![assign_this_member(
+                    &field.name,
+                    initializer,
+                )]));
+            }
             continue;
         }
         let (name, is_static, parameters, body) = if let Some(constructor) = &member.constructor {
@@ -334,7 +374,13 @@ fn lower_class(module: &Module, class: &ClassDeclaration) -> Result<bluejs::Stmt
         };
         let mut function = lower_function_value(module, Some(name.clone()), parameters, body)?;
         if let Some(constructor) = &member.constructor {
-            insert_parameter_property_assignments(module, constructor, body, &mut function)?;
+            insert_constructor_prologue(
+                module,
+                constructor,
+                body,
+                &field_assignments,
+                &mut function,
+            )?;
         }
         elements.push(bluejs::ClassElement::Method {
             key: bluejs::PropertyKey::Identifier(name.clone()),
@@ -342,6 +388,16 @@ fn lower_class(module: &Module, class: &ClassDeclaration) -> Result<bluejs::Stmt
             is_static,
             decorators: Vec::new(),
         });
+    }
+    // Instance fields lowered to assignments, but no constructor to hold them.
+    let has_constructor = class.members.iter().any(|member| {
+        member
+            .constructor
+            .as_ref()
+            .is_some_and(|ctor| ctor.body.is_some())
+    });
+    if !field_assignments.is_empty() && !has_constructor {
+        elements.insert(0, synthesized_constructor(class, field_assignments));
     }
     Ok(bluejs::Stmt::ClassDecl(bluejs::Class {
         name: Some(class.name.clone()),
@@ -356,43 +412,90 @@ fn lower_class(module: &Module, class: &ClassDeclaration) -> Result<bluejs::Stmt
     }))
 }
 
-/// `this.p = p;` for each parameter property, after the `super(...)` statement
-/// or at the start of the body, matching where the emitter inserts the text.
-fn insert_parameter_property_assignments(
+/// `this.name = value;`
+fn assign_this_member(name: &str, value: bluejs::Expr) -> bluejs::Stmt {
+    bluejs::Stmt::Expr(bluejs::Expr::Assign {
+        op: bluejs::AssignOp::Assign,
+        target: Box::new(bluejs::Expr::Member {
+            object: Box::new(bluejs::Expr::This),
+            property: Box::new(bluejs::Expr::Identifier(name.to_string())),
+            computed: false,
+        }),
+        value: Box::new(value),
+    })
+}
+
+/// The constructor a class with lowered instance fields needs when it declares
+/// none: `constructor() { .. }`, or in a derived class
+/// `constructor(...args) { super(...args); .. }`.
+fn synthesized_constructor(
+    class: &ClassDeclaration,
+    assignments: Vec<bluejs::Stmt>,
+) -> bluejs::ClassElement {
+    let derived = class.extends_name.is_some();
+    let mut body = Vec::new();
+    let mut params = Vec::new();
+    if derived {
+        params.push(bluejs::Param {
+            pattern: bluejs::Pattern::Identifier("args".to_string()),
+            default: None,
+            rest: true,
+        });
+        body.push(bluejs::Stmt::Expr(bluejs::Expr::Call {
+            callee: Box::new(bluejs::Expr::Super),
+            args: vec![bluejs::Argument::Spread(bluejs::Expr::Identifier(
+                "args".to_string(),
+            ))],
+        }));
+    }
+    body.extend(assignments);
+    bluejs::ClassElement::Method {
+        key: bluejs::PropertyKey::Identifier("constructor".to_string()),
+        function: bluejs::Function {
+            name: Some("constructor".to_string()),
+            params,
+            body,
+            generator: false,
+            is_async: false,
+            source_text: Default::default(),
+        },
+        is_static: false,
+        decorators: Vec::new(),
+    }
+}
+
+/// The statements a constructor starts with, after `super(...)` in a derived
+/// class: `this.p = p;` for each parameter property, then the lowered field
+/// assignments. They go where the emitter inserts the same text.
+fn insert_constructor_prologue(
     module: &Module,
     constructor: &ClassConstructor,
     body_items: &[FunctionBodyItem],
+    field_assignments: &[bluejs::Stmt],
     function: &mut bluejs::Function,
 ) -> Result<(), BridgeError> {
-    if constructor.parameter_properties.is_empty() {
+    if constructor.parameter_properties.is_empty() && field_assignments.is_empty() {
         return Ok(());
     }
-    let Some(insertion) = constructor.parameter_property_insertion else {
+    let Some(insertion) = constructor.prologue_insertion else {
         return Err(unsupported(
             constructor.span.clone(),
-            "parameter properties need a top-level super call to follow in a derived class",
+            "a derived constructor needs a top-level super call for the statements that must follow it",
         ));
     };
-    let assignments: Vec<bluejs::Stmt> = constructor
+    let mut prologue: Vec<bluejs::Stmt> = constructor
         .parameter_properties
         .iter()
         .map(|property| {
             let name = constructor.parameters[property.parameter_index]
                 .name
                 .clone();
-            bluejs::Stmt::Expr(bluejs::Expr::Assign {
-                op: bluejs::AssignOp::Assign,
-                target: Box::new(bluejs::Expr::Member {
-                    object: Box::new(bluejs::Expr::This),
-                    property: Box::new(bluejs::Expr::Identifier(name.clone())),
-                    computed: false,
-                }),
-                value: Box::new(bluejs::Expr::Identifier(name)),
-            })
+            assign_this_member(&name, bluejs::Expr::Identifier(name.clone()))
         })
         .collect();
+    prologue.extend(field_assignments.iter().cloned());
     let mut body = lower_function_body(module, &body_items[..insertion.item_index])?;
-    body.extend(assignments);
+    body.extend(prologue);
     body.extend(lower_function_body(
         module,
         &body_items[insertion.item_index..],

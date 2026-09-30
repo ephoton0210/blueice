@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: J.3.3.** H and I are complete. The requested class, enum,
+**Current leaf: J.3.3.2.** H and I are complete. The requested class, enum,
 decorator, namespace, JSX, CommonJS, and package-resolution expansion has
 passed J.1/J.2 planning; implementation and pinned-`tsc` parity remain open.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
@@ -2281,6 +2281,45 @@ done to the page-runs-and-debugs goal at the top of this file.
       not added.
   - [ ] **J.3.3** Complete target-dependent native/downlevel class emit,
     versioned helpers, option interactions, and Node/BlueJS parity.
+    - [x] **J.3.3.1** `useDefineForClassFields` and downlevel class fields.
+      A new option (`CompilerOptions::use_define_for_class_fields`, BlueTSC
+      `--use-define-for-class-fields true|false`, config
+      `useDefineForClassFields`) selects define or assign semantics, defaulting
+      to the target's (define for ES2022, assign for ES2020, as TypeScript
+      does); it is in the build fingerprint and the manifest. ES2022 with define
+      semantics still emits native fields. Every other combination lowers them
+      by moving text, as TypeScript does: assign semantics turns an instance
+      field into `this.x = init;` at the start of the constructor (after the
+      top-level `super(...)` in a derived class, after the parameter
+      properties) and drops a field with no initializer; define semantics below
+      ES2022 uses `Object.defineProperty` (an uninitialized field is defined as
+      `undefined`); a static field is `static { this.x = init; }` on ES2022 with
+      assign semantics and a statement after the class on ES2020, where a static
+      block becomes `(function () { .. }).call(Class);` and a static initializer
+      that mentions `this` is evaluated the same way, so `this` is the class
+      without any token being rewritten. A class with no constructor gets one
+      (`super(...arguments)` in a derived class). Moved text is the source with
+      its recorded type-erasing edits applied. `super` in a lowered static
+      initializer or block, and a derived constructor with no top-level
+      `super(...)`, are refused as unsupported; private names still need
+      ES2022. Under define semantics a derived class that redeclares a base
+      instance property with no initializer and no constructor assignment is an
+      error, as TypeScript's TS2612 (not under assign semantics). The direct
+      bridge lowers assign semantics the same way (constructor assignments,
+      static blocks, a synthesized constructor) and keeps BlueJS fields for define
+      semantics. Four `class-downlevel-*` programs compiled by BlueTSC and pinned
+      tsc in five target/option modes print identical output under Node
+      (property existence and order, initialization order, `this` in static
+      initializers), eight more `class-field-redeclare-*` entries join the class
+      matrix (all agree), and 15 public tests, a CLI test through both the flag
+      and the config file, and a bridge test with Node parity pin the emitted
+      text and the option.
+    - [ ] **J.3.3.2** Private names below ES2022: `WeakMap`/`WeakSet` lowering
+      with versioned inline helpers, for fields, methods, accessors, static
+      forms and `#x in o`.
+    - [ ] **J.3.3.3** Option interactions (declaration and source-map output,
+      strict-runtime, incremental cache keys) and remaining Node/BlueJS
+      parity across every target and semantics.
   - [ ] **J.3.4** Implement numeric/string/heterogeneous enums and `const enum`
     semantics, including evaluation, reverse mapping, declaration emit,
     isolation options, direct runtime, and oracle parity.

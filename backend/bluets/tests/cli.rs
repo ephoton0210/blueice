@@ -172,6 +172,115 @@ fn config_builds_multiple_entries_and_resolves_only_declared_imports() {
 }
 
 #[test]
+fn class_fields_build_for_es2020_under_either_semantics_and_the_manifest_records_which() {
+    let temporary = unique_test_directory();
+    let root = temporary.join("project");
+    fs::create_dir_all(root.join("src")).unwrap();
+    fs::write(
+        root.join("src/main.ts"),
+        "class A { x: number = 1; y?: number; static s: number = 2; }\n\
+         const a = new A();\n\
+         console.log(Object.keys(a).join(','), 'y' in a, A.s);\n",
+    )
+    .unwrap();
+    let node = Command::new("node").arg("--version").output().is_ok();
+    // (arguments, whether `y` exists on the instance, manifest value)
+    let flag_cases: [(&[&str], &str, bool); 3] = [
+        (&["--target", "es2020"], "x false 2", false),
+        (
+            &[
+                "--target",
+                "es2020",
+                "--use-define-for-class-fields",
+                "true",
+            ],
+            "x,y true 2",
+            true,
+        ),
+        (
+            &[
+                "--target",
+                "es2022",
+                "--use-define-for-class-fields",
+                "false",
+            ],
+            "x false 2",
+            false,
+        ),
+    ];
+    for (index, (flags, expected_stdout, defines)) in flag_cases.iter().enumerate() {
+        let output = temporary.join(format!("flags-{index}"));
+        let built = Command::new(env!("CARGO_BIN_EXE_bluetsc"))
+            .args([
+                "build",
+                root.join("src/main.ts").to_str().unwrap(),
+                "--project-root",
+                root.to_str().unwrap(),
+                "--out-dir",
+                output.to_str().unwrap(),
+            ])
+            .args(*flags)
+            .output()
+            .unwrap();
+        assert!(
+            built.status.success(),
+            "{}",
+            String::from_utf8_lossy(&built.stderr)
+        );
+        let manifest: serde_json::Value =
+            serde_json::from_slice(&fs::read(output.join("bluetsc.manifest.json")).unwrap())
+                .unwrap();
+        assert_eq!(manifest["useDefineForClassFields"], *defines, "{flags:?}");
+        if node {
+            fs::write(output.join("package.json"), r#"{"type":"module"}"#).unwrap();
+            let executed = Command::new("node")
+                .arg(output.join("src/main.js"))
+                .output()
+                .unwrap();
+            assert_eq!(
+                String::from_utf8_lossy(&executed.stdout).trim(),
+                *expected_stdout,
+                "{flags:?}: {}",
+                String::from_utf8_lossy(&executed.stderr)
+            );
+        }
+    }
+
+    // The same choice through a configuration file.
+    let config = root.join("bluetsc.json");
+    for (value, defines) in [(true, true), (false, false)] {
+        let out_dir = format!("dist-config-{value}");
+        fs::write(
+            &config,
+            serde_json::to_vec_pretty(&serde_json::json!({
+                "entries": ["src/main.ts"],
+                "outDir": out_dir,
+                "target": "es2020",
+                "useDefineForClassFields": value,
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        let built = Command::new(env!("CARGO_BIN_EXE_bluetsc"))
+            .args(["build", "--config", config.to_str().unwrap()])
+            .output()
+            .unwrap();
+        assert!(
+            built.status.success(),
+            "{}",
+            String::from_utf8_lossy(&built.stderr)
+        );
+        let manifest: serde_json::Value = serde_json::from_slice(
+            &fs::read(root.join(&out_dir).join("bluetsc.manifest.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(manifest["useDefineForClassFields"], defines);
+        assert_eq!(manifest["target"], "es2020");
+    }
+    fs::remove_dir_all(temporary).unwrap();
+}
+
+#[test]
 fn strict_config_builds_only_complete_string_boundaries_for_both_targets() {
     let temporary = unique_test_directory();
     let root = temporary.join("project");

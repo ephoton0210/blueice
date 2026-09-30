@@ -91,6 +91,11 @@ impl RuntimePolicy {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CompilerOptions {
     pub target: EcmaTarget,
+    /// TypeScript's `useDefineForClassFields`: `Some(true)` defines class
+    /// fields (native ES2022 fields, or `Object.defineProperty` below it),
+    /// `Some(false)` assigns them in the constructor, and `None` follows the
+    /// target, as TypeScript does (define for ES2022, assign for ES2020).
+    pub use_define_for_class_fields: Option<bool>,
     pub runtime_policy: RuntimePolicy,
     pub source_map: bool,
     pub declaration: bool,
@@ -114,10 +119,20 @@ pub struct CompilerOptions {
     pub limits: CompilerLimits,
 }
 
+impl CompilerOptions {
+    /// Whether class fields are defined rather than assigned, once the target's
+    /// default is applied.
+    pub fn defines_class_fields(&self) -> bool {
+        self.use_define_for_class_fields
+            .unwrap_or(self.target == EcmaTarget::Es2022)
+    }
+}
+
 impl Default for CompilerOptions {
     fn default() -> Self {
         Self {
             target: EcmaTarget::Es2022,
+            use_define_for_class_fields: None,
             runtime_policy: RuntimePolicy::Checked,
             source_map: false,
             declaration: false,
@@ -354,6 +369,7 @@ fn compile_with_cache(
         &project,
         !matches!(options.runtime_policy, RuntimePolicy::TranspileOnly),
         options.require_declared_global_calls,
+        options.defines_class_fields(),
         previous_checked,
         &rechecked_modules,
         options.limits.max_type_expansions,
@@ -757,6 +773,11 @@ pub(crate) fn fingerprint(project: &Project, options: &CompilerOptions) -> Strin
     };
     add(LANGUAGE_VERSION);
     add(options.target.as_str());
+    add(if options.defines_class_fields() {
+        "define-class-fields"
+    } else {
+        "assign-class-fields"
+    });
     add(options.runtime_policy.as_str());
     add(&options.resolver_fingerprint);
     add(&options.require_declared_global_calls.to_string());

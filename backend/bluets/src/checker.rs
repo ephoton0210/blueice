@@ -134,6 +134,7 @@ pub(crate) fn check_incremental(
     project: &Project,
     enforce_types: bool,
     require_declared_global_calls: bool,
+    define_class_fields: bool,
     previous: Option<&CheckedProject>,
     rechecked: &BTreeSet<String>,
     max_type_expansions: usize,
@@ -162,6 +163,7 @@ pub(crate) fn check_incremental(
             module::CheckerPolicy {
                 enforce_types,
                 require_declared_global_calls,
+                define_class_fields,
             },
             max_type_expansions,
         );

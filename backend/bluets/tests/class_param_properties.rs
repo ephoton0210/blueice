@@ -234,19 +234,28 @@ fn parameter_modifiers_must_be_in_order_and_not_repeated() {
 }
 
 #[test]
-fn a_parameter_property_class_is_refused_on_an_es2020_target() {
+fn a_parameter_property_class_is_lowered_for_an_es2020_target() {
     let compiled = compile_with(
-        "class A { constructor(public a: number) {} }",
+        "class A { z: number = 5; constructor(public a: number, private b: number) {} }",
         CompilerOptions {
             target: EcmaTarget::Es2020,
             ..CompilerOptions::default()
         },
     );
-    assert!(compiled.output.is_none());
-    assert!(compiled.diagnostics.iter().any(|diagnostic| {
-        diagnostic.code == DiagnosticCode::UnsupportedSyntax
-            && diagnostic.message.contains("ES2022 target")
-    }));
+    assert!(
+        compiled.diagnostics.is_empty(),
+        "{:?}",
+        compiled.diagnostics
+    );
+    let output = compiled.output.unwrap().artifacts[ENTRY].javascript.clone();
+    assert!(
+        output.contains("constructor(a, b) { this.a = a; this.b = b; this.z = 5;"),
+        "parameter properties first, then fields: {output}"
+    );
+    assert!(
+        !output.contains("class A { a;"),
+        "no native field declarations: {output}"
+    );
 }
 
 #[test]

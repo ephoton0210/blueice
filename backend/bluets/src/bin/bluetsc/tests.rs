@@ -38,6 +38,35 @@ fn parses_check_with_a_strict_policy() {
 }
 
 #[test]
+fn parses_the_class_field_semantics_flag_and_rejects_other_values() {
+    for (value, expected) in [("true", Some(true)), ("false", Some(false))] {
+        let parsed = args(&["check", "main.ts", "--use-define-for-class-fields", value]).unwrap();
+        let Input::Entry { options, .. } = parsed.input else {
+            panic!("expected explicit entry input");
+        };
+        assert_eq!(options.use_define_for_class_fields, expected);
+    }
+    let Input::Entry { options, .. } = args(&["check", "main.ts"]).unwrap().input else {
+        panic!("expected explicit entry input");
+    };
+    assert_eq!(
+        options.use_define_for_class_fields, None,
+        "the target decides by default"
+    );
+    assert_eq!(
+        args(&["check", "main.ts", "--use-define-for-class-fields", "maybe"]),
+        Err(
+            "unsupported --use-define-for-class-fields value `maybe`; expected true or false"
+                .to_string()
+        )
+    );
+    assert_eq!(
+        args(&["check", "main.ts", "--use-define-for-class-fields"]),
+        Err("--use-define-for-class-fields requires a value".to_string())
+    );
+}
+
+#[test]
 fn config_mode_has_no_flag_escape_hatch() {
     assert_eq!(
         args(&["check", "--config", "bluetsc.json", "--source-map"]),
@@ -167,6 +196,7 @@ fn test_metadata() -> BuildMetadata {
         language_version: "blue-ts-test",
         fingerprint: "bts-project-test".to_string(),
         target: "es2022",
+        use_define_for_class_fields: true,
         runtime_policy: "checked",
         runtime_helper: None,
         strict_boundaries: Vec::new(),

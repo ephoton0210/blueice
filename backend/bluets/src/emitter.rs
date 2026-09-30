@@ -11,6 +11,7 @@ use crate::parser::{Declaration, Module, TextEdit, Type, TypeParameter};
 use crate::strict_boundaries;
 use std::collections::BTreeMap;
 
+mod class_lowering;
 mod classes;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -261,9 +262,8 @@ fn emit_javascript(
             replacement: format!("{quote}{emitted_specifier}{quote}"),
         });
     }
-    classes::refuse_fields_below_es2022(module, options.target)?;
     edits.extend(classes::overload_signature_erasures(module));
-    edits.extend(classes::parameter_property_insertions(module)?);
+    class_lowering::lower_class_members(module, options, &mut edits)?;
     let plan = strict_boundaries::plan_emission(module, options)?;
     let mut strict_runtime = None;
     if let Some((strict_edits, record)) = plan {

@@ -351,6 +351,40 @@ fn direct_page_static_blocks_and_fields_initialize_in_source_order_like_node() {
 }
 
 #[test]
+fn direct_page_assign_semantics_lowers_fields_like_typescript_and_node() {
+    // With `useDefineForClassFields: false` an instance field is a constructor
+    // assignment (after `super(..)`), a static field a static block, and a field
+    // with no initializer does not exist. The constructor is written before
+    // the fields and a class with no constructor gets one.
+    let source = "class Base { \
+        constructor(public p: number) { this.p = this.p + 1; } \
+        x: number = 1; y?: number; static s: number = 10; \
+        static { Base.s = Base.s + 1; } } \
+        class Derived extends Base { z: number = this.x + 5; static t: number = Base.s + 1; \
+        constructor() { super(2); this.z = this.z + 100; } } \
+        class Plain extends Base { w: number = this.x + this.p; } \
+        const d = new Derived(); const p = new Plain(7); \
+        d.p * 1000000 + d.x * 100000 + d.z * 100 + Derived.t + (('y' in d) ? 1 : 0) + p.w * 10000000 + Base.s;";
+    let mut options = class_options();
+    options.use_define_for_class_fields = Some(false);
+    let artifact = compile_direct_script(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+        options,
+    )
+    .unwrap();
+    let mut owner = DirectPageRealmOwner::default();
+    owner.open_realm(7, origin()).unwrap();
+    let attachment = owner.attach_script(&artifact, 7, &origin()).unwrap();
+    // Node runs the assign-semantics program (`this.x = 1` and so on, written
+    // out by hand) to 93110623.
+    assert_eq!(
+        owner.execute_program(7, &attachment).unwrap(),
+        bluejs::Value::Number(93110623.0)
+    );
+}
+
+#[test]
 fn direct_page_while_runs_zero_and_multiple_iterations() {
     let artifact = compile_direct_script(
         ENTRY,

@@ -578,9 +578,10 @@ pub fn compile_direct_script(
     loader: &dyn ModuleLoader,
     options: CompilerOptions,
 ) -> Result<DirectScript, BridgeError> {
+    let define_class_fields = options.defines_class_fields();
     let (module, debug_info) = checked_entry(entry, loader, options)?;
 
-    let (body, provenance) = lower_script(&module)?;
+    let (body, provenance) = lower_script(&module, define_class_fields)?;
     let program = bluejs::BlueJsProgramV1::Script(bluejs::Program { body });
     let bytecode = program.compile().map_err(BridgeError::BlueJs)?;
     let sources = bridge_sources(&debug_info);
@@ -608,8 +609,9 @@ pub fn compile_direct_module(
     loader: &dyn ModuleLoader,
     options: CompilerOptions,
 ) -> Result<DirectModule, BridgeError> {
+    let define_class_fields = options.defines_class_fields();
     let (module, debug_info) = checked_entry(entry, loader, options)?;
-    let (module, provenance) = lower_module(None, &module)?;
+    let (module, provenance) = lower_module(None, &module, define_class_fields)?;
     let program = bluejs::BlueJsProgramV1::Module(module);
     let bytecode = program.compile().map_err(BridgeError::BlueJs)?;
     let sources = bridge_sources(&debug_info);
@@ -637,6 +639,7 @@ pub fn compile_direct_module_graph(
     loader: &dyn ModuleLoader,
     options: CompilerOptions,
 ) -> Result<DirectModuleGraph, BridgeError> {
+    let define_class_fields = options.defines_class_fields();
     let compilation = compile(entry, loader, options);
     if compilation.has_errors() {
         return Err(BridgeError::BlueTs(compilation.diagnostics));
@@ -652,7 +655,8 @@ pub fn compile_direct_module_graph(
             .modules
             .get(&id)
             .expect("runtime-reachable module was selected from the project");
-        let (module, provenance) = lower_module(Some(&compilation.project), module)?;
+        let (module, provenance) =
+            lower_module(Some(&compilation.project), module, define_class_fields)?;
         let program = bluejs::BlueJsProgramV1::Module(module);
         let bytecode = program.compile().map_err(BridgeError::BlueJs)?;
         let sources = debug_info

@@ -18,6 +18,9 @@ enum RecordSpreadFailure {
 pub(super) struct CheckerPolicy {
     pub(super) enforce_types: bool,
     pub(super) require_declared_global_calls: bool,
+    /// Class fields are defined, not assigned, so a derived redeclaration
+    /// without an initializer overwrites the base's value.
+    pub(super) define_class_fields: bool,
 }
 
 pub(super) struct ModuleChecker<'a> {
@@ -27,6 +30,7 @@ pub(super) struct ModuleChecker<'a> {
     ambient: Option<&'a AmbientDeclarations>,
     enforce_types: bool,
     require_declared_global_calls: bool,
+    define_class_fields: bool,
     /// Arrow functions already checked, by start offset, so an expression
     /// visited from several checks reports its body once.
     checked_nested_functions: BTreeSet<usize>,

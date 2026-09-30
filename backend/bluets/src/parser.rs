@@ -414,9 +414,10 @@ pub struct ClassConstructor {
     /// Parameters written with an accessibility modifier or `readonly`, each
     /// of which also declares a property assigned from its argument.
     pub parameter_properties: Vec<ParameterProperty>,
-    /// Where those assignments go, when the constructor has properties and
-    /// the place can be found (see `ParameterPropertyInsertion`).
-    pub parameter_property_insertion: Option<ParameterPropertyInsertion>,
+    /// Where statements a constructor must begin with (parameter-property and
+    /// lowered field assignments) go, when the place can be found (see
+    /// `ParameterPropertyInsertion`).
+    pub prologue_insertion: Option<ParameterPropertyInsertion>,
     /// `None` denotes a signature declaration; `Some` retains body items,
     /// including an empty implementation body.
     pub body: Option<Vec<FunctionBodyItem>>,

@@ -69,6 +69,8 @@ struct BlueTscConfig {
     #[serde(default)]
     target: Option<String>,
     #[serde(default)]
+    use_define_for_class_fields: Option<bool>,
+    #[serde(default)]
     runtime_policy: Option<String>,
     #[serde(default)]
     imports: BTreeMap<String, String>,
@@ -221,6 +223,17 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
                     other => return Err(format!("unsupported target `{other}`; expected es2020 or es2022")),
                 }
             }
+            "--use-define-for-class-fields" => {
+                options.use_define_for_class_fields = Some(match value()?.as_str() {
+                    "true" => true,
+                    "false" => false,
+                    other => {
+                        return Err(format!(
+                            "unsupported --use-define-for-class-fields value `{other}`; expected true or false"
+                        ))
+                    }
+                })
+            }
             "--runtime-policy" => {
                 options.runtime_policy = match value()?.as_str() {
                     "transpile-only" => RuntimePolicy::TranspileOnly,
@@ -255,7 +268,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
 }
 
 fn usage() -> &'static str {
-    "Usage:\n  bluetsc check <entry.ts> [--project-root <directory>] [--target es2020|es2022] [--runtime-policy transpile-only|checked|strict-runtime]\n  bluetsc build <entry.ts> --out-dir <directory> [--project-root <directory>] [--source-map] [--declaration] [--target es2020|es2022] [--runtime-policy transpile-only|checked|strict-runtime]\n  bluetsc check --config <bluetsc.json>\n  bluetsc build --config <bluetsc.json>\n\nConfig fields: entries, projectRoot, outDir, sourceMap, declaration, target, runtimePolicy, imports, strictBoundaries."
+    "Usage:\n  bluetsc check <entry.ts> [--project-root <directory>] [--target es2020|es2022] [--use-define-for-class-fields true|false] [--runtime-policy transpile-only|checked|strict-runtime]\n  bluetsc build <entry.ts> --out-dir <directory> [--project-root <directory>] [--source-map] [--declaration] [--target es2020|es2022] [--use-define-for-class-fields true|false] [--runtime-policy transpile-only|checked|strict-runtime]\n  bluetsc check --config <bluetsc.json>\n  bluetsc build --config <bluetsc.json>\n\nConfig fields: entries, projectRoot, outDir, sourceMap, declaration, target, useDefineForClassFields, runtimePolicy, imports, strictBoundaries."
 }
 
 #[derive(Debug)]
@@ -273,6 +286,9 @@ struct BuildMetadata {
     language_version: &'static str,
     fingerprint: String,
     target: &'static str,
+    /// Whether class fields are defined rather than assigned, with the
+    /// target's default applied.
+    use_define_for_class_fields: bool,
     runtime_policy: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
     runtime_helper: Option<RuntimeHelperIdentity>,
@@ -445,6 +461,7 @@ fn build_metadata(invocation: &Invocation, summary: &CompileSummary) -> BuildMet
         language_version: blueice_bluets::LANGUAGE_VERSION,
         fingerprint: summary.fingerprint.clone(),
         target: invocation.options.target.as_str(),
+        use_define_for_class_fields: invocation.options.defines_class_fields(),
         runtime_policy: invocation.options.runtime_policy.as_str(),
         runtime_helper: (invocation.options.runtime_policy == RuntimePolicy::StrictRuntime)
             .then(runtime_helper_v1_identity),
@@ -615,6 +632,7 @@ fn resolve_config_invocation(path: PathBuf) -> Result<Invocation, String> {
         .collect::<Result<Vec<_>, _>>()?;
     let options = CompilerOptions {
         target: parse_target(config.target.as_deref())?,
+        use_define_for_class_fields: config.use_define_for_class_fields,
         runtime_policy: parse_runtime_policy(config.runtime_policy.as_deref())?,
         source_map: config.source_map,
         declaration: config.declaration,

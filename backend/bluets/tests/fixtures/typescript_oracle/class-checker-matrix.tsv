@@ -57,6 +57,10 @@ class-constructor-overload-default/main.ts	reject
 class-constructor-unknown-type/main.ts	reject
 class-constructor-valid-default/main.ts	accept
 class-derived-own-constructor-argument-error/main.ts	reject
+class-downlevel-accessors-and-methods/main.ts	accept
+class-downlevel-fields/main.ts	accept
+class-downlevel-no-constructor/main.ts	accept
+class-downlevel-static-order/main.ts	accept
 class-dual-binding-wrong-side/main.ts	reject
 class-dual-binding/main.ts	accept
 class-duplicate-name/main.ts	reject
@@ -83,6 +87,14 @@ class-field-outside-assign-readonly/main.ts	reject
 class-field-outside-unknown-member/main.ts	reject
 class-field-override-type-error/main.ts	reject
 class-field-readonly-assign/main.ts	reject
+class-field-redeclare-assigned/main.ts	accept
+class-field-redeclare-definite/main.ts	reject
+class-field-redeclare-grandparent/main.ts	reject
+class-field-redeclare-initialized/main.ts	accept
+class-field-redeclare-new-name/main.ts	accept
+class-field-redeclare-parameter-property/main.ts	reject
+class-field-redeclare-static/main.ts	accept
+class-field-redeclare-uninitialized/main.ts	reject
 class-field-static-from-instance/main.ts	reject
 class-field-unknown-type/main.ts	reject
 class-heritage-forward-base/main.ts	reject

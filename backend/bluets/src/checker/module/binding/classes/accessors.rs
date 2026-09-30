@@ -217,7 +217,7 @@ impl ModuleChecker<'_> {
     /// base classes. `Err(())` when the chain leaves the module (or a base is
     /// not local) before a declaration is found but the base's type record has
     /// the member, so its kind cannot be told.
-    fn base_member_kind(
+    pub(super) fn base_member_kind(
         &self,
         class: &ClassDeclaration,
         name: &str,

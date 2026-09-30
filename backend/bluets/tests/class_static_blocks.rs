@@ -172,21 +172,25 @@ fn blocks_and_static_fields_interleave_and_blocks_may_repeat() {
 }
 
 #[test]
-fn a_static_block_is_refused_on_an_es2020_target() {
+fn a_static_block_runs_after_the_class_on_an_es2020_target() {
     let compiled = compile_with(
-        "class A { static { } }",
+        "class A { static n: number = 1; static { A.n = this.n + 1; } }",
         CompilerOptions {
             target: EcmaTarget::Es2020,
             ..CompilerOptions::default()
         },
     );
-    assert!(compiled.output.is_none());
-    assert!(compiled.diagnostics.iter().any(|diagnostic| {
-        diagnostic.code == DiagnosticCode::UnsupportedSyntax
-            && diagnostic
-                .message
-                .contains("static blocks need the ES2022 target")
-    }));
+    assert!(
+        compiled.diagnostics.is_empty(),
+        "{:?}",
+        compiled.diagnostics
+    );
+    let output = compiled.output.unwrap().artifacts[ENTRY].javascript.clone();
+    assert!(!output.contains("static"), "{output}");
+    assert!(
+        output.contains("A.n = 1; (function () { A.n = this.n + 1; }).call(A);"),
+        "field then block, after the class, `this` bound by call: {output}"
+    );
 }
 
 #[test]

@@ -47,6 +47,7 @@ impl<'a> ModuleChecker<'a> {
             ambient,
             enforce_types: policy.enforce_types,
             require_declared_global_calls: policy.require_declared_global_calls,
+            define_class_fields: policy.define_class_fields,
             checked_nested_functions: BTreeSet::new(),
             async_context: None,
             constructor_readonly_fields: None,

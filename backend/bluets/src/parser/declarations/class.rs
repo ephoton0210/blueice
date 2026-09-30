@@ -198,15 +198,14 @@ impl Parser {
                 "a parameter property is only allowed in a constructor implementation",
             );
         }
-        let parameter_property_insertion = match (&body, parameter_properties.is_empty()) {
-            (Some(items), false) => parameter_property_insertion(items, body_open, derived),
-            _ => None,
-        };
+        let prologue_insertion = body
+            .as_deref()
+            .and_then(|items| prologue_insertion(items, body_open, derived));
         member.constructor = Some(ClassConstructor {
             visibility: modifiers.visibility,
             parameters,
             parameter_properties,
-            parameter_property_insertion,
+            prologue_insertion,
             body,
             span: member.span.clone(),
         });
@@ -560,7 +559,7 @@ fn scan_member_modifiers(tokens: &[Token], start: usize, end: usize) -> Option<M
 /// Where a constructor's parameter-property assignments go: the start of the
 /// body in a base class, just after the top-level `super(...)` statement in a
 /// derived one. A derived constructor with no such statement has no place.
-fn parameter_property_insertion(
+fn prologue_insertion(
     items: &[FunctionBodyItem],
     body_open: usize,
     derived: bool,

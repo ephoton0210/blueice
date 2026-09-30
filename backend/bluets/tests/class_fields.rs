@@ -246,28 +246,34 @@ fn inherited_and_overriding_fields_are_checked_against_the_base() {
 }
 
 #[test]
-fn fields_are_refused_for_an_es2020_target_until_they_can_be_lowered() {
+fn fields_are_lowered_for_an_es2020_target() {
     let compiled = compile_with(
-        "class A { x: number = 1; }",
+        "class A { x: number = 1; static s: number = 2; }",
         CompilerOptions {
             target: EcmaTarget::Es2020,
             ..CompilerOptions::default()
         },
     );
-    assert!(compiled.output.is_none());
-    assert!(compiled.diagnostics.iter().any(|diagnostic| {
-        diagnostic.code == DiagnosticCode::UnsupportedSyntax
-            && diagnostic.message.contains("ES2022 target")
-    }));
-    // A class with no field still emits for ES2020.
-    let plain = compile_with(
-        "class A { m(): number { return 1; } }",
-        CompilerOptions {
-            target: EcmaTarget::Es2020,
-            ..CompilerOptions::default()
-        },
+    assert!(
+        compiled.diagnostics.is_empty(),
+        "{:?}",
+        compiled.diagnostics
     );
-    assert!(plain.output.is_some(), "{:?}", plain.diagnostics);
+    let output = compiled.output.unwrap().artifacts[ENTRY].javascript.clone();
+    assert!(output.contains("constructor() { this.x = 1; }"), "{output}");
+    assert!(output.contains("A.s = 2;"), "{output}");
+    assert!(!output.contains("static s"), "{output}");
+    // A class with no field emits the same for either target.
+    for target in [EcmaTarget::Es2020, EcmaTarget::Es2022] {
+        let plain = compile_with(
+            "class A { m(): number { return 1; } }",
+            CompilerOptions {
+                target,
+                ..CompilerOptions::default()
+            },
+        );
+        assert!(plain.output.is_some(), "{:?}", plain.diagnostics);
+    }
 }
 
 #[test]

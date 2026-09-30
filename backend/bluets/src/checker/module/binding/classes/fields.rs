@@ -123,7 +123,64 @@ impl ModuleChecker<'_> {
         }
         self.check_definite_assignment(class, &fields);
         self.check_class_field_overrides(class, &fields);
+        self.check_redeclared_field_overwrite(class, &fields);
         self.check_static_block_order(class);
+    }
+
+    /// With `useDefineForClassFields`, a derived class that declares an
+    /// instance property its base already declares, with no initializer and no
+    /// constructor assignment, redefines it as `undefined` and so overwrites
+    /// the base's value. TypeScript reports that (TS2612); when fields are
+    /// assigned, the declaration emits nothing and is harmless.
+    fn check_redeclared_field_overwrite(
+        &mut self,
+        class: &ClassDeclaration,
+        fields: &[&ClassField],
+    ) {
+        if !self.define_class_fields || class.extends_name.is_none() {
+            return;
+        }
+        for field in fields {
+            if field.is_static
+                || field.initializer.is_some()
+                || field.from_default
+                || field.name.starts_with('#')
+                || class
+                    .parameter_property_fields()
+                    .iter()
+                    .any(|property| property.name == field.name)
+            {
+                continue;
+            }
+            if !matches!(
+                self.base_member_kind(class, &field.name, false),
+                Ok(Some(super::accessors::BaseMemberKind::Field))
+            ) {
+                continue;
+            }
+            let assigned = class
+                .members
+                .iter()
+                .filter_map(|member| member.constructor.as_ref())
+                .filter_map(|constructor| constructor.body.as_deref())
+                .any(|body| {
+                    body.iter().any(|item| {
+                        item_assigns_this_field(item, &field.name)
+                            || nested_item_assigns_this_field(item, &field.name)
+                    })
+                });
+            if !assigned {
+                self.type_error(
+                    &field.name_span,
+                    format!(
+                        "property `{}` will overwrite the base property; add an initializer or \
+                         remove the redundant declaration",
+                        field.name
+                    ),
+                    DiagnosticCode::TypeMismatch,
+                );
+            }
+        }
     }
 
     /// A static block runs at its place among the static fields, so it cannot
