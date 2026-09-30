@@ -2554,6 +2554,35 @@ direct route reaches this lowering only when the caller's options set it, and
 `CompilerOptions::default()` still refuses classes. J.3.1.6 verifies the
 strict-boundary, debugger and stale-generation behaviour and removes the switch.
 
+### J.3.1.6a Class debugger mapping, stale generations and strict boundaries
+
+Three things J.3.1.6 asks for, verified on the direct route with classes
+admitted.
+
+Debugger mapping. The safe-point map pairs each root statement with the code
+units it produced: a function declaration owns one child closure, found through
+`root_function_child_indices`. A class owns several (its constructor and each
+method), and the map gave those no source location, so a frame paused inside a
+method had no original position. BlueJS now records, for every root statement
+other than a function declaration, the range of direct child closures compiling
+it created (`Bytecode::root_statement_child_ranges`, filled by counting the
+children before and after the statement), and the bridge maps every safe point of
+every closure in that range to the whole original class declaration. Attachment
+still refuses a program whose statement ranges disagree with its lowering, and
+an existing attachment is matched against the new ranges as well.
+
+Stale generations. A frame paused in a method is refused after navigation, along
+with the map and the debug registry entry, exactly as for a function; a test
+pauses in a Base method, checks the mapped span is the original class, then
+navigates and checks all three are refused. A nested pause is only supported in
+a method the root code calls directly (BlueJS refuses it elsewhere), so the test
+pauses in the one the script calls.
+
+Strict boundaries. An emitted strict module admits only the owner-selected
+string functions and refuses every other runtime declaration, so a class in such
+a module is refused with an invalid-contract diagnostic even when classes are
+admitted; a test pins it.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process

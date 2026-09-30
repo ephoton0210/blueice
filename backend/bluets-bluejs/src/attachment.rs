@@ -145,6 +145,7 @@ fn bytecode_matches(expected: &bluejs::Bytecode, actual: &bluejs::Bytecode) -> b
         && expected.root_statement_offsets() == actual.root_statement_offsets()
         && expected.root_statement_ranges() == actual.root_statement_ranges()
         && expected.root_function_child_indices() == actual.root_function_child_indices()
+        && expected.root_statement_child_ranges() == actual.root_statement_child_ranges()
         && expected.root_declaration_binding_slots() == actual.root_declaration_binding_slots()
         && expected
             .child_code_units()
@@ -384,7 +385,11 @@ pub(super) fn build_safe_point_map(
     let bytecode = compiled.bytecode();
     let ranges = bytecode.root_statement_ranges();
     let child_indices = bytecode.root_function_child_indices();
-    if ranges.len() != provenance.len() || child_indices.len() != provenance.len() {
+    let child_ranges = bytecode.root_statement_child_ranges();
+    if ranges.len() != provenance.len()
+        || child_indices.len() != provenance.len()
+        || child_ranges.len() != provenance.len()
+    {
         return Err(BridgeError::ProvenanceAttachment(
             "root statement ownership does not match direct lowering spans".to_string(),
         ));
@@ -404,13 +409,22 @@ pub(super) fn build_safe_point_map(
         ));
     }
     let mut entries = Vec::new();
-    for ((provenance, range), child_index) in provenance.iter().zip(ranges).zip(child_indices) {
+    for (((provenance, range), child_index), owned_children) in provenance
+        .iter()
+        .zip(ranges)
+        .zip(child_indices)
+        .zip(child_ranges)
+    {
         match (provenance.safe_point, range) {
             (DirectSafePointBinding::Bound(safe_point), Some((start, end)))
                 if safe_point.code_unit == root.id()
                     && safe_point.bytecode_offset == *start
                     && start < end => {}
-            (DirectSafePointBinding::Unbound, None) if child_index.is_none() => continue,
+            (DirectSafePointBinding::Unbound, None)
+                if child_index.is_none() && owned_children.is_none() =>
+            {
+                continue
+            }
             _ => {
                 return Err(BridgeError::ProvenanceAttachment(
                     "compiler statement range disagrees with its bound safe point".to_string(),
@@ -455,6 +469,32 @@ pub(super) fn build_safe_point_map(
                     .copied()
                     .map(|offset| entry_at(child.id(), offset)),
             );
+        }
+        // A class declaration owns the closures of its constructor and
+        // methods; each maps to the whole original class.
+        if let Some((first, last)) = owned_children {
+            for child_index in *first..*last {
+                let child_ordinal = usize::try_from(child_index)
+                    .ok()
+                    .and_then(|index| index.checked_add(1))
+                    .ok_or_else(|| {
+                        BridgeError::ProvenanceAttachment(
+                            "class child index exceeds the host address space".to_string(),
+                        )
+                    })?;
+                let child = code_units.get(child_ordinal).ok_or_else(|| {
+                    BridgeError::ProvenanceAttachment(
+                        "a class member has no installed child code unit".to_string(),
+                    )
+                })?;
+                entries.extend(
+                    child
+                        .instruction_offsets()
+                        .iter()
+                        .copied()
+                        .map(|offset| entry_at(child.id(), offset)),
+                );
+            }
         }
     }
     entries.sort_by(safe_point_entry_order);

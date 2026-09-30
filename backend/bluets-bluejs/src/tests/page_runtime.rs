@@ -135,6 +135,87 @@ fn direct_route_still_refuses_classes_unless_the_staging_switch_is_on() {
 }
 
 #[test]
+fn direct_page_class_debug_frame_maps_to_the_original_class_and_expires_after_navigation() {
+    let source = CLASS_SOURCE;
+    let base_start = source.find("class Base").unwrap();
+    let derived_start = source.find("class Derived").unwrap();
+    let base_end = base_start + source[base_start..derived_start].rfind('}').unwrap() + 1;
+    let artifact = compile_direct_script(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+        class_options(),
+    )
+    .unwrap();
+    let mut runtime = bluejs::BlueJsPageRuntime::default();
+    runtime.open_realm(7, origin()).unwrap();
+    let mut debug = DirectDebugRegistry::default();
+    let attachment = artifact
+        .attach_debug_in_page_realm(&mut runtime, 7, &origin(), &mut debug)
+        .unwrap();
+    attachment
+        .safe_point_map
+        .validate_against(runtime.program_registry(), attachment.handle)
+        .unwrap();
+    // Every safe point inside a Base member (a child code unit) is mapped to
+    // the whole original class declaration. The last member, `twice`, is the
+    // one the script calls directly, and a nested pause is only supported in a
+    // method the root code calls directly, so that is where it pauses.
+    let base_entries: Vec<_> = attachment
+        .safe_point_map
+        .entries
+        .iter()
+        .filter(|entry| {
+            entry.code_unit.ordinal() > 0
+                && attachment
+                    .safe_point_map
+                    .source_span_for_safe_point(entry.code_unit.ordinal(), entry.bytecode_offset)
+                    .is_some_and(|mapped| {
+                        (mapped.start_byte, mapped.end_byte) == (base_start, base_end)
+                    })
+        })
+        .collect();
+    let member_units: std::collections::BTreeSet<_> = base_entries
+        .iter()
+        .map(|entry| entry.code_unit.ordinal())
+        .collect();
+    assert_eq!(member_units.len(), 4, "constructor and three methods");
+    let last_member = *member_units.last().unwrap();
+    let child = base_entries
+        .iter()
+        .find(|entry| entry.code_unit.ordinal() == last_member)
+        .expect("the last Base member has mapped instructions");
+    let point = bluejs::BlueJsSafePoint {
+        code_unit: child.code_unit,
+        bytecode_offset: child.bytecode_offset,
+    };
+    let bluejs::BlueJsPageDebuggerNestedExecutionState::Paused {
+        frame,
+        bytecode_offset,
+    } = runtime
+        .execute_program_until_nested_debugger_pause(7, attachment.handle, point)
+        .unwrap()
+    else {
+        panic!("the program must pause inside a Base method");
+    };
+    assert_eq!(frame.program(), attachment.handle);
+    let mapped = attachment
+        .safe_point_map
+        .source_span_for_safe_point(frame.code_unit_ordinal(), bytecode_offset)
+        .expect("a live method instruction must retain source provenance");
+    assert_eq!(mapped.source, ENTRY);
+    assert_eq!((mapped.start_byte, mapped.end_byte), (base_start, base_end));
+    runtime.navigate(7, origin()).unwrap();
+    assert!(attachment
+        .safe_point_map
+        .validate_against(runtime.program_registry(), attachment.handle)
+        .is_err());
+    assert!(runtime.step_debugger_nested_instruction(frame).is_err());
+    assert!(debug
+        .get(runtime.program_registry(), attachment.handle)
+        .is_err());
+}
+
+#[test]
 fn direct_page_while_runs_zero_and_multiple_iterations() {
     let artifact = compile_direct_script(
         ENTRY,

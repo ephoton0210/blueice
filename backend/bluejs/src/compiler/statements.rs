@@ -571,18 +571,25 @@ impl Compiler {
         statements: &[Stmt],
         offsets: &mut [Option<u32>],
         ranges: &mut [Option<(u32, u32)>],
+        child_ranges: &mut [Option<(u32, u32)>],
     ) -> Result<(), CompileError> {
         debug_assert_eq!(statements.len(), offsets.len());
         debug_assert_eq!(statements.len(), ranges.len());
+        debug_assert_eq!(statements.len(), child_ranges.len());
         for (index, statement) in statements.iter().enumerate() {
             if is_function_declaration(statement) {
                 continue;
             }
             let start = self.offset();
+            let children_before = self.bytecode.functions.len();
             self.statement(statement, true)?;
             if self.offset() > start {
                 offsets[index] = Some(start);
                 ranges[index] = Some((start, self.offset()));
+            }
+            let children_after = self.bytecode.functions.len();
+            if children_after > children_before {
+                child_ranges[index] = Some((children_before as u32, children_after as u32));
             }
         }
         Ok(())

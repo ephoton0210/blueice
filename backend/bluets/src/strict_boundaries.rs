@@ -678,6 +678,35 @@ mod tests {
     }
 
     #[test]
+    fn a_class_in_an_emitted_strict_module_is_refused_even_when_classes_are_admitted() {
+        // The strict profile admits only the selected string functions; a class
+        // (which the staging switch would otherwise let through) has no
+        // boundary, so the module is refused rather than emitted half-guarded.
+        let source =
+            "export function echo(value: string): string { return value; }\nclass Helper { m(): number { return 1; } }\n";
+        let loader = MapLoader::from([ModuleSource::new(MODULE, source)]);
+        let mut selected = boundary();
+        selected.span = SourceSpan::new(MODULE, 0, source.find('}').unwrap() + 1);
+        let refused = compile(
+            MODULE,
+            &loader,
+            CompilerOptions {
+                runtime_policy: RuntimePolicy::StrictRuntime,
+                strict_runtime_boundaries: vec![selected],
+                class_emit: true,
+                ..CompilerOptions::default()
+            },
+        );
+        assert!(refused.output.is_none());
+        assert!(refused.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == DiagnosticCode::InvalidContract
+                && diagnostic
+                    .message
+                    .contains("unsupported runtime declaration or import")
+        }));
+    }
+
+    #[test]
     fn reserves_the_generated_alias_and_requires_root_relative_module_ids() {
         let source = format!("// {HELPER_ALIAS}\n{SOURCE}");
         let loader = MapLoader::from([ModuleSource::new(MODULE, &source)]);
