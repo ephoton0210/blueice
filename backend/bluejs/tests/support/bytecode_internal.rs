@@ -3,6 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use super::{Bytecode, Opcode, MAY_USE_INLINE_CACHE};
+use crate::{Value, Vm};
 
 fn code(bytes: &[u8]) -> Bytecode {
     let mut bytecode = Bytecode::empty();
@@ -107,4 +108,32 @@ fn compiled_root_ranges_and_child_indices_match_the_executable_statements() {
         .iter()
         .flatten()
         .all(|&index| (index as usize) < code.functions.len()));
+}
+
+#[test]
+fn debugger_binding_layout_matches_only_structurally_equal_code_units() {
+    let same_source = "let a = 1; let b = 2; function f() { return a + b; }";
+    let first = crate::compile(&crate::parse(same_source).unwrap()).unwrap();
+    let second = crate::compile(&crate::parse(same_source).unwrap()).unwrap();
+    assert!(first.debugger_binding_layout_matches(&second));
+
+    let different_source = "let a = 1; let b = 2; let c = 3; function f() { return a + b + c; }";
+    let different = crate::compile(&crate::parse(different_source).unwrap()).unwrap();
+    assert!(!first.debugger_binding_layout_matches(&different));
+}
+
+#[test]
+fn a_tagged_template_call_site_caches_its_strings_object_by_identity() {
+    // `TemplateSiteId` is a per-call-site `Bytecode::templates` key used as a
+    // real `HashMap` key (`Vm`'s per-execution `templates` cache) -- ECMA-262
+    // requires re-evaluating the same tagged-template call site to return the
+    // exact same (frozen) strings array object both times.
+    let program = crate::parse(
+        "function tag(strings) { return strings; } \
+         function f() { return tag`a${1}b`; } \
+         Object.is(f(), f());",
+    )
+    .unwrap();
+    let code = crate::compile(&program).unwrap();
+    assert_eq!(Vm::default().execute(&code).unwrap(), Value::Bool(true));
 }
