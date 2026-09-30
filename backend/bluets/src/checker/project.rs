@@ -38,6 +38,7 @@ pub(super) fn declaration_module_diagnostics(project: &Project) -> Vec<Diagnosti
                 Declaration::Function(function) => !function.declared && !function.overload,
                 Declaration::Class(_) => true,
                 Declaration::Enum(_) => true,
+                Declaration::Namespace(namespace) => !namespace.declared,
                 Declaration::Raw(_) => true,
                 Declaration::DefaultExport(_)
                 | Declaration::ValueExport(_)

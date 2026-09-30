@@ -204,6 +204,7 @@ impl<'a> ModuleChecker<'a> {
                         ));
                     }
                 }
+                Declaration::Namespace(namespace) => self.refuse_namespace(namespace),
                 Declaration::Raw(_) => {}
             }
         }
@@ -704,6 +705,15 @@ impl<'a> ModuleChecker<'a> {
         });
     }
 
+    /// A namespace parses but has no checking or emission yet.
+    fn refuse_namespace(&mut self, namespace: &crate::parser::NamespaceDeclaration) {
+        self.diagnostics.push(Diagnostic::error(
+            DiagnosticCode::UnsupportedSyntax,
+            namespace.span.clone(),
+            "a namespace is not supported yet",
+        ));
+    }
+
     pub(super) fn duplicate(&mut self, name: &str, span: SourceSpan) {
         self.diagnostics.push(Diagnostic::error(
             DiagnosticCode::DuplicateDeclaration,
@@ -788,7 +798,8 @@ impl<'a> ModuleChecker<'a> {
                 Declaration::Import(_)
                 | Declaration::TypeExport(_)
                 | Declaration::DefaultExport(_)
-                | Declaration::ValueExport(_) => {}
+                | Declaration::ValueExport(_)
+                | Declaration::Namespace(_) => {}
                 Declaration::Raw(raw) => {
                     let scope = self.values.clone();
                     self.check_direct_runtime_expression(&raw.tokens, &scope, &raw.span);

@@ -22,6 +22,10 @@ pub(super) struct Parser {
     /// accessibility modifier or `readonly` declares a property.
     parameter_property_mode: bool,
     parameter_properties: Vec<ParameterProperty>,
+    /// How many namespace bodies the cursor is inside, and how many of them are
+    /// ambient (`declare namespace`).
+    namespace_depth: usize,
+    ambient_depth: usize,
 }
 
 #[path = "declarations.rs"]

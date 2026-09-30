@@ -2459,6 +2459,25 @@ done to the page-runs-and-debugs goal at the top of this file.
   - [ ] **J.3.5** Implement runtime namespaces/modules and declaration merging,
     including initialization order, export visibility, nested maps, direct
     execution, and oracle parity.
+    - [x] **J.3.5.1** Parse `[export] [declare] namespace|module A.B { .. }`:
+      the body is parsed as its own declaration list (a dotted name is one
+      namespace per segment, each inner one exported from its parent and
+      marked `implicit`), an ambient body is ambient, and an import, `export
+      default`, `export =`, `export *` or export list inside a body and a
+      redundant `declare` are refused. The checker still refuses a namespace
+      as "not supported yet".
+    - [ ] **J.3.5.2** Check namespaces: a body scope over the flat binding
+      maps, exported members reached as `N.x` and `N.T`, merging with a
+      namespace, function, class or enum, non-exported members hidden, verdicts
+      against pinned tsc (matrix).
+    - [ ] **J.3.5.3** Emit namespaces: the `var N; (function (N) { .. })(N ||
+      (N = {}))` form with exported variables rewritten to `N.x`, nested and
+      merged blocks, erasure of type-only namespaces, line preservation,
+      Node parity with pinned tsc.
+    - [ ] **J.3.5.4** Declaration output, cross-module namespaces and ambient
+      namespaces in `.d.ts` modules.
+    - [ ] **J.3.5.5** Direct bridge lowering with oracle parity; class and
+      interface declaration merging.
   - [ ] **J.3.6** Extend tuple-literal context to the remaining positions,
     each against pinned TypeScript. Where context is missing, a valid tuple
     literal infers a widened array and is rejected.

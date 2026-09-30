@@ -57,10 +57,10 @@ pub use parser::{
     ClassMemberShell, ClassMethod, ClassMethodGroup, Declaration, EnumDeclaration, EnumMember,
     FunctionBodyItem, FunctionCatchClause, FunctionDeclaration, FunctionElseBranch,
     FunctionIfStatement, FunctionTryStatement, FunctionWhileStatement, ImportDeclaration,
-    InterfaceDeclaration, Module, Parameter, ParameterProperty, ParameterPropertyInsertion,
-    ParserLimits, RawDeclaration, TupleTypeElement, TypeAliasDeclaration, TypeExportDeclaration,
-    TypeParameter, ValueExportBinding, ValueExportDeclaration, VariableDeclaration, VariableKind,
-    Visibility,
+    InterfaceDeclaration, Module, NamespaceDeclaration, Parameter, ParameterProperty,
+    ParameterPropertyInsertion, ParserLimits, RawDeclaration, TupleTypeElement,
+    TypeAliasDeclaration, TypeExportDeclaration, TypeParameter, ValueExportBinding,
+    ValueExportDeclaration, VariableDeclaration, VariableKind, Visibility,
 };
 pub use syntax::{lex, Token, TokenKind};
 

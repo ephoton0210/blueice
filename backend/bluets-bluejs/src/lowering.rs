@@ -76,6 +76,12 @@ pub(super) fn lower_script(
                     "an exported class requires the module bridge",
                 ));
             }
+            Declaration::Namespace(namespace) => {
+                return Err(unsupported(
+                    namespace.span.clone(),
+                    "a namespace has no direct lowering yet",
+                ));
+            }
             Declaration::Enum(declaration) => {
                 if declaration.exported {
                     return Err(unsupported(
@@ -217,6 +223,12 @@ pub(super) fn lower_module(
                         local_name: class.name.clone(),
                     });
                 }
+            }
+            Declaration::Namespace(namespace) => {
+                return Err(unsupported(
+                    namespace.span.clone(),
+                    "a namespace has no direct lowering yet",
+                ));
             }
             Declaration::Enum(declaration) => {
                 if let Some(statement) = lower_enum(module, declaration, &mut evaluations)? {

@@ -34,6 +34,8 @@ impl Parser {
             type_depth: 0,
             parameter_property_mode: false,
             parameter_properties: Vec::new(),
+            namespace_depth: 0,
+            ambient_depth: 0,
         }
     }
 
@@ -47,12 +49,50 @@ impl Parser {
         }
         self.diagnose_unparenthesized_nullish_logical_mixing();
         self.diagnose_unparenthesized_unary_exponentiation();
+        self.parse_items();
+
+        if self.diagnostics.is_empty() {
+            self.audit_erased_function_annotations();
+        }
+        if self.diagnostics.is_empty() {
+            self.edits.sort_by_key(|edit| (edit.start, edit.end));
+            Ok(Module {
+                id: self.id,
+                source: self.source,
+                declarations: self.declarations,
+                edits: self.edits,
+                generic_call_type_arguments: self.generic_call_type_arguments,
+                nested_functions: self.nested_functions,
+            })
+        } else {
+            Err(self.diagnostics)
+        }
+    }
+
+    /// Parses declarations until the end of the token stream, the module's or a
+    /// namespace body's.
+    pub(super) fn parse_items(&mut self) {
         while !self.at_eof() {
             if self.consume(";") {
                 continue;
             }
             let start = self.current().start;
             let exported = self.consume("export");
+            if self.namespace_depth > 0
+                && ((exported
+                    && (self.peek("default")
+                        || self.peek("=")
+                        || self.peek("*")
+                        || self.peek("{")))
+                    || self.peek("import"))
+            {
+                self.unsupported(
+                    self.current().span(&self.id),
+                    "an import, `export default`, `export =`, `export *` or export list inside a namespace body is not supported",
+                );
+                self.skip_statement();
+                continue;
+            }
             if exported && self.consume("default") {
                 let default_span = self.previous().span(&self.id);
                 let async_start = self.consume("async");
@@ -128,7 +168,15 @@ impl Parser {
                 );
                 self.skip_statement();
             } else {
-                let declared = self.consume("declare");
+                let explicit_declare = self.consume("declare");
+                if explicit_declare && self.ambient_depth > 0 {
+                    self.error_at(
+                        self.previous().span(&self.id),
+                        DiagnosticCode::ParseError,
+                        "a `declare` modifier cannot be used in an already ambient context",
+                    );
+                }
+                let declared = explicit_declare || self.ambient_depth > 0;
                 let async_start = self.consume("async");
                 if self.consume("function") {
                     self.parse_function(start, exported, false, declared, async_start);
@@ -178,6 +226,23 @@ impl Parser {
                     };
                     self.bump();
                     self.parse_variable(start, exported, declared, kind);
+                } else if (self.peek("namespace") || self.peek("module"))
+                    && self
+                        .tokens
+                        .get(self.index + 1)
+                        .is_some_and(|token| token.kind == TokenKind::Identifier)
+                    && !self.newline_between(self.index, self.index + 1)
+                {
+                    if async_start {
+                        self.unsupported(
+                            self.current().span(&self.id),
+                            "an async namespace is not valid",
+                        );
+                        self.skip_statement();
+                    } else {
+                        self.bump();
+                        self.parse_namespace(start, exported, declared);
+                    }
                 } else if self.peek_any(&[
                     "namespace",
                     "module",
@@ -222,23 +287,6 @@ impl Parser {
                 }
             }
         }
-
-        if self.diagnostics.is_empty() {
-            self.audit_erased_function_annotations();
-        }
-        if self.diagnostics.is_empty() {
-            self.edits.sort_by_key(|edit| (edit.start, edit.end));
-            Ok(Module {
-                id: self.id,
-                source: self.source,
-                declarations: self.declarations,
-                edits: self.edits,
-                generic_call_type_arguments: self.generic_call_type_arguments,
-                nested_functions: self.nested_functions,
-            })
-        } else {
-            Err(self.diagnostics)
-        }
     }
 
     pub(super) fn parse_raw(&mut self, start: usize) {
@@ -280,6 +328,8 @@ mod erasure_audit;
 mod function_body;
 #[path = "declarations/imports_exports.rs"]
 mod imports_exports;
+#[path = "declarations/namespaces.rs"]
+mod namespaces;
 #[path = "declarations/nested_functions.rs"]
 mod nested_functions;
 #[path = "declarations/patterns.rs"]

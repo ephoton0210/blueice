@@ -100,6 +100,7 @@ pub enum Declaration {
     Function(FunctionDeclaration),
     Class(ClassDeclaration),
     Enum(EnumDeclaration),
+    Namespace(NamespaceDeclaration),
     Raw(RawDeclaration),
 }
 
@@ -116,6 +117,7 @@ impl Declaration {
             Self::Function(declaration) => &declaration.span,
             Self::Class(declaration) => &declaration.span,
             Self::Enum(declaration) => &declaration.span,
+            Self::Namespace(declaration) => &declaration.span,
             Self::Raw(declaration) => &declaration.span,
         }
     }
@@ -248,6 +250,50 @@ pub struct ClassMemberShell {
     pub field: Option<ClassField>,
     pub accessor: Option<ClassAccessor>,
     pub static_block: Option<ClassStaticBlock>,
+}
+
+/// `[export] [declare] namespace A.B { .. }` (or `module`). A dotted name is one
+/// declaration per segment, each inner one exported from its parent and marked
+/// `implicit`, since it has no header or closing brace of its own.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NamespaceDeclaration {
+    pub name: String,
+    pub name_span: SourceSpan,
+    pub exported: bool,
+    /// `declare namespace`: an ambient declaration with no runtime form.
+    pub declared: bool,
+    /// A segment of a dotted name after the first: written only as part of its
+    /// parent's header.
+    pub implicit: bool,
+    /// The declarations written in the body, in source order.
+    pub body: Vec<Declaration>,
+    /// From the `namespace` keyword (or the first `export`/`declare`) through
+    /// the opening brace.
+    pub header_span: SourceSpan,
+    /// The closing brace.
+    pub closing_span: SourceSpan,
+    pub span: SourceSpan,
+}
+
+impl NamespaceDeclaration {
+    /// Whether the body has any explicit `export`; an ambient body without one
+    /// exports every member.
+    pub fn exports_every_member(&self) -> bool {
+        self.declared && !self.body.iter().any(declaration_is_exported)
+    }
+}
+
+fn declaration_is_exported(declaration: &Declaration) -> bool {
+    match declaration {
+        Declaration::TypeAlias(item) => item.exported,
+        Declaration::Interface(item) => item.exported,
+        Declaration::Variable(item) => item.exported,
+        Declaration::Function(item) => item.exported,
+        Declaration::Class(item) => item.exported,
+        Declaration::Enum(item) => item.exported,
+        Declaration::Namespace(item) => item.exported && !item.implicit,
+        _ => false,
+    }
 }
 
 /// `[export] [declare] [const] enum Name { A, B = 1, "c" = "x" }`.
