@@ -1,0 +1,468 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+"""Contract tests for fresh, per-file BlueJS coverage reporting."""
+
+import importlib.util
+import json
+import shutil
+import subprocess
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
+
+
+SCRIPT = Path(__file__).resolve().parents[1] / "coverage_file.py"
+SPEC = importlib.util.spec_from_file_location("bluejs_coverage_file", SCRIPT)
+coverage_file = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(coverage_file)
+
+
+class CoverageFileTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.repo = Path(self.temp.name).resolve()
+        self.source = self.repo / "backend/bluejs/src"
+        self.source.mkdir(parents=True)
+        for name in ("ast.rs", "module.rs", "tests.rs"):
+            (self.source / name).write_text("// fixture\n")
+        (self.source / "ast.rs").write_text("// fixture\n// second\n")
+        nested = self.source / "vm/temporal/dates.rs"
+        nested.parent.mkdir(parents=True)
+        nested.write_text("// fixture\n")
+        self.patch(coverage_file, "REPO_ROOT", self.repo)
+        self.patch(coverage_file, "SOURCE_ROOT", self.source)
+        self.patch(
+            coverage_file,
+            "NO_COUNTER_REASONS",
+            {
+                "module.rs": "Declarations/re-exports only; no executable code",
+                "tests.rs": "Test source; not a coverage target",
+                "vm/temporal/dates.rs": "Declarations/re-exports only; no executable code",
+            },
+        )
+
+    def patch(self, module, name, value):
+        replacement = patch.object(module, name, value)
+        replacement.start()
+        self.addCleanup(replacement.stop)
+
+    def export(self, *, covered_lines=2, covered_regions=3):
+        summary = {
+            "lines": {"count": 2, "covered": covered_lines},
+            "functions": {"count": 1, "covered": 1},
+            "regions": {"count": 3, "covered": covered_regions},
+        }
+        return {
+            "data": [
+                {
+                    "files": [
+                        {"filename": str(self.source / "ast.rs"), "summary": summary}
+                    ],
+                    "functions": [
+                        {
+                            "filenames": [str(self.source / "ast.rs")],
+                            "count": 1,
+                            "regions": [
+                                [1, 1, 1, 2, 1, 0, 0, 0],
+                                [2, 1, 2, 2, 1, 0, 0, 0],
+                                [2, 3, 2, 4, 1, 0, 0, 0],
+                            ],
+                        }
+                    ],
+                    "totals": summary,
+                }
+            ]
+        }
+
+    def test_source_path_accepts_three_forms_and_rejects_foreign_files(self):
+        ast = self.source / "ast.rs"
+        self.assertEqual(coverage_file.source_path("ast.rs"), ast)
+        self.assertEqual(
+            coverage_file.source_path("backend/bluejs/src/ast.rs"), ast
+        )
+        self.assertEqual(coverage_file.source_path(str(ast)), ast)
+        self.assertEqual(
+            coverage_file.source_path("vm/temporal/dates.rs"),
+            self.source / "vm/temporal/dates.rs",
+        )
+        with self.assertRaises(ValueError):
+            coverage_file.source_path(str(self.repo / "elsewhere.rs"))
+
+    def test_export_reconciles_counts_and_rejects_unreviewed_missing_files(self):
+        files, totals = coverage_file.checked_export(self.export())
+        self.assertEqual(len(files), 1)
+        self.assertEqual(totals["lines"]["covered"], 2)
+        (self.source / "new_code.rs").write_text("fn new_code() {}\n")
+        with self.assertRaisesRegex(ValueError, "unreviewed source files"):
+            coverage_file.checked_export(self.export())
+        (self.source / "new_code.rs").unlink()
+        broken = self.export()
+        broken["data"][0]["totals"] = {
+            **broken["data"][0]["totals"],
+            "lines": {"count": 3, "covered": 2},
+        }
+        with self.assertRaisesRegex(ValueError, "totals do not reconcile"):
+            coverage_file.checked_export(broken)
+        no_function_counters = self.export()
+        no_function_counters["data"][0]["files"][0]["summary"]["functions"] = {
+            "count": 0,
+            "covered": 0,
+        }
+        with self.assertRaisesRegex(ValueError, "invalid functions counters"):
+            coverage_file.checked_export(no_function_counters)
+
+    def test_completion_requires_all_three_metrics_and_explains_no_counters(self):
+        files, _ = coverage_file.checked_export(self.export())
+        ast = self.source / "ast.rs"
+        self.assertTrue(coverage_file.is_complete(files[ast]))
+        self.assertIn("| ☑ |", coverage_file.markdown_row(ast, files[ast]))
+        self.assertIn(
+            "| - | - | - | - | Declarations/re-exports only",
+            coverage_file.markdown_row(self.source / "module.rs", None),
+        )
+        self.assertFalse(coverage_file.is_complete(None))
+        incomplete, _ = coverage_file.checked_export(self.export(covered_regions=2))
+        self.assertFalse(coverage_file.is_complete(incomplete[ast]))
+        self.assertIn("| ☐ |", coverage_file.markdown_row(ast, incomplete[ast]))
+        zero_coverage, _ = coverage_file.checked_export(self.export(covered_lines=0))
+        self.assertIn("0 / 2 (0.00%)", coverage_file.markdown_row(ast, zero_coverage[ast]))
+        almost_complete = {
+            **files[ast],
+            "lines": {"count": 1_000_000, "covered": 999_999},
+        }
+        self.assertIn("(100.00%)", coverage_file.metric_cell(almost_complete["lines"]))
+        self.assertFalse(coverage_file.is_complete(almost_complete))
+
+    def test_fresh_run_cleans_profiles_and_executes_unfiltered_crate_suite(self):
+        calls = []
+        for name in ("debug/incremental", "llvm-cov-target/debug/incremental"):
+            cache = self.repo / "target" / name
+            cache.mkdir(parents=True)
+            (cache / "disposable").write_text("profile cache")
+        dependencies = self.repo / "target/debug/deps"
+        dependencies.mkdir()
+        (dependencies / "reuse").write_text("compiled dependency")
+
+        def fake_run(argv, *, cwd, check):
+            self.assertEqual(cwd, self.repo)
+            self.assertTrue(check)
+            calls.append(argv)
+            if "--output-path" in argv:
+                output = Path(argv[argv.index("--output-path") + 1])
+                if "--json" in argv:
+                    output.write_text(json.dumps(self.export()))
+                else:
+                    output.write_text(
+                        f"{self.source / 'ast.rs'}:\n"
+                        "    1|      1|fn f() {}\n"
+                        "    2|      1|fn g() {}\n"
+                    )
+
+        def fake_bounded(argv, *, cwd, target):
+            self.assertEqual(target, self.repo / "target")
+            fake_run(argv, cwd=cwd, check=True)
+
+        with patch.dict(coverage_file.os.environ, {"CARGO_TARGET_DIR": str(self.repo / "target")}), patch.object(
+            coverage_file.subprocess, "run", side_effect=fake_run
+        ), patch.object(coverage_file, "run_bounded_command", side_effect=fake_bounded):
+            files, _ = coverage_file.run_coverage()
+        self.assertEqual(len(files), 1)
+        self.assertEqual(calls[0], ["cargo", "llvm-cov", "clean", "--profraw-only"])
+        self.assertEqual(calls[1][:4], ["cargo", "llvm-cov", "-p", "blueice-bluejs"])
+        self.assertIn("--no-clean", calls[1])
+        self.assertNotIn("--test", calls[1])
+        self.assertNotIn("--ignore-filename-regex", calls[1])
+        self.assertEqual(calls[2][:5], ["cargo", "llvm-cov", "report", "-p", "blueice-bluejs"])
+        self.assertEqual(calls[3], ["cargo", "llvm-cov", "clean", "--profraw-only"])
+        self.assertFalse((self.repo / "target/debug/incremental").exists())
+        self.assertFalse((self.repo / "target/llvm-cov-target/debug/incremental").exists())
+        self.assertTrue((dependencies / "reuse").exists())
+
+    def test_failed_coverage_run_releases_profiles_and_incremental_cache(self):
+        cache = self.repo / "target/llvm-cov-target/debug/incremental"
+        cache.mkdir(parents=True)
+        (cache / "disposable").write_text("profile cache")
+        calls = []
+
+        def fake_run(argv, *, cwd, check):
+            self.assertEqual(cwd, self.repo)
+            self.assertTrue(check)
+            calls.append(argv)
+            if len(calls) == 2:
+                raise coverage_file.subprocess.CalledProcessError(1, argv)
+
+        def fake_bounded(argv, *, cwd, target):
+            self.assertEqual(target, self.repo / "target")
+            fake_run(argv, cwd=cwd, check=True)
+
+        with patch.dict(coverage_file.os.environ, {"CARGO_TARGET_DIR": str(self.repo / "target")}), patch.object(
+            coverage_file.subprocess, "run", side_effect=fake_run
+        ), patch.object(coverage_file, "run_bounded_command", side_effect=fake_bounded):
+            with self.assertRaises(coverage_file.subprocess.CalledProcessError):
+                coverage_file.run_coverage()
+        self.assertEqual(len(calls), 3)
+        self.assertEqual(calls[-1], ["cargo", "llvm-cov", "clean", "--profraw-only"])
+        self.assertFalse(cache.exists())
+
+    def test_disk_budget_stops_a_test_that_keeps_writing(self):
+        target = self.repo / "target"
+        target.mkdir()
+        command = [
+            sys.executable,
+            "-c",
+            "from pathlib import Path; import time; "
+            "Path('target/growth').write_bytes(b'x' * 1048576); time.sleep(30)",
+        ]
+        with self.assertRaisesRegex(RuntimeError, "test disk budget exceeded"):
+            coverage_file.run_bounded_command(
+                command,
+                cwd=self.repo,
+                target=target,
+                growth_limit=0,
+                free_floor=0,
+                poll_interval=0.05,
+            )
+
+    @unittest.skipUnless(
+        sys.platform.startswith("linux") and shutil.which("readelf") and shutil.which("strip"),
+        "Linux ELF tools are required",
+    )
+    def test_releases_debug_data_without_discarding_a_reusable_executable(self):
+        deps = self.repo / "target/debug/deps"
+        deps.mkdir(parents=True)
+        source = self.repo / "probe.rs"
+        source.write_text('fn main() { print!("ready"); }\n')
+        binary = deps / "probe-0123456789abcdef"
+        subprocess.run(["rustc", "-g", str(source), "-o", str(binary)], check=True)
+        before = binary.stat().st_size
+        target = self.repo / "target"
+        target_limit = coverage_file.target_size_bytes(target) - 4096
+        sections = ["readelf", "--section-headers", "--wide", str(binary)]
+        self.assertIn(".debug_info", subprocess.check_output(sections, text=True))
+
+        coverage_file.run_bounded_command(
+            [sys.executable, "-c", "pass"],
+            cwd=self.repo,
+            target=target,
+            target_limit=target_limit,
+            free_floor=0,
+        )
+
+        self.assertLess(binary.stat().st_size, before)
+        self.assertLessEqual(coverage_file.target_size_bytes(target), target_limit)
+        self.assertNotIn(".debug_info", subprocess.check_output(sections, text=True))
+        self.assertEqual(subprocess.check_output([str(binary)]), b"ready")
+
+    def test_disk_budget_rejects_an_oversized_existing_target(self):
+        target = self.repo / "target"
+        target.mkdir()
+        (target / "existing").write_bytes(b"x" * 1024)
+        with self.assertRaisesRegex(RuntimeError, "already exceeds"):
+            coverage_file.run_bounded_command(
+                [sys.executable, "-c", "raise AssertionError('should not run')"],
+                cwd=self.repo,
+                target=target,
+                target_limit=0,
+                free_floor=0,
+            )
+
+    def test_disk_budget_counts_temporary_files_outside_target(self):
+        target = self.repo / "target"
+        target.mkdir()
+        command = [
+            sys.executable,
+            "-c",
+            "from pathlib import Path; import time; "
+            "Path('temporary-output').write_bytes(b'x' * 1048576); time.sleep(30)",
+        ]
+        def disk_usage(_path):
+            temporary = self.repo / "temporary-output"
+            used = temporary.stat().st_size if temporary.exists() else 0
+            return SimpleNamespace(free=10 * 1048576 - used)
+
+        with patch.object(coverage_file.shutil, "disk_usage", side_effect=disk_usage):
+            with self.assertRaisesRegex(RuntimeError, "test disk budget exceeded"):
+                coverage_file.run_bounded_command(
+                    command,
+                    cwd=self.repo,
+                    target=target,
+                    growth_limit=2 * 1048576,
+                    host_growth_limit=0,
+                    free_floor=0,
+                    poll_interval=0.05,
+                )
+
+    def test_disk_measurement_tolerates_a_file_removed_during_the_scan(self):
+        target = self.repo / "target"
+        target.mkdir()
+        partial = coverage_file.subprocess.CompletedProcess(
+            ["du", "-sk", str(target)],
+            1,
+            stdout=f"1024\t{target}\n",
+            stderr="du: cannot access a removed executable: No such file or directory",
+        )
+        with patch.object(coverage_file.subprocess, "run", return_value=partial):
+            self.assertEqual(coverage_file.target_size_bytes(target), 1024 * 1024)
+
+    def test_source_union_counts_duplicate_compilations_once(self):
+        payload = self.export()
+        summary = payload["data"][0]["files"][0]["summary"]
+        summary["lines"] = {"count": 3, "covered": 2}
+        summary["regions"] = {"count": 3, "covered": 2}
+        payload["data"][0]["totals"] = summary
+        first = payload["data"][0]["functions"][0]
+        first["regions"][2][4] = 0
+        second = json.loads(json.dumps(first))
+        second["regions"][2][4] = 1
+        payload["data"][0]["functions"].append(second)
+        show = (
+            f"{self.source / 'ast.rs'}:\n"
+            "    1|      1|fn f() {}\n"
+            "    2|      1|fn g() {}\n"
+        )
+        files, totals = coverage_file.source_union_export(payload, show)
+        ast = self.source / "ast.rs"
+        for metric, expected in {
+            "lines": 2,
+            "functions": 1,
+            "regions": 3,
+        }.items():
+            self.assertEqual(files[ast][metric], {"count": expected, "covered": expected})
+            self.assertEqual(totals[metric], files[ast][metric])
+        row = coverage_file.markdown_row(ast, files[ast])
+        self.assertIn("2 / 3 (66.67%)", row)
+        self.assertIn("| ☐ |", row)
+        self.assertIn("Unique source-location union: lines 2/2", row)
+        self.assertFalse(coverage_file.is_complete(files[ast]))
+        self.assertFalse(coverage_file.is_complete(totals))
+        with self.assertRaisesRegex(ValueError, "incomplete source-line coverage view"):
+            coverage_file.source_union_export(payload, show.splitlines()[0] + "\n")
+
+    def test_report_update_preserves_other_sections_and_adds_completion_column(self):
+        report = self.repo / "macos.md"
+        report.write_text(
+            "before\n## Later BlueJS per-file coverage (old)\nold\n"
+            "## Historical differences from the other platforms (old)\nafter\n"
+        )
+        self.patch(coverage_file, "MACOS_REPORT", report)
+        files, totals = coverage_file.checked_export(self.export())
+        with patch.object(coverage_file.platform, "system", return_value="Darwin"), patch.object(
+            coverage_file, "provenance", return_value="test host"
+        ):
+            coverage_file.update_macos_report(files, totals)
+        text = report.read_text()
+        self.assertTrue(text.startswith("before\n"))
+        self.assertTrue(text.endswith("after\n"))
+        self.assertIn("| Complete | Note |", text)
+        self.assertIn("| ☑ |", text)
+        self.assertIn("| - | - | - | - | Test source; not a coverage target |", text)
+
+        report.write_text(
+            "before\n## Later BlueJS per-file coverage (old)\nold\n"
+            "## Differences from the other platforms\nafter\n"
+        )
+        with patch.object(coverage_file.platform, "system", return_value="Darwin"), patch.object(
+            coverage_file, "provenance", return_value="test host"
+        ):
+            coverage_file.update_macos_report(files, totals)
+        self.assertIn("## Differences from the other platforms\nafter\n", report.read_text())
+
+    def test_one_run_can_report_a_file_and_update_the_full_table(self):
+        files, totals = coverage_file.checked_export(self.export())
+        self.patch(coverage_file, "MACOS_REPORT", self.repo / "macos.md")
+        with (
+            patch.object(coverage_file, "run_coverage", return_value=(files, totals)),
+            patch.object(coverage_file, "update_macos_report") as update,
+            patch("builtins.print") as printed,
+        ):
+            self.assertEqual(
+                coverage_file.main(["ast.rs", "--update-macos-report"]), 0
+            )
+        update.assert_called_once_with(files, totals, include_test262=False)
+        self.assertTrue(any("Complete: yes" in str(call) for call in printed.call_args_list))
+
+    def test_file_only_measurement_does_not_update_either_report(self):
+        files, totals = coverage_file.checked_export(self.export())
+        with (
+            patch.object(coverage_file, "run_coverage", return_value=(files, totals)) as run,
+            patch.object(coverage_file, "update_macos_report") as macos,
+            patch.object(coverage_file, "update_linux_report") as linux,
+            patch("builtins.print") as printed,
+        ):
+            self.assertEqual(coverage_file.main(["ast.rs"]), 0)
+        run.assert_called_once_with(include_test262=False)
+        macos.assert_not_called()
+        linux.assert_not_called()
+        output = [str(call) for call in printed.call_args_list]
+        self.assertTrue(any("ast.rs" in line for line in output))
+        self.assertTrue(any("Complete: yes" in line for line in output))
+
+    def test_test262_option_reaches_measurement_and_report(self):
+        files, totals = coverage_file.checked_export(self.export())
+        self.patch(coverage_file, "MACOS_REPORT", self.repo / "macos.md")
+        with (
+            patch.object(coverage_file, "run_coverage", return_value=(files, totals)) as run,
+            patch.object(coverage_file, "update_macos_report") as update,
+            patch("builtins.print"),
+        ):
+            self.assertEqual(
+                coverage_file.main(["ast.rs", "--update-macos-report", "--include-test262"]),
+                0,
+            )
+        run.assert_called_once_with(include_test262=True)
+        update.assert_called_once_with(files, totals, include_test262=True)
+
+    def test_instrumented_test262_requires_the_complete_expected_inventory(self):
+        target = self.repo / "target"
+        adapter = target / "llvm-cov-target/debug/bluejs-test262"
+        adapter.parent.mkdir(parents=True)
+        adapter.write_bytes(b"adapter")
+        output = self.repo / "test262"
+        output.mkdir()
+
+        def fake_bounded(argv, *, cwd, target, env, accepted_returncodes):
+            self.assertEqual(cwd, self.repo)
+            self.assertIn("--flush-profiles", argv)
+            self.assertEqual(accepted_returncodes, (0, 1))
+            self.assertIn("%p-%m.profraw", env["LLVM_PROFILE_FILE"])
+            (output / "summary.json").write_text(json.dumps({
+                "complete_inventory": True,
+                "scheduled_modes": 102_926,
+                "results": {"pass": 102_921, "excluded": 4, "stale_corpus": 1},
+            }))
+
+        with patch.object(coverage_file, "run_bounded_command", side_effect=fake_bounded):
+            coverage_file.run_test262_coverage(Path(sys.executable), output, target)
+            (output / "summary.json").write_text(json.dumps({
+                "complete_inventory": False,
+                "scheduled_modes": 102_926,
+                "results": {"pass": 102_920, "fail": 1, "excluded": 4, "stale_corpus": 1},
+            }))
+        with patch.object(coverage_file, "run_bounded_command"):
+            with self.assertRaisesRegex(ValueError, "inventory changed"):
+                coverage_file.run_test262_coverage(Path(sys.executable), output, target)
+
+    def test_linux_report_adds_the_same_table_before_platform_differences(self):
+        report = self.repo / "linux.md"
+        report.write_text("before\n## Differences from the other platforms\nafter\n")
+        self.patch(coverage_file, "LINUX_REPORT", report)
+        files, totals = coverage_file.checked_export(self.export())
+        with patch.object(coverage_file.platform, "system", return_value="Linux"), patch.object(
+            coverage_file, "provenance", return_value="Linux test host"
+        ):
+            coverage_file.update_linux_report(files, totals)
+        text = report.read_text()
+        self.assertTrue(text.startswith("before\n## Later BlueJS per-file coverage"))
+        self.assertIn("--update-linux-report", text)
+        self.assertIn("| Complete | Note |", text)
+        self.assertTrue(text.endswith("## Differences from the other platforms\nafter\n"))
+
+
+if __name__ == "__main__":
+    unittest.main()

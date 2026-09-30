@@ -267,7 +267,7 @@ fn a_client_chooses_the_language_and_toggles_the_shown_text() {
         core.read(),
         ServerMessage::TranslationState { shown: false, .. }
     ));
-    assert_eq!(translation_state(&mut core).2, false);
+    assert!(!translation_state(&mut core).2);
 
     core.send(&ClientMessage::ShowTranslation { shown: true });
     assert!(matches!(

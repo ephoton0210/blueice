@@ -7,9 +7,9 @@
 //! requested range of the probed resource; the coordinator only reads the
 //! resulting bytes, schedules workers, and writes them at the right offset.
 
-use crate::download::probe::{ContentRange, Probe, Validator, parse_content_range};
+use crate::download::probe::{parse_content_range, ContentRange, Probe, Validator};
 use crate::download::{
-    DownloadError, DownloadOptions, MAX_TRANSFER_TEXT_BYTES, bounded_transfer_text, http,
+    bounded_transfer_text, http, DownloadError, DownloadOptions, MAX_TRANSFER_TEXT_BYTES,
 };
 use std::io::{self, Read};
 use std::sync::Arc;

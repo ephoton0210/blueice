@@ -250,7 +250,10 @@ pub fn load_existing(path: &Path) -> Result<Option<AssistantSettings>, String> {
         Ok(raw) => raw,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(error) => {
-            return Err(format!("reading assistant settings {}: {error}", path.display()))
+            return Err(format!(
+                "reading assistant settings {}: {error}",
+                path.display()
+            ))
         }
     };
     let settings: AssistantSettings = serde_json::from_str(&raw)
@@ -635,7 +638,10 @@ mod tests {
         let path = temp_path("existing");
         assert_eq!(load_existing(&path).unwrap(), None);
         save(&path, &AssistantSettings::default()).unwrap();
-        assert_eq!(load_existing(&path).unwrap(), Some(AssistantSettings::default()));
+        assert_eq!(
+            load_existing(&path).unwrap(),
+            Some(AssistantSettings::default())
+        );
         let _ = fs::remove_file(&path);
     }
 

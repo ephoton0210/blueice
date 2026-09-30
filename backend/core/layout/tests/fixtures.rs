@@ -36,7 +36,13 @@ fn fmt(n: f64) -> String {
 
 fn dump_layout(doc: &Document, fragment: &Fragment, depth: usize, out: &mut String) {
     let indent = "  ".repeat(depth);
-    let geometry = format!("{},{} {}x{}", fmt(fragment.x), fmt(fragment.y), fmt(fragment.width), fmt(fragment.height));
+    let geometry = format!(
+        "{},{} {}x{}",
+        fmt(fragment.x),
+        fmt(fragment.y),
+        fmt(fragment.width),
+        fmt(fragment.height)
+    );
     match &fragment.kind {
         FragmentKind::Block => {
             let tag = fragment
@@ -70,15 +76,32 @@ fn layout_geometry_fixtures() {
     let mut failures = Vec::new();
 
     for fixture in &fixtures {
-        let Some(expected) = fixture.section("layout") else { continue };
+        let Some(expected) = fixture.section("layout") else {
+            continue;
+        };
         checked += 1;
 
         let doc = blueice_html::parse(fixture.data());
-        let author: Vec<Rule> = fixture.section("css").map(blueice_css::parse).map(|s| s.rules).unwrap_or_default();
-        let sheets: Vec<(Origin, &[Rule])> = if author.is_empty() { vec![(Origin::Ua, &ua)] } else { vec![(Origin::Ua, &ua), (Origin::Author, &author)] };
+        let author: Vec<Rule> = fixture
+            .section("css")
+            .map(blueice_css::parse)
+            .map(|s| s.rules)
+            .unwrap_or_default();
+        let sheets: Vec<(Origin, &[Rule])> = if author.is_empty() {
+            vec![(Origin::Ua, &ua)]
+        } else {
+            vec![(Origin::Ua, &ua), (Origin::Author, &author)]
+        };
         let styles = cascade(&doc, &sheets);
 
-        let fragment = layout(&doc, doc.root(), &styles, Constraints { available_width: VIEWPORT_WIDTH });
+        let fragment = layout(
+            &doc,
+            doc.root(),
+            &styles,
+            Constraints {
+                available_width: VIEWPORT_WIDTH,
+            },
+        );
         let mut actual = String::new();
         dump_layout(&doc, &fragment, 0, &mut actual);
         let actual = actual.strip_suffix('\n').unwrap_or(&actual);
@@ -95,6 +118,14 @@ fn layout_geometry_fixtures() {
         }
     }
 
-    assert!(checked > 0, "at least one fixture must have a #layout section");
-    assert!(failures.is_empty(), "{} fixture(s) mismatched:\n\n{}", failures.len(), failures.join("\n"));
+    assert!(
+        checked > 0,
+        "at least one fixture must have a #layout section"
+    );
+    assert!(
+        failures.is_empty(),
+        "{} fixture(s) mismatched:\n\n{}",
+        failures.len(),
+        failures.join("\n")
+    );
 }

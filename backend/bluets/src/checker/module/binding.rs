@@ -1,0 +1,1069 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+//! Declaration binding and structural validation for one module.
+
+use super::*;
+
+mod classes;
+mod functions;
+pub(in crate::checker) use classes::{class_export, class_instance_type};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum StructuredTermination {
+    Terminates,
+    FallsThrough,
+    Opaque,
+}
+
+fn specialize_imported_class_type(value: &Type, source_name: &str, local_name: &str) -> Type {
+    let substitution = BTreeMap::from([(
+        source_name.to_string(),
+        Type::Named {
+            name: local_name.to_string(),
+            arguments: Vec::new(),
+        },
+    )]);
+    substitute_type(value, &substitution)
+}
+
+impl<'a> ModuleChecker<'a> {
+    pub(crate) fn new(
+        project: &'a Project,
+        module: &'a Module,
+        exports: &'a ProjectExports,
+        ambient: Option<&'a AmbientDeclarations>,
+        enforce_types: bool,
+        require_declared_global_calls: bool,
+        max_type_expansions: usize,
+    ) -> Self {
+        Self {
+            project,
+            module,
+            exports,
+            ambient,
+            enforce_types,
+            require_declared_global_calls,
+            diagnostics: Vec::new(),
+            symbols: Vec::new(),
+            types: BTreeMap::new(),
+            values: BTreeMap::new(),
+            functions: BTreeMap::new(),
+            class_constructors: BTreeMap::new(),
+            type_only_classes: BTreeSet::new(),
+            function_implementations: BTreeSet::new(),
+            type_parameters: BTreeSet::new(),
+            allowed_tuple_spread_parameters: BTreeMap::new(),
+            max_type_expansions,
+            strict_catch_unknown: false,
+            record_spread_inference_failure: Cell::new(None),
+        }
+    }
+
+    pub(crate) fn bind(&mut self) {
+        for declaration in &self.module.declarations {
+            match declaration {
+                Declaration::Import(import) => self.bind_import(import),
+                Declaration::TypeExport(export) => self.bind_type_export(export),
+                Declaration::DefaultExport(_) => {}
+                Declaration::ValueExport(_) => {}
+                Declaration::TypeAlias(alias) => {
+                    self.insert_type(
+                        &alias.name,
+                        TypeDefinition {
+                            kind: TypeDefinitionKind::Alias,
+                            parameters: alias.type_parameters.clone(),
+                            value: alias.value.clone(),
+                        },
+                        alias.span.clone(),
+                        SymbolKind::TypeAlias,
+                        alias.exported,
+                    );
+                }
+                Declaration::Interface(interface) => {
+                    if !self
+                        .types
+                        .get(&interface.name)
+                        .is_some_and(|definition| definition.kind == TypeDefinitionKind::Class)
+                    {
+                        self.insert_type(
+                            &interface.name,
+                            TypeDefinition {
+                                kind: TypeDefinitionKind::Interface,
+                                parameters: interface.type_parameters.clone(),
+                                value: interface_value(interface),
+                            },
+                            interface.span.clone(),
+                            SymbolKind::Interface,
+                            interface.exported,
+                        );
+                    }
+                }
+                Declaration::Variable(variable) => {
+                    let value_type = variable.annotation.clone().unwrap_or(Type::Unknown);
+                    self.insert_value(
+                        &variable.name,
+                        value_type,
+                        variable.span.clone(),
+                        SymbolKind::Variable,
+                        variable.exported,
+                    );
+                }
+                Declaration::Function(function) => {
+                    let value_type = function.return_type.clone().unwrap_or(Type::Unknown);
+                    let signature = FunctionSignature {
+                        parameters: function.parameters.clone(),
+                        type_parameters: function.type_parameters.clone(),
+                        return_type: function.return_type.clone().unwrap_or(Type::Unknown),
+                    };
+                    if !self.values.contains_key(&function.name) {
+                        self.insert_value(
+                            &function.name,
+                            value_type,
+                            function.span.clone(),
+                            SymbolKind::Function,
+                            function.exported,
+                        );
+                    } else if !self.functions.contains_key(&function.name) {
+                        self.duplicate(&function.name, function.span.clone());
+                        continue;
+                    }
+                    if function.overload || function.declared {
+                        if self.function_implementations.contains(&function.name) {
+                            self.type_error(
+                                &function.span,
+                                format!(
+                                    "overload signature for {} must precede its implementation",
+                                    function.name
+                                ),
+                                DiagnosticCode::TypeMismatch,
+                            );
+                        } else {
+                            self.functions
+                                .entry(function.name.clone())
+                                .or_default()
+                                .push(signature);
+                        }
+                    } else if !self.function_implementations.insert(function.name.clone()) {
+                        self.duplicate(&function.name, function.span.clone());
+                    } else if self.functions.get(&function.name).is_none_or(Vec::is_empty) {
+                        self.functions
+                            .entry(function.name.clone())
+                            .or_default()
+                            .push(signature);
+                    }
+                }
+                Declaration::Class(class) => {
+                    self.bind_class(class);
+                    self.diagnostics.push(Diagnostic::error(
+                        DiagnosticCode::UnsupportedSyntax,
+                        class.span.clone(),
+                        "class members and runtime semantics are not installed yet",
+                    ));
+                }
+                Declaration::Raw(_) => {}
+            }
+        }
+        self.bind_ambient_declarations();
+        self.validate_function_overloads();
+        self.validate_default_exports();
+        self.validate_value_exports();
+    }
+
+    fn bind_ambient_declarations(&mut self) {
+        let Some(ambient) = self.ambient else {
+            return;
+        };
+        let local_types = self.types.keys().cloned().collect::<BTreeSet<_>>();
+        let local_values = self.values.keys().cloned().collect::<BTreeSet<_>>();
+        let local_functions = self.functions.keys().cloned().collect::<BTreeSet<_>>();
+        for (name, definition) in &ambient.types {
+            if !local_types.contains(name) {
+                self.types.insert(name.clone(), definition.clone());
+            }
+        }
+        for (name, value) in &ambient.values {
+            if !local_values.contains(name) {
+                self.values.insert(name.clone(), value.clone());
+            }
+        }
+        for (name, signatures) in &ambient.functions {
+            if !local_values.contains(name) && !local_functions.contains(name) {
+                self.functions.insert(name.clone(), signatures.clone());
+            }
+        }
+    }
+
+    pub(super) fn validate_default_exports(&mut self) {
+        let defaults = self
+            .module
+            .declarations
+            .iter()
+            .filter_map(|declaration| match declaration {
+                Declaration::DefaultExport(export) => Some(export.span.clone()),
+                Declaration::Function(function) if function.default_export => {
+                    Some(function.span.clone())
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        if defaults.len() > 1 {
+            for span in defaults.iter().skip(1) {
+                self.diagnostics.push(Diagnostic::error(
+                    DiagnosticCode::DuplicateDeclaration,
+                    span.clone(),
+                    "a module can have only one default export",
+                ));
+            }
+        }
+
+        for declaration in &self.module.declarations {
+            let Declaration::DefaultExport(export) = declaration else {
+                continue;
+            };
+            let has_local_runtime_binding =
+                self.module
+                    .declarations
+                    .iter()
+                    .any(|candidate| match candidate {
+                        Declaration::Variable(variable) => {
+                            variable.name == export.name && !variable.declared
+                        }
+                        Declaration::Function(function) => {
+                            function.name == export.name && !function.declared && !function.overload
+                        }
+                        _ => false,
+                    });
+            if !has_local_runtime_binding {
+                self.diagnostics.push(Diagnostic::error(
+                    DiagnosticCode::UnknownName,
+                    export.span.clone(),
+                    format!(
+                        "default export `{}` must name a local runtime declaration",
+                        export.name
+                    ),
+                ));
+            }
+        }
+    }
+
+    pub(super) fn validate_value_exports(&mut self) {
+        let mut exported_names = BTreeSet::new();
+        for declaration in &self.module.declarations {
+            match declaration {
+                Declaration::Variable(variable) if variable.exported && !variable.declared => {
+                    exported_names.insert(variable.name.clone());
+                }
+                Declaration::Function(function)
+                    if function.exported && !function.default_export && !function.overload =>
+                {
+                    exported_names.insert(function.name.clone());
+                }
+                Declaration::Class(class) if class.exported => {
+                    exported_names.insert(class.name.clone());
+                }
+                _ => {}
+            }
+        }
+
+        for declaration in &self.module.declarations {
+            let Declaration::ValueExport(export) = declaration else {
+                continue;
+            };
+            for binding in &export.bindings {
+                let has_local_runtime_binding =
+                    self.module
+                        .declarations
+                        .iter()
+                        .any(|candidate| match candidate {
+                            Declaration::Variable(variable) => {
+                                variable.name == binding.local && !variable.declared
+                            }
+                            Declaration::Function(function) => {
+                                function.name == binding.local
+                                    && !function.declared
+                                    && !function.overload
+                            }
+                            Declaration::Class(class) => class.name == binding.local,
+                            _ => false,
+                        });
+                if !has_local_runtime_binding {
+                    self.diagnostics.push(Diagnostic::error(
+                        DiagnosticCode::UnknownName,
+                        binding.span.clone(),
+                        format!(
+                            "exported value `{}` must name a local runtime declaration",
+                            binding.local
+                        ),
+                    ));
+                }
+                if !exported_names.insert(binding.exported.clone()) {
+                    self.diagnostics.push(Diagnostic::error(
+                        DiagnosticCode::DuplicateDeclaration,
+                        binding.span.clone(),
+                        format!("duplicate exported value `{}`", binding.exported),
+                    ));
+                }
+            }
+        }
+    }
+
+    pub(super) fn validate_function_overloads(&mut self) {
+        let overloads = self
+            .module
+            .declarations
+            .iter()
+            .filter_map(|declaration| match declaration {
+                Declaration::Function(function) if function.overload => Some(function),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        for overload in overloads {
+            let implementations = self
+                .module
+                .declarations
+                .iter()
+                .filter_map(|declaration| match declaration {
+                    Declaration::Function(function)
+                        if function.name == overload.name
+                            && !function.overload
+                            && !function.declared =>
+                    {
+                        Some(function)
+                    }
+                    _ => None,
+                })
+                .collect::<Vec<_>>();
+            let Some(implementation) = implementations.first() else {
+                if !is_declaration_module(&self.module.id) {
+                    self.type_error(
+                        &overload.span,
+                        format!(
+                            "overload signature for {} requires an implementation",
+                            overload.name
+                        ),
+                        DiagnosticCode::TypeMismatch,
+                    );
+                }
+                continue;
+            };
+            match overload_is_compatible_with_implementation(
+                overload,
+                implementation,
+                &self.types,
+                self.max_type_expansions,
+            ) {
+                Ok(true) => {}
+                Ok(false) => self.type_error(
+                    &overload.span,
+                    format!(
+                        "overload signature for {} is incompatible with its implementation",
+                        overload.name
+                    ),
+                    DiagnosticCode::TypeMismatch,
+                ),
+                Err(()) => self.type_error(
+                    &overload.span,
+                    format!(
+                        "overload compatibility exceeds the {} generic-expansion limit",
+                        self.max_type_expansions
+                    ),
+                    DiagnosticCode::ResourceLimit,
+                ),
+            }
+        }
+    }
+
+    pub(super) fn bind_import(&mut self, import: &crate::parser::ImportDeclaration) {
+        let Some(resolved) = self
+            .project
+            .resolutions
+            .get(&(self.module.id.clone(), import.specifier.clone()))
+        else {
+            return;
+        };
+        let exported = self.exports.types.get(resolved);
+        let exported_classes = self.exports.classes.get(resolved);
+        for binding in &import.bindings {
+            if binding.type_only {
+                if binding.imported == "*" {
+                    if let Some(source_types) = exported {
+                        if exported_classes.is_some_and(|classes| !classes.is_empty()) {
+                            self.type_only_classes.insert(binding.local.clone());
+                        }
+                        for (name, definition) in source_types {
+                            let local = format!("{}.{}", binding.local, name);
+                            let mut definition = definition.clone();
+                            if let Some(class) =
+                                exported_classes.and_then(|classes| classes.get(name))
+                            {
+                                definition.value = specialize_imported_class_type(
+                                    &class.instance_type,
+                                    &class.source_name,
+                                    &local,
+                                );
+                            }
+                            self.insert_type(
+                                &local,
+                                definition,
+                                import.span.clone(),
+                                SymbolKind::Import,
+                                false,
+                            );
+                        }
+                    }
+                    continue;
+                }
+                let Some(source_type) = exported.and_then(|types| types.get(&binding.imported))
+                else {
+                    self.diagnostics.push(Diagnostic::error(
+                        DiagnosticCode::UnknownType,
+                        import.span.clone(),
+                        format!(
+                            "module `{}` has no exported type `{}`",
+                            import.specifier, binding.imported
+                        ),
+                    ));
+                    continue;
+                };
+                let mut source_type = source_type.clone();
+                if let Some(class) =
+                    exported_classes.and_then(|classes| classes.get(&binding.imported))
+                {
+                    self.type_only_classes.insert(binding.local.clone());
+                    source_type.value = specialize_imported_class_type(
+                        &class.instance_type,
+                        &class.source_name,
+                        &binding.local,
+                    );
+                }
+                self.insert_type(
+                    &binding.local,
+                    source_type,
+                    import.span.clone(),
+                    SymbolKind::Import,
+                    false,
+                );
+            } else {
+                if let Some(class) = exported_classes
+                    .and_then(|classes| classes.get(&binding.imported))
+                    .cloned()
+                {
+                    if class.value_exported {
+                        self.bind_imported_class(&binding.local, &class, &import.span);
+                    } else {
+                        self.type_only_classes.insert(binding.local.clone());
+                        self.insert_type(
+                            &binding.local,
+                            TypeDefinition {
+                                kind: TypeDefinitionKind::Class,
+                                parameters: Vec::new(),
+                                value: specialize_imported_class_type(
+                                    &class.instance_type,
+                                    &class.source_name,
+                                    &binding.local,
+                                ),
+                            },
+                            import.span.clone(),
+                            SymbolKind::Import,
+                            false,
+                        );
+                    }
+                    continue;
+                }
+                self.insert_value(
+                    &binding.local,
+                    Type::Unknown,
+                    import.span.clone(),
+                    SymbolKind::Import,
+                    false,
+                );
+            }
+        }
+    }
+
+    pub(super) fn bind_type_export(&mut self, export: &crate::parser::TypeExportDeclaration) {
+        let source_types = export.specifier.as_ref().and_then(|specifier| {
+            self.project
+                .resolutions
+                .get(&(self.module.id.clone(), specifier.clone()))
+                .and_then(|resolved| self.exports.types.get(resolved))
+        });
+        for binding in &export.bindings {
+            if binding == "*" {
+                continue;
+            }
+            let local = binding.split(" as ").next().unwrap_or(binding);
+            let exists = source_types.is_some_and(|types| types.contains_key(local))
+                || export.specifier.is_none() && self.types.contains_key(local);
+            if !exists {
+                self.diagnostics.push(Diagnostic::error(
+                    DiagnosticCode::UnknownType,
+                    export.span.clone(),
+                    format!("cannot re-export unknown type `{local}`"),
+                ));
+            }
+        }
+    }
+
+    pub(super) fn insert_type(
+        &mut self,
+        name: &str,
+        definition: TypeDefinition,
+        span: SourceSpan,
+        kind: SymbolKind,
+        exported: bool,
+    ) {
+        if self
+            .types
+            .insert(name.to_string(), definition.clone())
+            .is_some()
+        {
+            self.duplicate(name, span);
+            return;
+        }
+        self.symbols.push(Symbol {
+            name: name.to_string(),
+            kind,
+            module: self.module.id.clone(),
+            span,
+            exported,
+            value_type: Some(definition.value),
+        });
+    }
+
+    pub(super) fn insert_value(
+        &mut self,
+        name: &str,
+        value_type: Type,
+        span: SourceSpan,
+        kind: SymbolKind,
+        exported: bool,
+    ) {
+        if self
+            .values
+            .insert(name.to_string(), value_type.clone())
+            .is_some()
+        {
+            self.duplicate(name, span);
+            return;
+        }
+        self.symbols.push(Symbol {
+            name: name.to_string(),
+            kind,
+            module: self.module.id.clone(),
+            span,
+            exported,
+            value_type: Some(value_type),
+        });
+    }
+
+    pub(super) fn duplicate(&mut self, name: &str, span: SourceSpan) {
+        self.diagnostics.push(Diagnostic::error(
+            DiagnosticCode::DuplicateDeclaration,
+            span,
+            format!("duplicate declaration of `{name}`"),
+        ));
+    }
+
+    pub(crate) fn check_types(&mut self) {
+        self.validate_class_heritage_cycles();
+        self.bind_inherited_class_instance_methods();
+        self.bind_inherited_class_static_methods();
+        self.bind_inherited_class_constructors();
+        for declaration in &self.module.declarations {
+            match declaration {
+                Declaration::TypeAlias(alias) => {
+                    let previous_spreads = self.allowed_tuple_spread_parameters.clone();
+                    self.allowed_tuple_spread_parameters = alias
+                        .type_parameters
+                        .iter()
+                        .filter(|parameter| {
+                            matches!(parameter.constraint, Some(Type::Array(_) | Type::Tuple(_)))
+                        })
+                        .map(|parameter| {
+                            (
+                                parameter.name.clone(),
+                                parameter.constraint.clone().expect("filtered constraint"),
+                            )
+                        })
+                        .collect();
+                    self.check_type_with_parameters(
+                        &alias.value,
+                        &alias.span,
+                        &alias.type_parameters,
+                    );
+                    self.allowed_tuple_spread_parameters = previous_spreads;
+                }
+                Declaration::Interface(interface) => {
+                    for parent in &interface.heritage {
+                        self.check_interface_heritage(
+                            parent,
+                            &interface.span,
+                            &interface.type_parameters,
+                        );
+                        self.check_inherited_field_compatibility(
+                            parent,
+                            &interface.fields,
+                            &interface.span,
+                        );
+                    }
+                    for field in &interface.fields {
+                        self.check_type_with_parameters(
+                            &field.value,
+                            &field.span,
+                            &interface.type_parameters,
+                        );
+                    }
+                }
+                Declaration::Variable(variable) => self.check_variable(variable),
+                Declaration::Function(function) => self.check_function(function),
+                Declaration::Class(class) => {
+                    self.validate_class_heritage_name(class);
+                    self.validate_class_constructor_group(class);
+                    self.validate_class_method_groups(class);
+                    self.validate_class_method_overrides(class);
+                    self.check_class_constructor_bodies(class);
+                    self.check_class_method_bodies(class);
+                }
+                Declaration::Import(_)
+                | Declaration::TypeExport(_)
+                | Declaration::DefaultExport(_)
+                | Declaration::ValueExport(_) => {}
+                Declaration::Raw(raw) => {
+                    let scope = self.values.clone();
+                    self.check_direct_runtime_expression(&raw.tokens, &scope, &raw.span);
+                }
+            }
+        }
+        if let Some((start, end, failure)) = self.record_spread_inference_failure.take() {
+            let (message, code) = match failure {
+                RecordSpreadFailure::ResourceLimit => (
+                    format!(
+                        "record spread exceeds the {}-type-expansion inference limit",
+                        self.max_type_expansions
+                    ),
+                    DiagnosticCode::ResourceLimit,
+                ),
+                RecordSpreadFailure::UnprovenSource => (
+                    "record spread source must have a provable record type".to_string(),
+                    DiagnosticCode::TypeMismatch,
+                ),
+            };
+            self.type_error(&SourceSpan::new(&self.module.id, start, end), message, code);
+        }
+    }
+
+    pub(super) fn check_type_with_parameters(
+        &mut self,
+        value: &Type,
+        span: &SourceSpan,
+        parameters: &[TypeParameter],
+    ) {
+        let previous_parameters = self.type_parameters.clone();
+        self.check_type_parameters(parameters);
+        self.check_type(value, span);
+        self.type_parameters = previous_parameters;
+    }
+
+    pub(super) fn check_interface_heritage(
+        &mut self,
+        parent: &Type,
+        span: &SourceSpan,
+        parameters: &[TypeParameter],
+    ) {
+        let previous_parameters = self.type_parameters.clone();
+        self.check_type_parameters(parameters);
+        self.check_type(parent, span);
+        if let Type::Named { name, .. } = parent {
+            match self.types.get(name) {
+                Some(TypeDefinition {
+                    kind: TypeDefinitionKind::Interface,
+                    ..
+                }) => {}
+                Some(_) => self.type_error(
+                    span,
+                    format!("interface heritage {name} must name an interface declaration"),
+                    DiagnosticCode::UnsupportedSyntax,
+                ),
+                None if self.type_parameters.contains(name) => self.type_error(
+                    span,
+                    format!("interface heritage {name} must name an interface declaration"),
+                    DiagnosticCode::UnsupportedSyntax,
+                ),
+                None => {}
+            }
+        }
+        self.type_parameters = previous_parameters;
+    }
+
+    pub(super) fn check_inherited_field_compatibility(
+        &mut self,
+        parent: &Type,
+        fields: &[TypeField],
+        span: &SourceSpan,
+    ) {
+        for field in fields {
+            let inherited = {
+                let mut visited = HashSet::new();
+                let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
+                property_type(parent, &field.name, &self.types, &mut visited, &mut budget)
+            };
+            let PropertyType::Found {
+                value: inherited, ..
+            } = inherited
+            else {
+                continue;
+            };
+            let declared = if field.optional {
+                Type::Union(vec![field.value.clone(), Type::Undefined])
+            } else {
+                field.value.clone()
+            };
+            if !self.is_assignable_bounded(&declared, &inherited, span) {
+                self.type_error(
+                    span,
+                    format!(
+                        "property `{}` is not compatible with the inherited type `{}`",
+                        field.name,
+                        type_label(&inherited)
+                    ),
+                    DiagnosticCode::TypeMismatch,
+                );
+            }
+        }
+    }
+
+    pub(super) fn check_variable(&mut self, variable: &crate::parser::VariableDeclaration) {
+        let scope = self.values.clone();
+        self.check_variable_in_scope(variable, &scope);
+        if variable.annotation.is_none() && !variable.initializer.is_empty() && !variable.declared {
+            let inferred = self.infer_expression(&variable.initializer, &scope);
+            self.values.insert(variable.name.clone(), inferred);
+        }
+    }
+
+    pub(super) fn check_variable_in_scope(
+        &mut self,
+        variable: &crate::parser::VariableDeclaration,
+        scope: &BTreeMap<String, Type>,
+    ) {
+        if !variable.initializer.is_empty() && !variable.declared {
+            self.check_direct_runtime_expression(&variable.initializer, scope, &variable.span);
+        }
+        let Some(annotation) = &variable.annotation else {
+            return;
+        };
+        self.check_type(annotation, &variable.span);
+        if variable.initializer.is_empty() || variable.declared {
+            return;
+        }
+        let mut contextual = annotation.clone();
+        let mut contextual_budget = TypeExpansionBudget::new(self.max_type_expansions);
+        let mut visited = HashSet::new();
+        while let Some(expanded) = instantiate_named(
+            &contextual,
+            &self.types,
+            &mut visited,
+            &mut contextual_budget,
+            "contextual tuple",
+        ) {
+            contextual = expanded;
+        }
+        let inferred = if matches!(contextual, Type::Tuple(_)) {
+            infer_contextual_tuple_literal(&variable.initializer, scope)
+                .unwrap_or_else(|| self.infer_expression(&variable.initializer, scope))
+        } else {
+            self.infer_expression(&variable.initializer, scope)
+        };
+        if !self.is_assignable_bounded(&inferred, annotation, &variable.span) {
+            self.type_error(
+                &variable.span,
+                format!(
+                    "initializer has type `{}`, which is not assignable to `{}`",
+                    type_label(&inferred),
+                    type_label(annotation)
+                ),
+                DiagnosticCode::TypeMismatch,
+            );
+        }
+    }
+
+    pub(super) fn check_direct_runtime_expression(
+        &mut self,
+        tokens: &[Token],
+        scope: &BTreeMap<String, Type>,
+        span: &SourceSpan,
+    ) {
+        if tokens.is_empty() {
+            return;
+        }
+        if tokens
+            .iter()
+            .filter(|token| token.is("[") || token.is("{"))
+            .count()
+            > MAX_LITERAL_INFERENCE_CONTAINERS
+        {
+            self.type_error(
+                span,
+                format!(
+                    "expression exceeds its {MAX_LITERAL_INFERENCE_CONTAINERS}-container inference limit"
+                ),
+                DiagnosticCode::ResourceLimit,
+            );
+            return;
+        }
+        if tokens
+            .iter()
+            .filter(|token| INFERRED_LOGICAL_ASSIGNMENT_OPERATORS.contains(&token.text.as_str()))
+            .count()
+            > MAX_LOGICAL_ASSIGNMENT_INFERENCE_OPERATORS
+        {
+            self.type_error(
+                span,
+                format!(
+                    "expression exceeds its {MAX_LOGICAL_ASSIGNMENT_INFERENCE_OPERATORS}-logical assignment inference limit"
+                ),
+                DiagnosticCode::ResourceLimit,
+            );
+            return;
+        }
+        if tokens
+            .iter()
+            .filter(|token| INFERRED_LOGICAL_EXPRESSION_OPERATORS.contains(&token.text.as_str()))
+            .count()
+            > MAX_LOGICAL_EXPRESSION_INFERENCE_OPERATORS
+        {
+            self.type_error(
+                span,
+                format!(
+                    "expression exceeds its {MAX_LOGICAL_EXPRESSION_INFERENCE_OPERATORS}-logical expression inference limit"
+                ),
+                DiagnosticCode::ResourceLimit,
+            );
+            return;
+        }
+        if tokens.iter().filter(|token| token.is(".")).count() > self.max_type_expansions {
+            self.type_error(
+                span,
+                format!(
+                    "member access exceeds the {} generic-expansion limit",
+                    self.max_type_expansions
+                ),
+                DiagnosticCode::ResourceLimit,
+            );
+            return;
+        }
+        self.check_type_only_class_value_uses(tokens, scope, span);
+        if self.check_optional_property_read(tokens, scope, span) {
+            return;
+        }
+        self.check_class_constructions_in_expression(tokens, scope, span);
+        self.check_bound_class_calls_in_expression(tokens, scope, span);
+        self.check_function_call(tokens, scope, span);
+        self.check_member_calls_in_expression(tokens, scope, span);
+        self.check_direct_property_access(tokens, scope, span);
+        self.check_member_assignment(tokens, scope, span);
+        self.check_arithmetic_operators(tokens, scope, span);
+    }
+
+    pub(super) fn check_type(&mut self, value: &Type, span: &SourceSpan) {
+        match value {
+            Type::Named { name, arguments } => {
+                if let Some(definition) = self.types.get(name).cloned() {
+                    self.check_type_arguments(name, arguments, &definition, span);
+                } else if !self.type_parameters.contains(name) {
+                    self.type_error(
+                        span,
+                        format!("cannot find type `{name}`"),
+                        DiagnosticCode::UnknownType,
+                    );
+                }
+            }
+            Type::Array(value) => self.check_type(value, span),
+            Type::Tuple(values) => {
+                for value in values {
+                    self.check_type(&value.annotation, span);
+                }
+                if values
+                    .iter()
+                    .any(|element| element.rest && matches!(element.annotation, Type::Named { .. }))
+                {
+                    let specialized = substitute_type(
+                        &Type::Tuple(values.clone()),
+                        &self.allowed_tuple_spread_parameters,
+                    );
+                    let Type::Tuple(specialized) = specialized else {
+                        unreachable!("tuple substitution retains a tuple")
+                    };
+                    let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
+                    if let Err(error) = expand_concrete_tuple_spreads(
+                        &specialized,
+                        &self.types,
+                        &mut HashSet::new(),
+                        &mut budget,
+                    ) {
+                        let (code, message) = match error {
+                            TupleSpreadError::Exhausted => (
+                                DiagnosticCode::ResourceLimit,
+                                "tuple spread exceeds the generic-expansion limit",
+                            ),
+                            TupleSpreadError::Cyclic => (
+                                DiagnosticCode::UnsupportedSyntax,
+                                "cyclic tuple spread cannot be resolved",
+                            ),
+                            TupleSpreadError::Unresolved => (
+                                DiagnosticCode::UnsupportedSyntax,
+                                "tuple spread names an unresolved type",
+                            ),
+                            TupleSpreadError::Unsupported => (
+                                DiagnosticCode::UnsupportedSyntax,
+                                "tuple spread requires one concrete tuple or array type",
+                            ),
+                        };
+                        self.type_error(span, message.to_string(), code);
+                    }
+                }
+            }
+            Type::Union(values) | Type::Intersection(values) => {
+                for value in values {
+                    self.check_type(value, span);
+                }
+            }
+            Type::Record(fields) => {
+                for field in fields {
+                    self.check_type(&field.value, &field.span);
+                }
+            }
+            Type::Function { parameters, result } => {
+                for parameter in parameters {
+                    if let Some(annotation) = &parameter.annotation {
+                        self.check_type(annotation, &parameter.span);
+                    }
+                }
+                self.check_type(result, span);
+            }
+            _ => {}
+        }
+    }
+
+    pub(super) fn check_type_parameters(&mut self, parameters: &[TypeParameter]) {
+        let mut saw_default = false;
+        for parameter in parameters {
+            if !self.type_parameters.insert(parameter.name.clone()) {
+                self.type_error(
+                    &parameter.span,
+                    format!("duplicate type parameter `{}`", parameter.name),
+                    DiagnosticCode::DuplicateDeclaration,
+                );
+            }
+            if saw_default && parameter.default.is_none() {
+                self.type_error(
+                    &parameter.span,
+                    format!(
+                        "required type parameter `{}` cannot follow a defaulted type parameter",
+                        parameter.name
+                    ),
+                    DiagnosticCode::TypeMismatch,
+                );
+            }
+            if parameter.default.is_some() {
+                saw_default = true;
+            }
+            if let Some(constraint) = &parameter.constraint {
+                self.check_type(constraint, &parameter.span);
+            }
+            if let Some(default) = &parameter.default {
+                self.check_type(default, &parameter.span);
+                if let Some(constraint) = &parameter.constraint {
+                    if !self.is_assignable_bounded(default, constraint, &parameter.span) {
+                        self.type_error(
+                            &parameter.span,
+                            format!(
+                                "default type `{}` does not satisfy constraint `{}` for `{}`",
+                                type_label(default),
+                                type_label(constraint),
+                                parameter.name,
+                            ),
+                            DiagnosticCode::TypeMismatch,
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    pub(super) fn check_type_arguments(
+        &mut self,
+        name: &str,
+        arguments: &[Type],
+        definition: &TypeDefinition,
+        span: &SourceSpan,
+    ) {
+        let required = definition
+            .parameters
+            .iter()
+            .filter(|parameter| parameter.default.is_none())
+            .count();
+        if arguments.len() < required || arguments.len() > definition.parameters.len() {
+            self.type_error(
+                span,
+                format!(
+                    "type `{name}` requires {required} to {} type argument(s), got {}",
+                    definition.parameters.len(),
+                    arguments.len(),
+                ),
+                DiagnosticCode::TypeMismatch,
+            );
+        }
+        for argument in arguments {
+            self.check_type(argument, span);
+        }
+        let Some(arguments) = complete_type_arguments(&definition.parameters, arguments) else {
+            return;
+        };
+        let substitutions = definition
+            .parameters
+            .iter()
+            .map(|parameter| parameter.name.clone())
+            .zip(arguments)
+            .collect::<BTreeMap<_, _>>();
+        for parameter in &definition.parameters {
+            let Some(constraint) = &parameter.constraint else {
+                continue;
+            };
+            let actual = substitutions
+                .get(&parameter.name)
+                .expect("completed generic arguments contain every parameter");
+            let expected = substitute_type(constraint, &substitutions);
+            let actual_bound = match actual {
+                Type::Named { name, arguments } if arguments.is_empty() => self
+                    .allowed_tuple_spread_parameters
+                    .get(name)
+                    .cloned()
+                    .unwrap_or_else(|| actual.clone()),
+                _ => actual.clone(),
+            };
+            if !self.is_assignable_bounded(&actual_bound, &expected, span) {
+                self.type_error(
+                    span,
+                    format!(
+                        "type argument `{}` does not satisfy constraint `{}` for `{}`",
+                        type_label(actual),
+                        type_label(&expected),
+                        parameter.name,
+                    ),
+                    DiagnosticCode::TypeMismatch,
+                );
+            }
+        }
+    }
+
+    pub(super) fn type_error(&mut self, span: &SourceSpan, message: String, code: DiagnosticCode) {
+        if self.enforce_types {
+            self.diagnostics
+                .push(Diagnostic::error(code, span.clone(), message));
+        }
+    }
+}

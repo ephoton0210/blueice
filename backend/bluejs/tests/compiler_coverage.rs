@@ -1,0 +1,739 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+use blueice_bluejs::{
+    compile, compile_module, compile_module_with_limit, compile_module_with_limits,
+    compile_with_limit, compile_with_limits, parse, parse_module, Bytecode, ClassElement,
+    CompileError, CompileLimits, Expr, Opcode, Program, RuntimeError, Stmt, Value, Vm, VmConfig,
+};
+
+fn largest_compile_path(code: &Bytecode) -> usize {
+    code.bytes().len()
+        + code
+            .child_code_units()
+            .map(largest_compile_path)
+            .max()
+            .unwrap_or(0)
+}
+
+fn total_compile_bytes(code: &Bytecode) -> usize {
+    code.bytes().len()
+        + code
+            .child_code_units()
+            .map(total_compile_bytes)
+            .sum::<usize>()
+}
+
+#[test]
+fn module_top_level_using_declarations_compile_with_disposal() {
+    for source in ["using resource = null;", "await using resource = null;"] {
+        let module = parse_module(source).unwrap();
+        let code = compile_module(&module).unwrap();
+        let opcodes: Vec<_> = code
+            .instructions()
+            .map(|instruction| instruction.opcode)
+            .collect();
+        let disposal = if source.starts_with("await") {
+            Opcode::DrainAsyncDisposables
+        } else {
+            Opcode::DisposeResources
+        };
+        assert!(opcodes.contains(&disposal), "{source}: {opcodes:?}");
+    }
+}
+
+#[test]
+fn module_byte_limit_rejects_every_partial_program() {
+    for source in [
+        "export function f() { return 1; }",
+        "export default function() { return 1; }",
+        "using resource = null;",
+        "await using resource = null;",
+    ] {
+        let module = parse_module(source).unwrap();
+        let full = compile_module(&module).unwrap();
+        let upper = u32::try_from(largest_compile_path(&full)).unwrap();
+        let mut first_success = None;
+        for limit in 0..=upper {
+            match compile_module_with_limit(&module, limit) {
+                Ok(code) => {
+                    first_success.get_or_insert(limit);
+                    assert_eq!(code.bytes(), full.bytes(), "{source} at {limit} bytes");
+                }
+                Err(CompileError::ProgramTooLarge) => {
+                    assert!(first_success.is_none(), "{source} at {limit} bytes");
+                }
+                Err(error) => panic!("{source} at {limit} bytes: {error:?}"),
+            }
+        }
+        assert!(first_success.is_some(), "{source}");
+    }
+}
+
+#[test]
+fn metadata_limits_reject_each_table_before_an_index_overflows() {
+    let limits = CompileLimits {
+        max_metadata_entries: 1,
+        ..CompileLimits::default()
+    };
+    for source in ["let first, second;", "1; 2;", "{}", "1; missing++;"] {
+        assert!(
+            matches!(
+                compile_with_limits(&parse(source).unwrap(), limits),
+                Err(CompileError::ProgramTooLarge)
+            ),
+            "{source}"
+        );
+    }
+    assert!(compile_with_limits(&parse("1;").unwrap(), limits).is_ok());
+    let no_metadata = CompileLimits {
+        max_metadata_entries: 0,
+        ..CompileLimits::default()
+    };
+    assert!(matches!(
+        compile_with_limits(&parse("missing++;").unwrap(), no_metadata),
+        Err(CompileError::ProgramTooLarge)
+    ));
+    assert!(matches!(
+        compile_module_with_limits(&parse_module("let first, second;").unwrap(), limits),
+        Err(CompileError::ProgramTooLarge)
+    ));
+}
+
+#[test]
+fn annex_b_if_clause_function_propagates_metadata_exhaustion() {
+    let program = parse("if (true) function selected() { return 7; }").unwrap();
+    assert!(compile(&program).is_ok());
+    assert!(matches!(
+        compile_with_limits(
+            &program,
+            CompileLimits {
+                max_metadata_entries: 0,
+                ..CompileLimits::default()
+            }
+        ),
+        Err(CompileError::ProgramTooLarge)
+    ));
+}
+
+#[test]
+fn statement_control_flow_and_binding_limits_compile_through_the_public_pipeline() {
+    for source in [
+        "function f() { using resource = null; return 1; }",
+        "async function f() { await using resource = null; return 1; }",
+        "function f() { try { throw 1; } catch { return 2; } finally { 3; } }",
+        "try {} catch {}",
+        "try {} finally {} try {} finally {}",
+        "try {} finally {} try {} finally {} try {} finally {}",
+        "try {} finally {} try {} finally {} { using resource = null; }",
+        "function repeated() {} function repeated() {} function repeated() {}",
+        "while (true) { break; break; break; }",
+        "if (true) function selected() { return 7; }",
+        "function outer() { function inner() { return 1; } return inner(); }",
+        "async function* generate() { return 1; } function bare() { return; }",
+        "function f() { switch (1) { case 1: function g() {} break; default: break; } }",
+        "function f() { outer: for (const x of [1]) { inner: while (x) { break outer; } } }",
+        "with ({ x: 1 }) { var x = 2; var { y } = { y: 3 }; var [z] = [4]; }",
+        "for (let index = 0; index < 2; index++) {}",
+        "for (1 + 2; false; 1) {}",
+        "for (; false; 1) {}",
+        "var [first = 1, ...rest] = []; var { x: item = 2, ...other } = {};",
+        "with ({ x: 1 }) { var { x: renamed = 2, ...rest } = {}; }",
+        "const f = function self(n) { 'use strict'; return ((n ? self(n - 1) : 0)); };",
+        "const f = function self(n) { 'use strict'; for (const x of [1]) { return self(n - 1); } };",
+        "class C { [name] = function() {}; ['x'] = function() {}; 1 = function() {}; #x = function() {}; }",
+    ] {
+        let program = parse(source).unwrap_or_else(|error| panic!("{source}: {error:?}"));
+        let full = compile(&program).unwrap_or_else(|error| panic!("{source}: {error:?}"));
+        let upper = u32::try_from(total_compile_bytes(&full)).unwrap();
+        let mut first_success = None;
+        for limit in 0..=upper {
+            match compile_with_limit(&program, limit) {
+                Ok(code) => {
+                    first_success.get_or_insert(limit);
+                    assert_eq!(code.bytes(), full.bytes(), "{source} at {limit} bytes");
+                }
+                Err(CompileError::ProgramTooLarge) => {
+                    assert!(first_success.is_none(), "{source} at {limit} bytes");
+                }
+                Err(error) => panic!("{source} at {limit} bytes: {error:?}"),
+            }
+        }
+        assert!(first_success.is_some(), "{source}");
+
+        let mut first_success = None;
+        for limit in 0..64 {
+            let limits = CompileLimits {
+                max_metadata_entries: limit,
+                ..CompileLimits::default()
+            };
+            match compile_with_limits(&program, limits) {
+                Ok(_) => {
+                    first_success.get_or_insert(limit);
+                }
+                Err(CompileError::ProgramTooLarge) => {
+                    assert!(first_success.is_none(), "{source} at metadata limit {limit}");
+                }
+                Err(error) => panic!("{source} at metadata limit {limit}: {error:?}"),
+            }
+        }
+        assert!(first_success.is_some(), "{source}");
+    }
+}
+
+#[test]
+fn a_parenthesized_tail_call_in_an_external_ast_keeps_tail_position() {
+    let mut program = parse("function f(n) { 'use strict'; return f(n); }").unwrap();
+    let Stmt::FunctionDecl(function) = &mut program.body[0] else {
+        panic!("the source declares a function");
+    };
+    let Some(Stmt::Return(Some(value))) = function.body.last_mut() else {
+        panic!("the function ends in a return");
+    };
+    *value = Expr::Parenthesized(Box::new(value.clone()));
+
+    let code = compile(&program).unwrap();
+    assert!(code.child_code_units().any(|child| child
+        .instructions()
+        .any(|instruction| instruction.opcode == Opcode::TailCall)));
+}
+
+#[test]
+fn an_external_class_expression_preserves_its_completion_under_byte_limits() {
+    let mut program = parse("(class {});").unwrap();
+    let Stmt::Expr(expression) = &program.body[0] else {
+        panic!("the source is an expression statement");
+    };
+    let class = match expression {
+        Expr::Parenthesized(inner) => *inner.clone(),
+        expression => expression.clone(),
+    };
+    assert!(matches!(class, Expr::Class(_)));
+    program.body[0] = Stmt::Expr(class);
+
+    let full = compile(&program).unwrap();
+    assert!(full
+        .instructions()
+        .any(|instruction| instruction.opcode == Opcode::SetCompletion));
+    let upper = u32::try_from(total_compile_bytes(&full)).unwrap();
+    let mut first_success = None;
+    for limit in 0..=upper {
+        match compile_with_limit(&program, limit) {
+            Ok(code) => {
+                first_success.get_or_insert(limit);
+                assert_eq!(code.bytes(), full.bytes(), "{limit} bytes");
+            }
+            Err(CompileError::ProgramTooLarge) => {
+                assert!(first_success.is_none(), "{limit} bytes");
+            }
+            Err(error) => panic!("{limit} bytes: {error:?}"),
+        }
+    }
+    assert!(first_success.is_some());
+}
+
+#[test]
+fn repeated_direct_eval_declarations_replace_dynamic_bindings() {
+    let source = r#"
+        function run() {
+            eval('var value = 1; function selected() { return 1; }');
+            eval('var value = 2; function selected() { return 2; }');
+            return value === 2 && selected() === 2;
+        }
+        run()
+    "#;
+    let mut vm = Vm::default();
+    let code = compile(&parse(source).unwrap()).unwrap();
+    assert_eq!(vm.execute(&code), Ok(Value::Bool(true)));
+}
+
+#[test]
+fn a_tail_recursive_call_obeys_the_public_argument_limit() {
+    let program = parse("const f = function self() { 'use strict'; return self(1, 2); };").unwrap();
+    assert!(compile(&program).is_ok());
+    assert!(matches!(
+        compile_with_limits(
+            &program,
+            CompileLimits {
+                max_list_items: 1,
+                ..CompileLimits::default()
+            }
+        ),
+        Err(CompileError::ProgramTooLarge)
+    ));
+}
+
+#[test]
+fn externally_constructed_statement_asts_reject_invalid_control_flow() {
+    let strict = parse("'use strict';").unwrap().body.remove(0);
+    let class = parse("class C {}").unwrap().body.remove(0);
+    let function = parse("function f() {}").unwrap().body.remove(0);
+    let lexical = parse("let value = 1;").unwrap().body.remove(0);
+    let labelled = |label: &str, item: Stmt| Stmt::Labelled {
+        label: label.into(),
+        item: Box::new(item),
+    };
+    for (body, expected) in [
+        (
+            vec![Stmt::ClassField(Box::new(Stmt::Empty))],
+            "invalid class field AST",
+        ),
+        (
+            vec![Stmt::ClassExtraInitializers("missing".into())],
+            "decoration record binding is not available in this function",
+        ),
+        (
+            vec![Stmt::ClassPrivateBrand("missing".into())],
+            "private brand binding is not available in this function",
+        ),
+        (
+            vec![strict.clone(), labelled("yield", Stmt::Empty)],
+            "yield cannot be used as a label in strict code",
+        ),
+        (
+            vec![labelled("dup", labelled("dup", Stmt::Empty))],
+            "duplicate label",
+        ),
+        (
+            vec![labelled("outer", lexical)],
+            "a labelled statement cannot contain a lexical declaration",
+        ),
+        (
+            vec![labelled("outer", class)],
+            "a labelled statement cannot contain a class declaration",
+        ),
+        (
+            vec![labelled("outer", function)],
+            "invalid labelled function declaration",
+        ),
+        (
+            vec![Stmt::If {
+                test: Expr::Bool(true),
+                consequent: Box::new(labelled(
+                    "outer",
+                    labelled("inner", parse("function f() {}").unwrap().body.remove(0)),
+                )),
+                alternate: None,
+            }],
+            "a labelled function declaration is not allowed in statement position",
+        ),
+        (
+            vec![
+                strict.clone(),
+                Stmt::With {
+                    object: Expr::Number(0.0),
+                    body: Box::new(Stmt::Empty),
+                },
+            ],
+            "with is forbidden in strict mode",
+        ),
+    ] {
+        assert!(
+            matches!(
+                compile(&Program { body }),
+                Err(CompileError::InvalidSyntax(message)) if message == expected
+            ),
+            "{expected}"
+        );
+    }
+
+    let mut program = parse("let record = 0;").unwrap();
+    program.body.push(Stmt::ClassDecoratedField {
+        field: Box::new(Stmt::Empty),
+        record: "record".into(),
+    });
+    assert!(matches!(
+        compile(&program),
+        Err(CompileError::InvalidSyntax("invalid decorated field AST"))
+    ));
+
+    let mut program = Program { body: vec![strict] };
+    program
+        .body
+        .push(parse("try {} catch (eval) {}").unwrap().body.remove(0));
+    let result = compile(&program);
+    assert!(
+        matches!(
+            &result,
+            Err(CompileError::InvalidSyntax(
+                "strict code cannot assign to eval or arguments"
+            ))
+        ),
+        "{:?}",
+        result.err()
+    );
+}
+
+#[test]
+fn derived_constructor_metadata_limit_and_spread_recursion_use_public_compilation() {
+    for source in [
+        "(class extends null {});",
+        "let captured; (class extends null {});",
+        "var captured; (class extends null {});",
+        "class Derived extends Object {}",
+        "class Derived extends Object { constructor() { super(); } }",
+    ] {
+        let program = parse(source).unwrap();
+        let mut first_success = None;
+        for limit in 0..64 {
+            let limits = CompileLimits {
+                max_metadata_entries: limit,
+                ..CompileLimits::default()
+            };
+            match compile_with_limits(&program, limits) {
+                Ok(_) => {
+                    first_success.get_or_insert(limit);
+                }
+                Err(CompileError::ProgramTooLarge) => {
+                    assert!(
+                        first_success.is_none(),
+                        "{source} at metadata limit {limit}"
+                    );
+                }
+                Err(error) => panic!("{source} at metadata limit {limit}: {error:?}"),
+            }
+        }
+        assert!(first_success.is_some(), "{source}");
+    }
+
+    let spread_recursion =
+        parse("'use strict'; const f = function self(...args) { return self(...args); };").unwrap();
+    compile(&spread_recursion).unwrap();
+}
+
+#[test]
+fn eval_limits_cover_visible_bindings_and_the_final_halt() {
+    let outer = compile(&parse("eval('');").unwrap()).unwrap();
+    let mut vm = Vm::new(VmConfig {
+        eval_compile_limits: CompileLimits {
+            max_bytecode_bytes: 5,
+            ..CompileLimits::default()
+        },
+        ..VmConfig::default()
+    })
+    .unwrap();
+    assert!(matches!(
+        vm.execute(&outer),
+        Err(RuntimeError::SyntaxError(_))
+    ));
+
+    let mut vm = Vm::new(VmConfig {
+        eval_compile_limits: CompileLimits {
+            max_bytecode_bytes: 6,
+            ..CompileLimits::default()
+        },
+        ..VmConfig::default()
+    })
+    .unwrap();
+    assert_eq!(vm.execute(&outer), Ok(Value::Undefined));
+
+    let outer = compile(&parse("let first = 1, second = 2; eval('1');").unwrap()).unwrap();
+    let mut vm = Vm::new(VmConfig {
+        eval_compile_limits: CompileLimits {
+            max_metadata_entries: 1,
+            ..CompileLimits::default()
+        },
+        ..VmConfig::default()
+    })
+    .unwrap();
+    assert!(matches!(
+        vm.execute(&outer),
+        Err(RuntimeError::SyntaxError(_))
+    ));
+}
+
+#[test]
+fn statement_metadata_limits_reach_handler_disposal_and_with_bindings() {
+    for source in [
+        "try {} finally {}",
+        "try {} finally {} try {} finally {}",
+        "{ using resource = null; }",
+        "try {} finally {} { using resource = null; }",
+        "try { using resource = null; } finally {}",
+        "with ({}) { var value = 1; }",
+        "0; with ({}) { var value = 1; }",
+        "0; with ({}) var value = 1;",
+    ] {
+        let program = parse(source).unwrap();
+        let full = compile(&program).unwrap();
+        let mut first_success = None;
+        for limit in 0..64 {
+            let limits = CompileLimits {
+                max_metadata_entries: limit,
+                ..CompileLimits::default()
+            };
+            match compile_with_limits(&program, limits) {
+                Ok(code) => {
+                    first_success.get_or_insert(limit);
+                    assert_eq!(code.bytes(), full.bytes(), "{source}: {limit}");
+                }
+                Err(CompileError::ProgramTooLarge) => {
+                    assert!(first_success.is_none(), "{source}: {limit}");
+                }
+                Err(error) => panic!("{source}: {limit}: {error:?}"),
+            }
+        }
+        assert!(first_success.is_some(), "{source}");
+    }
+}
+
+#[test]
+fn externally_constructed_statement_shapes_reach_lowering_boundaries() {
+    let default = parse_module("export default function() {}")
+        .unwrap()
+        .body
+        .remove(0);
+    assert!(compile(&Program {
+        body: vec![Stmt::Block(vec![default])],
+    })
+    .is_ok());
+
+    assert!(compile(&Program {
+        body: vec![Stmt::Try {
+            block: Vec::new(),
+            handler: None,
+            finalizer: None,
+        }],
+    })
+    .is_ok());
+
+    assert!(matches!(
+        compile(&Program {
+            body: vec![Stmt::ClassDecoratedField {
+                field: Box::new(Stmt::Empty),
+                record: "missing".into(),
+            }],
+        }),
+        Err(CompileError::InvalidSyntax(
+            "decoration record binding is not available in this function"
+        ))
+    ));
+}
+
+#[test]
+fn repeated_sloppy_eval_var_assignment_respects_each_compile_limit() {
+    let outer = compile(
+        &parse("function f() { eval('var value'); eval('var value = 1'); return value; } f();")
+            .unwrap(),
+    )
+    .unwrap();
+    let execute = |limits| {
+        let mut vm = Vm::new(VmConfig {
+            eval_compile_limits: limits,
+            ..VmConfig::default()
+        })
+        .unwrap();
+        vm.execute(&outer)
+    };
+    assert_eq!(execute(CompileLimits::default()), Ok(Value::Number(1.0)));
+    for byte_limit in 0..128 {
+        let limits = CompileLimits {
+            max_bytecode_bytes: byte_limit,
+            ..CompileLimits::default()
+        };
+        match execute(limits) {
+            Ok(Value::Number(1.0)) => break,
+            Err(RuntimeError::SyntaxError(_)) => {}
+            result => panic!("unexpected eval result at byte limit {byte_limit}: {result:?}"),
+        }
+        assert!(byte_limit < 127, "eval never compiled within 128 bytes");
+    }
+    for metadata_limit in 0..32 {
+        let limits = CompileLimits {
+            max_metadata_entries: metadata_limit,
+            ..CompileLimits::default()
+        };
+        match execute(limits) {
+            Ok(Value::Number(1.0)) => break,
+            Err(RuntimeError::SyntaxError(_)) => {}
+            result => {
+                panic!("unexpected eval result at metadata limit {metadata_limit}: {result:?}")
+            }
+        }
+        assert!(metadata_limit < 31, "eval never compiled within 32 entries");
+    }
+}
+
+#[test]
+fn compiler_rejects_an_undeclared_private_name_in_an_external_ast() {
+    let program = Program {
+        body: vec![Stmt::Expr(Expr::PrivateIn {
+            name: "missing".into(),
+            object: Box::new(Expr::Number(0.0)),
+        })],
+    };
+    assert!(matches!(
+        compile(&program),
+        Err(CompileError::InvalidSyntax(
+            "private name is not declared in an enclosing class"
+        ))
+    ));
+}
+
+#[test]
+fn annex_b_block_function_does_not_replace_a_root_lexical_binding() {
+    for source in [
+        "let f = 7; { function f() {} } f;",
+        "eval('let f = 7; { function f() {} } f;');",
+    ] {
+        let code = compile(&parse(source).unwrap()).unwrap();
+        assert_eq!(Vm::default().execute(&code), Ok(Value::Number(7.0)));
+    }
+}
+
+#[test]
+fn direct_eval_resolves_the_innermost_private_name() {
+    let source = "class Outer { #value = 1; run() { \
+        class Inner { #value = 2; read() { return eval('this.#value'); } } \
+        return new Inner().read(); } } new Outer().run();";
+    let code = compile(&parse(source).unwrap()).unwrap();
+    assert_eq!(Vm::default().execute(&code), Ok(Value::Number(2.0)));
+
+    let mut body = "return eval('this.#value');".to_owned();
+    for depth in (1..=12).rev() {
+        body = format!(
+            "class C{depth} {{ #value = {depth}; read() {{ {body} }} }} \
+             return new C{depth}().read();"
+        );
+    }
+    let source = format!("(function() {{ {body} }})();");
+    let code = compile(&parse(&source).unwrap()).unwrap();
+    assert_eq!(Vm::default().execute(&code), Ok(Value::Number(12.0)));
+}
+
+#[test]
+fn top_level_using_is_rejected_in_scripts_and_direct_eval() {
+    let script = parse("using resource = null;").unwrap();
+    assert!(matches!(
+        compile(&script),
+        Err(CompileError::InvalidSyntax(
+            "a using declaration is not allowed directly at the top level of a Script"
+        ))
+    ));
+
+    let code = compile(&parse("eval('using resource = null;');").unwrap()).unwrap();
+    assert!(matches!(
+        Vm::default().execute(&code),
+        Err(RuntimeError::SyntaxError(_))
+    ));
+
+    let code = compile(&parse("eval('{ using resource; }');").unwrap()).unwrap();
+    assert!(matches!(
+        Vm::default().execute(&code),
+        Err(RuntimeError::SyntaxError(_))
+    ));
+}
+
+#[test]
+fn uncommon_declarations_and_inferred_names_compile_and_execute() {
+    for (source, expected) in [
+        (
+            "switch (0) { case 0: class C {} C.name; }",
+            Value::String("C".into()),
+        ),
+        (
+            "if (false) {} else function f() { return 3; } f();",
+            Value::Number(3.0),
+        ),
+        (
+            "try { function f() { return 9; } } finally {} f();",
+            Value::Number(9.0),
+        ),
+        (
+            "try { throw 0; } catch (error) { function f() { return 8; } } f();",
+            Value::Number(8.0),
+        ),
+        (
+            "try {} finally { function f() { return 7; } } f();",
+            Value::Number(7.0),
+        ),
+        (
+            "let f = (function() {}); f.name;",
+            Value::String("f".into()),
+        ),
+        (
+            "class C { static accessor ['value'] = 3; } C.value;",
+            Value::Number(3.0),
+        ),
+        (
+            "let count = 0; class C { [++count] = 4; static [++count] = 5; } \
+             let c = new C(); count === 2 && c[1] === 4 && C[2] === 5;",
+            Value::Bool(true),
+        ),
+    ] {
+        let code = compile(&parse(source).unwrap()).unwrap();
+        assert_eq!(Vm::default().execute(&code), Ok(expected), "{source}");
+    }
+}
+
+#[test]
+fn parenthesized_anonymous_class_field_initializer_gets_the_field_name() {
+    let mut program = parse("class C { value = function() {}; } new C().value.name;").unwrap();
+    let Stmt::ClassDecl(class) = &mut program.body[0] else {
+        panic!("expected a class declaration");
+    };
+    let ClassElement::Field {
+        initializer: Some(initializer),
+        ..
+    } = &mut class.elements[0]
+    else {
+        panic!("expected a class field initializer");
+    };
+    *initializer = Expr::Parenthesized(Box::new(initializer.clone()));
+    let code = compile(&program).unwrap();
+    assert_eq!(
+        Vm::default().execute(&code),
+        Ok(Value::String("value".into()))
+    );
+}
+
+#[test]
+fn strict_assignment_validation_walks_nested_statement_and_expression_shapes() {
+    // Parse as a sloppy script first, then turn the AST into strict code. This
+    // exercises compile's validation even for forms a strict parser rejects.
+    for source in [
+        "while (false) { eval = 1; }",
+        "do { eval = 1; } while (false);",
+        "with ({}) { eval = 1; }",
+        "with ((eval = 1)) {}",
+        "for (eval = 1; false;) {}",
+        "for (eval in {}) {}",
+        "for (var eval = 1 in {}) {}",
+        "for (var x = (eval = 1) in {}) {}",
+        "for (target(eval = 1) in {}) {}",
+        "let {...eval} = {};",
+        "({...eval} = {});",
+        "let {[(eval = 1)]: value} = {};",
+        "(eval) = 1;",
+        "({...(eval = 1)});",
+        "f?.(eval = 1);",
+    ] {
+        let mut program = parse(source).unwrap_or_else(|error| panic!("{source}: {error:?}"));
+        program
+            .body
+            .insert(0, Stmt::Expr(Expr::String("use strict".into())));
+        assert!(
+            matches!(
+                compile(&program),
+                Err(CompileError::InvalidSyntax(
+                    "strict code cannot assign to eval or arguments"
+                ))
+            ),
+            "{source}"
+        );
+    }
+}
+
+#[test]
+fn strict_annex_b_for_in_without_restricted_names_fails_for_the_right_reason() {
+    let mut program = parse("for (var x = 1 in {}) {}").unwrap();
+    program
+        .body
+        .insert(0, Stmt::Expr(Expr::String("use strict".into())));
+    assert!(matches!(
+        compile(&program),
+        Err(CompileError::InvalidSyntax(message))
+            if message != "strict code cannot assign to eval or arguments"
+    ));
+}

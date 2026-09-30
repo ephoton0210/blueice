@@ -38,8 +38,14 @@ const MAX_EXTENSION_NAVIGATION_RULES_PER_CONNECTION: usize = 64;
 pub(crate) enum ExtensionNavigationBlockRule {
     ExactUrl(String),
     Host(String),
-    PathPrefix { host: String, path_prefix: String },
-    RedirectExactUrl { source_url: String, target_url: String },
+    PathPrefix {
+        host: String,
+        path_prefix: String,
+    },
+    RedirectExactUrl {
+        source_url: String,
+        target_url: String,
+    },
 }
 
 /// Navigation-start rule snapshot passed to the fetch worker. The rule set is
@@ -61,14 +67,17 @@ struct ExtensionPermissionView {
 
 impl ExtensionPermissionView {
     fn intercept_generation(&self) -> Option<u64> {
-        self.registry.capability_generation(&self.extension_id, "network:intercept")
+        self.registry
+            .capability_generation(&self.extension_id, "network:intercept")
     }
 }
 
 impl fmt::Debug for ExtensionPermissionView {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.debug_struct("ExtensionPermissionView")
-            .field("extension_id", &self.extension_id).finish_non_exhaustive()
+        formatter
+            .debug_struct("ExtensionPermissionView")
+            .field("extension_id", &self.extension_id)
+            .finish_non_exhaustive()
     }
 }
 
@@ -360,7 +369,10 @@ impl TabManager {
         registry: Arc<ExtensionRegistry>,
         extension_id: String,
     ) {
-        self.extension_permissions = Some(ExtensionPermissionView { registry, extension_id });
+        self.extension_permissions = Some(ExtensionPermissionView {
+            registry,
+            extension_id,
+        });
         self.prune_stale_extension_navigation_rules();
     }
 
@@ -370,7 +382,8 @@ impl TabManager {
 
     pub(crate) fn extension_capability_generation(&self, capability: &str) -> Option<u64> {
         self.extension_permissions.as_ref().map_or(Some(0), |view| {
-            view.registry.capability_generation(&view.extension_id, capability)
+            view.registry
+                .capability_generation(&view.extension_id, capability)
         })
     }
 
@@ -384,15 +397,26 @@ impl TabManager {
         tab_id: TabId,
         expected_ticket: &str,
     ) -> Result<(), String> {
-        let view = self.extension_permissions.as_ref()
+        let view = self
+            .extension_permissions
+            .as_ref()
             .ok_or_else(|| "no installed extension can hold an ephemeral lease".to_string())?;
-        let epoch = self.document_epoch(tab_id)
+        let epoch = self
+            .document_epoch(tab_id)
             .ok_or_else(|| "the requested tab is not live".to_string())?;
-        view.registry.consume_runtime_ephemeral(
-            &view.extension_id, capability, expected_ticket, tab_id.as_u64(), epoch,
-        ).then_some(()).ok_or_else(|| {
-            "the runtime-ephemeral lease is absent, spent, or bound to another document".to_string()
-        })
+        view.registry
+            .consume_runtime_ephemeral(
+                &view.extension_id,
+                capability,
+                expected_ticket,
+                tab_id.as_u64(),
+                epoch,
+            )
+            .then_some(())
+            .ok_or_else(|| {
+                "the runtime-ephemeral lease is absent, spent, or bound to another document"
+                    .to_string()
+            })
     }
 
     /// Serializes a core-owned publication with the same optional grant
@@ -406,7 +430,10 @@ impl TabManager {
     ) -> Result<T, String> {
         match self.extension_permissions.clone() {
             Some(view) => view.registry.with_stable_capability(
-                &view.extension_id, capability, expected_generation, || effect(self),
+                &view.extension_id,
+                capability,
+                expected_generation,
+                || effect(self),
             ),
             None if expected_generation == 0 => Ok(effect(self)),
             None => Err(format!("{capability} grant generation is unavailable")),
@@ -415,9 +442,8 @@ impl TabManager {
 
     pub(crate) fn prune_stale_extension_navigation_rules(&mut self) {
         let current = self.intercept_generation();
-        self.extension_navigation_block_rules.retain(|_, (generation, _)| {
-            current == Some(*generation)
-        });
+        self.extension_navigation_block_rules
+            .retain(|_, (generation, _)| current == Some(*generation));
     }
 
     #[cfg(test)]
@@ -445,7 +471,10 @@ impl TabManager {
             .and_then(|url| Url::parse(url).ok())
             .filter(|url| matches!(url.scheme(), "http" | "https"))
             .map(|url| url.origin().ascii_serialization());
-        if origin.as_ref().is_some_and(|origin| allowed.contains(origin)) {
+        if origin
+            .as_ref()
+            .is_some_and(|origin| allowed.contains(origin))
+        {
             Ok(())
         } else {
             Err(format!("{capability} is not granted for this tab's origin"))
@@ -512,18 +541,29 @@ impl TabManager {
         let source = Url::parse(&source_url).expect("a canonical URL must parse");
         let target = Url::parse(&target_url).expect("a canonical URL must parse");
         if source.origin() != target.origin() || source_url == target_url {
-            return Err("navigation redirects must change the URL within one exact origin".to_string());
+            return Err(
+                "navigation redirects must change the URL within one exact origin".to_string(),
+            );
         }
-        if self.extension_navigation_block_rules.values().flat_map(|(_, rules)| rules.iter()).any(|rule| {
-            matches!(rule, ExtensionNavigationBlockRule::RedirectExactUrl {
+        if self
+            .extension_navigation_block_rules
+            .values()
+            .flat_map(|(_, rules)| rules.iter())
+            .any(|rule| {
+                matches!(rule, ExtensionNavigationBlockRule::RedirectExactUrl {
                 source_url: existing_source, target_url: existing_target,
             } if existing_source == &source_url && existing_target != &target_url)
-        }) {
+            })
+        {
             return Err("a navigation redirect for this source URL already exists".to_string());
         }
-        self.add_extension_navigation_rule(connection_id, ExtensionNavigationBlockRule::RedirectExactUrl {
-            source_url, target_url,
-        })
+        self.add_extension_navigation_rule(
+            connection_id,
+            ExtensionNavigationBlockRule::RedirectExactUrl {
+                source_url,
+                target_url,
+            },
+        )
     }
 
     fn add_extension_navigation_rule(
@@ -531,7 +571,8 @@ impl TabManager {
         connection_id: u64,
         rule: ExtensionNavigationBlockRule,
     ) -> Result<(), String> {
-        let generation = self.intercept_generation()
+        let generation = self
+            .intercept_generation()
             .ok_or_else(|| "network:intercept is not currently granted".to_string())?;
         self.prune_stale_extension_navigation_rules();
         let (stored_generation, rules) = self
@@ -541,9 +582,7 @@ impl TabManager {
         if *stored_generation != generation {
             return Err("network:intercept grant changed while registering a rule".to_string());
         }
-        if !rules.contains(&rule)
-            && rules.len() >= MAX_EXTENSION_NAVIGATION_RULES_PER_CONNECTION
-        {
+        if !rules.contains(&rule) && rules.len() >= MAX_EXTENSION_NAVIGATION_RULES_PER_CONNECTION {
             return Err(format!(
                 "an extension connection may register at most {MAX_EXTENSION_NAVIGATION_RULES_PER_CONNECTION} navigation rules"
             ));
@@ -562,12 +601,16 @@ impl TabManager {
     /// Takes a per-navigation immutable rule set plus its live grant view.
     /// The background fetch worker receives no `TabManager` reference; the
     /// session thread remains the sole owner of live tab state.
-    pub(crate) fn extension_navigation_block_rule_snapshot(&self) -> ExtensionNavigationRuleSnapshot {
+    pub(crate) fn extension_navigation_block_rule_snapshot(
+        &self,
+    ) -> ExtensionNavigationRuleSnapshot {
         ExtensionNavigationRuleSnapshot {
             rules: self
                 .extension_navigation_block_rules
                 .values()
-                .flat_map(|(generation, rules)| rules.iter().cloned().map(|rule| (*generation, rule)))
+                .flat_map(|(generation, rules)| {
+                    rules.iter().cloned().map(|rule| (*generation, rule))
+                })
                 .collect(),
             allowed_origins: self
                 .extension_capability_origins
@@ -742,7 +785,9 @@ impl TabManager {
             unreachable!("the checked history entry is a snapshot");
         };
         let current = std::mem::replace(&mut tab.page, *next);
-        tab.document_epoch = tab.document_epoch.checked_add(1)
+        tab.document_epoch = tab
+            .document_epoch
+            .checked_add(1)
             .expect("document identity exhausted; core must fail closed");
         let departure = HistoryEntry::from_page(current, mode);
         match direction {
@@ -928,14 +973,17 @@ impl TabManager {
     /// new branch in a tab's history. Any forward entries are deliberately
     /// discarded, just as a browser does after navigating from a page reached
     /// via Back.
-    fn replace_current_as_new_navigation(&mut self, id: TabId, next: Page) {
+    fn replace_current_as_new_navigation(&mut self, id: TabId, mut next: Page) {
         let mode = self.history_snapshot_mode;
         let tab = self
             .tabs
             .get_mut(&id)
             .expect("callers validate a tab before committing navigation");
+        next.continue_tab_generations_from(&tab.page);
         let previous = std::mem::replace(&mut tab.page, next);
-        tab.document_epoch = tab.document_epoch.checked_add(1)
+        tab.document_epoch = tab
+            .document_epoch
+            .checked_add(1)
             .expect("document identity exhausted; core must fail closed");
         tab.back.push(HistoryEntry::from_page(previous, mode));
         tab.forward.clear();
@@ -948,7 +996,7 @@ impl TabManager {
         &mut self,
         id: TabId,
         direction: HistoryDirection,
-        next: Page,
+        mut next: Page,
     ) -> bool {
         let mode = self.history_snapshot_mode;
         let Some(tab) = self.tabs.get_mut(&id) else {
@@ -961,8 +1009,11 @@ impl TabManager {
         if target.is_none() {
             return false;
         }
+        next.continue_tab_generations_from(&tab.page);
         let current = std::mem::replace(&mut tab.page, next);
-        tab.document_epoch = tab.document_epoch.checked_add(1)
+        tab.document_epoch = tab
+            .document_epoch
+            .checked_add(1)
             .expect("document identity exhausted; core must fail closed");
         let departure = HistoryEntry::from_page(current, mode);
         match direction {
@@ -1095,35 +1146,54 @@ pub(crate) fn extension_navigation_rules_block_url(
         Some(permission) => permission.intercept_generation(),
         None => Some(0),
     };
-    let Some(active_generation) = active_generation else { return false };
+    let Some(active_generation) = active_generation else {
+        return false;
+    };
     let Ok(mut parsed) = Url::parse(url) else {
         return false;
     };
     if !matches!(parsed.scheme(), "http" | "https") {
         return false;
     }
-    if snapshot.allowed_origins.as_ref().is_some_and(|allowed| {
-        !allowed.contains(&parsed.origin().ascii_serialization())
-    }) {
+    if snapshot
+        .allowed_origins
+        .as_ref()
+        .is_some_and(|allowed| !allowed.contains(&parsed.origin().ascii_serialization()))
+    {
         return false;
     }
-    let Some(host) = parsed.host_str().map(|host| host.trim_end_matches('.').to_ascii_lowercase()) else {
+    let Some(host) = parsed
+        .host_str()
+        .map(|host| host.trim_end_matches('.').to_ascii_lowercase())
+    else {
         return false;
     };
     let has_credentials = !parsed.username().is_empty() || parsed.password().is_some();
     parsed.set_fragment(None);
     let canonical_url = parsed.to_string();
-    snapshot.rules.iter().filter(|(generation, _)| *generation == active_generation).any(|(_, rule)| match rule {
-        ExtensionNavigationBlockRule::ExactUrl(blocked) => !has_credentials && blocked == &canonical_url,
-        ExtensionNavigationBlockRule::Host(blocked) => host_matches_block_rule(&host, blocked),
-        ExtensionNavigationBlockRule::PathPrefix { host: blocked, path_prefix } => {
-            host_matches_block_rule(&host, blocked)
-                && (parsed.path() == path_prefix
-                    || (path_prefix.ends_with('/') && parsed.path().starts_with(path_prefix))
-                    || parsed.path().strip_prefix(path_prefix).is_some_and(|rest| rest.starts_with('/')))
-        },
-        ExtensionNavigationBlockRule::RedirectExactUrl { .. } => false,
-    })
+    snapshot
+        .rules
+        .iter()
+        .filter(|(generation, _)| *generation == active_generation)
+        .any(|(_, rule)| match rule {
+            ExtensionNavigationBlockRule::ExactUrl(blocked) => {
+                !has_credentials && blocked == &canonical_url
+            }
+            ExtensionNavigationBlockRule::Host(blocked) => host_matches_block_rule(&host, blocked),
+            ExtensionNavigationBlockRule::PathPrefix {
+                host: blocked,
+                path_prefix,
+            } => {
+                host_matches_block_rule(&host, blocked)
+                    && (parsed.path() == path_prefix
+                        || (path_prefix.ends_with('/') && parsed.path().starts_with(path_prefix))
+                        || parsed
+                            .path()
+                            .strip_prefix(path_prefix)
+                            .is_some_and(|rest| rest.starts_with('/')))
+            }
+            ExtensionNavigationBlockRule::RedirectExactUrl { .. } => false,
+        })
 }
 
 /// The only request-modification effect: one exact same-origin rewrite from
@@ -1145,33 +1215,47 @@ pub(crate) fn extension_navigation_rules_redirect_url(
     {
         return None;
     }
-    if snapshot.allowed_origins.as_ref().is_some_and(|allowed| {
-        !allowed.contains(&parsed.origin().ascii_serialization())
-    }) {
+    if snapshot
+        .allowed_origins
+        .as_ref()
+        .is_some_and(|allowed| !allowed.contains(&parsed.origin().ascii_serialization()))
+    {
         return None;
     }
     parsed.set_fragment(None);
     let canonical_url = parsed.to_string();
-    snapshot.rules.iter().filter(|(generation, _)| *generation == active_generation).find_map(|(_, rule)| match rule {
-        ExtensionNavigationBlockRule::RedirectExactUrl { source_url, target_url }
-            if source_url == &canonical_url => Some(target_url.clone()),
-        _ => None,
-    })
+    snapshot
+        .rules
+        .iter()
+        .filter(|(generation, _)| *generation == active_generation)
+        .find_map(|(_, rule)| match rule {
+            ExtensionNavigationBlockRule::RedirectExactUrl {
+                source_url,
+                target_url,
+            } if source_url == &canonical_url => Some(target_url.clone()),
+            _ => None,
+        })
 }
 
 fn host_matches_block_rule(host: &str, blocked: &str) -> bool {
     host == blocked
         || (blocked.parse::<std::net::Ipv4Addr>().is_err()
-            && host.strip_suffix(blocked).is_some_and(|prefix| prefix.ends_with('.')))
+            && host
+                .strip_suffix(blocked)
+                .is_some_and(|prefix| prefix.ends_with('.')))
 }
 
 fn canonical_navigation_block_path_prefix(input: &str) -> Result<String, String> {
-    if input.is_empty() || input.len() > blueice_ipc::extension::MAX_NETWORK_BLOCK_PATH_BYTES
+    if input.is_empty()
+        || input.len() > blueice_ipc::extension::MAX_NETWORK_BLOCK_PATH_BYTES
         || !input.starts_with('/')
         || !input.bytes().all(|byte| {
             byte.is_ascii_alphanumeric() || matches!(byte, b'/' | b'-' | b'_' | b'.' | b'~')
         })
-        || input.split('/').skip(1).any(|segment| segment == "." || segment == "..")
+        || input
+            .split('/')
+            .skip(1)
+            .any(|segment| segment == "." || segment == "..")
         || input.contains("//")
     {
         return Err("navigation-block path prefixes must be literal ASCII paths of 1–512 bytes, without empty or dot segments, queries, fragments, or percent escapes".to_string());
@@ -1187,17 +1271,30 @@ fn canonical_navigation_block_host(input: &str) -> Result<String, String> {
     if host.split('.').any(|label| {
         label.is_empty()
             || label.len() > 63
-            || !label.as_bytes().first().is_some_and(u8::is_ascii_alphanumeric)
-            || !label.as_bytes().last().is_some_and(u8::is_ascii_alphanumeric)
-            || !label.bytes().all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+            || !label
+                .as_bytes()
+                .first()
+                .is_some_and(u8::is_ascii_alphanumeric)
+            || !label
+                .as_bytes()
+                .last()
+                .is_some_and(u8::is_ascii_alphanumeric)
+            || !label
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
     }) {
-        return Err("navigation-block hosts must use ASCII DNS labels without wildcards".to_string());
+        return Err(
+            "navigation-block hosts must use ASCII DNS labels without wildcards".to_string(),
+        );
     }
     let canonical = host.to_ascii_lowercase();
-    let parsed = Url::parse(&format!("http://{canonical}/"))
-        .map_err(|_| "navigation-block host cannot be interpreted as a canonical HTTP host".to_string())?;
+    let parsed = Url::parse(&format!("http://{canonical}/")).map_err(|_| {
+        "navigation-block host cannot be interpreted as a canonical HTTP host".to_string()
+    })?;
     if parsed.host_str() != Some(canonical.as_str()) {
-        return Err("navigation-block host must already use canonical IPv4 or DNS spelling".to_string());
+        return Err(
+            "navigation-block host must already use canonical IPv4 or DNS spelling".to_string(),
+        );
     }
     Ok(canonical)
 }
@@ -1239,20 +1336,33 @@ mod tests {
         let tab = tabs.default_tab();
         assert!(tabs.check_extension_origin("dom:read", tab).is_ok());
         tabs.set_extension_capability_origins(BTreeMap::from([
-            ("dom:read".to_string(), BTreeSet::from(["https://example.test".to_string()])),
-            ("dom:write".to_string(), BTreeSet::from(["http://127.0.0.1:4312".to_string()])),
+            (
+                "dom:read".to_string(),
+                BTreeSet::from(["https://example.test".to_string()]),
+            ),
+            (
+                "dom:write".to_string(),
+                BTreeSet::from(["http://127.0.0.1:4312".to_string()]),
+            ),
         ]));
         assert!(tabs.check_extension_origin("dom:read", tab).is_err());
-        tabs.get_mut(tab).unwrap().load_html_str("<p>one</p>", Some("https://example.test/path?query=1".to_string()));
+        tabs.get_mut(tab).unwrap().load_html_str(
+            "<p>one</p>",
+            Some("https://example.test/path?query=1".to_string()),
+        );
         assert!(tabs.check_extension_origin("dom:read", tab).is_ok());
         assert!(tabs.check_extension_origin("dom:write", tab).is_err());
         assert!(tabs.check_extension_origin("network:observe", tab).is_ok());
-        tabs.get_mut(tab).unwrap().load_html_str("<p>two</p>", Some("http://127.0.0.1:4312/page".to_string()));
+        tabs.get_mut(tab)
+            .unwrap()
+            .load_html_str("<p>two</p>", Some("http://127.0.0.1:4312/page".to_string()));
         assert!(tabs.check_extension_origin("dom:read", tab).is_err());
         assert!(tabs.check_extension_origin("dom:write", tab).is_ok());
         tabs.get_mut(tab).unwrap().navigate("about:blank").unwrap();
         assert!(tabs.check_extension_origin("dom:write", tab).is_err());
-        assert!(tabs.check_extension_origin("dom:write", TabId::from_u64(999)).is_err());
+        assert!(tabs
+            .check_extension_origin("dom:write", TabId::from_u64(999))
+            .is_err());
     }
 
     #[test]
@@ -1280,13 +1390,18 @@ mod tests {
             &snapshot,
             "https://127.0.0.1:4312/page"
         ));
-        assert!(!extension_navigation_rules_block_url(&snapshot, "about:settings"));
+        assert!(!extension_navigation_rules_block_url(
+            &snapshot,
+            "about:settings"
+        ));
     }
 
     #[test]
-    fn optional_intercept_revocation_invalidates_captured_rules_and_regrant_does_not_resurrect_them() {
+    fn optional_intercept_revocation_invalidates_captured_rules_and_regrant_does_not_resurrect_them(
+    ) {
         let root = std::env::temp_dir().join(format!(
-            "blueice-optional-network-generation-{}", std::process::id()
+            "blueice-optional-network-generation-{}",
+            std::process::id()
         ));
         std::fs::create_dir_all(&root).unwrap();
         let manifest = root.join("extension.json");
@@ -1296,44 +1411,95 @@ mod tests {
         std::fs::write(root.join("extension.wasm"), b"\0asm\x01\0\0\0").unwrap();
         let installed = blueice_extension_host::load_installed_extension(&manifest).unwrap();
         let id = installed.extension_id().to_string();
-        let registry = Arc::new(blueice_extension_host::registry_for_installed_extension(&installed));
+        let registry = Arc::new(blueice_extension_host::registry_for_installed_extension(
+            &installed,
+        ));
         let mut tabs = TabManager::new(320.0, 200.0);
         tabs.set_extension_permission_registry(Arc::clone(&registry), id.clone());
-        assert!(tabs.add_extension_navigation_block_host_rule(7, "old.example.test".into()).is_err());
+        assert!(tabs
+            .add_extension_navigation_block_host_rule(7, "old.example.test".into())
+            .is_err());
 
         assert!(registry.grant_optional(&id, "network:intercept").unwrap());
-        tabs.add_extension_navigation_block_host_rule(7, "old.example.test".into()).unwrap();
-        tabs.add_extension_navigation_redirect_rule(7,
-            "https://example.test/old".into(), "https://example.test/new".into()).unwrap();
+        tabs.add_extension_navigation_block_host_rule(7, "old.example.test".into())
+            .unwrap();
+        tabs.add_extension_navigation_redirect_rule(
+            7,
+            "https://example.test/old".into(),
+            "https://example.test/new".into(),
+        )
+        .unwrap();
         let captured = tabs.extension_navigation_block_rule_snapshot();
-        assert!(extension_navigation_rules_block_url(&captured, "https://old.example.test/page"));
-        assert_eq!(extension_navigation_rules_redirect_url(&captured, "https://example.test/old"),
-            Some("https://example.test/new".into()));
+        assert!(extension_navigation_rules_block_url(
+            &captured,
+            "https://old.example.test/page"
+        ));
+        assert_eq!(
+            extension_navigation_rules_redirect_url(&captured, "https://example.test/old"),
+            Some("https://example.test/new".into())
+        );
 
         assert!(registry.revoke_optional(&id, "network:intercept").unwrap());
-        assert!(!extension_navigation_rules_block_url(&captured, "https://old.example.test/page"));
-        assert_eq!(extension_navigation_rules_redirect_url(&captured, "https://example.test/old"), None);
-        assert_eq!(tabs.extension_navigation_block_rules.len(), 1,
-            "revocation invalidates the captured rules before session cleanup");
+        assert!(!extension_navigation_rules_block_url(
+            &captured,
+            "https://old.example.test/page"
+        ));
+        assert_eq!(
+            extension_navigation_rules_redirect_url(&captured, "https://example.test/old"),
+            None
+        );
+        assert_eq!(
+            tabs.extension_navigation_block_rules.len(),
+            1,
+            "revocation invalidates the captured rules before session cleanup"
+        );
         tabs.prune_stale_extension_navigation_rules();
-        assert!(tabs.extension_navigation_block_rules.is_empty(),
-            "the next session tick must physically remove revoked rules");
+        assert!(
+            tabs.extension_navigation_block_rules.is_empty(),
+            "the next session tick must physically remove revoked rules"
+        );
         assert!(registry.grant_optional(&id, "network:intercept").unwrap());
-        assert!(!extension_navigation_rules_block_url(&captured, "https://old.example.test/page"));
-        assert_eq!(extension_navigation_rules_redirect_url(&captured, "https://example.test/old"), None);
+        assert!(!extension_navigation_rules_block_url(
+            &captured,
+            "https://old.example.test/page"
+        ));
+        assert_eq!(
+            extension_navigation_rules_redirect_url(&captured, "https://example.test/old"),
+            None
+        );
 
-        assert!(tabs.with_stable_extension_capability("network:intercept", 0, |tabs| {
-            tabs.add_extension_navigation_block_host_rule(7, "stale.example.test".into())
-        }).is_err(), "a queued registration cannot borrow the new grant");
-        let fresh_generation = registry.capability_generation(&id, "network:intercept").unwrap();
+        assert!(
+            tabs.with_stable_extension_capability("network:intercept", 0, |tabs| {
+                tabs.add_extension_navigation_block_host_rule(7, "stale.example.test".into())
+            })
+            .is_err(),
+            "a queued registration cannot borrow the new grant"
+        );
+        let fresh_generation = registry
+            .capability_generation(&id, "network:intercept")
+            .unwrap();
         tabs.with_stable_extension_capability("network:intercept", fresh_generation, |tabs| {
             tabs.add_extension_navigation_block_host_rule(7, "new.example.test".into())
-        }).unwrap().unwrap();
+        })
+        .unwrap()
+        .unwrap();
         let renewed = tabs.extension_navigation_block_rule_snapshot();
-        assert!(!extension_navigation_rules_block_url(&renewed, "https://old.example.test/page"));
-        assert!(!extension_navigation_rules_block_url(&renewed, "https://stale.example.test/page"));
-        assert!(extension_navigation_rules_block_url(&renewed, "https://new.example.test/page"));
-        assert_eq!(extension_navigation_rules_redirect_url(&renewed, "https://example.test/old"), None);
+        assert!(!extension_navigation_rules_block_url(
+            &renewed,
+            "https://old.example.test/page"
+        ));
+        assert!(!extension_navigation_rules_block_url(
+            &renewed,
+            "https://stale.example.test/page"
+        ));
+        assert!(extension_navigation_rules_block_url(
+            &renewed,
+            "https://new.example.test/page"
+        ));
+        assert_eq!(
+            extension_navigation_rules_redirect_url(&renewed, "https://example.test/old"),
+            None
+        );
         let _ = std::fs::remove_dir_all(root);
     }
 
@@ -1372,27 +1538,79 @@ mod tests {
         let mut tabs = TabManager::new(320.0, 200.0);
         let source = "https://example.test/old?x=1";
         let target = "https://example.test/new?x=1";
-        tabs.add_extension_navigation_redirect_rule(41, source.into(), target.into()).unwrap();
+        tabs.add_extension_navigation_redirect_rule(41, source.into(), target.into())
+            .unwrap();
         let snapshot = tabs.extension_navigation_block_rule_snapshot();
-        assert_eq!(extension_navigation_rules_redirect_url(&snapshot, source), Some(target.into()));
-        assert_eq!(extension_navigation_rules_redirect_url(&snapshot, "https://example.test/other"), None);
-        assert_eq!(extension_navigation_rules_redirect_url(&snapshot, "https://user:secret@example.test/old?x=1"), None);
-        assert!(tabs.add_extension_navigation_redirect_rule(42, source.into(), "https://example.test/other".into()).is_err());
-        assert!(tabs.add_extension_navigation_redirect_rule(41, source.into(), "https://outside.test/new".into()).is_err());
-        assert!(tabs.add_extension_navigation_redirect_rule(41, source.into(), source.into()).is_err());
-        assert!(tabs.add_extension_navigation_redirect_rule(41, "about:blank".into(), target.into()).is_err());
-        assert!(tabs.add_extension_navigation_redirect_rule(
-            41, source.into(), format!("https://example.test/{}", "x".repeat(2048)),
-        ).is_err());
+        assert_eq!(
+            extension_navigation_rules_redirect_url(&snapshot, source),
+            Some(target.into())
+        );
+        assert_eq!(
+            extension_navigation_rules_redirect_url(&snapshot, "https://example.test/other"),
+            None
+        );
+        assert_eq!(
+            extension_navigation_rules_redirect_url(
+                &snapshot,
+                "https://user:secret@example.test/old?x=1"
+            ),
+            None
+        );
+        assert!(tabs
+            .add_extension_navigation_redirect_rule(
+                42,
+                source.into(),
+                "https://example.test/other".into()
+            )
+            .is_err());
+        assert!(tabs
+            .add_extension_navigation_redirect_rule(
+                41,
+                source.into(),
+                "https://outside.test/new".into()
+            )
+            .is_err());
+        assert!(tabs
+            .add_extension_navigation_redirect_rule(41, source.into(), source.into())
+            .is_err());
+        assert!(tabs
+            .add_extension_navigation_redirect_rule(41, "about:blank".into(), target.into())
+            .is_err());
+        assert!(tabs
+            .add_extension_navigation_redirect_rule(
+                41,
+                source.into(),
+                format!("https://example.test/{}", "x".repeat(2048)),
+            )
+            .is_err());
         tabs.set_extension_capability_origins(BTreeMap::from([(
-            "network:intercept".to_string(), BTreeSet::from(["https://other.test".to_string()]),
+            "network:intercept".to_string(),
+            BTreeSet::from(["https://other.test".to_string()]),
         )]));
-        assert_eq!(extension_navigation_rules_redirect_url(&tabs.extension_navigation_block_rule_snapshot(), source), None);
+        assert_eq!(
+            extension_navigation_rules_redirect_url(
+                &tabs.extension_navigation_block_rule_snapshot(),
+                source
+            ),
+            None
+        );
         tabs.clear_extension_navigation_block_rules(42);
         tabs.set_extension_capability_origins(BTreeMap::new());
-        assert_eq!(extension_navigation_rules_redirect_url(&tabs.extension_navigation_block_rule_snapshot(), source), Some(target.into()));
+        assert_eq!(
+            extension_navigation_rules_redirect_url(
+                &tabs.extension_navigation_block_rule_snapshot(),
+                source
+            ),
+            Some(target.into())
+        );
         tabs.clear_extension_navigation_block_rules(41);
-        assert_eq!(extension_navigation_rules_redirect_url(&tabs.extension_navigation_block_rule_snapshot(), source), None);
+        assert_eq!(
+            extension_navigation_rules_redirect_url(
+                &tabs.extension_navigation_block_rule_snapshot(),
+                source
+            ),
+            None
+        );
     }
 
     #[test]
@@ -1441,8 +1659,11 @@ mod tests {
     fn extension_path_prefix_rules_use_host_and_path_segment_boundaries() {
         let mut tabs = TabManager::new(320.0, 200.0);
         tabs.add_extension_navigation_block_path_prefix_rule(
-            41, "EXAMPLE.test.".into(), "/private".into(),
-        ).unwrap();
+            41,
+            "EXAMPLE.test.".into(),
+            "/private".into(),
+        )
+        .unwrap();
         for url in [
             "https://example.test/private",
             "https://sub.example.test/private/report?download=1#section",
@@ -1456,13 +1677,19 @@ mod tests {
             "https://example.test/public/private",
             "https://example.test/%70rivate",
         ] {
-            assert!(!tabs.is_extension_navigation_blocked(url), "overmatched {url}");
+            assert!(
+                !tabs.is_extension_navigation_blocked(url),
+                "overmatched {url}"
+            );
         }
         tabs.clear_extension_navigation_block_rules(41);
         assert!(!tabs.is_extension_navigation_blocked("https://example.test/private"));
         tabs.add_extension_navigation_block_path_prefix_rule(
-            42, "127.0.0.1".into(), "/private".into(),
-        ).unwrap();
+            42,
+            "127.0.0.1".into(),
+            "/private".into(),
+        )
+        .unwrap();
         assert!(tabs.is_extension_navigation_blocked("http://127.0.0.1/private/child"));
         assert!(!tabs.is_extension_navigation_blocked("http://sub.127.0.0.1/private/child"));
     }
@@ -1470,20 +1697,37 @@ mod tests {
     #[test]
     fn extension_path_prefix_rules_reject_ambiguous_paths_and_share_the_quota() {
         let mut tabs = TabManager::new(320.0, 200.0);
-        for path in ["", "private", "/a//b", "/./x", "/../x", "/a?x=1", "/a#frag", "/a%2fb", "/é"] {
-            assert!(tabs.add_extension_navigation_block_path_prefix_rule(
-                7, "example.test".into(), path.into(),
-            ).is_err(), "accepted {path:?}");
+        for path in [
+            "", "private", "/a//b", "/./x", "/../x", "/a?x=1", "/a#frag", "/a%2fb", "/é",
+        ] {
+            assert!(
+                tabs.add_extension_navigation_block_path_prefix_rule(
+                    7,
+                    "example.test".into(),
+                    path.into(),
+                )
+                .is_err(),
+                "accepted {path:?}"
+            );
         }
-        assert!(tabs.add_extension_navigation_block_path_prefix_rule(
-            7, "example.test".into(), format!("/{}", "x".repeat(512)),
-        ).is_err());
+        assert!(tabs
+            .add_extension_navigation_block_path_prefix_rule(
+                7,
+                "example.test".into(),
+                format!("/{}", "x".repeat(512)),
+            )
+            .is_err());
         for index in 0..MAX_EXTENSION_NAVIGATION_RULES_PER_CONNECTION {
             tabs.add_extension_navigation_block_path_prefix_rule(
-                7, "example.test".into(), format!("/private/{index}"),
-            ).unwrap();
+                7,
+                "example.test".into(),
+                format!("/private/{index}"),
+            )
+            .unwrap();
         }
-        assert!(tabs.add_extension_navigation_block_host_rule(7, "overflow.test".into()).is_err());
+        assert!(tabs
+            .add_extension_navigation_block_host_rule(7, "overflow.test".into())
+            .is_err());
     }
 
     #[test]
@@ -1495,7 +1739,9 @@ mod tests {
             tabs.add_extension_navigation_block_host_rule(7, format!("host{index}.example"))
                 .unwrap();
         }
-        assert!(tabs.add_extension_navigation_block_host_rule(7, "overflow.example".to_string()).is_err());
+        assert!(tabs
+            .add_extension_navigation_block_host_rule(7, "overflow.example".to_string())
+            .is_err());
         assert!(tabs.is_extension_navigation_blocked("https://exact.example/"));
         assert!(tabs.is_extension_navigation_blocked("https://host1.example/"));
         tabs.clear_extension_navigation_block_rules(7);
@@ -1724,9 +1970,8 @@ mod tests {
 
     #[test]
     fn document_epoch_tracks_replacement_not_repaint_and_never_reuses_a_closed_tab() {
-        let mut tabs = TabManager::new_with_history_snapshot_mode(
-            300.0, 200.0, HistorySnapshotMode::Snapshot,
-        );
+        let mut tabs =
+            TabManager::new_with_history_snapshot_mode(300.0, 200.0, HistorySnapshotMode::Snapshot);
         let first = tabs.default_tab();
         let second = tabs.open_tab();
         assert_eq!(tabs.document_epoch(first), Some(0));
@@ -1739,11 +1984,17 @@ mod tests {
         assert!(tabs.navigate_to_built_in(first, "about:credits"));
         assert_eq!(tabs.document_epoch(first), Some(1));
         assert!(tabs.navigate_to_built_in(first, "about:credits"));
-        assert_eq!(tabs.document_epoch(first), Some(2),
-            "even the same URL commits a different document");
+        assert_eq!(
+            tabs.document_epoch(first),
+            Some(2),
+            "even the same URL commits a different document"
+        );
         assert!(tabs.restore_history_snapshot(first, HistoryDirection::Back));
-        assert_eq!(tabs.document_epoch(first), Some(3),
-            "restoring a saved page must not restore its former gesture identity");
+        assert_eq!(
+            tabs.document_epoch(first),
+            Some(3),
+            "restoring a saved page must not restore its former gesture identity"
+        );
         assert_eq!(tabs.document_epoch(second), Some(0));
 
         assert!(tabs.close_tab(first));
@@ -1762,7 +2013,11 @@ mod tests {
         assert_eq!(tabs.document_epoch(tab), Some(2));
         assert!(tabs.navigate_history_to_built_in(tab, HistoryDirection::Back, "about:credits"));
         assert_eq!(tabs.document_epoch(tab), Some(3));
-        assert!(!tabs.navigate_history_to_built_in(tab, HistoryDirection::Back, "about:not-a-page"));
+        assert!(!tabs.navigate_history_to_built_in(
+            tab,
+            HistoryDirection::Back,
+            "about:not-a-page"
+        ));
         assert_eq!(tabs.document_epoch(tab), Some(3));
     }
 

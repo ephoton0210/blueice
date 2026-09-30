@@ -2,6 +2,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+#![cfg(unix)]
+
 //! Exercises the actual compiled `blueice-core` binary as a real
 //! subprocess -- `main`'s own argument parsing, socket binding,
 //! accept, and shutdown/cleanup wiring, none of which
@@ -24,15 +26,71 @@ use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Mutex, MutexGuard, OnceLock};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant};
+#[path = "core_binary/compiler_debugger.rs"]
+mod compiler_debugger;
+#[path = "core_binary/compiler_output.rs"]
+mod compiler_output;
+#[path = "core_binary/core_session.rs"]
+mod core_session;
+#[path = "core_binary/multi_tab.rs"]
+mod multi_tab;
+#[path = "core_binary/page_execution.rs"]
+mod page_execution;
+#[path = "core_binary/root_control.rs"]
+mod root_control;
+
+fn spawn_private_bluejs_host(label: &str) -> (PathBuf, String, thread::JoinHandle<()>) {
+    // The default macOS temporary directory can exceed the Unix-domain socket
+    // pathname limit once this test's descriptive filename is appended.
+    let path =
+        PathBuf::from("/tmp").join(format!("blueice-oop-{label}-{}.sock", std::process::id()));
+    let token = "0123456789abcdef0123456789abcdef".to_string();
+    let listener = blueice_launcher::bluejs_host::bind_bluejs_host_socket(&path)
+        .expect("test child host must bind its private socket");
+    let child_token = token.clone();
+    let child = thread::spawn(move || {
+        let mut host = blueice_launcher::bluejs_host::BlueJsChildHost::default();
+        blueice_launcher::bluejs_host::serve_bluejs_host_listener(listener, child_token, &mut host)
+            .expect("test child host must serve its private protocol");
+    });
+    (path, token, child)
+}
+
+fn shutdown_private_bluejs_host(path: &std::path::Path, token: &str) {
+    let mut stream =
+        UnixStream::connect(path).expect("must connect to test child host for shutdown");
+    blueice_ipc::page_host::write_page_host_request(
+        &mut stream,
+        &blueice_ipc::page_host::PageHostRequest::Hello {
+            protocol_version: blueice_ipc::page_host::PAGE_HOST_PROTOCOL_VERSION,
+            session_token: token.to_string(),
+        },
+    )
+    .expect("must send child-host shutdown handshake");
+    assert!(matches!(
+        blueice_ipc::page_host::read_page_host_reply(&mut stream)
+            .expect("child host must acknowledge shutdown handshake"),
+        blueice_ipc::page_host::PageHostReply::HelloAck { .. }
+    ));
+    blueice_ipc::page_host::write_page_host_request(
+        &mut stream,
+        &blueice_ipc::page_host::PageHostRequest::Shutdown,
+    )
+    .expect("must request child-host shutdown");
+    assert_eq!(
+        blueice_ipc::page_host::read_page_host_reply(&mut stream)
+            .expect("child host must acknowledge shutdown"),
+        blueice_ipc::page_host::PageHostReply::ShutdownAck
+    );
+}
 
 fn unique_socket_path(label: &str) -> PathBuf {
-    std::env::temp_dir().join(format!(
-        "blueice-core-binary-test-{label}-{}.sock",
-        std::process::id()
-    ))
+    // macOS may supply a long TMPDIR; keep the basename short enough for
+    // sockaddr_un while preserving the test label and process uniqueness.
+    std::env::temp_dir().join(format!("bicb-{label}-{}.sock", std::process::id()))
 }
 
 /// Extension listeners are intentionally bound only below a directory the
@@ -86,11 +144,6 @@ fn core_process_test_guard() -> MutexGuard<'static, ()> {
     LOCK.get_or_init(|| Mutex::new(()))
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
-}
-
-fn sibling_bluejs_binary() -> PathBuf {
-    let core = PathBuf::from(env!("CARGO_BIN_EXE_blueice-core"));
-    core.parent().unwrap().join("bluejs")
 }
 
 fn core_extension_host_probe_script(root: &Path, test_name: &str) -> PathBuf {
@@ -189,17 +242,25 @@ fn extension_host_probe_child_observes_optional_and_ephemeral_grants() {
     let authentication = std::env::var("BLUEICE_EXTENSION_AUTH_TOKEN").unwrap();
     let installed = blueice_extension_host::load_installed_extension(manifest).unwrap();
     let mut extension = UnixStream::connect(socket).unwrap();
-    write_extension_request(&mut extension, &ExtensionRequest::HelloAuthenticated {
-        extension_id: installed.extension_id().to_string(),
-        capability_versions: BTreeMap::from([
-            ("storage".to_string(), 1), ("dom:read".to_string(), 3),
-        ]),
-        authentication,
-    }).unwrap();
+    write_extension_request(
+        &mut extension,
+        &ExtensionRequest::HelloAuthenticated {
+            extension_id: installed.extension_id().to_string(),
+            capability_versions: BTreeMap::from([
+                ("storage".to_string(), 1),
+                ("dom:read".to_string(), 3),
+            ]),
+            authentication,
+        },
+    )
+    .unwrap();
     assert!(matches!(read_extension_reply(&mut extension).unwrap(),
         ExtensionReply::HelloAck { unsupported_capabilities } if unsupported_capabilities.is_empty()));
     write_extension_request(&mut extension, &ExtensionRequest::RuntimeReady).unwrap();
-    assert_eq!(read_extension_reply(&mut extension).unwrap(), ExtensionReply::RuntimeStart);
+    assert_eq!(
+        read_extension_reply(&mut extension).unwrap(),
+        ExtensionReply::RuntimeStart
+    );
 
     let mut probe = UnixStream::connect(probe_socket).unwrap();
     loop {
@@ -211,7 +272,8 @@ fn extension_host_probe_child_observes_optional_and_ephemeral_grants() {
             b'e' => {
                 let mut trusted_ticket = None;
                 for _ in 0..4 {
-                    write_extension_request(&mut extension, &ExtensionRequest::NextRuntimeEvent).unwrap();
+                    write_extension_request(&mut extension, &ExtensionRequest::NextRuntimeEvent)
+                        .unwrap();
                     match read_extension_reply(&mut extension).unwrap() {
                         ExtensionReply::RuntimeEvent(
                             blueice_ipc::extension::ExtensionRuntimeEvent::TrustedEphemeralDomRead {
@@ -234,10 +296,20 @@ fn extension_host_probe_child_observes_optional_and_ephemeral_grants() {
                 continue;
             }
             b'g' => {
-                write_extension_request(&mut extension, &ExtensionRequest::StorageGet { key: "sample".into() }).unwrap();
+                write_extension_request(
+                    &mut extension,
+                    &ExtensionRequest::StorageGet {
+                        key: "sample".into(),
+                    },
+                )
+                .unwrap();
                 match read_extension_reply(&mut extension).unwrap() {
                     ExtensionReply::StorageGetResult { value: None } => b'A',
-                    ExtensionReply::CapabilityDenied { capability, .. } if capability == "storage" => b'D',
+                    ExtensionReply::CapabilityDenied { capability, .. }
+                        if capability == "storage" =>
+                    {
+                        b'D'
+                    }
                     other => panic!("unexpected optional storage result: {other:?}"),
                 }
             }
@@ -257,11 +329,16 @@ fn extension_host_probe_child_observes_optional_and_ephemeral_grants() {
                 write_extension_request(&mut extension, &request).unwrap();
                 match read_extension_reply(&mut extension).unwrap() {
                     ExtensionReply::DomReadResult { value } => {
-                        let snapshot: blueice_ipc::AiSnapshot = serde_json::from_str(&value).unwrap();
+                        let snapshot: blueice_ipc::AiSnapshot =
+                            serde_json::from_str(&value).unwrap();
                         assert_eq!(snapshot.tab_id, 1);
                         b'A'
                     }
-                    ExtensionReply::CapabilityDenied { capability, .. } if capability == "dom:read" => b'D',
+                    ExtensionReply::CapabilityDenied { capability, .. }
+                        if capability == "dom:read" =>
+                    {
+                        b'D'
+                    }
                     other => panic!("unexpected ephemeral DOM read result: {other:?}"),
                 }
             }
@@ -291,18 +368,25 @@ fn extension_host_probe_child_publishes_optional_effects() {
     let rule_url = std::env::var("BLUEICE_TEST_RULE_URL").unwrap();
     let installed = blueice_extension_host::load_installed_extension(manifest).unwrap();
     let mut extension = UnixStream::connect(socket).unwrap();
-    write_extension_request(&mut extension, &ExtensionRequest::HelloAuthenticated {
-        extension_id: installed.extension_id().to_string(),
-        capability_versions: BTreeMap::from([
-            ("ui:inject".to_string(), 3),
-            ("network:intercept".to_string(), 2),
-        ]),
-        authentication,
-    }).unwrap();
+    write_extension_request(
+        &mut extension,
+        &ExtensionRequest::HelloAuthenticated {
+            extension_id: installed.extension_id().to_string(),
+            capability_versions: BTreeMap::from([
+                ("ui:inject".to_string(), 3),
+                ("network:intercept".to_string(), 2),
+            ]),
+            authentication,
+        },
+    )
+    .unwrap();
     assert!(matches!(read_extension_reply(&mut extension).unwrap(),
         ExtensionReply::HelloAck { unsupported_capabilities } if unsupported_capabilities.is_empty()));
     write_extension_request(&mut extension, &ExtensionRequest::RuntimeReady).unwrap();
-    assert_eq!(read_extension_reply(&mut extension).unwrap(), ExtensionReply::RuntimeStart);
+    assert_eq!(
+        read_extension_reply(&mut extension).unwrap(),
+        ExtensionReply::RuntimeStart
+    );
 
     let mut probe = UnixStream::connect(probe_socket).unwrap();
     probe.write_all(b"S").unwrap();
@@ -315,12 +399,16 @@ fn extension_host_probe_child_publishes_optional_effects() {
         let published = command[0] == b'p';
         for (request, capability, allowed_reply) in [
             (
-                ExtensionRequest::SetToolbarButton { label: "Optional Notes".into() },
+                ExtensionRequest::SetToolbarButton {
+                    label: "Optional Notes".into(),
+                },
                 "ui:inject",
                 ExtensionReply::UiInjectAck,
             ),
             (
-                ExtensionRequest::RegisterNetworkBlockUrl { url: rule_url.clone() },
+                ExtensionRequest::RegisterNetworkBlockUrl {
+                    url: rule_url.clone(),
+                },
                 "network:intercept",
                 ExtensionReply::NetworkInterceptAck,
             ),
@@ -328,13 +416,20 @@ fn extension_host_probe_child_publishes_optional_effects() {
             write_extension_request(&mut extension, &request).unwrap();
             let reply = read_extension_reply(&mut extension).unwrap();
             if published {
-                assert_eq!(reply, allowed_reply, "a granted optional action must publish");
+                assert_eq!(
+                    reply, allowed_reply,
+                    "a granted optional action must publish"
+                );
             } else {
-                assert!(matches!(reply, ExtensionReply::CapabilityDenied { capability: actual, .. } if actual == capability),
-                    "an ungranted optional action must be denied as {capability}");
+                assert!(
+                    matches!(reply, ExtensionReply::CapabilityDenied { capability: actual, .. } if actual == capability),
+                    "an ungranted optional action must be denied as {capability}"
+                );
             }
         }
-        probe.write_all(if published { b"P" } else { b"D" }).unwrap();
+        probe
+            .write_all(if published { b"P" } else { b"D" })
+            .unwrap();
     }
 }
 
@@ -370,7 +465,10 @@ fn extension_host_probe_child_publishes_toolbar_and_handles_activation() {
         }
     );
     write_extension_request(&mut stream, &ExtensionRequest::RuntimeReady).unwrap();
-    assert_eq!(read_extension_reply(&mut stream).unwrap(), ExtensionReply::RuntimeStart);
+    assert_eq!(
+        read_extension_reply(&mut stream).unwrap(),
+        ExtensionReply::RuntimeStart
+    );
     write_extension_request(
         &mut stream,
         &ExtensionRequest::SetToolbarButton {
@@ -390,11 +488,17 @@ fn extension_host_probe_child_publishes_toolbar_and_handles_activation() {
         },
     )
     .unwrap();
-    assert_eq!(read_extension_reply(&mut stream).unwrap(), ExtensionReply::UiInjectAck);
+    assert_eq!(
+        read_extension_reply(&mut stream).unwrap(),
+        ExtensionReply::UiInjectAck
+    );
     write_extension_request(&mut stream, &ExtensionRequest::NextRuntimeEvent).unwrap();
     assert_eq!(
         read_extension_reply(&mut stream).unwrap(),
-        ExtensionReply::RuntimeEvent(ExtensionRuntimeEvent::ToolbarActivated { tab_id: 1, grant_generation: 0 })
+        ExtensionReply::RuntimeEvent(ExtensionRuntimeEvent::ToolbarActivated {
+            tab_id: 1,
+            grant_generation: 0
+        })
     );
     write_extension_request(
         &mut stream,
@@ -403,7 +507,10 @@ fn extension_host_probe_child_publishes_toolbar_and_handles_activation() {
         },
     )
     .unwrap();
-    assert_eq!(read_extension_reply(&mut stream).unwrap(), ExtensionReply::UiInjectAck);
+    assert_eq!(
+        read_extension_reply(&mut stream).unwrap(),
+        ExtensionReply::UiInjectAck
+    );
     write_extension_request(
         &mut stream,
         &ExtensionRequest::ShowPopup {
@@ -413,9 +520,15 @@ fn extension_host_probe_child_publishes_toolbar_and_handles_activation() {
         },
     )
     .unwrap();
-    assert_eq!(read_extension_reply(&mut stream).unwrap(), ExtensionReply::UiInjectAck);
+    assert_eq!(
+        read_extension_reply(&mut stream).unwrap(),
+        ExtensionReply::UiInjectAck
+    );
     write_extension_request(&mut stream, &ExtensionRequest::ClearPopup).unwrap();
-    assert_eq!(read_extension_reply(&mut stream).unwrap(), ExtensionReply::UiInjectAck);
+    assert_eq!(
+        read_extension_reply(&mut stream).unwrap(),
+        ExtensionReply::UiInjectAck
+    );
     write_extension_request(
         &mut stream,
         &ExtensionRequest::ShowPopupAction {
@@ -424,19 +537,36 @@ fn extension_host_probe_child_publishes_toolbar_and_handles_activation() {
             body: "Ready to open".to_string(),
             action_label: "Open notes".to_string(),
         },
-    ).unwrap();
-    assert_eq!(read_extension_reply(&mut stream).unwrap(), ExtensionReply::UiInjectAck);
+    )
+    .unwrap();
+    assert_eq!(
+        read_extension_reply(&mut stream).unwrap(),
+        ExtensionReply::UiInjectAck
+    );
     write_extension_request(&mut stream, &ExtensionRequest::NextRuntimeEvent).unwrap();
     assert_eq!(
         read_extension_reply(&mut stream).unwrap(),
-        ExtensionReply::RuntimeEvent(ExtensionRuntimeEvent::PopupActionActivated { tab_id: 1, grant_generation: 0 })
+        ExtensionReply::RuntimeEvent(ExtensionRuntimeEvent::PopupActionActivated {
+            tab_id: 1,
+            grant_generation: 0
+        })
     );
-    write_extension_request(&mut stream, &ExtensionRequest::SetToolbarButton {
-        label: "Actioned".to_string(),
-    }).unwrap();
-    assert_eq!(read_extension_reply(&mut stream).unwrap(), ExtensionReply::UiInjectAck);
+    write_extension_request(
+        &mut stream,
+        &ExtensionRequest::SetToolbarButton {
+            label: "Actioned".to_string(),
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        read_extension_reply(&mut stream).unwrap(),
+        ExtensionReply::UiInjectAck
+    );
     write_extension_request(&mut stream, &ExtensionRequest::ClearToolbarButton).unwrap();
-    assert_eq!(read_extension_reply(&mut stream).unwrap(), ExtensionReply::UiInjectAck);
+    assert_eq!(
+        read_extension_reply(&mut stream).unwrap(),
+        ExtensionReply::UiInjectAck
+    );
 }
 
 fn extension_manifest_package(
@@ -473,16 +603,6 @@ fn extension_manifest_package(
 }
 
 #[test]
-fn missing_socket_flag_exits_with_failure_and_no_socket_is_created() {
-    let _guard = core_process_test_guard();
-    let output = Command::new(env!("CARGO_BIN_EXE_blueice-core"))
-        .output()
-        .expect("failed to run blueice-core");
-    assert!(!output.status.success());
-    assert!(String::from_utf8_lossy(&output.stderr).contains("--socket"));
-}
-
-#[test]
 fn an_invalid_installed_extension_never_publishes_core_or_extension_sockets() {
     let _guard = core_process_test_guard();
     let core_socket = unique_socket_path("invalid-extension-core");
@@ -514,128 +634,6 @@ fn an_invalid_installed_extension_never_publishes_core_or_extension_sockets() {
     assert!(!core_socket.exists());
     assert!(!extension_socket.exists());
     let _ = std::fs::remove_dir_all(root);
-}
-
-#[test]
-fn real_subprocess_serves_navigate_resize_and_shutdown_over_a_real_socket() {
-    let _guard = core_process_test_guard();
-    let socket_path = unique_socket_path("full-session");
-    let frame_dir = std::env::temp_dir().join(format!(
-        "blueice-core-binary-test-frames-{}",
-        std::process::id()
-    ));
-    let _ = std::fs::remove_file(&socket_path);
-    let _ = std::fs::remove_dir_all(&frame_dir);
-    let gatekeeper_path = clearing_gatekeeper("fs-gk"); // short: Unix socket paths are capped at ~100 bytes total
-
-    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-    let addr = listener.local_addr().unwrap();
-    thread::spawn(move || {
-        let (mut stream, _) = listener.accept().unwrap();
-        let mut buf = [0u8; 1024];
-        let _ = stream.read(&mut buf);
-        let body = "<p>from a real subprocess</p>";
-        stream
-            .write_all(
-                format!(
-                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
-                    body.len()
-                )
-                .as_bytes(),
-            )
-            .unwrap();
-    });
-
-    let mut child = Command::new(env!("CARGO_BIN_EXE_blueice-core"))
-        .args([
-            "--socket",
-            socket_path.to_str().unwrap(),
-            "--width",
-            "300",
-            "--height",
-            "150",
-            "--frame-dir",
-            frame_dir.to_str().unwrap(),
-            "--gatekeeper-socket",
-            gatekeeper_path.to_str().unwrap(),
-        ])
-        .stderr(Stdio::piped())
-        .spawn()
-        .expect("failed to spawn blueice-core");
-
-    assert!(
-        wait_for(&socket_path, Duration::from_secs(5)),
-        "blueice-core never created its socket"
-    );
-    let mut stream =
-        UnixStream::connect(&socket_path).expect("failed to connect to the real subprocess");
-    blueice_ipc::client_handshake(&mut stream)
-        .expect("the real subprocess must complete the protocol_version handshake");
-
-    let url = format!("http://{addr}");
-    blueice_ipc::write_client_message(
-        &mut stream,
-        &blueice_ipc::ClientMessage::Navigate { url: url.clone() },
-    )
-    .unwrap();
-    let navigated = blueice_ipc::read_server_message(&mut stream).unwrap();
-    assert_eq!(navigated, blueice_ipc::ServerMessage::Navigated { url });
-
-    let frame = blueice_ipc::read_server_message(&mut stream).unwrap();
-    let (shm_path, width, height) = match frame {
-        blueice_ipc::ServerMessage::FrameReady {
-            shm_path,
-            width,
-            height,
-            generation: 1,
-        } => (shm_path, width, height),
-        other => panic!("expected the first FrameReady, got {other:?}"),
-    };
-    assert_eq!((width, height), (300, 150));
-    let mapped = blueice_ipc::shm::map_frame(std::path::Path::new(&shm_path))
-        .expect("the real subprocess's frame file must be mappable");
-    assert_eq!(
-        mapped.len() as u32,
-        width * height * 4,
-        "RGBA8 frame bytes must match the requested viewport size"
-    );
-
-    blueice_ipc::write_client_message(
-        &mut stream,
-        &blueice_ipc::ClientMessage::Resize {
-            width: 100,
-            height: 80,
-        },
-    )
-    .unwrap();
-    let resized = blueice_ipc::read_server_message(&mut stream).unwrap();
-    assert!(matches!(
-        resized,
-        blueice_ipc::ServerMessage::FrameReady {
-            width: 100,
-            height: 80,
-            generation: 2,
-            ..
-        }
-    ));
-
-    blueice_ipc::write_client_message(&mut stream, &blueice_ipc::ClientMessage::Shutdown).unwrap();
-    let status = child
-        .wait()
-        .expect("failed to wait for blueice-core to exit");
-    assert!(
-        status.success(),
-        "blueice-core must exit cleanly after Shutdown"
-    );
-
-    assert!(
-        !socket_path.exists(),
-        "blueice-core must remove its own socket file on exit"
-    );
-    assert!(
-        !frame_dir.exists(),
-        "blueice-core must remove its own frame directory on exit"
-    );
 }
 
 #[test]
@@ -851,7 +849,8 @@ fn installed_extension_origin_scopes_follow_the_live_page_across_navigation() {
             .id
     };
 
-    let allowed_heading = navigate_and_heading(&mut frontend, format!("http://{allowed_addr}/page"));
+    let allowed_heading =
+        navigate_and_heading(&mut frontend, format!("http://{allowed_addr}/page"));
     write_extension_request(&mut extension, &ExtensionRequest::DomReadTab { tab_id: 1 }).unwrap();
     assert!(matches!(
         read_extension_reply(&mut extension).unwrap(),
@@ -875,15 +874,28 @@ fn installed_extension_origin_scopes_follow_the_live_page_across_navigation() {
         },
     )
     .unwrap();
-    assert_eq!(read_extension_reply(&mut extension).unwrap(), ExtensionReply::DomWriteAck);
+    assert_eq!(
+        read_extension_reply(&mut extension).unwrap(),
+        ExtensionReply::DomWriteAck
+    );
     let (_, _, frame) = blueice_ipc::read_server_message_with_ids(&mut frontend).unwrap();
-    assert!(matches!(frame, blueice_ipc::ServerMessage::FrameReady { .. }));
+    assert!(matches!(
+        frame,
+        blueice_ipc::ServerMessage::FrameReady { .. }
+    ));
 
-    let blocked_heading = navigate_and_heading(&mut frontend, format!("http://{blocked_addr}/page"));
+    let blocked_heading =
+        navigate_and_heading(&mut frontend, format!("http://{blocked_addr}/page"));
     for (request, capability) in [
         (ExtensionRequest::DomReadTab { tab_id: 1 }, "dom:read"),
-        (ExtensionRequest::ReadNetworkResponse { tab_id: 1 }, "network:observe"),
-        (ExtensionRequest::ReadNetworkTrace { tab_id: 1 }, "network:observe"),
+        (
+            ExtensionRequest::ReadNetworkResponse { tab_id: 1 },
+            "network:observe",
+        ),
+        (
+            ExtensionRequest::ReadNetworkTrace { tab_id: 1 },
+            "network:observe",
+        ),
         (
             ExtensionRequest::SetVisibleLeafText {
                 tab_id: 1,
@@ -943,7 +955,8 @@ fn installed_extension_v2_observes_only_a_committed_redirect_trace() {
     let core_socket = unique_socket_path("ext-network-trace");
     let extension_socket = unique_private_extension_socket_path("trace");
     let frame_dir = std::env::temp_dir().join(format!(
-        "blueice-core-extension-trace-frames-{}", std::process::id()
+        "blueice-core-extension-trace-frames-{}",
+        std::process::id()
     ));
     let (package_root, manifest, extension_id) =
         extension_manifest_package("network-trace", &["network:observe"]);
@@ -978,11 +991,16 @@ fn installed_extension_v2_observes_only_a_committed_redirect_trace() {
 
     let mut core = Command::new(env!("CARGO_BIN_EXE_blueice-core"))
         .args([
-            "--socket", core_socket.to_str().unwrap(),
-            "--extension-socket", extension_socket.to_str().unwrap(),
-            "--extension-manifest", manifest.to_str().unwrap(),
-            "--gatekeeper-socket", gatekeeper_socket.to_str().unwrap(),
-            "--frame-dir", frame_dir.to_str().unwrap(),
+            "--socket",
+            core_socket.to_str().unwrap(),
+            "--extension-socket",
+            extension_socket.to_str().unwrap(),
+            "--extension-manifest",
+            manifest.to_str().unwrap(),
+            "--gatekeeper-socket",
+            gatekeeper_socket.to_str().unwrap(),
+            "--frame-dir",
+            frame_dir.to_str().unwrap(),
         ])
         .spawn()
         .expect("failed to spawn core for committed network trace test");
@@ -991,44 +1009,84 @@ fn installed_extension_v2_observes_only_a_committed_redirect_trace() {
     let mut frontend = UnixStream::connect(&core_socket).unwrap();
     blueice_ipc::client_handshake(&mut frontend).unwrap();
     let mut extension = UnixStream::connect(&extension_socket).unwrap();
-    write_extension_request(&mut extension, &ExtensionRequest::Hello {
-        extension_id,
-        capability_versions: BTreeMap::from([("network:observe".to_string(), 2)]),
-    }).unwrap();
-    assert_eq!(read_extension_reply(&mut extension).unwrap(), ExtensionReply::HelloAck {
-        unsupported_capabilities: BTreeMap::new(),
-    });
-    write_extension_request(&mut extension, &ExtensionRequest::ReadNetworkTrace { tab_id: 1 }).unwrap();
-    assert_eq!(read_extension_reply(&mut extension).unwrap(), ExtensionReply::NetworkTraceResult { trace: None });
+    write_extension_request(
+        &mut extension,
+        &ExtensionRequest::Hello {
+            extension_id,
+            capability_versions: BTreeMap::from([("network:observe".to_string(), 2)]),
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        read_extension_reply(&mut extension).unwrap(),
+        ExtensionReply::HelloAck {
+            unsupported_capabilities: BTreeMap::new(),
+        }
+    );
+    write_extension_request(
+        &mut extension,
+        &ExtensionRequest::ReadNetworkTrace { tab_id: 1 },
+    )
+    .unwrap();
+    assert_eq!(
+        read_extension_reply(&mut extension).unwrap(),
+        ExtensionReply::NetworkTraceResult { trace: None }
+    );
 
-    blueice_ipc::write_client_message(&mut frontend, &blueice_ipc::ClientMessage::Navigate {
-        url: request_url.clone(),
-    }).unwrap();
-    assert_eq!(blueice_ipc::read_server_message(&mut frontend).unwrap(),
-        blueice_ipc::ServerMessage::Navigated { url: final_url.clone() });
-    assert!(matches!(blueice_ipc::read_server_message(&mut frontend).unwrap(),
-        blueice_ipc::ServerMessage::FrameReady { .. }));
-    write_extension_request(&mut extension, &ExtensionRequest::ReadNetworkTrace { tab_id: 1 }).unwrap();
+    blueice_ipc::write_client_message(
+        &mut frontend,
+        &blueice_ipc::ClientMessage::Navigate {
+            url: request_url.clone(),
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        blueice_ipc::read_server_message(&mut frontend).unwrap(),
+        blueice_ipc::ServerMessage::Navigated {
+            url: final_url.clone()
+        }
+    );
+    assert!(matches!(
+        blueice_ipc::read_server_message(&mut frontend).unwrap(),
+        blueice_ipc::ServerMessage::FrameReady { .. }
+    ));
+    write_extension_request(
+        &mut extension,
+        &ExtensionRequest::ReadNetworkTrace { tab_id: 1 },
+    )
+    .unwrap();
     let ExtensionReply::NetworkTraceResult { trace: Some(trace) } =
-        read_extension_reply(&mut extension).unwrap() else {
-            panic!("the committed page must expose its reviewed redirect trace")
-        };
+        read_extension_reply(&mut extension).unwrap()
+    else {
+        panic!("the committed page must expose its reviewed redirect trace")
+    };
     assert_eq!(trace.request_url, request_url);
-    assert_eq!(trace.redirects, vec![blueice_ipc::extension::NetworkRedirectInfo {
-        request_url,
-        status: 302,
-        target_url: final_url.clone(),
-    }]);
+    assert_eq!(
+        trace.redirects,
+        vec![blueice_ipc::extension::NetworkRedirectInfo {
+            request_url,
+            status: 302,
+            target_url: final_url.clone(),
+        }]
+    );
     assert_eq!(trace.response.final_url, final_url);
     assert_eq!(trace.response.status, 200);
     assert_eq!(trace.response.content_type.as_deref(), Some("text/html"));
     assert!(!format!("{trace:?}").contains("private=never-expose"));
-    write_extension_request(&mut extension, &ExtensionRequest::ReadNetworkResponse { tab_id: 1 }).unwrap();
-    assert_eq!(read_extension_reply(&mut extension).unwrap(), ExtensionReply::NetworkResponseResult {
-        response: Some(trace.response),
-    });
+    write_extension_request(
+        &mut extension,
+        &ExtensionRequest::ReadNetworkResponse { tab_id: 1 },
+    )
+    .unwrap();
+    assert_eq!(
+        read_extension_reply(&mut extension).unwrap(),
+        ExtensionReply::NetworkResponseResult {
+            response: Some(trace.response),
+        }
+    );
 
-    blueice_ipc::write_client_message(&mut frontend, &blueice_ipc::ClientMessage::Shutdown).unwrap();
+    blueice_ipc::write_client_message(&mut frontend, &blueice_ipc::ClientMessage::Shutdown)
+        .unwrap();
     assert!(core.wait().unwrap().success());
     redirect_server.join().unwrap();
     final_server.join().unwrap();
@@ -1198,7 +1256,8 @@ fn installed_extension_v4_host_rule_blocks_redirect_before_target_connection() {
     let core_socket = unique_socket_path("ext-host-rule");
     let extension_socket = unique_private_extension_socket_path("host-rule");
     let frame_dir = std::env::temp_dir().join(format!(
-        "blueice-core-extension-host-rule-frames-{}", std::process::id()
+        "blueice-core-extension-host-rule-frames-{}",
+        std::process::id()
     ));
     let (package_root, manifest, extension_id) =
         extension_manifest_package("host-network-rule", &["network:intercept"]);
@@ -1209,7 +1268,10 @@ fn installed_extension_v4_host_rule_blocks_redirect_before_target_connection() {
 
     let target_listener = TcpListener::bind("127.0.0.1:0").unwrap();
     target_listener.set_nonblocking(true).unwrap();
-    let blocked_url = format!("http://localhost:{}/private", target_listener.local_addr().unwrap().port());
+    let blocked_url = format!(
+        "http://localhost:{}/private",
+        target_listener.local_addr().unwrap().port()
+    );
     let redirect_listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let redirect_url = format!("http://{}/before", redirect_listener.local_addr().unwrap());
     let redirect_server = thread::spawn({
@@ -1226,11 +1288,16 @@ fn installed_extension_v4_host_rule_blocks_redirect_before_target_connection() {
 
     let mut core = Command::new(env!("CARGO_BIN_EXE_blueice-core"))
         .args([
-            "--socket", core_socket.to_str().unwrap(),
-            "--extension-socket", extension_socket.to_str().unwrap(),
-            "--extension-manifest", manifest.to_str().unwrap(),
-            "--gatekeeper-socket", gatekeeper_socket.to_str().unwrap(),
-            "--frame-dir", frame_dir.to_str().unwrap(),
+            "--socket",
+            core_socket.to_str().unwrap(),
+            "--extension-socket",
+            extension_socket.to_str().unwrap(),
+            "--extension-manifest",
+            manifest.to_str().unwrap(),
+            "--gatekeeper-socket",
+            gatekeeper_socket.to_str().unwrap(),
+            "--frame-dir",
+            frame_dir.to_str().unwrap(),
         ])
         .spawn()
         .expect("failed to spawn core with a v4 host-rule extension");
@@ -1239,21 +1306,37 @@ fn installed_extension_v4_host_rule_blocks_redirect_before_target_connection() {
     let mut frontend = UnixStream::connect(&core_socket).unwrap();
     blueice_ipc::client_handshake(&mut frontend).unwrap();
     let mut extension = UnixStream::connect(&extension_socket).unwrap();
-    write_extension_request(&mut extension, &ExtensionRequest::Hello {
-        extension_id,
-        capability_versions: BTreeMap::from([("network:intercept".to_string(), 4)]),
-    }).unwrap();
-    assert_eq!(read_extension_reply(&mut extension).unwrap(), ExtensionReply::HelloAck {
-        unsupported_capabilities: BTreeMap::new(),
-    });
-    write_extension_request(&mut extension, &ExtensionRequest::RegisterNetworkBlockHost {
-        host: "LOCALHOST.".to_string(),
-    }).unwrap();
-    assert_eq!(read_extension_reply(&mut extension).unwrap(), ExtensionReply::NetworkInterceptAck);
+    write_extension_request(
+        &mut extension,
+        &ExtensionRequest::Hello {
+            extension_id,
+            capability_versions: BTreeMap::from([("network:intercept".to_string(), 4)]),
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        read_extension_reply(&mut extension).unwrap(),
+        ExtensionReply::HelloAck {
+            unsupported_capabilities: BTreeMap::new(),
+        }
+    );
+    write_extension_request(
+        &mut extension,
+        &ExtensionRequest::RegisterNetworkBlockHost {
+            host: "LOCALHOST.".to_string(),
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        read_extension_reply(&mut extension).unwrap(),
+        ExtensionReply::NetworkInterceptAck
+    );
 
-    blueice_ipc::write_client_message(&mut frontend, &blueice_ipc::ClientMessage::Navigate {
-        url: redirect_url,
-    }).unwrap();
+    blueice_ipc::write_client_message(
+        &mut frontend,
+        &blueice_ipc::ClientMessage::Navigate { url: redirect_url },
+    )
+    .unwrap();
     match blueice_ipc::read_server_message(&mut frontend).unwrap() {
         blueice_ipc::ServerMessage::Error { message } => {
             assert!(message.contains("declarative extension rule"));
@@ -1262,9 +1345,13 @@ fn installed_extension_v4_host_rule_blocks_redirect_before_target_connection() {
         other => panic!("the v4 host rule must reject the redirect target, got {other:?}"),
     }
     redirect_server.join().unwrap();
-    assert_eq!(target_listener.accept().unwrap_err().kind(), ErrorKind::WouldBlock);
+    assert_eq!(
+        target_listener.accept().unwrap_err().kind(),
+        ErrorKind::WouldBlock
+    );
 
-    blueice_ipc::write_client_message(&mut frontend, &blueice_ipc::ClientMessage::Shutdown).unwrap();
+    blueice_ipc::write_client_message(&mut frontend, &blueice_ipc::ClientMessage::Shutdown)
+        .unwrap();
     assert!(core.wait().unwrap().success());
     assert!(!core_socket.exists());
     assert!(!extension_socket.exists());
@@ -1413,7 +1500,10 @@ fn scoped_network_intercept_rule_affects_only_its_exact_origin_and_redirect_targ
         other => panic!("the in-scope redirect target must be blocked, got {other:?}"),
     }
     open_server.join().unwrap();
-    assert_eq!(target_listener.accept().unwrap_err().kind(), ErrorKind::WouldBlock);
+    assert_eq!(
+        target_listener.accept().unwrap_err().kind(),
+        ErrorKind::WouldBlock
+    );
 
     blueice_ipc::write_client_message(&mut frontend, &blueice_ipc::ClientMessage::Shutdown)
         .unwrap();
@@ -1436,7 +1526,8 @@ fn installed_extension_v5_path_prefix_blocks_redirect_before_target_connection()
     let core_socket = unique_socket_path("epr");
     let extension_socket = unique_private_extension_socket_path("pr");
     let frame_dir = std::env::temp_dir().join(format!(
-        "blueice-core-extension-path-prefix-frames-{}", std::process::id()
+        "blueice-core-extension-path-prefix-frames-{}",
+        std::process::id()
     ));
     let (package_root, manifest, extension_id) =
         extension_manifest_package("path-prefix-network-rule", &["network:intercept"]);
@@ -1467,11 +1558,16 @@ fn installed_extension_v5_path_prefix_blocks_redirect_before_target_connection()
 
     let mut core = Command::new(env!("CARGO_BIN_EXE_blueice-core"))
         .args([
-            "--socket", core_socket.to_str().unwrap(),
-            "--extension-socket", extension_socket.to_str().unwrap(),
-            "--extension-manifest", manifest.to_str().unwrap(),
-            "--gatekeeper-socket", gatekeeper_socket.to_str().unwrap(),
-            "--frame-dir", frame_dir.to_str().unwrap(),
+            "--socket",
+            core_socket.to_str().unwrap(),
+            "--extension-socket",
+            extension_socket.to_str().unwrap(),
+            "--extension-manifest",
+            manifest.to_str().unwrap(),
+            "--gatekeeper-socket",
+            gatekeeper_socket.to_str().unwrap(),
+            "--frame-dir",
+            frame_dir.to_str().unwrap(),
         ])
         .spawn()
         .expect("failed to spawn core with a v5 path-prefix extension");
@@ -1480,21 +1576,38 @@ fn installed_extension_v5_path_prefix_blocks_redirect_before_target_connection()
     let mut frontend = UnixStream::connect(&core_socket).unwrap();
     blueice_ipc::client_handshake(&mut frontend).unwrap();
     let mut extension = UnixStream::connect(&extension_socket).unwrap();
-    write_extension_request(&mut extension, &ExtensionRequest::Hello {
-        extension_id,
-        capability_versions: BTreeMap::from([("network:intercept".to_string(), 5)]),
-    }).unwrap();
-    assert_eq!(read_extension_reply(&mut extension).unwrap(), ExtensionReply::HelloAck {
-        unsupported_capabilities: BTreeMap::new(),
-    });
-    write_extension_request(&mut extension, &ExtensionRequest::RegisterNetworkBlockPathPrefix {
-        host: "LOCALHOST.".into(), path_prefix: "/private".into(),
-    }).unwrap();
-    assert_eq!(read_extension_reply(&mut extension).unwrap(), ExtensionReply::NetworkInterceptAck);
+    write_extension_request(
+        &mut extension,
+        &ExtensionRequest::Hello {
+            extension_id,
+            capability_versions: BTreeMap::from([("network:intercept".to_string(), 5)]),
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        read_extension_reply(&mut extension).unwrap(),
+        ExtensionReply::HelloAck {
+            unsupported_capabilities: BTreeMap::new(),
+        }
+    );
+    write_extension_request(
+        &mut extension,
+        &ExtensionRequest::RegisterNetworkBlockPathPrefix {
+            host: "LOCALHOST.".into(),
+            path_prefix: "/private".into(),
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        read_extension_reply(&mut extension).unwrap(),
+        ExtensionReply::NetworkInterceptAck
+    );
 
-    blueice_ipc::write_client_message(&mut frontend, &blueice_ipc::ClientMessage::Navigate {
-        url: redirect_url,
-    }).unwrap();
+    blueice_ipc::write_client_message(
+        &mut frontend,
+        &blueice_ipc::ClientMessage::Navigate { url: redirect_url },
+    )
+    .unwrap();
     match blueice_ipc::read_server_message(&mut frontend).unwrap() {
         blueice_ipc::ServerMessage::Error { message } => {
             assert!(message.contains("declarative extension rule"));
@@ -1503,9 +1616,13 @@ fn installed_extension_v5_path_prefix_blocks_redirect_before_target_connection()
         other => panic!("the v5 path-prefix rule must reject the redirect, got {other:?}"),
     }
     redirect_server.join().unwrap();
-    assert_eq!(target_listener.accept().unwrap_err().kind(), ErrorKind::WouldBlock);
+    assert_eq!(
+        target_listener.accept().unwrap_err().kind(),
+        ErrorKind::WouldBlock
+    );
 
-    blueice_ipc::write_client_message(&mut frontend, &blueice_ipc::ClientMessage::Shutdown).unwrap();
+    blueice_ipc::write_client_message(&mut frontend, &blueice_ipc::ClientMessage::Shutdown)
+        .unwrap();
     assert!(core.wait().unwrap().success());
     assert!(!core_socket.exists());
     assert!(!extension_socket.exists());
@@ -1525,7 +1642,8 @@ fn installed_extension_v6_redirects_one_same_origin_navigation_before_fetch_and_
     let core_socket = unique_socket_path("er6");
     let extension_socket = unique_private_extension_socket_path("r6");
     let frame_dir = std::env::temp_dir().join(format!(
-        "blueice-core-extension-redirect-frames-{}", std::process::id()
+        "blueice-core-extension-redirect-frames-{}",
+        std::process::id()
     ));
     let (package_root, manifest, extension_id) =
         extension_manifest_package("same-origin-redirect", &["network:intercept"]);
@@ -1557,11 +1675,16 @@ fn installed_extension_v6_redirects_one_same_origin_navigation_before_fetch_and_
 
     let mut core = Command::new(env!("CARGO_BIN_EXE_blueice-core"))
         .args([
-            "--socket", core_socket.to_str().unwrap(),
-            "--extension-socket", extension_socket.to_str().unwrap(),
-            "--extension-manifest", manifest.to_str().unwrap(),
-            "--gatekeeper-socket", gatekeeper_socket.to_str().unwrap(),
-            "--frame-dir", frame_dir.to_str().unwrap(),
+            "--socket",
+            core_socket.to_str().unwrap(),
+            "--extension-socket",
+            extension_socket.to_str().unwrap(),
+            "--extension-manifest",
+            manifest.to_str().unwrap(),
+            "--gatekeeper-socket",
+            gatekeeper_socket.to_str().unwrap(),
+            "--frame-dir",
+            frame_dir.to_str().unwrap(),
         ])
         .spawn()
         .expect("failed to spawn core with a v6 redirect extension");
@@ -1570,38 +1693,73 @@ fn installed_extension_v6_redirects_one_same_origin_navigation_before_fetch_and_
     let mut frontend = UnixStream::connect(&core_socket).unwrap();
     blueice_ipc::client_handshake(&mut frontend).unwrap();
     let mut extension = UnixStream::connect(&extension_socket).unwrap();
-    write_extension_request(&mut extension, &ExtensionRequest::Hello {
-        extension_id,
-        capability_versions: BTreeMap::from([("network:intercept".to_string(), 6)]),
-    }).unwrap();
-    assert_eq!(read_extension_reply(&mut extension).unwrap(), ExtensionReply::HelloAck {
-        unsupported_capabilities: BTreeMap::new(),
-    });
-    write_extension_request(&mut extension, &ExtensionRequest::RegisterNetworkRedirectUrl {
-        source_url: source_url.clone(), target_url: target_url.clone(),
-    }).unwrap();
-    assert_eq!(read_extension_reply(&mut extension).unwrap(), ExtensionReply::NetworkInterceptAck);
+    write_extension_request(
+        &mut extension,
+        &ExtensionRequest::Hello {
+            extension_id,
+            capability_versions: BTreeMap::from([("network:intercept".to_string(), 6)]),
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        read_extension_reply(&mut extension).unwrap(),
+        ExtensionReply::HelloAck {
+            unsupported_capabilities: BTreeMap::new(),
+        }
+    );
+    write_extension_request(
+        &mut extension,
+        &ExtensionRequest::RegisterNetworkRedirectUrl {
+            source_url: source_url.clone(),
+            target_url: target_url.clone(),
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        read_extension_reply(&mut extension).unwrap(),
+        ExtensionReply::NetworkInterceptAck
+    );
 
-    blueice_ipc::write_client_message(&mut frontend, &blueice_ipc::ClientMessage::Navigate {
-        url: source_url.clone(),
-    }).unwrap();
-    assert!(matches!(blueice_ipc::read_server_message(&mut frontend).unwrap(),
-        blueice_ipc::ServerMessage::Navigated { url, .. } if url == target_url));
-    assert!(matches!(blueice_ipc::read_server_message(&mut frontend).unwrap(),
-        blueice_ipc::ServerMessage::FrameReady { .. }));
+    blueice_ipc::write_client_message(
+        &mut frontend,
+        &blueice_ipc::ClientMessage::Navigate {
+            url: source_url.clone(),
+        },
+    )
+    .unwrap();
+    assert!(
+        matches!(blueice_ipc::read_server_message(&mut frontend).unwrap(),
+        blueice_ipc::ServerMessage::Navigated { url, .. } if url == target_url)
+    );
+    assert!(matches!(
+        blueice_ipc::read_server_message(&mut frontend).unwrap(),
+        blueice_ipc::ServerMessage::FrameReady { .. }
+    ));
 
     write_extension_request(&mut extension, &ExtensionRequest::ClearNetworkBlockUrls).unwrap();
-    assert_eq!(read_extension_reply(&mut extension).unwrap(), ExtensionReply::NetworkInterceptAck);
-    blueice_ipc::write_client_message(&mut frontend, &blueice_ipc::ClientMessage::Navigate {
-        url: source_url.clone(),
-    }).unwrap();
-    assert!(matches!(blueice_ipc::read_server_message(&mut frontend).unwrap(),
-        blueice_ipc::ServerMessage::Navigated { url, .. } if url == source_url));
-    assert!(matches!(blueice_ipc::read_server_message(&mut frontend).unwrap(),
-        blueice_ipc::ServerMessage::FrameReady { .. }));
+    assert_eq!(
+        read_extension_reply(&mut extension).unwrap(),
+        ExtensionReply::NetworkInterceptAck
+    );
+    blueice_ipc::write_client_message(
+        &mut frontend,
+        &blueice_ipc::ClientMessage::Navigate {
+            url: source_url.clone(),
+        },
+    )
+    .unwrap();
+    assert!(
+        matches!(blueice_ipc::read_server_message(&mut frontend).unwrap(),
+        blueice_ipc::ServerMessage::Navigated { url, .. } if url == source_url)
+    );
+    assert!(matches!(
+        blueice_ipc::read_server_message(&mut frontend).unwrap(),
+        blueice_ipc::ServerMessage::FrameReady { .. }
+    ));
 
     web_server.join().unwrap();
-    blueice_ipc::write_client_message(&mut frontend, &blueice_ipc::ClientMessage::Shutdown).unwrap();
+    blueice_ipc::write_client_message(&mut frontend, &blueice_ipc::ClientMessage::Shutdown)
+        .unwrap();
     assert!(core.wait().unwrap().success());
     assert!(!core_socket.exists());
     assert!(!extension_socket.exists());
@@ -1739,7 +1897,10 @@ fn installed_extension_storage_v1_v2_v3_keep_their_separate_lifetimes() {
         },
     )
     .unwrap();
-    assert_eq!(read_extension_reply(&mut durable).unwrap(), ExtensionReply::StorageSetAck);
+    assert_eq!(
+        read_extension_reply(&mut durable).unwrap(),
+        ExtensionReply::StorageSetAck
+    );
     write_extension_request(
         &mut durable,
         &ExtensionRequest::StorageSet {
@@ -1748,24 +1909,39 @@ fn installed_extension_storage_v1_v2_v3_keep_their_separate_lifetimes() {
         },
     )
     .unwrap();
-    assert_eq!(read_extension_reply(&mut durable).unwrap(), ExtensionReply::StorageSetAck);
+    assert_eq!(
+        read_extension_reply(&mut durable).unwrap(),
+        ExtensionReply::StorageSetAck
+    );
     write_extension_request(
         &mut durable,
         &ExtensionRequest::StorageSet {
             key: "ephemeral-only".to_string(),
             value: "not-durable".to_string(),
         },
-    ).unwrap();
-    assert_eq!(read_extension_reply(&mut durable).unwrap(), ExtensionReply::StorageSetAck);
+    )
+    .unwrap();
+    assert_eq!(
+        read_extension_reply(&mut durable).unwrap(),
+        ExtensionReply::StorageSetAck
+    );
     write_extension_request(&mut durable, &ExtensionRequest::DurableStorageListKeys).unwrap();
     assert!(matches!(read_extension_reply(&mut durable).unwrap(),
         ExtensionReply::CapabilityDenied { capability, .. } if capability == "storage"));
     write_extension_request(&mut durable, &hello_v3()).unwrap();
-    assert_eq!(read_extension_reply(&mut durable).unwrap(),
-        ExtensionReply::HelloAck { unsupported_capabilities: BTreeMap::new() });
+    assert_eq!(
+        read_extension_reply(&mut durable).unwrap(),
+        ExtensionReply::HelloAck {
+            unsupported_capabilities: BTreeMap::new()
+        }
+    );
     write_extension_request(&mut durable, &ExtensionRequest::DurableStorageListKeys).unwrap();
-    assert_eq!(read_extension_reply(&mut durable).unwrap(),
-        ExtensionReply::StorageKeysResult { keys: vec!["task-state".to_string()] });
+    assert_eq!(
+        read_extension_reply(&mut durable).unwrap(),
+        ExtensionReply::StorageKeysResult {
+            keys: vec!["task-state".to_string()]
+        }
+    );
     drop(durable);
 
     blueice_ipc::write_client_message(&mut frontend, &blueice_ipc::ClientMessage::Shutdown)
@@ -1803,28 +1979,44 @@ fn installed_extension_storage_v1_v2_v3_keep_their_separate_lifetimes() {
     );
     write_extension_request(
         &mut restarted_extension,
-        &ExtensionRequest::DurableStorageGet { key: "task-state".to_string() },
+        &ExtensionRequest::DurableStorageGet {
+            key: "task-state".to_string(),
+        },
     )
     .unwrap();
     assert_eq!(
         read_extension_reply(&mut restarted_extension).unwrap(),
-        ExtensionReply::StorageGetResult { value: Some("persisted".to_string()) }
+        ExtensionReply::StorageGetResult {
+            value: Some("persisted".to_string())
+        }
     );
-    write_extension_request(&mut restarted_extension, &ExtensionRequest::DurableStorageListKeys)
-        .unwrap();
-    assert_eq!(read_extension_reply(&mut restarted_extension).unwrap(),
-        ExtensionReply::StorageKeysResult { keys: vec!["task-state".to_string()] });
     write_extension_request(
         &mut restarted_extension,
-        &ExtensionRequest::StorageGet { key: "task-state".to_string() },
+        &ExtensionRequest::DurableStorageListKeys,
+    )
+    .unwrap();
+    assert_eq!(
+        read_extension_reply(&mut restarted_extension).unwrap(),
+        ExtensionReply::StorageKeysResult {
+            keys: vec!["task-state".to_string()]
+        }
+    );
+    write_extension_request(
+        &mut restarted_extension,
+        &ExtensionRequest::StorageGet {
+            key: "task-state".to_string(),
+        },
     )
     .unwrap();
     assert_eq!(
         read_extension_reply(&mut restarted_extension).unwrap(),
         ExtensionReply::StorageGetResult { value: None }
     );
-    blueice_ipc::write_client_message(&mut restarted_frontend, &blueice_ipc::ClientMessage::Shutdown)
-        .unwrap();
+    blueice_ipc::write_client_message(
+        &mut restarted_frontend,
+        &blueice_ipc::ClientMessage::Shutdown,
+    )
+    .unwrap();
     assert!(restarted_core.wait().unwrap().success());
     let _ = std::fs::remove_dir_all(package_root);
     let _ = std::fs::remove_dir_all(data_dir);
@@ -1925,7 +2117,10 @@ fn optional_and_ephemeral_manifest_entries_cannot_be_self_granted_over_core_ipc(
             other => panic!("{expected_capability} must remain ungranted, got {other:?}"),
         }
     }
-    assert!(!data_dir.exists(), "denied durable writes must not create a data directory");
+    assert!(
+        !data_dir.exists(),
+        "denied durable writes must not create a data directory"
+    );
     blueice_ipc::write_client_message(&mut frontend, &blueice_ipc::ClientMessage::Shutdown)
         .unwrap();
     assert!(core.wait().unwrap().success());
@@ -1936,18 +2131,25 @@ fn optional_and_ephemeral_manifest_entries_cannot_be_self_granted_over_core_ipc(
 fn private_parent_pipe_grants_optional_and_consumes_ephemeral_once_in_a_real_core() {
     let _guard = core_process_test_guard();
     use blueice_ipc::permission_control::{
-        read_permission_control_reply, write_permission_control_request,
-        PermissionControlReply, PermissionControlRequest,
+        read_permission_control_reply, write_permission_control_request, PermissionControlReply,
+        PermissionControlRequest,
     };
 
     let core_socket = unique_socket_path("perm-core");
     let extension_socket = unique_private_extension_socket_path("perm");
     let probe_socket = unique_socket_path("perm-probe");
-    let frame_dir = std::env::temp_dir().join(format!("blueice-permission-frames-{}", std::process::id()));
+    let frame_dir =
+        std::env::temp_dir().join(format!("blueice-permission-frames-{}", std::process::id()));
     let (package_root, manifest, _) = extension_manifest_package("permission-parent", &[]);
     std::fs::write(&manifest, r#"{"name":"Optional storage","version":"1","blueice_api_version":1,"entry_point":"extension.wasm","capabilities":{"optional":["storage"],"runtime_ephemeral":["dom:read"]}}"#).unwrap();
-    let extension_id = blueice_extension_host::load_installed_extension(&manifest).unwrap().extension_id().to_string();
-    let host = core_extension_host_probe_script(&package_root, "extension_host_probe_child_observes_optional_and_ephemeral_grants");
+    let extension_id = blueice_extension_host::load_installed_extension(&manifest)
+        .unwrap()
+        .extension_id()
+        .to_string();
+    let host = core_extension_host_probe_script(
+        &package_root,
+        "extension_host_probe_child_observes_optional_and_ephemeral_grants",
+    );
     let _ = std::fs::remove_file(&core_socket);
     let _ = std::fs::remove_file(&extension_socket);
     let _ = std::fs::remove_file(&probe_socket);
@@ -1957,12 +2159,17 @@ fn private_parent_pipe_grants_optional_and_consumes_ephemeral_once_in_a_real_cor
 
     let mut core = Command::new(env!("CARGO_BIN_EXE_blueice-core"))
         .args([
-            "--socket", core_socket.to_str().unwrap(),
-            "--extension-socket", extension_socket.to_str().unwrap(),
-            "--extension-manifest", manifest.to_str().unwrap(),
-            "--extension-host", host.to_str().unwrap(),
+            "--socket",
+            core_socket.to_str().unwrap(),
+            "--extension-socket",
+            extension_socket.to_str().unwrap(),
+            "--extension-manifest",
+            manifest.to_str().unwrap(),
+            "--extension-host",
+            host.to_str().unwrap(),
             "--permission-control-stdio",
-            "--frame-dir", frame_dir.to_str().unwrap(),
+            "--frame-dir",
+            frame_dir.to_str().unwrap(),
         ])
         .env("BLUEICE_TEST_PROBE_SOCKET", &probe_socket)
         .stdin(Stdio::piped())
@@ -1977,14 +2184,20 @@ fn private_parent_pipe_grants_optional_and_consumes_ephemeral_once_in_a_real_cor
     let mut probe = loop {
         match probe_listener.accept() {
             Ok((stream, _)) => break stream,
-            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock && Instant::now() < deadline => {
+            Err(error)
+                if error.kind() == std::io::ErrorKind::WouldBlock && Instant::now() < deadline =>
+            {
                 thread::sleep(Duration::from_millis(20));
             }
-            Err(error) => panic!("authenticated host never reached its private probe socket: {error}"),
+            Err(error) => {
+                panic!("authenticated host never reached its private probe socket: {error}")
+            }
         }
     };
     probe.set_nonblocking(false).unwrap();
-    probe.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
+    probe
+        .set_read_timeout(Some(Duration::from_secs(2)))
+        .unwrap();
     let mut control_in = core.stdin.take().unwrap();
     let mut control_out = core.stdout.take().unwrap();
     let probe_get = |probe: &mut UnixStream, command: u8, ticket: Option<&str>| {
@@ -1998,60 +2211,129 @@ fn private_parent_pipe_grants_optional_and_consumes_ephemeral_once_in_a_real_cor
         probe.read_exact(&mut result).unwrap();
         result[0]
     };
-    assert_eq!(probe_get(&mut probe, b'g', None), b'D', "optional declaration must not grant itself");
+    assert_eq!(
+        probe_get(&mut probe, b'g', None),
+        b'D',
+        "optional declaration must not grant itself"
+    );
     let guessed_ticket = "0".repeat(64);
-    assert_eq!(probe_get(&mut probe, b'r', Some(&guessed_ticket)), b'D',
-        "an extension cannot guess an unarmed ephemeral token");
+    assert_eq!(
+        probe_get(&mut probe, b'r', Some(&guessed_ticket)),
+        b'D',
+        "an extension cannot guess an unarmed ephemeral token"
+    );
 
     write_permission_control_request(&mut control_in, &PermissionControlRequest::Inspect).unwrap();
     let state = read_permission_control_reply(&mut control_out).unwrap();
-    let PermissionControlReply::State { extension_id: observed_id, optional, .. } = state else {
+    let PermissionControlReply::State {
+        extension_id: observed_id,
+        optional,
+        ..
+    } = state
+    else {
         panic!("expected the installed permission state, got {state:?}")
     };
     assert_eq!(observed_id, extension_id);
-    assert_eq!(optional.len(), 1, "runtime-ephemeral declarations are not optional grants");
+    assert_eq!(
+        optional.len(),
+        1,
+        "runtime-ephemeral declarations are not optional grants"
+    );
     assert_eq!(optional[0].capability, "storage");
     assert!(!optional[0].granted);
 
-    let inspect_document = |input: &mut std::process::ChildStdin, output: &mut std::process::ChildStdout| {
-        write_permission_control_request(input, &PermissionControlRequest::InspectDocument { tab_id: 1 }).unwrap();
+    let inspect_document = |input: &mut std::process::ChildStdin,
+                            output: &mut std::process::ChildStdout| {
+        write_permission_control_request(
+            input,
+            &PermissionControlRequest::InspectDocument { tab_id: 1 },
+        )
+        .unwrap();
         read_permission_control_reply(output).unwrap()
     };
-    assert_eq!(inspect_document(&mut control_in, &mut control_out), PermissionControlReply::Document {
-        tab_id: 1, document_epoch: 0, url: None,
-    });
+    assert_eq!(
+        inspect_document(&mut control_in, &mut control_out),
+        PermissionControlReply::Document {
+            tab_id: 1,
+            document_epoch: 0,
+            url: None,
+        }
+    );
     for epoch in 1..=2 {
-        blueice_ipc::write_client_message(&mut frontend, &blueice_ipc::ClientMessage::Navigate {
-            url: "about:credits".into(),
-        }).unwrap();
-        assert_eq!(blueice_ipc::read_server_message(&mut frontend).unwrap(),
-            blueice_ipc::ServerMessage::Navigated { url: "about:credits".into() });
-        assert!(matches!(blueice_ipc::read_server_message(&mut frontend).unwrap(),
-            blueice_ipc::ServerMessage::FrameReady { .. }));
-        assert_eq!(inspect_document(&mut control_in, &mut control_out), PermissionControlReply::Document {
-            tab_id: 1, document_epoch: epoch, url: Some("about:credits".into()),
-        }, "same-URL document replacement must invalidate the previous identity");
+        blueice_ipc::write_client_message(
+            &mut frontend,
+            &blueice_ipc::ClientMessage::Navigate {
+                url: "about:credits".into(),
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            blueice_ipc::read_server_message(&mut frontend).unwrap(),
+            blueice_ipc::ServerMessage::Navigated {
+                url: "about:credits".into()
+            }
+        );
+        assert!(matches!(
+            blueice_ipc::read_server_message(&mut frontend).unwrap(),
+            blueice_ipc::ServerMessage::FrameReady { .. }
+        ));
+        assert_eq!(
+            inspect_document(&mut control_in, &mut control_out),
+            PermissionControlReply::Document {
+                tab_id: 1,
+                document_epoch: epoch,
+                url: Some("about:credits".into()),
+            },
+            "same-URL document replacement must invalidate the previous identity"
+        );
     }
-    write_permission_control_request(&mut control_in, &PermissionControlRequest::InspectDocument {
-        tab_id: u64::MAX,
-    }).unwrap();
-    assert!(matches!(read_permission_control_reply(&mut control_out).unwrap(),
-        PermissionControlReply::Rejected { .. }));
-    write_permission_control_request(&mut control_in, &PermissionControlRequest::ArmEphemeral {
-        capability: "dom:read".into(), tab_id: 1, document_epoch: 1,
-    }).unwrap();
-    assert!(matches!(read_permission_control_reply(&mut control_out).unwrap(),
-        PermissionControlReply::Rejected { .. }),
-        "a stale same-URL document identity cannot arm a one-shot lease");
-    write_permission_control_request(&mut control_in, &PermissionControlRequest::ArmEphemeral {
-        capability: "dom:read".into(), tab_id: 1, document_epoch: 2,
-    }).unwrap();
+    write_permission_control_request(
+        &mut control_in,
+        &PermissionControlRequest::InspectDocument { tab_id: u64::MAX },
+    )
+    .unwrap();
+    assert!(matches!(
+        read_permission_control_reply(&mut control_out).unwrap(),
+        PermissionControlReply::Rejected { .. }
+    ));
+    write_permission_control_request(
+        &mut control_in,
+        &PermissionControlRequest::ArmEphemeral {
+            capability: "dom:read".into(),
+            tab_id: 1,
+            document_epoch: 1,
+        },
+    )
+    .unwrap();
+    assert!(
+        matches!(
+            read_permission_control_reply(&mut control_out).unwrap(),
+            PermissionControlReply::Rejected { .. }
+        ),
+        "a stale same-URL document identity cannot arm a one-shot lease"
+    );
+    write_permission_control_request(
+        &mut control_in,
+        &PermissionControlRequest::ArmEphemeral {
+            capability: "dom:read".into(),
+            tab_id: 1,
+            document_epoch: 2,
+        },
+    )
+    .unwrap();
     let PermissionControlReply::EphemeralArmed {
-        capability, tab_id, document_epoch, ticket,
-    } = read_permission_control_reply(&mut control_out).unwrap() else {
+        capability,
+        tab_id,
+        document_epoch,
+        ticket,
+    } = read_permission_control_reply(&mut control_out).unwrap()
+    else {
         panic!("the private pipe should arm the live document");
     };
-    assert_eq!((capability.as_str(), tab_id, document_epoch), ("dom:read", 1, 2));
+    assert_eq!(
+        (capability.as_str(), tab_id, document_epoch),
+        ("dom:read", 1, 2)
+    );
     assert_eq!(ticket.len(), 64);
     assert_ne!(ticket, guessed_ticket);
     probe.write_all(b"e").unwrap();
@@ -2060,56 +2342,148 @@ fn private_parent_pipe_grants_optional_and_consumes_ephemeral_once_in_a_real_cor
     assert_eq!(event_marker, *b"E");
     let mut event_ticket = [0_u8; 64];
     probe.read_exact(&mut event_ticket).unwrap();
-    assert_eq!(event_ticket.as_slice(), ticket.as_bytes(),
-        "the authenticated host must receive the exact core-parent-armed ticket");
-    assert_eq!(probe_get(&mut probe, b'w', None), b'D',
-        "legacy implicit-tab read must not consume a document-bound lease");
-    assert_eq!(probe_get(&mut probe, b'v', None), b'D',
-        "ordinary v2 explicit-tab read must not consume a document-bound lease");
-    assert_eq!(probe_get(&mut probe, b'r', Some(&guessed_ticket)), b'D',
-        "a guessed token must not consume the valid lease");
-    assert_eq!(probe_get(&mut probe, b's', Some(&ticket)), b'D',
-        "another tab must not consume the lease");
-    assert_eq!(probe_get(&mut probe, b'r', Some(&ticket)), b'A',
-        "the authenticated host may read the exact document once");
-    assert_eq!(probe_get(&mut probe, b'r', Some(&ticket)), b'D',
-        "a second read must not reuse the consumed ticket");
-    write_permission_control_request(&mut control_in, &PermissionControlRequest::ArmEphemeral {
-        capability: "dom:read".into(), tab_id: 1, document_epoch: 2,
-    }).unwrap();
-    let PermissionControlReply::EphemeralArmed { ticket: next_ticket, .. } =
-        read_permission_control_reply(&mut control_out).unwrap() else {
-            panic!("a second private arming should replace the spent lease");
-        };
+    assert_eq!(
+        event_ticket.as_slice(),
+        ticket.as_bytes(),
+        "the authenticated host must receive the exact core-parent-armed ticket"
+    );
+    assert_eq!(
+        probe_get(&mut probe, b'w', None),
+        b'D',
+        "legacy implicit-tab read must not consume a document-bound lease"
+    );
+    assert_eq!(
+        probe_get(&mut probe, b'v', None),
+        b'D',
+        "ordinary v2 explicit-tab read must not consume a document-bound lease"
+    );
+    assert_eq!(
+        probe_get(&mut probe, b'r', Some(&guessed_ticket)),
+        b'D',
+        "a guessed token must not consume the valid lease"
+    );
+    assert_eq!(
+        probe_get(&mut probe, b's', Some(&ticket)),
+        b'D',
+        "another tab must not consume the lease"
+    );
+    assert_eq!(
+        probe_get(&mut probe, b'r', Some(&ticket)),
+        b'A',
+        "the authenticated host may read the exact document once"
+    );
+    assert_eq!(
+        probe_get(&mut probe, b'r', Some(&ticket)),
+        b'D',
+        "a second read must not reuse the consumed ticket"
+    );
+    write_permission_control_request(
+        &mut control_in,
+        &PermissionControlRequest::ArmEphemeral {
+            capability: "dom:read".into(),
+            tab_id: 1,
+            document_epoch: 2,
+        },
+    )
+    .unwrap();
+    let PermissionControlReply::EphemeralArmed {
+        ticket: next_ticket,
+        ..
+    } = read_permission_control_reply(&mut control_out).unwrap()
+    else {
+        panic!("a second private arming should replace the spent lease");
+    };
     assert_ne!(ticket, next_ticket);
-    assert_eq!(probe_get(&mut probe, b'r', Some(&ticket)), b'D',
-        "an old token cannot borrow a newer arming");
-    blueice_ipc::write_client_message(&mut frontend, &blueice_ipc::ClientMessage::Navigate {
-        url: "about:credits".into(),
-    }).unwrap();
-    assert!(matches!(blueice_ipc::read_server_message(&mut frontend).unwrap(),
-        blueice_ipc::ServerMessage::Navigated { .. }));
-    assert!(matches!(blueice_ipc::read_server_message(&mut frontend).unwrap(),
-        blueice_ipc::ServerMessage::FrameReady { .. }));
-    assert_eq!(probe_get(&mut probe, b'r', Some(&next_ticket)), b'D',
-        "same-URL navigation must expire an unspent lease");
+    assert_eq!(
+        probe_get(&mut probe, b'r', Some(&ticket)),
+        b'D',
+        "an old token cannot borrow a newer arming"
+    );
+    blueice_ipc::write_client_message(
+        &mut frontend,
+        &blueice_ipc::ClientMessage::Navigate {
+            url: "about:credits".into(),
+        },
+    )
+    .unwrap();
+    assert!(matches!(
+        blueice_ipc::read_server_message(&mut frontend).unwrap(),
+        blueice_ipc::ServerMessage::Navigated { .. }
+    ));
+    assert!(matches!(
+        blueice_ipc::read_server_message(&mut frontend).unwrap(),
+        blueice_ipc::ServerMessage::FrameReady { .. }
+    ));
+    assert_eq!(
+        probe_get(&mut probe, b'r', Some(&next_ticket)),
+        b'D',
+        "same-URL navigation must expire an unspent lease"
+    );
 
-    write_permission_control_request(&mut control_in, &PermissionControlRequest::Grant { capability: "dom:read".into() }).unwrap();
-    assert!(matches!(read_permission_control_reply(&mut control_out).unwrap(), PermissionControlReply::Rejected { .. }));
+    write_permission_control_request(
+        &mut control_in,
+        &PermissionControlRequest::Grant {
+            capability: "dom:read".into(),
+        },
+    )
+    .unwrap();
+    assert!(matches!(
+        read_permission_control_reply(&mut control_out).unwrap(),
+        PermissionControlReply::Rejected { .. }
+    ));
     assert_eq!(probe_get(&mut probe, b'g', None), b'D');
-    write_permission_control_request(&mut control_in, &PermissionControlRequest::Grant { capability: "storage".into() }).unwrap();
-    assert_eq!(read_permission_control_reply(&mut control_out).unwrap(), PermissionControlReply::Updated {
-        capability: "storage".into(), granted: true, changed: true,
-    });
-    assert_eq!(probe_get(&mut probe, b'g', None), b'A', "the same authenticated host connection must gain the optional capability");
+    write_permission_control_request(
+        &mut control_in,
+        &PermissionControlRequest::Grant {
+            capability: "storage".into(),
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        read_permission_control_reply(&mut control_out).unwrap(),
+        PermissionControlReply::Updated {
+            capability: "storage".into(),
+            granted: true,
+            changed: true,
+        }
+    );
+    assert_eq!(
+        probe_get(&mut probe, b'g', None),
+        b'A',
+        "the same authenticated host connection must gain the optional capability"
+    );
 
-    write_permission_control_request(&mut control_in, &PermissionControlRequest::Revoke { capability: "storage".into() }).unwrap();
-    assert_eq!(read_permission_control_reply(&mut control_out).unwrap(), PermissionControlReply::Updated {
-        capability: "storage".into(), granted: false, changed: true,
-    });
-    assert_eq!(probe_get(&mut probe, b'g', None), b'D', "the completed revoke must deny the existing host connection");
-    write_permission_control_request(&mut control_in, &PermissionControlRequest::Grant { capability: "storage".into() }).unwrap();
-    assert!(matches!(read_permission_control_reply(&mut control_out).unwrap(), PermissionControlReply::Updated { granted: true, .. }));
+    write_permission_control_request(
+        &mut control_in,
+        &PermissionControlRequest::Revoke {
+            capability: "storage".into(),
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        read_permission_control_reply(&mut control_out).unwrap(),
+        PermissionControlReply::Updated {
+            capability: "storage".into(),
+            granted: false,
+            changed: true,
+        }
+    );
+    assert_eq!(
+        probe_get(&mut probe, b'g', None),
+        b'D',
+        "the completed revoke must deny the existing host connection"
+    );
+    write_permission_control_request(
+        &mut control_in,
+        &PermissionControlRequest::Grant {
+            capability: "storage".into(),
+        },
+    )
+    .unwrap();
+    assert!(matches!(
+        read_permission_control_reply(&mut control_out).unwrap(),
+        PermissionControlReply::Updated { granted: true, .. }
+    ));
     assert_eq!(probe_get(&mut probe, b'g', None), b'A');
     drop(control_in);
     let deadline = Instant::now() + Duration::from_secs(2);
@@ -2117,12 +2491,16 @@ fn private_parent_pipe_grants_optional_and_consumes_ephemeral_once_in_a_real_cor
         if probe_get(&mut probe, b'g', None) == b'D' {
             break;
         }
-        assert!(Instant::now() < deadline, "parent pipe EOF must revoke its optional grants");
+        assert!(
+            Instant::now() < deadline,
+            "parent pipe EOF must revoke its optional grants"
+        );
         thread::sleep(Duration::from_millis(20));
     }
 
     probe.write_all(b"q").unwrap();
-    blueice_ipc::write_client_message(&mut frontend, &blueice_ipc::ClientMessage::Shutdown).unwrap();
+    blueice_ipc::write_client_message(&mut frontend, &blueice_ipc::ClientMessage::Shutdown)
+        .unwrap();
     assert!(core.wait().unwrap().success());
     assert!(!core_socket.exists());
     assert!(!extension_socket.exists());
@@ -2134,18 +2512,24 @@ fn private_parent_pipe_grants_optional_and_consumes_ephemeral_once_in_a_real_cor
 fn private_parent_revoke_removes_published_ui_and_network_rules_before_acknowledgement() {
     let _guard = core_process_test_guard();
     use blueice_ipc::permission_control::{
-        read_permission_control_reply, write_permission_control_request,
-        PermissionControlReply, PermissionControlRequest,
+        read_permission_control_reply, write_permission_control_request, PermissionControlReply,
+        PermissionControlRequest,
     };
 
     let core_socket = unique_socket_path("perm-effects-core");
     let extension_socket = unique_private_extension_socket_path("perm-effects");
     let probe_socket = unique_socket_path("perm-effects-probe");
     let gatekeeper_socket = clearing_gatekeeper("perm-effects-gk");
-    let frame_dir = std::env::temp_dir().join(format!("blueice-permission-effects-frames-{}", std::process::id()));
+    let frame_dir = std::env::temp_dir().join(format!(
+        "blueice-permission-effects-frames-{}",
+        std::process::id()
+    ));
     let (package_root, manifest, _) = extension_manifest_package("permission-effects", &[]);
     std::fs::write(&manifest, r#"{"name":"Optional effects","version":"1","blueice_api_version":1,"entry_point":"extension.wasm","capabilities":{"optional":["ui:inject","network:intercept"]}}"#).unwrap();
-    let host = core_extension_host_probe_script(&package_root, "extension_host_probe_child_publishes_optional_effects");
+    let host = core_extension_host_probe_script(
+        &package_root,
+        "extension_host_probe_child_publishes_optional_effects",
+    );
     let _ = std::fs::remove_file(&core_socket);
     let _ = std::fs::remove_file(&extension_socket);
     let _ = std::fs::remove_file(&probe_socket);
@@ -2158,13 +2542,19 @@ fn private_parent_revoke_removes_published_ui_and_network_rules_before_acknowled
 
     let mut core = Command::new(env!("CARGO_BIN_EXE_blueice-core"))
         .args([
-            "--socket", core_socket.to_str().unwrap(),
-            "--extension-socket", extension_socket.to_str().unwrap(),
-            "--extension-manifest", manifest.to_str().unwrap(),
-            "--extension-host", host.to_str().unwrap(),
+            "--socket",
+            core_socket.to_str().unwrap(),
+            "--extension-socket",
+            extension_socket.to_str().unwrap(),
+            "--extension-manifest",
+            manifest.to_str().unwrap(),
+            "--extension-host",
+            host.to_str().unwrap(),
             "--permission-control-stdio",
-            "--gatekeeper-socket", gatekeeper_socket.to_str().unwrap(),
-            "--frame-dir", frame_dir.to_str().unwrap(),
+            "--gatekeeper-socket",
+            gatekeeper_socket.to_str().unwrap(),
+            "--frame-dir",
+            frame_dir.to_str().unwrap(),
         ])
         .env("BLUEICE_TEST_PROBE_SOCKET", &probe_socket)
         .env("BLUEICE_TEST_RULE_URL", &url)
@@ -2174,92 +2564,152 @@ fn private_parent_revoke_removes_published_ui_and_network_rules_before_acknowled
         .expect("failed to spawn core with optional published effects");
     assert!(wait_for(&core_socket, Duration::from_secs(15)));
     let mut frontend = UnixStream::connect(&core_socket).unwrap();
-    frontend.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+    frontend
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .unwrap();
     blueice_ipc::client_handshake(&mut frontend).unwrap();
 
     let deadline = Instant::now() + Duration::from_secs(5);
     let mut probe = loop {
         match probe_listener.accept() {
             Ok((stream, _)) => break stream,
-            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock && Instant::now() < deadline => {
+            Err(error)
+                if error.kind() == std::io::ErrorKind::WouldBlock && Instant::now() < deadline =>
+            {
                 thread::sleep(Duration::from_millis(20));
             }
-            Err(error) => panic!("authenticated optional-effects host never reached its probe: {error}"),
+            Err(error) => {
+                panic!("authenticated optional-effects host never reached its probe: {error}")
+            }
         }
     };
     probe.set_nonblocking(false).unwrap();
-    probe.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+    probe
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .unwrap();
     let mut ready = [0_u8; 1];
     probe.read_exact(&mut ready).unwrap();
-    assert_eq!(ready[0], b'S', "the authenticated host must enter its probe loop");
+    assert_eq!(
+        ready[0], b'S',
+        "the authenticated host must enter its probe loop"
+    );
     let probe_actions = |probe: &mut UnixStream, command: u8| {
         probe.write_all(&[command]).unwrap();
         let mut answer = [0_u8; 1];
         probe.read_exact(&mut answer).unwrap();
         answer[0]
     };
-    assert_eq!(probe_actions(&mut probe, b'd'), b'D', "optional declarations are not grants");
+    assert_eq!(
+        probe_actions(&mut probe, b'd'),
+        b'D',
+        "optional declarations are not grants"
+    );
     let mut control_in = core.stdin.take().unwrap();
     let mut control_out = core.stdout.take().unwrap();
     for capability in ["ui:inject", "network:intercept"] {
-        write_permission_control_request(&mut control_in, &PermissionControlRequest::Grant {
-            capability: capability.into(),
-        }).unwrap();
-        assert_eq!(read_permission_control_reply(&mut control_out).unwrap(), PermissionControlReply::Updated {
-            capability: capability.into(), granted: true, changed: true,
-        });
+        write_permission_control_request(
+            &mut control_in,
+            &PermissionControlRequest::Grant {
+                capability: capability.into(),
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            read_permission_control_reply(&mut control_out).unwrap(),
+            PermissionControlReply::Updated {
+                capability: capability.into(),
+                granted: true,
+                changed: true,
+            }
+        );
     }
     assert_eq!(probe_actions(&mut probe, b'p'), b'P');
-    assert_eq!(blueice_ipc::read_server_message(&mut frontend).unwrap(),
-        blueice_ipc::ServerMessage::ExtensionToolbar { label: Some("Optional Notes".into()) });
+    assert_eq!(
+        blueice_ipc::read_server_message(&mut frontend).unwrap(),
+        blueice_ipc::ServerMessage::ExtensionToolbar {
+            label: Some("Optional Notes".into())
+        }
+    );
 
-    blueice_ipc::write_client_message(&mut frontend, &blueice_ipc::ClientMessage::Navigate {
-        url: url.clone(),
-    }).unwrap();
-    assert!(matches!(blueice_ipc::read_server_message(&mut frontend).unwrap(),
-        blueice_ipc::ServerMessage::Error { message } if message.contains("declarative extension rule")));
-    assert_eq!(listener.accept().unwrap_err().kind(), std::io::ErrorKind::WouldBlock,
-        "the published rule must block before opening a connection");
+    blueice_ipc::write_client_message(
+        &mut frontend,
+        &blueice_ipc::ClientMessage::Navigate { url: url.clone() },
+    )
+    .unwrap();
+    assert!(
+        matches!(blueice_ipc::read_server_message(&mut frontend).unwrap(),
+        blueice_ipc::ServerMessage::Error { message } if message.contains("declarative extension rule"))
+    );
+    assert_eq!(
+        listener.accept().unwrap_err().kind(),
+        std::io::ErrorKind::WouldBlock,
+        "the published rule must block before opening a connection"
+    );
 
     for capability in ["ui:inject", "network:intercept"] {
-        write_permission_control_request(&mut control_in, &PermissionControlRequest::Revoke {
-            capability: capability.into(),
-        }).unwrap();
-        assert_eq!(read_permission_control_reply(&mut control_out).unwrap(), PermissionControlReply::Updated {
-            capability: capability.into(), granted: false, changed: true,
-        });
+        write_permission_control_request(
+            &mut control_in,
+            &PermissionControlRequest::Revoke {
+                capability: capability.into(),
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            read_permission_control_reply(&mut control_out).unwrap(),
+            PermissionControlReply::Updated {
+                capability: capability.into(),
+                granted: false,
+                changed: true,
+            }
+        );
         if capability == "ui:inject" {
-            assert_eq!(blueice_ipc::read_server_message(&mut frontend).unwrap(),
+            assert_eq!(
+                blueice_ipc::read_server_message(&mut frontend).unwrap(),
                 blueice_ipc::ServerMessage::ExtensionToolbar { label: None },
-                "the native toolbar must be removed before revoke completes");
+                "the native toolbar must be removed before revoke completes"
+            );
         }
     }
-    assert_eq!(probe_actions(&mut probe, b'd'), b'D', "the same host cannot republish either effect");
+    assert_eq!(
+        probe_actions(&mut probe, b'd'),
+        b'D',
+        "the same host cannot republish either effect"
+    );
 
     let target_server = thread::spawn(move || {
         let deadline = Instant::now() + Duration::from_secs(5);
         let mut stream = loop {
             match listener.accept() {
                 Ok((stream, _)) => break stream,
-                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock && Instant::now() < deadline => {
+                Err(error)
+                    if error.kind() == std::io::ErrorKind::WouldBlock
+                        && Instant::now() < deadline =>
+                {
                     thread::sleep(Duration::from_millis(20));
                 }
-                Err(error) => panic!("navigation did not reconnect after completed revoke: {error}"),
+                Err(error) => {
+                    panic!("navigation did not reconnect after completed revoke: {error}")
+                }
             }
         };
         let mut request = [0_u8; 1024];
         let _ = stream.read(&mut request);
         stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: 16\r\nConnection: close\r\n\r\n<p>now open</p>\n").unwrap();
     });
-    blueice_ipc::write_client_message(&mut frontend, &blueice_ipc::ClientMessage::Navigate {
-        url: url.clone(),
-    }).unwrap();
-    assert_eq!(blueice_ipc::read_server_message(&mut frontend).unwrap(),
-        blueice_ipc::ServerMessage::Navigated { url });
+    blueice_ipc::write_client_message(
+        &mut frontend,
+        &blueice_ipc::ClientMessage::Navigate { url: url.clone() },
+    )
+    .unwrap();
+    assert_eq!(
+        blueice_ipc::read_server_message(&mut frontend).unwrap(),
+        blueice_ipc::ServerMessage::Navigated { url }
+    );
     target_server.join().unwrap();
 
     probe.write_all(b"q").unwrap();
-    blueice_ipc::write_client_message(&mut frontend, &blueice_ipc::ClientMessage::Shutdown).unwrap();
+    blueice_ipc::write_client_message(&mut frontend, &blueice_ipc::ClientMessage::Shutdown)
+        .unwrap();
     assert!(core.wait().unwrap().success());
     assert!(!core_socket.exists());
     assert!(!extension_socket.exists());
@@ -2285,7 +2735,10 @@ fn core_waits_for_its_spawned_extension_host_and_rejects_a_bearer_claim_peer() {
     ));
     let (package_root, manifest, extension_id) =
         extension_manifest_package("authenticated-host", &["dom:read"]);
-    let extension_host = core_extension_host_probe_script(&package_root, "extension_host_probe_child_authenticates_to_core");
+    let extension_host = core_extension_host_probe_script(
+        &package_root,
+        "extension_host_probe_child_authenticates_to_core",
+    );
     let _ = std::fs::remove_file(&core_socket);
     let _ = std::fs::remove_file(&extension_socket);
     let _ = std::fs::remove_dir_all(&frame_dir);
@@ -2395,7 +2848,9 @@ fn core_spawned_extension_toolbar_reaches_client_and_activation_reaches_host() {
         .expect("failed to spawn core with its native UI extension host");
     assert!(wait_for(&core_socket, Duration::from_secs(15)));
     let mut frontend = UnixStream::connect(&core_socket).unwrap();
-    frontend.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+    frontend
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .unwrap();
     blueice_ipc::client_handshake(&mut frontend).unwrap();
     assert_eq!(
         blueice_ipc::read_server_message(&mut frontend).unwrap(),
@@ -2445,14 +2900,18 @@ fn core_spawned_extension_toolbar_reaches_client_and_activation_reaches_host() {
     blueice_ipc::write_client_message(
         &mut frontend,
         &blueice_ipc::ClientMessage::ActivateExtensionPopupAction { popup_id: 1 },
-    ).unwrap();
-    assert!(matches!(blueice_ipc::read_server_message(&mut frontend).unwrap(),
+    )
+    .unwrap();
+    assert!(
+        matches!(blueice_ipc::read_server_message(&mut frontend).unwrap(),
         blueice_ipc::ServerMessage::Error { message }
-            if message.contains("no matching live extension popup action")));
+            if message.contains("no matching live extension popup action"))
+    );
     blueice_ipc::write_client_message(
         &mut frontend,
         &blueice_ipc::ClientMessage::ActivateExtensionPopupAction { popup_id: 2 },
-    ).unwrap();
+    )
+    .unwrap();
     assert_eq!(
         blueice_ipc::read_server_message(&mut frontend).unwrap(),
         blueice_ipc::ServerMessage::ExtensionPopup { popup: None }
@@ -2632,9 +3091,33 @@ fn installed_extension_v9_writes_controls_and_reviewed_visible_text_after_gateke
                 })
                 .expect("the navigated form must expose its integer range input")
                 .id;
-            let headline_id = snapshot.nodes.iter().find(|node| matches!(node.role, blueice_ipc::Role::Heading { .. }) && node.name.as_deref() == Some("Before")).expect("the page must expose its heading").id;
-            let formatted_id = snapshot.nodes.iter().find(|node| matches!(node.role, blueice_ipc::Role::Paragraph) && node.name.as_deref().is_some_and(|name| name.starts_with("Before bold"))).expect("the page must expose its formatted paragraph").id;
-            let linked_id = snapshot.nodes.iter().filter(|node| matches!(node.role, blueice_ipc::Role::Paragraph)).last().expect("the page must expose its linked paragraph").id;
+            let headline_id = snapshot
+                .nodes
+                .iter()
+                .find(|node| {
+                    matches!(node.role, blueice_ipc::Role::Heading { .. })
+                        && node.name.as_deref() == Some("Before")
+                })
+                .expect("the page must expose its heading")
+                .id;
+            let formatted_id = snapshot
+                .nodes
+                .iter()
+                .find(|node| {
+                    matches!(node.role, blueice_ipc::Role::Paragraph)
+                        && node
+                            .name
+                            .as_deref()
+                            .is_some_and(|name| name.starts_with("Before bold"))
+                })
+                .expect("the page must expose its formatted paragraph")
+                .id;
+            let linked_id = snapshot
+                .nodes
+                .iter()
+                .rfind(|node| matches!(node.role, blueice_ipc::Role::Paragraph))
+                .expect("the page must expose its linked paragraph")
+                .id;
             (
                 input_id,
                 checkbox_id,
@@ -2692,34 +3175,71 @@ fn installed_extension_v9_writes_controls_and_reviewed_visible_text_after_gateke
         blueice_ipc::ServerMessage::FrameReady { .. }
     ));
 
-    write_extension_request(&mut extension, &ExtensionRequest::SetVisibleLeafText {
-        tab_id: 1, node_id: headline_id, value: "After".to_string(),
-    }).unwrap();
-    assert_eq!(read_extension_reply(&mut extension).unwrap(), ExtensionReply::DomWriteAck);
-    let (reply_tab, request_id, frame) = blueice_ipc::read_server_message_with_ids(&mut frontend).unwrap();
-    assert_eq!(reply_tab, Some(1));
-    assert_eq!(request_id, None);
-    assert!(matches!(frame, blueice_ipc::ServerMessage::FrameReady { .. }));
-
-    write_extension_request(&mut extension, &ExtensionRequest::SetVisibleTextContent {
-        tab_id: 1, node_id: formatted_id, value: "After format".to_string(),
-    }).unwrap();
-    assert_eq!(read_extension_reply(&mut extension).unwrap(), ExtensionReply::DomWriteAck);
+    write_extension_request(
+        &mut extension,
+        &ExtensionRequest::SetVisibleLeafText {
+            tab_id: 1,
+            node_id: headline_id,
+            value: "After".to_string(),
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        read_extension_reply(&mut extension).unwrap(),
+        ExtensionReply::DomWriteAck
+    );
     let (reply_tab, request_id, frame) =
         blueice_ipc::read_server_message_with_ids(&mut frontend).unwrap();
     assert_eq!(reply_tab, Some(1));
     assert_eq!(request_id, None);
-    assert!(matches!(frame, blueice_ipc::ServerMessage::FrameReady { .. }));
+    assert!(matches!(
+        frame,
+        blueice_ipc::ServerMessage::FrameReady { .. }
+    ));
 
-    write_extension_request(&mut extension, &ExtensionRequest::SetVisibleTextContent {
-        tab_id: 1, node_id: linked_id, value: "Must not remove link".to_string(),
-    }).unwrap();
+    write_extension_request(
+        &mut extension,
+        &ExtensionRequest::SetVisibleTextContent {
+            tab_id: 1,
+            node_id: formatted_id,
+            value: "After format".to_string(),
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        read_extension_reply(&mut extension).unwrap(),
+        ExtensionReply::DomWriteAck
+    );
+    let (reply_tab, request_id, frame) =
+        blueice_ipc::read_server_message_with_ids(&mut frontend).unwrap();
+    assert_eq!(reply_tab, Some(1));
+    assert_eq!(request_id, None);
+    assert!(matches!(
+        frame,
+        blueice_ipc::ServerMessage::FrameReady { .. }
+    ));
+
+    write_extension_request(
+        &mut extension,
+        &ExtensionRequest::SetVisibleTextContent {
+            tab_id: 1,
+            node_id: linked_id,
+            value: "Must not remove link".to_string(),
+        },
+    )
+    .unwrap();
     assert!(matches!(read_extension_reply(&mut extension).unwrap(),
         ExtensionReply::OperationUnavailable { capability, reason }
             if capability == "dom:write" && reason.contains("inline formatting")));
-    write_extension_request(&mut extension, &ExtensionRequest::SetVisibleTextContent {
-        tab_id: 1, node_id: formatted_id, value: "Enter your password".to_string(),
-    }).unwrap();
+    write_extension_request(
+        &mut extension,
+        &ExtensionRequest::SetVisibleTextContent {
+            tab_id: 1,
+            node_id: formatted_id,
+            value: "Enter your password".to_string(),
+        },
+    )
+    .unwrap();
     assert!(matches!(read_extension_reply(&mut extension).unwrap(),
         ExtensionReply::GatekeeperBlocked { capability, category, .. }
             if capability == "dom:write" && category == "extension-visible-text-social-engineering"));
@@ -2888,9 +3408,30 @@ fn installed_extension_v9_writes_controls_and_reviewed_visible_text_after_gateke
             .and_then(|node| node.state.value.as_deref()),
         Some("6")
     );
-    assert_eq!(snapshot.nodes.iter().find(|node| node.id == headline_id).and_then(|node| node.name.as_deref()), Some("After"));
-    assert_eq!(snapshot.nodes.iter().find(|node| node.id == formatted_id).and_then(|node| node.name.as_deref()), Some("After format"));
-    assert_eq!(snapshot.nodes.iter().find(|node| node.id == linked_id).and_then(|node| node.name.as_deref()), Some("Before"));
+    assert_eq!(
+        snapshot
+            .nodes
+            .iter()
+            .find(|node| node.id == headline_id)
+            .and_then(|node| node.name.as_deref()),
+        Some("After")
+    );
+    assert_eq!(
+        snapshot
+            .nodes
+            .iter()
+            .find(|node| node.id == formatted_id)
+            .and_then(|node| node.name.as_deref()),
+        Some("After format")
+    );
+    assert_eq!(
+        snapshot
+            .nodes
+            .iter()
+            .find(|node| node.id == linked_id)
+            .and_then(|node| node.name.as_deref()),
+        Some("Before")
+    );
     assert_eq!(
         snapshot
             .nodes
@@ -2916,295 +3457,6 @@ fn installed_extension_v9_writes_controls_and_reviewed_visible_text_after_gateke
     assert!(!frame_dir.exists());
     let _ = std::fs::remove_dir_all(package_root);
     let _ = std::fs::remove_file(gatekeeper_socket);
-}
-
-#[test]
-fn subprocess_navigation_runs_bluejs_before_its_first_frame() {
-    let _guard = core_process_test_guard();
-    let socket_path = unique_socket_path("bluejs-session");
-    let script_path = unique_socket_path("bluejs-script");
-    let frame_dir = std::env::temp_dir().join(format!(
-        "blueice-core-binary-script-frames-{}",
-        std::process::id()
-    ));
-    let _ = std::fs::remove_file(&socket_path);
-    let _ = std::fs::remove_file(&script_path);
-    let _ = std::fs::remove_dir_all(&frame_dir);
-    let gatekeeper_path = clearing_gatekeeper("js-gk");
-
-    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-    let addr = listener.local_addr().unwrap();
-    thread::spawn(move || {
-        let (mut stream, _) = listener.accept().unwrap();
-        let mut buf = [0u8; 1024];
-        let _ = stream.read(&mut buf);
-        let body = r#"<div id="target"></div><script>
-            let target = document.querySelector('#target');
-            let message = document.createElement('p');
-            message.textContent = 'automatic bluejs turn';
-            target.appendChild(message);
-        </script>"#;
-        stream
-            .write_all(
-                format!(
-                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
-                    body.len()
-                )
-                .as_bytes(),
-            )
-            .unwrap();
-    });
-
-    let mut core = Command::new(env!("CARGO_BIN_EXE_blueice-core"))
-        .args([
-            "--socket",
-            socket_path.to_str().unwrap(),
-            "--script-socket",
-            script_path.to_str().unwrap(),
-            "--frame-dir",
-            frame_dir.to_str().unwrap(),
-            "--gatekeeper-socket",
-            gatekeeper_path.to_str().unwrap(),
-        ])
-        .spawn()
-        .expect("failed to spawn blueice-core with script socket");
-    assert!(wait_for(&socket_path, Duration::from_secs(5)));
-
-    let mut bluejs = Command::new(sibling_bluejs_binary())
-        .args(["--script-socket", script_path.to_str().unwrap()])
-        .spawn()
-        .expect("failed to spawn bluejs sibling binary");
-    let mut stream = UnixStream::connect(&socket_path).unwrap();
-    blueice_ipc::client_handshake(&mut stream).unwrap();
-    blueice_ipc::write_client_message(
-        &mut stream,
-        &blueice_ipc::ClientMessage::Navigate {
-            url: format!("http://{addr}"),
-        },
-    )
-    .unwrap();
-    assert!(matches!(
-        blueice_ipc::read_server_message(&mut stream).unwrap(),
-        blueice_ipc::ServerMessage::Navigated { .. }
-    ));
-    assert!(matches!(
-        blueice_ipc::read_server_message(&mut stream).unwrap(),
-        blueice_ipc::ServerMessage::FrameReady { generation: 1, .. }
-    ));
-    blueice_ipc::write_client_message(&mut stream, &blueice_ipc::ClientMessage::GetDom).unwrap();
-    let dom = match blueice_ipc::read_server_message(&mut stream).unwrap() {
-        blueice_ipc::ServerMessage::Dom(dom) => dom,
-        reply => panic!("expected DOM after scripted navigation, got {reply:?}"),
-    };
-    assert!(dom.contains("automatic bluejs turn"));
-
-    blueice_ipc::write_client_message(&mut stream, &blueice_ipc::ClientMessage::Shutdown).unwrap();
-    assert!(core.wait().unwrap().success());
-    assert!(bluejs.wait().unwrap().success());
-    assert!(!socket_path.exists());
-    assert!(!script_path.exists());
-}
-
-#[test]
-fn real_subprocess_serves_two_independently_addressed_tabs_without_cross_contamination() {
-    let _guard = core_process_test_guard();
-    // `phase-16-multi-tab-and-tab-groups/PLAN.md`'s minimal-first-slice
-    // proof, one layer up from `session.rs`'s own in-process tests: the
-    // real compiled `blueice-core` binary, driven over a real socket,
-    // must keep two tabs' navigation and representation fully
-    // independent.
-    let socket_path = unique_socket_path("multi-tab");
-    let frame_dir = std::env::temp_dir().join(format!(
-        "blueice-core-binary-test-frames-multi-tab-{}",
-        std::process::id()
-    ));
-    let _ = std::fs::remove_file(&socket_path);
-    let _ = std::fs::remove_dir_all(&frame_dir);
-    let gatekeeper_path = clearing_gatekeeper("mt-gk"); // short: Unix socket paths are capped at ~100 bytes total
-
-    let listener_one = TcpListener::bind("127.0.0.1:0").unwrap();
-    let addr_one = listener_one.local_addr().unwrap();
-    thread::spawn(move || {
-        let (mut stream, _) = listener_one.accept().unwrap();
-        let mut buf = [0u8; 1024];
-        let _ = stream.read(&mut buf);
-        let body = "<p>first tab content</p>";
-        stream
-            .write_all(
-                format!(
-                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
-                    body.len()
-                )
-                .as_bytes(),
-            )
-            .unwrap();
-    });
-    let listener_two = TcpListener::bind("127.0.0.1:0").unwrap();
-    let addr_two = listener_two.local_addr().unwrap();
-    thread::spawn(move || {
-        let (mut stream, _) = listener_two.accept().unwrap();
-        let mut buf = [0u8; 1024];
-        let _ = stream.read(&mut buf);
-        let body = "<p>second tab content</p>";
-        stream
-            .write_all(
-                format!(
-                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
-                    body.len()
-                )
-                .as_bytes(),
-            )
-            .unwrap();
-    });
-
-    let mut child = Command::new(env!("CARGO_BIN_EXE_blueice-core"))
-        .args([
-            "--socket",
-            socket_path.to_str().unwrap(),
-            "--width",
-            "300",
-            "--height",
-            "150",
-            "--frame-dir",
-            frame_dir.to_str().unwrap(),
-            "--gatekeeper-socket",
-            gatekeeper_path.to_str().unwrap(),
-        ])
-        .spawn()
-        .expect("failed to spawn blueice-core");
-
-    assert!(
-        wait_for(&socket_path, Duration::from_secs(5)),
-        "blueice-core never created its socket"
-    );
-    let mut stream =
-        UnixStream::connect(&socket_path).expect("failed to connect to the real subprocess");
-    blueice_ipc::client_handshake(&mut stream)
-        .expect("the real subprocess must complete the protocol_version handshake");
-
-    // Navigate the default (first) tab.
-    let url_one = format!("http://{addr_one}");
-    blueice_ipc::write_client_message(
-        &mut stream,
-        &blueice_ipc::ClientMessage::Navigate {
-            url: url_one.clone(),
-        },
-    )
-    .unwrap();
-    assert_eq!(
-        blueice_ipc::read_server_message(&mut stream).unwrap(),
-        blueice_ipc::ServerMessage::Navigated { url: url_one }
-    );
-    assert!(matches!(
-        blueice_ipc::read_server_message(&mut stream).unwrap(),
-        blueice_ipc::ServerMessage::FrameReady { .. }
-    ));
-
-    // Open a second tab navigated straight to a different URL.
-    let url_two = format!("http://{addr_two}");
-    blueice_ipc::write_client_message(
-        &mut stream,
-        &blueice_ipc::ClientMessage::OpenTab {
-            url: Some(url_two.clone()),
-        },
-    )
-    .unwrap();
-    let (tab_two, tab_two_url) = match blueice_ipc::read_server_message(&mut stream).unwrap() {
-        blueice_ipc::ServerMessage::TabOpened { tab_id, url } => (tab_id, url),
-        other => panic!("expected TabOpened, got {other:?}"),
-    };
-    assert_eq!(tab_two_url, Some(url_two));
-    assert!(matches!(
-        blueice_ipc::read_server_message(&mut stream).unwrap(),
-        blueice_ipc::ServerMessage::FrameReady { .. }
-    ));
-
-    // The default tab's own representation must still show only its
-    // own content -- opening and navigating a second tab must not have
-    // touched it.
-    blueice_ipc::write_client_message(&mut stream, &blueice_ipc::ClientMessage::GetRepresentation)
-        .unwrap();
-    let default_tab_snapshot = match blueice_ipc::read_server_message(&mut stream).unwrap() {
-        blueice_ipc::ServerMessage::Representation(snapshot) => snapshot,
-        other => panic!("expected Representation, got {other:?}"),
-    };
-    assert!(default_tab_snapshot
-        .nodes
-        .iter()
-        .any(|n| n.name.as_deref() == Some("first tab content")));
-    assert!(!default_tab_snapshot
-        .nodes
-        .iter()
-        .any(|n| n.name.as_deref() == Some("second tab content")));
-
-    // The second tab's representation, addressed explicitly, must show
-    // only *its* content.
-    blueice_ipc::write_client_message_with_ids(
-        &mut stream,
-        Some(tab_two),
-        None,
-        &blueice_ipc::ClientMessage::GetRepresentation,
-    )
-    .unwrap();
-    let (reply_tab, _, reply) = blueice_ipc::read_server_message_with_ids(&mut stream).unwrap();
-    assert_eq!(reply_tab, Some(tab_two));
-    let tab_two_snapshot = match reply {
-        blueice_ipc::ServerMessage::Representation(snapshot) => snapshot,
-        other => panic!("expected Representation, got {other:?}"),
-    };
-    assert_eq!(tab_two_snapshot.tab_id, tab_two);
-    assert!(tab_two_snapshot
-        .nodes
-        .iter()
-        .any(|n| n.name.as_deref() == Some("second tab content")));
-    assert!(!tab_two_snapshot
-        .nodes
-        .iter()
-        .any(|n| n.name.as_deref() == Some("first tab content")));
-
-    blueice_ipc::write_client_message(&mut stream, &blueice_ipc::ClientMessage::Shutdown).unwrap();
-    let status = child
-        .wait()
-        .expect("failed to wait for blueice-core to exit");
-    assert!(
-        status.success(),
-        "blueice-core must exit cleanly after Shutdown"
-    );
-
-    assert!(!socket_path.exists());
-    assert!(!frame_dir.exists());
-}
-
-#[test]
-fn a_client_disconnecting_without_shutdown_still_lets_the_subprocess_exit_cleanly() {
-    let _guard = core_process_test_guard();
-    let socket_path = unique_socket_path("disconnect");
-    let frame_dir = std::env::temp_dir().join(format!(
-        "blueice-core-binary-test-frames-disconnect-{}",
-        std::process::id()
-    ));
-    let _ = std::fs::remove_file(&socket_path);
-    let _ = std::fs::remove_dir_all(&frame_dir);
-
-    let mut child = Command::new(env!("CARGO_BIN_EXE_blueice-core"))
-        .args([
-            "--socket",
-            socket_path.to_str().unwrap(),
-            "--frame-dir",
-            frame_dir.to_str().unwrap(),
-        ])
-        .spawn()
-        .expect("failed to spawn blueice-core");
-
-    assert!(wait_for(&socket_path, Duration::from_secs(5)));
-    let stream = UnixStream::connect(&socket_path).unwrap();
-    drop(stream); // disconnect without ever sending Shutdown
-
-    let status = child.wait_timeout_or_kill();
-    assert!(
-        status.success(),
-        "blueice-core must exit cleanly when its one client just disconnects"
-    );
 }
 
 trait WaitTimeoutOrKill {
@@ -3401,4 +3653,176 @@ fn opening_about_downloads_starts_the_downloads_process_and_the_open_page_follow
     read_downloads_reply(&mut raw).unwrap();
     blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
     let _ = cleanup.core.wait();
+}
+
+fn connect_with_retry(path: &std::path::Path, timeout: Duration) -> std::io::Result<UnixStream> {
+    let deadline = Instant::now() + timeout;
+    loop {
+        match UnixStream::connect(path) {
+            Ok(stream) => return Ok(stream),
+            Err(_) if Instant::now() < deadline => thread::sleep(Duration::from_millis(10)),
+            Err(error) => return Err(error),
+        }
+    }
+}
+
+fn serve_html_once(body: &'static str) -> (std::net::SocketAddr, thread::JoinHandle<()>) {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let address = listener.local_addr().unwrap();
+    let server = thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        let mut request = [0u8; 1024];
+        let _ = stream.read(&mut request);
+        stream
+            .write_all(
+                format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                )
+                .as_bytes(),
+            )
+            .unwrap();
+    });
+    (address, server)
+}
+
+fn read_tab_dom(frontend: &mut UnixStream, tab_id: u64, request_id: u64) -> String {
+    blueice_ipc::write_client_message_with_ids(
+        frontend,
+        Some(tab_id),
+        Some(request_id),
+        &blueice_ipc::ClientMessage::GetDom,
+    )
+    .unwrap();
+    loop {
+        let (reply_tab, reply_id, reply) =
+            blueice_ipc::read_server_message_with_ids(frontend).unwrap();
+        if reply_id != Some(request_id) {
+            assert!(matches!(
+                reply,
+                blueice_ipc::ServerMessage::FrameReady { .. }
+            ));
+            continue;
+        }
+        assert_eq!(reply_tab, Some(tab_id));
+        let blueice_ipc::ServerMessage::Dom(dom) = reply else {
+            panic!("expected a DOM dump, got {reply:?}");
+        };
+        return dom;
+    }
+}
+
+fn script_exchange(
+    script: &mut UnixStream,
+    next_call_id: &mut u64,
+    request: blueice_ipc::script::ScriptRequest,
+) -> blueice_ipc::script::ScriptReply {
+    use blueice_ipc::script::{ScriptReply, ScriptRequest};
+    let Some(target) = request.document_target() else {
+        assert!(matches!(request, ScriptRequest::Hello { .. }));
+        blueice_ipc::script::write_script_request(script, &request).unwrap();
+        return blueice_ipc::script::read_script_reply(script).unwrap();
+    };
+    let request_id = *next_call_id;
+    *next_call_id = next_call_id.checked_add(1).unwrap();
+    blueice_ipc::script::write_script_request(
+        script,
+        &ScriptRequest::Call {
+            request_id,
+            request: Box::new(request),
+        },
+    )
+    .unwrap();
+    match blueice_ipc::script::read_script_reply(script).unwrap() {
+        ScriptReply::CallResult {
+            request_id: actual_id,
+            target: actual_target,
+            reply,
+        } if actual_id == request_id && actual_target == target => *reply,
+        reply => panic!("script reply must echo call ID and document target: {reply:?}"),
+    }
+}
+
+fn navigate_default_tab(frontend: &mut UnixStream, url: String) {
+    blueice_ipc::write_client_message(
+        frontend,
+        &blueice_ipc::ClientMessage::Navigate { url: url.clone() },
+    )
+    .unwrap();
+    loop {
+        let reply = blueice_ipc::read_server_message(frontend)
+            .unwrap_or_else(|error| panic!("navigation to {url} failed: {error}"));
+        match reply {
+            blueice_ipc::ServerMessage::Navigated { url: navigated } => {
+                assert_eq!(navigated, url);
+                break;
+            }
+            blueice_ipc::ServerMessage::FrameReady { .. } => {}
+            other => panic!("unexpected navigation reply: {other:?}"),
+        }
+    }
+    assert!(matches!(
+        blueice_ipc::read_server_message(frontend).unwrap(),
+        blueice_ipc::ServerMessage::FrameReady { .. }
+    ));
+}
+
+/// Sends one complete native-debugger request/response pair over the real
+/// socket and asserts that the raw public reply has not reflected this
+/// fixture's page-controlled secret, a VM/completion representation, or a
+/// known BlueJS opcode before decoding it. The protocol intentionally permits
+/// an opaque instruction *offset*; that is not bytecode disclosure.
+fn debugger_request(
+    stream: &mut UnixStream,
+    request: &blueice_ipc::debugger::DebuggerRequest,
+    page_secret: &str,
+) -> blueice_ipc::debugger::DebuggerReply {
+    blueice_ipc::debugger::write_debugger_request(stream, request)
+        .expect("must write debugger request to real core socket");
+    let mut length = [0u8; 4];
+    stream
+        .read_exact(&mut length)
+        .expect("real core must write a debugger reply length");
+    let mut payload = vec![0u8; u32::from_le_bytes(length) as usize];
+    stream
+        .read_exact(&mut payload)
+        .expect("real core must write a complete debugger reply payload");
+    let rendered =
+        std::str::from_utf8(&payload).expect("debugger reply framing must contain UTF-8 JSON");
+    assert!(
+        !rendered.contains(page_secret),
+        "debugger reply must not disclose page source or its completion value: {rendered}"
+    );
+    assert!(
+        !rendered.contains("Value(")
+            && !rendered.contains("StoreBinding")
+            && !rendered.contains("\"value\"")
+            && !rendered.contains("\"completion\"")
+            && !rendered.contains("\"opcode\""),
+        "debugger reply must not disclose a VM value, completion payload, or bytecode opcode: {rendered}"
+    );
+    serde_json::from_slice(&payload).expect("real core must return a debugger reply JSON shape")
+}
+
+fn wait_for_debugger_state(
+    stream: &mut UnixStream,
+    program: blueice_ipc::debugger::DebuggerProgram,
+    state: blueice_ipc::debugger::DebuggerExecutionState,
+    page_secret: &str,
+) {
+    let expected = blueice_ipc::debugger::DebuggerReply::ExecutionState { program, state };
+    let mut observed = None;
+    for _ in 0..20 {
+        let reply = debugger_request(
+            stream,
+            &blueice_ipc::debugger::DebuggerRequest::GetExecutionState { program },
+            page_secret,
+        );
+        if reply == expected {
+            return;
+        }
+        observed = Some(reply);
+        thread::sleep(Duration::from_millis(50));
+    }
+    panic!("expected debugger state {expected:?}, last observed {observed:?}");
 }

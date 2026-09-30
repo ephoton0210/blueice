@@ -17,8 +17,8 @@
 //! `blueice-ipc` for it. It carries cutover commands and read-only
 //! inspection, but never a permission grant/revoke operation.
 
-use serde::{Deserialize, Serialize};
 use blueice_ipc::permission_control::{EphemeralCapabilityInfo, OptionalCapabilityInfo};
+use serde::{Deserialize, Serialize};
 use std::io::{self, Read, Write};
 use std::path::PathBuf;
 
@@ -46,7 +46,9 @@ pub enum ControlRequest {
     /// *propose*: the deterministic rule-base screens it, and nothing changes
     /// until the person approves it in the trusted window (which this socket
     /// cannot reach). `phase-7-local-ai/PLAN.md`, R5c.
-    ProposeAssistantSettings { settings: blueice_assistant_settings::AssistantSettings },
+    ProposeAssistantSettings {
+        settings: blueice_assistant_settings::AssistantSettings,
+    },
     /// Read-only: where a proposal stands.
     AssistantProposalStatus { id: u64 },
     /// Read-only: the assistant's settings in force, so an agent can build a
@@ -130,14 +132,20 @@ pub enum ControlReply {
     ExtensionPermissionsUnavailable { reason: String },
     /// The proposal passed the rule-base and now waits for the person's
     /// approval. Nothing has changed. `digest` names exactly what they will see.
-    AssistantProposalAccepted { id: u64, digest: String, diff: Vec<String> },
+    AssistantProposalAccepted {
+        id: u64,
+        digest: String,
+        diff: Vec<String>,
+    },
     /// The rule-base refused the proposal; each entry is one violated rule.
     AssistantProposalBlocked { violations: Vec<String> },
     /// The proposal could not be considered (one is already pending, too many
     /// this hour, or the launcher supervises no assistant).
     AssistantProposalRefused { reason: String },
     /// Reply to [`ControlRequest::InspectAssistantSettings`].
-    AssistantSettingsInForce { settings: Box<blueice_assistant_settings::AssistantSettings> },
+    AssistantSettingsInForce {
+        settings: Box<blueice_assistant_settings::AssistantSettings>,
+    },
     /// Reply to [`ControlRequest::AssistantProposalStatus`]: `pending`,
     /// `approved`, `denied`, `expired`, `stale`, or `unknown`.
     AssistantProposalStatus { status: String },
@@ -156,7 +164,10 @@ pub fn default_control_socket_path() -> PathBuf {
 fn write_framed<W: Write, T: Serialize>(w: &mut W, msg: &T) -> io::Result<()> {
     let bytes = serde_json::to_vec(msg).map_err(io::Error::other)?;
     if bytes.len() > MAX_CONTROL_FRAME_BYTES {
-        return Err(io::Error::new(io::ErrorKind::InvalidData, "control frame is oversized"));
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "control frame is oversized",
+        ));
     }
     let len = u32::try_from(bytes.len()).map_err(io::Error::other)?;
     w.write_all(&len.to_le_bytes())?;
@@ -169,7 +180,10 @@ fn read_framed<R: Read, T: for<'de> Deserialize<'de>>(r: &mut R) -> io::Result<T
     r.read_exact(&mut len_bytes)?;
     let len = u32::from_le_bytes(len_bytes) as usize;
     if len > MAX_CONTROL_FRAME_BYTES {
-        return Err(io::Error::new(io::ErrorKind::InvalidData, "control frame is oversized"));
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "control frame is oversized",
+        ));
     }
     let mut buf = vec![0u8; len];
     r.read_exact(&mut buf)?;
@@ -196,6 +210,7 @@ pub fn read_control_reply<R: Read>(r: &mut R) -> io::Result<ControlReply> {
 mod tests {
     use super::*;
     use std::io::Cursor;
+    #[cfg(unix)]
     use std::os::unix::net::UnixStream;
 
     #[test]
@@ -219,10 +234,12 @@ mod tests {
     fn control_socket_has_no_optional_permission_grant_or_revoke_request() {
         assert!(serde_json::from_str::<ControlRequest>(
             r#"{"GrantExtensionPermission":{"capability":"storage"}}"#
-        ).is_err());
+        )
+        .is_err());
         assert!(serde_json::from_str::<ControlRequest>(
             r#"{"RevokeExtensionPermission":{"capability":"storage"}}"#
-        ).is_err());
+        )
+        .is_err());
     }
 
     #[test]
@@ -233,8 +250,13 @@ mod tests {
                 reason: "boom".to_string(),
             },
             ControlReply::CutoverBusy,
-            ControlReply::ExtensionPermissions { core_generation: 7, installed: None },
-            ControlReply::ExtensionPermissionsUnavailable { reason: "timed out".into() },
+            ControlReply::ExtensionPermissions {
+                core_generation: 7,
+                installed: None,
+            },
+            ControlReply::ExtensionPermissionsUnavailable {
+                reason: "timed out".into(),
+            },
         ] {
             let mut buf = Vec::new();
             write_control_reply(&mut buf, &reply).unwrap();
@@ -260,6 +282,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn control_protocol_round_trips_over_a_real_unix_socket() {
         let (mut a, mut b) = UnixStream::pair().unwrap();
         write_control_request(&mut a, &ControlRequest::Cutover).unwrap();
@@ -285,9 +308,13 @@ mod tests {
 
     #[test]
     fn oversized_control_frames_are_rejected_before_allocation() {
-        let mut oversized = ((MAX_CONTROL_FRAME_BYTES + 1) as u32).to_le_bytes().to_vec();
+        let mut oversized = ((MAX_CONTROL_FRAME_BYTES + 1) as u32)
+            .to_le_bytes()
+            .to_vec();
         assert_eq!(
-            read_control_request(&mut oversized.as_slice()).unwrap_err().kind(),
+            read_control_request(&mut oversized.as_slice())
+                .unwrap_err()
+                .kind(),
             io::ErrorKind::InvalidData
         );
         oversized.clear();
@@ -296,6 +323,7 @@ mod tests {
             &ControlReply::ExtensionPermissionsUnavailable {
                 reason: "x".repeat(MAX_CONTROL_FRAME_BYTES),
             }
-        ).is_err());
+        )
+        .is_err());
     }
 }

@@ -53,7 +53,10 @@ pub struct Fixture {
 
 impl Fixture {
     pub fn section(&self, name: &str) -> Option<&str> {
-        self.sections.iter().find(|(n, _)| n == name).map(|(_, v)| v.as_str())
+        self.sections
+            .iter()
+            .find(|(n, _)| n == name)
+            .map(|(_, v)| v.as_str())
     }
 
     /// The `#data` section (the HTML input). Every fixture must have
@@ -84,7 +87,11 @@ impl Fixture {
 /// invent a whole embedded-content-escaping scheme for.
 fn section_marker(line: &str) -> Option<&str> {
     let name = line.strip_prefix('#')?;
-    if !name.is_empty() && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-') {
+    if !name.is_empty()
+        && name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+    {
         Some(name)
     } else {
         None
@@ -100,7 +107,10 @@ pub fn parse_fixtures(source_name: &str, content: &str) -> Vec<Fixture> {
     let mut current: Option<(String, Vec<&str>)> = None;
     let mut index = 0usize;
 
-    fn flush_section(current: &mut Option<(String, Vec<&str>)>, sections: &mut Vec<(String, String)>) {
+    fn flush_section(
+        current: &mut Option<(String, Vec<&str>)>,
+        sections: &mut Vec<(String, String)>,
+    ) {
         if let Some((name, mut lines)) = current.take() {
             // A blank line separating two fixtures in the same file is a
             // separator, not trailing content of the section it happens
@@ -126,7 +136,12 @@ pub fn parse_fixtures(source_name: &str, content: &str) -> Vec<Fixture> {
         }
     }
 
-    fn flush_fixture(sections: &mut Vec<(String, String)>, fixtures: &mut Vec<Fixture>, source_name: &str, index: &mut usize) {
+    fn flush_fixture(
+        sections: &mut Vec<(String, String)>,
+        fixtures: &mut Vec<Fixture>,
+        source_name: &str,
+        index: &mut usize,
+    ) {
         if !sections.is_empty() {
             fixtures.push(Fixture {
                 name: format!("{source_name}#{index}"),
@@ -170,7 +185,8 @@ pub fn load_fixtures(dir: &Path) -> Vec<Fixture> {
     paths
         .into_iter()
         .flat_map(|path| {
-            let content = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("reading {path:?}: {e}"));
+            let content =
+                std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("reading {path:?}: {e}"));
             let source_name = path.file_name().unwrap().to_string_lossy().to_string();
             parse_fixtures(&source_name, &content)
         })
@@ -197,7 +213,10 @@ mod tests {
         // re-export this corpus's existing #document-section call
         // sites depend on actually points at it.
         let mut doc = Document::new();
-        let p = doc.create_node(NodeData::Element { tag_name: "p".to_string(), attributes: vec![] });
+        let p = doc.create_node(NodeData::Element {
+            tag_name: "p".to_string(),
+            attributes: vec![],
+        });
         doc.append_child(doc.root(), p);
         assert_eq!(dump_dom(&doc), blueice_dom::dump(&doc));
         assert_eq!(dump_dom(&doc), "| <p>\n");
@@ -205,10 +224,7 @@ mod tests {
 
     #[test]
     fn parse_single_fixture_with_data_and_document() {
-        let fixtures = parse_fixtures(
-            "t.dat",
-            "#data\n<p>hi</p>\n#document\n| <p>\n|   \"hi\"\n",
-        );
+        let fixtures = parse_fixtures("t.dat", "#data\n<p>hi</p>\n#document\n| <p>\n|   \"hi\"\n");
         assert_eq!(fixtures.len(), 1);
         assert_eq!(fixtures[0].name, "t.dat#0");
         assert_eq!(fixtures[0].data(), "<p>hi</p>");
@@ -235,8 +251,10 @@ mod tests {
         // the exact same #document value as the same fixture written
         // last in a file with no trailing blank line.
         let alone = parse_fixtures("t.dat", "#data\n<p>hi</p>\n#document\n| <p>\n|   \"hi\"\n");
-        let followed_by_another =
-            parse_fixtures("t.dat", "#data\n<p>hi</p>\n#document\n| <p>\n|   \"hi\"\n\n#data\n<p>x</p>\n#document\n| <p>\n");
+        let followed_by_another = parse_fixtures(
+            "t.dat",
+            "#data\n<p>hi</p>\n#document\n| <p>\n|   \"hi\"\n\n#data\n<p>x</p>\n#document\n| <p>\n",
+        );
         assert_eq!(alone[0].document(), followed_by_another[0].document());
         assert_eq!(followed_by_another[0].document(), Some("| <p>\n|   \"hi\""));
     }
@@ -248,7 +266,10 @@ mod tests {
         // immediately) -- it's literal input content, e.g. WPT's
         // `<table>\n` fixture, which must round-trip with the newline
         // intact rather than having it silently stripped.
-        let fixtures = parse_fixtures("t.dat", "#data\n<table>\n\n#errors\nsomething\n#document\n| <table>\n");
+        let fixtures = parse_fixtures(
+            "t.dat",
+            "#data\n<table>\n\n#errors\nsomething\n#document\n| <table>\n",
+        );
         assert_eq!(fixtures[0].data(), "<table>\n");
     }
 
@@ -257,9 +278,15 @@ mod tests {
         // regression test: a #css section's content can legitimately
         // contain a CSS ID selector (`#x { ... }`), which must not be
         // misread as the start of a new "x { ... }" section.
-        let fixtures = parse_fixtures("t.dat", "#data\n<p>x</p>\n#css\n.a { color: red; }\n#x { color: blue; }\n#styles\n| <p>\n");
+        let fixtures = parse_fixtures(
+            "t.dat",
+            "#data\n<p>x</p>\n#css\n.a { color: red; }\n#x { color: blue; }\n#styles\n| <p>\n",
+        );
         assert_eq!(fixtures.len(), 1);
-        assert_eq!(fixtures[0].section("css"), Some(".a { color: red; }\n#x { color: blue; }"));
+        assert_eq!(
+            fixtures[0].section("css"),
+            Some(".a { color: red; }\n#x { color: blue; }")
+        );
         assert_eq!(fixtures[0].section("styles"), Some("| <p>"));
     }
 
@@ -299,7 +326,10 @@ mod tests {
 
     #[test]
     fn load_fixtures_reads_every_dat_file_in_a_directory_sorted() {
-        let dir = std::env::temp_dir().join(format!("blueice-testing-fixtures-test-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!(
+            "blueice-testing-fixtures-test-{}",
+            std::process::id()
+        ));
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("b.dat"), "#data\n<p>b</p>\n").unwrap();
         std::fs::write(dir.join("a.dat"), "#data\n<p>a</p>\n").unwrap();

@@ -28,9 +28,9 @@ mod selector;
 mod tokenizer;
 mod value;
 
-pub use cascade::{ComputedStyle, Origin, cascade, ua_stylesheet};
+pub use cascade::{cascade, ua_stylesheet, ComputedStyle, Origin};
 pub use parser::{Declaration, Rule};
-pub use selector::{ComplexSelector, Compound, SimpleSelector, Specificity, matches};
+pub use selector::{matches, ComplexSelector, Compound, SimpleSelector, Specificity};
 pub use value::{Color, Length, Value};
 
 /// A parsed CSS stylesheet: its rules, in source order. Not yet matched

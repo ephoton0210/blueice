@@ -121,12 +121,13 @@ impl AssistantSettingsService {
     pub fn propose(&self, proposed: AssistantSettings) -> ProposeOutcome {
         let current = self.current();
         let mut store = self.store.lock().unwrap_or_else(|e| e.into_inner());
-        let outcome =
-            self.with_environment_view(|env| store.propose(Instant::now(), &current, proposed, env));
+        let outcome = self
+            .with_environment_view(|env| store.propose(Instant::now(), &current, proposed, env));
         match &outcome {
-            ProposeOutcome::Accepted { id, .. } => {
-                crate::trace::event("proposal.accepted", &format!("id {id}, waiting for the person"))
-            }
+            ProposeOutcome::Accepted { id, .. } => crate::trace::event(
+                "proposal.accepted",
+                &format!("id {id}, waiting for the person"),
+            ),
             ProposeOutcome::Blocked(rules) => crate::trace::event(
                 "proposal.blocked",
                 &format!("{} rule(s): {}", rules.len(), rules.join("; ")),

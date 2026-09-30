@@ -19,12 +19,22 @@ pub enum PermissionControlRequest {
     Inspect,
     /// Read-only live tab identity for binding a future one-shot gesture.
     /// This does not grant any capability and is unavailable on public IPC.
-    InspectDocument { tab_id: u64 },
+    InspectDocument {
+        tab_id: u64,
+    },
     /// Core-parent-only one-operation lease request. Core rechecks the live
     /// tab epoch and the installed runtime-ephemeral declaration itself.
-    ArmEphemeral { capability: String, tab_id: u64, document_epoch: u64 },
-    Grant { capability: String },
-    Revoke { capability: String },
+    ArmEphemeral {
+        capability: String,
+        tab_id: u64,
+        document_epoch: u64,
+    },
+    Grant {
+        capability: String,
+    },
+    Revoke {
+        capability: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -156,7 +166,9 @@ mod tests {
             PermissionControlRequest::Inspect,
             PermissionControlRequest::InspectDocument { tab_id: 7 },
             PermissionControlRequest::ArmEphemeral {
-                capability: "dom:read".into(), tab_id: 7, document_epoch: 12,
+                capability: "dom:read".into(),
+                tab_id: 7,
+                document_epoch: 12,
             },
             PermissionControlRequest::Grant {
                 capability: "dom:read".into(),
@@ -201,14 +213,22 @@ mod tests {
         };
         let mut wire = Vec::new();
         write_permission_control_reply(&mut wire, &document).unwrap();
-        assert_eq!(read_permission_control_reply(&mut wire.as_slice()).unwrap(), document);
+        assert_eq!(
+            read_permission_control_reply(&mut wire.as_slice()).unwrap(),
+            document
+        );
         let armed = PermissionControlReply::EphemeralArmed {
-            capability: "dom:read".into(), tab_id: 7, document_epoch: 12,
+            capability: "dom:read".into(),
+            tab_id: 7,
+            document_epoch: 12,
             ticket: "0123456789abcdef".repeat(4),
         };
         let mut wire = Vec::new();
         write_permission_control_reply(&mut wire, &armed).unwrap();
-        assert_eq!(read_permission_control_reply(&mut wire.as_slice()).unwrap(), armed);
+        assert_eq!(
+            read_permission_control_reply(&mut wire.as_slice()).unwrap(),
+            armed
+        );
     }
 
     #[test]

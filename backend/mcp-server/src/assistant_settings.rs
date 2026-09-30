@@ -390,7 +390,6 @@ mod tests {
         assert!(blocked.contains("- one\n- two"));
         assert!(describe(&SettingsOutcome::Refused("busy".into())).contains("busy"));
         assert!(describe(&SettingsOutcome::Status("denied".into())).contains("denied"));
-        assert!(describe(&SettingsOutcome::InForce(Box::default()))
-        .contains("idle_timeout_secs"));
+        assert!(describe(&SettingsOutcome::InForce(Box::default())).contains("idle_timeout_secs"));
     }
 }

@@ -60,8 +60,11 @@ pub struct FetchedPage {
 
 fn safe_content_type(response: &ureq::http::Response<ureq::Body>) -> Option<String> {
     let value = response.headers().get("content-type")?.to_str().ok()?;
-    (value.len() <= 256 && value.bytes().all(|byte| byte.is_ascii_graphic() || byte == b' '))
-        .then(|| value.to_string())
+    (value.len() <= 256
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_graphic() || byte == b' '))
+    .then(|| value.to_string())
 }
 
 /// The result of one HTTP navigation hop with automatic redirects disabled.
@@ -83,10 +86,43 @@ pub enum FetchHop {
 /// URL still gets an immediate error reply -- see that module's own
 /// docs) doesn't have to duplicate the check or its message format.
 pub fn validate_url_scheme(url: &str) -> Result<(), FetchError> {
-    if !(url.starts_with("http://") || url.starts_with("https://")) {
-        return Err(FetchError::InvalidUrl(format!("unsupported scheme in {url:?} (only http/https are supported)")));
-    }
-    Ok(())
+    canonical_http_origin(url).map(|_| ())
+}
+
+/// Returns the canonical tuple origin for a complete HTTP(S) URL without
+/// performing a request. This is the shared core policy boundary for callers
+/// that need to scope state (such as a page script realm) to the document that
+/// navigation accepted, rather than treating an arbitrary input string as an
+/// origin identity.
+///
+/// The network client itself already uses `ureq`'s HTTP URI implementation;
+/// relying on that parser here avoids creating a second URL grammar at the
+/// page-host boundary. Host names are ASCII-case-normalized and default ports
+/// are omitted, which gives the same origin identity to ordinary equivalent
+/// HTTP URI spellings.
+pub fn canonical_http_origin(url: &str) -> Result<String, FetchError> {
+    let uri = url
+        .parse::<ureq::http::Uri>()
+        .map_err(|error| FetchError::InvalidUrl(format!("malformed URL {url:?}: {error}")))?;
+    let scheme = match uri.scheme_str() {
+        Some(scheme) if scheme.eq_ignore_ascii_case("http") => "http",
+        Some(scheme) if scheme.eq_ignore_ascii_case("https") => "https",
+        _ => {
+            return Err(FetchError::InvalidUrl(format!(
+                "unsupported scheme in {url:?} (only http/https are supported)"
+            )));
+        }
+    };
+    let host = uri
+        .host()
+        .filter(|host| !host.is_empty())
+        .ok_or_else(|| FetchError::InvalidUrl(format!("missing HTTP(S) host in {url:?}")))?;
+    let port = uri.port_u16();
+    let port = match (scheme, port) {
+        ("http", Some(80)) | ("https", Some(443)) | (_, None) => String::new(),
+        (_, Some(port)) => format!(":{port}"),
+    };
+    Ok(format!("{scheme}://{}{port}", host.to_ascii_lowercase()))
 }
 
 /// Fetches `url` with a plain GET, following redirects, and returns the
@@ -97,7 +133,9 @@ pub fn validate_url_scheme(url: &str) -> Result<(), FetchError> {
 pub fn fetch(url: &str) -> Result<FetchedPage, FetchError> {
     validate_url_scheme(url)?;
 
-    let mut response = ureq::get(url).call().map_err(|e| FetchError::Request(e.to_string()))?;
+    let mut response = ureq::get(url)
+        .call()
+        .map_err(|e| FetchError::Request(e.to_string()))?;
     // MVP simplification: report the requested URL, not the post-
     // redirect one -- ureq follows redirects transparently but this
     // reference client doesn't yet surface the final effective URL
@@ -106,8 +144,16 @@ pub fn fetch(url: &str) -> Result<FetchedPage, FetchError> {
     let final_url = url.to_string();
     let status = response.status().as_u16();
     let content_type = safe_content_type(&response);
-    let body = response.body_mut().read_to_string().map_err(|e| FetchError::Body(e.to_string()))?;
-    Ok(FetchedPage { final_url, body, status, content_type })
+    let body = response
+        .body_mut()
+        .read_to_string()
+        .map_err(|e| FetchError::Body(e.to_string()))?;
+    Ok(FetchedPage {
+        final_url,
+        body,
+        status,
+        content_type,
+    })
 }
 
 /// Fetches exactly one HTTP navigation hop, never following a `Location`
@@ -181,7 +227,9 @@ mod tests {
 
     #[test]
     fn fetches_a_simple_response_body() {
-        let url = serve_once("HTTP/1.1 200 OK\r\nContent-Length: 13\r\nConnection: close\r\n\r\n<p>hello</p>\n");
+        let url = serve_once(
+            "HTTP/1.1 200 OK\r\nContent-Length: 13\r\nConnection: close\r\n\r\n<p>hello</p>\n",
+        );
         let page = fetch(&url).unwrap();
         assert_eq!(page.body, "<p>hello</p>\n");
     }
@@ -196,8 +244,42 @@ mod tests {
     fn validate_url_scheme_accepts_http_and_https_and_rejects_everything_else() {
         assert!(validate_url_scheme("http://example.com").is_ok());
         assert!(validate_url_scheme("https://example.com").is_ok());
-        assert!(matches!(validate_url_scheme("file:///etc/passwd"), Err(FetchError::InvalidUrl(_))));
-        assert!(matches!(validate_url_scheme("not-a-valid-url"), Err(FetchError::InvalidUrl(_))));
+        assert!(matches!(
+            validate_url_scheme("file:///etc/passwd"),
+            Err(FetchError::InvalidUrl(_))
+        ));
+        assert!(matches!(
+            validate_url_scheme("not-a-valid-url"),
+            Err(FetchError::InvalidUrl(_))
+        ));
+    }
+
+    #[test]
+    fn canonical_http_origin_normalizes_host_case_and_default_ports() {
+        assert_eq!(
+            canonical_http_origin("HTTP://EXAMPLE.test:80/a?x=1#section").unwrap(),
+            "http://example.test"
+        );
+        assert_eq!(
+            canonical_http_origin("https://Example.test:443/app").unwrap(),
+            "https://example.test"
+        );
+        assert_eq!(
+            canonical_http_origin("https://example.test:8443/app").unwrap(),
+            "https://example.test:8443"
+        );
+    }
+
+    #[test]
+    fn canonical_http_origin_requires_a_complete_http_url() {
+        assert!(matches!(
+            canonical_http_origin("https:///missing-host"),
+            Err(FetchError::InvalidUrl(_))
+        ));
+        assert!(matches!(
+            canonical_http_origin("about:blank"),
+            Err(FetchError::InvalidUrl(_))
+        ));
     }
 
     #[test]
@@ -215,16 +297,26 @@ mod tests {
 
     #[test]
     fn http_error_status_is_a_request_error() {
-        let url = serve_once("HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+        let url =
+            serve_once("HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
         let result = fetch(&url);
         assert!(matches!(result, Err(FetchError::Request(_))));
     }
 
     #[test]
     fn fetch_error_messages_are_human_readable() {
-        assert_eq!(FetchError::InvalidUrl("x".to_string()).to_string(), "invalid URL: x");
-        assert_eq!(FetchError::Request("x".to_string()).to_string(), "request failed: x");
-        assert_eq!(FetchError::Body("x".to_string()).to_string(), "reading response body failed: x");
+        assert_eq!(
+            FetchError::InvalidUrl("x".to_string()).to_string(),
+            "invalid URL: x"
+        );
+        assert_eq!(
+            FetchError::Request("x".to_string()).to_string(),
+            "request failed: x"
+        );
+        assert_eq!(
+            FetchError::Body("x".to_string()).to_string(),
+            "reading response body failed: x"
+        );
     }
 
     #[test]

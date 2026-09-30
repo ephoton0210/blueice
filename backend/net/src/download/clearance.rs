@@ -47,7 +47,7 @@
 
 use crate::download::probe::Probe;
 use blueice_ipc::gatekeeper::{
-    GatekeeperReply, GatekeeperRequest, read_gatekeeper_reply, write_gatekeeper_request,
+    read_gatekeeper_reply, write_gatekeeper_request, GatekeeperReply, GatekeeperRequest,
 };
 use std::io;
 use std::os::unix::net::UnixStream;

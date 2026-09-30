@@ -2,6 +2,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+#![cfg(unix)]
+
 //! The concrete, checkable proof `phase-8-live-core-hotswap/PLAN.md`'s
 //! "Minimal first slice" checklist asks for: two independent client
 //! connections through the *same* real `blueice-launcher` subprocess
@@ -22,16 +24,22 @@
 //! that a cutover which can't complete leaves v1 serving every
 //! already-connected client exactly as before.
 
+use blueice_ipc::owner_bootstrap::{
+    OwnerHttpOriginRule, OwnerHttpPolicyBootstrap, OwnerHttpResource,
+};
 use blueice_ipc::{
-    read_server_message, read_server_message_with_id, read_server_message_with_ids, write_client_message,
-    write_client_message_with_id, ClientMessage, ServerMessage,
+    read_server_message, read_server_message_with_id, read_server_message_with_ids,
+    write_client_message, write_client_message_with_id, ClientMessage, ServerMessage,
 };
 use blueice_launcher::control::{
     read_control_reply, write_control_request, ControlReply, ControlRequest,
 };
-use std::os::unix::net::UnixStream;
+use std::io::{Read, Write};
+use std::net::TcpListener;
+use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
+use std::sync::{Arc, Barrier, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -51,15 +59,38 @@ fn unique_path(label: &str) -> PathBuf {
     ))
 }
 
-fn wait_for(path: &std::path::Path, timeout: Duration) -> bool {
-    let deadline = Instant::now() + timeout;
-    while Instant::now() < deadline {
-        if path.exists() {
-            return true;
+/// The launcher delegates ordinary HTTP navigation to the core, which retains
+/// the existing fail-closed gatekeeper requirement. This isolated real socket
+/// lets the private-host regression prove page execution rather than merely a
+/// startup handshake.
+fn clearing_gatekeeper() -> PathBuf {
+    let path = unique_path("gatekeeper.sock");
+    let _ = std::fs::remove_file(&path);
+    let listener = UnixListener::bind(&path).expect("test gatekeeper must bind");
+    thread::spawn(move || {
+        for incoming in listener.incoming() {
+            let Ok(mut stream) = incoming else { break };
+            let _ = blueice_ai_gatekeeper::handle_one_check(&mut stream);
         }
-        thread::sleep(Duration::from_millis(20));
-    }
-    false
+    });
+    path
+}
+
+// `cargo llvm-cov` instruments the launcher and the core that it starts. On
+// a busy CI runner their initial dynamic linking and coverage setup can take
+// longer than the ordinary test-profile startup, so this is deliberately a
+// bounded readiness deadline rather than a five-second scheduling assumption.
+const LAUNCHER_STARTUP_TIMEOUT: Duration = Duration::from_secs(30);
+
+// Each case starts at least one real launcher/core tree, and some supervise a
+// BlueJS child. Keep process teardown within its existing bounded deadline
+// while preserving the explicit concurrency exercised inside cutover tests.
+static BROKER_TEST_LOCK: Mutex<()> = Mutex::new(());
+
+fn broker_test_guard() -> std::sync::MutexGuard<'static, ()> {
+    BROKER_TEST_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
 /// Mirrors `blueice_launcher::v2_frame_dir`'s exact (private, so not
@@ -97,14 +128,37 @@ struct Launcher {
     rendezvous_socket: PathBuf,
     control_socket: PathBuf,
     frame_dir: PathBuf,
+    /// Kept only by this lifecycle test. The launcher never publishes this
+    /// child-only path to frontend or page traffic.
+    private_bluejs_socket: Option<PathBuf>,
 }
 
 impl Launcher {
     fn spawn() -> Self {
-        Self::spawn_with_manifest(None)
+        Self::spawn_with_options(None, false, None, None)
     }
 
     fn spawn_with_manifest(manifest: Option<&Path>) -> Self {
+        Self::spawn_with_options(None, false, None, manifest)
+    }
+
+    fn spawn_with_supervised_bluejs(gatekeeper_socket: &Path) -> Self {
+        Self::spawn_with_options(Some(gatekeeper_socket), true, None, None)
+    }
+
+    fn spawn_with_supervised_bluejs_and_owner_http_policy(
+        gatekeeper_socket: &Path,
+        policy_file: &Path,
+    ) -> Self {
+        Self::spawn_with_options(Some(gatekeeper_socket), true, Some(policy_file), None)
+    }
+
+    fn spawn_with_options(
+        gatekeeper_socket: Option<&Path>,
+        supervise_out_of_process_bluejs: bool,
+        page_http_policy_file: Option<&Path>,
+        extension_manifest: Option<&Path>,
+    ) -> Self {
         let rendezvous_socket = unique_path("rendezvous.sock");
         let control_socket = unique_path("control.sock");
         let frame_dir = unique_path("frames");
@@ -114,36 +168,78 @@ impl Launcher {
 
         let mut command = Command::new(env!("CARGO_BIN_EXE_blueice-launcher"));
         command.args([
-                "--socket",
-                rendezvous_socket.to_str().unwrap(),
-                "--control-socket",
-                control_socket.to_str().unwrap(),
-                "--width",
-                "320",
-                "--height",
-                "200",
-                "--frame-dir",
-                frame_dir.to_str().unwrap(),
-            ]);
-        if let Some(manifest) = manifest {
+            "--socket",
+            rendezvous_socket.to_str().unwrap(),
+            "--control-socket",
+            control_socket.to_str().unwrap(),
+            "--width",
+            "320",
+            "--height",
+            "200",
+            "--frame-dir",
+            frame_dir.to_str().unwrap(),
+        ]);
+        if let Some(gatekeeper_socket) = gatekeeper_socket {
+            command.arg("--gatekeeper-socket").arg(gatekeeper_socket);
+        }
+        if supervise_out_of_process_bluejs {
+            command.arg("--out-of-process-bluejs");
+        }
+        if let Some(path) = page_http_policy_file {
+            command.arg("--page-http-policy-file").arg(path);
+        }
+        if let Some(manifest) = extension_manifest {
             command.arg("--extension-manifest").arg(manifest);
         }
-        let child = command.spawn()
-            .expect("failed to spawn blueice-launcher");
+        let child = command.spawn().expect("failed to spawn blueice-launcher");
 
-        assert!(
-            wait_for(&rendezvous_socket, Duration::from_secs(12)),
-            "blueice-launcher never created its rendezvous socket"
-        );
-        assert!(
-            wait_for(&control_socket, Duration::from_secs(12)),
-            "blueice-launcher never created its control socket"
-        );
-        Launcher {
+        // Construct the RAII owner before making assertions about process
+        // readiness. Previously a timeout panicked while `child` was a bare
+        // local, so the launcher (and its core) could survive the failed test.
+        let private_bluejs_socket = supervise_out_of_process_bluejs.then(|| {
+            std::env::temp_dir().join(format!(
+                "blueice-launcher-bluejs-host-{}-0.sock",
+                child.id()
+            ))
+        });
+        let mut launcher = Launcher {
             child,
             rendezvous_socket,
             control_socket,
             frame_dir,
+            private_bluejs_socket,
+        };
+        let rendezvous_socket = launcher.rendezvous_socket.clone();
+        launcher.wait_for_socket(&rendezvous_socket, "rendezvous");
+        let control_socket = launcher.control_socket.clone();
+        launcher.wait_for_socket(&control_socket, "control");
+        launcher
+    }
+
+    fn wait_for_socket(&mut self, path: &Path, name: &str) {
+        let deadline = Instant::now() + LAUNCHER_STARTUP_TIMEOUT;
+        loop {
+            if path.exists() {
+                return;
+            }
+            if let Some(status) = self
+                .child
+                .try_wait()
+                .expect("failed to observe blueice-launcher while waiting for startup")
+            {
+                panic!(
+                    "blueice-launcher exited before creating its {name} socket; \
+                     child status: {status}"
+                );
+            }
+            if Instant::now() >= deadline {
+                self.wait_or_kill(Duration::from_secs(1));
+                panic!(
+                    "blueice-launcher never created its {name} socket within \
+                     {LAUNCHER_STARTUP_TIMEOUT:?}; child was reaped during cleanup"
+                );
+            }
+            thread::sleep(Duration::from_millis(20));
         }
     }
 
@@ -157,11 +253,19 @@ impl Launcher {
             .expect("failed to connect to the launcher's control socket")
     }
 
-    fn inspect_extension_permissions(&self) -> (u64, Option<blueice_launcher::control::InstalledExtensionPermissions>) {
+    fn inspect_extension_permissions(
+        &self,
+    ) -> (
+        u64,
+        Option<blueice_launcher::control::InstalledExtensionPermissions>,
+    ) {
         let mut control = self.connect_control();
         write_control_request(&mut control, &ControlRequest::InspectExtensionPermissions).unwrap();
         match read_control_reply(&mut control).unwrap() {
-            ControlReply::ExtensionPermissions { core_generation, installed } => (core_generation, installed),
+            ControlReply::ExtensionPermissions {
+                core_generation,
+                installed,
+            } => (core_generation, installed),
             other => panic!("expected a read-only extension inspection, got {other:?}"),
         }
     }
@@ -182,10 +286,8 @@ impl Launcher {
     /// Its counter starts at zero in each launcher process, independently of
     /// the ordinary core IPC socket counter.
     fn extension_socket_path(&self, generation_index: u64) -> PathBuf {
-        blueice_ipc::local_socket::default_socket_dir().join(format!(
-            "l-ext-{}-{generation_index}.sock",
-            self.child.id()
-        ))
+        blueice_ipc::local_socket::default_socket_dir()
+            .join(format!("l-ext-{}-{generation_index}.sock", self.child.id()))
     }
 
     /// Waits for the launcher to exit on its own (e.g. after a
@@ -215,12 +317,16 @@ impl Drop for Launcher {
         self.wait_or_kill(Duration::from_secs(1));
         let _ = std::fs::remove_file(&self.rendezvous_socket);
         let _ = std::fs::remove_file(&self.control_socket);
+        if let Some(path) = &self.private_bluejs_socket {
+            let _ = std::fs::remove_file(path);
+        }
         let _ = std::fs::remove_dir_all(&self.frame_dir);
     }
 }
 
 #[test]
 fn an_unrecognized_argument_exits_with_failure_and_creates_no_socket() {
+    let _guard = broker_test_guard();
     let rendezvous_socket = unique_path("bad-args-rendezvous.sock");
     let _ = std::fs::remove_file(&rendezvous_socket);
 
@@ -248,6 +354,7 @@ fn permission_inspection_reports_no_package_without_creating_grant_authority() {
 
 #[test]
 fn two_clients_through_the_same_launcher_observe_the_same_render_pass() {
+    let _guard = broker_test_guard();
     let mut launcher = Launcher::spawn();
 
     // Two independent connections to the *one* rendezvous socket,
@@ -376,6 +483,7 @@ fn two_clients_through_the_same_launcher_observe_the_same_render_pass() {
 
 #[test]
 fn shutdown_with_no_cutover_still_ends_the_whole_launcher_cleanly() {
+    let _guard = broker_test_guard();
     // A focused regression test that the generation-counter/cutover
     // restructuring didn't change this pre-existing behavior: with no
     // `Cutover` ever sent, a single client's `Shutdown` must still
@@ -437,7 +545,412 @@ fn launcher_starts_a_private_gatekeeper_that_blocks_a_flagged_url_before_fetch()
 }
 
 #[test]
+fn opt_in_launcher_supervises_the_private_bluejs_child_for_core_page_execution() {
+    let _guard = broker_test_guard();
+    // This is intentionally the real launcher binary, not a direct core
+    // invocation or a hand-configured host socket. `--out-of-process-bluejs`
+    // is the only opt-in; the launcher itself creates the child endpoint and
+    // capability token, hands them directly to core, and retains supervision.
+    let gatekeeper_socket = clearing_gatekeeper();
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    thread::spawn(move || {
+        let (mut stream, _) = listener
+            .accept()
+            .expect("fixture must receive HTTP request");
+        let mut request = [0u8; 1024];
+        let _ = stream.read(&mut request);
+        let body = concat!(
+            "<main>launcher-to-core-to-child</main>",
+            "<script>if (typeof document !== 'undefined' || typeof fetch !== 'undefined') throw 'host binding leaked'; globalThis.answer = 42;</script>",
+            "<script type=\"application/x-blueice-typescript\">const sharedAnswer: number = 42;</script>",
+            "<script>if (sharedAnswer !== 42) throw 'BlueTS did not share this realm';</script>",
+            "<script type=\"module\">export const moduleAnswer = 43;</script>",
+            "<script src=\"untrusted.js\"></script>",
+            "<script type=\"application/x-blueice-typescript-module\">export const typedModuleAnswer: number = 44;</script>",
+            "<script type=\"application/x-blueice-typescript\">blueiceDocumentText(1);</script>"
+        );
+        stream
+            .write_all(
+                format!(
+                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                )
+                .as_bytes(),
+            )
+            .expect("fixture must return page document");
+    });
+
+    let mut launcher = Launcher::spawn_with_supervised_bluejs(&gatekeeper_socket);
+    let private_socket = launcher
+        .private_bluejs_socket
+        .clone()
+        .expect("the opted-in launcher owns exactly one private child socket");
+    assert!(
+        private_socket.exists(),
+        "the supervised child must be ready before launcher exposes its rendezvous socket"
+    );
+
+    let mut frontend = launcher.connect();
+    write_client_message(&mut frontend, &ClientMessage::Navigate { url: url.clone() }).unwrap();
+    assert_eq!(
+        read_server_message(&mut frontend).unwrap(),
+        ServerMessage::Navigated { url }
+    );
+    assert!(matches!(
+        read_server_message(&mut frontend).unwrap(),
+        ServerMessage::FrameReady { generation: 1, .. }
+    ));
+    write_client_message(&mut frontend, &ClientMessage::GetBlueJsScriptReports).unwrap();
+    let reports = read_server_message(&mut frontend).unwrap();
+    let public_representation = format!("{reports:?}");
+    assert!(
+        !public_representation.contains(&private_socket.display().to_string())
+            && !public_representation.contains("out-of-process-bluejs"),
+        "the frontend broker must not reflect the launch-only child endpoint or capability"
+    );
+    assert_eq!(
+        reports,
+        ServerMessage::BlueJsScriptReports(vec![
+            blueice_ipc::BlueJsScriptExecutionReport {
+                tab_id: 1,
+                document_generation: 1,
+                ordinal: 0,
+                kind: blueice_ipc::BlueJsScriptKind::Classic,
+                outcome: blueice_ipc::BlueJsScriptExecutionOutcome::Executed,
+            },
+            blueice_ipc::BlueJsScriptExecutionReport {
+                tab_id: 1,
+                document_generation: 1,
+                ordinal: 2,
+                kind: blueice_ipc::BlueJsScriptKind::Classic,
+                outcome: blueice_ipc::BlueJsScriptExecutionOutcome::Executed,
+            },
+            blueice_ipc::BlueJsScriptExecutionReport {
+                tab_id: 1,
+                document_generation: 1,
+                ordinal: 3,
+                kind: blueice_ipc::BlueJsScriptKind::Module,
+                outcome: blueice_ipc::BlueJsScriptExecutionOutcome::Executed,
+            },
+            blueice_ipc::BlueJsScriptExecutionReport {
+                tab_id: 1,
+                document_generation: 1,
+                ordinal: 4,
+                kind: blueice_ipc::BlueJsScriptKind::Classic,
+                outcome: blueice_ipc::BlueJsScriptExecutionOutcome::Rejected {
+                    category: "external JavaScript declarations require an authorized loader"
+                        .to_string(),
+                },
+            },
+        ])
+    );
+    write_client_message(&mut frontend, &ClientMessage::GetBlueTsScriptReports).unwrap();
+    let reply = read_server_message(&mut frontend).unwrap();
+    let ServerMessage::BlueTsScriptReports(reports) = reply else {
+        panic!("expected BlueTS script reports: {reply:?}");
+    };
+    let position = reports[2]
+        .source_position
+        .expect("an inline compiler rejection has a verified source position");
+    assert!(position.start < position.end);
+    assert!(position.end as usize <= "blueiceDocumentText(1);".len());
+    let mut without_positions = reports;
+    for report in &mut without_positions {
+        report.source_position = None;
+    }
+    assert_eq!(
+        without_positions,
+        vec![
+            blueice_ipc::BlueTsScriptExecutionReport {
+                tab_id: 1,
+                document_generation: 1,
+                ordinal: 1,
+                kind: blueice_ipc::BlueTsScriptKind::Classic,
+                policy: blueice_ipc::BlueTsScriptRuntimePolicy::Checked,
+                source_position: None,
+                outcome: blueice_ipc::BlueTsScriptExecutionOutcome::Executed,
+            },
+            blueice_ipc::BlueTsScriptExecutionReport {
+                tab_id: 1,
+                document_generation: 1,
+                ordinal: 5,
+                kind: blueice_ipc::BlueTsScriptKind::Module,
+                policy: blueice_ipc::BlueTsScriptRuntimePolicy::Checked,
+                source_position: None,
+                outcome: blueice_ipc::BlueTsScriptExecutionOutcome::Executed,
+            },
+            blueice_ipc::BlueTsScriptExecutionReport {
+                tab_id: 1,
+                document_generation: 1,
+                ordinal: 6,
+                kind: blueice_ipc::BlueTsScriptKind::Classic,
+                policy: blueice_ipc::BlueTsScriptRuntimePolicy::Checked,
+                source_position: None,
+                outcome: blueice_ipc::BlueTsScriptExecutionOutcome::Rejected {
+                    category: "BlueTS compilation rejected the page script".to_string(),
+                },
+            },
+        ]
+    );
+
+    // The only public operation here is normal frontend shutdown. It neither
+    // knows the child capability token nor has a route to the child socket.
+    write_client_message(&mut frontend, &ClientMessage::Shutdown).unwrap();
+    launcher.wait_or_kill(Duration::from_secs(5));
+    assert!(
+        !private_socket.exists(),
+        "launcher teardown must reap its private child and unlink its socket"
+    );
+    let _ = std::fs::remove_file(gatekeeper_socket);
+}
+
+#[test]
+fn owner_http_manifest_admits_closed_page_graphs_and_rejects_unlisted_or_tampered_sources() {
+    let _guard = broker_test_guard();
+    const CLASSIC: &str = "globalThis.authorizedExternal = 42;";
+    const ENTRY: &str = "import { answer } from './dep.ts'; export const result: number = answer;";
+    const DEPENDENCY: &str = "export const answer: number = 42;";
+    const BAD_HASH: &str = "globalThis.untrustedExternal = true;";
+    const DOCUMENT: &str = concat!(
+        "<main>owner-manifest-page</main>",
+        "<script src=\"/allowed.js\"></script>",
+        "<script type=\"application/x-blueice-typescript-module\" src=\"/entry.ts\"></script>",
+        "<script src=\"/unlisted.js\"></script>",
+        "<script src=\"/bad-hash.js\"></script>"
+    );
+
+    let gatekeeper_socket = clearing_gatekeeper();
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let origin = format!("http://{}", listener.local_addr().unwrap());
+    let policy = OwnerHttpPolicyBootstrap {
+        origin_rule: OwnerHttpOriginRule::SameDocumentOrigin,
+        resources: vec![
+            OwnerHttpResource {
+                canonical_url: format!("{origin}/allowed.js"),
+                integrity:
+                    "sha256:5a3082683c8778aefe6229bda5a9b2acc43f717b214b67b2a37d8efcc726f70f".into(),
+            },
+            OwnerHttpResource {
+                canonical_url: format!("{origin}/entry.ts"),
+                integrity:
+                    "sha256:4bd26f93084252bb985514f7b81e88c54f75969fd860bf600b2626c3c60bd55d".into(),
+            },
+            OwnerHttpResource {
+                canonical_url: format!("{origin}/dep.ts"),
+                integrity:
+                    "sha256:26a8680bbf0c861168714585a9facbb8dda5378b24d70451e9cb11495e71d37a".into(),
+            },
+            OwnerHttpResource {
+                canonical_url: format!("{origin}/bad-hash.js"),
+                integrity: format!("sha256:{}", "0".repeat(64)),
+            },
+        ],
+    };
+    let policy_file = unique_path("owner-http-policy.json");
+    std::fs::write(&policy_file, serde_json::to_vec(&policy).unwrap()).unwrap();
+    let server = thread::spawn(move || {
+        let mut requested = Vec::new();
+        let deadline = Instant::now() + Duration::from_secs(15);
+        while requested.len() < 5 && Instant::now() < deadline {
+            let Ok((mut stream, _)) = listener.accept() else {
+                thread::sleep(Duration::from_millis(10));
+                continue;
+            };
+            stream.set_nonblocking(false).unwrap();
+            stream
+                .set_read_timeout(Some(Duration::from_secs(5)))
+                .unwrap();
+            let mut request = [0u8; 2048];
+            let count = stream.read(&mut request).unwrap();
+            let request = std::str::from_utf8(&request[..count]).unwrap();
+            let path = request
+                .split_whitespace()
+                .nth(1)
+                .expect("HTTP fixture request must contain a path")
+                .to_string();
+            let (mime, body) = match path.as_str() {
+                "/" => ("text/html", DOCUMENT),
+                "/allowed.js" => ("text/javascript", CLASSIC),
+                "/entry.ts" => ("text/typescript", ENTRY),
+                "/dep.ts" => ("text/typescript", DEPENDENCY),
+                "/bad-hash.js" => ("text/javascript", BAD_HASH),
+                _ => panic!("an unlisted resource was fetched: {path}"),
+            };
+            requested.push(path);
+            stream
+                .write_all(
+                    format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: {mime}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                        body.len()
+                    )
+                    .as_bytes(),
+                )
+                .unwrap();
+        }
+        requested
+    });
+
+    let mut launcher = Launcher::spawn_with_supervised_bluejs_and_owner_http_policy(
+        &gatekeeper_socket,
+        &policy_file,
+    );
+    let private_socket = launcher.private_bluejs_socket.clone().unwrap();
+    let mut frontend = launcher.connect();
+    let url = format!("{origin}/");
+    write_client_message(&mut frontend, &ClientMessage::Navigate { url: url.clone() }).unwrap();
+    assert_eq!(
+        read_server_message(&mut frontend).unwrap(),
+        ServerMessage::Navigated { url }
+    );
+    assert!(matches!(
+        read_server_message(&mut frontend).unwrap(),
+        ServerMessage::FrameReady { generation: 1, .. }
+    ));
+    write_client_message(&mut frontend, &ClientMessage::GetBlueJsScriptReports).unwrap();
+    let javascript_reports = read_server_message(&mut frontend).unwrap();
+    write_client_message(&mut frontend, &ClientMessage::GetBlueTsScriptReports).unwrap();
+    let bluets_reports = read_server_message(&mut frontend).unwrap();
+    let mut requested = server.join().unwrap();
+    requested.sort();
+    assert_eq!(
+        requested,
+        ["/", "/allowed.js", "/bad-hash.js", "/dep.ts", "/entry.ts"]
+    );
+    assert_eq!(
+        javascript_reports,
+        ServerMessage::BlueJsScriptReports(vec![
+            blueice_ipc::BlueJsScriptExecutionReport {
+                tab_id: 1,
+                document_generation: 1,
+                ordinal: 0,
+                kind: blueice_ipc::BlueJsScriptKind::Classic,
+                outcome: blueice_ipc::BlueJsScriptExecutionOutcome::Executed,
+            },
+            blueice_ipc::BlueJsScriptExecutionReport {
+                tab_id: 1,
+                document_generation: 1,
+                ordinal: 2,
+                kind: blueice_ipc::BlueJsScriptKind::Classic,
+                outcome: blueice_ipc::BlueJsScriptExecutionOutcome::Rejected {
+                    category: "external JavaScript source authorization rejected the page script"
+                        .into(),
+                },
+            },
+            blueice_ipc::BlueJsScriptExecutionReport {
+                tab_id: 1,
+                document_generation: 1,
+                ordinal: 3,
+                kind: blueice_ipc::BlueJsScriptKind::Classic,
+                outcome: blueice_ipc::BlueJsScriptExecutionOutcome::Rejected {
+                    category: "external JavaScript source authorization rejected the page script"
+                        .into(),
+                },
+            },
+        ])
+    );
+    assert_eq!(
+        bluets_reports,
+        ServerMessage::BlueTsScriptReports(vec![blueice_ipc::BlueTsScriptExecutionReport {
+            tab_id: 1,
+            document_generation: 1,
+            ordinal: 1,
+            kind: blueice_ipc::BlueTsScriptKind::Module,
+            policy: blueice_ipc::BlueTsScriptRuntimePolicy::Checked,
+            source_position: None,
+            outcome: blueice_ipc::BlueTsScriptExecutionOutcome::Executed,
+        }])
+    );
+
+    write_client_message(&mut frontend, &ClientMessage::Shutdown).unwrap();
+    launcher.wait_or_kill(Duration::from_secs(5));
+    assert!(!private_socket.exists());
+    let _ = std::fs::remove_file(gatekeeper_socket);
+    let _ = std::fs::remove_file(policy_file);
+}
+
+#[test]
+fn opt_in_launcher_replaces_the_private_child_at_cutover_and_reaps_both_generations() {
+    let _guard = broker_test_guard();
+    let gatekeeper_socket = clearing_gatekeeper();
+    let mut launcher = Launcher::spawn_with_supervised_bluejs(&gatekeeper_socket);
+    let v1_child_socket = launcher
+        .private_bluejs_socket
+        .clone()
+        .expect("the opted-in launcher must create v1's private child");
+    assert!(v1_child_socket.exists());
+    let v1_script_socket = std::env::temp_dir().join(format!(
+        "blueice-launcher-script-{}-0.sock",
+        launcher.child.id()
+    ));
+    launcher.wait_for_socket(&v1_script_socket, "v1 private script");
+
+    // Give cutover a real current tab to replay. `about:` avoids a network
+    // fixture while still exercising the core-replacement lifecycle.
+    let mut frontend = launcher.connect();
+    write_client_message(
+        &mut frontend,
+        &ClientMessage::Navigate {
+            url: "about:credits".to_string(),
+        },
+    )
+    .unwrap();
+    assert!(matches!(
+        read_server_message(&mut frontend).unwrap(),
+        ServerMessage::Navigated { .. }
+    ));
+    assert!(matches!(
+        read_server_message(&mut frontend).unwrap(),
+        ServerMessage::FrameReady { .. }
+    ));
+
+    let mut control = launcher.connect_control();
+    write_control_request(&mut control, &ControlRequest::Cutover).unwrap();
+    assert!(matches!(
+        read_control_reply(&mut control).unwrap(),
+        ControlReply::CutoverDone { tabs_migrated: 1 }
+    ));
+    assert!(
+        !v1_child_socket.exists(),
+        "cutover must reap the superseded core's child and unlink its capability endpoint"
+    );
+    assert!(
+        !v1_script_socket.exists(),
+        "cutover must unlink the superseded core's script DOM listener"
+    );
+
+    let v2_child_socket = std::env::temp_dir().join(format!(
+        "blueice-launcher-bluejs-host-{}-1.sock",
+        launcher.child.id()
+    ));
+    assert!(
+        v2_child_socket.exists(),
+        "replacement core must receive a fresh launcher-created child, not v1's capability"
+    );
+    let v2_script_socket = std::env::temp_dir().join(format!(
+        "blueice-launcher-script-{}-1.sock",
+        launcher.child.id()
+    ));
+    launcher.wait_for_socket(&v2_script_socket, "v2 private script");
+    assert_ne!(v1_script_socket, v2_script_socket);
+
+    write_client_message(&mut frontend, &ClientMessage::Shutdown).unwrap();
+    launcher.wait_or_kill(Duration::from_secs(5));
+    assert!(
+        !v2_child_socket.exists(),
+        "final launcher shutdown must reap the replacement child too"
+    );
+    assert!(
+        !v2_script_socket.exists(),
+        "final launcher shutdown must unlink the replacement script DOM listener"
+    );
+    let _ = std::fs::remove_file(gatekeeper_socket);
+}
+
+#[test]
 fn a_client_survives_a_cutover_and_sees_v2s_replayed_state() {
+    let _guard = broker_test_guard();
     let mut launcher = Launcher::spawn();
     let mut client = launcher.connect();
 
@@ -492,8 +1005,11 @@ fn a_client_survives_a_cutover_and_sees_v2s_replayed_state() {
         panic!("expected CutoverDone, got {reply:?}")
     };
     assert_eq!(tabs_migrated, 2);
-    assert_eq!(launcher.inspect_extension_permissions(), (1, None),
-        "a package-free cutover must still publish the new core generation");
+    assert_eq!(
+        launcher.inspect_extension_permissions(),
+        (1, None),
+        "a package-free cutover must still publish the new core generation"
+    );
 
     // (c) v1's process is actually dead: `SpawnedCore::Drop` removes
     // its internal socket file only after the child has been reaped.
@@ -552,27 +1068,46 @@ fn a_client_survives_a_cutover_and_sees_v2s_replayed_state() {
 fn a_cutover_resets_generation_but_changes_the_shared_frame_source() {
     let mut launcher = Launcher::spawn();
     let mut client = launcher.connect();
-    write_client_message(&mut client, &ClientMessage::Navigate {
-        url: "about:credits".to_string(),
-    }).unwrap();
-    assert!(matches!(read_server_message(&mut client).unwrap(), ServerMessage::Navigated { .. }));
-    assert!(matches!(read_server_message(&mut client).unwrap(), ServerMessage::FrameReady { .. }));
+    write_client_message(
+        &mut client,
+        &ClientMessage::Navigate {
+            url: "about:credits".to_string(),
+        },
+    )
+    .unwrap();
+    assert!(matches!(
+        read_server_message(&mut client).unwrap(),
+        ServerMessage::Navigated { .. }
+    ));
+    assert!(matches!(
+        read_server_message(&mut client).unwrap(),
+        ServerMessage::FrameReady { .. }
+    ));
 
     let mut v1_source = 0;
     let mut v1_generation = 0;
     for index in 0..6_u64 {
         let request_id = 930 + index;
-        write_client_message_with_id(&mut client, Some(request_id), &ClientMessage::Resize {
-            width: 320 + index as u32,
-            height: 200,
-        }).unwrap();
+        write_client_message_with_id(
+            &mut client,
+            Some(request_id),
+            &ClientMessage::Resize {
+                width: 320 + index as u32,
+                height: 200,
+            },
+        )
+        .unwrap();
         loop {
             let (reply_id, message) = read_server_message_with_id(&mut client).unwrap();
             if reply_id != Some(request_id) {
                 continue;
             }
             match message {
-                ServerMessage::FrameReady { shm_path, generation, .. } => {
+                ServerMessage::FrameReady {
+                    shm_path,
+                    generation,
+                    ..
+                } => {
                     v1_source = blueice_ipc::shm::frame_source_id_for_path(&shm_path);
                     v1_generation = generation;
                     break;
@@ -584,46 +1119,76 @@ fn a_cutover_resets_generation_but_changes_the_shared_frame_source() {
 
     let mut control = launcher.connect_control();
     write_control_request(&mut control, &ControlRequest::Cutover).unwrap();
-    assert!(matches!(read_control_reply(&mut control).unwrap(),
-        ControlReply::CutoverDone { tabs_migrated: 1 }));
-    client.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
+    assert!(matches!(
+        read_control_reply(&mut control).unwrap(),
+        ControlReply::CutoverDone { tabs_migrated: 1 }
+    ));
+    client
+        .set_read_timeout(Some(Duration::from_secs(2)))
+        .unwrap();
     let (handoff_source, handoff_generation) = loop {
-        let (reply_id, message) = read_server_message_with_id(&mut client)
-            .expect("cutover must hand the replay frame to an existing client without another action");
+        let (reply_id, message) = read_server_message_with_id(&mut client).expect(
+            "cutover must hand the replay frame to an existing client without another action",
+        );
         if reply_id.is_some() {
             continue; // v1's synthetic ListTabs capture may still be queued
         }
         match message {
-            ServerMessage::FrameReady { shm_path, generation, .. } => {
-                break (blueice_ipc::shm::frame_source_id_for_path(&shm_path), generation);
+            ServerMessage::FrameReady {
+                shm_path,
+                generation,
+                ..
+            } => {
+                break (
+                    blueice_ipc::shm::frame_source_id_for_path(&shm_path),
+                    generation,
+                );
             }
             other => panic!("expected a v2 handoff frame, got {other:?}"),
         }
     };
     assert_ne!(v1_source, handoff_source);
     assert!(handoff_generation < v1_generation);
-    write_client_message_with_id(&mut client, Some(950), &ClientMessage::Resize {
-        width: 399,
-        height: 200,
-    }).unwrap();
+    write_client_message_with_id(
+        &mut client,
+        Some(950),
+        &ClientMessage::Resize {
+            width: 399,
+            height: 200,
+        },
+    )
+    .unwrap();
     let (v2_source, v2_generation) = loop {
         let (reply_id, message) = read_server_message_with_id(&mut client).unwrap();
         if reply_id != Some(950) {
             continue;
         }
         match message {
-            ServerMessage::FrameReady { shm_path, generation, .. } => {
-                break (blueice_ipc::shm::frame_source_id_for_path(&shm_path), generation);
+            ServerMessage::FrameReady {
+                shm_path,
+                generation,
+                ..
+            } => {
+                break (
+                    blueice_ipc::shm::frame_source_id_for_path(&shm_path),
+                    generation,
+                );
             }
             other => panic!("expected v2 FrameReady, got {other:?}"),
         }
     };
-    assert_ne!(v1_source, v2_source, "cutover must use a fresh frame source");
+    assert_ne!(
+        v1_source, v2_source,
+        "cutover must use a fresh frame source"
+    );
     assert_eq!(handoff_source, v2_source);
-    assert!(v2_generation < v1_generation,
-        "this test must exercise a real generation reset: v1={v1_generation}, v2={v2_generation}");
+    assert!(
+        v2_generation < v1_generation,
+        "this test must exercise a real generation reset: v1={v1_generation}, v2={v2_generation}"
+    );
 
-    write_client_message_with_id(&mut client, Some(951), &ClientMessage::GetRepresentation).unwrap();
+    write_client_message_with_id(&mut client, Some(951), &ClientMessage::GetRepresentation)
+        .unwrap();
     let snapshot = loop {
         let (reply_id, message) = read_server_message_with_id(&mut client).unwrap();
         if reply_id != Some(951) {
@@ -658,14 +1223,16 @@ fn an_installed_extension_survives_cutover_with_a_fresh_authenticated_host() {
     );
     let (before_generation, before) = launcher.inspect_extension_permissions();
     assert_eq!(before_generation, 0);
-    let before = before
-        .expect("v1 must answer through its private parent pipe");
+    let before = before.expect("v1 must answer through its private parent pipe");
     assert_eq!(before.name, "Launcher cutover test");
     assert_eq!(before.version, "1.0.0");
     assert!(!before.extension_id.is_empty());
     assert_eq!(before.optional.len(), 1);
     assert_eq!(before.optional[0].capability, "storage");
-    assert!(!before.optional[0].granted, "inspection must not grant optional storage");
+    assert!(
+        !before.optional[0].granted,
+        "inspection must not grant optional storage"
+    );
     assert!(before.optional[0].origins.is_empty());
 
     let mut client = launcher.connect();
@@ -688,7 +1255,10 @@ fn an_installed_extension_survives_cutover_with_a_fresh_authenticated_host() {
     let mut control = launcher.connect_control();
     write_control_request(&mut control, &ControlRequest::Cutover).unwrap();
     let reply = read_control_reply(&mut control).unwrap();
-    assert!(matches!(reply, ControlReply::CutoverDone { tabs_migrated: 1 }), "{reply:?}");
+    assert!(
+        matches!(reply, ControlReply::CutoverDone { tabs_migrated: 1 }),
+        "{reply:?}"
+    );
     assert!(
         !v1_extension_socket.exists(),
         "v1's extension listener must be removed during the cutover"
@@ -698,10 +1268,15 @@ fn an_installed_extension_survives_cutover_with_a_fresh_authenticated_host() {
         "v2 must revalidate the same package and start a fresh authenticated host"
     );
     let (after_generation, after) = launcher.inspect_extension_permissions();
-    assert_eq!(after_generation, 1, "the inspected state must belong to cutover v2");
-    let after = after
-        .expect("v2 must own a new responsive private parent pipe");
-    assert_eq!(after, before, "cutover must keep package identity and declared-only grants");
+    assert_eq!(
+        after_generation, 1,
+        "the inspected state must belong to cutover v2"
+    );
+    let after = after.expect("v2 must own a new responsive private parent pipe");
+    assert_eq!(
+        after, before,
+        "cutover must keep package identity and declared-only grants"
+    );
 
     write_client_message_with_id(&mut client, Some(900), &ClientMessage::ListTabs).unwrap();
     let tabs = loop {
@@ -763,8 +1338,11 @@ fn an_invalidated_extension_package_aborts_cutover_without_losing_v1() {
     );
     assert!(v1_core_socket.exists() && v1_extension_socket.exists());
     assert!(!v2_extension_socket.exists());
-    assert_eq!(launcher.inspect_extension_permissions(), original_permissions,
-        "a failed cutover must keep v1's identity, grants, and generation");
+    assert_eq!(
+        launcher.inspect_extension_permissions(),
+        original_permissions,
+        "a failed cutover must keep v1's identity, grants, and generation"
+    );
 
     // The already-connected client must still reach v1 after this failure.
     write_client_message_with_id(&mut client, Some(901), &ClientMessage::ListTabs).unwrap();
@@ -826,7 +1404,55 @@ fn simultaneous_cutover_requests_allow_one_transition_and_report_the_other_as_bu
 }
 
 #[test]
+fn simultaneous_cutovers_serialize_without_reusing_a_generation() {
+    let _guard = broker_test_guard();
+    let mut launcher = Launcher::spawn();
+    let barrier = Arc::new(Barrier::new(3));
+    let requests = (0..2)
+        .map(|_| {
+            let socket = launcher.control_socket.clone();
+            let barrier = Arc::clone(&barrier);
+            thread::spawn(move || {
+                barrier.wait();
+                let mut control = UnixStream::connect(socket).unwrap();
+                write_control_request(&mut control, &ControlRequest::Cutover).unwrap();
+                read_control_reply(&mut control).unwrap()
+            })
+        })
+        .collect::<Vec<_>>();
+    barrier.wait();
+    // The launcher's cutover is single-flight: a request that overlaps
+    // another is refused as busy rather than queued, so a transition never
+    // starts from a generation its predecessor has not yet committed. One that
+    // arrives after the first has finished may run its own, serialized.
+    let replies = requests
+        .into_iter()
+        .map(|request| request.join().unwrap())
+        .collect::<Vec<_>>();
+    assert!(
+        replies.iter().all(|reply| matches!(
+            reply,
+            ControlReply::CutoverDone { .. } | ControlReply::CutoverBusy
+        )),
+        "a simultaneous cutover must finish or be refused as busy: {replies:?}"
+    );
+    assert!(
+        replies
+            .iter()
+            .any(|reply| matches!(reply, ControlReply::CutoverDone { .. })),
+        "one of two simultaneous cutovers must own the transition: {replies:?}"
+    );
+
+    // The broker's client-facing socket remains usable after both serialized
+    // swaps; use the ordinary shutdown path so the subprocess exits cleanly.
+    let mut client = launcher.connect();
+    write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
+    launcher.wait_or_kill(Duration::from_secs(5));
+}
+
+#[test]
 fn a_cutover_that_fails_during_replay_leaves_v1_serving_normally() {
+    let _guard = broker_test_guard();
     let mut launcher = Launcher::spawn();
     let mut client = launcher.connect();
 

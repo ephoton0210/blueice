@@ -101,9 +101,9 @@ pub fn validate_toolbar_label(label: &str) -> Result<(), String> {
     if label.is_empty()
         || label.len() > blueice_ipc::extension::MAX_EXTENSION_TOOLBAR_LABEL_BYTES
         || label.trim() != label
-        || !label.bytes().all(|byte| {
-            byte.is_ascii_alphanumeric() || matches!(byte, b' ' | b'-' | b'_')
-        })
+        || !label
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b' ' | b'-' | b'_'))
     {
         return Err("toolbar label must be 1–20 ASCII letters, digits, spaces, hyphens, or underscores without outer spaces".to_string());
     }
@@ -117,8 +117,9 @@ pub fn validate_popup_text(title: &str, body: &str) -> Result<(), String> {
         || body.trim() != body
         || !body.bytes().all(|byte| (0x20..=0x7e).contains(&byte))
     {
-        return Err("popup body must be 1–120 printable ASCII bytes without outer spaces"
-            .to_string());
+        return Err(
+            "popup body must be 1–120 printable ASCII bytes without outer spaces".to_string(),
+        );
     }
     Ok(())
 }
@@ -167,7 +168,12 @@ impl ExtensionStorage {
             .list_keys(extension_id)
     }
 
-    pub fn durable_set(&self, extension_id: &str, key: String, value: String) -> Result<(), String> {
+    pub fn durable_set(
+        &self,
+        extension_id: &str,
+        key: String,
+        value: String,
+    ) -> Result<(), String> {
         self.durable
             .as_ref()
             .ok_or_else(|| "durable extension storage is not configured".to_string())?
@@ -490,10 +496,14 @@ impl ExtensionRegistry {
             return Err("an ephemeral lease requires a live tab ID".to_string());
         }
         let state = self.ephemeral_state(extension_id, capability)?;
-        let mut slot = state.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let mut slot = state
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let ticket = new_ephemeral_ticket()?;
         slot.lease = Some(EphemeralLease {
-            ticket: ticket.clone(), tab_id, document_epoch,
+            ticket: ticket.clone(),
+            tab_id,
+            document_epoch,
             expires_at: Instant::now() + RUNTIME_EPHEMERAL_TTL,
         });
         Ok(ticket)
@@ -501,14 +511,26 @@ impl ExtensionRegistry {
 
     /// Inspection reveals only whether a lease remains, never its bearer.
     /// Only `ArmEphemeral`'s private parent reply carries the secret token.
-    pub fn has_unspent_runtime_ephemeral_lease(&self, extension_id: &str, capability: &str) -> bool {
-        self.ephemeral_state(extension_id, capability).ok().is_some_and(|state| {
-            let mut slot = state.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-            if slot.lease.as_ref().is_some_and(|lease| Instant::now() >= lease.expires_at) {
-                slot.lease = None;
-            }
-            slot.lease.is_some()
-        })
+    pub fn has_unspent_runtime_ephemeral_lease(
+        &self,
+        extension_id: &str,
+        capability: &str,
+    ) -> bool {
+        self.ephemeral_state(extension_id, capability)
+            .ok()
+            .is_some_and(|state| {
+                let mut slot = state
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner());
+                if slot
+                    .lease
+                    .as_ref()
+                    .is_some_and(|lease| Instant::now() >= lease.expires_at)
+                {
+                    slot.lease = None;
+                }
+                slot.lease.is_some()
+            })
     }
 
     pub fn has_runtime_ephemeral_declaration(&self, extension_id: &str, capability: &str) -> bool {
@@ -529,14 +551,22 @@ impl ExtensionRegistry {
         let Ok(state) = self.ephemeral_state(extension_id, capability) else {
             return false;
         };
-        let mut slot = state.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-        if slot.lease.as_ref().is_some_and(|lease| Instant::now() >= lease.expires_at) {
+        let mut slot = state
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if slot
+            .lease
+            .as_ref()
+            .is_some_and(|lease| Instant::now() >= lease.expires_at)
+        {
             slot.lease = None;
             return false;
         }
         match slot.lease.as_ref() {
-            Some(current) if constant_time_authentication_matches(&current.ticket, expected_ticket)
-                && current.tab_id == tab_id => {
+            Some(current)
+                if constant_time_authentication_matches(&current.ticket, expected_ticket)
+                    && current.tab_id == tab_id =>
+            {
                 let correct_epoch = current.document_epoch == document_epoch;
                 slot.lease = None;
                 correct_epoch
@@ -553,7 +583,12 @@ impl ExtensionRegistry {
         capability: &str,
     ) -> Result<bool, String> {
         let state = self.ephemeral_state(extension_id, capability)?;
-        Ok(state.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).lease.take().is_some())
+        Ok(state
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .lease
+            .take()
+            .is_some())
     }
 
     fn ephemeral_state(
@@ -564,9 +599,11 @@ impl ExtensionRegistry {
         self.ephemeral_declarations
             .get(extension_id)
             .and_then(|caps| caps.get(capability))
-            .ok_or_else(|| format!(
+            .ok_or_else(|| {
+                format!(
                 "{capability} is not an installed runtime-ephemeral declaration for {extension_id}"
-            ))
+            )
+            })
     }
 
     /// In-process transition reserved for a separately authenticated human
@@ -574,7 +611,10 @@ impl ExtensionRegistry {
     /// Returns whether state changed.
     pub fn grant_optional(&self, extension_id: &str, capability: &str) -> Result<bool, String> {
         let state = self.optional_state(extension_id, capability)?;
-        let _serial = state.serialize.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let _serial = state
+            .serialize
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let encoded = state.published.load(Ordering::Acquire);
         if encoded == u64::MAX - 1 {
             return Err("optional grant generation is exhausted".to_string());
@@ -591,21 +631,32 @@ impl ExtensionRegistry {
     /// regrant cannot reactivate persistent effects from the old generation.
     pub fn revoke_optional(&self, extension_id: &str, capability: &str) -> Result<bool, String> {
         let state = self.optional_state(extension_id, capability)?;
-        let _serial = state.serialize.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let _serial = state
+            .serialize
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let encoded = state.published.load(Ordering::Acquire);
         if encoded & 1 == 0 {
             return Ok(false);
         }
-        state.published.store(encoded.checked_add(1).unwrap_or(u64::MAX - 1), Ordering::Release);
+        state.published.store(
+            encoded.checked_add(1).unwrap_or(u64::MAX - 1),
+            Ordering::Release,
+        );
         Ok(true)
     }
 
-    fn optional_state(&self, extension_id: &str, capability: &str) -> Result<&OptionalGrantState, String> {
-        self.optional_declarations.get(extension_id)
+    fn optional_state(
+        &self,
+        extension_id: &str,
+        capability: &str,
+    ) -> Result<&OptionalGrantState, String> {
+        self.optional_declarations
+            .get(extension_id)
             .and_then(|caps| caps.get(capability))
-            .ok_or_else(|| format!(
-                "{capability} is not an installed optional declaration for {extension_id}"
-            ))
+            .ok_or_else(|| {
+                format!("{capability} is not an installed optional declaration for {extension_id}")
+            })
     }
 
     /// A live capability's generation is a lease for core-owned effects.
@@ -614,11 +665,19 @@ impl ExtensionRegistry {
     /// extension worker waiting for that session's acknowledgement.
     /// A later regrant always has a different generation from an old lease.
     pub fn capability_generation(&self, extension_id: &str, capability: &str) -> Option<u64> {
-        if self.grants.get(extension_id).is_some_and(|caps| caps.contains(capability)) {
+        if self
+            .grants
+            .get(extension_id)
+            .is_some_and(|caps| caps.contains(capability))
+        {
             return Some(0);
         }
-        let encoded = self.optional_declarations.get(extension_id)?
-            .get(capability)?.published.load(Ordering::Acquire);
+        let encoded = self
+            .optional_declarations
+            .get(extension_id)?
+            .get(capability)?
+            .published
+            .load(Ordering::Acquire);
         (encoded & 1 == 1).then_some(encoded >> 1)
     }
 
@@ -634,12 +693,20 @@ impl ExtensionRegistry {
         expected_generation: u64,
         effect: impl FnOnce() -> T,
     ) -> Result<T, String> {
-        if self.grants.get(extension_id).is_some_and(|caps| caps.contains(capability)) {
-            return (expected_generation == 0).then(effect)
+        if self
+            .grants
+            .get(extension_id)
+            .is_some_and(|caps| caps.contains(capability))
+        {
+            return (expected_generation == 0)
+                .then(effect)
                 .ok_or_else(|| grant_changed_reason(capability));
         }
         let state = self.optional_state(extension_id, capability)?;
-        let _serial = state.serialize.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let _serial = state
+            .serialize
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let encoded = state.published.load(Ordering::Acquire);
         if encoded & 1 == 0 || encoded >> 1 != expected_generation {
             return Err(grant_changed_reason(capability));
@@ -653,7 +720,8 @@ impl ExtensionRegistry {
     /// docs for why an unknown identity isn't rejected outright at
     /// handshake time.
     pub fn has_capability(&self, extension_id: &str, capability: &str) -> bool {
-        self.capability_generation(extension_id, capability).is_some()
+        self.capability_generation(extension_id, capability)
+            .is_some()
     }
 
     /// Returns why a declared API version is unavailable, if it cannot
@@ -791,14 +859,21 @@ fn network_registration_generation(
     minimum_version: u32,
 ) -> Result<u64, String> {
     if let Some(reason) = capability_denial_reason(
-        registry, identity, CAPABILITY_NETWORK_INTERCEPT, minimum_version,
+        registry,
+        identity,
+        CAPABILITY_NETWORK_INTERCEPT,
+        minimum_version,
     ) {
         return Err(reason);
     }
-    registry.capability_generation(&identity.extension_id, CAPABILITY_NETWORK_INTERCEPT)
-        .ok_or_else(|| format!(
-            "{} is no longer granted {CAPABILITY_NETWORK_INTERCEPT}", identity.extension_id
-        ))
+    registry
+        .capability_generation(&identity.extension_id, CAPABILITY_NETWORK_INTERCEPT)
+        .ok_or_else(|| {
+            format!(
+                "{} is no longer granted {CAPABILITY_NETWORK_INTERCEPT}",
+                identity.extension_id
+            )
+        })
 }
 
 fn commit_dom_write<W>(
@@ -811,10 +886,15 @@ fn commit_dom_write<W>(
     kind: &blueice_ipc::extension::DomWriteTarget,
 ) -> Result<(), String>
 where
-    W: FnMut(Option<(u64, u64)>, String, &blueice_ipc::extension::DomWriteTarget, u64)
-        -> Result<(), String>,
+    W: FnMut(
+        Option<(u64, u64)>,
+        String,
+        &blueice_ipc::extension::DomWriteTarget,
+        u64,
+    ) -> Result<(), String>,
 {
-    let generation = captured_generation.ok_or_else(|| grant_changed_reason(CAPABILITY_DOM_WRITE))?;
+    let generation =
+        captured_generation.ok_or_else(|| grant_changed_reason(CAPABILITY_DOM_WRITE))?;
     if registry.capability_generation(&identity.extension_id, CAPABILITY_DOM_WRITE)
         != Some(generation)
     {
@@ -830,16 +910,25 @@ fn write_dom_effect_reply<S: Write>(stream: &mut S, result: Result<(), String>) 
     match result {
         Ok(()) => write_extension_reply(stream, &ExtensionReply::DomWriteAck),
         Err(reason) if reason == grant_changed_reason(CAPABILITY_DOM_WRITE) => {
-            write_extension_reply(stream, &ExtensionReply::CapabilityDenied {
-                capability: CAPABILITY_DOM_WRITE.to_string(), reason,
-            })
+            write_extension_reply(
+                stream,
+                &ExtensionReply::CapabilityDenied {
+                    capability: CAPABILITY_DOM_WRITE.to_string(),
+                    reason,
+                },
+            )
         }
-        Err(reason) => write_extension_reply(stream, &ExtensionReply::OperationUnavailable {
-            capability: CAPABILITY_DOM_WRITE.to_string(), reason,
-        }),
+        Err(reason) => write_extension_reply(
+            stream,
+            &ExtensionReply::OperationUnavailable {
+                capability: CAPABILITY_DOM_WRITE.to_string(),
+                reason,
+            },
+        ),
     }
 }
 
+#[allow(clippy::result_large_err)]
 fn with_stable_storage_grant<T>(
     registry: &ExtensionRegistry,
     identity: &ConnectionIdentity,
@@ -853,14 +942,19 @@ fn with_stable_storage_grant<T>(
         });
     };
     match registry.with_stable_capability(
-        &identity.extension_id, CAPABILITY_STORAGE, generation, effect,
+        &identity.extension_id,
+        CAPABILITY_STORAGE,
+        generation,
+        effect,
     ) {
         Ok(Ok(value)) => Ok(value),
         Ok(Err(reason)) => Err(ExtensionReply::OperationUnavailable {
-            capability: CAPABILITY_STORAGE.to_string(), reason,
+            capability: CAPABILITY_STORAGE.to_string(),
+            reason,
         }),
         Err(reason) => Err(ExtensionReply::CapabilityDenied {
-            capability: CAPABILITY_STORAGE.to_string(), reason,
+            capability: CAPABILITY_STORAGE.to_string(),
+            reason,
         }),
     }
 }
@@ -877,20 +971,26 @@ fn write_stable_read_reply<S: Write>(
     effect: impl FnOnce() -> ExtensionReply,
 ) -> io::Result<()> {
     let Some(generation) = captured_generation else {
-        return write_extension_reply(stream, &ExtensionReply::CapabilityDenied {
-            capability: capability.to_string(),
-            reason: grant_changed_reason(capability),
-        });
+        return write_extension_reply(
+            stream,
+            &ExtensionReply::CapabilityDenied {
+                capability: capability.to_string(),
+                reason: grant_changed_reason(capability),
+            },
+        );
     };
     match registry.with_stable_capability(&identity.extension_id, capability, generation, || {
         let reply = effect();
         write_extension_reply(stream, &reply)
     }) {
         Ok(result) => result,
-        Err(reason) => write_extension_reply(stream, &ExtensionReply::CapabilityDenied {
-            capability: capability.to_string(),
-            reason,
-        }),
+        Err(reason) => write_extension_reply(
+            stream,
+            &ExtensionReply::CapabilityDenied {
+                capability: capability.to_string(),
+                reason,
+            },
+        ),
     }
 }
 
@@ -901,13 +1001,21 @@ fn write_network_registration_reply<S: Write>(
     match result {
         Ok(()) => write_extension_reply(stream, &ExtensionReply::NetworkInterceptAck),
         Err(reason) if reason == grant_changed_reason(CAPABILITY_NETWORK_INTERCEPT) => {
-            write_extension_reply(stream, &ExtensionReply::CapabilityDenied {
-                capability: CAPABILITY_NETWORK_INTERCEPT.to_string(), reason,
-            })
+            write_extension_reply(
+                stream,
+                &ExtensionReply::CapabilityDenied {
+                    capability: CAPABILITY_NETWORK_INTERCEPT.to_string(),
+                    reason,
+                },
+            )
         }
-        Err(reason) => write_extension_reply(stream, &ExtensionReply::OperationUnavailable {
-            capability: CAPABILITY_NETWORK_INTERCEPT.to_string(), reason,
-        }),
+        Err(reason) => write_extension_reply(
+            stream,
+            &ExtensionReply::OperationUnavailable {
+                capability: CAPABILITY_NETWORK_INTERCEPT.to_string(),
+                reason,
+            },
+        ),
     }
 }
 
@@ -1063,15 +1171,19 @@ pub struct ExtensionActionDelegates<R, W, N, B, C> {
     register_network_intercept: N,
     register_network_block_url: B,
     register_network_block_host: Box<dyn FnMut(String, u64) -> Result<(), String> + Send>,
-    register_network_block_path_prefix: Box<dyn FnMut(String, String, u64) -> Result<(), String> + Send>,
+    register_network_block_path_prefix:
+        Box<dyn FnMut(String, String, u64) -> Result<(), String> + Send>,
     register_network_redirect_url: Box<dyn FnMut(String, String, u64) -> Result<(), String> + Send>,
     clear_network_block_urls: C,
     observe_network: Box<dyn FnMut(u64) -> Result<Option<NetworkResponseInfo>, String> + Send>,
     observe_network_trace: Box<dyn FnMut(u64) -> Result<Option<NetworkTraceInfo>, String> + Send>,
     set_toolbar_button: Box<dyn FnMut(String, u64) -> Result<(), String> + Send>,
     clear_toolbar_button: Box<dyn FnMut() -> Result<(), String> + Send>,
+    #[allow(clippy::type_complexity)]
     show_popup: Box<dyn FnMut(u64, String, String, u64) -> Result<(), String> + Send>,
-    show_popup_action: Box<dyn FnMut(u64, String, String, String, u64) -> Result<(), String> + Send>,
+    #[allow(clippy::type_complexity)]
+    show_popup_action:
+        Box<dyn FnMut(u64, String, String, String, u64) -> Result<(), String> + Send>,
     clear_popup: Box<dyn FnMut() -> Result<(), String> + Send>,
     storage: ExtensionStorage,
 }
@@ -1148,7 +1260,6 @@ impl<R, W, N, B, C> ExtensionActionDelegates<R, W, N, B, C> {
         self.read_ephemeral_dom = Box::new(reader);
         self
     }
-
 
     /// Binds read-only response observation to core's live tab state.
     pub fn with_network_observer(
@@ -1441,18 +1552,14 @@ where
         };
         // Capture the grant that existed when this request arrived. A later
         // revoke/regrant cannot lend its authority to a reviewed write.
-        let dom_write_generation = registry.capability_generation(
-            &identity.extension_id, CAPABILITY_DOM_WRITE,
-        );
-        let storage_generation = registry.capability_generation(
-            &identity.extension_id, CAPABILITY_STORAGE,
-        );
-        let dom_read_generation = registry.capability_generation(
-            &identity.extension_id, CAPABILITY_DOM_READ,
-        );
-        let network_observe_generation = registry.capability_generation(
-            &identity.extension_id, CAPABILITY_NETWORK_OBSERVE,
-        );
+        let dom_write_generation =
+            registry.capability_generation(&identity.extension_id, CAPABILITY_DOM_WRITE);
+        let storage_generation =
+            registry.capability_generation(&identity.extension_id, CAPABILITY_STORAGE);
+        let dom_read_generation =
+            registry.capability_generation(&identity.extension_id, CAPABILITY_DOM_READ);
+        let network_observe_generation =
+            registry.capability_generation(&identity.extension_id, CAPABILITY_NETWORK_OBSERVE);
         match request {
             ExtensionRequest::Hello {
                 extension_id,
@@ -1541,10 +1648,21 @@ where
                 } else {
                     loop {
                         match authentication.wait_for_runtime_event() {
-                            Ok(Some(ExtensionRuntimeEvent::ToolbarActivated { grant_generation, .. }
-                                | ExtensionRuntimeEvent::PopupActionActivated { grant_generation, .. }))
-                                if registry.capability_generation(&identity.extension_id, CAPABILITY_UI_INJECT)
-                                    != Some(grant_generation) => continue,
+                            Ok(Some(
+                                ExtensionRuntimeEvent::ToolbarActivated {
+                                    grant_generation, ..
+                                }
+                                | ExtensionRuntimeEvent::PopupActionActivated {
+                                    grant_generation,
+                                    ..
+                                },
+                            )) if registry.capability_generation(
+                                &identity.extension_id,
+                                CAPABILITY_UI_INJECT,
+                            ) != Some(grant_generation) =>
+                            {
+                                continue
+                            }
                             result => break result,
                         }
                     }
@@ -1577,13 +1695,20 @@ where
                         },
                     )?;
                 } else {
-                    write_stable_read_reply(stream, registry, &identity, CAPABILITY_DOM_READ,
-                        dom_read_generation, || match read_dom(None) {
+                    write_stable_read_reply(
+                        stream,
+                        registry,
+                        &identity,
+                        CAPABILITY_DOM_READ,
+                        dom_read_generation,
+                        || match read_dom(None) {
                             Ok(value) => ExtensionReply::DomReadResult { value },
                             Err(reason) => ExtensionReply::OperationUnavailable {
-                                capability: CAPABILITY_DOM_READ.to_string(), reason,
+                                capability: CAPABILITY_DOM_READ.to_string(),
+                                reason,
                             },
-                        })?;
+                        },
+                    )?;
                 }
             }
             ExtensionRequest::DomReadTab { tab_id } => {
@@ -1598,21 +1723,31 @@ where
                         },
                     )?;
                 } else {
-                    write_stable_read_reply(stream, registry, &identity, CAPABILITY_DOM_READ,
-                        dom_read_generation, || match read_dom(Some(tab_id)) {
+                    write_stable_read_reply(
+                        stream,
+                        registry,
+                        &identity,
+                        CAPABILITY_DOM_READ,
+                        dom_read_generation,
+                        || match read_dom(Some(tab_id)) {
                             Ok(value) => ExtensionReply::DomReadResult { value },
                             Err(reason) => ExtensionReply::OperationUnavailable {
-                                capability: CAPABILITY_DOM_READ.to_string(), reason,
+                                capability: CAPABILITY_DOM_READ.to_string(),
+                                reason,
                             },
-                        })?;
+                        },
+                    )?;
                 }
             }
             ExtensionRequest::DomReadTabEphemeral { tab_id, ticket } => {
                 let authorized_mode = authentication.expected().is_some()
                     && registry.has_runtime_ephemeral_declaration(
-                        &identity.extension_id, CAPABILITY_DOM_READ,
+                        &identity.extension_id,
+                        CAPABILITY_DOM_READ,
                     )
-                    && identity.negotiated_capabilities.get(CAPABILITY_DOM_READ)
+                    && identity
+                        .negotiated_capabilities
+                        .get(CAPABILITY_DOM_READ)
                         .is_some_and(|version| *version >= 3);
                 let reply = if !authorized_mode {
                     ExtensionReply::CapabilityDenied {
@@ -1623,7 +1758,8 @@ where
                     match read_ephemeral_dom(tab_id, ticket) {
                         Ok(value) => ExtensionReply::DomReadResult { value },
                         Err(reason) => ExtensionReply::CapabilityDenied {
-                            capability: CAPABILITY_DOM_READ.to_string(), reason,
+                            capability: CAPABILITY_DOM_READ.to_string(),
+                            reason,
                         },
                     }
                 };
@@ -1641,24 +1777,34 @@ where
                         },
                     )?;
                 } else {
-                    write_stable_read_reply(stream, registry, &identity, CAPABILITY_NETWORK_OBSERVE,
-                        network_observe_generation, || match observe_network(tab_id) {
+                    write_stable_read_reply(
+                        stream,
+                        registry,
+                        &identity,
+                        CAPABILITY_NETWORK_OBSERVE,
+                        network_observe_generation,
+                        || match observe_network(tab_id) {
                             Ok(response)
                                 if response.as_ref().is_some_and(|value| {
                                     serde_json::to_vec(value).is_ok_and(|bytes| {
                                         bytes.len()
                                             > blueice_ipc::extension::MAX_NETWORK_OBSERVATION_BYTES
                                     })
-                                }) => ExtensionReply::OperationUnavailable {
-                                capability: CAPABILITY_NETWORK_OBSERVE.to_string(),
-                                reason: "network response metadata exceeds the 4096-byte limit"
-                                    .to_string(),
-                            },
+                                }) =>
+                            {
+                                ExtensionReply::OperationUnavailable {
+                                    capability: CAPABILITY_NETWORK_OBSERVE.to_string(),
+                                    reason: "network response metadata exceeds the 4096-byte limit"
+                                        .to_string(),
+                                }
+                            }
                             Ok(response) => ExtensionReply::NetworkResponseResult { response },
                             Err(reason) => ExtensionReply::OperationUnavailable {
-                                capability: CAPABILITY_NETWORK_OBSERVE.to_string(), reason,
+                                capability: CAPABILITY_NETWORK_OBSERVE.to_string(),
+                                reason,
                             },
-                        })?;
+                        },
+                    )?;
                 }
             }
             ExtensionRequest::ReadNetworkTrace { tab_id } => {
@@ -1673,21 +1819,34 @@ where
                         },
                     )?;
                 } else {
-                    write_stable_read_reply(stream, registry, &identity, CAPABILITY_NETWORK_OBSERVE,
-                        network_observe_generation, || match observe_network_trace(tab_id) {
-                            Ok(trace) if trace.as_ref().is_some_and(|value| {
-                                serde_json::to_vec(value).is_ok_and(|bytes| {
-                                    bytes.len() > blueice_ipc::extension::MAX_NETWORK_TRACE_BYTES
-                                })
-                            }) => ExtensionReply::OperationUnavailable {
-                                capability: CAPABILITY_NETWORK_OBSERVE.to_string(),
-                                reason: "network trace metadata exceeds the 32768-byte limit".to_string(),
-                            },
+                    write_stable_read_reply(
+                        stream,
+                        registry,
+                        &identity,
+                        CAPABILITY_NETWORK_OBSERVE,
+                        network_observe_generation,
+                        || match observe_network_trace(tab_id) {
+                            Ok(trace)
+                                if trace.as_ref().is_some_and(|value| {
+                                    serde_json::to_vec(value).is_ok_and(|bytes| {
+                                        bytes.len()
+                                            > blueice_ipc::extension::MAX_NETWORK_TRACE_BYTES
+                                    })
+                                }) =>
+                            {
+                                ExtensionReply::OperationUnavailable {
+                                    capability: CAPABILITY_NETWORK_OBSERVE.to_string(),
+                                    reason: "network trace metadata exceeds the 32768-byte limit"
+                                        .to_string(),
+                                }
+                            }
                             Ok(trace) => ExtensionReply::NetworkTraceResult { trace },
                             Err(reason) => ExtensionReply::OperationUnavailable {
-                                capability: CAPABILITY_NETWORK_OBSERVE.to_string(), reason,
+                                capability: CAPABILITY_NETWORK_OBSERVE.to_string(),
+                                reason,
                             },
-                        })?;
+                        },
+                    )?;
                 }
             }
             ExtensionRequest::SetToolbarButton { label } => {
@@ -1703,43 +1862,72 @@ where
                     )?;
                 } else {
                     if let Err(reason) = validate_toolbar_label(&label) {
-                        write_extension_reply(stream, &ExtensionReply::OperationUnavailable {
-                            capability: CAPABILITY_UI_INJECT.to_string(), reason,
-                        })?;
+                        write_extension_reply(
+                            stream,
+                            &ExtensionReply::OperationUnavailable {
+                                capability: CAPABILITY_UI_INJECT.to_string(),
+                                reason,
+                            },
+                        )?;
                         continue;
                     }
-                    let Some(generation) = registry.capability_generation(&identity.extension_id, CAPABILITY_UI_INJECT) else {
-                        write_extension_reply(stream, &ExtensionReply::CapabilityDenied {
-                            capability: CAPABILITY_UI_INJECT.to_string(),
-                            reason: grant_changed_reason(CAPABILITY_UI_INJECT),
-                        })?;
+                    let Some(generation) = registry
+                        .capability_generation(&identity.extension_id, CAPABILITY_UI_INJECT)
+                    else {
+                        write_extension_reply(
+                            stream,
+                            &ExtensionReply::CapabilityDenied {
+                                capability: CAPABILITY_UI_INJECT.to_string(),
+                                reason: grant_changed_reason(CAPABILITY_UI_INJECT),
+                            },
+                        )?;
                         continue;
                     };
                     let detail = format!("action=set-native-toolbar-button; label={label:?}");
                     let reply = match check_extension_action(
-                        gatekeeper_socket, &identity.extension_id, CAPABILITY_UI_INJECT, detail,
+                        gatekeeper_socket,
+                        &identity.extension_id,
+                        CAPABILITY_UI_INJECT,
+                        detail,
                     ) {
-                        Ok(GatekeeperReply::Cleared) if registry.capability_generation(&identity.extension_id, CAPABILITY_UI_INJECT) != Some(generation) => ExtensionReply::CapabilityDenied {
-                            capability: CAPABILITY_UI_INJECT.to_string(),
-                            reason: grant_changed_reason(CAPABILITY_UI_INJECT),
-                        },
-                        Ok(GatekeeperReply::Cleared) => match set_toolbar_button(label, generation) {
+                        Ok(GatekeeperReply::Cleared)
+                            if registry.capability_generation(
+                                &identity.extension_id,
+                                CAPABILITY_UI_INJECT,
+                            ) != Some(generation) =>
+                        {
+                            ExtensionReply::CapabilityDenied {
+                                capability: CAPABILITY_UI_INJECT.to_string(),
+                                reason: grant_changed_reason(CAPABILITY_UI_INJECT),
+                            }
+                        }
+                        Ok(GatekeeperReply::Cleared) => match set_toolbar_button(label, generation)
+                        {
                             Ok(()) => {
                                 toolbar_visible = true;
                                 ExtensionReply::UiInjectAck
                             }
-                            Err(reason) if reason == grant_changed_reason(CAPABILITY_UI_INJECT) => ExtensionReply::CapabilityDenied {
-                                capability: CAPABILITY_UI_INJECT.to_string(), reason,
-                            },
+                            Err(reason) if reason == grant_changed_reason(CAPABILITY_UI_INJECT) => {
+                                ExtensionReply::CapabilityDenied {
+                                    capability: CAPABILITY_UI_INJECT.to_string(),
+                                    reason,
+                                }
+                            }
                             Err(reason) => ExtensionReply::OperationUnavailable {
-                                capability: CAPABILITY_UI_INJECT.to_string(), reason,
+                                capability: CAPABILITY_UI_INJECT.to_string(),
+                                reason,
                             },
                         },
-                        Ok(GatekeeperReply::Rejected { reason, category }) => ExtensionReply::GatekeeperBlocked {
-                            capability: CAPABILITY_UI_INJECT.to_string(), reason, category,
-                        },
+                        Ok(GatekeeperReply::Rejected { reason, category }) => {
+                            ExtensionReply::GatekeeperBlocked {
+                                capability: CAPABILITY_UI_INJECT.to_string(),
+                                reason,
+                                category,
+                            }
+                        }
                         Err(reason) => ExtensionReply::GatekeeperBlocked {
-                            capability: CAPABILITY_UI_INJECT.to_string(), reason,
+                            capability: CAPABILITY_UI_INJECT.to_string(),
+                            reason,
                             category: "gatekeeper-unavailable".to_string(),
                         },
                     };
@@ -1772,7 +1960,11 @@ where
                     write_extension_reply(stream, &reply)?;
                 }
             }
-            ExtensionRequest::ShowPopup { tab_id, title, body } => {
+            ExtensionRequest::ShowPopup {
+                tab_id,
+                title,
+                body,
+            } => {
                 if let Some(reason) =
                     capability_denial_reason(registry, &identity, CAPABILITY_UI_INJECT, 2)
                 {
@@ -1785,11 +1977,16 @@ where
                     )?;
                     continue;
                 }
-                let Some(generation) = registry.capability_generation(&identity.extension_id, CAPABILITY_UI_INJECT) else {
-                    write_extension_reply(stream, &ExtensionReply::CapabilityDenied {
-                        capability: CAPABILITY_UI_INJECT.to_string(),
-                        reason: grant_changed_reason(CAPABILITY_UI_INJECT),
-                    })?;
+                let Some(generation) =
+                    registry.capability_generation(&identity.extension_id, CAPABILITY_UI_INJECT)
+                else {
+                    write_extension_reply(
+                        stream,
+                        &ExtensionReply::CapabilityDenied {
+                            capability: CAPABILITY_UI_INJECT.to_string(),
+                            reason: grant_changed_reason(CAPABILITY_UI_INJECT),
+                        },
+                    )?;
                     continue;
                 };
                 if let Err(reason) = validate_popup_text(&title, &body) {
@@ -1823,23 +2020,35 @@ where
                     CAPABILITY_UI_INJECT,
                     detail,
                 ) {
-                    Ok(GatekeeperReply::Cleared) if registry.capability_generation(&identity.extension_id, CAPABILITY_UI_INJECT) != Some(generation) => ExtensionReply::CapabilityDenied {
-                        capability: CAPABILITY_UI_INJECT.to_string(),
-                        reason: grant_changed_reason(CAPABILITY_UI_INJECT),
-                    },
-                    Ok(GatekeeperReply::Cleared) => match show_popup(tab_id, title, body, generation) {
-                        Ok(()) => {
-                            popup_visible = true;
-                            ExtensionReply::UiInjectAck
-                        }
-                        Err(reason) if reason == grant_changed_reason(CAPABILITY_UI_INJECT) => ExtensionReply::CapabilityDenied {
-                            capability: CAPABILITY_UI_INJECT.to_string(), reason,
-                        },
-                        Err(reason) => ExtensionReply::OperationUnavailable {
+                    Ok(GatekeeperReply::Cleared)
+                        if registry.capability_generation(
+                            &identity.extension_id,
+                            CAPABILITY_UI_INJECT,
+                        ) != Some(generation) =>
+                    {
+                        ExtensionReply::CapabilityDenied {
                             capability: CAPABILITY_UI_INJECT.to_string(),
-                            reason,
-                        },
-                    },
+                            reason: grant_changed_reason(CAPABILITY_UI_INJECT),
+                        }
+                    }
+                    Ok(GatekeeperReply::Cleared) => {
+                        match show_popup(tab_id, title, body, generation) {
+                            Ok(()) => {
+                                popup_visible = true;
+                                ExtensionReply::UiInjectAck
+                            }
+                            Err(reason) if reason == grant_changed_reason(CAPABILITY_UI_INJECT) => {
+                                ExtensionReply::CapabilityDenied {
+                                    capability: CAPABILITY_UI_INJECT.to_string(),
+                                    reason,
+                                }
+                            }
+                            Err(reason) => ExtensionReply::OperationUnavailable {
+                                capability: CAPABILITY_UI_INJECT.to_string(),
+                                reason,
+                            },
+                        }
+                    }
                     Ok(GatekeeperReply::Rejected { reason, category }) => {
                         ExtensionReply::GatekeeperBlocked {
                             capability: CAPABILITY_UI_INJECT.to_string(),
@@ -1855,33 +2064,58 @@ where
                 };
                 write_extension_reply(stream, &reply)?;
             }
-            ExtensionRequest::ShowPopupAction { tab_id, title, body, action_label } => {
-                if let Some(reason) = capability_denial_reason(registry, &identity, CAPABILITY_UI_INJECT, 3) {
-                    write_extension_reply(stream, &ExtensionReply::CapabilityDenied {
-                        capability: CAPABILITY_UI_INJECT.to_string(), reason,
-                    })?;
+            ExtensionRequest::ShowPopupAction {
+                tab_id,
+                title,
+                body,
+                action_label,
+            } => {
+                if let Some(reason) =
+                    capability_denial_reason(registry, &identity, CAPABILITY_UI_INJECT, 3)
+                {
+                    write_extension_reply(
+                        stream,
+                        &ExtensionReply::CapabilityDenied {
+                            capability: CAPABILITY_UI_INJECT.to_string(),
+                            reason,
+                        },
+                    )?;
                     continue;
                 }
-                let Some(generation) = registry.capability_generation(&identity.extension_id, CAPABILITY_UI_INJECT) else {
-                    write_extension_reply(stream, &ExtensionReply::CapabilityDenied {
-                        capability: CAPABILITY_UI_INJECT.to_string(),
-                        reason: grant_changed_reason(CAPABILITY_UI_INJECT),
-                    })?;
+                let Some(generation) =
+                    registry.capability_generation(&identity.extension_id, CAPABILITY_UI_INJECT)
+                else {
+                    write_extension_reply(
+                        stream,
+                        &ExtensionReply::CapabilityDenied {
+                            capability: CAPABILITY_UI_INJECT.to_string(),
+                            reason: grant_changed_reason(CAPABILITY_UI_INJECT),
+                        },
+                    )?;
                     continue;
                 };
                 if let Err(reason) = validate_popup_text(&title, &body)
                     .and_then(|()| validate_toolbar_label(&action_label))
                 {
-                    write_extension_reply(stream, &ExtensionReply::OperationUnavailable {
-                        capability: CAPABILITY_UI_INJECT.to_string(), reason,
-                    })?;
+                    write_extension_reply(
+                        stream,
+                        &ExtensionReply::OperationUnavailable {
+                            capability: CAPABILITY_UI_INJECT.to_string(),
+                            reason,
+                        },
+                    )?;
                     continue;
                 }
                 if !toolbar_visible {
-                    write_extension_reply(stream, &ExtensionReply::OperationUnavailable {
-                        capability: CAPABILITY_UI_INJECT.to_string(),
-                        reason: "a native popup action requires this connection's toolbar button".to_string(),
-                    })?;
+                    write_extension_reply(
+                        stream,
+                        &ExtensionReply::OperationUnavailable {
+                            capability: CAPABILITY_UI_INJECT.to_string(),
+                            reason:
+                                "a native popup action requires this connection's toolbar button"
+                                    .to_string(),
+                        },
+                    )?;
                     continue;
                 }
                 // Every guest-visible word on the interactive surface reaches
@@ -1895,27 +2129,42 @@ where
                     CAPABILITY_UI_INJECT,
                     detail,
                 ) {
-                    Ok(GatekeeperReply::Cleared) if registry.capability_generation(&identity.extension_id, CAPABILITY_UI_INJECT) != Some(generation) => ExtensionReply::CapabilityDenied {
-                        capability: CAPABILITY_UI_INJECT.to_string(),
-                        reason: grant_changed_reason(CAPABILITY_UI_INJECT),
-                    },
+                    Ok(GatekeeperReply::Cleared)
+                        if registry.capability_generation(
+                            &identity.extension_id,
+                            CAPABILITY_UI_INJECT,
+                        ) != Some(generation) =>
+                    {
+                        ExtensionReply::CapabilityDenied {
+                            capability: CAPABILITY_UI_INJECT.to_string(),
+                            reason: grant_changed_reason(CAPABILITY_UI_INJECT),
+                        }
+                    }
                     Ok(GatekeeperReply::Cleared) => {
                         match show_popup_action(tab_id, title, body, action_label, generation) {
                             Ok(()) => {
                                 popup_visible = true;
                                 ExtensionReply::UiInjectAck
                             }
-                            Err(reason) if reason == grant_changed_reason(CAPABILITY_UI_INJECT) => ExtensionReply::CapabilityDenied {
-                                capability: CAPABILITY_UI_INJECT.to_string(), reason,
-                            },
+                            Err(reason) if reason == grant_changed_reason(CAPABILITY_UI_INJECT) => {
+                                ExtensionReply::CapabilityDenied {
+                                    capability: CAPABILITY_UI_INJECT.to_string(),
+                                    reason,
+                                }
+                            }
                             Err(reason) => ExtensionReply::OperationUnavailable {
-                                capability: CAPABILITY_UI_INJECT.to_string(), reason,
+                                capability: CAPABILITY_UI_INJECT.to_string(),
+                                reason,
                             },
                         }
                     }
-                    Ok(GatekeeperReply::Rejected { reason, category }) => ExtensionReply::GatekeeperBlocked {
-                        capability: CAPABILITY_UI_INJECT.to_string(), reason, category,
-                    },
+                    Ok(GatekeeperReply::Rejected { reason, category }) => {
+                        ExtensionReply::GatekeeperBlocked {
+                            capability: CAPABILITY_UI_INJECT.to_string(),
+                            reason,
+                            category,
+                        }
+                    }
                     Err(reason) => ExtensionReply::GatekeeperBlocked {
                         capability: CAPABILITY_UI_INJECT.to_string(),
                         reason,
@@ -1982,8 +2231,18 @@ where
                             "only gatekeeper-triggering targets reach extension action review",
                         ),
                     ) {
-                        Ok(GatekeeperReply::Cleared) => write_dom_effect_reply(stream,
-                            commit_dom_write(registry, &identity, dom_write_generation, &mut write_dom, None, value, &target))?,
+                        Ok(GatekeeperReply::Cleared) => write_dom_effect_reply(
+                            stream,
+                            commit_dom_write(
+                                registry,
+                                &identity,
+                                dom_write_generation,
+                                &mut write_dom,
+                                None,
+                                value,
+                                &target,
+                            ),
+                        )?,
                         Ok(GatekeeperReply::Rejected { reason, category }) => {
                             write_extension_reply(
                                 stream,
@@ -2006,8 +2265,18 @@ where
                         }
                     }
                 } else {
-                    write_dom_effect_reply(stream,
-                        commit_dom_write(registry, &identity, dom_write_generation, &mut write_dom, None, value, &target))?;
+                    write_dom_effect_reply(
+                        stream,
+                        commit_dom_write(
+                            registry,
+                            &identity,
+                            dom_write_generation,
+                            &mut write_dom,
+                            None,
+                            value,
+                            &target,
+                        ),
+                    )?;
                 }
             }
             ExtensionRequest::SetTextInputValue {
@@ -2053,8 +2322,18 @@ where
                         let target = blueice_ipc::extension::DomWriteTarget::FormInput {
                             input_type: "text".to_string(),
                         };
-                        write_dom_effect_reply(stream,
-                            commit_dom_write(registry, &identity, dom_write_generation, &mut write_dom, Some((tab_id, node_id)), value, &target))?;
+                        write_dom_effect_reply(
+                            stream,
+                            commit_dom_write(
+                                registry,
+                                &identity,
+                                dom_write_generation,
+                                &mut write_dom,
+                                Some((tab_id, node_id)),
+                                value,
+                                &target,
+                            ),
+                        )?;
                     }
                     Ok(GatekeeperReply::Rejected { reason, category }) => {
                         write_extension_reply(
@@ -2110,8 +2389,18 @@ where
                             input_type: "checkbox".to_string(),
                         };
                         let checked = if checked { "true" } else { "false" }.to_string();
-                        write_dom_effect_reply(stream,
-                            commit_dom_write(registry, &identity, dom_write_generation, &mut write_dom, Some((tab_id, node_id)), checked, &target))?;
+                        write_dom_effect_reply(
+                            stream,
+                            commit_dom_write(
+                                registry,
+                                &identity,
+                                dom_write_generation,
+                                &mut write_dom,
+                                Some((tab_id, node_id)),
+                                checked,
+                                &target,
+                            ),
+                        )?;
                     }
                     Ok(GatekeeperReply::Rejected { reason, category }) => {
                         write_extension_reply(
@@ -2178,8 +2467,18 @@ where
                         let target = blueice_ipc::extension::DomWriteTarget::FormInput {
                             input_type: "textarea".to_string(),
                         };
-                        write_dom_effect_reply(stream,
-                            commit_dom_write(registry, &identity, dom_write_generation, &mut write_dom, Some((tab_id, node_id)), value, &target))?;
+                        write_dom_effect_reply(
+                            stream,
+                            commit_dom_write(
+                                registry,
+                                &identity,
+                                dom_write_generation,
+                                &mut write_dom,
+                                Some((tab_id, node_id)),
+                                value,
+                                &target,
+                            ),
+                        )?;
                     }
                     Ok(GatekeeperReply::Rejected { reason, category }) => {
                         write_extension_reply(
@@ -2234,8 +2533,18 @@ where
                         let target = blueice_ipc::extension::DomWriteTarget::FormInput {
                             input_type: "range".to_string(),
                         };
-                        write_dom_effect_reply(stream,
-                            commit_dom_write(registry, &identity, dom_write_generation, &mut write_dom, Some((tab_id, node_id)), value.to_string(), &target))?;
+                        write_dom_effect_reply(
+                            stream,
+                            commit_dom_write(
+                                registry,
+                                &identity,
+                                dom_write_generation,
+                                &mut write_dom,
+                                Some((tab_id, node_id)),
+                                value.to_string(),
+                                &target,
+                            ),
+                        )?;
                     }
                     Ok(GatekeeperReply::Rejected { reason, category }) => {
                         write_extension_reply(
@@ -2262,7 +2571,11 @@ where
             request @ (ExtensionRequest::SetVisibleLeafText { .. }
             | ExtensionRequest::SetVisibleTextContent { .. }) => {
                 let (tab_id, node_id, value, required_version, action, target) = match request {
-                    ExtensionRequest::SetVisibleLeafText { tab_id, node_id, value } => (
+                    ExtensionRequest::SetVisibleLeafText {
+                        tab_id,
+                        node_id,
+                        value,
+                    } => (
                         tab_id,
                         node_id,
                         value,
@@ -2270,7 +2583,11 @@ where
                         "set-visible-leaf-text",
                         blueice_ipc::extension::DomWriteTarget::VisibleTextLeaf,
                     ),
-                    ExtensionRequest::SetVisibleTextContent { tab_id, node_id, value } => (
+                    ExtensionRequest::SetVisibleTextContent {
+                        tab_id,
+                        node_id,
+                        value,
+                    } => (
                         tab_id,
                         node_id,
                         value,
@@ -2280,15 +2597,26 @@ where
                     ),
                     _ => unreachable!("the matched request is a visible-text write"),
                 };
-                if let Some(reason) = capability_denial_reason(registry, &identity, CAPABILITY_DOM_WRITE, required_version) {
-                    write_extension_reply(stream, &ExtensionReply::CapabilityDenied {
-                        capability: CAPABILITY_DOM_WRITE.to_string(), reason,
-                    })?;
+                if let Some(reason) = capability_denial_reason(
+                    registry,
+                    &identity,
+                    CAPABILITY_DOM_WRITE,
+                    required_version,
+                ) {
+                    write_extension_reply(
+                        stream,
+                        &ExtensionReply::CapabilityDenied {
+                            capability: CAPABILITY_DOM_WRITE.to_string(),
+                            reason,
+                        },
+                    )?;
                     continue;
                 }
                 if value.trim().is_empty()
                     || value.len() > blueice_ipc::extension::MAX_VISIBLE_LEAF_TEXT_BYTES
-                    || value.chars().any(|ch| ch.is_control() && ch != '\n' && ch != '\t')
+                    || value
+                        .chars()
+                        .any(|ch| ch.is_control() && ch != '\n' && ch != '\t')
                 {
                     write_extension_reply(stream, &ExtensionReply::OperationUnavailable {
                         capability: CAPABILITY_DOM_WRITE.to_string(),
@@ -2300,21 +2628,45 @@ where
                 // public-facing effect. Review the exact bounded payload;
                 // core separately verifies the live target and URL.
                 let detail = format!("action={action}; text={value}");
-                match check_extension_action(gatekeeper_socket, &identity.extension_id, CAPABILITY_DOM_WRITE, detail) {
+                match check_extension_action(
+                    gatekeeper_socket,
+                    &identity.extension_id,
+                    CAPABILITY_DOM_WRITE,
+                    detail,
+                ) {
                     Ok(GatekeeperReply::Cleared) => {
-                        write_dom_effect_reply(stream,
-                            commit_dom_write(registry, &identity, dom_write_generation, &mut write_dom, Some((tab_id, node_id)), value, &target))?;
+                        write_dom_effect_reply(
+                            stream,
+                            commit_dom_write(
+                                registry,
+                                &identity,
+                                dom_write_generation,
+                                &mut write_dom,
+                                Some((tab_id, node_id)),
+                                value,
+                                &target,
+                            ),
+                        )?;
                     }
                     Ok(GatekeeperReply::Rejected { reason, category }) => {
-                        write_extension_reply(stream, &ExtensionReply::GatekeeperBlocked {
-                            capability: CAPABILITY_DOM_WRITE.to_string(), reason, category,
-                        })?;
+                        write_extension_reply(
+                            stream,
+                            &ExtensionReply::GatekeeperBlocked {
+                                capability: CAPABILITY_DOM_WRITE.to_string(),
+                                reason,
+                                category,
+                            },
+                        )?;
                     }
                     Err(reason) => {
-                        write_extension_reply(stream, &ExtensionReply::GatekeeperBlocked {
-                            capability: CAPABILITY_DOM_WRITE.to_string(), reason,
-                            category: "gatekeeper-unavailable".to_string(),
-                        })?;
+                        write_extension_reply(
+                            stream,
+                            &ExtensionReply::GatekeeperBlocked {
+                                capability: CAPABILITY_DOM_WRITE.to_string(),
+                                reason,
+                                category: "gatekeeper-unavailable".to_string(),
+                            },
+                        )?;
                     }
                 }
             }
@@ -2344,8 +2696,18 @@ where
                         let target = blueice_ipc::extension::DomWriteTarget::FormInput {
                             input_type: "radio".to_string(),
                         };
-                        write_dom_effect_reply(stream,
-                            commit_dom_write(registry, &identity, dom_write_generation, &mut write_dom, Some((tab_id, node_id)), "true".to_string(), &target))?;
+                        write_dom_effect_reply(
+                            stream,
+                            commit_dom_write(
+                                registry,
+                                &identity,
+                                dom_write_generation,
+                                &mut write_dom,
+                                Some((tab_id, node_id)),
+                                "true".to_string(),
+                                &target,
+                            ),
+                        )?;
                     }
                     Ok(GatekeeperReply::Rejected { reason, category }) => {
                         write_extension_reply(
@@ -2396,8 +2758,18 @@ where
                         let target = blueice_ipc::extension::DomWriteTarget::FormInput {
                             input_type: "select".to_string(),
                         };
-                        write_dom_effect_reply(stream,
-                            commit_dom_write(registry, &identity, dom_write_generation, &mut write_dom, Some((tab_id, node_id)), "true".to_string(), &target))?;
+                        write_dom_effect_reply(
+                            stream,
+                            commit_dom_write(
+                                registry,
+                                &identity,
+                                dom_write_generation,
+                                &mut write_dom,
+                                Some((tab_id, node_id)),
+                                "true".to_string(),
+                                &target,
+                            ),
+                        )?;
                     }
                     Ok(GatekeeperReply::Rejected { reason, category }) => {
                         write_extension_reply(
@@ -2422,12 +2794,17 @@ where
                 }
             }
             ExtensionRequest::RegisterNetworkBlockUrl { url } => {
-                let grant_generation = match network_registration_generation(registry, &identity, 2) {
+                let grant_generation = match network_registration_generation(registry, &identity, 2)
+                {
                     Ok(generation) => generation,
                     Err(reason) => {
-                        write_extension_reply(stream, &ExtensionReply::CapabilityDenied {
-                            capability: CAPABILITY_NETWORK_INTERCEPT.to_string(), reason,
-                        })?;
+                        write_extension_reply(
+                            stream,
+                            &ExtensionReply::CapabilityDenied {
+                                capability: CAPABILITY_NETWORK_INTERCEPT.to_string(),
+                                reason,
+                            },
+                        )?;
                         continue;
                     }
                 };
@@ -2453,14 +2830,23 @@ where
                     CAPABILITY_NETWORK_INTERCEPT,
                     "action=register-exact-navigation-block".to_string(),
                 ) {
-                    Ok(GatekeeperReply::Cleared) if registry.capability_generation(
-                        &identity.extension_id, CAPABILITY_NETWORK_INTERCEPT,
-                    ) != Some(grant_generation) => write_extension_reply(stream, &ExtensionReply::CapabilityDenied {
-                        capability: CAPABILITY_NETWORK_INTERCEPT.to_string(),
-                        reason: grant_changed_reason(CAPABILITY_NETWORK_INTERCEPT),
-                    })?,
+                    Ok(GatekeeperReply::Cleared)
+                        if registry.capability_generation(
+                            &identity.extension_id,
+                            CAPABILITY_NETWORK_INTERCEPT,
+                        ) != Some(grant_generation) =>
+                    {
+                        write_extension_reply(
+                            stream,
+                            &ExtensionReply::CapabilityDenied {
+                                capability: CAPABILITY_NETWORK_INTERCEPT.to_string(),
+                                reason: grant_changed_reason(CAPABILITY_NETWORK_INTERCEPT),
+                            },
+                        )?
+                    }
                     Ok(GatekeeperReply::Cleared) => write_network_registration_reply(
-                        stream, register_network_block_url(url, grant_generation),
+                        stream,
+                        register_network_block_url(url, grant_generation),
                     )?,
                     Ok(GatekeeperReply::Rejected { reason, category }) => {
                         write_extension_reply(
@@ -2485,12 +2871,17 @@ where
                 }
             }
             ExtensionRequest::RegisterNetworkBlockHost { host } => {
-                let grant_generation = match network_registration_generation(registry, &identity, 4) {
+                let grant_generation = match network_registration_generation(registry, &identity, 4)
+                {
                     Ok(generation) => generation,
                     Err(reason) => {
-                        write_extension_reply(stream, &ExtensionReply::CapabilityDenied {
-                            capability: CAPABILITY_NETWORK_INTERCEPT.to_string(), reason,
-                        })?;
+                        write_extension_reply(
+                            stream,
+                            &ExtensionReply::CapabilityDenied {
+                                capability: CAPABILITY_NETWORK_INTERCEPT.to_string(),
+                                reason,
+                            },
+                        )?;
                         continue;
                     }
                 };
@@ -2516,14 +2907,23 @@ where
                     CAPABILITY_NETWORK_INTERCEPT,
                     "action=register-host-navigation-block".to_string(),
                 ) {
-                    Ok(GatekeeperReply::Cleared) if registry.capability_generation(
-                        &identity.extension_id, CAPABILITY_NETWORK_INTERCEPT,
-                    ) != Some(grant_generation) => write_extension_reply(stream, &ExtensionReply::CapabilityDenied {
-                        capability: CAPABILITY_NETWORK_INTERCEPT.to_string(),
-                        reason: grant_changed_reason(CAPABILITY_NETWORK_INTERCEPT),
-                    })?,
+                    Ok(GatekeeperReply::Cleared)
+                        if registry.capability_generation(
+                            &identity.extension_id,
+                            CAPABILITY_NETWORK_INTERCEPT,
+                        ) != Some(grant_generation) =>
+                    {
+                        write_extension_reply(
+                            stream,
+                            &ExtensionReply::CapabilityDenied {
+                                capability: CAPABILITY_NETWORK_INTERCEPT.to_string(),
+                                reason: grant_changed_reason(CAPABILITY_NETWORK_INTERCEPT),
+                            },
+                        )?
+                    }
                     Ok(GatekeeperReply::Cleared) => write_network_registration_reply(
-                        stream, register_network_block_host(host, grant_generation),
+                        stream,
+                        register_network_block_host(host, grant_generation),
                     )?,
                     Ok(GatekeeperReply::Rejected { reason, category }) => {
                         write_extension_reply(
@@ -2548,22 +2948,32 @@ where
                 }
             }
             ExtensionRequest::RegisterNetworkBlockPathPrefix { host, path_prefix } => {
-                let grant_generation = match network_registration_generation(registry, &identity, 5) {
+                let grant_generation = match network_registration_generation(registry, &identity, 5)
+                {
                     Ok(generation) => generation,
                     Err(reason) => {
-                        write_extension_reply(stream, &ExtensionReply::CapabilityDenied {
-                            capability: CAPABILITY_NETWORK_INTERCEPT.to_string(), reason,
-                        })?;
+                        write_extension_reply(
+                            stream,
+                            &ExtensionReply::CapabilityDenied {
+                                capability: CAPABILITY_NETWORK_INTERCEPT.to_string(),
+                                reason,
+                            },
+                        )?;
                         continue;
                     }
                 };
                 if host.len() > blueice_ipc::extension::MAX_NETWORK_BLOCK_HOST_BYTES
                     || path_prefix.len() > blueice_ipc::extension::MAX_NETWORK_BLOCK_PATH_BYTES
                 {
-                    write_extension_reply(stream, &ExtensionReply::OperationUnavailable {
-                        capability: CAPABILITY_NETWORK_INTERCEPT.to_string(),
-                        reason: "navigation-block host or path prefix exceeds its protocol bound".to_string(),
-                    })?;
+                    write_extension_reply(
+                        stream,
+                        &ExtensionReply::OperationUnavailable {
+                            capability: CAPABILITY_NETWORK_INTERCEPT.to_string(),
+                            reason:
+                                "navigation-block host or path prefix exceeds its protocol bound"
+                                    .to_string(),
+                        },
+                    )?;
                     continue;
                 }
                 // Only the fixed action class reaches the gatekeeper. The
@@ -2575,49 +2985,77 @@ where
                     CAPABILITY_NETWORK_INTERCEPT,
                     "action=register-path-prefix-navigation-block".to_string(),
                 ) {
-                    Ok(GatekeeperReply::Cleared) if registry.capability_generation(
-                        &identity.extension_id, CAPABILITY_NETWORK_INTERCEPT,
-                    ) != Some(grant_generation) => write_extension_reply(stream, &ExtensionReply::CapabilityDenied {
-                        capability: CAPABILITY_NETWORK_INTERCEPT.to_string(),
-                        reason: grant_changed_reason(CAPABILITY_NETWORK_INTERCEPT),
-                    })?,
+                    Ok(GatekeeperReply::Cleared)
+                        if registry.capability_generation(
+                            &identity.extension_id,
+                            CAPABILITY_NETWORK_INTERCEPT,
+                        ) != Some(grant_generation) =>
+                    {
+                        write_extension_reply(
+                            stream,
+                            &ExtensionReply::CapabilityDenied {
+                                capability: CAPABILITY_NETWORK_INTERCEPT.to_string(),
+                                reason: grant_changed_reason(CAPABILITY_NETWORK_INTERCEPT),
+                            },
+                        )?
+                    }
                     Ok(GatekeeperReply::Cleared) => {
-                        write_network_registration_reply(stream,
-                            register_network_block_path_prefix(host, path_prefix, grant_generation))?;
+                        write_network_registration_reply(
+                            stream,
+                            register_network_block_path_prefix(host, path_prefix, grant_generation),
+                        )?;
                     }
                     Ok(GatekeeperReply::Rejected { reason, category }) => {
-                        write_extension_reply(stream, &ExtensionReply::GatekeeperBlocked {
-                            capability: CAPABILITY_NETWORK_INTERCEPT.to_string(),
-                            reason,
-                            category,
-                        })?;
+                        write_extension_reply(
+                            stream,
+                            &ExtensionReply::GatekeeperBlocked {
+                                capability: CAPABILITY_NETWORK_INTERCEPT.to_string(),
+                                reason,
+                                category,
+                            },
+                        )?;
                     }
                     Err(reason) => {
-                        write_extension_reply(stream, &ExtensionReply::GatekeeperBlocked {
-                            capability: CAPABILITY_NETWORK_INTERCEPT.to_string(),
-                            reason,
-                            category: "gatekeeper-unavailable".to_string(),
-                        })?;
+                        write_extension_reply(
+                            stream,
+                            &ExtensionReply::GatekeeperBlocked {
+                                capability: CAPABILITY_NETWORK_INTERCEPT.to_string(),
+                                reason,
+                                category: "gatekeeper-unavailable".to_string(),
+                            },
+                        )?;
                     }
                 }
             }
-            ExtensionRequest::RegisterNetworkRedirectUrl { source_url, target_url } => {
-                let grant_generation = match network_registration_generation(registry, &identity, 6) {
+            ExtensionRequest::RegisterNetworkRedirectUrl {
+                source_url,
+                target_url,
+            } => {
+                let grant_generation = match network_registration_generation(registry, &identity, 6)
+                {
                     Ok(generation) => generation,
                     Err(reason) => {
-                        write_extension_reply(stream, &ExtensionReply::CapabilityDenied {
-                            capability: CAPABILITY_NETWORK_INTERCEPT.to_string(), reason,
-                        })?;
+                        write_extension_reply(
+                            stream,
+                            &ExtensionReply::CapabilityDenied {
+                                capability: CAPABILITY_NETWORK_INTERCEPT.to_string(),
+                                reason,
+                            },
+                        )?;
                         continue;
                     }
                 };
                 if source_url.len() > blueice_ipc::extension::MAX_NETWORK_BLOCK_URL_BYTES
                     || target_url.len() > blueice_ipc::extension::MAX_NETWORK_BLOCK_URL_BYTES
                 {
-                    write_extension_reply(stream, &ExtensionReply::OperationUnavailable {
-                        capability: CAPABILITY_NETWORK_INTERCEPT.to_string(),
-                        reason: "navigation redirect URLs exceed the protocol bound".to_string(),
-                    })?;
+                    write_extension_reply(
+                        stream,
+                        &ExtensionReply::OperationUnavailable {
+                            capability: CAPABILITY_NETWORK_INTERCEPT.to_string(),
+                            reason: "navigation redirect URLs exceed the protocol bound"
+                                .to_string(),
+                        },
+                    )?;
                     continue;
                 }
                 // Only a fixed action label reaches the reviewer. Core later
@@ -2629,26 +3067,45 @@ where
                     CAPABILITY_NETWORK_INTERCEPT,
                     "action=register-same-origin-navigation-redirect".to_string(),
                 ) {
-                    Ok(GatekeeperReply::Cleared) if registry.capability_generation(
-                        &identity.extension_id, CAPABILITY_NETWORK_INTERCEPT,
-                    ) != Some(grant_generation) => write_extension_reply(stream, &ExtensionReply::CapabilityDenied {
-                        capability: CAPABILITY_NETWORK_INTERCEPT.to_string(),
-                        reason: grant_changed_reason(CAPABILITY_NETWORK_INTERCEPT),
-                    })?,
+                    Ok(GatekeeperReply::Cleared)
+                        if registry.capability_generation(
+                            &identity.extension_id,
+                            CAPABILITY_NETWORK_INTERCEPT,
+                        ) != Some(grant_generation) =>
+                    {
+                        write_extension_reply(
+                            stream,
+                            &ExtensionReply::CapabilityDenied {
+                                capability: CAPABILITY_NETWORK_INTERCEPT.to_string(),
+                                reason: grant_changed_reason(CAPABILITY_NETWORK_INTERCEPT),
+                            },
+                        )?
+                    }
                     Ok(GatekeeperReply::Cleared) => {
-                        write_network_registration_reply(stream,
-                            register_network_redirect_url(source_url, target_url, grant_generation))?;
+                        write_network_registration_reply(
+                            stream,
+                            register_network_redirect_url(source_url, target_url, grant_generation),
+                        )?;
                     }
                     Ok(GatekeeperReply::Rejected { reason, category }) => {
-                        write_extension_reply(stream, &ExtensionReply::GatekeeperBlocked {
-                            capability: CAPABILITY_NETWORK_INTERCEPT.to_string(), reason, category,
-                        })?;
+                        write_extension_reply(
+                            stream,
+                            &ExtensionReply::GatekeeperBlocked {
+                                capability: CAPABILITY_NETWORK_INTERCEPT.to_string(),
+                                reason,
+                                category,
+                            },
+                        )?;
                     }
                     Err(reason) => {
-                        write_extension_reply(stream, &ExtensionReply::GatekeeperBlocked {
-                            capability: CAPABILITY_NETWORK_INTERCEPT.to_string(), reason,
-                            category: "gatekeeper-unavailable".to_string(),
-                        })?;
+                        write_extension_reply(
+                            stream,
+                            &ExtensionReply::GatekeeperBlocked {
+                                capability: CAPABILITY_NETWORK_INTERCEPT.to_string(),
+                                reason,
+                                category: "gatekeeper-unavailable".to_string(),
+                            },
+                        )?;
                     }
                 }
             }
@@ -2693,11 +3150,13 @@ where
                     )?;
                     continue;
                 }
-                let reply = match with_stable_storage_grant(registry, &identity, storage_generation,
-                    || storage.get(&identity.extension_id, &key)) {
-                    Ok(value) => ExtensionReply::StorageGetResult { value },
-                    Err(reply) => reply,
-                };
+                let reply =
+                    match with_stable_storage_grant(registry, &identity, storage_generation, || {
+                        storage.get(&identity.extension_id, &key)
+                    }) {
+                        Ok(value) => ExtensionReply::StorageGetResult { value },
+                        Err(reply) => reply,
+                    };
                 write_extension_reply(stream, &reply)?;
             }
             ExtensionRequest::StorageSet { key, value } => {
@@ -2713,11 +3172,13 @@ where
                     )?;
                     continue;
                 }
-                let reply = match with_stable_storage_grant(registry, &identity, storage_generation,
-                    || storage.set(&identity.extension_id, key, value)) {
-                    Ok(()) => ExtensionReply::StorageSetAck,
-                    Err(reply) => reply,
-                };
+                let reply =
+                    match with_stable_storage_grant(registry, &identity, storage_generation, || {
+                        storage.set(&identity.extension_id, key, value)
+                    }) {
+                        Ok(()) => ExtensionReply::StorageSetAck,
+                        Err(reply) => reply,
+                    };
                 write_extension_reply(stream, &reply)?;
             }
             ExtensionRequest::StorageRemove { key } => {
@@ -2733,67 +3194,101 @@ where
                     )?;
                     continue;
                 }
-                let reply = match with_stable_storage_grant(registry, &identity, storage_generation,
-                    || storage.remove(&identity.extension_id, &key)) {
-                    Ok(removed) => ExtensionReply::StorageRemoveAck { removed },
-                    Err(reply) => reply,
-                };
+                let reply =
+                    match with_stable_storage_grant(registry, &identity, storage_generation, || {
+                        storage.remove(&identity.extension_id, &key)
+                    }) {
+                        Ok(removed) => ExtensionReply::StorageRemoveAck { removed },
+                        Err(reply) => reply,
+                    };
                 write_extension_reply(stream, &reply)?;
             }
             ExtensionRequest::DurableStorageGet { key } => {
-                if let Some(reason) = capability_denial_reason(registry, &identity, CAPABILITY_STORAGE, 2) {
-                    write_extension_reply(stream, &ExtensionReply::CapabilityDenied {
-                        capability: CAPABILITY_STORAGE.to_string(), reason,
-                    })?;
+                if let Some(reason) =
+                    capability_denial_reason(registry, &identity, CAPABILITY_STORAGE, 2)
+                {
+                    write_extension_reply(
+                        stream,
+                        &ExtensionReply::CapabilityDenied {
+                            capability: CAPABILITY_STORAGE.to_string(),
+                            reason,
+                        },
+                    )?;
                     continue;
                 }
-                let reply = match with_stable_storage_grant(registry, &identity, storage_generation,
-                    || storage.durable_get(&identity.extension_id, &key)) {
-                    Ok(value) => ExtensionReply::StorageGetResult { value },
-                    Err(reply) => reply,
-                };
+                let reply =
+                    match with_stable_storage_grant(registry, &identity, storage_generation, || {
+                        storage.durable_get(&identity.extension_id, &key)
+                    }) {
+                        Ok(value) => ExtensionReply::StorageGetResult { value },
+                        Err(reply) => reply,
+                    };
                 write_extension_reply(stream, &reply)?;
             }
             ExtensionRequest::DurableStorageSet { key, value } => {
-                if let Some(reason) = capability_denial_reason(registry, &identity, CAPABILITY_STORAGE, 2) {
-                    write_extension_reply(stream, &ExtensionReply::CapabilityDenied {
-                        capability: CAPABILITY_STORAGE.to_string(), reason,
-                    })?;
+                if let Some(reason) =
+                    capability_denial_reason(registry, &identity, CAPABILITY_STORAGE, 2)
+                {
+                    write_extension_reply(
+                        stream,
+                        &ExtensionReply::CapabilityDenied {
+                            capability: CAPABILITY_STORAGE.to_string(),
+                            reason,
+                        },
+                    )?;
                     continue;
                 }
-                let reply = match with_stable_storage_grant(registry, &identity, storage_generation,
-                    || storage.durable_set(&identity.extension_id, key, value)) {
-                    Ok(()) => ExtensionReply::StorageSetAck,
-                    Err(reply) => reply,
-                };
+                let reply =
+                    match with_stable_storage_grant(registry, &identity, storage_generation, || {
+                        storage.durable_set(&identity.extension_id, key, value)
+                    }) {
+                        Ok(()) => ExtensionReply::StorageSetAck,
+                        Err(reply) => reply,
+                    };
                 write_extension_reply(stream, &reply)?;
             }
             ExtensionRequest::DurableStorageRemove { key } => {
-                if let Some(reason) = capability_denial_reason(registry, &identity, CAPABILITY_STORAGE, 2) {
-                    write_extension_reply(stream, &ExtensionReply::CapabilityDenied {
-                        capability: CAPABILITY_STORAGE.to_string(), reason,
-                    })?;
+                if let Some(reason) =
+                    capability_denial_reason(registry, &identity, CAPABILITY_STORAGE, 2)
+                {
+                    write_extension_reply(
+                        stream,
+                        &ExtensionReply::CapabilityDenied {
+                            capability: CAPABILITY_STORAGE.to_string(),
+                            reason,
+                        },
+                    )?;
                     continue;
                 }
-                let reply = match with_stable_storage_grant(registry, &identity, storage_generation,
-                    || storage.durable_remove(&identity.extension_id, &key)) {
-                    Ok(removed) => ExtensionReply::StorageRemoveAck { removed },
-                    Err(reply) => reply,
-                };
+                let reply =
+                    match with_stable_storage_grant(registry, &identity, storage_generation, || {
+                        storage.durable_remove(&identity.extension_id, &key)
+                    }) {
+                        Ok(removed) => ExtensionReply::StorageRemoveAck { removed },
+                        Err(reply) => reply,
+                    };
                 write_extension_reply(stream, &reply)?;
             }
             ExtensionRequest::DurableStorageListKeys => {
-                if let Some(reason) = capability_denial_reason(registry, &identity, CAPABILITY_STORAGE, 3) {
-                    write_extension_reply(stream, &ExtensionReply::CapabilityDenied {
-                        capability: CAPABILITY_STORAGE.to_string(), reason,
-                    })?;
+                if let Some(reason) =
+                    capability_denial_reason(registry, &identity, CAPABILITY_STORAGE, 3)
+                {
+                    write_extension_reply(
+                        stream,
+                        &ExtensionReply::CapabilityDenied {
+                            capability: CAPABILITY_STORAGE.to_string(),
+                            reason,
+                        },
+                    )?;
                     continue;
                 }
-                let reply = match with_stable_storage_grant(registry, &identity, storage_generation,
-                    || storage.durable_list_keys(&identity.extension_id)) {
-                    Ok(keys) => ExtensionReply::StorageKeysResult { keys },
-                    Err(reply) => reply,
-                };
+                let reply =
+                    match with_stable_storage_grant(registry, &identity, storage_generation, || {
+                        storage.durable_list_keys(&identity.extension_id)
+                    }) {
+                        Ok(keys) => ExtensionReply::StorageKeysResult { keys },
+                        Err(reply) => reply,
+                    };
                 write_extension_reply(stream, &reply)?;
             }
             ExtensionRequest::NetworkIntercept => {
@@ -2897,7 +3392,7 @@ fn constant_time_authentication_matches(expected: &str, supplied: &str) -> bool 
     difference == 0
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
     use blueice_ipc::extension::{read_extension_reply, write_extension_request, DomWriteTarget};
@@ -2943,12 +3438,15 @@ mod tests {
         let _ = std::fs::remove_file(&socket);
         let listener = UnixListener::bind(&socket).unwrap();
         let handle = thread::spawn(move || {
-            replies.into_iter().map(|reply| {
-                let (mut stream, _) = listener.accept().unwrap();
-                let request = read_gatekeeper_request(&mut stream).unwrap();
-                write_gatekeeper_reply(&mut stream, &reply).unwrap();
-                request
-            }).collect()
+            replies
+                .into_iter()
+                .map(|reply| {
+                    let (mut stream, _) = listener.accept().unwrap();
+                    let request = read_gatekeeper_request(&mut stream).unwrap();
+                    write_gatekeeper_reply(&mut stream, &reply).unwrap();
+                    request
+                })
+                .collect()
         });
         (socket, handle)
     }
@@ -2975,45 +3473,140 @@ mod tests {
     fn runtime_ephemeral_lease_is_exactly_scoped_one_shot_and_never_a_persistent_grant() {
         let mut registry = ExtensionRegistry::with_supported_capabilities();
         registry.declare_runtime_ephemeral("sha256:installed", CAPABILITY_DOM_READ);
-        assert!(registry.arm_runtime_ephemeral("sha256:other", CAPABILITY_DOM_READ, 1, 2).is_err());
-        assert!(registry.arm_runtime_ephemeral("sha256:installed", CAPABILITY_DOM_WRITE, 1, 2).is_err());
-        assert!(registry.arm_runtime_ephemeral("sha256:installed", CAPABILITY_DOM_READ, 0, 2).is_err());
-        assert!(registry.grant_optional("sha256:installed", CAPABILITY_DOM_READ).is_err());
+        assert!(registry
+            .arm_runtime_ephemeral("sha256:other", CAPABILITY_DOM_READ, 1, 2)
+            .is_err());
+        assert!(registry
+            .arm_runtime_ephemeral("sha256:installed", CAPABILITY_DOM_WRITE, 1, 2)
+            .is_err());
+        assert!(registry
+            .arm_runtime_ephemeral("sha256:installed", CAPABILITY_DOM_READ, 0, 2)
+            .is_err());
+        assert!(registry
+            .grant_optional("sha256:installed", CAPABILITY_DOM_READ)
+            .is_err());
 
-        let ticket = registry.arm_runtime_ephemeral("sha256:installed", CAPABILITY_DOM_READ, 1, 2).unwrap();
+        let ticket = registry
+            .arm_runtime_ephemeral("sha256:installed", CAPABILITY_DOM_READ, 1, 2)
+            .unwrap();
         assert_eq!(ticket.len(), 64);
         assert!(ticket.bytes().all(|byte| byte.is_ascii_hexdigit()));
         assert!(!registry.has_capability("sha256:installed", CAPABILITY_DOM_READ));
-        assert_eq!(registry.capability_generation("sha256:installed", CAPABILITY_DOM_READ), None);
-        assert!(!registry.consume_runtime_ephemeral("sha256:installed", CAPABILITY_DOM_READ, &ticket, 2, 2),
-            "another tab cannot use or spend the lease");
-        assert!(!registry.consume_runtime_ephemeral("sha256:installed", CAPABILITY_DOM_READ, &"0".repeat(64), 1, 2),
-            "an invalid bearer must not spend a valid lease");
-        assert!(registry.consume_runtime_ephemeral("sha256:installed", CAPABILITY_DOM_READ, &ticket, 1, 2));
-        assert!(!registry.consume_runtime_ephemeral("sha256:installed", CAPABILITY_DOM_READ, &ticket, 1, 2),
-            "one gesture never authorizes a second operation");
+        assert_eq!(
+            registry.capability_generation("sha256:installed", CAPABILITY_DOM_READ),
+            None
+        );
+        assert!(
+            !registry.consume_runtime_ephemeral(
+                "sha256:installed",
+                CAPABILITY_DOM_READ,
+                &ticket,
+                2,
+                2
+            ),
+            "another tab cannot use or spend the lease"
+        );
+        assert!(
+            !registry.consume_runtime_ephemeral(
+                "sha256:installed",
+                CAPABILITY_DOM_READ,
+                &"0".repeat(64),
+                1,
+                2
+            ),
+            "an invalid bearer must not spend a valid lease"
+        );
+        assert!(registry.consume_runtime_ephemeral(
+            "sha256:installed",
+            CAPABILITY_DOM_READ,
+            &ticket,
+            1,
+            2
+        ));
+        assert!(
+            !registry.consume_runtime_ephemeral(
+                "sha256:installed",
+                CAPABILITY_DOM_READ,
+                &ticket,
+                1,
+                2
+            ),
+            "one gesture never authorizes a second operation"
+        );
 
-        let next_ticket = registry.arm_runtime_ephemeral("sha256:installed", CAPABILITY_DOM_READ, 1, 2).unwrap();
+        let next_ticket = registry
+            .arm_runtime_ephemeral("sha256:installed", CAPABILITY_DOM_READ, 1, 2)
+            .unwrap();
         assert_ne!(ticket, next_ticket);
-        assert!(!registry.consume_runtime_ephemeral("sha256:installed", CAPABILITY_DOM_READ, &ticket, 1, 2),
-            "a request queued before a later gesture cannot borrow it");
-        assert!(!registry.consume_runtime_ephemeral("sha256:installed", CAPABILITY_DOM_READ, &next_ticket, 1, 3),
-            "a same-tab document replacement invalidates the old lease");
-        assert!(!registry.consume_runtime_ephemeral("sha256:installed", CAPABILITY_DOM_READ, &next_ticket, 1, 2),
-            "a stale identity cannot be revived after replacement");
-        let last_ticket = registry.arm_runtime_ephemeral("sha256:installed", CAPABILITY_DOM_READ, 1, 3).unwrap();
-        assert!(registry.revoke_runtime_ephemeral("sha256:installed", CAPABILITY_DOM_READ).unwrap());
-        assert!(!registry.revoke_runtime_ephemeral("sha256:installed", CAPABILITY_DOM_READ).unwrap());
-        assert!(!registry.consume_runtime_ephemeral("sha256:installed", CAPABILITY_DOM_READ, &last_ticket, 1, 3));
-        let expired_ticket = registry.arm_runtime_ephemeral("sha256:installed", CAPABILITY_DOM_READ, 1, 3).unwrap();
+        assert!(
+            !registry.consume_runtime_ephemeral(
+                "sha256:installed",
+                CAPABILITY_DOM_READ,
+                &ticket,
+                1,
+                2
+            ),
+            "a request queued before a later gesture cannot borrow it"
+        );
+        assert!(
+            !registry.consume_runtime_ephemeral(
+                "sha256:installed",
+                CAPABILITY_DOM_READ,
+                &next_ticket,
+                1,
+                3
+            ),
+            "a same-tab document replacement invalidates the old lease"
+        );
+        assert!(
+            !registry.consume_runtime_ephemeral(
+                "sha256:installed",
+                CAPABILITY_DOM_READ,
+                &next_ticket,
+                1,
+                2
+            ),
+            "a stale identity cannot be revived after replacement"
+        );
+        let last_ticket = registry
+            .arm_runtime_ephemeral("sha256:installed", CAPABILITY_DOM_READ, 1, 3)
+            .unwrap();
+        assert!(registry
+            .revoke_runtime_ephemeral("sha256:installed", CAPABILITY_DOM_READ)
+            .unwrap());
+        assert!(!registry
+            .revoke_runtime_ephemeral("sha256:installed", CAPABILITY_DOM_READ)
+            .unwrap());
+        assert!(!registry.consume_runtime_ephemeral(
+            "sha256:installed",
+            CAPABILITY_DOM_READ,
+            &last_ticket,
+            1,
+            3
+        ));
+        let expired_ticket = registry
+            .arm_runtime_ephemeral("sha256:installed", CAPABILITY_DOM_READ, 1, 3)
+            .unwrap();
         {
-            let state = registry.ephemeral_state("sha256:installed", CAPABILITY_DOM_READ).unwrap();
+            let state = registry
+                .ephemeral_state("sha256:installed", CAPABILITY_DOM_READ)
+                .unwrap();
             let mut slot = state.lock().unwrap();
             slot.lease.as_mut().unwrap().expires_at = Instant::now() - Duration::from_nanos(1);
         }
-        assert!(!registry.has_unspent_runtime_ephemeral_lease("sha256:installed", CAPABILITY_DOM_READ));
-        assert!(!registry.consume_runtime_ephemeral("sha256:installed", CAPABILITY_DOM_READ, &expired_ticket, 1, 3),
-            "an event delayed past the gesture deadline must not read the document");
+        assert!(
+            !registry.has_unspent_runtime_ephemeral_lease("sha256:installed", CAPABILITY_DOM_READ)
+        );
+        assert!(
+            !registry.consume_runtime_ephemeral(
+                "sha256:installed",
+                CAPABILITY_DOM_READ,
+                &expired_ticket,
+                1,
+                3
+            ),
+            "an event delayed past the gesture deadline must not read the document"
+        );
     }
 
     #[test]
@@ -3022,45 +3615,83 @@ mod tests {
 
         let mut registry = ExtensionRegistry::with_supported_capabilities();
         registry.declare_runtime_ephemeral("sha256:installed", CAPABILITY_DOM_READ);
-        let ticket = registry.arm_runtime_ephemeral("sha256:installed", CAPABILITY_DOM_READ, 1, 4).unwrap();
+        let ticket = registry
+            .arm_runtime_ephemeral("sha256:installed", CAPABILITY_DOM_READ, 1, 4)
+            .unwrap();
         let registry = Arc::new(registry);
         let barrier = Arc::new(Barrier::new(8));
-        let workers: Vec<_> = (0..8).map(|_| {
-            let registry = Arc::clone(&registry);
-            let barrier = Arc::clone(&barrier);
-            let ticket = ticket.clone();
-            thread::spawn(move || {
-                barrier.wait();
-                registry.consume_runtime_ephemeral("sha256:installed", CAPABILITY_DOM_READ, &ticket, 1, 4)
+        let workers: Vec<_> = (0..8)
+            .map(|_| {
+                let registry = Arc::clone(&registry);
+                let barrier = Arc::clone(&barrier);
+                let ticket = ticket.clone();
+                thread::spawn(move || {
+                    barrier.wait();
+                    registry.consume_runtime_ephemeral(
+                        "sha256:installed",
+                        CAPABILITY_DOM_READ,
+                        &ticket,
+                        1,
+                        4,
+                    )
+                })
             })
-        }).collect();
-        assert_eq!(workers.into_iter().map(|worker| worker.join().unwrap()).filter(|won| *won).count(), 1);
+            .collect();
+        assert_eq!(
+            workers
+                .into_iter()
+                .map(|worker| worker.join().unwrap())
+                .filter(|won| *won)
+                .count(),
+            1
+        );
     }
 
     #[test]
     fn unauthenticated_development_peer_cannot_spend_an_armed_ephemeral_lease() {
         let mut registry = ExtensionRegistry::with_supported_capabilities();
         registry.declare_runtime_ephemeral("sha256:installed", CAPABILITY_DOM_READ);
-        let ticket = registry.arm_runtime_ephemeral("sha256:installed", CAPABILITY_DOM_READ, 1, 0).unwrap();
+        let ticket = registry
+            .arm_runtime_ephemeral("sha256:installed", CAPABILITY_DOM_READ, 1, 0)
+            .unwrap();
         let registry = Arc::new(registry);
         let (mut client, mut server) = UnixStream::pair().unwrap();
         let worker_registry = Arc::clone(&registry);
-        let worker = thread::spawn(move || handle_extension_connection(&worker_registry, &mut server));
-        write_extension_request(&mut client, &hello_with_capabilities(
-            "sha256:installed", [(CAPABILITY_DOM_READ, 3)],
-        )).unwrap();
-        assert_eq!(read_extension_reply(&mut client).unwrap(), empty_hello_ack());
+        let worker =
+            thread::spawn(move || handle_extension_connection(&worker_registry, &mut server));
+        write_extension_request(
+            &mut client,
+            &hello_with_capabilities("sha256:installed", [(CAPABILITY_DOM_READ, 3)]),
+        )
+        .unwrap();
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            empty_hello_ack()
+        );
         write_extension_request(&mut client, &ExtensionRequest::DomReadTab { tab_id: 1 }).unwrap();
         assert!(matches!(read_extension_reply(&mut client).unwrap(),
             ExtensionReply::CapabilityDenied { capability, .. } if capability == CAPABILITY_DOM_READ));
-        write_extension_request(&mut client, &ExtensionRequest::DomReadTabEphemeral {
-            tab_id: 1, ticket: ticket.clone(),
-        }).unwrap();
+        write_extension_request(
+            &mut client,
+            &ExtensionRequest::DomReadTabEphemeral {
+                tab_id: 1,
+                ticket: ticket.clone(),
+            },
+        )
+        .unwrap();
         assert!(matches!(read_extension_reply(&mut client).unwrap(),
             ExtensionReply::CapabilityDenied { capability, .. } if capability == CAPABILITY_DOM_READ));
-        assert!(registry.has_unspent_runtime_ephemeral_lease("sha256:installed", CAPABILITY_DOM_READ));
+        assert!(
+            registry.has_unspent_runtime_ephemeral_lease("sha256:installed", CAPABILITY_DOM_READ)
+        );
         drop(client);
         worker.join().unwrap().unwrap();
+    }
+
+    #[test]
+    fn extension_registry_default_grants_nothing() {
+        let registry = ExtensionRegistry::default();
+        assert!(!registry.has_capability(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_READ));
     }
 
     fn hello(extension_id: &str) -> ExtensionRequest {
@@ -3138,12 +3769,21 @@ mod tests {
 
         write_extension_request(
             &mut client,
-            &hello_with_capabilities(MINIMAL_SLICE_EXTENSION_ID, [(CAPABILITY_NETWORK_OBSERVE, 1)]),
+            &hello_with_capabilities(
+                MINIMAL_SLICE_EXTENSION_ID,
+                [(CAPABILITY_NETWORK_OBSERVE, 1)],
+            ),
         )
         .unwrap();
-        assert_eq!(read_extension_reply(&mut client).unwrap(), empty_hello_ack());
-        write_extension_request(&mut client, &ExtensionRequest::ReadNetworkResponse { tab_id: 7 })
-            .unwrap();
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            empty_hello_ack()
+        );
+        write_extension_request(
+            &mut client,
+            &ExtensionRequest::ReadNetworkResponse { tab_id: 7 },
+        )
+        .unwrap();
         assert_eq!(
             read_extension_reply(&mut client).unwrap(),
             ExtensionReply::NetworkResponseResult {
@@ -3155,8 +3795,11 @@ mod tests {
                 })
             }
         );
-        write_extension_request(&mut client, &ExtensionRequest::ReadNetworkTrace { tab_id: 7 })
-            .unwrap();
+        write_extension_request(
+            &mut client,
+            &ExtensionRequest::ReadNetworkTrace { tab_id: 7 },
+        )
+        .unwrap();
         assert!(matches!(read_extension_reply(&mut client).unwrap(),
             ExtensionReply::CapabilityDenied { capability, .. } if capability == CAPABILITY_NETWORK_OBSERVE));
 
@@ -3165,21 +3808,36 @@ mod tests {
             &hello_with_capabilities(MINIMAL_SLICE_EXTENSION_ID, [(CAPABILITY_DOM_READ, 1)]),
         )
         .unwrap();
-        assert_eq!(read_extension_reply(&mut client).unwrap(), empty_hello_ack());
-        write_extension_request(&mut client, &ExtensionRequest::ReadNetworkResponse { tab_id: 7 })
-            .unwrap();
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            empty_hello_ack()
+        );
+        write_extension_request(
+            &mut client,
+            &ExtensionRequest::ReadNetworkResponse { tab_id: 7 },
+        )
+        .unwrap();
         assert!(matches!(
             read_extension_reply(&mut client).unwrap(),
             ExtensionReply::CapabilityDenied { capability, .. } if capability == CAPABILITY_NETWORK_OBSERVE
         ));
         write_extension_request(
             &mut client,
-            &hello_with_capabilities(MINIMAL_SLICE_EXTENSION_ID, [(CAPABILITY_NETWORK_OBSERVE, 2)]),
+            &hello_with_capabilities(
+                MINIMAL_SLICE_EXTENSION_ID,
+                [(CAPABILITY_NETWORK_OBSERVE, 2)],
+            ),
         )
         .unwrap();
-        assert_eq!(read_extension_reply(&mut client).unwrap(), empty_hello_ack());
-        write_extension_request(&mut client, &ExtensionRequest::ReadNetworkTrace { tab_id: 7 })
-            .unwrap();
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            empty_hello_ack()
+        );
+        write_extension_request(
+            &mut client,
+            &ExtensionRequest::ReadNetworkTrace { tab_id: 7 },
+        )
+        .unwrap();
         assert!(matches!(read_extension_reply(&mut client).unwrap(),
             ExtensionReply::NetworkTraceResult { trace: Some(trace) }
                 if trace.request_url == "https://example.test/start"
@@ -3187,7 +3845,10 @@ mod tests {
                     && trace.redirects[0].status == 302));
         write_extension_request(
             &mut client,
-            &hello_with_capabilities(MINIMAL_SLICE_EXTENSION_ID, [(CAPABILITY_NETWORK_OBSERVE, 3)]),
+            &hello_with_capabilities(
+                MINIMAL_SLICE_EXTENSION_ID,
+                [(CAPABILITY_NETWORK_OBSERVE, 3)],
+            ),
         )
         .unwrap();
         assert!(matches!(
@@ -3201,8 +3862,11 @@ mod tests {
                     })
                 )
         ));
-        write_extension_request(&mut client, &ExtensionRequest::ReadNetworkTrace { tab_id: 7 })
-            .unwrap();
+        write_extension_request(
+            &mut client,
+            &ExtensionRequest::ReadNetworkTrace { tab_id: 7 },
+        )
+        .unwrap();
         assert!(matches!(
             read_extension_reply(&mut client).unwrap(),
             ExtensionReply::CapabilityDenied { capability, .. } if capability == CAPABILITY_NETWORK_OBSERVE
@@ -3215,9 +3879,8 @@ mod tests {
     fn native_toolbar_requires_ui_grant_and_validates_before_delegation() {
         let mut registry = ExtensionRegistry::minimal_slice();
         registry.grant(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_UI_INJECT);
-        let (gatekeeper, reviewed) = start_gatekeeper_replies(
-            "toolbar-clear", vec![GatekeeperReply::Cleared; 2],
-        );
+        let (gatekeeper, reviewed) =
+            start_gatekeeper_replies("toolbar-clear", vec![GatekeeperReply::Cleared; 2]);
         let (seen_tx, seen_rx) = mpsc::channel();
         let (clear_tx, clear_rx) = mpsc::channel();
         let (mut client, mut server) = UnixStream::pair().unwrap();
@@ -3250,7 +3913,10 @@ mod tests {
             &hello_with_capabilities(MINIMAL_SLICE_EXTENSION_ID, [(CAPABILITY_UI_INJECT, 1)]),
         )
         .unwrap();
-        assert_eq!(read_extension_reply(&mut client).unwrap(), empty_hello_ack());
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            empty_hello_ack()
+        );
         write_extension_request(
             &mut client,
             &ExtensionRequest::SetToolbarButton {
@@ -3270,10 +3936,19 @@ mod tests {
             },
         )
         .unwrap();
-        assert_eq!(read_extension_reply(&mut client).unwrap(), ExtensionReply::UiInjectAck);
-        assert_eq!(seen_rx.recv_timeout(Duration::from_secs(1)).unwrap(), "Notes");
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            ExtensionReply::UiInjectAck
+        );
+        assert_eq!(
+            seen_rx.recv_timeout(Duration::from_secs(1)).unwrap(),
+            "Notes"
+        );
         write_extension_request(&mut client, &ExtensionRequest::ClearToolbarButton).unwrap();
-        assert_eq!(read_extension_reply(&mut client).unwrap(), ExtensionReply::UiInjectAck);
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            ExtensionReply::UiInjectAck
+        );
         clear_rx.recv_timeout(Duration::from_secs(1)).unwrap();
         write_extension_request(
             &mut client,
@@ -3282,14 +3957,23 @@ mod tests {
             },
         )
         .unwrap();
-        assert_eq!(read_extension_reply(&mut client).unwrap(), ExtensionReply::UiInjectAck);
-        assert_eq!(seen_rx.recv_timeout(Duration::from_secs(1)).unwrap(), "Notes");
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            ExtensionReply::UiInjectAck
+        );
+        assert_eq!(
+            seen_rx.recv_timeout(Duration::from_secs(1)).unwrap(),
+            "Notes"
+        );
         write_extension_request(
             &mut client,
             &hello_with_capabilities(MINIMAL_SLICE_EXTENSION_ID, [(CAPABILITY_DOM_READ, 1)]),
         )
         .unwrap();
-        assert_eq!(read_extension_reply(&mut client).unwrap(), empty_hello_ack());
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            empty_hello_ack()
+        );
         clear_rx.recv_timeout(Duration::from_secs(1)).unwrap();
         write_extension_request(
             &mut client,
@@ -3363,7 +4047,11 @@ mod tests {
                 &mut server,
                 ExtensionConnectionAuthentication::unauthenticated(),
                 ExtensionActionDelegates::new(
-                    |_| Ok(String::new()), unused_write_delegate, || Ok(()), |_, _| Ok(()), || Ok(()),
+                    |_| Ok(String::new()),
+                    unused_write_delegate,
+                    || Ok(()),
+                    |_, _| Ok(()),
+                    || Ok(()),
                 )
                 .with_toolbar_button(move |label, _| {
                     published_tx.send(label).unwrap();
@@ -3374,11 +4062,19 @@ mod tests {
         write_extension_request(
             &mut client,
             &hello_with_capabilities(MINIMAL_SLICE_EXTENSION_ID, [(CAPABILITY_UI_INJECT, 1)]),
-        ).unwrap();
-        assert_eq!(read_extension_reply(&mut client).unwrap(), empty_hello_ack());
-        write_extension_request(&mut client, &ExtensionRequest::SetToolbarButton {
-            label: "Enter password".to_string(),
-        }).unwrap();
+        )
+        .unwrap();
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            empty_hello_ack()
+        );
+        write_extension_request(
+            &mut client,
+            &ExtensionRequest::SetToolbarButton {
+                label: "Enter password".to_string(),
+            },
+        )
+        .unwrap();
         assert!(matches!(read_extension_reply(&mut client).unwrap(),
             ExtensionReply::GatekeeperBlocked { category, .. }
                 if category == "extension-toolbar-social-engineering"));
@@ -3389,9 +4085,13 @@ mod tests {
 
         // The one-shot reviewer is gone. The next label must fail closed too.
         let _ = std::fs::remove_file(&gatekeeper);
-        write_extension_request(&mut client, &ExtensionRequest::SetToolbarButton {
-            label: "Notes".to_string(),
-        }).unwrap();
+        write_extension_request(
+            &mut client,
+            &ExtensionRequest::SetToolbarButton {
+                label: "Notes".to_string(),
+            },
+        )
+        .unwrap();
         assert!(matches!(read_extension_reply(&mut client).unwrap(),
             ExtensionReply::GatekeeperBlocked { category, .. }
                 if category == "gatekeeper-unavailable"));
@@ -3405,7 +4105,9 @@ mod tests {
         let mut registry = ExtensionRegistry::with_supported_capabilities();
         registry.declare_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_UI_INJECT);
         let registry = Arc::new(registry);
-        registry.grant_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_UI_INJECT).unwrap();
+        registry
+            .grant_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_UI_INJECT)
+            .unwrap();
         let socket = unique_gatekeeper_socket("toolbar-revoke");
         let _ = std::fs::remove_file(&socket);
         let listener = UnixListener::bind(&socket).unwrap();
@@ -3415,7 +4117,9 @@ mod tests {
             let (mut stream, _) = listener.accept().unwrap();
             let request = read_gatekeeper_request(&mut stream).unwrap();
             review_started_tx.send(request).unwrap();
-            release_review_rx.recv_timeout(Duration::from_secs(1)).unwrap();
+            release_review_rx
+                .recv_timeout(Duration::from_secs(1))
+                .unwrap();
             write_gatekeeper_reply(&mut stream, &GatekeeperReply::Cleared).unwrap();
         });
         let (published_tx, published_rx) = mpsc::channel();
@@ -3424,10 +4128,16 @@ mod tests {
         let socket_for_host = socket.clone();
         let host = thread::spawn(move || {
             handle_extension_connection_with_actions_and_authentication_and_network_rules(
-                &registry_for_host, &socket_for_host, &mut server,
+                &registry_for_host,
+                &socket_for_host,
+                &mut server,
                 ExtensionConnectionAuthentication::unauthenticated(),
                 ExtensionActionDelegates::new(
-                    |_| Ok(String::new()), unused_write_delegate, || Ok(()), |_, _| Ok(()), || Ok(()),
+                    |_| Ok(String::new()),
+                    unused_write_delegate,
+                    || Ok(()),
+                    |_, _| Ok(()),
+                    || Ok(()),
                 )
                 .with_toolbar_button(move |label, _| {
                     published_tx.send(label).unwrap();
@@ -3435,18 +4145,33 @@ mod tests {
                 }),
             )
         });
-        write_extension_request(&mut client, &hello_with_capabilities(
-            MINIMAL_SLICE_EXTENSION_ID, [(CAPABILITY_UI_INJECT, 1)],
-        )).unwrap();
-        assert_eq!(read_extension_reply(&mut client).unwrap(), empty_hello_ack());
-        write_extension_request(&mut client, &ExtensionRequest::SetToolbarButton {
-            label: "Notes".to_string(),
-        }).unwrap();
-        assert!(matches!(review_started_rx.recv_timeout(Duration::from_secs(1)).unwrap(),
+        write_extension_request(
+            &mut client,
+            &hello_with_capabilities(MINIMAL_SLICE_EXTENSION_ID, [(CAPABILITY_UI_INJECT, 1)]),
+        )
+        .unwrap();
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            empty_hello_ack()
+        );
+        write_extension_request(
+            &mut client,
+            &ExtensionRequest::SetToolbarButton {
+                label: "Notes".to_string(),
+            },
+        )
+        .unwrap();
+        assert!(
+            matches!(review_started_rx.recv_timeout(Duration::from_secs(1)).unwrap(),
             GatekeeperRequest::CheckExtensionAction { detail, .. }
-                if detail.contains("action=set-native-toolbar-button")));
-        registry.revoke_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_UI_INJECT).unwrap();
-        registry.grant_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_UI_INJECT).unwrap();
+                if detail.contains("action=set-native-toolbar-button"))
+        );
+        registry
+            .revoke_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_UI_INJECT)
+            .unwrap();
+        registry
+            .grant_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_UI_INJECT)
+            .unwrap();
         release_review_tx.send(()).unwrap();
         assert!(matches!(read_extension_reply(&mut client).unwrap(),
             ExtensionReply::CapabilityDenied { capability, .. }
@@ -3462,9 +4187,8 @@ mod tests {
     fn native_popup_requires_v2_toolbar_and_review_of_its_actual_text() {
         let mut registry = ExtensionRegistry::minimal_slice();
         registry.grant(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_UI_INJECT);
-        let (gatekeeper, reviewed) = start_gatekeeper_replies(
-            "popup-clear", vec![GatekeeperReply::Cleared; 2],
-        );
+        let (gatekeeper, reviewed) =
+            start_gatekeeper_replies("popup-clear", vec![GatekeeperReply::Cleared; 2]);
         let (shown_tx, shown_rx) = mpsc::channel();
         let (cleared_tx, cleared_rx) = mpsc::channel();
         let (mut client, mut server) = UnixStream::pair().unwrap();
@@ -3499,40 +4223,103 @@ mod tests {
         write_extension_request(
             &mut client,
             &hello_with_capabilities(MINIMAL_SLICE_EXTENSION_ID, [(CAPABILITY_UI_INJECT, 1)]),
-        ).unwrap();
-        assert_eq!(read_extension_reply(&mut client).unwrap(), empty_hello_ack());
-        write_extension_request(&mut client, &ExtensionRequest::ShowPopup {
-            tab_id: 1, title: "Notes".to_string(), body: "Saved locally".to_string(),
-        }).unwrap();
-        assert!(matches!(read_extension_reply(&mut client).unwrap(), ExtensionReply::CapabilityDenied { .. }));
+        )
+        .unwrap();
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            empty_hello_ack()
+        );
+        write_extension_request(
+            &mut client,
+            &ExtensionRequest::ShowPopup {
+                tab_id: 1,
+                title: "Notes".to_string(),
+                body: "Saved locally".to_string(),
+            },
+        )
+        .unwrap();
+        assert!(matches!(
+            read_extension_reply(&mut client).unwrap(),
+            ExtensionReply::CapabilityDenied { .. }
+        ));
         write_extension_request(
             &mut client,
             &hello_with_capabilities(MINIMAL_SLICE_EXTENSION_ID, [(CAPABILITY_UI_INJECT, 2)]),
-        ).unwrap();
-        assert_eq!(read_extension_reply(&mut client).unwrap(), empty_hello_ack());
-        write_extension_request(&mut client, &ExtensionRequest::ShowPopup {
-            tab_id: 1, title: "Notes".to_string(), body: "Saved locally".to_string(),
-        }).unwrap();
-        assert!(matches!(read_extension_reply(&mut client).unwrap(), ExtensionReply::OperationUnavailable { .. }));
-        write_extension_request(&mut client, &ExtensionRequest::SetToolbarButton { label: "Notes".to_string() }).unwrap();
-        assert_eq!(read_extension_reply(&mut client).unwrap(), ExtensionReply::UiInjectAck);
-        write_extension_request(&mut client, &ExtensionRequest::ShowPopup {
-            tab_id: 1, title: "Notes".to_string(), body: "bad\ntext".to_string(),
-        }).unwrap();
-        assert!(matches!(read_extension_reply(&mut client).unwrap(), ExtensionReply::OperationUnavailable { .. }));
-        write_extension_request(&mut client, &ExtensionRequest::ShowPopup {
-            tab_id: 1, title: "Notes".to_string(), body: "Saved locally".to_string(),
-        }).unwrap();
-        assert_eq!(read_extension_reply(&mut client).unwrap(), ExtensionReply::UiInjectAck);
-        assert_eq!(shown_rx.recv_timeout(Duration::from_secs(1)).unwrap(), (1, "Notes".to_string(), "Saved locally".to_string()));
+        )
+        .unwrap();
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            empty_hello_ack()
+        );
+        write_extension_request(
+            &mut client,
+            &ExtensionRequest::ShowPopup {
+                tab_id: 1,
+                title: "Notes".to_string(),
+                body: "Saved locally".to_string(),
+            },
+        )
+        .unwrap();
+        assert!(matches!(
+            read_extension_reply(&mut client).unwrap(),
+            ExtensionReply::OperationUnavailable { .. }
+        ));
+        write_extension_request(
+            &mut client,
+            &ExtensionRequest::SetToolbarButton {
+                label: "Notes".to_string(),
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            ExtensionReply::UiInjectAck
+        );
+        write_extension_request(
+            &mut client,
+            &ExtensionRequest::ShowPopup {
+                tab_id: 1,
+                title: "Notes".to_string(),
+                body: "bad\ntext".to_string(),
+            },
+        )
+        .unwrap();
+        assert!(matches!(
+            read_extension_reply(&mut client).unwrap(),
+            ExtensionReply::OperationUnavailable { .. }
+        ));
+        write_extension_request(
+            &mut client,
+            &ExtensionRequest::ShowPopup {
+                tab_id: 1,
+                title: "Notes".to_string(),
+                body: "Saved locally".to_string(),
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            ExtensionReply::UiInjectAck
+        );
+        assert_eq!(
+            shown_rx.recv_timeout(Duration::from_secs(1)).unwrap(),
+            (1, "Notes".to_string(), "Saved locally".to_string())
+        );
         let requests = reviewed.join().unwrap();
         assert_eq!(requests.len(), 2);
-        assert!(matches!(&requests[0], GatekeeperRequest::CheckExtensionAction { capability, detail, .. }
-            if capability == CAPABILITY_UI_INJECT && detail.contains("action=set-native-toolbar-button")));
-        assert!(matches!(&requests[1], GatekeeperRequest::CheckExtensionAction { capability, detail, .. }
-            if capability == CAPABILITY_UI_INJECT && detail.contains("Saved locally")));
+        assert!(
+            matches!(&requests[0], GatekeeperRequest::CheckExtensionAction { capability, detail, .. }
+            if capability == CAPABILITY_UI_INJECT && detail.contains("action=set-native-toolbar-button"))
+        );
+        assert!(
+            matches!(&requests[1], GatekeeperRequest::CheckExtensionAction { capability, detail, .. }
+            if capability == CAPABILITY_UI_INJECT && detail.contains("Saved locally"))
+        );
         write_extension_request(&mut client, &ExtensionRequest::ClearPopup).unwrap();
-        assert_eq!(read_extension_reply(&mut client).unwrap(), ExtensionReply::UiInjectAck);
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            ExtensionReply::UiInjectAck
+        );
         cleared_rx.recv_timeout(Duration::from_secs(1)).unwrap();
         drop(client);
         handle.join().unwrap().unwrap();
@@ -3543,9 +4330,8 @@ mod tests {
     fn popup_action_requires_v3_and_reviews_the_button_label_before_publication() {
         let mut registry = ExtensionRegistry::minimal_slice();
         registry.grant(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_UI_INJECT);
-        let (gatekeeper, reviewed) = start_gatekeeper_replies(
-            "popup-action-clear", vec![GatekeeperReply::Cleared; 3],
-        );
+        let (gatekeeper, reviewed) =
+            start_gatekeeper_replies("popup-action-clear", vec![GatekeeperReply::Cleared; 3]);
         let (shown_tx, shown_rx) = mpsc::channel();
         let (mut client, mut server) = UnixStream::pair().unwrap();
         let gatekeeper_for_host = gatekeeper.clone();
@@ -3573,12 +4359,23 @@ mod tests {
         write_extension_request(
             &mut client,
             &hello_with_capabilities(MINIMAL_SLICE_EXTENSION_ID, [(CAPABILITY_UI_INJECT, 2)]),
-        ).unwrap();
-        assert_eq!(read_extension_reply(&mut client).unwrap(), empty_hello_ack());
-        write_extension_request(&mut client, &ExtensionRequest::SetToolbarButton {
-            label: "Notes".to_string(),
-        }).unwrap();
-        assert_eq!(read_extension_reply(&mut client).unwrap(), ExtensionReply::UiInjectAck);
+        )
+        .unwrap();
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            empty_hello_ack()
+        );
+        write_extension_request(
+            &mut client,
+            &ExtensionRequest::SetToolbarButton {
+                label: "Notes".to_string(),
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            ExtensionReply::UiInjectAck
+        );
         let action = || ExtensionRequest::ShowPopupAction {
             tab_id: 1,
             title: "Notes".to_string(),
@@ -3586,37 +4383,73 @@ mod tests {
             action_label: "Open notes".to_string(),
         };
         write_extension_request(&mut client, &action()).unwrap();
-        assert!(matches!(read_extension_reply(&mut client).unwrap(), ExtensionReply::CapabilityDenied { .. }));
+        assert!(matches!(
+            read_extension_reply(&mut client).unwrap(),
+            ExtensionReply::CapabilityDenied { .. }
+        ));
         assert!(shown_rx.try_recv().is_err());
         write_extension_request(
             &mut client,
             &hello_with_capabilities(MINIMAL_SLICE_EXTENSION_ID, [(CAPABILITY_UI_INJECT, 3)]),
-        ).unwrap();
-        assert_eq!(read_extension_reply(&mut client).unwrap(), empty_hello_ack());
+        )
+        .unwrap();
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            empty_hello_ack()
+        );
         write_extension_request(&mut client, &action()).unwrap();
-        assert!(matches!(read_extension_reply(&mut client).unwrap(), ExtensionReply::OperationUnavailable { .. }));
-        write_extension_request(&mut client, &ExtensionRequest::SetToolbarButton {
-            label: "Notes".to_string(),
-        }).unwrap();
-        assert_eq!(read_extension_reply(&mut client).unwrap(), ExtensionReply::UiInjectAck);
-        write_extension_request(&mut client, &ExtensionRequest::ShowPopupAction {
-            tab_id: 1,
-            title: "Notes".to_string(),
-            body: "Saved locally".to_string(),
-            action_label: "Bad\nLabel".to_string(),
-        }).unwrap();
-        assert!(matches!(read_extension_reply(&mut client).unwrap(), ExtensionReply::OperationUnavailable { .. }));
+        assert!(matches!(
+            read_extension_reply(&mut client).unwrap(),
+            ExtensionReply::OperationUnavailable { .. }
+        ));
+        write_extension_request(
+            &mut client,
+            &ExtensionRequest::SetToolbarButton {
+                label: "Notes".to_string(),
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            ExtensionReply::UiInjectAck
+        );
+        write_extension_request(
+            &mut client,
+            &ExtensionRequest::ShowPopupAction {
+                tab_id: 1,
+                title: "Notes".to_string(),
+                body: "Saved locally".to_string(),
+                action_label: "Bad\nLabel".to_string(),
+            },
+        )
+        .unwrap();
+        assert!(matches!(
+            read_extension_reply(&mut client).unwrap(),
+            ExtensionReply::OperationUnavailable { .. }
+        ));
         assert!(shown_rx.try_recv().is_err());
         write_extension_request(&mut client, &action()).unwrap();
-        assert_eq!(read_extension_reply(&mut client).unwrap(), ExtensionReply::UiInjectAck);
-        assert_eq!(shown_rx.recv_timeout(Duration::from_secs(1)).unwrap(),
-            (1, "Notes".to_string(), "Saved locally".to_string(), "Open notes".to_string()));
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            ExtensionReply::UiInjectAck
+        );
+        assert_eq!(
+            shown_rx.recv_timeout(Duration::from_secs(1)).unwrap(),
+            (
+                1,
+                "Notes".to_string(),
+                "Saved locally".to_string(),
+                "Open notes".to_string()
+            )
+        );
         let requests = reviewed.join().unwrap();
         assert_eq!(requests.len(), 3);
-        assert!(matches!(&requests[2], GatekeeperRequest::CheckExtensionAction { capability, detail, .. }
+        assert!(
+            matches!(&requests[2], GatekeeperRequest::CheckExtensionAction { capability, detail, .. }
             if capability == CAPABILITY_UI_INJECT && detail.contains("action=show-native-popup")
                 && detail.contains("body=\"Saved locally\"")
-                && detail.contains("action_label=\"Open notes\"")));
+                && detail.contains("action_label=\"Open notes\""))
+        );
         drop(client);
         handle.join().unwrap().unwrap();
         let _ = std::fs::remove_file(gatekeeper);
@@ -3628,10 +4461,13 @@ mod tests {
         registry.grant(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_UI_INJECT);
         let (gatekeeper, reviewed) = start_gatekeeper_replies(
             "popup-rejected",
-            vec![GatekeeperReply::Cleared, GatekeeperReply::Rejected {
-                reason: "unsafe popup".to_string(),
-                category: "extension-popup-social-engineering".to_string(),
-            }],
+            vec![
+                GatekeeperReply::Cleared,
+                GatekeeperReply::Rejected {
+                    reason: "unsafe popup".to_string(),
+                    category: "extension-popup-social-engineering".to_string(),
+                },
+            ],
         );
         let (shown_tx, shown_rx) = mpsc::channel();
         let (mut client, mut server) = UnixStream::pair().unwrap();
@@ -3643,25 +4479,60 @@ mod tests {
                 &mut server,
                 ExtensionConnectionAuthentication::unauthenticated(),
                 ExtensionActionDelegates::new(
-                    |_| Ok(String::new()), unused_write_delegate, || Ok(()), |_, _| Ok(()), || Ok(()),
+                    |_| Ok(String::new()),
+                    unused_write_delegate,
+                    || Ok(()),
+                    |_, _| Ok(()),
+                    || Ok(()),
                 )
                 .with_toolbar_button(|_, _| Ok(()))
                 .with_popup(
-                    move |_, _, _, _| { shown_tx.send(()).unwrap(); Ok(()) },
+                    move |_, _, _, _| {
+                        shown_tx.send(()).unwrap();
+                        Ok(())
+                    },
                     || Ok(()),
                 ),
             )
         });
-        write_extension_request(&mut client, &hello_with_capabilities(MINIMAL_SLICE_EXTENSION_ID, [(CAPABILITY_UI_INJECT, 2)])).unwrap();
-        assert_eq!(read_extension_reply(&mut client).unwrap(), empty_hello_ack());
-        write_extension_request(&mut client, &ExtensionRequest::SetToolbarButton { label: "Notes".to_string() }).unwrap();
-        assert_eq!(read_extension_reply(&mut client).unwrap(), ExtensionReply::UiInjectAck);
-        write_extension_request(&mut client, &ExtensionRequest::ShowPopup { tab_id: 1, title: "Notes".to_string(), body: "Enter your password".to_string() }).unwrap();
-        assert!(matches!(read_extension_reply(&mut client).unwrap(), ExtensionReply::GatekeeperBlocked { category, .. } if category == "extension-popup-social-engineering"));
+        write_extension_request(
+            &mut client,
+            &hello_with_capabilities(MINIMAL_SLICE_EXTENSION_ID, [(CAPABILITY_UI_INJECT, 2)]),
+        )
+        .unwrap();
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            empty_hello_ack()
+        );
+        write_extension_request(
+            &mut client,
+            &ExtensionRequest::SetToolbarButton {
+                label: "Notes".to_string(),
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            ExtensionReply::UiInjectAck
+        );
+        write_extension_request(
+            &mut client,
+            &ExtensionRequest::ShowPopup {
+                tab_id: 1,
+                title: "Notes".to_string(),
+                body: "Enter your password".to_string(),
+            },
+        )
+        .unwrap();
+        assert!(
+            matches!(read_extension_reply(&mut client).unwrap(), ExtensionReply::GatekeeperBlocked { category, .. } if category == "extension-popup-social-engineering")
+        );
         assert!(shown_rx.try_recv().is_err());
         let requests = reviewed.join().unwrap();
         assert_eq!(requests.len(), 2);
-        assert!(matches!(&requests[1], GatekeeperRequest::CheckExtensionAction { detail, .. } if detail.contains("Enter your password")));
+        assert!(
+            matches!(&requests[1], GatekeeperRequest::CheckExtensionAction { detail, .. } if detail.contains("Enter your password"))
+        );
         drop(client);
         handle.join().unwrap().unwrap();
         let _ = std::fs::remove_file(gatekeeper);
@@ -3703,37 +4574,72 @@ mod tests {
     fn optional_grant_and_revocation_take_effect_on_an_existing_negotiated_connection() {
         let mut registry = ExtensionRegistry::with_supported_capabilities();
         registry.declare_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_READ);
-        assert!(registry.grant_optional("other-extension", CAPABILITY_DOM_READ).is_err());
-        assert!(registry.grant_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_WRITE).is_err());
-        assert_eq!(registry.capability_generation(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_READ), None);
+        assert!(registry
+            .grant_optional("other-extension", CAPABILITY_DOM_READ)
+            .is_err());
+        assert!(registry
+            .grant_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_WRITE)
+            .is_err());
+        assert_eq!(
+            registry.capability_generation(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_READ),
+            None
+        );
         let registry = Arc::new(registry);
         let (mut client, mut server) = UnixStream::pair().unwrap();
         let handler_registry = Arc::clone(&registry);
-        let handle = thread::spawn(move || {
-            handle_extension_connection(&handler_registry, &mut server)
-        });
-        write_extension_request(&mut client, &hello_with_capabilities(
-            MINIMAL_SLICE_EXTENSION_ID, [(CAPABILITY_DOM_READ, 1)],
-        )).unwrap();
-        assert_eq!(read_extension_reply(&mut client).unwrap(), empty_hello_ack());
+        let handle =
+            thread::spawn(move || handle_extension_connection(&handler_registry, &mut server));
+        write_extension_request(
+            &mut client,
+            &hello_with_capabilities(MINIMAL_SLICE_EXTENSION_ID, [(CAPABILITY_DOM_READ, 1)]),
+        )
+        .unwrap();
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            empty_hello_ack()
+        );
 
         write_extension_request(&mut client, &ExtensionRequest::DomRead).unwrap();
         assert!(matches!(read_extension_reply(&mut client).unwrap(),
             ExtensionReply::CapabilityDenied { capability, .. } if capability == CAPABILITY_DOM_READ));
-        assert!(registry.grant_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_READ).unwrap());
-        assert_eq!(registry.capability_generation(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_READ), Some(0));
-        assert!(!registry.grant_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_READ).unwrap());
+        assert!(registry
+            .grant_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_READ)
+            .unwrap());
+        assert_eq!(
+            registry.capability_generation(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_READ),
+            Some(0)
+        );
+        assert!(!registry
+            .grant_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_READ)
+            .unwrap());
         write_extension_request(&mut client, &ExtensionRequest::DomRead).unwrap();
-        assert_eq!(read_extension_reply(&mut client).unwrap(), ExtensionReply::DomReadResult {
-            value: PLACEHOLDER_DOM_READ_VALUE.to_string(),
-        });
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            ExtensionReply::DomReadResult {
+                value: PLACEHOLDER_DOM_READ_VALUE.to_string(),
+            }
+        );
 
-        assert!(registry.revoke_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_READ).unwrap());
-        assert_eq!(registry.capability_generation(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_READ), None);
-        assert!(!registry.revoke_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_READ).unwrap());
-        assert!(registry.grant_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_READ).unwrap());
-        assert_eq!(registry.capability_generation(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_READ), Some(1));
-        assert!(registry.revoke_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_READ).unwrap());
+        assert!(registry
+            .revoke_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_READ)
+            .unwrap());
+        assert_eq!(
+            registry.capability_generation(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_READ),
+            None
+        );
+        assert!(!registry
+            .revoke_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_READ)
+            .unwrap());
+        assert!(registry
+            .grant_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_READ)
+            .unwrap());
+        assert_eq!(
+            registry.capability_generation(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_READ),
+            Some(1)
+        );
+        assert!(registry
+            .revoke_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_READ)
+            .unwrap());
         write_extension_request(&mut client, &ExtensionRequest::DomRead).unwrap();
         assert!(matches!(read_extension_reply(&mut client).unwrap(),
             ExtensionReply::CapabilityDenied { capability, .. } if capability == CAPABILITY_DOM_READ));
@@ -3828,7 +4734,11 @@ mod tests {
         assert_eq!(storage.get(identity, &long_key).unwrap(), None);
 
         storage
-            .set(identity, long_key.clone(), "x".repeat(remaining - long_key.len()))
+            .set(
+                identity,
+                long_key.clone(),
+                "x".repeat(remaining - long_key.len()),
+            )
             .unwrap();
         let buckets = storage.buckets.lock().unwrap();
         assert_eq!(
@@ -3930,11 +4840,16 @@ mod tests {
         let mut registry = ExtensionRegistry::with_supported_capabilities();
         registry.declare_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_STORAGE);
         let registry = Arc::new(registry);
-        registry.grant_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_STORAGE).unwrap();
-        let old_generation = registry.capability_generation(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_STORAGE).unwrap();
+        registry
+            .grant_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_STORAGE)
+            .unwrap();
+        let old_generation = registry
+            .capability_generation(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_STORAGE)
+            .unwrap();
         let (entered_tx, entered_rx) = mpsc::channel();
         let (release_tx, release_rx) = mpsc::channel();
         let worker_registry = Arc::clone(&registry);
+        #[allow(clippy::result_large_err)]
         let worker = thread::spawn(move || {
             let identity = ConnectionIdentity {
                 extension_id: MINIMAL_SLICE_EXTENSION_ID.to_string(),
@@ -3952,7 +4867,9 @@ mod tests {
         let revoker_registry = Arc::clone(&registry);
         let revoker = thread::spawn(move || {
             attempt_tx.send(()).unwrap();
-            revoker_registry.revoke_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_STORAGE).unwrap();
+            revoker_registry
+                .revoke_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_STORAGE)
+                .unwrap();
             done_tx.send(()).unwrap();
         });
         attempt_rx.recv_timeout(Duration::from_secs(2)).unwrap();
@@ -3962,7 +4879,9 @@ mod tests {
         done_rx.recv_timeout(Duration::from_secs(2)).unwrap();
         revoker.join().unwrap();
 
-        registry.grant_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_STORAGE).unwrap();
+        registry
+            .grant_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_STORAGE)
+            .unwrap();
         let identity = ConnectionIdentity {
             extension_id: MINIMAL_SLICE_EXTENSION_ID.to_string(),
             negotiated_capabilities: BTreeMap::from([(CAPABILITY_STORAGE.to_string(), 3)]),
@@ -3980,7 +4899,9 @@ mod tests {
         let mut registry = ExtensionRegistry::with_supported_capabilities();
         registry.declare_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_STORAGE);
         let registry = Arc::new(registry);
-        registry.grant_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_STORAGE).unwrap();
+        registry
+            .grant_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_STORAGE)
+            .unwrap();
         let handler_registry = Arc::clone(&registry);
         let (mut client, mut server) = UnixStream::pair().unwrap();
         let worker = thread::spawn(move || {
@@ -3995,20 +4916,37 @@ mod tests {
             read_extension_reply(client).unwrap()
         };
         assert_eq!(
-            exchange(&mut client, hello_with_capabilities(MINIMAL_SLICE_EXTENSION_ID, [(CAPABILITY_STORAGE, 3)])),
+            exchange(
+                &mut client,
+                hello_with_capabilities(MINIMAL_SLICE_EXTENSION_ID, [(CAPABILITY_STORAGE, 3)])
+            ),
             empty_hello_ack()
         );
         assert_eq!(
-            exchange(&mut client, ExtensionRequest::StorageSet { key: "task".into(), value: "safe".into() }),
+            exchange(
+                &mut client,
+                ExtensionRequest::StorageSet {
+                    key: "task".into(),
+                    value: "safe".into()
+                }
+            ),
             ExtensionReply::StorageSetAck
         );
-        registry.revoke_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_STORAGE).unwrap();
+        registry
+            .revoke_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_STORAGE)
+            .unwrap();
         for request in [
             ExtensionRequest::StorageGet { key: "task".into() },
-            ExtensionRequest::StorageSet { key: "task".into(), value: "changed".into() },
+            ExtensionRequest::StorageSet {
+                key: "task".into(),
+                value: "changed".into(),
+            },
             ExtensionRequest::StorageRemove { key: "task".into() },
             ExtensionRequest::DurableStorageGet { key: "task".into() },
-            ExtensionRequest::DurableStorageSet { key: "task".into(), value: "changed".into() },
+            ExtensionRequest::DurableStorageSet {
+                key: "task".into(),
+                value: "changed".into(),
+            },
             ExtensionRequest::DurableStorageRemove { key: "task".into() },
             ExtensionRequest::DurableStorageListKeys,
         ] {
@@ -4017,10 +4955,17 @@ mod tests {
                 ExtensionReply::CapabilityDenied { capability, .. } if capability == CAPABILITY_STORAGE
             ));
         }
-        registry.grant_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_STORAGE).unwrap();
+        registry
+            .grant_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_STORAGE)
+            .unwrap();
         assert_eq!(
-            exchange(&mut client, ExtensionRequest::StorageGet { key: "task".into() }),
-            ExtensionReply::StorageGetResult { value: Some("safe".into()) }
+            exchange(
+                &mut client,
+                ExtensionRequest::StorageGet { key: "task".into() }
+            ),
+            ExtensionReply::StorageGetResult {
+                value: Some("safe".into())
+            }
         );
         drop(client);
         worker.join().unwrap().unwrap();
@@ -4032,7 +4977,8 @@ mod tests {
 
         static NEXT_ROOT: AtomicU64 = AtomicU64::new(1);
         const ID: &str = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
-        const OTHER_ID: &str = "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+        const OTHER_ID: &str =
+            "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
         let root = std::env::temp_dir().join(format!(
             "blueice-storage-v2-test-{}-{}",
             std::process::id(),
@@ -4065,34 +5011,100 @@ mod tests {
             read_extension_reply(client).unwrap()
         };
 
-        let (mut client, worker) = spawn(ExtensionStorage::default().with_durable_root(root.clone()));
-        assert_eq!(exchange(&mut client, hello_with_capabilities(ID, [(CAPABILITY_STORAGE, 1)])), empty_hello_ack());
+        let (mut client, worker) =
+            spawn(ExtensionStorage::default().with_durable_root(root.clone()));
+        assert_eq!(
+            exchange(
+                &mut client,
+                hello_with_capabilities(ID, [(CAPABILITY_STORAGE, 1)])
+            ),
+            empty_hello_ack()
+        );
         assert!(matches!(
             exchange(&mut client, ExtensionRequest::DurableStorageSet {
                 key: "task".into(), value: "persistent".into(),
             }),
             ExtensionReply::CapabilityDenied { capability, .. } if capability == CAPABILITY_STORAGE
         ));
-        assert_eq!(exchange(&mut client, ExtensionRequest::StorageSet {
-            key: "task".into(), value: "ephemeral".into(),
-        }), ExtensionReply::StorageSetAck);
-        assert_eq!(exchange(&mut client, hello_with_capabilities(ID, [(CAPABILITY_STORAGE, 2)])), empty_hello_ack());
-        assert!(matches!(exchange(&mut client, ExtensionRequest::DurableStorageListKeys),
-            ExtensionReply::CapabilityDenied { capability, .. } if capability == CAPABILITY_STORAGE));
-        assert_eq!(exchange(&mut client, ExtensionRequest::DurableStorageSet {
-            key: "task".into(), value: "persistent".into(),
-        }), ExtensionReply::StorageSetAck);
-        assert_eq!(exchange(&mut client, ExtensionRequest::DurableStorageSet {
-            key: "alpha".into(), value: "other".into(),
-        }), ExtensionReply::StorageSetAck);
-        assert_eq!(exchange(&mut client, ExtensionRequest::DurableStorageGet { key: "task".into() }),
-            ExtensionReply::StorageGetResult { value: Some("persistent".into()) });
-        assert_eq!(exchange(&mut client, ExtensionRequest::StorageGet { key: "task".into() }),
-            ExtensionReply::StorageGetResult { value: Some("ephemeral".into()) });
-        assert_eq!(exchange(&mut client, hello_with_capabilities(ID, [(CAPABILITY_STORAGE, 3)])), empty_hello_ack());
-        assert_eq!(exchange(&mut client, ExtensionRequest::DurableStorageListKeys),
-            ExtensionReply::StorageKeysResult { keys: vec!["alpha".into(), "task".into()] });
-        assert_eq!(exchange(&mut client, hello_with_capabilities(OTHER_ID, [(CAPABILITY_STORAGE, 3)])), empty_hello_ack());
+        assert_eq!(
+            exchange(
+                &mut client,
+                ExtensionRequest::StorageSet {
+                    key: "task".into(),
+                    value: "ephemeral".into(),
+                }
+            ),
+            ExtensionReply::StorageSetAck
+        );
+        assert_eq!(
+            exchange(
+                &mut client,
+                hello_with_capabilities(ID, [(CAPABILITY_STORAGE, 2)])
+            ),
+            empty_hello_ack()
+        );
+        assert!(
+            matches!(exchange(&mut client, ExtensionRequest::DurableStorageListKeys),
+            ExtensionReply::CapabilityDenied { capability, .. } if capability == CAPABILITY_STORAGE)
+        );
+        assert_eq!(
+            exchange(
+                &mut client,
+                ExtensionRequest::DurableStorageSet {
+                    key: "task".into(),
+                    value: "persistent".into(),
+                }
+            ),
+            ExtensionReply::StorageSetAck
+        );
+        assert_eq!(
+            exchange(
+                &mut client,
+                ExtensionRequest::DurableStorageSet {
+                    key: "alpha".into(),
+                    value: "other".into(),
+                }
+            ),
+            ExtensionReply::StorageSetAck
+        );
+        assert_eq!(
+            exchange(
+                &mut client,
+                ExtensionRequest::DurableStorageGet { key: "task".into() }
+            ),
+            ExtensionReply::StorageGetResult {
+                value: Some("persistent".into())
+            }
+        );
+        assert_eq!(
+            exchange(
+                &mut client,
+                ExtensionRequest::StorageGet { key: "task".into() }
+            ),
+            ExtensionReply::StorageGetResult {
+                value: Some("ephemeral".into())
+            }
+        );
+        assert_eq!(
+            exchange(
+                &mut client,
+                hello_with_capabilities(ID, [(CAPABILITY_STORAGE, 3)])
+            ),
+            empty_hello_ack()
+        );
+        assert_eq!(
+            exchange(&mut client, ExtensionRequest::DurableStorageListKeys),
+            ExtensionReply::StorageKeysResult {
+                keys: vec!["alpha".into(), "task".into()]
+            }
+        );
+        assert_eq!(
+            exchange(
+                &mut client,
+                hello_with_capabilities(OTHER_ID, [(CAPABILITY_STORAGE, 3)])
+            ),
+            empty_hello_ack()
+        );
         assert!(matches!(
             exchange(&mut client, ExtensionRequest::DurableStorageListKeys),
             ExtensionReply::CapabilityDenied { capability, .. } if capability == CAPABILITY_STORAGE
@@ -4100,18 +5112,50 @@ mod tests {
         drop(client);
         worker.join().unwrap().unwrap();
 
-        let (mut restarted, worker) = spawn(ExtensionStorage::default().with_durable_root(root.clone()));
-        assert_eq!(exchange(&mut restarted, hello_with_capabilities(ID, [(CAPABILITY_STORAGE, 3)])), empty_hello_ack());
-        assert_eq!(exchange(&mut restarted, ExtensionRequest::DurableStorageListKeys),
-            ExtensionReply::StorageKeysResult { keys: vec!["alpha".into(), "task".into()] });
-        assert_eq!(exchange(&mut restarted, ExtensionRequest::DurableStorageGet { key: "task".into() }),
-            ExtensionReply::StorageGetResult { value: Some("persistent".into()) });
-        assert_eq!(exchange(&mut restarted, ExtensionRequest::StorageGet { key: "task".into() }),
-            ExtensionReply::StorageGetResult { value: None });
-        assert_eq!(exchange(&mut restarted, ExtensionRequest::DurableStorageRemove { key: "task".into() }),
-            ExtensionReply::StorageRemoveAck { removed: true });
-        assert_eq!(exchange(&mut restarted, ExtensionRequest::DurableStorageListKeys),
-            ExtensionReply::StorageKeysResult { keys: vec!["alpha".into()] });
+        let (mut restarted, worker) =
+            spawn(ExtensionStorage::default().with_durable_root(root.clone()));
+        assert_eq!(
+            exchange(
+                &mut restarted,
+                hello_with_capabilities(ID, [(CAPABILITY_STORAGE, 3)])
+            ),
+            empty_hello_ack()
+        );
+        assert_eq!(
+            exchange(&mut restarted, ExtensionRequest::DurableStorageListKeys),
+            ExtensionReply::StorageKeysResult {
+                keys: vec!["alpha".into(), "task".into()]
+            }
+        );
+        assert_eq!(
+            exchange(
+                &mut restarted,
+                ExtensionRequest::DurableStorageGet { key: "task".into() }
+            ),
+            ExtensionReply::StorageGetResult {
+                value: Some("persistent".into())
+            }
+        );
+        assert_eq!(
+            exchange(
+                &mut restarted,
+                ExtensionRequest::StorageGet { key: "task".into() }
+            ),
+            ExtensionReply::StorageGetResult { value: None }
+        );
+        assert_eq!(
+            exchange(
+                &mut restarted,
+                ExtensionRequest::DurableStorageRemove { key: "task".into() }
+            ),
+            ExtensionReply::StorageRemoveAck { removed: true }
+        );
+        assert_eq!(
+            exchange(&mut restarted, ExtensionRequest::DurableStorageListKeys),
+            ExtensionReply::StorageKeysResult {
+                keys: vec!["alpha".into()]
+            }
+        );
         drop(restarted);
         worker.join().unwrap().unwrap();
         std::fs::remove_dir_all(root).unwrap();
@@ -4278,8 +5322,12 @@ mod tests {
         let mut registry = ExtensionRegistry::with_supported_capabilities();
         registry.declare_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_READ);
         let registry = Arc::new(registry);
-        registry.grant_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_READ).unwrap();
-        let old_generation = registry.capability_generation(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_READ).unwrap();
+        registry
+            .grant_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_READ)
+            .unwrap();
+        let old_generation = registry
+            .capability_generation(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_READ)
+            .unwrap();
         let (mut client, mut server) = UnixStream::pair().unwrap();
         let (entered_tx, entered_rx) = mpsc::channel();
         let (release_tx, release_rx) = mpsc::channel();
@@ -4289,12 +5337,21 @@ mod tests {
                 extension_id: MINIMAL_SLICE_EXTENSION_ID.to_string(),
                 negotiated_capabilities: BTreeMap::from([(CAPABILITY_DOM_READ.to_string(), 2)]),
             };
-            write_stable_read_reply(&mut server, &worker_registry, &identity, CAPABILITY_DOM_READ,
-                Some(old_generation), || {
+            write_stable_read_reply(
+                &mut server,
+                &worker_registry,
+                &identity,
+                CAPABILITY_DOM_READ,
+                Some(old_generation),
+                || {
                     entered_tx.send(()).unwrap();
                     release_rx.recv_timeout(Duration::from_secs(2)).unwrap();
-                    ExtensionReply::DomReadResult { value: "prior-authorized-result".into() }
-                }).unwrap();
+                    ExtensionReply::DomReadResult {
+                        value: "prior-authorized-result".into(),
+                    }
+                },
+            )
+            .unwrap();
         });
         entered_rx.recv_timeout(Duration::from_secs(2)).unwrap();
         let (attempt_tx, attempt_rx) = mpsc::channel();
@@ -4302,26 +5359,40 @@ mod tests {
         let revoker_registry = Arc::clone(&registry);
         let revoker = thread::spawn(move || {
             attempt_tx.send(()).unwrap();
-            revoker_registry.revoke_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_READ).unwrap();
+            revoker_registry
+                .revoke_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_READ)
+                .unwrap();
             done_tx.send(()).unwrap();
         });
         attempt_rx.recv_timeout(Duration::from_secs(2)).unwrap();
         assert!(done_rx.recv_timeout(Duration::from_millis(50)).is_err());
         release_tx.send(()).unwrap();
-        assert_eq!(read_extension_reply(&mut client).unwrap(), ExtensionReply::DomReadResult {
-            value: "prior-authorized-result".into()
-        });
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            ExtensionReply::DomReadResult {
+                value: "prior-authorized-result".into()
+            }
+        );
         worker.join().unwrap();
         done_rx.recv_timeout(Duration::from_secs(2)).unwrap();
         revoker.join().unwrap();
-        registry.grant_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_READ).unwrap();
+        registry
+            .grant_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_READ)
+            .unwrap();
         let identity = ConnectionIdentity {
             extension_id: MINIMAL_SLICE_EXTENSION_ID.to_string(),
             negotiated_capabilities: BTreeMap::from([(CAPABILITY_DOM_READ.to_string(), 2)]),
         };
         let mut denial = Vec::new();
-        write_stable_read_reply(&mut denial, &registry, &identity, CAPABILITY_DOM_READ,
-            Some(old_generation), || panic!("the old generation must not fetch data")).unwrap();
+        write_stable_read_reply(
+            &mut denial,
+            &registry,
+            &identity,
+            CAPABILITY_DOM_READ,
+            Some(old_generation),
+            || panic!("the old generation must not fetch data"),
+        )
+        .unwrap();
         assert!(matches!(
             read_extension_reply(&mut denial.as_slice()).unwrap(),
             ExtensionReply::CapabilityDenied { capability, .. } if capability == CAPABILITY_DOM_READ
@@ -4336,8 +5407,12 @@ mod tests {
         registry.declare_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_READ);
         registry.declare_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_NETWORK_OBSERVE);
         let registry = Arc::new(registry);
-        registry.grant_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_READ).unwrap();
-        registry.grant_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_NETWORK_OBSERVE).unwrap();
+        registry
+            .grant_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_READ)
+            .unwrap();
+        registry
+            .grant_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_NETWORK_OBSERVE)
+            .unwrap();
         let calls = Arc::new(AtomicUsize::new(0));
         let dom_calls = Arc::clone(&calls);
         let response_calls = Arc::clone(&calls);
@@ -4351,7 +5426,10 @@ mod tests {
                 &mut server,
                 ExtensionConnectionAuthentication::unauthenticated(),
                 ExtensionActionDelegates::new(
-                    move |_| { dom_calls.fetch_add(1, Ordering::SeqCst); Ok("safe".into()) },
+                    move |_| {
+                        dom_calls.fetch_add(1, Ordering::SeqCst);
+                        Ok("safe".into())
+                    },
                     unused_write_delegate,
                     || Ok(()),
                     |_, _| Ok(()),
@@ -4372,17 +5450,35 @@ mod tests {
             read_extension_reply(client).unwrap()
         };
         assert_eq!(
-            exchange(&mut client, hello_with_capabilities(MINIMAL_SLICE_EXTENSION_ID,
-                [(CAPABILITY_DOM_READ, 2), (CAPABILITY_NETWORK_OBSERVE, 2)])),
+            exchange(
+                &mut client,
+                hello_with_capabilities(
+                    MINIMAL_SLICE_EXTENSION_ID,
+                    [(CAPABILITY_DOM_READ, 2), (CAPABILITY_NETWORK_OBSERVE, 2)]
+                )
+            ),
             empty_hello_ack()
         );
-        registry.revoke_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_READ).unwrap();
-        registry.revoke_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_NETWORK_OBSERVE).unwrap();
+        registry
+            .revoke_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_READ)
+            .unwrap();
+        registry
+            .revoke_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_NETWORK_OBSERVE)
+            .unwrap();
         for (request, capability) in [
             (ExtensionRequest::DomRead, CAPABILITY_DOM_READ),
-            (ExtensionRequest::DomReadTab { tab_id: 1 }, CAPABILITY_DOM_READ),
-            (ExtensionRequest::ReadNetworkResponse { tab_id: 1 }, CAPABILITY_NETWORK_OBSERVE),
-            (ExtensionRequest::ReadNetworkTrace { tab_id: 1 }, CAPABILITY_NETWORK_OBSERVE),
+            (
+                ExtensionRequest::DomReadTab { tab_id: 1 },
+                CAPABILITY_DOM_READ,
+            ),
+            (
+                ExtensionRequest::ReadNetworkResponse { tab_id: 1 },
+                CAPABILITY_NETWORK_OBSERVE,
+            ),
+            (
+                ExtensionRequest::ReadNetworkTrace { tab_id: 1 },
+                CAPABILITY_NETWORK_OBSERVE,
+            ),
         ] {
             assert!(matches!(
                 exchange(&mut client, request),
@@ -4390,16 +5486,38 @@ mod tests {
             ));
         }
         assert_eq!(calls.load(Ordering::SeqCst), 0);
-        registry.grant_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_READ).unwrap();
-        registry.grant_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_NETWORK_OBSERVE).unwrap();
-        assert_eq!(exchange(&mut client, ExtensionRequest::DomRead),
-            ExtensionReply::DomReadResult { value: "safe".into() });
-        assert_eq!(exchange(&mut client, ExtensionRequest::DomReadTab { tab_id: 1 }),
-            ExtensionReply::DomReadResult { value: "safe".into() });
-        assert_eq!(exchange(&mut client, ExtensionRequest::ReadNetworkResponse { tab_id: 1 }),
-            ExtensionReply::NetworkResponseResult { response: None });
-        assert_eq!(exchange(&mut client, ExtensionRequest::ReadNetworkTrace { tab_id: 1 }),
-            ExtensionReply::NetworkTraceResult { trace: None });
+        registry
+            .grant_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_READ)
+            .unwrap();
+        registry
+            .grant_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_NETWORK_OBSERVE)
+            .unwrap();
+        assert_eq!(
+            exchange(&mut client, ExtensionRequest::DomRead),
+            ExtensionReply::DomReadResult {
+                value: "safe".into()
+            }
+        );
+        assert_eq!(
+            exchange(&mut client, ExtensionRequest::DomReadTab { tab_id: 1 }),
+            ExtensionReply::DomReadResult {
+                value: "safe".into()
+            }
+        );
+        assert_eq!(
+            exchange(
+                &mut client,
+                ExtensionRequest::ReadNetworkResponse { tab_id: 1 }
+            ),
+            ExtensionReply::NetworkResponseResult { response: None }
+        );
+        assert_eq!(
+            exchange(
+                &mut client,
+                ExtensionRequest::ReadNetworkTrace { tab_id: 1 }
+            ),
+            ExtensionReply::NetworkTraceResult { trace: None }
+        );
         assert_eq!(calls.load(Ordering::SeqCst), 4);
         drop(client);
         worker.join().unwrap().unwrap();
@@ -4742,46 +5860,112 @@ mod tests {
     #[test]
     fn v8_visible_leaf_text_requires_its_version_and_reviews_the_exact_payload() {
         let registry = registry_with_dom_write_granted();
-        let (gatekeeper_socket, gatekeeper) = start_gatekeeper("clear-v8-visible-leaf", GatekeeperReply::Cleared);
+        let (gatekeeper_socket, gatekeeper) =
+            start_gatekeeper("clear-v8-visible-leaf", GatekeeperReply::Cleared);
         let (seen_tx, seen_rx) = std::sync::mpsc::channel();
         let (mut client, mut server) = UnixStream::pair().unwrap();
         let socket_for_handler = gatekeeper_socket.clone();
         let handle = thread::spawn(move || {
             handle_extension_connection_with_actions(
-                &registry, &socket_for_handler, &mut server,
+                &registry,
+                &socket_for_handler,
+                &mut server,
                 |_| Ok("unused".to_string()),
-                move |target, value, kind, _| { seen_tx.send((target, value, kind.clone())).unwrap(); Ok(()) },
+                move |target, value, kind, _| {
+                    seen_tx.send((target, value, kind.clone())).unwrap();
+                    Ok(())
+                },
                 || Ok(()),
             )
         });
-        write_extension_request(&mut client, &hello_with_capabilities(MINIMAL_SLICE_EXTENSION_ID, [(CAPABILITY_DOM_WRITE, 8)])).unwrap();
-        assert_eq!(read_extension_reply(&mut client).unwrap(), empty_hello_ack());
-        write_extension_request(&mut client, &ExtensionRequest::SetVisibleLeafText { tab_id: 7, node_id: 19, value: "Updated heading".to_string() }).unwrap();
-        assert_eq!(read_extension_reply(&mut client).unwrap(), ExtensionReply::DomWriteAck);
-        assert_eq!(seen_rx.recv_timeout(Duration::from_secs(1)).unwrap(), (Some((7, 19)), "Updated heading".to_string(), DomWriteTarget::VisibleTextLeaf));
-        write_extension_request(&mut client, &ExtensionRequest::SetVisibleLeafText { tab_id: 7, node_id: 19, value: " \n ".to_string() }).unwrap();
-        assert!(matches!(read_extension_reply(&mut client).unwrap(), ExtensionReply::OperationUnavailable { capability, .. } if capability == CAPABILITY_DOM_WRITE));
+        write_extension_request(
+            &mut client,
+            &hello_with_capabilities(MINIMAL_SLICE_EXTENSION_ID, [(CAPABILITY_DOM_WRITE, 8)]),
+        )
+        .unwrap();
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            empty_hello_ack()
+        );
+        write_extension_request(
+            &mut client,
+            &ExtensionRequest::SetVisibleLeafText {
+                tab_id: 7,
+                node_id: 19,
+                value: "Updated heading".to_string(),
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            ExtensionReply::DomWriteAck
+        );
+        assert_eq!(
+            seen_rx.recv_timeout(Duration::from_secs(1)).unwrap(),
+            (
+                Some((7, 19)),
+                "Updated heading".to_string(),
+                DomWriteTarget::VisibleTextLeaf
+            )
+        );
+        write_extension_request(
+            &mut client,
+            &ExtensionRequest::SetVisibleLeafText {
+                tab_id: 7,
+                node_id: 19,
+                value: " \n ".to_string(),
+            },
+        )
+        .unwrap();
+        assert!(
+            matches!(read_extension_reply(&mut client).unwrap(), ExtensionReply::OperationUnavailable { capability, .. } if capability == CAPABILITY_DOM_WRITE)
+        );
         assert!(seen_rx.try_recv().is_err());
         drop(client);
         handle.join().unwrap().unwrap();
-        assert_eq!(gatekeeper.join().unwrap(), GatekeeperRequest::CheckExtensionAction {
-            extension_id: MINIMAL_SLICE_EXTENSION_ID.to_string(), capability: CAPABILITY_DOM_WRITE.to_string(),
-            detail: "action=set-visible-leaf-text; text=Updated heading".to_string(),
-        });
+        assert_eq!(
+            gatekeeper.join().unwrap(),
+            GatekeeperRequest::CheckExtensionAction {
+                extension_id: MINIMAL_SLICE_EXTENSION_ID.to_string(),
+                capability: CAPABILITY_DOM_WRITE.to_string(),
+                detail: "action=set-visible-leaf-text; text=Updated heading".to_string(),
+            }
+        );
         let _ = std::fs::remove_file(gatekeeper_socket);
 
         let registry = registry_with_dom_write_granted();
         let (mut client, mut server) = UnixStream::pair().unwrap();
-        let handle = thread::spawn(move || handle_extension_connection_with_actions(
-            &registry, Path::new("/not-reached-for-v7-visible-leaf.sock"), &mut server,
-            |_| Ok("unused".to_string()),
-            |_, _, _, _| panic!("v7 cannot delegate a v8 request"),
-            || Ok(()),
-        ));
-        write_extension_request(&mut client, &hello_with_capabilities(MINIMAL_SLICE_EXTENSION_ID, [(CAPABILITY_DOM_WRITE, 7)])).unwrap();
-        assert_eq!(read_extension_reply(&mut client).unwrap(), empty_hello_ack());
-        write_extension_request(&mut client, &ExtensionRequest::SetVisibleLeafText { tab_id: 7, node_id: 19, value: "denied".to_string() }).unwrap();
-        assert!(matches!(read_extension_reply(&mut client).unwrap(), ExtensionReply::CapabilityDenied { capability, reason } if capability == CAPABILITY_DOM_WRITE && reason.contains("requires version 8")));
+        let handle = thread::spawn(move || {
+            handle_extension_connection_with_actions(
+                &registry,
+                Path::new("/not-reached-for-v7-visible-leaf.sock"),
+                &mut server,
+                |_| Ok("unused".to_string()),
+                |_, _, _, _| panic!("v7 cannot delegate a v8 request"),
+                || Ok(()),
+            )
+        });
+        write_extension_request(
+            &mut client,
+            &hello_with_capabilities(MINIMAL_SLICE_EXTENSION_ID, [(CAPABILITY_DOM_WRITE, 7)]),
+        )
+        .unwrap();
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            empty_hello_ack()
+        );
+        write_extension_request(
+            &mut client,
+            &ExtensionRequest::SetVisibleLeafText {
+                tab_id: 7,
+                node_id: 19,
+                value: "denied".to_string(),
+            },
+        )
+        .unwrap();
+        assert!(
+            matches!(read_extension_reply(&mut client).unwrap(), ExtensionReply::CapabilityDenied { capability, reason } if capability == CAPABILITY_DOM_WRITE && reason.contains("requires version 8"))
+        );
         drop(client);
         handle.join().unwrap().unwrap();
     }
@@ -4812,7 +5996,10 @@ mod tests {
             &hello_with_capabilities(MINIMAL_SLICE_EXTENSION_ID, [(CAPABILITY_DOM_WRITE, 9)]),
         )
         .unwrap();
-        assert_eq!(read_extension_reply(&mut client).unwrap(), empty_hello_ack());
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            empty_hello_ack()
+        );
         write_extension_request(
             &mut client,
             &ExtensionRequest::SetVisibleTextContent {
@@ -4822,7 +6009,10 @@ mod tests {
             },
         )
         .unwrap();
-        assert_eq!(read_extension_reply(&mut client).unwrap(), ExtensionReply::DomWriteAck);
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            ExtensionReply::DomWriteAck
+        );
         assert_eq!(
             seen_rx.recv_timeout(Duration::from_secs(1)).unwrap(),
             (
@@ -4860,7 +6050,10 @@ mod tests {
             &hello_with_capabilities(MINIMAL_SLICE_EXTENSION_ID, [(CAPABILITY_DOM_WRITE, 8)]),
         )
         .unwrap();
-        assert_eq!(read_extension_reply(&mut client).unwrap(), empty_hello_ack());
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            empty_hello_ack()
+        );
         write_extension_request(
             &mut client,
             &ExtensionRequest::SetVisibleTextContent {
@@ -4898,8 +6091,14 @@ mod tests {
             &hello_with_capabilities(MINIMAL_SLICE_EXTENSION_ID, [(CAPABILITY_DOM_WRITE, 9)]),
         )
         .unwrap();
-        assert_eq!(read_extension_reply(&mut client).unwrap(), empty_hello_ack());
-        for target in [DomWriteTarget::VisibleTextLeaf, DomWriteTarget::VisibleTextContent] {
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            empty_hello_ack()
+        );
+        for target in [
+            DomWriteTarget::VisibleTextLeaf,
+            DomWriteTarget::VisibleTextContent,
+        ] {
             write_extension_request(
                 &mut client,
                 &ExtensionRequest::DomWrite {
@@ -4921,26 +6120,51 @@ mod tests {
     #[test]
     fn v8_visible_leaf_text_rejection_never_reaches_core() {
         let registry = registry_with_dom_write_granted();
-        let (gatekeeper_socket, gatekeeper) = start_gatekeeper("block-v8-visible-leaf", GatekeeperReply::Rejected {
-            reason: "unsafe text".to_string(), category: "extension-visible-text-social-engineering".to_string(),
-        });
+        let (gatekeeper_socket, gatekeeper) = start_gatekeeper(
+            "block-v8-visible-leaf",
+            GatekeeperReply::Rejected {
+                reason: "unsafe text".to_string(),
+                category: "extension-visible-text-social-engineering".to_string(),
+            },
+        );
         let (mut client, mut server) = UnixStream::pair().unwrap();
         let socket_for_handler = gatekeeper_socket.clone();
-        let handle = thread::spawn(move || handle_extension_connection_with_actions(
-            &registry, &socket_for_handler, &mut server,
-            |_| Ok("unused".to_string()),
-            |_, _, _, _| panic!("a gatekeeper rejection must not mutate core"),
-            || Ok(()),
-        ));
-        write_extension_request(&mut client, &hello_with_capabilities(MINIMAL_SLICE_EXTENSION_ID, [(CAPABILITY_DOM_WRITE, 8)])).unwrap();
-        assert_eq!(read_extension_reply(&mut client).unwrap(), empty_hello_ack());
-        write_extension_request(&mut client, &ExtensionRequest::SetVisibleLeafText {
-            tab_id: 7, node_id: 19, value: "Enter your password".to_string(),
-        }).unwrap();
-        assert!(matches!(read_extension_reply(&mut client).unwrap(), ExtensionReply::GatekeeperBlocked { category, .. } if category == "extension-visible-text-social-engineering"));
+        let handle = thread::spawn(move || {
+            handle_extension_connection_with_actions(
+                &registry,
+                &socket_for_handler,
+                &mut server,
+                |_| Ok("unused".to_string()),
+                |_, _, _, _| panic!("a gatekeeper rejection must not mutate core"),
+                || Ok(()),
+            )
+        });
+        write_extension_request(
+            &mut client,
+            &hello_with_capabilities(MINIMAL_SLICE_EXTENSION_ID, [(CAPABILITY_DOM_WRITE, 8)]),
+        )
+        .unwrap();
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            empty_hello_ack()
+        );
+        write_extension_request(
+            &mut client,
+            &ExtensionRequest::SetVisibleLeafText {
+                tab_id: 7,
+                node_id: 19,
+                value: "Enter your password".to_string(),
+            },
+        )
+        .unwrap();
+        assert!(
+            matches!(read_extension_reply(&mut client).unwrap(), ExtensionReply::GatekeeperBlocked { category, .. } if category == "extension-visible-text-social-engineering")
+        );
         drop(client);
         handle.join().unwrap().unwrap();
-        assert!(matches!(gatekeeper.join().unwrap(), GatekeeperRequest::CheckExtensionAction { detail, .. } if detail.contains("Enter your password")));
+        assert!(
+            matches!(gatekeeper.join().unwrap(), GatekeeperRequest::CheckExtensionAction { detail, .. } if detail.contains("Enter your password"))
+        );
         let _ = std::fs::remove_file(gatekeeper_socket);
     }
 
@@ -5652,11 +6876,16 @@ mod tests {
     #[test]
     fn late_core_permission_failure_is_a_structured_capability_denial() {
         let mut wire = Vec::new();
-        write_network_registration_reply(&mut wire,
-            Err(grant_changed_reason(CAPABILITY_NETWORK_INTERCEPT))).unwrap();
-        assert!(matches!(read_extension_reply(&mut std::io::Cursor::new(wire)).unwrap(),
+        write_network_registration_reply(
+            &mut wire,
+            Err(grant_changed_reason(CAPABILITY_NETWORK_INTERCEPT)),
+        )
+        .unwrap();
+        assert!(
+            matches!(read_extension_reply(&mut std::io::Cursor::new(wire)).unwrap(),
             ExtensionReply::CapabilityDenied { capability, .. }
-                if capability == CAPABILITY_NETWORK_INTERCEPT));
+                if capability == CAPABILITY_NETWORK_INTERCEPT)
+        );
     }
 
     #[test]
@@ -5664,24 +6893,39 @@ mod tests {
         use std::sync::atomic::{AtomicUsize, Ordering};
 
         let cases = [
-            (ExtensionRequest::RegisterNetworkBlockUrl {
-                url: "https://example.test/blocked".into(),
-            }, 2),
-            (ExtensionRequest::RegisterNetworkBlockHost {
-                host: "example.test".into(),
-            }, 4),
-            (ExtensionRequest::RegisterNetworkBlockPathPrefix {
-                host: "example.test".into(), path_prefix: "/blocked".into(),
-            }, 5),
-            (ExtensionRequest::RegisterNetworkRedirectUrl {
-                source_url: "https://example.test/old".into(),
-                target_url: "https://example.test/new".into(),
-            }, 6),
+            (
+                ExtensionRequest::RegisterNetworkBlockUrl {
+                    url: "https://example.test/blocked".into(),
+                },
+                2,
+            ),
+            (
+                ExtensionRequest::RegisterNetworkBlockHost {
+                    host: "example.test".into(),
+                },
+                4,
+            ),
+            (
+                ExtensionRequest::RegisterNetworkBlockPathPrefix {
+                    host: "example.test".into(),
+                    path_prefix: "/blocked".into(),
+                },
+                5,
+            ),
+            (
+                ExtensionRequest::RegisterNetworkRedirectUrl {
+                    source_url: "https://example.test/old".into(),
+                    target_url: "https://example.test/new".into(),
+                },
+                6,
+            ),
         ];
         for (request, version) in cases {
             let mut registry = ExtensionRegistry::with_supported_capabilities();
             registry.declare_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_NETWORK_INTERCEPT);
-            assert!(registry.grant_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_NETWORK_INTERCEPT).unwrap());
+            assert!(registry
+                .grant_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_NETWORK_INTERCEPT)
+                .unwrap());
             let registry = Arc::new(registry);
             let gatekeeper_socket = unique_gatekeeper_socket("optional-network-race");
             let _ = std::fs::remove_file(&gatekeeper_socket);
@@ -5705,33 +6949,57 @@ mod tests {
             let called_redirect = Arc::clone(&invoked);
             let handler = thread::spawn(move || {
                 handle_extension_connection_with_actions_and_authentication_and_network_rules(
-                    &handler_registry, &handler_socket, &mut server,
+                    &handler_registry,
+                    &handler_socket,
+                    &mut server,
                     ExtensionConnectionAuthentication::unauthenticated(),
                     ExtensionActionDelegates::new(
-                        |_| Ok(String::new()), unused_write_delegate, || Ok(()),
-                        move |_, _| { called_url.fetch_add(1, Ordering::SeqCst); Ok(()) },
+                        |_| Ok(String::new()),
+                        unused_write_delegate,
+                        || Ok(()),
+                        move |_, _| {
+                            called_url.fetch_add(1, Ordering::SeqCst);
+                            Ok(())
+                        },
                         || Ok(()),
                     )
                     .with_network_block_host(move |_, _| {
-                        called_host.fetch_add(1, Ordering::SeqCst); Ok(())
+                        called_host.fetch_add(1, Ordering::SeqCst);
+                        Ok(())
                     })
                     .with_network_block_path_prefix(move |_, _, _| {
-                        called_path.fetch_add(1, Ordering::SeqCst); Ok(())
+                        called_path.fetch_add(1, Ordering::SeqCst);
+                        Ok(())
                     })
                     .with_network_redirect_url(move |_, _, _| {
-                        called_redirect.fetch_add(1, Ordering::SeqCst); Ok(())
+                        called_redirect.fetch_add(1, Ordering::SeqCst);
+                        Ok(())
                     }),
                 )
             });
-            write_extension_request(&mut client, &hello_with_capabilities(
-                MINIMAL_SLICE_EXTENSION_ID, [(CAPABILITY_NETWORK_INTERCEPT, version)],
-            )).unwrap();
-            assert_eq!(read_extension_reply(&mut client).unwrap(), empty_hello_ack());
+            write_extension_request(
+                &mut client,
+                &hello_with_capabilities(
+                    MINIMAL_SLICE_EXTENSION_ID,
+                    [(CAPABILITY_NETWORK_INTERCEPT, version)],
+                ),
+            )
+            .unwrap();
+            assert_eq!(
+                read_extension_reply(&mut client).unwrap(),
+                empty_hello_ack()
+            );
             write_extension_request(&mut client, &request).unwrap();
-            assert!(matches!(reviewed_rx.recv_timeout(Duration::from_secs(2)).unwrap(),
-                GatekeeperRequest::CheckExtensionAction { .. }));
-            assert!(registry.revoke_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_NETWORK_INTERCEPT).unwrap());
-            assert!(registry.grant_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_NETWORK_INTERCEPT).unwrap());
+            assert!(matches!(
+                reviewed_rx.recv_timeout(Duration::from_secs(2)).unwrap(),
+                GatekeeperRequest::CheckExtensionAction { .. }
+            ));
+            assert!(registry
+                .revoke_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_NETWORK_INTERCEPT)
+                .unwrap());
+            assert!(registry
+                .grant_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_NETWORK_INTERCEPT)
+                .unwrap());
             release_tx.send(()).unwrap();
             assert!(matches!(read_extension_reply(&mut client).unwrap(),
                 ExtensionReply::CapabilityDenied { capability, .. } if capability == CAPABILITY_NETWORK_INTERCEPT));
@@ -5748,16 +7016,28 @@ mod tests {
         use std::sync::atomic::{AtomicUsize, Ordering};
 
         for (request, version) in [
-            (ExtensionRequest::SetTextInputValue {
-                tab_id: 1, node_id: 2, value: "new value".into(),
-            }, 2),
-            (ExtensionRequest::SetVisibleTextContent {
-                tab_id: 1, node_id: 2, value: "New heading".into(),
-            }, 9),
+            (
+                ExtensionRequest::SetTextInputValue {
+                    tab_id: 1,
+                    node_id: 2,
+                    value: "new value".into(),
+                },
+                2,
+            ),
+            (
+                ExtensionRequest::SetVisibleTextContent {
+                    tab_id: 1,
+                    node_id: 2,
+                    value: "New heading".into(),
+                },
+                9,
+            ),
         ] {
             let mut registry = ExtensionRegistry::with_supported_capabilities();
             registry.declare_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_WRITE);
-            registry.grant_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_WRITE).unwrap();
+            registry
+                .grant_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_WRITE)
+                .unwrap();
             let registry = Arc::new(registry);
             let socket = unique_gatekeeper_socket("optional-dom-write-race");
             let _ = std::fs::remove_file(&socket);
@@ -5766,7 +7046,9 @@ mod tests {
             let (release_tx, release_rx) = mpsc::channel();
             let gatekeeper = thread::spawn(move || {
                 let (mut stream, _) = listener.accept().unwrap();
-                reviewed_tx.send(read_gatekeeper_request(&mut stream).unwrap()).unwrap();
+                reviewed_tx
+                    .send(read_gatekeeper_request(&mut stream).unwrap())
+                    .unwrap();
                 release_rx.recv_timeout(Duration::from_secs(2)).unwrap();
                 write_gatekeeper_reply(&mut stream, &GatekeeperReply::Cleared).unwrap();
             });
@@ -5777,7 +7059,9 @@ mod tests {
             let (mut client, mut server) = UnixStream::pair().unwrap();
             let handler = thread::spawn(move || {
                 handle_extension_connection_with_actions(
-                    &handler_registry, &handler_socket, &mut server,
+                    &handler_registry,
+                    &handler_socket,
+                    &mut server,
                     |_| Ok(String::new()),
                     move |_, _, _, _| {
                         invoked_by_handler.fetch_add(1, Ordering::SeqCst);
@@ -5786,16 +7070,30 @@ mod tests {
                     || Ok(()),
                 )
             });
-            write_extension_request(&mut client, &hello_with_capabilities(
-                MINIMAL_SLICE_EXTENSION_ID, [(CAPABILITY_DOM_WRITE, version)],
-            )).unwrap();
-            assert_eq!(read_extension_reply(&mut client).unwrap(), empty_hello_ack());
+            write_extension_request(
+                &mut client,
+                &hello_with_capabilities(
+                    MINIMAL_SLICE_EXTENSION_ID,
+                    [(CAPABILITY_DOM_WRITE, version)],
+                ),
+            )
+            .unwrap();
+            assert_eq!(
+                read_extension_reply(&mut client).unwrap(),
+                empty_hello_ack()
+            );
             write_extension_request(&mut client, &request).unwrap();
-            assert!(matches!(reviewed_rx.recv_timeout(Duration::from_secs(2)).unwrap(),
+            assert!(
+                matches!(reviewed_rx.recv_timeout(Duration::from_secs(2)).unwrap(),
                 GatekeeperRequest::CheckExtensionAction { capability, .. }
-                    if capability == CAPABILITY_DOM_WRITE));
-            registry.revoke_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_WRITE).unwrap();
-            registry.grant_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_WRITE).unwrap();
+                    if capability == CAPABILITY_DOM_WRITE)
+            );
+            registry
+                .revoke_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_WRITE)
+                .unwrap();
+            registry
+                .grant_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_WRITE)
+                .unwrap();
             release_tx.send(()).unwrap();
             assert!(matches!(read_extension_reply(&mut client).unwrap(),
                 ExtensionReply::CapabilityDenied { capability, reason }
@@ -5828,7 +7126,8 @@ mod tests {
                     || Ok(()),
                     |_, _| panic!("a host request must not register an exact URL"),
                     || Ok(()),
-                ).with_network_block_host(move |host, _generation| {
+                )
+                .with_network_block_host(move |host, _generation| {
                     seen_tx.send(host).unwrap();
                     Ok(())
                 }),
@@ -5841,22 +7140,38 @@ mod tests {
                 MINIMAL_SLICE_EXTENSION_ID,
                 [(CAPABILITY_NETWORK_INTERCEPT, 4)],
             ),
-        ).unwrap();
-        assert_eq!(read_extension_reply(&mut client).unwrap(), empty_hello_ack());
+        )
+        .unwrap();
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            empty_hello_ack()
+        );
         write_extension_request(
             &mut client,
-            &ExtensionRequest::RegisterNetworkBlockHost { host: "Example.test".to_string() },
-        ).unwrap();
-        assert_eq!(read_extension_reply(&mut client).unwrap(), ExtensionReply::NetworkInterceptAck);
-        assert_eq!(seen_rx.recv_timeout(Duration::from_secs(1)).unwrap(), "Example.test");
+            &ExtensionRequest::RegisterNetworkBlockHost {
+                host: "Example.test".to_string(),
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            ExtensionReply::NetworkInterceptAck
+        );
+        assert_eq!(
+            seen_rx.recv_timeout(Duration::from_secs(1)).unwrap(),
+            "Example.test"
+        );
 
         drop(client);
         handle.join().unwrap().unwrap();
-        assert_eq!(gatekeeper.join().unwrap(), GatekeeperRequest::CheckExtensionAction {
-            extension_id: MINIMAL_SLICE_EXTENSION_ID.to_string(),
-            capability: CAPABILITY_NETWORK_INTERCEPT.to_string(),
-            detail: "action=register-host-navigation-block".to_string(),
-        });
+        assert_eq!(
+            gatekeeper.join().unwrap(),
+            GatekeeperRequest::CheckExtensionAction {
+                extension_id: MINIMAL_SLICE_EXTENSION_ID.to_string(),
+                capability: CAPABILITY_NETWORK_INTERCEPT.to_string(),
+                detail: "action=register-host-navigation-block".to_string(),
+            }
+        );
         let _ = std::fs::remove_file(gatekeeper_socket);
     }
 
@@ -5876,7 +7191,8 @@ mod tests {
                     || Ok(()),
                     |_, _| Ok(()),
                     || Ok(()),
-                ).with_network_block_host(|_, _| panic!("a v3 connection must not reach core")),
+                )
+                .with_network_block_host(|_, _| panic!("a v3 connection must not reach core")),
             )
         });
         write_extension_request(
@@ -5885,12 +7201,19 @@ mod tests {
                 MINIMAL_SLICE_EXTENSION_ID,
                 [(CAPABILITY_NETWORK_INTERCEPT, 3)],
             ),
-        ).unwrap();
-        assert_eq!(read_extension_reply(&mut client).unwrap(), empty_hello_ack());
+        )
+        .unwrap();
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            empty_hello_ack()
+        );
         write_extension_request(
             &mut client,
-            &ExtensionRequest::RegisterNetworkBlockHost { host: "example.test".to_string() },
-        ).unwrap();
+            &ExtensionRequest::RegisterNetworkBlockHost {
+                host: "example.test".to_string(),
+            },
+        )
+        .unwrap();
         match read_extension_reply(&mut client).unwrap() {
             ExtensionReply::CapabilityDenied { capability, reason } => {
                 assert_eq!(capability, CAPABILITY_NETWORK_INTERCEPT);
@@ -5917,31 +7240,58 @@ mod tests {
                 &mut server,
                 ExtensionConnectionAuthentication::unauthenticated(),
                 ExtensionActionDelegates::new(
-                    |_| Ok("unused".into()), unused_write_delegate, || Ok(()),
-                    |_, _| panic!("a path request must not register an exact URL"), || Ok(()),
-                ).with_network_block_path_prefix(move |host, path_prefix, _generation| {
-                    seen_tx.send((host, path_prefix)).unwrap();
-                    Ok(())
-                }),
+                    |_| Ok("unused".into()),
+                    unused_write_delegate,
+                    || Ok(()),
+                    |_, _| panic!("a path request must not register an exact URL"),
+                    || Ok(()),
+                )
+                .with_network_block_path_prefix(
+                    move |host, path_prefix, _generation| {
+                        seen_tx.send((host, path_prefix)).unwrap();
+                        Ok(())
+                    },
+                ),
             )
         });
-        write_extension_request(&mut client, &hello_with_capabilities(
-            MINIMAL_SLICE_EXTENSION_ID, [(CAPABILITY_NETWORK_INTERCEPT, 5)],
-        )).unwrap();
-        assert_eq!(read_extension_reply(&mut client).unwrap(), empty_hello_ack());
-        write_extension_request(&mut client, &ExtensionRequest::RegisterNetworkBlockPathPrefix {
-            host: "Example.test".into(), path_prefix: "/private".into(),
-        }).unwrap();
-        assert_eq!(read_extension_reply(&mut client).unwrap(), ExtensionReply::NetworkInterceptAck);
-        assert_eq!(seen_rx.recv_timeout(Duration::from_secs(1)).unwrap(),
-            ("Example.test".to_string(), "/private".to_string()));
+        write_extension_request(
+            &mut client,
+            &hello_with_capabilities(
+                MINIMAL_SLICE_EXTENSION_ID,
+                [(CAPABILITY_NETWORK_INTERCEPT, 5)],
+            ),
+        )
+        .unwrap();
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            empty_hello_ack()
+        );
+        write_extension_request(
+            &mut client,
+            &ExtensionRequest::RegisterNetworkBlockPathPrefix {
+                host: "Example.test".into(),
+                path_prefix: "/private".into(),
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            ExtensionReply::NetworkInterceptAck
+        );
+        assert_eq!(
+            seen_rx.recv_timeout(Duration::from_secs(1)).unwrap(),
+            ("Example.test".to_string(), "/private".to_string())
+        );
         drop(client);
         handle.join().unwrap().unwrap();
-        assert_eq!(gatekeeper.join().unwrap(), GatekeeperRequest::CheckExtensionAction {
-            extension_id: MINIMAL_SLICE_EXTENSION_ID.to_string(),
-            capability: CAPABILITY_NETWORK_INTERCEPT.to_string(),
-            detail: "action=register-path-prefix-navigation-block".to_string(),
-        });
+        assert_eq!(
+            gatekeeper.join().unwrap(),
+            GatekeeperRequest::CheckExtensionAction {
+                extension_id: MINIMAL_SLICE_EXTENSION_ID.to_string(),
+                capability: CAPABILITY_NETWORK_INTERCEPT.to_string(),
+                detail: "action=register-path-prefix-navigation-block".to_string(),
+            }
+        );
         let _ = std::fs::remove_file(gatekeeper_socket);
     }
 
@@ -5956,18 +7306,35 @@ mod tests {
                 &mut server,
                 ExtensionConnectionAuthentication::unauthenticated(),
                 ExtensionActionDelegates::new(
-                    |_| Ok("unused".into()), unused_write_delegate, || Ok(()),
-                    |_, _| Ok(()), || Ok(()),
-                ).with_network_block_path_prefix(|_, _, _| panic!("v4 must not reach core")),
+                    |_| Ok("unused".into()),
+                    unused_write_delegate,
+                    || Ok(()),
+                    |_, _| Ok(()),
+                    || Ok(()),
+                )
+                .with_network_block_path_prefix(|_, _, _| panic!("v4 must not reach core")),
             )
         });
-        write_extension_request(&mut client, &hello_with_capabilities(
-            MINIMAL_SLICE_EXTENSION_ID, [(CAPABILITY_NETWORK_INTERCEPT, 4)],
-        )).unwrap();
-        assert_eq!(read_extension_reply(&mut client).unwrap(), empty_hello_ack());
-        write_extension_request(&mut client, &ExtensionRequest::RegisterNetworkBlockPathPrefix {
-            host: "example.test".into(), path_prefix: "/private".into(),
-        }).unwrap();
+        write_extension_request(
+            &mut client,
+            &hello_with_capabilities(
+                MINIMAL_SLICE_EXTENSION_ID,
+                [(CAPABILITY_NETWORK_INTERCEPT, 4)],
+            ),
+        )
+        .unwrap();
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            empty_hello_ack()
+        );
+        write_extension_request(
+            &mut client,
+            &ExtensionRequest::RegisterNetworkBlockPathPrefix {
+                host: "example.test".into(),
+                path_prefix: "/private".into(),
+            },
+        )
+        .unwrap();
         assert!(matches!(read_extension_reply(&mut client).unwrap(),
             ExtensionReply::CapabilityDenied { capability, reason }
                 if capability == CAPABILITY_NETWORK_INTERCEPT && reason.contains("requires version 5")));
@@ -5985,35 +7352,66 @@ mod tests {
         let socket_for_handler = gatekeeper_socket.clone();
         let handle = thread::spawn(move || {
             handle_extension_connection_with_actions_and_authentication_and_network_rules(
-                &registry, &socket_for_handler, &mut server,
+                &registry,
+                &socket_for_handler,
+                &mut server,
                 ExtensionConnectionAuthentication::unauthenticated(),
                 ExtensionActionDelegates::new(
-                    |_| Ok("unused".into()), unused_write_delegate, || Ok(()),
-                    |_, _| Ok(()), || Ok(()),
-                ).with_network_redirect_url(move |source_url, target_url, _generation| {
-                    seen_tx.send((source_url, target_url)).unwrap();
-                    Ok(())
-                }),
+                    |_| Ok("unused".into()),
+                    unused_write_delegate,
+                    || Ok(()),
+                    |_, _| Ok(()),
+                    || Ok(()),
+                )
+                .with_network_redirect_url(
+                    move |source_url, target_url, _generation| {
+                        seen_tx.send((source_url, target_url)).unwrap();
+                        Ok(())
+                    },
+                ),
             )
         });
-        write_extension_request(&mut client, &hello_with_capabilities(
-            MINIMAL_SLICE_EXTENSION_ID, [(CAPABILITY_NETWORK_INTERCEPT, 6)],
-        )).unwrap();
-        assert_eq!(read_extension_reply(&mut client).unwrap(), empty_hello_ack());
-        write_extension_request(&mut client, &ExtensionRequest::RegisterNetworkRedirectUrl {
-            source_url: "https://example.test/old".into(),
-            target_url: "https://example.test/new".into(),
-        }).unwrap();
-        assert_eq!(read_extension_reply(&mut client).unwrap(), ExtensionReply::NetworkInterceptAck);
-        assert_eq!(seen_rx.recv_timeout(Duration::from_secs(1)).unwrap(),
-            ("https://example.test/old".to_string(), "https://example.test/new".to_string()));
+        write_extension_request(
+            &mut client,
+            &hello_with_capabilities(
+                MINIMAL_SLICE_EXTENSION_ID,
+                [(CAPABILITY_NETWORK_INTERCEPT, 6)],
+            ),
+        )
+        .unwrap();
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            empty_hello_ack()
+        );
+        write_extension_request(
+            &mut client,
+            &ExtensionRequest::RegisterNetworkRedirectUrl {
+                source_url: "https://example.test/old".into(),
+                target_url: "https://example.test/new".into(),
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            ExtensionReply::NetworkInterceptAck
+        );
+        assert_eq!(
+            seen_rx.recv_timeout(Duration::from_secs(1)).unwrap(),
+            (
+                "https://example.test/old".to_string(),
+                "https://example.test/new".to_string()
+            )
+        );
         drop(client);
         handle.join().unwrap().unwrap();
-        assert_eq!(gatekeeper.join().unwrap(), GatekeeperRequest::CheckExtensionAction {
-            extension_id: MINIMAL_SLICE_EXTENSION_ID.to_string(),
-            capability: CAPABILITY_NETWORK_INTERCEPT.to_string(),
-            detail: "action=register-same-origin-navigation-redirect".to_string(),
-        });
+        assert_eq!(
+            gatekeeper.join().unwrap(),
+            GatekeeperRequest::CheckExtensionAction {
+                extension_id: MINIMAL_SLICE_EXTENSION_ID.to_string(),
+                capability: CAPABILITY_NETWORK_INTERCEPT.to_string(),
+                detail: "action=register-same-origin-navigation-redirect".to_string(),
+            }
+        );
         let _ = std::fs::remove_file(gatekeeper_socket);
     }
 
@@ -6023,22 +7421,40 @@ mod tests {
         let (mut client, mut server) = UnixStream::pair().unwrap();
         let handle = thread::spawn(move || {
             handle_extension_connection_with_actions_and_authentication_and_network_rules(
-                &registry, Path::new("/not-reached-for-v5-redirect-denial.sock"), &mut server,
+                &registry,
+                Path::new("/not-reached-for-v5-redirect-denial.sock"),
+                &mut server,
                 ExtensionConnectionAuthentication::unauthenticated(),
                 ExtensionActionDelegates::new(
-                    |_| Ok("unused".into()), unused_write_delegate, || Ok(()),
-                    |_, _| Ok(()), || Ok(()),
-                ).with_network_redirect_url(|_, _, _| panic!("v5 must not reach core")),
+                    |_| Ok("unused".into()),
+                    unused_write_delegate,
+                    || Ok(()),
+                    |_, _| Ok(()),
+                    || Ok(()),
+                )
+                .with_network_redirect_url(|_, _, _| panic!("v5 must not reach core")),
             )
         });
-        write_extension_request(&mut client, &hello_with_capabilities(
-            MINIMAL_SLICE_EXTENSION_ID, [(CAPABILITY_NETWORK_INTERCEPT, 5)],
-        )).unwrap();
-        assert_eq!(read_extension_reply(&mut client).unwrap(), empty_hello_ack());
-        write_extension_request(&mut client, &ExtensionRequest::RegisterNetworkRedirectUrl {
-            source_url: "https://example.test/old".into(),
-            target_url: "https://example.test/new".into(),
-        }).unwrap();
+        write_extension_request(
+            &mut client,
+            &hello_with_capabilities(
+                MINIMAL_SLICE_EXTENSION_ID,
+                [(CAPABILITY_NETWORK_INTERCEPT, 5)],
+            ),
+        )
+        .unwrap();
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            empty_hello_ack()
+        );
+        write_extension_request(
+            &mut client,
+            &ExtensionRequest::RegisterNetworkRedirectUrl {
+                source_url: "https://example.test/old".into(),
+                target_url: "https://example.test/new".into(),
+            },
+        )
+        .unwrap();
         assert!(matches!(read_extension_reply(&mut client).unwrap(),
             ExtensionReply::CapabilityDenied { capability, reason }
                 if capability == CAPABILITY_NETWORK_INTERCEPT && reason.contains("requires version 6")));
@@ -6487,43 +7903,84 @@ mod tests {
         let mut registry = ExtensionRegistry::with_supported_capabilities();
         registry.declare_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_UI_INJECT);
         let registry = Arc::new(registry);
-        registry.grant_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_UI_INJECT).unwrap();
-        let old_generation = registry.capability_generation(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_UI_INJECT).unwrap();
+        registry
+            .grant_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_UI_INJECT)
+            .unwrap();
+        let old_generation = registry
+            .capability_generation(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_UI_INJECT)
+            .unwrap();
         let (mut client, mut server) = UnixStream::pair().unwrap();
         let (start_tx, start_rx) = mpsc::channel();
         let (event_tx, event_rx) = mpsc::channel();
         let handler_registry = Arc::clone(&registry);
         let handle = thread::spawn(move || {
             handle_extension_connection_with_actions_and_authentication(
-                &handler_registry, Path::new("/not-used-before-an-action.sock"), &mut server,
+                &handler_registry,
+                Path::new("/not-used-before-an-action.sock"),
+                &mut server,
                 ExtensionConnectionAuthentication::required("core-secret")
                     .with_runtime_start_receiver(Arc::new(Mutex::new(start_rx)))
                     .with_runtime_event_receiver(Arc::new(Mutex::new(event_rx))),
-                |_| Ok(String::new()), unused_write_delegate, || Ok(()),
+                |_| Ok(String::new()),
+                unused_write_delegate,
+                || Ok(()),
             )
         });
-        write_extension_request(&mut client, &ExtensionRequest::HelloAuthenticated {
-            extension_id: MINIMAL_SLICE_EXTENSION_ID.into(),
-            capability_versions: BTreeMap::from([(CAPABILITY_UI_INJECT.into(), 3)]),
-            authentication: "core-secret".into(),
-        }).unwrap();
-        assert_eq!(read_extension_reply(&mut client).unwrap(), empty_hello_ack());
+        write_extension_request(
+            &mut client,
+            &ExtensionRequest::HelloAuthenticated {
+                extension_id: MINIMAL_SLICE_EXTENSION_ID.into(),
+                capability_versions: BTreeMap::from([(CAPABILITY_UI_INJECT.into(), 3)]),
+                authentication: "core-secret".into(),
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            empty_hello_ack()
+        );
         write_extension_request(&mut client, &ExtensionRequest::RuntimeReady).unwrap();
         start_tx.send(()).unwrap();
-        assert_eq!(read_extension_reply(&mut client).unwrap(), ExtensionReply::RuntimeStart);
-        event_tx.send(ExtensionRuntimeEvent::ToolbarActivated { tab_id: 1, grant_generation: old_generation }).unwrap();
-        registry.revoke_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_UI_INJECT).unwrap();
-        registry.grant_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_UI_INJECT).unwrap();
-        let fresh_generation = registry.capability_generation(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_UI_INJECT).unwrap();
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            ExtensionReply::RuntimeStart
+        );
+        event_tx
+            .send(ExtensionRuntimeEvent::ToolbarActivated {
+                tab_id: 1,
+                grant_generation: old_generation,
+            })
+            .unwrap();
+        registry
+            .revoke_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_UI_INJECT)
+            .unwrap();
+        registry
+            .grant_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_UI_INJECT)
+            .unwrap();
+        let fresh_generation = registry
+            .capability_generation(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_UI_INJECT)
+            .unwrap();
         assert_ne!(old_generation, fresh_generation);
-        event_tx.send(ExtensionRuntimeEvent::PopupActionActivated { tab_id: 1, grant_generation: fresh_generation }).unwrap();
+        event_tx
+            .send(ExtensionRuntimeEvent::PopupActionActivated {
+                tab_id: 1,
+                grant_generation: fresh_generation,
+            })
+            .unwrap();
         write_extension_request(&mut client, &ExtensionRequest::NextRuntimeEvent).unwrap();
-        assert_eq!(read_extension_reply(&mut client).unwrap(), ExtensionReply::RuntimeEvent(
-            ExtensionRuntimeEvent::PopupActionActivated { tab_id: 1, grant_generation: fresh_generation }
-        ));
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            ExtensionReply::RuntimeEvent(ExtensionRuntimeEvent::PopupActionActivated {
+                tab_id: 1,
+                grant_generation: fresh_generation
+            })
+        );
         drop(event_tx);
         write_extension_request(&mut client, &ExtensionRequest::NextRuntimeEvent).unwrap();
-        assert_eq!(read_extension_reply(&mut client).unwrap(), ExtensionReply::RuntimeEventStreamClosed);
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            ExtensionReply::RuntimeEventStreamClosed
+        );
         drop(client);
         handle.join().unwrap().unwrap();
     }

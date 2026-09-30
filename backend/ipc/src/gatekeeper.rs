@@ -170,16 +170,36 @@ pub struct GatekeeperSettings {
 /// second model layer may be configured or disabled.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum GatekeeperSettingsChange {
-    ConfigureLocalModel { provider: String, base_url: String, model: String },
+    ConfigureLocalModel {
+        provider: String,
+        base_url: String,
+        model: String,
+    },
     DisableLocalModel,
-    AddBlockedHost { host: String },
-    RemoveBlockedHost { host: String },
-    AddBlockedPhrase { phrase: String },
-    RemoveBlockedPhrase { phrase: String },
-    AddBlockedDownloadExtension { extension: String },
-    RemoveBlockedDownloadExtension { extension: String },
-    AddBlockedPopupPhrase { phrase: String },
-    RemoveBlockedPopupPhrase { phrase: String },
+    AddBlockedHost {
+        host: String,
+    },
+    RemoveBlockedHost {
+        host: String,
+    },
+    AddBlockedPhrase {
+        phrase: String,
+    },
+    RemoveBlockedPhrase {
+        phrase: String,
+    },
+    AddBlockedDownloadExtension {
+        extension: String,
+    },
+    RemoveBlockedDownloadExtension {
+        extension: String,
+    },
+    AddBlockedPopupPhrase {
+        phrase: String,
+    },
+    RemoveBlockedPopupPhrase {
+        phrase: String,
+    },
 }
 
 /// The settings-control protocol shares the private gatekeeper socket with
@@ -192,6 +212,8 @@ pub enum GatekeeperSettingsRequest {
     Update { change: GatekeeperSettingsChange },
 }
 
+// One short-lived reply per settings request; boxing would only churn the wire types.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum GatekeeperSettingsReply {
     Settings(GatekeeperSettings),
@@ -282,7 +304,7 @@ pub fn default_gatekeeper_socket_path() -> PathBuf {
     crate::local_socket::default_socket_dir().join("ai-gatekeeper.sock")
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
     use std::os::unix::net::UnixStream;
@@ -376,7 +398,10 @@ mod tests {
             let request = GatekeeperSettingsRequest::Update { change };
             let (mut a, mut b) = UnixStream::pair().unwrap();
             write_gatekeeper_settings_request(&mut a, &request).unwrap();
-            assert_eq!(read_gatekeeper_wire_request(&mut b).unwrap(), GatekeeperWireRequest::Settings(request));
+            assert_eq!(
+                read_gatekeeper_wire_request(&mut b).unwrap(),
+                GatekeeperWireRequest::Settings(request)
+            );
         }
     }
 
@@ -439,6 +464,28 @@ mod tests {
         let path = default_gatekeeper_socket_path();
         assert_eq!(path.file_name().unwrap(), "ai-gatekeeper.sock");
         assert_ne!(path.file_name().unwrap(), "core.sock");
+    }
+
+    #[test]
+    fn default_gatekeeper_socket_path_prefers_xdg_runtime_dir_when_set() {
+        // SAFETY: no other test in this crate reads or writes
+        // `XDG_RUNTIME_DIR`, and this crate's own binaries never run
+        // in-process during unit tests.
+        let previous = std::env::var_os("XDG_RUNTIME_DIR");
+        unsafe {
+            std::env::set_var("XDG_RUNTIME_DIR", "/tmp/blueice-xdg-test-gatekeeper");
+        }
+        let path = default_gatekeeper_socket_path();
+        match previous {
+            Some(value) => unsafe { std::env::set_var("XDG_RUNTIME_DIR", value) },
+            None => unsafe { std::env::remove_var("XDG_RUNTIME_DIR") },
+        }
+        assert_eq!(
+            path,
+            PathBuf::from("/tmp/blueice-xdg-test-gatekeeper")
+                .join("blueice")
+                .join("ai-gatekeeper.sock")
+        );
     }
 
     #[test]

@@ -23,8 +23,8 @@
 //! engine itself.
 
 use blueice_ipc::downloads::{
-    DownloadsClient, SegmentInfo, SingleStreamReason, TransferInfo, TransferMode, TransferState,
-    default_downloads_socket_path, format_bytes, format_duration, format_speed,
+    default_downloads_socket_path, format_bytes, format_duration, format_speed, DownloadsClient,
+    SegmentInfo, SingleStreamReason, TransferInfo, TransferMode, TransferState,
 };
 use std::io;
 use std::net::Shutdown;
@@ -493,8 +493,8 @@ impl Default for DownloadsSource {
 #[cfg(test)]
 pub(crate) mod test_support {
     use blueice_ipc::downloads::{
-        DownloadsReply, DownloadsRequest, TransferInfo, read_downloads_request,
-        write_downloads_reply,
+        read_downloads_request, write_downloads_reply, DownloadsReply, DownloadsRequest,
+        TransferInfo,
     };
     use std::os::unix::net::UnixListener;
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -600,11 +600,11 @@ pub(crate) mod test_support {
 
 #[cfg(test)]
 mod tests {
-    use super::test_support::{Scratch, fake_downloads};
+    use super::test_support::{fake_downloads, Scratch};
     use super::*;
-    use blueice_ipc::downloads::{BlockedInfo, DOWNLOADS_PROTOCOL_VERSION, SegmentState};
-    use std::sync::Arc;
+    use blueice_ipc::downloads::{BlockedInfo, SegmentState, DOWNLOADS_PROTOCOL_VERSION};
     use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
     use std::thread;
     use std::time::Instant;
 
@@ -855,9 +855,7 @@ mod tests {
     fn a_paused_transfer_that_cannot_keep_its_progress_says_so() {
         let mut t = transfer(1, TransferState::Paused);
         t.resume_safe = false;
-        assert!(
-            en(&[t.clone()]).contains("Pausing will restart this download from the beginning.")
-        );
+        assert!(en(&[t.clone()]).contains("Pausing will restart this download from the beginning."));
         t.resume_safe = true;
         assert!(!en(&[t]).contains("Pausing will restart"));
     }
@@ -932,14 +930,12 @@ mod tests {
             "{}",
             en(&[transfer(1, TransferState::Active)])
         );
-        assert!(
-            en(&[
-                transfer(1, TransferState::Active),
-                transfer(2, TransferState::Paused),
-                transfer(3, TransferState::Failed)
-            ])
-            .contains("3 downloads")
-        );
+        assert!(en(&[
+            transfer(1, TransferState::Active),
+            transfer(2, TransferState::Paused),
+            transfer(3, TransferState::Failed)
+        ])
+        .contains("3 downloads"));
     }
 
     #[test]
@@ -1131,12 +1127,10 @@ mod tests {
             Box::new(|| Err(std::io::Error::other("no such binary"))),
             Duration::from_secs(1),
         );
-        assert!(
-            failing
-                .fetch_spawning()
-                .unwrap_err()
-                .contains("no such binary")
-        );
+        assert!(failing
+            .fetch_spawning()
+            .unwrap_err()
+            .contains("no such binary"));
         let silent = DownloadsSource::with_spawner(
             dir.socket(),
             Box::new(|| Ok(())),
@@ -1179,11 +1173,9 @@ mod tests {
             false,
             DOWNLOADS_PROTOCOL_VERSION + 1,
         );
-        assert!(
-            DownloadsSource::without_spawner(dir.socket())
-                .fetch_quick()
-                .is_err()
-        );
+        assert!(DownloadsSource::without_spawner(dir.socket())
+            .fetch_quick()
+            .is_err());
     }
 
     #[test]

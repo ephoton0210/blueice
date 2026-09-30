@@ -2,457 +2,837 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Core's long-lived BlueJS DOM-request dispatcher.
+//! Core-owned dispatch for the narrow `blueice_ipc::script` DOM vocabulary.
 //!
-//! `bluejs` never receives a `Page` or `Document`; it exchanges numeric node
-//! handles on this protocol and core validates every tab/node lookup here.
-//! The binary-level supervisor owns accepting/spawning connections, while this
-//! pure `Read + Write` loop is independently testable over a Unix socket pair.
+//! The BlueJS host remains a separate process and is the only intended client
+//! of this protocol. This module deliberately receives already-decoded IPC
+//! data and a live [`crate::TabManager`], so a script operation is always
+//! resolved against one current tab/document rather than a process-global DOM.
 
-use crate::{ScriptClassListOperation, TabId, TabManager};
-use blueice_dom::NodeId;
+use crate::{TabId, TabManager};
 use blueice_ipc::script::{
-    ScriptClassListOperation as IpcClassListOperation, ScriptCommand, ScriptReply, ScriptRequest,
-    ScriptTurnOutcome, read_script_request, write_script_command, write_script_reply,
+    ScriptDocumentTarget, ScriptReply, ScriptRequest, SCRIPT_MAX_NAME_BYTES, SCRIPT_MAX_TEXT_BYTES,
 };
-use std::io::{self, Read, Write};
+use std::io;
+use std::sync::mpsc;
 
-/// Serves a connected BlueJS host until it disconnects. A non-`Hello` first
-/// message is rejected by ending the connection, matching `session` and the
-/// extension-host handshake discipline.
-pub fn handle_script_connection<S: Read + Write>(
-    tabs: &mut TabManager,
-    stream: &mut S,
-) -> io::Result<()> {
-    match read_script_request(stream) {
-        Ok(ScriptRequest::Hello) => write_script_reply(stream, &ScriptReply::HelloAck)?,
-        Ok(_) | Err(_) => return Ok(()),
+/// Prevents a chatty script connection from starving frontend requests or
+/// navigation completions in one session-loop turn.
+const MAX_SCRIPT_REQUESTS_PER_SESSION_TICK: usize = 64;
+
+/// First live host-to-script contract inventory for direct BlueTS page
+/// bindings. It contains only bindings that this core host actually installs.
+pub mod contracts;
+mod declarations;
+pub mod direct_page;
+/// Deterministic host typing artifacts derived from the core-owned binding
+/// surface. The empty profile deliberately exposes no JavaScript globals;
+/// `core-script-document-text-v1` is the one checked-in profile with a
+/// matching direct-page runtime binding.
+pub mod host_typings;
+/// Immutable startup-configured HTTP(S) resource authority for the optional
+/// launcher-supervised page host. It returns closed graphs only and exposes no
+/// network or resolver capability to page code.
+#[cfg(unix)]
+pub mod http_resource_authorizer;
+pub mod inline_runner;
+pub mod javascript;
+#[cfg(unix)]
+pub mod javascript_child;
+pub mod page_source_authorizer;
+pub use declarations::{
+    discover_blue_js_page_scripts, discover_blue_ts_page_scripts, discover_combined_page_scripts,
+    BlueJsPageScriptDeclaration, BlueJsPageScriptKind, BlueTsPageScriptDeclaration,
+    CombinedPageScriptDeclaration, CombinedPageScriptLanguage, BLUE_TS_CLASSIC_SCRIPT_TYPE,
+    BLUE_TS_MODULE_SCRIPT_TYPE,
+};
+
+/// Sender owned by a script-socket worker. Sending a request blocks until the
+/// core session has applied it to the currently live [`TabManager`] and
+/// produced its reply; the worker itself never touches DOM state.
+#[derive(Clone)]
+pub struct ScriptRequestSender(mpsc::Sender<ScriptRequestEnvelope>);
+
+/// Receiver owned by the core session thread. It may dispatch a bounded batch
+/// between frontend reads without moving [`TabManager`] across threads.
+pub struct ScriptRequestReceiver(mpsc::Receiver<ScriptRequestEnvelope>);
+
+struct ScriptRequestEnvelope {
+    request: ScriptRequest,
+    reply: mpsc::SyncSender<ScriptReply>,
+}
+
+/// Creates the in-process hand-off between an IPC listener and its owning core
+/// session. This is deliberately transport-neutral so tests can prove the
+/// thread boundary without granting a worker direct DOM access.
+pub fn script_request_channel() -> (ScriptRequestSender, ScriptRequestReceiver) {
+    let (sender, receiver) = mpsc::channel();
+    (ScriptRequestSender(sender), ScriptRequestReceiver(receiver))
+}
+
+impl ScriptRequestSender {
+    /// Routes one already-decoded request to the core session and waits for its
+    /// reply. A disconnected session is a transport failure, not a fabricated
+    /// protocol reply that could be mistaken for a DOM result.
+    pub fn request(&self, request: ScriptRequest) -> io::Result<ScriptReply> {
+        let (reply_sender, reply_receiver) = mpsc::sync_channel(1);
+        self.0
+            .send(ScriptRequestEnvelope {
+                request,
+                reply: reply_sender,
+            })
+            .map_err(|_| io::Error::new(io::ErrorKind::BrokenPipe, "core script session ended"))?;
+        reply_receiver
+            .recv()
+            .map_err(|_| io::Error::new(io::ErrorKind::BrokenPipe, "core script reply unavailable"))
     }
-    loop {
-        let request = match read_script_request(stream) {
-            Ok(request) => request,
-            Err(_) => return Ok(()),
+}
+
+impl ScriptRequestReceiver {
+    /// Applies every request currently pending at the session boundary and
+    /// returns the number dispatched. Responses are best-effort because a
+    /// disconnected script peer must never interrupt the core render session.
+    pub fn dispatch_pending(&self, tabs: &mut TabManager) -> usize {
+        let mut dispatched = 0;
+        while dispatched < MAX_SCRIPT_REQUESTS_PER_SESSION_TICK {
+            let Ok(envelope) = self.0.try_recv() else {
+                break;
+            };
+            dispatch_script_request(tabs, envelope);
+            dispatched += 1;
+        }
+        dispatched
+    }
+
+    /// During a synchronous child page-host wait, serve only this execution's
+    /// exact document. Other live tabs and successor generations are not
+    /// eligible for nested dispatch, even from the authenticated child.
+    /// The caller remains the session thread and chooses the per-poll budget.
+    pub fn dispatch_pending_for_document(
+        &self,
+        tabs: &mut TabManager,
+        target: ScriptDocumentTarget,
+        budget: usize,
+    ) -> usize {
+        let mut dispatched = 0;
+        while dispatched < budget.min(MAX_SCRIPT_REQUESTS_PER_SESSION_TICK) {
+            let Ok(envelope) = self.0.try_recv() else {
+                break;
+            };
+            if envelope.request.document_target() == Some(target) {
+                dispatch_script_request(tabs, envelope);
+            } else {
+                let _ = envelope.reply.send(ScriptReply::Error {
+                    message: "script DOM request is outside the executing document".to_string(),
+                });
+            }
+            dispatched += 1;
+        }
+        dispatched
+    }
+
+    /// Once a nested child wait has consumed its total call allowance,
+    /// refuse the first additional request rather than leaving the child
+    /// blocked forever on a reply that the session will not dispatch.
+    #[cfg(unix)]
+    pub(crate) fn reject_one_pending_for_exhausted_wait(&self) -> bool {
+        let Ok(envelope) = self.0.try_recv() else {
+            return false;
         };
-        let reply = dispatch(tabs, request);
-        write_script_reply(stream, &reply)?;
+        let _ = envelope.reply.send(ScriptReply::Error {
+            message: "script DOM wait request budget exhausted".to_string(),
+        });
+        true
     }
 }
 
-/// Core's synchronous side of one parser-script turn on the always-resident
-/// BlueJS connection. While a turn is running it keeps serving DOM requests;
-/// only after BlueJS sends `Complete` may the caller render the page. This is
-/// the concrete bridge between the event-loop design's "scheduled script
-/// before paint" rule and the process-isolated DOM owner.
-pub struct ScriptSession<S> {
-    stream: S,
+fn dispatch_script_request(tabs: &mut TabManager, envelope: ScriptRequestEnvelope) {
+    let reply = handle_script_request(tabs, envelope.request);
+    let _ = envelope.reply.send(reply);
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct ScriptEventOutcome {
-    pub default_prevented: bool,
-    pub ran_event: bool,
-}
-
-/// The narrow seam the render/session loop uses to run a freshly loaded
-/// document before its first frame. Keeping it independent of the concrete
-/// socket type preserves `session`'s existing in-process testability.
-pub trait ScriptScheduler {
-    fn run_document_scripts(&mut self, tabs: &mut TabManager, tab_id: TabId) -> Result<(), String>;
-
-    fn dispatch_event(
-        &mut self,
-        _: &mut TabManager,
-        _: TabId,
-        _: NodeId,
-        _: &str,
-    ) -> Result<ScriptEventOutcome, String> {
-        Ok(ScriptEventOutcome::default())
-    }
-
-    fn run_due_timers(&mut self, _: &mut TabManager, _: TabId) -> Result<bool, String> {
-        Ok(false)
-    }
-}
-
-impl<S: Read + Write> ScriptSession<S> {
-    /// Accepts the script host's mandatory first `Hello` once, leaving the
-    /// stream at the command/request boundary for future render passes.
-    pub fn accept(mut stream: S) -> io::Result<Self> {
-        match read_script_request(&mut stream) {
-            Ok(ScriptRequest::Hello) => {
-                write_script_reply(&mut stream, &ScriptReply::HelloAck)?;
-                Ok(Self { stream })
-            }
-            Ok(_) => Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "BlueJS did not send Hello first",
-            )),
-            Err(error) => Err(error),
-        }
-    }
-
-    /// Resets a tab realm then runs all inline classic scripts in document
-    /// order. A runtime error abandons the remaining scripts for this page,
-    /// while the core page keeps its last successfully-applied DOM state.
-    pub fn run_document_scripts(&mut self, tabs: &mut TabManager, tab_id: TabId) -> io::Result<()> {
-        self.run_turn(
-            tabs,
-            tab_id,
-            ScriptCommand::ResetRealm {
-                tab_id: tab_id.as_u64(),
-            },
-        )?;
-        let sources = tabs
-            .get(tab_id)
-            .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "script tab no longer exists"))?
-            .inline_script_sources();
-        for source in sources {
-            self.run_turn(
-                tabs,
-                tab_id,
-                ScriptCommand::Execute {
-                    tab_id: tab_id.as_u64(),
-                    source,
-                },
-            )?;
-        }
-        Ok(())
-    }
-
-    /// Runs one command while handling arbitrary many BlueJS DOM operations.
-    pub fn run_turn(
-        &mut self,
-        tabs: &mut TabManager,
-        expected_tab: TabId,
-        command: ScriptCommand,
-    ) -> io::Result<ScriptTurnOutcome> {
-        write_script_command(&mut self.stream, &command)?;
-        loop {
-            let request = read_script_request(&mut self.stream)?;
-            match request {
-                ScriptRequest::Complete {
-                    tab_id,
-                    error,
-                    outcome,
-                } if tab_id == expected_tab.as_u64() => {
-                    write_script_reply(&mut self.stream, &ScriptReply::Ack)?;
-                    return error.map_or(Ok(outcome), |message| Err(io::Error::other(message)));
-                }
-                ScriptRequest::Complete { tab_id, .. } => {
-                    write_script_reply(
-                        &mut self.stream,
-                        &ScriptReply::Error {
-                            message: format!(
-                                "BlueJS completed tab {tab_id} while core awaited tab {}",
-                                expected_tab.as_u64()
-                            ),
-                        },
-                    )?;
-                }
-                request => {
-                    let reply = dispatch(tabs, request);
-                    write_script_reply(&mut self.stream, &reply)?;
-                }
-            }
-        }
-    }
-
-    pub fn into_inner(self) -> S {
-        self.stream
-    }
-
-    /// Requests orderly daemon termination after core's frontend session has
-    /// ended. `Shutdown` deliberately has no completion barrier: BlueJS exits
-    /// after seeing it and the socket closes naturally.
-    pub fn shutdown(&mut self) -> io::Result<()> {
-        write_script_command(&mut self.stream, &ScriptCommand::Shutdown)
-    }
-}
-
-impl<S: Read + Write> ScriptScheduler for ScriptSession<S> {
-    fn run_document_scripts(&mut self, tabs: &mut TabManager, tab_id: TabId) -> Result<(), String> {
-        Self::run_document_scripts(self, tabs, tab_id).map_err(|error| error.to_string())
-    }
-
-    fn dispatch_event(
-        &mut self,
-        tabs: &mut TabManager,
-        tab_id: TabId,
-        node: NodeId,
-        event_type: &str,
-    ) -> Result<ScriptEventOutcome, String> {
-        self.run_turn(
-            tabs,
-            tab_id,
-            ScriptCommand::DispatchEvent {
-                tab_id: tab_id.as_u64(),
-                node: node.as_u64(),
-                event_type: event_type.to_string(),
-            },
-        )
-        .map(|outcome| ScriptEventOutcome {
-            default_prevented: outcome.default_prevented,
-            ran_event: outcome.ran_event,
-        })
-        .map_err(|error| error.to_string())
-    }
-
-    fn run_due_timers(&mut self, tabs: &mut TabManager, tab_id: TabId) -> Result<bool, String> {
-        self.run_turn(
-            tabs,
-            tab_id,
-            ScriptCommand::RunDueTimers {
-                tab_id: tab_id.as_u64(),
-            },
-        )
-        .map(|outcome| outcome.ran_timers)
-        .map_err(|error| error.to_string())
-    }
-}
-
-/// One request's core-side semantics, exposed for tests and for the core event
-/// loop to call when it multiplexes its always-resident script connection.
-pub fn dispatch(tabs: &mut TabManager, request: ScriptRequest) -> ScriptReply {
+/// Applies one decoded page-script request to the addressed live tab.
+///
+/// The dispatcher never creates a tab, reads a URL, opens a file, grants a
+/// capability, or selects a default tab for a caller. An unknown tab, stale
+/// document generation, or invalid node produces the protocol's structured
+/// error reply before an operation can touch a successor document.
+pub fn handle_script_request(tabs: &mut TabManager, request: ScriptRequest) -> ScriptReply {
     match request {
-        ScriptRequest::Hello => ScriptReply::HelloAck,
-        ScriptRequest::Complete { .. } => ScriptReply::Ack,
-        ScriptRequest::GetElementById { tab_id, id } => with_page(tabs, tab_id, |page| {
-            Ok(ScriptReply::Node {
-                node: page.script_get_element_by_id(&id).map(|node| node.as_u64()),
-            })
-        }),
-        ScriptRequest::QuerySelector { tab_id, selector } => with_page(tabs, tab_id, |page| {
-            Ok(ScriptReply::Node {
+        ScriptRequest::Hello { .. } | ScriptRequest::Call { .. } => {
+            script_error("script transport envelope is not a DOM operation")
+        }
+        ScriptRequest::GetElementById { target, id } => {
+            if id.len() > SCRIPT_MAX_NAME_BYTES {
+                return script_error("script DOM name exceeds its fixed byte limit");
+            }
+            with_document(tabs, target, |page| ScriptReply::Node {
                 node: page
-                    .script_query_selector(&selector)?
-                    .map(|node| node.as_u64()),
+                    .script_get_element_by_id(&id)
+                    .map(|node| page.script_handle_for_node(node)),
             })
+        }
+        ScriptRequest::ValidateNode { target, node } => with_document(tabs, target, |page| {
+            page.script_validate_node(node).map_or_else(
+                |message| ScriptReply::Error { message },
+                |_| ScriptReply::Ack,
+            )
         }),
-        ScriptRequest::QuerySelectorAll { tab_id, selector } => with_page(tabs, tab_id, |page| {
-            Ok(ScriptReply::Nodes {
-                nodes: page
-                    .script_query_selector_all(&selector)?
-                    .into_iter()
-                    .map(|node| node.as_u64())
-                    .collect(),
+        ScriptRequest::CreateElement { target, tag_name } => {
+            if tag_name.len() > SCRIPT_MAX_NAME_BYTES {
+                return script_error("script DOM name exceeds its fixed byte limit");
+            }
+            with_document(tabs, target, |page| {
+                page.script_create_element(tag_name).map_or_else(
+                    |message| ScriptReply::Error { message },
+                    |node| ScriptReply::NodeCreated {
+                        node: page.script_handle_for_node(node),
+                    },
+                )
             })
-        }),
-        ScriptRequest::CreateElement { tab_id, tag_name } => with_page(tabs, tab_id, |page| {
-            Ok(ScriptReply::NodeCreated {
-                node: page.script_create_element(tag_name).as_u64(),
+        }
+        ScriptRequest::CreateTextNode { target, data } => {
+            if data.len() > SCRIPT_MAX_TEXT_BYTES {
+                return script_error("script DOM text exceeds its fixed byte limit");
+            }
+            with_document(tabs, target, |page| {
+                let node = page.script_create_text_node(data);
+                ScriptReply::NodeCreated {
+                    node: page.script_handle_for_node(node),
+                }
             })
-        }),
-        ScriptRequest::CreateTextNode { tab_id, data } => with_page(tabs, tab_id, |page| {
-            Ok(ScriptReply::NodeCreated {
-                node: page.script_create_text_node(data).as_u64(),
-            })
-        }),
+        }
         ScriptRequest::AppendChild {
-            tab_id,
+            target,
             parent,
             child,
-        } => with_page(tabs, tab_id, |page| {
-            page.script_append_child(NodeId::from_u64(parent), NodeId::from_u64(child))?;
-            Ok(ScriptReply::Ack)
+        } => with_document(tabs, target, |page| {
+            page.script_append_child(parent, child).map_or_else(
+                |message| ScriptReply::Error { message },
+                |_| ScriptReply::Ack,
+            )
         }),
-        ScriptRequest::InsertBefore {
-            tab_id,
-            parent,
-            child,
-            reference,
-        } => with_page(tabs, tab_id, |page| {
-            page.script_insert_before(
-                NodeId::from_u64(parent),
-                NodeId::from_u64(child),
-                reference.map(NodeId::from_u64),
-            )?;
-            Ok(ScriptReply::Ack)
-        }),
-        ScriptRequest::RemoveChild {
-            tab_id,
-            parent,
-            child,
-        } => with_page(tabs, tab_id, |page| {
-            page.script_remove_child(NodeId::from_u64(parent), NodeId::from_u64(child))?;
-            Ok(ScriptReply::Ack)
-        }),
-        ScriptRequest::Remove { tab_id, node } => with_page(tabs, tab_id, |page| {
-            page.script_remove(NodeId::from_u64(node))?;
-            Ok(ScriptReply::Ack)
-        }),
-        ScriptRequest::GetTextContent { tab_id, node } => with_page(tabs, tab_id, |page| {
-            Ok(ScriptReply::Text {
-                value: page.script_text_content(NodeId::from_u64(node))?,
-            })
+        ScriptRequest::GetTextContent { target, node } => with_document(tabs, target, |page| {
+            page.script_text_content(node).map_or_else(
+                |message| ScriptReply::Error { message },
+                |value| {
+                    if value.len() > SCRIPT_MAX_TEXT_BYTES {
+                        script_error("script DOM text exceeds its fixed byte limit")
+                    } else {
+                        ScriptReply::Text { value }
+                    }
+                },
+            )
         }),
         ScriptRequest::SetTextContent {
-            tab_id,
+            target,
             node,
             value,
-        } => with_page(tabs, tab_id, |page| {
-            page.script_set_text_content(NodeId::from_u64(node), value)?;
-            Ok(ScriptReply::Ack)
-        }),
-        ScriptRequest::GetAttribute { tab_id, node, name } => with_page(tabs, tab_id, |page| {
-            Ok(ScriptReply::Attribute {
-                value: page.script_get_attribute(NodeId::from_u64(node), &name)?,
+        } => {
+            if value.len() > SCRIPT_MAX_TEXT_BYTES {
+                return script_error("script DOM text exceeds its fixed byte limit");
+            }
+            with_document(tabs, target, |page| {
+                page.script_set_text_content(node, value).map_or_else(
+                    |message| ScriptReply::Error { message },
+                    |_| ScriptReply::Ack,
+                )
             })
-        }),
-        ScriptRequest::SetAttribute {
-            tab_id,
-            node,
-            name,
-            value,
-        } => with_page(tabs, tab_id, |page| {
-            page.script_set_attribute(NodeId::from_u64(node), name, value)?;
-            Ok(ScriptReply::Ack)
-        }),
-        ScriptRequest::RemoveAttribute { tab_id, node, name } => with_page(tabs, tab_id, |page| {
-            page.script_remove_attribute(NodeId::from_u64(node), &name)?;
-            Ok(ScriptReply::Ack)
-        }),
-        ScriptRequest::GetInnerHtml { tab_id, node } => with_page(tabs, tab_id, |page| {
-            Ok(ScriptReply::Text {
-                value: page.script_inner_html(NodeId::from_u64(node))?,
-            })
-        }),
-        ScriptRequest::GetStyleProperty {
-            tab_id,
-            node,
-            property,
-        } => with_page(tabs, tab_id, |page| {
-            Ok(ScriptReply::Text {
-                value: page.script_get_style_property(NodeId::from_u64(node), &property)?,
-            })
-        }),
-        ScriptRequest::SetStyleProperty {
-            tab_id,
-            node,
-            property,
-            value,
-        } => with_page(tabs, tab_id, |page| {
-            page.script_set_style_property(NodeId::from_u64(node), property, value)?;
-            Ok(ScriptReply::Ack)
-        }),
-        ScriptRequest::ClassList {
-            tab_id,
-            node,
-            operation,
-            class_name,
-        } => with_page(tabs, tab_id, |page| {
-            let operation = match operation {
-                IpcClassListOperation::Add => ScriptClassListOperation::Add,
-                IpcClassListOperation::Remove => ScriptClassListOperation::Remove,
-                IpcClassListOperation::Toggle => ScriptClassListOperation::Toggle,
-                IpcClassListOperation::Contains => ScriptClassListOperation::Contains,
-            };
-            Ok(ScriptReply::Bool {
-                value: page.script_class_list(NodeId::from_u64(node), operation, class_name)?,
-            })
-        }),
+        }
     }
 }
 
-fn with_page(
+fn script_error(message: &'static str) -> ScriptReply {
+    ScriptReply::Error {
+        message: message.to_string(),
+    }
+}
+
+fn with_document(
     tabs: &mut TabManager,
-    tab_id: u64,
-    f: impl FnOnce(&mut crate::Page) -> Result<ScriptReply, String>,
+    target: ScriptDocumentTarget,
+    operation: impl FnOnce(&mut crate::Page) -> ScriptReply,
 ) -> ScriptReply {
-    let Some(page) = tabs.get_mut(TabId::from_u64(tab_id)) else {
-        return ScriptReply::Error {
-            message: format!("unknown script tab {tab_id}"),
-        };
-    };
-    f(page).unwrap_or_else(|message| ScriptReply::Error { message })
+    match tabs.get_mut(TabId::from_u64(target.tab_id)) {
+        Some(page) if page.document_generation() == target.document_generation => operation(page),
+        _ => script_error("script document is stale or unavailable"),
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use blueice_ipc::script::{read_script_reply, write_script_request};
-    use std::os::unix::net::UnixStream;
-    use std::thread;
+    use blueice_ipc::script::SCRIPT_PROTOCOL_VERSION;
 
-    #[test]
-    fn script_host_handshake_and_dom_mutations_use_core_as_the_only_dom_owner() {
-        let (mut client, mut server) = UnixStream::pair().unwrap();
-        let handle = thread::spawn(move || {
-            let mut tabs = TabManager::new(320.0, 200.0);
-            let tab = tabs.default_tab();
-            tabs.get_mut(tab)
-                .unwrap()
-                .load_html_str("<div id='target'>old</div>", None);
-            handle_script_connection(&mut tabs, &mut server)
-        });
+    fn target(tab: TabId, document_generation: u64) -> ScriptDocumentTarget {
+        ScriptDocumentTarget {
+            tab_id: tab.as_u64(),
+            document_generation,
+        }
+    }
 
-        write_script_request(&mut client, &ScriptRequest::Hello).unwrap();
-        assert_eq!(
-            read_script_reply(&mut client).unwrap(),
-            ScriptReply::HelloAck
+    fn loaded_tabs() -> (TabManager, TabId) {
+        let mut tabs = TabManager::new(320.0, 200.0);
+        let tab = tabs.default_tab();
+        tabs.get_mut(tab).unwrap().load_html_str(
+            "<main id=\"app\"><span id=\"label\">old</span></main>",
+            Some("https://example.test/".to_string()),
         );
-        write_script_request(
-            &mut client,
-            &ScriptRequest::GetElementById {
-                tab_id: 1,
-                id: "target".to_string(),
-            },
-        )
-        .unwrap();
-        let target = match read_script_reply(&mut client).unwrap() {
-            ScriptReply::Node { node: Some(node) } => node,
-            reply => panic!("unexpected reply: {reply:?}"),
-        };
-        write_script_request(
-            &mut client,
-            &ScriptRequest::SetTextContent {
-                tab_id: 1,
-                node: target,
-                value: "new".to_string(),
-            },
-        )
-        .unwrap();
-        assert_eq!(read_script_reply(&mut client).unwrap(), ScriptReply::Ack);
-        write_script_request(
-            &mut client,
-            &ScriptRequest::GetTextContent {
-                tab_id: 1,
-                node: target,
-            },
-        )
-        .unwrap();
-        assert_eq!(
-            read_script_reply(&mut client).unwrap(),
-            ScriptReply::Text {
-                value: "new".to_string()
-            }
-        );
-
-        drop(client);
-        handle.join().unwrap().unwrap();
+        (tabs, tab)
     }
 
     #[test]
-    fn invalid_tab_or_node_is_a_structured_reply_not_a_core_panic() {
-        let mut tabs = TabManager::new(100.0, 100.0);
+    fn hello_is_transport_only_and_lookup_is_scoped_to_the_current_document() {
+        let (mut tabs, tab) = loaded_tabs();
+        let generation = tabs.get(tab).unwrap().document_generation();
         assert!(matches!(
-            dispatch(
+            handle_script_request(
+                &mut tabs,
+                ScriptRequest::Hello {
+                    protocol_version: SCRIPT_PROTOCOL_VERSION,
+                    session_token: "a".repeat(64),
+                },
+            ),
+            ScriptReply::Error { .. }
+        ));
+        let ScriptReply::Node { node: Some(label) } = handle_script_request(
+            &mut tabs,
+            ScriptRequest::GetElementById {
+                target: target(tab, generation),
+                id: "label".to_string(),
+            },
+        ) else {
+            panic!("the page element must resolve")
+        };
+        assert_eq!(
+            handle_script_request(
                 &mut tabs,
                 ScriptRequest::GetTextContent {
-                    tab_id: 99,
-                    node: 1
+                    target: target(tab, generation),
+                    node: label,
+                },
+            ),
+            ScriptReply::Text {
+                value: "old".to_string()
+            }
+        );
+    }
+
+    #[test]
+    fn creation_append_and_text_replacement_mutate_only_the_addressed_tab() {
+        let (mut tabs, tab) = loaded_tabs();
+        let generation = tabs.get(tab).unwrap().document_generation();
+        let ScriptReply::Node { node: Some(app) } = handle_script_request(
+            &mut tabs,
+            ScriptRequest::GetElementById {
+                target: target(tab, generation),
+                id: "app".to_string(),
+            },
+        ) else {
+            panic!("the page element must resolve")
+        };
+        let ScriptReply::NodeCreated { node: child } = handle_script_request(
+            &mut tabs,
+            ScriptRequest::CreateElement {
+                target: target(tab, generation),
+                tag_name: "p".to_string(),
+            },
+        ) else {
+            panic!("element creation must return a node")
+        };
+        assert_eq!(
+            handle_script_request(
+                &mut tabs,
+                ScriptRequest::AppendChild {
+                    target: target(tab, generation),
+                    parent: app,
+                    child,
+                },
+            ),
+            ScriptReply::Ack
+        );
+        assert_eq!(
+            handle_script_request(
+                &mut tabs,
+                ScriptRequest::SetTextContent {
+                    target: target(tab, generation),
+                    node: child,
+                    value: "new".to_string(),
+                },
+            ),
+            ScriptReply::Ack
+        );
+        assert_eq!(
+            handle_script_request(
+                &mut tabs,
+                ScriptRequest::GetTextContent {
+                    target: target(tab, generation),
+                    node: app,
+                },
+            ),
+            ScriptReply::Text {
+                value: "oldnew".to_string()
+            }
+        );
+        assert!(tabs.get(tab).unwrap().dom_dump().contains("\"new\""));
+    }
+
+    #[test]
+    fn child_handle_from_another_document_cannot_alias_a_local_node() {
+        let (mut tabs, first_tab) = loaded_tabs();
+        let second_tab = tabs.open_tab();
+        tabs.get_mut(second_tab).unwrap().load_html_str(
+            "<main id=\"app\"><span id=\"label\">old</span></main>",
+            Some("https://example.test/second".to_string()),
+        );
+        let first = target(
+            first_tab,
+            tabs.get(first_tab).unwrap().document_generation(),
+        );
+        let second = target(
+            second_tab,
+            tabs.get(second_tab).unwrap().document_generation(),
+        );
+        let ScriptReply::Node { node: Some(parent) } = handle_script_request(
+            &mut tabs,
+            ScriptRequest::GetElementById {
+                target: first,
+                id: "app".to_string(),
+            },
+        ) else {
+            panic!("the first document must contain its parent")
+        };
+        let create = |tabs: &mut TabManager, target| {
+            let ScriptReply::NodeCreated { node } = handle_script_request(
+                tabs,
+                ScriptRequest::CreateElement {
+                    target,
+                    tag_name: "em".to_string(),
+                },
+            ) else {
+                panic!("document must create a detached child")
+            };
+            node
+        };
+        let local_child = create(&mut tabs, first);
+        let foreign_child = create(&mut tabs, second);
+        let before = tabs.get(first_tab).unwrap().dom_dump();
+        assert_ne!(
+            local_child, foreign_child,
+            "IPC handles need document identity"
+        );
+        assert!(matches!(
+            handle_script_request(
+                &mut tabs,
+                ScriptRequest::AppendChild {
+                    target: first,
+                    parent,
+                    child: foreign_child,
+                },
+            ),
+            ScriptReply::Error { .. }
+        ));
+        assert_eq!(tabs.get(first_tab).unwrap().dom_dump(), before);
+        assert_eq!(
+            handle_script_request(
+                &mut tabs,
+                ScriptRequest::AppendChild {
+                    target: first,
+                    parent,
+                    child: local_child,
+                },
+            ),
+            ScriptReply::Ack
+        );
+    }
+
+    #[test]
+    fn node_validation_preserves_detached_nodes_and_rejects_removed_subtrees() {
+        let (mut tabs, tab) = loaded_tabs();
+        let generation = tabs.get(tab).unwrap().document_generation();
+        let target = target(tab, generation);
+        let ScriptReply::Node { node: Some(app) } = handle_script_request(
+            &mut tabs,
+            ScriptRequest::GetElementById {
+                target,
+                id: "app".to_string(),
+            },
+        ) else {
+            panic!("the page element must resolve")
+        };
+        let ScriptReply::Node { node: Some(label) } = handle_script_request(
+            &mut tabs,
+            ScriptRequest::GetElementById {
+                target,
+                id: "label".to_string(),
+            },
+        ) else {
+            panic!("the page label must resolve")
+        };
+        let ScriptReply::NodeCreated { node: detached } = handle_script_request(
+            &mut tabs,
+            ScriptRequest::CreateElement {
+                target,
+                tag_name: "span".to_string(),
+            },
+        ) else {
+            panic!("the detached element must be created")
+        };
+        assert_eq!(
+            handle_script_request(
+                &mut tabs,
+                ScriptRequest::ValidateNode {
+                    target,
+                    node: detached
+                }
+            ),
+            ScriptReply::Ack
+        );
+        assert_eq!(
+            handle_script_request(
+                &mut tabs,
+                ScriptRequest::SetTextContent {
+                    target,
+                    node: app,
+                    value: "replacement".to_string(),
+                },
+            ),
+            ScriptReply::Ack
+        );
+        let before = tabs.get(tab).unwrap().dom_dump();
+        assert!(matches!(
+            handle_script_request(
+                &mut tabs,
+                ScriptRequest::ValidateNode {
+                    target,
+                    node: label
                 }
             ),
             ScriptReply::Error { .. }
         ));
+        assert_eq!(tabs.get(tab).unwrap().dom_dump(), before);
+        assert_eq!(
+            handle_script_request(&mut tabs, ScriptRequest::ValidateNode { target, node: app }),
+            ScriptReply::Ack
+        );
+        tabs.get_mut(tab)
+            .unwrap()
+            .load_html_str("<p>successor</p>", None);
         assert!(matches!(
-            dispatch(
+            handle_script_request(&mut tabs, ScriptRequest::ValidateNode { target, node: app }),
+            ScriptReply::Error { .. }
+        ));
+        tabs.close_tab(tab);
+        assert!(matches!(
+            handle_script_request(&mut tabs, ScriptRequest::ValidateNode { target, node: app }),
+            ScriptReply::Error { .. }
+        ));
+    }
+
+    #[test]
+    fn stale_or_cross_tab_handles_fail_without_mutation() {
+        let (mut tabs, first) = loaded_tabs();
+        let second = tabs.open_tab();
+        let old_generation = tabs.get(first).unwrap().document_generation();
+        let second_generation = tabs.get(second).unwrap().document_generation();
+        let ScriptReply::Node { node: Some(label) } = handle_script_request(
+            &mut tabs,
+            ScriptRequest::GetElementById {
+                target: target(first, old_generation),
+                id: "label".to_string(),
+            },
+        ) else {
+            panic!("the first tab element must resolve")
+        };
+        assert!(matches!(
+            handle_script_request(
                 &mut tabs,
                 ScriptRequest::GetTextContent {
-                    tab_id: 1,
-                    node: 99
-                }
+                    target: target(second, second_generation),
+                    node: label,
+                },
             ),
             ScriptReply::Error { .. }
         ));
+        tabs.get_mut(first).unwrap().load_html_str(
+            "<p id=\"fresh\">replacement</p>",
+            Some("https://example.test/new".to_string()),
+        );
+        let replacement_before = tabs.get(first).unwrap().dom_dump();
+        assert!(matches!(
+            handle_script_request(
+                &mut tabs,
+                ScriptRequest::GetTextContent {
+                    target: target(first, old_generation),
+                    node: label,
+                },
+            ),
+            ScriptReply::Error { .. }
+        ));
+        assert!(matches!(
+            handle_script_request(
+                &mut tabs,
+                ScriptRequest::CreateTextNode {
+                    target: target(first, old_generation),
+                    data: "must not enter successor".to_string(),
+                },
+            ),
+            ScriptReply::Error { .. }
+        ));
+        assert!(matches!(
+            handle_script_request(
+                &mut tabs,
+                ScriptRequest::SetTextContent {
+                    target: target(first, old_generation),
+                    node: label,
+                    value: "must not replace successor".to_string(),
+                },
+            ),
+            ScriptReply::Error { .. }
+        ));
+        assert_eq!(tabs.get(first).unwrap().dom_dump(), replacement_before);
+        assert!(matches!(
+            handle_script_request(
+                &mut tabs,
+                ScriptRequest::GetElementById {
+                    target: target(first, old_generation + 1),
+                    id: "fresh".to_string(),
+                },
+            ),
+            ScriptReply::Node { node: Some(_) }
+        ));
+        assert!(matches!(
+            handle_script_request(
+                &mut tabs,
+                ScriptRequest::GetElementById {
+                    target: ScriptDocumentTarget {
+                        tab_id: 99_999,
+                        document_generation: 1,
+                    },
+                    id: "app".to_string(),
+                },
+            ),
+            ScriptReply::Error { .. }
+        ));
+    }
+
+    #[test]
+    fn oversized_dom_inputs_fail_before_mutating_the_current_document() {
+        let (mut tabs, tab) = loaded_tabs();
+        let before = tabs.get(tab).unwrap().dom_dump();
+        let ScriptReply::Node { node: Some(label) } = handle_script_request(
+            &mut tabs,
+            ScriptRequest::GetElementById {
+                target: target(tab, 1),
+                id: "label".to_string(),
+            },
+        ) else {
+            panic!("the page label must resolve")
+        };
+        assert!(matches!(
+            handle_script_request(
+                &mut tabs,
+                ScriptRequest::CreateTextNode {
+                    target: target(tab, 1),
+                    data: "x".repeat(SCRIPT_MAX_TEXT_BYTES + 1),
+                },
+            ),
+            ScriptReply::Error { .. }
+        ));
+        assert!(matches!(
+            handle_script_request(
+                &mut tabs,
+                ScriptRequest::GetElementById {
+                    target: target(tab, 1),
+                    id: "x".repeat(SCRIPT_MAX_NAME_BYTES + 1),
+                },
+            ),
+            ScriptReply::Error { .. }
+        ));
+        assert!(matches!(
+            handle_script_request(
+                &mut tabs,
+                ScriptRequest::SetTextContent {
+                    target: target(tab, 1),
+                    node: label,
+                    value: "x".repeat(SCRIPT_MAX_TEXT_BYTES + 1),
+                },
+            ),
+            ScriptReply::Error { .. }
+        ));
+        assert_eq!(tabs.get(tab).unwrap().dom_dump(), before);
+
+        let oversized = tabs
+            .get_mut(tab)
+            .unwrap()
+            .script_create_text_node("x".repeat(SCRIPT_MAX_TEXT_BYTES + 1));
+        assert!(matches!(
+            handle_script_request(
+                &mut tabs,
+                ScriptRequest::GetTextContent {
+                    target: target(tab, 1),
+                    node: oversized.as_u64(),
+                },
+            ),
+            ScriptReply::Error { .. }
+        ));
+    }
+
+    #[test]
+    fn stale_document_generation_cannot_create_a_node_in_its_successor() {
+        let (mut tabs, tab) = loaded_tabs();
+        let old_generation = tabs.get(tab).unwrap().document_generation();
+        tabs.get_mut(tab).unwrap().load_html_str(
+            "<p>replacement</p>",
+            Some("https://example.test/new".to_string()),
+        );
+        let before = tabs.get(tab).unwrap().dom_dump();
+        assert!(matches!(
+            handle_script_request(
+                &mut tabs,
+                ScriptRequest::CreateTextNode {
+                    target: target(tab, old_generation),
+                    data: "old document".to_string(),
+                },
+            ),
+            ScriptReply::Error { .. }
+        ));
+        assert_eq!(tabs.get(tab).unwrap().dom_dump(), before);
+    }
+
+    #[test]
+    fn request_worker_cannot_mutate_a_tab_until_the_session_dispatches_it() {
+        use std::thread;
+        use std::time::Duration;
+
+        let (mut tabs, tab) = loaded_tabs();
+        let (sender, receiver) = script_request_channel();
+        let worker = thread::spawn(move || {
+            sender.request(ScriptRequest::CreateTextNode {
+                target: target(tab, 1),
+                data: "from-worker".to_string(),
+            })
+        });
+
+        let envelope = receiver
+            .0
+            .recv_timeout(Duration::from_secs(1))
+            .expect("worker must enqueue a request without borrowing the tab manager");
+        assert!(
+            !tabs.get(tab).unwrap().dom_dump().contains("from-worker"),
+            "queueing itself must not mutate core-owned state"
+        );
+        dispatch_script_request(&mut tabs, envelope);
+        assert!(matches!(
+            worker.join().unwrap(),
+            Ok(ScriptReply::NodeCreated { .. })
+        ));
+    }
+
+    #[test]
+    fn nested_dispatch_serves_only_the_exact_executing_document_with_a_batch_bound() {
+        let (mut tabs, first) = loaded_tabs();
+        let second = tabs.open_tab();
+        let generation = tabs.get(first).unwrap().document_generation();
+        let ScriptReply::Node { node: Some(label) } = handle_script_request(
+            &mut tabs,
+            ScriptRequest::GetElementById {
+                target: target(first, generation),
+                id: "label".to_string(),
+            },
+        ) else {
+            panic!("the first document must have a label");
+        };
+        let first_before = tabs.get(first).unwrap().dom_dump();
+        let second_before = tabs.get(second).unwrap().dom_dump();
+        let (sender, receiver) = script_request_channel();
+        let mut replies = Vec::new();
+        for (request_target, value) in [
+            (target(second, 0), "cross-tab"),
+            (target(first, generation - 1), "stale"),
+            (target(first, generation), "allowed"),
+        ] {
+            let (reply_sender, reply_receiver) = mpsc::sync_channel(1);
+            sender
+                .0
+                .send(ScriptRequestEnvelope {
+                    request: ScriptRequest::SetTextContent {
+                        target: request_target,
+                        node: label,
+                        value: value.to_string(),
+                    },
+                    reply: reply_sender,
+                })
+                .unwrap();
+            replies.push(reply_receiver);
+        }
+        assert_eq!(
+            receiver.dispatch_pending_for_document(&mut tabs, target(first, generation), 2),
+            2
+        );
+        assert!(matches!(
+            replies[0].recv().unwrap(),
+            ScriptReply::Error { .. }
+        ));
+        assert!(matches!(
+            replies[1].recv().unwrap(),
+            ScriptReply::Error { .. }
+        ));
+        assert_eq!(tabs.get(first).unwrap().dom_dump(), first_before);
+        assert_eq!(tabs.get(second).unwrap().dom_dump(), second_before);
+        assert_eq!(
+            receiver.dispatch_pending_for_document(&mut tabs, target(first, generation), 2),
+            1
+        );
+        assert_eq!(replies[2].recv().unwrap(), ScriptReply::Ack);
+        assert!(tabs.get(first).unwrap().dom_dump().contains("allowed"));
+        assert_eq!(tabs.get(second).unwrap().dom_dump(), second_before);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn exhausted_nested_wait_rejects_the_next_call_without_touching_the_dom() {
+        let (mut tabs, tab) = loaded_tabs();
+        let generation = tabs.get(tab).unwrap().document_generation();
+        let ScriptReply::Node { node: Some(label) } = handle_script_request(
+            &mut tabs,
+            ScriptRequest::GetElementById {
+                target: target(tab, generation),
+                id: "label".to_string(),
+            },
+        ) else {
+            panic!("the document must have a label");
+        };
+        let (sender, receiver) = script_request_channel();
+        let mut replies = Vec::new();
+        for value in ["allowed", "over budget"] {
+            let (reply_sender, reply_receiver) = mpsc::sync_channel(1);
+            sender
+                .0
+                .send(ScriptRequestEnvelope {
+                    request: ScriptRequest::SetTextContent {
+                        target: target(tab, generation),
+                        node: label,
+                        value: value.to_string(),
+                    },
+                    reply: reply_sender,
+                })
+                .unwrap();
+            replies.push(reply_receiver);
+        }
+        assert_eq!(
+            receiver.dispatch_pending_for_document(&mut tabs, target(tab, generation), 1),
+            1
+        );
+        let after_allowed = tabs.get(tab).unwrap().dom_dump();
+        assert_eq!(replies[0].recv().unwrap(), ScriptReply::Ack);
+        assert!(after_allowed.contains("allowed"));
+        assert!(receiver.reject_one_pending_for_exhausted_wait());
+        assert!(matches!(
+            replies[1].recv().unwrap(),
+            ScriptReply::Error { .. }
+        ));
+        assert_eq!(tabs.get(tab).unwrap().dom_dump(), after_allowed);
+        assert!(!receiver.reject_one_pending_for_exhausted_wait());
     }
 }

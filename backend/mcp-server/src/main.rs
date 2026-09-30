@@ -10,11 +10,15 @@
 //! end of -- excluded from the coverage gate for the same reason
 //! `frontend-reference/src/main.rs` is (see `CLAUDE.md`).
 
+#[cfg(unix)]
 use blueice_mcp_server::BlueIceMcpServer;
+#[cfg(unix)]
 use rmcp::{transport::stdio, ServiceExt};
+#[cfg(unix)]
 use std::path::PathBuf;
 
 /// `(rendezvous socket, control socket)`, each optional.
+#[cfg(unix)]
 fn parse_args(
     args: impl Iterator<Item = String>,
 ) -> Result<(Option<PathBuf>, Option<PathBuf>), String> {
@@ -50,6 +54,7 @@ fn parse_args(
     Ok((launcher_socket, control_socket))
 }
 
+#[cfg(unix)]
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (launcher_socket, control_socket) = parse_args(std::env::args().skip(1))?;
@@ -64,4 +69,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let service = server.serve(stdio()).await?;
     service.waiting().await?;
     Ok(())
+}
+
+#[cfg(not(unix))]
+fn main() {
+    eprintln!("blueice-mcp-server is currently supported only on Unix platforms");
+    std::process::exit(1);
 }

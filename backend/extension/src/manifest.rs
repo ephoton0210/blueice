@@ -20,7 +20,7 @@
 
 use crate::{
     ExtensionRegistry, CAPABILITY_DOM_READ, CAPABILITY_DOM_WRITE, CAPABILITY_NETWORK_INTERCEPT,
-    CAPABILITY_STORAGE, CAPABILITY_NETWORK_OBSERVE, CAPABILITY_UI_INJECT,
+    CAPABILITY_NETWORK_OBSERVE, CAPABILITY_STORAGE, CAPABILITY_UI_INJECT,
 };
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
@@ -304,10 +304,9 @@ fn validate_capability_origins(
                 | CAPABILITY_DOM_WRITE
                 | CAPABILITY_NETWORK_OBSERVE
                 | CAPABILITY_NETWORK_INTERCEPT
-        )
-            || !(capabilities.declared().contains(&capability)
-                || capabilities.optional().contains(&capability)
-                || capabilities.runtime_ephemeral().contains(&capability))
+        ) || !(capabilities.declared().contains(&capability)
+            || capabilities.optional().contains(&capability)
+            || capabilities.runtime_ephemeral().contains(&capability))
         {
             return Err(ManifestError::Invalid(format!(
                 "capability_origins can scope only an origin-aware capability declared in the manifest, not {capability}"
@@ -321,11 +320,13 @@ fn validate_capability_origins(
         let mut validated = BTreeSet::new();
         for origin in origins {
             if origin.len() > 256 {
-                return Err(ManifestError::Invalid("capability origin is too long".to_string()));
+                return Err(ManifestError::Invalid(
+                    "capability origin is too long".to_string(),
+                ));
             }
-            let parsed = Url::parse(&origin).map_err(|_| ManifestError::Invalid(format!(
-                "invalid capability origin {origin:?}"
-            )))?;
+            let parsed = Url::parse(&origin).map_err(|_| {
+                ManifestError::Invalid(format!("invalid capability origin {origin:?}"))
+            })?;
             let canonical = parsed.origin().ascii_serialization();
             if !matches!(parsed.scheme(), "http" | "https")
                 || parsed.host().is_none()
@@ -338,7 +339,9 @@ fn validate_capability_origins(
                 )));
             }
             if !validated.insert(canonical) {
-                return Err(ManifestError::Invalid("duplicate capability origin".to_string()));
+                return Err(ManifestError::Invalid(
+                    "duplicate capability origin".to_string(),
+                ));
             }
         }
         scopes.insert(capability, validated);
@@ -347,13 +350,22 @@ fn validate_capability_origins(
 }
 
 fn valid_dns_origin_host(host: &str) -> bool {
-    host.len() <= 253 && host.split('.').all(|label| {
-        !label.is_empty()
-            && label.len() <= 63
-            && label.bytes().next().is_some_and(|byte| byte.is_ascii_alphanumeric())
-            && label.bytes().last().is_some_and(|byte| byte.is_ascii_alphanumeric())
-            && label.bytes().all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
-    })
+    host.len() <= 253
+        && host.split('.').all(|label| {
+            !label.is_empty()
+                && label.len() <= 63
+                && label
+                    .bytes()
+                    .next()
+                    .is_some_and(|byte| byte.is_ascii_alphanumeric())
+                && label
+                    .bytes()
+                    .last()
+                    .is_some_and(|byte| byte.is_ascii_alphanumeric())
+                && label
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+        })
 }
 
 fn validate_text_field(field: &str, value: &str, max_len: usize) -> Result<(), ManifestError> {
@@ -510,17 +522,31 @@ mod tests {
         let source = r#"{"name":"Scoped","version":"1","blueice_api_version":1,"entry_point":"extension.wasm","capabilities":{"declared":["dom:read","dom:write","network:observe","network:intercept"]},"capability_origins":{"dom:read":["https://example.test","http://127.0.0.1:4312"],"dom:write":["https://example.test"],"network:intercept":["http://127.0.0.1:4312"]}}"#;
         let (root, path) = temporary_package("origin-scopes", source, WASM_V1);
         let extension = load_installed_extension(&path).unwrap();
-        assert_eq!(extension.manifest().capability_origins()[CAPABILITY_DOM_READ], BTreeSet::from([
-            "https://example.test".to_string(), "http://127.0.0.1:4312".to_string(),
-        ]));
-        assert!(!extension.manifest().capability_origins().contains_key(CAPABILITY_NETWORK_OBSERVE));
+        assert_eq!(
+            extension.manifest().capability_origins()[CAPABILITY_DOM_READ],
+            BTreeSet::from([
+                "https://example.test".to_string(),
+                "http://127.0.0.1:4312".to_string(),
+            ])
+        );
+        assert!(!extension
+            .manifest()
+            .capability_origins()
+            .contains_key(CAPABILITY_NETWORK_OBSERVE));
         assert_eq!(
             extension.manifest().capability_origins()[CAPABILITY_NETWORK_INTERCEPT],
             BTreeSet::from(["http://127.0.0.1:4312".to_string()])
         );
         let original_id = extension.extension_id().to_string();
-        std::fs::write(&path, source.replace("https://example.test", "https://other.test")).unwrap();
-        assert_ne!(load_installed_extension(&path).unwrap().extension_id(), original_id);
+        std::fs::write(
+            &path,
+            source.replace("https://example.test", "https://other.test"),
+        )
+        .unwrap();
+        assert_ne!(
+            load_installed_extension(&path).unwrap().extension_id(),
+            original_id
+        );
         let _ = std::fs::remove_dir_all(root);
     }
 
@@ -530,17 +556,27 @@ mod tests {
         let (root, path) = temporary_package("scoped-tiers", source, WASM_V1);
         let extension = load_installed_extension(&path).unwrap();
         let id = extension.extension_id();
-        assert_eq!(extension.manifest().capability_origins()[CAPABILITY_DOM_READ],
-            BTreeSet::from(["https://example.test".to_string()]));
-        assert_eq!(extension.manifest().capability_origins()[CAPABILITY_NETWORK_OBSERVE],
-            BTreeSet::from(["https://example.test".to_string()]));
+        assert_eq!(
+            extension.manifest().capability_origins()[CAPABILITY_DOM_READ],
+            BTreeSet::from(["https://example.test".to_string()])
+        );
+        assert_eq!(
+            extension.manifest().capability_origins()[CAPABILITY_NETWORK_OBSERVE],
+            BTreeSet::from(["https://example.test".to_string()])
+        );
         let registry = registry_for_installed_extension(&extension);
         assert!(!registry.has_capability(id, CAPABILITY_DOM_READ));
         assert!(!registry.has_capability(id, CAPABILITY_NETWORK_OBSERVE));
-        assert!(registry.grant_optional(id, CAPABILITY_NETWORK_OBSERVE).is_err());
-        let ticket = registry.arm_runtime_ephemeral(id, CAPABILITY_NETWORK_OBSERVE, 1, 0).unwrap();
-        assert!(!registry.has_capability(id, CAPABILITY_NETWORK_OBSERVE),
-            "arming the one-shot slot must not become a persistent grant");
+        assert!(registry
+            .grant_optional(id, CAPABILITY_NETWORK_OBSERVE)
+            .is_err());
+        let ticket = registry
+            .arm_runtime_ephemeral(id, CAPABILITY_NETWORK_OBSERVE, 1, 0)
+            .unwrap();
+        assert!(
+            !registry.has_capability(id, CAPABILITY_NETWORK_OBSERVE),
+            "arming the one-shot slot must not become a persistent grant"
+        );
         assert!(registry.consume_runtime_ephemeral(id, CAPABILITY_NETWORK_OBSERVE, &ticket, 1, 0));
         assert!(!registry.consume_runtime_ephemeral(id, CAPABILITY_NETWORK_OBSERVE, &ticket, 1, 0));
         assert!(registry.grant_optional(id, CAPABILITY_DOM_READ).unwrap());
@@ -554,19 +590,56 @@ mod tests {
     #[test]
     fn origin_scopes_reject_undeclared_or_ambiguous_authority() {
         for (label, declared, scopes) in [
-            ("undeclared", r#"["dom:read"]"#, r#"{"dom:write":["https://example.test"]}"#),
-            ("storage", r#"["storage"]"#, r#"{"storage":["https://example.test"]}"#),
-            ("ungranted-intercept", r#"[]"#, r#"{"network:intercept":["https://example.test"]}"#),
+            (
+                "undeclared",
+                r#"["dom:read"]"#,
+                r#"{"dom:write":["https://example.test"]}"#,
+            ),
+            (
+                "storage",
+                r#"["storage"]"#,
+                r#"{"storage":["https://example.test"]}"#,
+            ),
+            (
+                "ungranted-intercept",
+                r#"[]"#,
+                r#"{"network:intercept":["https://example.test"]}"#,
+            ),
             ("empty", r#"["dom:read"]"#, r#"{"dom:read":[]}"#),
-            ("wildcard", r#"["dom:read"]"#, r#"{"dom:read":["https://*.example.test"]}"#),
-            ("path", r#"["dom:read"]"#, r#"{"dom:read":["https://example.test/private"]}"#),
-            ("credentials", r#"["dom:read"]"#, r#"{"dom:read":["https://user@example.test"]}"#),
-            ("noncanonical", r#"["dom:read"]"#, r#"{"dom:read":["https://EXAMPLE.test"]}"#),
-            ("duplicate", r#"["dom:read"]"#, r#"{"dom:read":["https://example.test","https://example.test"]}"#),
+            (
+                "wildcard",
+                r#"["dom:read"]"#,
+                r#"{"dom:read":["https://*.example.test"]}"#,
+            ),
+            (
+                "path",
+                r#"["dom:read"]"#,
+                r#"{"dom:read":["https://example.test/private"]}"#,
+            ),
+            (
+                "credentials",
+                r#"["dom:read"]"#,
+                r#"{"dom:read":["https://user@example.test"]}"#,
+            ),
+            (
+                "noncanonical",
+                r#"["dom:read"]"#,
+                r#"{"dom:read":["https://EXAMPLE.test"]}"#,
+            ),
+            (
+                "duplicate",
+                r#"["dom:read"]"#,
+                r#"{"dom:read":["https://example.test","https://example.test"]}"#,
+            ),
         ] {
-            let source = format!(r#"{{"name":"Scoped","version":"1","blueice_api_version":1,"entry_point":"extension.wasm","capabilities":{{"declared":{declared}}},"capability_origins":{scopes}}}"#);
+            let source = format!(
+                r#"{{"name":"Scoped","version":"1","blueice_api_version":1,"entry_point":"extension.wasm","capabilities":{{"declared":{declared}}},"capability_origins":{scopes}}}"#
+            );
             let (root, path) = temporary_package(label, &source, WASM_V1);
-            assert!(load_installed_extension(&path).is_err(), "{label} must be rejected");
+            assert!(
+                load_installed_extension(&path).is_err(),
+                "{label} must be rejected"
+            );
             let _ = std::fs::remove_dir_all(root);
         }
     }

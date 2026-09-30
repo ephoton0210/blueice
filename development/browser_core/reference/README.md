@@ -12,6 +12,15 @@ git clone --depth 1 https://github.com/chromium/chromium.git chromium
 git clone --depth 1 https://github.com/v8/v8.git v8
 ```
 
+**`test262/` (the pinned Test262 corpus) is required to compile `blueice-bluejs`'s tests.** Several integration tests (`tests/intl.rs`, `tests/try_completion.rs`, `tests/test262_host/modules.rs`) `include_str!` harness and fixture files from it, so without it `cargo test -p blueice-bluejs` fails at compile time with "couldn't read .../reference/test262/...". It is gitignored, and it is also the runner's default `--corpus` (`backend/bluejs/test262/run.py`). CI checks out `tc39/test262` at the revision pinned in `backend/bluejs/test262/snapshot.json`; do the same locally:
+
+```sh
+git clone https://github.com/tc39/test262.git test262
+git -C test262 checkout 72faf8ec1445c55149615e8b35187830783aba1a
+```
+
+`python3 backend/bluejs/test262/run.py --fetch --corpus <dir>` instead downloads and manifest-verifies the same revision into `<dir>` (copy or symlink that directory here to reuse it). `cldr-json/` (also gitignored, pinned in CI) is only the input for the CLDR-provider reproducibility check, not for compiling tests.
+
 **`wpt/` (the WPT/html5lib-tests tree-construction corpus) is fetched differently** -- it's a small subdirectory of an enormous monorepo, so a sparse partial clone keeps it to tens of megabytes instead of attempting a full checkout of `web-platform-tests/wpt`:
 
 ```sh

@@ -2,1138 +2,2091 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! AST-to-bytecode lowering.
-//!
-//! This module is deliberately the sole consumer of [`crate::Program`] at
-//! runtime. The VM receives [`crate::BytecodeModule`], not AST nodes, so
-//! execution stays a fixed-width bytecode stack machine as planned.
+//! AST -> operand-stack bytecode, per Phase 13's first execution slice.
+//! Binding resolution happens here; runtime execution never walks an AST.
+//! Every lexical scope has its own slots, reset on entry/exit. Abrupt
+//! loop exits emit the same scope cleanup as ordinary block exits.
 
-use crate::ast::*;
-use crate::bytecode::*;
-use crate::value::Value;
+use crate::bytecode::{
+    AbruptJump, Binding, Handler, ModuleExport as CompiledModuleExport,
+    ModuleImport as CompiledModuleImport, ModuleImportName as CompiledModuleImportName,
+    ModuleRequest as CompiledModuleRequest,
+};
+use crate::*;
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+
+/// Parser-private binding used to represent an anonymous `export default`
+/// declaration.  It can never be spelled by ECMAScript source, which lets
+/// compilation retain the binding separately from the `"default"` inferred
+/// function/class name required by SetFunctionName.
+const MODULE_DEFAULT_BINDING: &str = "\0bluejs_module_default";
+const PRIVATE_OWNER_BINDING_PREFIX: &str = "\0bluejs_private_owner_";
+/// Per-class-evaluation bindings for state a class element carries from
+/// ClassDefinitionEvaluation to a later step: a computed field key (evaluated
+/// once, in element order) and a static field or static block's function
+/// (run only after every element has been defined).
+const CLASS_ELEMENT_BINDING_PREFIX: &str = "\0bluejs_class_element_";
+/// A derived class constructor's `this` binding. Unlike an ordinary function's
+/// receiver it starts uninitialized and is bound by `super()`, possibly from a
+/// nested arrow function or direct eval, so it is a real lexical binding that
+/// those closures capture. Ordinary functions (including methods and nested
+/// classes) never inherit it: only arrow functions and eval code see it.
+pub(crate) const DERIVED_THIS_BINDING: &str = "\0bluejs_derived_this";
+/// The derived constructor function object itself (`F` in the specification's
+/// `super()` steps), visible to the same nested closures as the `this` binding.
+pub(crate) const DERIVED_CONSTRUCTOR_BINDING: &str = "\0bluejs_derived_constructor";
 use std::fmt;
 
-/// A malformed AST that cannot be produced by BlueJS's parser, but can be
-/// supplied by an embedding caller constructing AST nodes manually.
+mod expressions;
+mod functions;
+mod private_validation;
+mod statements;
+pub use private_validation::validate_private_early_errors;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CompileError {
-    pub message: String,
+pub enum CompileError {
+    Unsupported(&'static str),
+    DuplicateBinding(String),
+    InvalidSyntax(&'static str),
+    ProgramTooLarge,
 }
 
 impl fmt::Display for CompileError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.message)
-    }
-}
-
-impl std::error::Error for CompileError {}
-
-/// Lowers a parser AST into a self-contained bytecode module. Function zero
-/// is the script entry point and always ends in [`Opcode::Halt`].
-pub fn compile(program: &Program) -> Result<BytecodeModule, CompileError> {
-    let mut compiler = Compiler::new();
-    for statement in &program.body {
-        compiler.compile_statement(statement)?;
-    }
-    compiler.emit(Opcode::Halt, 0);
-    Ok(compiler.module)
-}
-
-#[derive(Debug, Default)]
-struct LoopContext {
-    breaks: Vec<usize>,
-    continues: Vec<usize>,
-    allows_continue: bool,
-}
-
-impl LoopContext {
-    fn loop_body() -> Self {
-        Self {
-            breaks: Vec::new(),
-            continues: Vec::new(),
-            allows_continue: true,
+        match self {
+            Self::Unsupported(feature) => {
+                write!(f, "BlueJS execution does not yet support {feature}")
+            }
+            Self::DuplicateBinding(name) => write!(f, "duplicate or conflicting binding: {name}"),
+            Self::InvalidSyntax(message) => f.write_str(message),
+            Self::ProgramTooLarge => {
+                f.write_str("BlueJS program exceeds the bytecode size limit or a metadata limit")
+            }
         }
     }
+}
+impl std::error::Error for CompileError {}
+
+/// Resource limits applied independently to each compiled code unit.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CompileLimits {
+    /// Maximum bytes emitted in one code unit; nested functions use the
+    /// remaining budget at their definition site.
+    pub max_bytecode_bytes: u32,
+    /// Maximum entries in each binding, constant, and scope table. Values
+    /// above `u32::MAX + 1` are capped at that representable maximum.
+    pub max_metadata_entries: u64,
+    /// Maximum array elements or call arguments in one expression. Values
+    /// above `u32::MAX / 2` are capped because tail calls pack the argument
+    /// count and a direct-eval bit into one 32-bit operand.
+    pub max_list_items: u32,
+}
+
+impl Default for CompileLimits {
+    fn default() -> Self {
+        Self {
+            max_bytecode_bytes: u32::MAX,
+            max_metadata_entries: u64::from(u32::MAX) + 1,
+            max_list_items: u32::MAX / 2,
+        }
+    }
+}
+
+/// Compiles the supported executable subset. The parser deliberately
+/// accepts more than the VM can run; unsupported syntax is rejected even
+/// in unreachable branches, before any execution or heap mutation.
+pub fn compile(program: &Program) -> Result<Bytecode, CompileError> {
+    compile_with_limit(program, u32::MAX)
+}
+
+/// Compiles one parsed module before graph linking. Its declarative entries
+/// retain resolved local slots in bytecode, while top-level function
+/// declarations get a declaration-instantiation prefix for cyclic graphs.
+pub fn compile_module(module: &Module) -> Result<Bytecode, CompileError> {
+    compile_module_with_limit(module, u32::MAX)
+}
+
+/// Compiles with an inclusive limit on emitted instruction bytes.
+/// A limit failure returns [`CompileError::ProgramTooLarge`], never partial
+/// bytecode. This does not bound AST depth, constant payloads or total memory.
+pub fn compile_with_limit(
+    program: &Program,
+    max_bytecode_bytes: u32,
+) -> Result<Bytecode, CompileError> {
+    compile_with_limits(
+        program,
+        CompileLimits {
+            max_bytecode_bytes,
+            ..CompileLimits::default()
+        },
+    )
+}
+
+/// Compile a script with explicit bytecode and metadata-table limits.
+pub fn compile_with_limits(
+    program: &Program,
+    limits: CompileLimits,
+) -> Result<Bytecode, CompileError> {
+    compile_with_limit_and_mode(program, limits, false, &[], &[], &[])
+}
+
+/// Like [`compile_module`], with the Test262 adapter's bytecode resource
+/// limit. This is public so an embedder can apply the same bound before
+/// module linking has expanded to a graph.
+pub fn compile_module_with_limit(
+    module: &Module,
+    max_bytecode_bytes: u32,
+) -> Result<Bytecode, CompileError> {
+    compile_module_with_limits(
+        module,
+        CompileLimits {
+            max_bytecode_bytes,
+            ..CompileLimits::default()
+        },
+    )
+}
+
+/// Compile a module with explicit bytecode and metadata-table limits.
+pub fn compile_module_with_limits(
+    module: &Module,
+    limits: CompileLimits,
+) -> Result<Bytecode, CompileError> {
+    compile_with_limit_and_mode(
+        &Program {
+            body: module.body.clone(),
+        },
+        limits,
+        true,
+        &module.imports,
+        &module.exports,
+        &module.requests,
+    )
+}
+
+fn compile_with_limit_and_mode(
+    program: &Program,
+    limits: CompileLimits,
+    module: bool,
+    module_imports: &[ImportEntry],
+    module_exports: &[ExportEntry],
+    module_requests: &[RequestedModule],
+) -> Result<Bytecode, CompileError> {
+    let mut compiler = Compiler {
+        bytecode: Bytecode::empty(),
+        names: Vec::new(),
+        private_scopes: Vec::new(),
+        next_private_scope: 0,
+        scopes: Vec::new(),
+        loops: Vec::new(),
+        catch_var_slots: Vec::new(),
+        max_bytecode_bytes: limits.max_bytecode_bytes,
+        max_metadata_entries: limits.max_metadata_entries.min(u64::from(u32::MAX) + 1),
+        max_list_items: limits.max_list_items.min(u32::MAX / 2),
+        function: false,
+        local_scope: 0,
+        with_depth: 0,
+        with_scope_depths: Vec::new(),
+        annex_b_parameter_names: BTreeSet::new(),
+        tail_call_blockers: 0,
+        tail_call_pending: false,
+    };
+    compiler.bytecode.strict = module || strict_body(&program.body);
+    compiler.bytecode.module = module;
+    compiler.bytecode.import_meta_allowed = module;
+    if compiler.bytecode.strict && strict_assignment_to_restricted_name(&program.body) {
+        return Err(CompileError::InvalidSyntax(
+            "strict code cannot assign to eval or arguments",
+        ));
+    }
+    compiler.bytecode.global_function_names = program
+        .body
+        .iter()
+        .filter_map(|statement| match statement {
+            Stmt::FunctionDecl(function) => function.name.clone(),
+            _ => None,
+        })
+        .collect();
+    let mut lexical = lexical_names(&program.body);
+    let mut vars = top_level_var_names(&program.body);
+    if module {
+        for import in module_imports {
+            if let Some(local_name) = &import.local_name {
+                lexical.push((local_name.clone(), DeclKind::Const));
+            }
+        }
+        // Module function declarations are lexical bindings, rather than the
+        // classic-script global var bindings used by the existing compiler.
+        let function_names: BTreeSet<_> = program
+            .body
+            .iter()
+            .filter_map(|statement| match statement {
+                Stmt::FunctionDecl(function) => function.name.clone(),
+                _ => None,
+            })
+            .collect();
+        vars.retain(|name| !function_names.contains(name));
+        lexical.extend(function_names.into_iter().map(|name| (name, DeclKind::Let)));
+        lexical.extend(program.body.iter().filter_map(|statement| match statement {
+            Stmt::ModuleDefaultFunction { binding, .. } => Some((binding.clone(), DeclKind::Let)),
+            _ => None,
+        }));
+    }
+    if !compiler.bytecode.strict {
+        vars.extend(annex_b_function_names(&program.body, &lexical));
+    }
+    compiler.enter_scope(lexical, &vars, true)?;
+    let mut root_statement_offsets = vec![None; program.body.len()];
+    let mut root_statement_ranges = vec![None; program.body.len()];
+    let mut root_function_child_indices = vec![None; program.body.len()];
+    if module {
+        compiler.top_level_function_declarations(
+            &program.body,
+            &mut root_statement_offsets,
+            &mut root_statement_ranges,
+            &mut root_function_child_indices,
+        )?;
+        compiler.bytecode.module_evaluate_entry = Some(compiler.offset());
+        // Unlike a Script, a Module's top level *is* one of the
+        // UsingDeclaration-permitted contexts: a `using`/`await using`
+        // there disposes when the module's own evaluation completes.
+        if has_using_declaration(&program.body) {
+            let is_async = has_await_using_declaration(&program.body);
+            compiler.wrap_with_disposal(is_async, &mut |this| {
+                this.top_level_statements_after_function_declarations(
+                    &program.body,
+                    &mut root_statement_offsets,
+                    &mut root_statement_ranges,
+                )
+            })?;
+        } else {
+            compiler.top_level_statements_after_function_declarations(
+                &program.body,
+                &mut root_statement_offsets,
+                &mut root_statement_ranges,
+            )?;
+        }
+    } else {
+        // "It is a Syntax Error if the goal symbol is Script and
+        // UsingDeclaration is not contained, either directly or
+        // indirectly, within a Block, ...": a `using`/`await using`
+        // directly at Script top level (not module) has no enclosing
+        // block to dispose it at the end of.
+        if has_using_declaration(&program.body) {
+            return Err(CompileError::InvalidSyntax(
+                "a using declaration is not allowed directly at the top level of a Script",
+            ));
+        }
+        compiler.top_level_function_declarations(
+            &program.body,
+            &mut root_statement_offsets,
+            &mut root_statement_ranges,
+            &mut root_function_child_indices,
+        )?;
+        compiler.top_level_statements_after_function_declarations(
+            &program.body,
+            &mut root_statement_offsets,
+            &mut root_statement_ranges,
+        )?;
+    }
+    compiler.bytecode.root_declaration_binding_slots = program
+        .body
+        .iter()
+        .map(|statement| {
+            let name = match statement {
+                Stmt::VarDecl(_, declarations) => match declarations.as_slice() {
+                    [declaration] => match &declaration.pattern {
+                        Pattern::Identifier(name) => Some(name.as_str()),
+                        _ => None,
+                    },
+                    _ => None,
+                },
+                Stmt::FunctionDecl(function) => function.name.as_deref(),
+                _ => None,
+            }?;
+            let slot = *compiler.names.first()?.get(name)?;
+            (compiler.bytecode.bindings.get(slot as usize)?.name == name).then_some(slot)
+        })
+        .collect();
+    compiler.bytecode.root_statement_offsets = root_statement_offsets;
+    compiler.bytecode.root_statement_ranges = root_statement_ranges;
+    compiler.bytecode.root_function_child_indices = root_function_child_indices;
+    compiler.emit(Opcode::Halt, 0)?;
+    if module {
+        compiler.bytecode.module_imports = module_imports
+            .iter()
+            .map(|import| {
+                let local_slot = import.local_name.as_ref().map(|local_name| {
+                    compiler
+                        .resolve(local_name)
+                        .expect("module import binding was declared in the outer scope")
+                });
+                CompiledModuleImport {
+                    module_request: import.module_request.clone(),
+                    import_name: match &import.import_name {
+                        ImportName::Named(name) => CompiledModuleImportName::Named(name.clone()),
+                        ImportName::Namespace => CompiledModuleImportName::Namespace,
+                        ImportName::DeferredNamespace => {
+                            CompiledModuleImportName::DeferredNamespace
+                        }
+                        ImportName::Source => CompiledModuleImportName::Source,
+                    },
+                    local_slot,
+                    module_type: import.module_type,
+                }
+            })
+            .collect();
+        // An `export { local }` that names an imported binding is not a
+        // local export in a Source Text Module Record.  It is an indirect
+        // export of the original imported name (or a namespace export for
+        // `import * as local`).  Keeping that distinction is essential for
+        // ResolveExport: a local slot is private to this record, whereas the
+        // export must retain the dependency edge through cycles and star
+        // export ambiguity checks.
+        let imported_locals: HashMap<&str, &ImportEntry> = module_imports
+            .iter()
+            .filter_map(|import| {
+                import
+                    .local_name
+                    .as_deref()
+                    .map(|local_name| (local_name, import))
+            })
+            .collect();
+        compiler.bytecode.module_exports = module_exports
+            .iter()
+            .map(|export| match export {
+                ExportEntry::Local {
+                    export_name,
+                    local_name,
+                } => match imported_locals.get(local_name.as_str()) {
+                    Some(ImportEntry {
+                        module_request,
+                        import_name: ImportName::Named(import_name),
+                        module_type,
+                        ..
+                    }) => Ok(CompiledModuleExport::Indirect {
+                        export_name: export_name.clone(),
+                        module_request: module_request.clone(),
+                        import_name: import_name.clone(),
+                        module_type: *module_type,
+                    }),
+                    Some(ImportEntry {
+                        module_request,
+                        import_name: ImportName::Namespace,
+                        module_type,
+                        ..
+                    }) => Ok(CompiledModuleExport::Namespace {
+                        export_name: export_name.clone(),
+                        module_request: module_request.clone(),
+                        module_type: *module_type,
+                    }),
+                    Some(ImportEntry {
+                        module_request,
+                        import_name: ImportName::DeferredNamespace,
+                        module_type,
+                        ..
+                    }) => Ok(CompiledModuleExport::DeferredNamespace {
+                        export_name: export_name.clone(),
+                        module_request: module_request.clone(),
+                        module_type: *module_type,
+                    }),
+                    Some(ImportEntry {
+                        module_request,
+                        import_name: ImportName::Source,
+                        ..
+                    }) => Ok(CompiledModuleExport::Source {
+                        export_name: export_name.clone(),
+                        module_request: module_request.clone(),
+                    }),
+                    None => Ok(CompiledModuleExport::Local {
+                        export_name: export_name.clone(),
+                        local_slot: compiler.resolve(local_name).ok_or(
+                            CompileError::InvalidSyntax(
+                                "export references an undeclared local binding",
+                            ),
+                        )?,
+                    }),
+                },
+                ExportEntry::Indirect {
+                    export_name,
+                    module_request,
+                    import_name,
+                    module_type,
+                } => Ok(CompiledModuleExport::Indirect {
+                    export_name: export_name.clone(),
+                    module_request: module_request.clone(),
+                    import_name: import_name.clone(),
+                    module_type: *module_type,
+                }),
+                ExportEntry::Star {
+                    module_request,
+                    module_type,
+                } => Ok(CompiledModuleExport::Star {
+                    module_request: module_request.clone(),
+                    module_type: *module_type,
+                }),
+                ExportEntry::Namespace {
+                    export_name,
+                    module_request,
+                    module_type,
+                } => Ok(CompiledModuleExport::Namespace {
+                    export_name: export_name.clone(),
+                    module_request: module_request.clone(),
+                    module_type: *module_type,
+                }),
+            })
+            .collect::<Result<Vec<_>, CompileError>>()?;
+        let mut seen = HashSet::new();
+        compiler.bytecode.module_requests = module_requests
+            .iter()
+            .filter(|request| {
+                seen.insert((
+                    request.specifier.as_str(),
+                    request.module_type,
+                    request.phase == ImportPhase::Defer,
+                ))
+            })
+            .map(|request| CompiledModuleRequest {
+                module_request: request.specifier.clone(),
+                module_type: request.module_type,
+                deferred: request.phase == ImportPhase::Defer,
+            })
+            .collect();
+    }
+    Ok(compiler.bytecode)
+}
+
+/// The `with` object environments active where a direct eval runs.
+#[derive(Clone, Copy, Default)]
+pub(crate) struct EvalWithScopes {
+    /// How many are active in total.
+    pub(crate) depth: usize,
+    /// The first `inherited` of them were in scope when the running function
+    /// was created, so its own bindings are nested inside them.
+    pub(crate) inherited: usize,
+}
+
+/// What a direct eval inherits from the function that calls it, other than
+/// its visible bindings.
+#[derive(Default)]
+pub(crate) struct EvalContext {
+    pub(crate) strict: bool,
+    /// Whether `new.target` is valid in the calling function.
+    pub(crate) new_target_allowed: bool,
+    /// The caller is a class field initializer (or an arrow function inside
+    /// one).
+    pub(crate) class_field_initializer: bool,
+    pub(crate) with_scopes: EvalWithScopes,
+}
+
+/// Compiles direct-eval source with cells for the caller's visible bindings.
+/// The runtime supplies `visible` from its active lexical environments and
+/// installs the matching cells before running the resulting bytecode.
+pub(crate) fn compile_eval(
+    program: &Program,
+    visible: &[(String, Binding, u32)],
+    variable_environment_names: &[String],
+    lexical_conflicts: &[String],
+    context: EvalContext,
+    limits: CompileLimits,
+) -> Result<Bytecode, CompileError> {
+    let EvalContext {
+        strict,
+        new_target_allowed,
+        class_field_initializer,
+        with_scopes,
+    } = context;
+    let with_depth = with_scopes.depth;
+    let mut compiler = Compiler {
+        bytecode: Bytecode::empty(),
+        names: vec![HashMap::new()],
+        private_scopes: vec![HashMap::new()],
+        next_private_scope: 0,
+        scopes: Vec::new(),
+        loops: Vec::new(),
+        catch_var_slots: Vec::new(),
+        max_bytecode_bytes: limits.max_bytecode_bytes,
+        max_metadata_entries: limits.max_metadata_entries.min(u64::from(u32::MAX) + 1),
+        max_list_items: limits.max_list_items.min(u32::MAX / 2),
+        function: false,
+        local_scope: 1,
+        with_depth,
+        // Captured bindings form the outer lexical environment of direct
+        // eval. The `with` environments the calling function entered occur
+        // after it, while the eval's own declaration scope is entered below.
+        // The first `inherited` objects were in scope when the calling
+        // function was created: its own bindings are nested inside them.
+        with_scope_depths: (0..with_depth)
+            .map(|index| usize::from(index >= with_scopes.inherited))
+            .collect(),
+        annex_b_parameter_names: BTreeSet::new(),
+        tail_call_blockers: 0,
+        tail_call_pending: false,
+    };
+    compiler.bytecode.strict = strict || strict_body(&program.body);
+    compiler.bytecode.new_target_allowed = new_target_allowed;
+    compiler.bytecode.class_field_initializer = class_field_initializer;
+    if compiler.bytecode.strict && strict_assignment_to_restricted_name(&program.body) {
+        return Err(CompileError::InvalidSyntax(
+            "strict code cannot assign to eval or arguments",
+        ));
+    }
+    compiler.bytecode.global_function_names = program
+        .body
+        .iter()
+        .filter_map(|statement| match statement {
+            Stmt::FunctionDecl(function) => function.name.clone(),
+            _ => None,
+        })
+        .collect();
+    for (name, binding, caller_slot) in visible {
+        let slot = compiler.metadata_index(compiler.bytecode.bindings.len())?;
+        compiler.names[0].insert(name.clone(), slot);
+        if let Some((scope, private_name)) = private_owner_binding_name(name) {
+            // Direct eval inherits lexical private names just as it inherits
+            // ordinary captured bindings.  The innermost live private scope
+            // wins when a nested class shadows a name.
+            let scope_map = compiler
+                .private_scopes
+                .first_mut()
+                .expect("eval has a private scope");
+            let replace = scope_map
+                .get(&private_name)
+                .and_then(|binding| private_owner_binding_name(binding))
+                .is_none_or(|(existing, _)| scope >= existing);
+            if replace {
+                scope_map.insert(private_name, name.clone());
+            }
+        }
+        compiler.bytecode.bindings.push(binding.clone());
+        compiler.bytecode.captures.push(*caller_slot);
+    }
+    let lexical = lexical_names(&program.body);
+    let mut vars = top_level_var_names(&program.body);
+    if !compiler.bytecode.strict {
+        vars.extend(annex_b_function_names(&program.body, &lexical));
+    }
+    // EvalDeclarationInstantiation walks from its fresh lexical environment
+    // toward the caller's VariableEnvironment. A sloppy eval `var` cannot
+    // cross a caller lexical (including a non-simple parameter) with the
+    // same name. The compiler receives those caller cells as `visible`.
+    if !compiler.bytecode.strict
+        && vars
+            .iter()
+            .any(|name| lexical_conflicts.iter().any(|conflict| conflict == name))
+    {
+        return Err(CompileError::InvalidSyntax(
+            "eval var declaration conflicts with a lexical binding",
+        ));
+    }
+    // Strict eval has its own VariableEnvironment, so its `var` bindings
+    // shadow caller names. Sloppy direct eval extends only the immediately
+    // enclosing VariableEnvironment: a name captured from an outer function
+    // remains visible for reads, but must not prevent a new local eval `var`.
+    let new_vars = if compiler.bytecode.strict {
+        vars
+    } else {
+        vars.into_iter()
+            .filter(|name| !variable_environment_names.contains(name))
+            .collect()
+    };
+    compiler.enter_scope(lexical, &new_vars, true)?;
+    if !compiler.bytecode.strict {
+        compiler.bytecode.dynamic_eval_slots = new_vars
+            .iter()
+            .filter_map(|name| {
+                compiler
+                    .names
+                    .last()
+                    .and_then(|scope| scope.get(name))
+                    .copied()
+            })
+            .collect();
+        for &slot in &compiler.bytecode.dynamic_eval_slots {
+            compiler.bytecode.bindings[slot as usize].eval_var = true;
+        }
+    }
+    if has_using_declaration(&program.body) {
+        return Err(CompileError::InvalidSyntax(
+            "a using declaration is not allowed directly at the top level of eval'd code",
+        ));
+    }
+    compiler.statements(&program.body)?;
+    compiler.emit(Opcode::Halt, 0)?;
+    Ok(compiler.bytecode)
+}
+
+struct Loop {
+    labels: Vec<String>,
+    breakable: bool,
+    scope_depth: usize,
+    breaks: Vec<(usize, usize)>,
+    continues: Option<Vec<(usize, usize)>>,
+    iterator: Option<u32>,
 }
 
 struct Compiler {
-    module: BytecodeModule,
-    current_function: usize,
-    loops: Vec<LoopContext>,
+    bytecode: Bytecode,
+    names: Vec<HashMap<String, u32>>,
+    /// Each lexical class private-name environment maps the source spelling
+    /// (without `#`) to an internal binding holding that name's declaring
+    /// class owner.  The binding is captured like any other lexical value,
+    /// which is the crucial distinction from a function [[HomeObject]].
+    private_scopes: Vec<HashMap<String, String>>,
+    next_private_scope: u32,
+    scopes: Vec<u32>,
+    loops: Vec<Loop>,
+    // Annex B permits a simple catch parameter to be redeclared with `var`
+    // in its block. Those declaration writes target the catch binding.
+    catch_var_slots: Vec<HashMap<String, u32>>,
+    max_bytecode_bytes: u32,
+    max_metadata_entries: u64,
+    max_list_items: u32,
+    function: bool,
+    local_scope: usize,
+    with_depth: usize,
+    /// The static lexical-scope depth at which each active `with`
+    /// environment was inserted. A binding declared after the innermost
+    /// entry wins before that object environment during name resolution.
+    with_scope_depths: Vec<usize>,
+    /// The enclosing function's formal parameter names (`parameterNames`).
+    /// Annex B.3.2.1 gives a block function no legacy var binding, and no
+    /// copy into one, for these names.
+    annex_b_parameter_names: BTreeSet<String>,
+    /// How many enclosing statements make a `return f()` here not a tail call
+    /// (§15.10.2): a `try` block, the block of a `catch` that has a `finally`,
+    /// and a block whose `using` declarations dispose after the return value
+    /// is computed. Their handler must observe the call's outcome.
+    tail_call_blockers: u32,
+    /// Set by a `return` in tail position just before it compiles the call
+    /// expression; the call consumes it to emit `TailCall` instead of `Call`.
+    tail_call_pending: bool,
+}
+
+#[derive(Clone, Copy)]
+struct FunctionCompileOptions {
+    constructible: bool,
+    force_strict: bool,
+    class_constructor: bool,
+    derived_constructor: bool,
+    default_derived_constructor: bool,
+    class_method: bool,
+    class_field_initializer: bool,
+}
+
+impl FunctionCompileOptions {
+    /// An object-literal MethodDefinition: like a class method its name is
+    /// only a property name, not a binding, but it is not implicitly strict.
+    fn object_method() -> Self {
+        Self {
+            constructible: false,
+            force_strict: false,
+            ..Self::class_method()
+        }
+    }
+
+    fn class_method() -> Self {
+        Self {
+            constructible: false,
+            force_strict: true,
+            class_constructor: false,
+            derived_constructor: false,
+            default_derived_constructor: false,
+            class_method: true,
+            class_field_initializer: false,
+        }
+    }
+
+    /// A function that defines class fields on its receiver: a method whose
+    /// direct evals may not see an `arguments` binding.
+    fn class_field_initializer() -> Self {
+        Self {
+            class_field_initializer: true,
+            ..Self::class_method()
+        }
+    }
 }
 
 impl Compiler {
-    fn new() -> Self {
-        Self {
-            module: BytecodeModule {
-                constants: Vec::new(),
-                functions: vec![BytecodeFunction {
-                    name: Some("<script>".to_string()),
-                    parameters: Vec::new(),
-                    code: Vec::new(),
-                    is_arrow: false,
-                }],
-                patterns: Vec::new(),
-            },
-            current_function: 0,
-            loops: Vec::new(),
+    fn list_count(&self, len: usize) -> Result<u32, CompileError> {
+        if (len as u128) > u128::from(self.max_list_items) {
+            return Err(CompileError::ProgramTooLarge);
         }
+        // The constructor caps max_list_items below u32::MAX.
+        Ok(len as u32)
     }
 
-    fn code(&self) -> &Vec<Instruction> {
-        &self.module.functions[self.current_function].code
-    }
-
-    fn code_mut(&mut self) -> &mut Vec<Instruction> {
-        &mut self.module.functions[self.current_function].code
-    }
-
-    fn position(&self) -> usize {
-        self.code().len()
-    }
-
-    fn emit(&mut self, opcode: Opcode, operand: u64) -> usize {
-        let position = self.position();
-        self.code_mut().push(Instruction::new(opcode, operand));
-        position
-    }
-
-    fn emit_jump(&mut self, opcode: Opcode) -> usize {
-        self.emit(opcode, 0)
-    }
-
-    fn patch_jump(&mut self, position: usize, target: usize) {
-        let hint = self.code()[position].tiering_hint();
-        self.code_mut()[position] =
-            Instruction::new(self.code()[position].opcode(), target as u64).with_tiering_hint(hint);
-    }
-
-    fn constant_value(&mut self, value: Value) -> u64 {
-        let index = self.module.constants.len() as u64;
-        self.module.constants.push(Constant::Value(value));
-        index
-    }
-
-    fn constant_string(&mut self, value: impl Into<String>) -> u64 {
-        let index = self.module.constants.len() as u64;
-        self.module.constants.push(Constant::String(value.into()));
-        index
-    }
-
-    fn emit_name(&mut self, opcode: Opcode, name: &str) {
-        let index = self.constant_string(name);
-        self.emit(opcode, index);
-    }
-
-    fn compile_statement(&mut self, statement: &Stmt) -> Result<(), CompileError> {
-        match statement {
-            Stmt::Empty => {
-                self.emit(Opcode::Nop, 0);
-            }
-            Stmt::Expr(expression) => {
-                self.compile_expression(expression)?;
-                self.emit(Opcode::SetCompletion, 0);
-            }
-            Stmt::Block(statements) => {
-                self.emit(Opcode::EnterScope, 0);
-                for statement in statements {
-                    self.compile_statement(statement)?;
-                }
-                self.emit(Opcode::LeaveScope, 0);
-            }
-            Stmt::VarDecl(kind, declarations) => {
-                for declaration in declarations {
-                    self.compile_declarator(*kind, declaration)?;
-                }
-            }
-            Stmt::If {
-                test,
-                consequent,
-                alternate,
-            } => {
-                self.compile_expression(test)?;
-                let false_jump = self.emit_jump(Opcode::JumpIfFalse);
-                self.emit(Opcode::Pop, 0);
-                self.compile_statement(consequent)?;
-                let end_jump = self.emit_jump(Opcode::Jump);
-                self.patch_jump(false_jump, self.position());
-                self.emit(Opcode::Pop, 0);
-                if let Some(alternate) = alternate {
-                    self.compile_statement(alternate)?;
-                }
-                self.patch_jump(end_jump, self.position());
-            }
-            Stmt::For {
-                init,
-                test,
-                update,
-                body,
-            } => self.compile_for(init.as_ref(), test.as_ref(), update.as_ref(), body)?,
-            Stmt::ForIn { left, right, body } => self.compile_for_each(left, right, body, false)?,
-            Stmt::ForOf { left, right, body } => self.compile_for_each(left, right, body, true)?,
-            Stmt::While { test, body } => self.compile_while(test, body)?,
-            Stmt::DoWhile { body, test } => self.compile_do_while(body, test)?,
-            Stmt::Switch {
-                discriminant,
-                cases,
-            } => self.compile_switch(discriminant, cases)?,
-            Stmt::Break => {
-                if self.loops.is_empty() {
-                    return Err(CompileError {
-                        message: "break outside a loop or switch".to_string(),
-                    });
-                }
-                let jump = self.emit_jump(Opcode::Jump);
-                let context = self
-                    .loops
-                    .last_mut()
-                    .expect("loop context was checked above");
-                context.breaks.push(jump);
-            }
-            Stmt::Continue => {
-                let Some(context_index) = self
-                    .loops
-                    .iter()
-                    .rposition(|context| context.allows_continue)
-                else {
-                    return Err(CompileError {
-                        message: "continue outside a loop".to_string(),
-                    });
-                };
-                let jump = self.emit_jump(Opcode::Jump);
-                self.loops[context_index].continues.push(jump);
-            }
-            Stmt::Return(value) => {
-                if let Some(value) = value {
-                    self.compile_expression(value)?;
-                } else {
-                    self.emit(Opcode::LoadUndefined, 0);
-                }
-                self.emit(Opcode::Return, 0);
-            }
-            Stmt::Throw(value) => {
-                self.compile_expression(value)?;
-                self.emit(Opcode::Throw, 0);
-            }
-            Stmt::Try {
-                block,
-                handler,
-                finalizer,
-            } => self.compile_try(block, handler.as_ref(), finalizer.as_deref())?,
-            Stmt::FunctionDecl(function) => {
-                let Some(name) = &function.name else {
-                    return Err(CompileError {
-                        message: "function declarations require a name".to_string(),
-                    });
-                };
-                let function_id = self.compile_function(function, false)?;
-                self.emit(Opcode::MakeFunction, function_id as u64);
-                self.emit_name(Opcode::DeclareVar, name);
-            }
+    fn metadata_index(&self, len: usize) -> Result<u32, CompileError> {
+        if (len as u64) >= self.max_metadata_entries {
+            return Err(CompileError::ProgramTooLarge);
         }
+        // The constructor caps max_metadata_entries at u32::MAX + 1.
+        Ok(len as u32)
+    }
+
+    fn offset(&self) -> u32 {
+        // Only `emit` grows the code, and it checks the u32-sized byte limit
+        // before writing an instruction. Thus every stored offset fits u32.
+        self.bytecode.code.len() as u32
+    }
+
+    fn emit(&mut self, opcode: Opcode, operand: u32) -> Result<usize, CompileError> {
+        let offset = self.offset();
+        if u64::from(offset) + opcode.width() as u64 > u64::from(self.max_bytecode_bytes) {
+            return Err(CompileError::ProgramTooLarge);
+        }
+        self.bytecode.code.push(opcode as u8);
+        if opcode.width() == 5 {
+            self.bytecode.code.extend_from_slice(&operand.to_le_bytes());
+        }
+        Ok(offset as usize)
+    }
+
+    fn patch(&mut self, jump: usize, target: u32) {
+        self.bytecode.code[jump + 1..jump + 5].copy_from_slice(&target.to_le_bytes());
+    }
+
+    fn constant(&mut self, value: Value) -> Result<(), CompileError> {
+        let index = self.metadata_index(self.bytecode.constants.len())?;
+        self.bytecode.constants.push(value);
+        self.emit(Opcode::Constant, index)?;
         Ok(())
     }
 
-    fn compile_declarator(
+    fn enter_scope(
         &mut self,
-        kind: DeclKind,
-        declaration: &VarDeclarator,
+        lexical: Vec<(String, DeclKind)>,
+        vars: &BTreeSet<String>,
+        global: bool,
     ) -> Result<(), CompileError> {
-        if let Some(initializer) = &declaration.init {
-            self.compile_expression(initializer)?;
-        } else {
-            self.emit(Opcode::LoadUndefined, 0);
-        }
-        match &declaration.pattern {
-            Pattern::Identifier(name) => self.emit_name(declaration_opcode(kind), name),
-            pattern => {
-                let index = self.register_pattern(pattern)?;
-                self.emit(declaration_pattern_opcode(kind), index as u64);
-            }
-        };
-        Ok(())
-    }
-
-    fn compile_while(&mut self, test: &Expr, body: &Stmt) -> Result<(), CompileError> {
-        let start = self.position();
-        self.compile_expression(test)?;
-        let exit = self.emit_jump(Opcode::JumpIfFalse);
-        self.emit(Opcode::Pop, 0);
-        self.loops.push(LoopContext::loop_body());
-        self.compile_statement(body)?;
-        let context = self.loops.pop().expect("just pushed a loop context");
-        for jump in context.continues {
-            self.patch_jump(jump, start);
-        }
-        self.emit(Opcode::Jump, start as u64);
-        let end = self.position();
-        self.patch_jump(exit, end);
-        self.emit(Opcode::Pop, 0);
-        for jump in context.breaks {
-            self.patch_jump(jump, self.position());
-        }
-        Ok(())
-    }
-
-    fn compile_do_while(&mut self, body: &Stmt, test: &Expr) -> Result<(), CompileError> {
-        let start = self.position();
-        self.loops.push(LoopContext::loop_body());
-        self.compile_statement(body)?;
-        let test_start = self.position();
-        let context = self.loops.pop().expect("just pushed a loop context");
-        for jump in context.continues {
-            self.patch_jump(jump, test_start);
-        }
-        self.compile_expression(test)?;
-        let exit = self.emit_jump(Opcode::JumpIfFalse);
-        self.emit(Opcode::Pop, 0);
-        self.emit(Opcode::Jump, start as u64);
-        self.patch_jump(exit, self.position());
-        self.emit(Opcode::Pop, 0);
-        let end = self.position();
-        for jump in context.breaks {
-            self.patch_jump(jump, end);
-        }
-        Ok(())
-    }
-
-    fn compile_for(
-        &mut self,
-        init: Option<&ForInit>,
-        test: Option<&Expr>,
-        update: Option<&Expr>,
-        body: &Stmt,
-    ) -> Result<(), CompileError> {
-        self.emit(Opcode::EnterScope, 0);
-        if let Some(init) = init {
-            match init {
-                ForInit::VarDecl(kind, declarations) => {
-                    for declaration in declarations {
-                        self.compile_declarator(*kind, declaration)?;
-                    }
-                }
-                ForInit::Expr(expression) => {
-                    self.compile_expression(expression)?;
-                    self.emit(Opcode::Pop, 0);
-                }
-            }
-        }
-        let test_start = self.position();
-        let exit = if let Some(test) = test {
-            self.compile_expression(test)?;
-            Some(self.emit_jump(Opcode::JumpIfFalse))
-        } else {
-            None
-        };
-        if exit.is_some() {
-            self.emit(Opcode::Pop, 0);
-        }
-        self.loops.push(LoopContext::loop_body());
-        self.compile_statement(body)?;
-        let update_start = self.position();
-        let context = self.loops.pop().expect("just pushed a loop context");
-        for jump in context.continues {
-            self.patch_jump(jump, update_start);
-        }
-        if let Some(update) = update {
-            self.compile_expression(update)?;
-            self.emit(Opcode::Pop, 0);
-        }
-        self.emit(Opcode::Jump, test_start as u64);
-        if let Some(exit) = exit {
-            self.patch_jump(exit, self.position());
-            self.emit(Opcode::Pop, 0);
-        }
-        let end = self.position();
-        for jump in context.breaks {
-            self.patch_jump(jump, end);
-        }
-        self.emit(Opcode::LeaveScope, 0);
-        Ok(())
-    }
-
-    fn compile_for_each(
-        &mut self,
-        left: &ForHead,
-        right: &Expr,
-        body: &Stmt,
-        of: bool,
-    ) -> Result<(), CompileError> {
-        self.emit(Opcode::EnterScope, 0);
-        self.compile_expression(right)?;
-        self.emit(
-            if of {
-                Opcode::IteratorStartOf
-            } else {
-                Opcode::IteratorStartIn
-            },
-            0,
-        );
-        let start = self.position();
-        let exit = self.emit_jump(Opcode::IteratorNext);
-        self.bind_for_head(left)?;
-        self.loops.push(LoopContext::loop_body());
-        self.compile_statement(body)?;
-        let context = self.loops.pop().expect("just pushed a loop context");
-        for jump in context.continues {
-            self.patch_jump(jump, start);
-        }
-        self.emit(Opcode::Jump, start as u64);
-        self.patch_jump(exit, self.position());
-        let end = self.position();
-        for jump in context.breaks {
-            self.patch_jump(jump, end);
-        }
-        self.emit(Opcode::LeaveScope, 0);
-        Ok(())
-    }
-
-    fn bind_for_head(&mut self, head: &ForHead) -> Result<(), CompileError> {
-        match head {
-            ForHead::Decl(kind, Pattern::Identifier(name)) => {
-                self.emit_name(declaration_opcode(*kind), name)
-            }
-            ForHead::Decl(kind, pattern) => {
-                let index = self.register_pattern(pattern)?;
-                self.emit(declaration_pattern_opcode(*kind), index as u64);
-            }
-            ForHead::Pattern(pattern) => {
-                let index = self.register_pattern(pattern)?;
-                self.emit(Opcode::BindPattern, index as u64);
-            }
-        }
-        Ok(())
-    }
-
-    fn compile_switch(
-        &mut self,
-        discriminant: &Expr,
-        cases: &[SwitchCase],
-    ) -> Result<(), CompileError> {
-        self.compile_expression(discriminant)?;
-        let mut case_jumps = Vec::new();
-        let mut default_case = None;
-        for (index, case) in cases.iter().enumerate() {
-            if let Some(test) = &case.test {
-                self.emit(Opcode::Dup, 0);
-                self.compile_expression(test)?;
-                self.emit(Opcode::StrictEqual, 0);
-                let matched = self.emit_jump(Opcode::JumpIfTruePop);
-                case_jumps.push((index, matched));
-            } else {
-                default_case = Some(index);
-            }
-        }
-        let fallback = self.emit_jump(Opcode::Jump);
-        let mut trampolines = Vec::with_capacity(cases.len());
-        for _ in cases {
-            let entry = self.position();
-            self.emit(Opcode::Pop, 0);
-            let body_jump = self.emit_jump(Opcode::Jump);
-            trampolines.push((entry, body_jump));
-        }
-        for (case, jump) in case_jumps {
-            self.patch_jump(jump, trampolines[case].0);
-        }
-        let unmatched = self.position();
-        self.emit(Opcode::Pop, 0);
-        let unmatched_end = self.emit_jump(Opcode::Jump);
-        let fallback_target = default_case.map_or(unmatched, |case| trampolines[case].0);
-        self.patch_jump(fallback, fallback_target);
-        self.loops.push(LoopContext::default());
-        for (index, case) in cases.iter().enumerate() {
-            let body = self.position();
-            self.patch_jump(trampolines[index].1, body);
-            for statement in &case.consequent {
-                self.compile_statement(statement)?;
-            }
-        }
-        let context = self.loops.pop().expect("just pushed switch context");
-        let end = self.position();
-        self.patch_jump(unmatched_end, end);
-        for jump in context.breaks {
-            self.patch_jump(jump, end);
-        }
-        Ok(())
-    }
-
-    fn compile_try(
-        &mut self,
-        block: &[Stmt],
-        handler: Option<&CatchClause>,
-        finalizer: Option<&[Stmt]>,
-    ) -> Result<(), CompileError> {
-        let handler_jump = self.emit_jump(Opcode::TryBegin);
-        for statement in block {
-            self.compile_statement(statement)?;
-        }
-        self.emit(Opcode::TryEnd, 0);
-        if let Some(finalizer) = finalizer {
-            for statement in finalizer {
-                self.compile_statement(statement)?;
-            }
-        }
-        let end_jump = self.emit_jump(Opcode::Jump);
-        let handler_start = self.position();
-        self.patch_jump(handler_jump, handler_start);
-        if let Some(handler) = handler {
-            self.emit(Opcode::EnterScope, 0);
-            if let Some(pattern) = &handler.param {
-                let index = self.register_pattern(pattern)?;
-                self.emit(Opcode::DeclarePatternLet, index as u64);
-            } else {
-                self.emit(Opcode::Pop, 0);
-            }
-            for statement in &handler.body {
-                self.compile_statement(statement)?;
-            }
-            self.emit(Opcode::LeaveScope, 0);
-            if let Some(finalizer) = finalizer {
-                for statement in finalizer {
-                    self.compile_statement(statement)?;
-                }
-            }
-        } else {
-            if let Some(finalizer) = finalizer {
-                for statement in finalizer {
-                    self.compile_statement(statement)?;
-                }
-            }
-            self.emit(Opcode::Throw, 0);
-        }
-        self.patch_jump(end_jump, self.position());
-        Ok(())
-    }
-
-    fn compile_expression(&mut self, expression: &Expr) -> Result<(), CompileError> {
-        match expression {
-            Expr::Number(value) => {
-                let constant = self.constant_value(Value::Number(*value));
-                self.emit(Opcode::LoadConstant, constant);
-            }
-            Expr::String(value) => {
-                let constant = self.constant_value(Value::String(value.clone()));
-                self.emit(Opcode::LoadConstant, constant);
-            }
-            Expr::Bool(true) => {
-                self.emit(Opcode::LoadTrue, 0);
-            }
-            Expr::Bool(false) => {
-                self.emit(Opcode::LoadFalse, 0);
-            }
-            Expr::Null => {
-                self.emit(Opcode::LoadNull, 0);
-            }
-            Expr::This => {
-                self.emit(Opcode::LoadThis, 0);
-            }
-            Expr::Identifier(name) => self.emit_name(Opcode::LoadBinding, name),
-            Expr::Template {
-                quasis,
-                expressions,
-            } => self.compile_template(quasis, expressions)?,
-            Expr::Array(elements) => {
-                self.emit(Opcode::MakeArray, 0);
-                for element in elements {
-                    match element {
-                        None => {
-                            self.emit(Opcode::ArrayHole, 0);
-                        }
-                        Some(ArrayElement::Normal(expression)) => {
-                            self.compile_expression(expression)?;
-                            self.emit(Opcode::ArrayPush, 0);
-                        }
-                        Some(ArrayElement::Spread(expression)) => {
-                            self.compile_expression(expression)?;
-                            self.emit(Opcode::ArraySpread, 0);
-                        }
-                    }
-                }
-            }
-            Expr::Object(properties) => {
-                self.emit(Opcode::MakeObject, 0);
-                for property in properties {
-                    match property {
-                        ObjectProp::KeyValue { key, value, .. } => {
-                            self.compile_property_key(key)?;
-                            self.compile_expression(value)?;
-                            self.emit(Opcode::ObjectSet, 0);
-                        }
-                        ObjectProp::Spread(value) => {
-                            self.compile_expression(value)?;
-                            self.emit(Opcode::ObjectSpread, 0);
-                        }
-                    }
-                }
-            }
-            Expr::Function(function) => {
-                let id = self.compile_function(function, false)?;
-                self.emit(Opcode::MakeFunction, id as u64);
-            }
-            Expr::Arrow { params, body } => {
-                let function = Function {
-                    name: None,
-                    params: params.clone(),
-                    body: arrow_body_to_statements(body),
-                };
-                let id = self.compile_function(&function, true)?;
-                self.emit(Opcode::MakeFunction, id as u64);
-            }
-            Expr::Unary { op, arg } => {
-                self.compile_expression(arg)?;
-                self.emit(unary_opcode(*op), 0);
-            }
-            Expr::Update { op, arg, prefix } => self.compile_update(*op, arg, *prefix)?,
-            Expr::Binary { op, left, right } => {
-                self.compile_expression(left)?;
-                self.compile_expression(right)?;
-                self.emit(binary_opcode(*op), 0);
-            }
-            Expr::Logical { op, left, right } => self.compile_logical(*op, left, right)?,
-            Expr::Assign { op, target, value } => self.compile_assignment(*op, target, value)?,
-            Expr::Conditional {
-                test,
-                consequent,
-                alternate,
-            } => {
-                self.compile_expression(test)?;
-                let false_jump = self.emit_jump(Opcode::JumpIfFalse);
-                self.emit(Opcode::Pop, 0);
-                self.compile_expression(consequent)?;
-                let end_jump = self.emit_jump(Opcode::Jump);
-                self.patch_jump(false_jump, self.position());
-                self.emit(Opcode::Pop, 0);
-                self.compile_expression(alternate)?;
-                self.patch_jump(end_jump, self.position());
-            }
-            Expr::Call { callee, args } => self.compile_call(callee, args, false)?,
-            Expr::New { callee, args } => self.compile_call(callee, args, true)?,
-            Expr::Member {
-                object,
-                property,
-                computed,
-            } => {
-                self.compile_expression(object)?;
-                self.compile_member_key(property, *computed)?;
-                self.emit(Opcode::GetProperty, 0);
-            }
-        }
-        Ok(())
-    }
-
-    fn compile_template(
-        &mut self,
-        quasis: &[String],
-        expressions: &[Expr],
-    ) -> Result<(), CompileError> {
-        let first = quasis.first().cloned().unwrap_or_default();
-        let constant = self.constant_value(Value::String(first));
-        self.emit(Opcode::LoadConstant, constant);
-        for (index, expression) in expressions.iter().enumerate() {
-            self.compile_expression(expression)?;
-            self.emit(Opcode::Add, 0);
-            let suffix = quasis.get(index + 1).cloned().unwrap_or_default();
-            let constant = self.constant_value(Value::String(suffix));
-            self.emit(Opcode::LoadConstant, constant);
-            self.emit(Opcode::Add, 0);
-        }
-        Ok(())
-    }
-
-    fn compile_logical(
-        &mut self,
-        op: LogicalOp,
-        left: &Expr,
-        right: &Expr,
-    ) -> Result<(), CompileError> {
-        self.compile_expression(left)?;
-        self.emit(Opcode::Dup, 0);
-        let keep_left = self.emit_jump(match op {
-            LogicalOp::And => Opcode::JumpIfFalse,
-            LogicalOp::Or => Opcode::JumpIfTrue,
-            LogicalOp::Nullish => Opcode::JumpIfNotNullish,
-        });
-        self.emit(Opcode::Pop, 0);
-        self.compile_expression(right)?;
-        let end = self.emit_jump(Opcode::Jump);
-        self.patch_jump(keep_left, self.position());
-        self.emit(Opcode::Pop, 0);
-        self.patch_jump(end, self.position());
-        Ok(())
-    }
-
-    fn compile_assignment(
-        &mut self,
-        op: AssignOp,
-        target: &Expr,
-        value: &Expr,
-    ) -> Result<(), CompileError> {
-        match target {
-            Expr::Identifier(name) => {
-                if op == AssignOp::Assign {
-                    self.compile_expression(value)?;
-                } else {
-                    self.emit_name(Opcode::LoadBinding, name);
-                    self.compile_expression(value)?;
-                    self.emit(assign_binary_opcode(op), 0);
-                }
-                self.emit(Opcode::Dup, 0);
-                self.emit_name(Opcode::StoreBinding, name);
-            }
-            Expr::Member {
-                object,
-                property,
-                computed,
-            } => {
-                self.compile_expression(object)?;
-                self.compile_member_key(property, *computed)?;
-                if op != AssignOp::Assign {
-                    self.emit(Opcode::Dup2, 0);
-                    self.emit(Opcode::GetProperty, 0);
-                }
-                self.compile_expression(value)?;
-                if op != AssignOp::Assign {
-                    self.emit(assign_binary_opcode(op), 0);
-                }
-                self.emit(Opcode::SetProperty, 0);
-            }
-            _ => {
-                return Err(CompileError {
-                    message: "assignment target must be an identifier or member expression"
-                        .to_string(),
-                });
-            }
-        }
-        Ok(())
-    }
-
-    fn compile_update(
-        &mut self,
-        op: UpdateOp,
-        target: &Expr,
-        prefix: bool,
-    ) -> Result<(), CompileError> {
-        let binary = match op {
-            UpdateOp::Inc => Opcode::Add,
-            UpdateOp::Dec => Opcode::Subtract,
-        };
-        match target {
-            Expr::Identifier(name) => {
-                self.emit_name(Opcode::LoadBinding, name);
-                if !prefix {
-                    self.emit(Opcode::Dup, 0);
-                }
-                let one = self.constant_value(Value::Number(1.0));
-                self.emit(Opcode::LoadConstant, one);
-                self.emit(binary, 0);
-                if prefix {
-                    self.emit(Opcode::Dup, 0);
-                }
-                self.emit_name(Opcode::StoreBinding, name);
-            }
-            Expr::Member {
-                object,
-                property,
-                computed,
-            } => {
-                self.compile_expression(object)?;
-                self.compile_member_key(property, *computed)?;
-                self.emit(Opcode::Dup2, 0);
-                self.emit(Opcode::GetProperty, 0);
-                if !prefix {
-                    self.emit(Opcode::Dup, 0);
-                }
-                let one = self.constant_value(Value::Number(1.0));
-                self.emit(Opcode::LoadConstant, one);
-                self.emit(binary, 0);
-                self.emit(
-                    if prefix {
-                        Opcode::SetProperty
-                    } else {
-                        Opcode::SetPropertyKeepOld
-                    },
-                    0,
-                );
-            }
-            _ => {
-                return Err(CompileError {
-                    message: "update target must be an identifier or member expression".to_string(),
-                });
-            }
-        }
-        Ok(())
-    }
-
-    fn compile_call(
-        &mut self,
-        callee: &Expr,
-        args: &[Argument],
-        construct: bool,
-    ) -> Result<(), CompileError> {
-        let has_spread = args
+        let mut names = HashMap::new();
+        let mut slots = Vec::new();
+        let declarations = vars
             .iter()
-            .any(|argument| matches!(argument, Argument::Spread(_)));
-        if let Expr::Member {
-            object,
-            property,
-            computed,
-        } = callee
-        {
-            self.compile_expression(object)?;
-            self.emit(Opcode::Dup, 0);
-            self.compile_member_key(property, *computed)?;
-            self.emit(Opcode::GetProperty, 0);
-            if has_spread {
-                self.compile_spread_arguments(args)?;
-            } else {
-                self.compile_arguments(args)?;
+            .filter(|_| global)
+            .map(|name| (name.clone(), DeclKind::Var))
+            .chain(lexical);
+        for (name, kind) in declarations {
+            if self.bytecode.strict
+                && matches!(
+                    name.as_str(),
+                    "implements"
+                        | "interface"
+                        | "let"
+                        | "package"
+                        | "private"
+                        | "protected"
+                        | "public"
+                        | "static"
+                        | "yield"
+                )
+            {
+                return Err(CompileError::InvalidSyntax(
+                    "strict mode binding uses a reserved word",
+                ));
             }
-            self.emit(
-                if has_spread && construct {
-                    Opcode::ConstructSpread
-                } else if has_spread {
-                    Opcode::CallWithThisSpread
-                } else if construct {
-                    Opcode::Construct
-                } else {
-                    Opcode::CallWithThis
-                },
-                if has_spread { 0 } else { args.len() as u64 },
-            );
-        } else {
-            self.compile_expression(callee)?;
-            if has_spread {
-                self.compile_spread_arguments(args)?;
-            } else {
-                self.compile_arguments(args)?;
+            if names.contains_key(&name) || (kind != DeclKind::Var && vars.contains(&name)) {
+                return Err(CompileError::DuplicateBinding(name));
             }
-            self.emit(
-                if has_spread && construct {
-                    Opcode::ConstructSpread
-                } else if has_spread {
-                    Opcode::CallSpread
-                } else if construct {
-                    Opcode::Construct
-                } else {
-                    Opcode::Call
-                },
-                if has_spread { 0 } else { args.len() as u64 },
-            );
-        }
-        Ok(())
-    }
-
-    fn compile_arguments(&mut self, args: &[Argument]) -> Result<(), CompileError> {
-        for argument in args {
-            match argument {
-                Argument::Normal(expression) | Argument::Spread(expression) => {
-                    self.compile_expression(expression)?
-                }
-            }
-        }
-        Ok(())
-    }
-
-    /// Materializes only call sites containing a spread into an argument
-    /// array. Non-spread calls retain their compact count operand; the
-    /// separate bytecodes mean a later call-site cache can optimize either
-    /// representation without changing the source-level calling convention.
-    fn compile_spread_arguments(&mut self, args: &[Argument]) -> Result<(), CompileError> {
-        self.emit(Opcode::MakeArray, 0);
-        for argument in args {
-            match argument {
-                Argument::Normal(expression) => {
-                    self.compile_expression(expression)?;
-                    self.emit(Opcode::ArrayPush, 0);
-                }
-                Argument::Spread(expression) => {
-                    self.compile_expression(expression)?;
-                    self.emit(Opcode::ArraySpread, 0);
-                }
-            }
-        }
-        Ok(())
-    }
-
-    fn compile_property_key(&mut self, key: &PropertyKey) -> Result<(), CompileError> {
-        match key {
-            PropertyKey::Identifier(value) | PropertyKey::String(value) => {
-                let constant = self.constant_value(Value::String(value.clone()));
-                self.emit(Opcode::LoadConstant, constant);
-            }
-            PropertyKey::Number(value) => {
-                let constant = self.constant_value(Value::String(value.to_string()));
-                self.emit(Opcode::LoadConstant, constant);
-            }
-            PropertyKey::Computed(expression) => self.compile_expression(expression)?,
-        }
-        Ok(())
-    }
-
-    fn compile_member_key(&mut self, property: &Expr, computed: bool) -> Result<(), CompileError> {
-        if computed {
-            return self.compile_expression(property);
-        }
-        let Expr::Identifier(name) = property else {
-            return Err(CompileError {
-                message: "non-computed member access requires an identifier property".to_string(),
+            let slot = self.metadata_index(self.bytecode.bindings.len())?;
+            self.bytecode.bindings.push(Binding {
+                name: name.clone(),
+                mutable: !matches!(
+                    kind,
+                    DeclKind::Const | DeclKind::Using | DeclKind::AwaitUsing
+                ),
+                strict_immutable: matches!(
+                    kind,
+                    DeclKind::Const | DeclKind::Using | DeclKind::AwaitUsing
+                ),
+                lexical: kind != DeclKind::Var,
+                catch_parameter: false,
+                eval_var: false,
             });
-        };
-        let constant = self.constant_value(Value::String(name.clone()));
-        self.emit(Opcode::LoadConstant, constant);
+            names.insert(name, slot);
+            slots.push(slot);
+        }
+        let scope = self.metadata_index(self.bytecode.scopes.len())?;
+        self.bytecode.scopes.push(slots);
+        self.names.push(names);
+        self.scopes.push(scope);
+        self.emit(Opcode::EnterScope, scope)?;
         Ok(())
     }
 
-    fn compile_function(
-        &mut self,
-        function: &Function,
-        is_arrow: bool,
-    ) -> Result<u32, CompileError> {
-        let id = self.module.functions.len() as u32;
-        self.module.functions.push(BytecodeFunction {
-            name: function.name.clone(),
-            parameters: Vec::new(),
-            code: Vec::new(),
-            is_arrow,
-        });
-        let parameters = function
-            .params
+    fn leave_scope(&mut self) -> Result<(), CompileError> {
+        let scope = self.scopes.pop().expect("compiler scopes are balanced");
+        self.names.pop();
+        self.emit(Opcode::LeaveScope, scope)?;
+        Ok(())
+    }
+
+    fn resolve(&self, name: &str) -> Option<u32> {
+        self.names
             .iter()
-            .map(|parameter| self.lower_parameter(parameter))
-            .collect::<Result<Vec<_>, _>>()?;
-        self.module.functions[id as usize].parameters = parameters;
-        let previous_function = self.current_function;
-        let previous_loops = std::mem::take(&mut self.loops);
-        self.current_function = id as usize;
-        for statement in &function.body {
-            self.compile_statement(statement)?;
+            .rev()
+            .find_map(|scope| scope.get(name).copied())
+    }
+
+    /// Returns an active lexical binding that is inside the innermost `with`
+    /// environment. Such a binding has priority over the object environment,
+    /// e.g. a catch parameter inside `with (object) { try {} catch (e) {} }`.
+    fn resolve_inside_innermost_with(&self, name: &str) -> Option<u32> {
+        let with_scope_depth = *self.with_scope_depths.last()?;
+        self.names
+            .iter()
+            .enumerate()
+            .rev()
+            .find_map(|(scope_depth, scope)| {
+                (scope_depth >= with_scope_depth)
+                    .then(|| scope.get(name).copied())
+                    .flatten()
+            })
+    }
+
+    fn resolve_private_name(&self, name: &str) -> Result<u32, CompileError> {
+        let binding = self
+            .private_scopes
+            .iter()
+            .rev()
+            .find_map(|scope| scope.get(name))
+            .ok_or(CompileError::InvalidSyntax(
+                "private name is not declared in an enclosing class",
+            ))?;
+        // Every private scope is installed together with its owner binding;
+        // child compilers and direct eval copy both into their outer scope.
+        Ok(self
+            .resolve(binding)
+            .expect("private scope has its owner binding"))
+    }
+
+    /// Annex B creates a var binding in the enclosing variable environment
+    /// for eligible sloppy block functions. The block function itself remains
+    /// lexical, so each time its block is evaluated the function value is
+    /// copied into that outer var binding.
+    fn annex_b_outer_var_slot(&self, slot: u32) -> Option<u32> {
+        if self.bytecode.strict || !self.bytecode.bindings[slot as usize].lexical {
+            return None;
         }
-        self.emit(Opcode::LoadUndefined, 0);
-        self.emit(Opcode::Return, 0);
-        self.current_function = previous_function;
-        self.loops = previous_loops;
-        Ok(id)
-    }
-
-    fn compile_expression_function(&mut self, expression: &Expr) -> Result<u32, CompileError> {
-        let function = Function {
-            name: None,
-            params: Vec::new(),
-            body: vec![Stmt::Return(Some(expression.clone()))],
-        };
-        self.compile_function(&function, false)
-    }
-
-    fn lower_parameter(&mut self, parameter: &Param) -> Result<CompiledParameter, CompileError> {
-        Ok(CompiledParameter {
-            pattern: self.build_pattern(&parameter.pattern)?,
-            default_function: parameter
-                .default
-                .as_ref()
-                .map(|expression| self.compile_expression_function(expression))
-                .transpose()?,
-            rest: parameter.rest,
-        })
-    }
-
-    fn register_pattern(&mut self, pattern: &Pattern) -> Result<u32, CompileError> {
-        let pattern = self.build_pattern(pattern)?;
-        let index = self.module.patterns.len() as u32;
-        self.module.patterns.push(pattern);
-        Ok(index)
-    }
-
-    fn build_pattern(&mut self, pattern: &Pattern) -> Result<BindingPattern, CompileError> {
-        match pattern {
-            Pattern::Identifier(name) => Ok(BindingPattern::Identifier(name.clone())),
-            Pattern::Array(elements) => Ok(BindingPattern::Array(
-                elements
+        let name = &self.bytecode.bindings[slot as usize].name;
+        if self.annex_b_parameter_names.contains(name) {
+            return None;
+        }
+        self.names[..self.names.len() - 1]
+            .iter()
+            .rev()
+            .filter_map(|scope| scope.get(name).copied())
+            .find_map(|candidate| {
+                let binding = &self.bytecode.bindings[candidate as usize];
+                if !binding.lexical {
+                    return Some(Some(candidate));
+                }
+                // Annex B.3.5 permits the function's var binding to pass
+                // through a simple catch parameter. A different lexical
+                // binding stops the search, even if an outer var exists.
+                if self
+                    .catch_var_slots
                     .iter()
-                    .map(|element| {
-                        element
-                            .as_ref()
-                            .map(|element| {
-                                Ok(ArrayBindingElement {
-                                    pattern: self.build_pattern(&element.pattern)?,
-                                    default_function: element
-                                        .default
-                                        .as_ref()
-                                        .map(|expression| {
-                                            self.compile_expression_function(expression)
-                                        })
-                                        .transpose()?,
-                                    rest: element.rest,
-                                })
-                            })
-                            .transpose()
-                    })
-                    .collect::<Result<Vec<_>, CompileError>>()?,
-            )),
-            Pattern::Object(properties) => Ok(BindingPattern::Object(
-                properties
-                    .iter()
-                    .map(|property| match property {
-                        ObjectPatternProp::KeyValue {
-                            key,
-                            value,
-                            default,
-                        } => Ok(ObjectBindingProperty::KeyValue {
-                            key: self.lower_binding_key(key)?,
-                            value: self.build_pattern(value)?,
-                            default_function: default
-                                .as_ref()
-                                .map(|expression| self.compile_expression_function(expression))
-                                .transpose()?,
-                        }),
-                        ObjectPatternProp::Rest(pattern) => {
-                            Ok(ObjectBindingProperty::Rest(self.build_pattern(pattern)?))
-                        }
-                    })
-                    .collect::<Result<Vec<_>, CompileError>>()?,
-            )),
+                    .any(|slots| slots.get(name) == Some(&candidate))
+                {
+                    return None;
+                }
+                Some(None)
+            })
+            .flatten()
+    }
+}
+
+fn strict_body(body: &[Stmt]) -> bool {
+    body.iter()
+        .take_while(|stmt| matches!(stmt, Stmt::Expr(Expr::String(_))))
+        .any(|stmt| matches!(stmt, Stmt::Expr(Expr::String(s)) if s == "use strict"))
+}
+
+fn strict_assignment_to_restricted_name(statements: &[Stmt]) -> bool {
+    statements.iter().any(strict_assignment_in_statement)
+}
+
+fn strict_assignment_in_statement(statement: &Stmt) -> bool {
+    match statement {
+        Stmt::Empty
+        | Stmt::Break(_)
+        | Stmt::Continue(_)
+        | Stmt::FunctionDecl(_)
+        | Stmt::ModuleDefaultFunction { .. }
+        | Stmt::ClassDecl(_)
+        | Stmt::ClassPrivateBrand(_)
+        | Stmt::ClassExtraInitializers(_) => false,
+        Stmt::Expr(expr) | Stmt::Throw(expr) => strict_assignment_in_expression(expr),
+        Stmt::Block(statements) => strict_assignment_to_restricted_name(statements),
+        Stmt::VarDecl(_, declarations) => declarations.iter().any(|declaration| {
+            strict_assignment_in_pattern(&declaration.pattern)
+                || declaration
+                    .init
+                    .as_ref()
+                    .is_some_and(strict_assignment_in_expression)
+        }),
+        Stmt::If {
+            test,
+            consequent,
+            alternate,
+        } => {
+            strict_assignment_in_expression(test)
+                || strict_assignment_in_statement(consequent)
+                || alternate
+                    .as_deref()
+                    .is_some_and(strict_assignment_in_statement)
+        }
+        Stmt::For {
+            init,
+            test,
+            update,
+            body,
+        } => {
+            init.as_ref().is_some_and(strict_assignment_in_for_init)
+                || test.as_ref().is_some_and(strict_assignment_in_expression)
+                || update.as_ref().is_some_and(strict_assignment_in_expression)
+                || strict_assignment_in_statement(body)
+        }
+        Stmt::ForIn { left, right, body }
+        | Stmt::ForOf {
+            left, right, body, ..
+        } => {
+            strict_assignment_in_for_head(left)
+                || strict_assignment_in_expression(right)
+                || strict_assignment_in_statement(body)
+        }
+        Stmt::While { test, body } | Stmt::DoWhile { body, test } => {
+            strict_assignment_in_expression(test) || strict_assignment_in_statement(body)
+        }
+        Stmt::Switch {
+            discriminant,
+            cases,
+        } => {
+            strict_assignment_in_expression(discriminant)
+                || cases.iter().any(|case| {
+                    case.test
+                        .as_ref()
+                        .is_some_and(strict_assignment_in_expression)
+                        || strict_assignment_to_restricted_name(&case.consequent)
+                })
+        }
+        Stmt::Labelled { item, .. }
+        | Stmt::ClassField(item)
+        | Stmt::ClassDecoratedField { field: item, .. } => strict_assignment_in_statement(item),
+        Stmt::Return(value) => value.as_ref().is_some_and(strict_assignment_in_expression),
+        Stmt::Try {
+            block,
+            handler,
+            finalizer,
+        } => {
+            strict_assignment_to_restricted_name(block)
+                || handler.as_ref().is_some_and(|handler| {
+                    handler
+                        .param
+                        .as_ref()
+                        .is_some_and(strict_assignment_in_pattern)
+                        || strict_assignment_to_restricted_name(&handler.body)
+                })
+                || finalizer
+                    .as_deref()
+                    .is_some_and(strict_assignment_to_restricted_name)
+        }
+        Stmt::With { object, body } => {
+            strict_assignment_in_expression(object) || strict_assignment_in_statement(body)
         }
     }
+}
 
-    fn lower_binding_key(&mut self, key: &PropertyKey) -> Result<BindingKey, CompileError> {
-        Ok(match key {
-            PropertyKey::Identifier(value) | PropertyKey::String(value) => {
-                BindingKey::Static(value.clone())
+fn strict_assignment_in_for_init(init: &ForInit) -> bool {
+    match init {
+        ForInit::Expr(expression) => strict_assignment_in_expression(expression),
+        ForInit::VarDecl(_, declarations) => declarations.iter().any(|declaration| {
+            strict_assignment_in_pattern(&declaration.pattern)
+                || declaration
+                    .init
+                    .as_ref()
+                    .is_some_and(strict_assignment_in_expression)
+        }),
+    }
+}
+
+fn strict_assignment_in_for_head(head: &ForHead) -> bool {
+    match head {
+        ForHead::Decl(_, pattern) => strict_assignment_in_pattern(pattern),
+        ForHead::AnnexBVarInit(pattern, initializer) => {
+            strict_assignment_in_pattern(pattern) || strict_assignment_in_expression(initializer)
+        }
+        ForHead::Assignment(pattern) => strict_assignment_in_assignment_pattern(pattern),
+        ForHead::Expr(expression) => strict_assignment_in_expression(expression),
+    }
+}
+
+fn strict_assignment_in_pattern(pattern: &Pattern) -> bool {
+    match pattern {
+        // §13.1.1: in strict code a BindingIdentifier cannot be `eval` or
+        // `arguments`, whichever declaration (`var`, `let`, `const`, a
+        // for-head declaration, a catch parameter) introduces it.
+        Pattern::Identifier(name) => restricted_name(name),
+        Pattern::Array(elements) => elements.iter().flatten().any(|element| {
+            strict_assignment_in_pattern(&element.pattern)
+                || element
+                    .default
+                    .as_ref()
+                    .is_some_and(strict_assignment_in_expression)
+        }),
+        Pattern::Object(properties) => properties.iter().any(|property| match property {
+            ObjectPatternProp::KeyValue {
+                key,
+                value,
+                default,
+            } => {
+                strict_assignment_in_property_key(key)
+                    || strict_assignment_in_pattern(value)
+                    || default
+                        .as_ref()
+                        .is_some_and(strict_assignment_in_expression)
             }
-            PropertyKey::Number(value) => BindingKey::Static(value.to_string()),
-            PropertyKey::Computed(expression) => {
-                BindingKey::ComputedFunction(self.compile_expression_function(expression)?)
+            ObjectPatternProp::Rest(pattern) => strict_assignment_in_pattern(pattern),
+        }),
+    }
+}
+
+fn strict_assignment_in_assignment_pattern(pattern: &AssignmentPattern) -> bool {
+    match pattern {
+        AssignmentPattern::Target(target) => strict_assignment_target(target),
+        AssignmentPattern::Array(elements) => elements.iter().flatten().any(|element| {
+            strict_assignment_in_assignment_pattern(&element.pattern)
+                || element
+                    .default
+                    .as_ref()
+                    .is_some_and(strict_assignment_in_expression)
+        }),
+        AssignmentPattern::Object(properties) => properties.iter().any(|property| match property {
+            AssignmentPatternProp::KeyValue {
+                key,
+                value,
+                default,
+            } => {
+                strict_assignment_in_property_key(key)
+                    || strict_assignment_in_assignment_pattern(value)
+                    || default
+                        .as_ref()
+                        .is_some_and(strict_assignment_in_expression)
             }
-        })
+            AssignmentPatternProp::Rest(pattern) => {
+                strict_assignment_in_assignment_pattern(pattern)
+            }
+        }),
     }
 }
 
-fn declaration_opcode(kind: DeclKind) -> Opcode {
-    match kind {
-        DeclKind::Var => Opcode::DeclareVar,
-        DeclKind::Let => Opcode::DeclareLet,
-        DeclKind::Const => Opcode::DeclareConst,
+fn strict_assignment_in_property_key(key: &PropertyKey) -> bool {
+    matches!(key, PropertyKey::Computed(expression) if strict_assignment_in_expression(expression))
+}
+
+fn strict_assignment_target(expression: &Expr) -> bool {
+    match expression {
+        Expr::Identifier(name) => restricted_name(name),
+        Expr::Parenthesized(expression) => strict_assignment_target(expression),
+        expression => strict_assignment_in_expression(expression),
     }
 }
 
-fn declaration_pattern_opcode(kind: DeclKind) -> Opcode {
-    match kind {
-        DeclKind::Var => Opcode::DeclarePatternVar,
-        DeclKind::Let => Opcode::DeclarePatternLet,
-        DeclKind::Const => Opcode::DeclarePatternConst,
+fn restricted_name(name: &str) -> bool {
+    matches!(name, "eval" | "arguments")
+}
+
+fn strict_assignment_in_expression(expression: &Expr) -> bool {
+    match expression {
+        Expr::Number(_)
+        | Expr::BigInt(_)
+        | Expr::String(_)
+        | Expr::Bool(_)
+        | Expr::Null
+        | Expr::This
+        | Expr::Identifier(_)
+        | Expr::RegExp { .. }
+        | Expr::Super
+        | Expr::NewTarget
+        | Expr::ImportMeta
+        | Expr::Function(_)
+        | Expr::Class(_) => false,
+        Expr::Parenthesized(expression) => strict_assignment_in_expression(expression),
+        Expr::Template { expressions, .. } => {
+            expressions.iter().any(strict_assignment_in_expression)
+        }
+        Expr::TaggedTemplate {
+            tag, expressions, ..
+        } => {
+            strict_assignment_in_expression(tag)
+                || expressions.iter().any(strict_assignment_in_expression)
+        }
+        Expr::Array(elements) => elements.iter().flatten().any(|element| match element {
+            ArrayElement::Normal(expression) | ArrayElement::Spread(expression) => {
+                strict_assignment_in_expression(expression)
+            }
+        }),
+        Expr::Object(properties) => properties.iter().any(|property| match property {
+            ObjectProp::KeyValue { key, value, .. } => {
+                strict_assignment_in_property_key(key) || strict_assignment_in_expression(value)
+            }
+            ObjectProp::Spread(expression) => strict_assignment_in_expression(expression),
+            ObjectProp::Method { key, .. } | ObjectProp::Accessor { key, .. } => {
+                strict_assignment_in_property_key(key)
+            }
+        }),
+        Expr::Yield { value, .. } => value
+            .as_deref()
+            .is_some_and(strict_assignment_in_expression),
+        Expr::Await(expression)
+        | Expr::Unary {
+            arg: expression, ..
+        } => strict_assignment_in_expression(expression),
+        Expr::DynamicImport {
+            specifier, options, ..
+        } => {
+            strict_assignment_in_expression(specifier)
+                || options
+                    .as_deref()
+                    .is_some_and(strict_assignment_in_expression)
+        }
+        Expr::Update { arg, .. } => strict_assignment_target(arg),
+        Expr::Arrow { params, body, .. } => {
+            params.iter().any(|param| {
+                strict_assignment_in_pattern(&param.pattern)
+                    || param
+                        .default
+                        .as_ref()
+                        .is_some_and(strict_assignment_in_expression)
+            }) || match body {
+                ArrowBody::Expr(expression) => strict_assignment_in_expression(expression),
+                ArrowBody::Block(statements) => strict_assignment_to_restricted_name(statements),
+            }
+        }
+        Expr::Binary { left, right, .. } | Expr::Logical { left, right, .. } => {
+            strict_assignment_in_expression(left) || strict_assignment_in_expression(right)
+        }
+        Expr::Sequence(expressions) => expressions.iter().any(strict_assignment_in_expression),
+        Expr::Assign { target, value, .. } => {
+            strict_assignment_target(target) || strict_assignment_in_expression(value)
+        }
+        Expr::DestructureAssign { pattern, value } => {
+            strict_assignment_in_assignment_pattern(pattern)
+                || strict_assignment_in_expression(value)
+        }
+        Expr::Conditional {
+            test,
+            consequent,
+            alternate,
+        } => {
+            strict_assignment_in_expression(test)
+                || strict_assignment_in_expression(consequent)
+                || strict_assignment_in_expression(alternate)
+        }
+        Expr::Call { callee, args }
+        | Expr::OptionalCall { callee, args }
+        | Expr::New { callee, args } => {
+            strict_assignment_in_expression(callee)
+                || args.iter().any(|argument| match argument {
+                    Argument::Normal(expression) | Argument::Spread(expression) => {
+                        strict_assignment_in_expression(expression)
+                    }
+                })
+        }
+        Expr::Member {
+            object, property, ..
+        } => strict_assignment_in_expression(object) || strict_assignment_in_expression(property),
+        Expr::PrivateIn { object, .. } => strict_assignment_in_expression(object),
+        Expr::OptionalMember {
+            object, property, ..
+        } => strict_assignment_in_expression(object) || strict_assignment_in_expression(property),
     }
 }
 
-fn unary_opcode(operator: UnaryOp) -> Opcode {
-    match operator {
-        UnaryOp::Neg => Opcode::UnaryNeg,
-        UnaryOp::Plus => Opcode::UnaryPos,
-        UnaryOp::Not => Opcode::UnaryNot,
-        UnaryOp::Typeof => Opcode::Typeof,
+fn validate_function_early_errors(
+    function: &Function,
+    strict: bool,
+    name_is_binding: bool,
+    arrow: bool,
+) -> Result<(), CompileError> {
+    let simple = function.params.iter().all(|param| {
+        !param.rest && param.default.is_none() && matches!(param.pattern, Pattern::Identifier(_))
+    });
+    if strict_body(&function.body) && !simple {
+        return Err(CompileError::InvalidSyntax(
+            "a function with non-simple parameters cannot contain a use strict directive",
+        ));
+    }
+    let names: Vec<_> = function
+        .params
+        .iter()
+        .flat_map(|param| pattern_names(&param.pattern))
+        .collect();
+    // Arrow parameter lists are `UniqueFormalParameters` even in a sloppy
+    // surrounding script. Ordinary sloppy functions retain the Annex B
+    // duplicate-name allowance for a simple list.
+    if strict || !simple || arrow {
+        let mut unique = BTreeSet::new();
+        if names.iter().any(|name| !unique.insert(name)) {
+            return Err(CompileError::InvalidSyntax("duplicate parameter name"));
+        }
+    }
+    if strict
+        && function
+            .name
+            .iter()
+            .filter(|_| name_is_binding)
+            .chain(names.iter())
+            .any(|name| matches!(name.as_str(), "eval" | "arguments" | "yield"))
+    {
+        return Err(CompileError::InvalidSyntax(
+            "strict functions cannot bind eval, arguments, or yield",
+        ));
+    }
+    if function.generator && names.iter().any(|name| name == "yield") {
+        return Err(CompileError::InvalidSyntax(
+            "generator parameters cannot bind yield",
+        ));
+    }
+    if strict && strict_assignment_to_restricted_name(&function.body) {
+        return Err(CompileError::InvalidSyntax(
+            "strict code cannot assign to eval or arguments",
+        ));
+    }
+    Ok(())
+}
+
+fn class_property_name(key: &PropertyKey) -> Option<String> {
+    match key {
+        PropertyKey::Identifier(name) => Some(name.clone()),
+        PropertyKey::String(name) => Some(name.to_utf8().unwrap_or_default()),
+        PropertyKey::Number(number) => Some(number.to_string()),
+        PropertyKey::Computed(_) => None,
     }
 }
 
-fn binary_opcode(operator: BinaryOp) -> Opcode {
-    match operator {
+fn private_class_name(key: &PropertyKey) -> Option<&str> {
+    match key {
+        PropertyKey::Identifier(name) => name.strip_prefix('#'),
+        _ => None,
+    }
+}
+
+/// Decode a compiler-private owner binding while reconstructing the private
+/// environment for direct eval.  The source name follows an unambiguous
+/// static/instance marker; it may otherwise contain arbitrary identifier
+/// characters (including underscores).
+fn private_owner_binding_name(binding: &str) -> Option<(u32, String)> {
+    let suffix = binding.strip_prefix(PRIVATE_OWNER_BINDING_PREFIX)?;
+    let (scope, name) = suffix
+        .split_once("_static_")
+        .or_else(|| suffix.split_once("_instance_"))?;
+    Some((scope.parse().ok()?, name.to_owned()))
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum PrivateDeclarationKind {
+    FieldOrMethod,
+    Accessor {
+        getter: bool,
+    },
+    /// A getter and setter for one name: nothing else may share it.
+    AccessorPair,
+}
+
+/// Collect own private names and establish the class-element duplicate early
+/// errors before any bytecode is emitted.  A getter/setter pair is the only
+/// permitted repeated private name, and both halves must have the same
+/// static-ness.
+fn class_private_declarations(class: &Class) -> Result<Vec<(String, bool)>, CompileError> {
+    let mut declarations = Vec::new();
+    let mut seen: HashMap<String, (bool, PrivateDeclarationKind)> = HashMap::new();
+    for (index, element) in class.elements.iter().enumerate() {
+        // Every private name a single element declares, with its kind. An
+        // auto-accessor declares its hidden storage field, plus a private
+        // getter and setter when its own name is private.
+        let mut declared = Vec::new();
+        match element {
+            ClassElement::Method { key, is_static, .. } => {
+                declared.push((
+                    private_class_name(key).map(str::to_owned),
+                    *is_static,
+                    PrivateDeclarationKind::FieldOrMethod,
+                ));
+            }
+            ClassElement::Accessor {
+                key,
+                getter,
+                is_static,
+                ..
+            } => declared.push((
+                private_class_name(key).map(str::to_owned),
+                *is_static,
+                PrivateDeclarationKind::Accessor { getter: *getter },
+            )),
+            ClassElement::Field {
+                key,
+                is_static,
+                accessor: true,
+                ..
+            } => {
+                declared.push((
+                    Some(auto_accessor_storage_name(index)),
+                    *is_static,
+                    PrivateDeclarationKind::FieldOrMethod,
+                ));
+                for getter in [true, false] {
+                    declared.push((
+                        private_class_name(key).map(str::to_owned),
+                        *is_static,
+                        PrivateDeclarationKind::Accessor { getter },
+                    ));
+                }
+            }
+            ClassElement::Field { key, is_static, .. } => declared.push((
+                private_class_name(key).map(str::to_owned),
+                *is_static,
+                PrivateDeclarationKind::FieldOrMethod,
+            )),
+            ClassElement::StaticBlock(_) => continue,
+        }
+        for (name, is_static, kind) in declared {
+            let Some(name) = name else {
+                continue;
+            };
+            match seen.get(&name).copied() {
+                None => {
+                    seen.insert(name.clone(), (is_static, kind));
+                    declarations.push((name, is_static));
+                }
+                Some((previous_static, PrivateDeclarationKind::Accessor { getter: previous }))
+                    if previous_static == is_static
+                        && matches!(kind, PrivateDeclarationKind::Accessor { getter } if getter != previous) =>
+                {
+                    seen.insert(name, (is_static, PrivateDeclarationKind::AccessorPair));
+                }
+                Some(_) => {
+                    return Err(CompileError::InvalidSyntax(
+                        "duplicate private name in class body",
+                    ));
+                }
+            }
+        }
+    }
+    Ok(declarations)
+}
+
+/// The hidden private name (spelled without `#`) of the field that stores an
+/// auto-accessor's value. U+0000 cannot appear in a source identifier, so it
+/// never collides with a declared name.
+fn auto_accessor_storage_name(index: usize) -> String {
+    format!("\0accessor_{index}")
+}
+
+/// The getter and setter of an auto-accessor: `get() { return this.#s }` and
+/// `set(value) { this.#s = value }` over its hidden storage field.
+fn auto_accessor_functions(index: usize, name: Option<&str>) -> (Function, Function) {
+    let storage = Expr::Member {
+        object: Box::new(Expr::This),
+        property: Box::new(Expr::Identifier(format!(
+            "#{}",
+            auto_accessor_storage_name(index)
+        ))),
+        computed: false,
+    };
+    let getter = Function {
+        name: name.map(|name| format!("get {name}")),
+        params: Vec::new(),
+        body: vec![Stmt::Return(Some(storage.clone()))],
+        ..Function::default()
+    };
+    let setter = Function {
+        name: name.map(|name| format!("set {name}")),
+        params: vec![Param {
+            pattern: Pattern::Identifier("value".into()),
+            default: None,
+            rest: false,
+        }],
+        body: vec![Stmt::Expr(Expr::Assign {
+            op: AssignOp::Assign,
+            target: Box::new(storage),
+            value: Box::new(Expr::Identifier("value".into())),
+        })],
+        ..Function::default()
+    };
+    (getter, setter)
+}
+
+/// The reference inside a parenthesized destructuring target: `(a)` and `(o.p)`
+/// assign like `a` and `o.p`. The parser keeps the parentheses on a target that
+/// has a default because they switch off anonymous-function naming, which
+/// [`Compiler::assignment_pattern_default`] observes on the unstripped pattern.
+fn strip_target_parentheses(target: &Expr) -> &Expr {
+    match target {
+        Expr::Parenthesized(inner) => strip_target_parentheses(inner),
+        target => target,
+    }
+}
+
+fn is_super_member(expr: &Expr) -> bool {
+    matches!(expr, Expr::Member { object, .. } if matches!(&**object, Expr::Super))
+}
+
+fn private_member_name(expr: &Expr) -> Option<&str> {
+    private_member_parts(expr).map(|(_, name)| name)
+}
+
+fn private_member_parts(expr: &Expr) -> Option<(&Expr, &str)> {
+    let Expr::Member {
+        object,
+        property,
+        computed: false,
+        ..
+    } = expr
+    else {
+        return None;
+    };
+    let Expr::Identifier(name) = property.as_ref() else {
+        return None;
+    };
+    name.strip_prefix('#').map(|name| (object.as_ref(), name))
+}
+
+fn undefined_expression() -> Expr {
+    Expr::Unary {
+        op: UnaryOp::Void,
+        arg: Box::new(Expr::Number(0.0)),
+    }
+}
+
+/// IsAnonymousFunctionDefinition: a function, arrow function or class
+/// expression without its own name, possibly parenthesized.
+fn is_anonymous_function_definition(expression: &Expr) -> bool {
+    match expression {
+        Expr::Parenthesized(inner) => is_anonymous_function_definition(inner),
+        Expr::Function(function) => function.name.is_none(),
+        Expr::Class(class) => class.name.is_none(),
+        Expr::Arrow { .. } => true,
+        _ => false,
+    }
+}
+
+/// The name a literal (non-computed) property key gives an anonymous
+/// function, when it is representable as UTF-8 text.
+fn literal_property_key_name(key: &PropertyKey) -> Option<String> {
+    match key {
+        PropertyKey::Identifier(name) => Some(name.clone()),
+        PropertyKey::String(name) => name.to_utf8().ok(),
+        PropertyKey::Number(number) => crate::primitive::string(&Value::Number(*number))
+            .ok()
+            .and_then(|text| text.to_utf8().ok()),
+        PropertyKey::Computed(_) => None,
+    }
+}
+
+/// Lowers one class field to `this[key] = initializer`, the shape
+/// `Compiler::class_field` turns into DefineField (or PrivateFieldAdd).
+/// For a computed key, `computed_binding` names its required hidden binding;
+/// the key was converted once when the class was defined.
+fn class_field_definition(
+    key: &PropertyKey,
+    computed_binding: &str,
+    initializer: Option<&Expr>,
+) -> Stmt {
+    let (property, computed) = match key {
+        PropertyKey::Identifier(name) => (Expr::Identifier(name.clone()), false),
+        PropertyKey::String(name) => (Expr::String(name.clone()), true),
+        PropertyKey::Number(number) => (Expr::Number(*number), true),
+        PropertyKey::Computed(_) => (Expr::Identifier(computed_binding.to_owned()), true),
+    };
+    Stmt::ClassField(Box::new(Stmt::Expr(Expr::Assign {
+        op: AssignOp::Assign,
+        target: Box::new(Expr::Member {
+            object: Box::new(Expr::This),
+            property: Box::new(property),
+            computed,
+        }),
+        value: Box::new(initializer.cloned().unwrap_or_else(undefined_expression)),
+    })))
+}
+
+fn binary_opcode(op: BinaryOp) -> Opcode {
+    match op {
         BinaryOp::Add => Opcode::Add,
         BinaryOp::Sub => Opcode::Subtract,
         BinaryOp::Mul => Opcode::Multiply,
+        BinaryOp::Exponent => Opcode::Exponentiate,
         BinaryOp::Div => Opcode::Divide,
         BinaryOp::Mod => Opcode::Remainder,
-        BinaryOp::Eq => Opcode::Equal,
-        BinaryOp::NotEq => Opcode::NotEqual,
+        BinaryOp::ShiftLeft => Opcode::ShiftLeft,
+        BinaryOp::ShiftRight => Opcode::ShiftRight,
+        BinaryOp::UnsignedShiftRight => Opcode::UnsignedShiftRight,
+        BinaryOp::BitAnd => Opcode::BitAnd,
+        BinaryOp::BitXor => Opcode::BitXor,
+        BinaryOp::BitOr => Opcode::BitOr,
         BinaryOp::StrictEq => Opcode::StrictEqual,
         BinaryOp::StrictNotEq => Opcode::StrictNotEqual,
-        BinaryOp::Lt => Opcode::LessThan,
-        BinaryOp::Gt => Opcode::GreaterThan,
-        BinaryOp::LtEq => Opcode::LessThanOrEqual,
-        BinaryOp::GtEq => Opcode::GreaterThanOrEqual,
+        BinaryOp::Eq => Opcode::Equal,
+        BinaryOp::NotEq => Opcode::NotEqual,
+        BinaryOp::Lt => Opcode::Less,
+        BinaryOp::Gt => Opcode::Greater,
+        BinaryOp::LtEq => Opcode::LessEqual,
+        BinaryOp::GtEq => Opcode::GreaterEqual,
         BinaryOp::Instanceof => Opcode::Instanceof,
         BinaryOp::In => Opcode::In,
     }
 }
 
-fn assign_binary_opcode(operator: AssignOp) -> Opcode {
-    match operator {
-        AssignOp::Assign => unreachable!("plain assignment has no binary operation"),
-        AssignOp::AddAssign => Opcode::Add,
-        AssignOp::SubAssign => Opcode::Subtract,
-        AssignOp::MulAssign => Opcode::Multiply,
-        AssignOp::DivAssign => Opcode::Divide,
-        AssignOp::ModAssign => Opcode::Remainder,
+fn compound_assignment_opcode(op: AssignOp) -> Option<Opcode> {
+    match op {
+        AssignOp::AddAssign => Some(Opcode::Add),
+        AssignOp::SubAssign => Some(Opcode::Subtract),
+        AssignOp::MulAssign => Some(Opcode::Multiply),
+        AssignOp::ExponentAssign => Some(Opcode::Exponentiate),
+        AssignOp::DivAssign => Some(Opcode::Divide),
+        AssignOp::ModAssign => Some(Opcode::Remainder),
+        AssignOp::ShiftLeftAssign => Some(Opcode::ShiftLeft),
+        AssignOp::ShiftRightAssign => Some(Opcode::ShiftRight),
+        AssignOp::UnsignedShiftRightAssign => Some(Opcode::UnsignedShiftRight),
+        AssignOp::BitAndAssign => Some(Opcode::BitAnd),
+        AssignOp::BitXorAssign => Some(Opcode::BitXor),
+        AssignOp::BitOrAssign => Some(Opcode::BitOr),
+        _ => None,
     }
 }
 
-fn arrow_body_to_statements(body: &ArrowBody) -> Vec<Stmt> {
-    match body {
-        ArrowBody::Expr(expression) => vec![Stmt::Return(Some((**expression).clone()))],
-        ArrowBody::Block(statements) => statements.clone(),
+fn logical_assignment_op(op: AssignOp) -> Option<LogicalOp> {
+    match op {
+        AssignOp::LogicalAndAssign => Some(LogicalOp::And),
+        AssignOp::LogicalOrAssign => Some(LogicalOp::Or),
+        AssignOp::NullishAssign => Some(LogicalOp::Nullish),
+        _ => None,
+    }
+}
+
+fn pattern_names(pattern: &Pattern) -> Vec<String> {
+    match pattern {
+        Pattern::Identifier(name) => vec![name.clone()],
+        Pattern::Array(elements) => elements
+            .iter()
+            .flatten()
+            .flat_map(|element| pattern_names(&element.pattern))
+            .collect(),
+        Pattern::Object(properties) => properties
+            .iter()
+            .flat_map(|property| match property {
+                ObjectPatternProp::KeyValue { value, .. } | ObjectPatternProp::Rest(value) => {
+                    pattern_names(value)
+                }
+            })
+            .collect(),
+    }
+}
+
+fn declarations_names(kind: DeclKind, declarations: &[VarDeclarator]) -> Vec<(String, DeclKind)> {
+    let mut names = Vec::new();
+    for declaration in declarations {
+        for name in pattern_names(&declaration.pattern) {
+            names.push((name, kind));
+        }
+    }
+    names
+}
+
+fn lexical_names(statements: &[Stmt]) -> Vec<(String, DeclKind)> {
+    let mut names = Vec::new();
+    for statement in statements {
+        if let Stmt::VarDecl(kind, declarations) = statement {
+            if *kind != DeclKind::Var {
+                names.extend(declarations_names(*kind, declarations));
+            }
+        }
+        if let Stmt::ClassDecl(class) = statement {
+            names.push((
+                class.name.clone().expect("class declaration has a name"),
+                DeclKind::Let,
+            ));
+        }
+    }
+    names
+}
+
+/// Whether `statements` directly (not through a nested block/function)
+/// declares at least one `using`/`await using` binding, the trigger for
+/// wrapping this statement list's evaluation in disposal-at-exit handling.
+/// `statements_with_disposal` uses this to keep the zero-`using` case
+/// (the overwhelming majority of blocks/function bodies) exactly as cheap
+/// as before this feature existed.
+pub(super) fn has_using_declaration(statements: &[Stmt]) -> bool {
+    statements.iter().any(|statement| {
+        matches!(
+            statement,
+            Stmt::VarDecl(DeclKind::Using | DeclKind::AwaitUsing, _)
+        )
+    })
+}
+
+/// Whether `statements` directly declares at least one `await using`
+/// binding, the trigger for `statements_with_disposal` to compile the
+/// `Await`-capable disposal loop (`compile_async_dispose_finally`) instead
+/// of the plain-synchronous, single-native-opcode `DisposeResources` path.
+/// A block with only plain `using` declarations never needs this, even
+/// nested inside an async function.
+pub(super) fn has_await_using_declaration(statements: &[Stmt]) -> bool {
+    statements
+        .iter()
+        .any(|statement| matches!(statement, Stmt::VarDecl(DeclKind::AwaitUsing, _)))
+}
+
+/// The lexical names of a Block. Annex B.3.2.4 lets sloppy code repeat a name
+/// that only ordinary FunctionDeclarations bind (the later declaration
+/// supplies the value); every other repeat stays a duplicate for the caller's
+/// scope to reject.
+fn block_lexical_names(statements: &[Stmt], strict: bool) -> Vec<(String, DeclKind)> {
+    let mut names = lexical_names(statements);
+    let mut repeatable = BTreeSet::new();
+    for statement in statements {
+        if let Stmt::FunctionDecl(function) = statement {
+            let name = function
+                .name
+                .clone()
+                .expect("function declaration has a name");
+            if !strict && is_annex_b_function(function) && !repeatable.insert(name.clone()) {
+                continue;
+            }
+            names.push((name, DeclKind::Let));
+        }
+    }
+    names
+}
+
+/// The lexical names of a CaseBlock. `validate_switch_case_declarations` has
+/// already rejected every duplicate except Annex B.3.2.5's sloppy repeats of
+/// ordinary function declarations, which share one binding.
+fn switch_lexical_names(cases: &[SwitchCase], strict: bool) -> Vec<(String, DeclKind)> {
+    let mut seen = BTreeSet::new();
+    switch_case_lexical_declarations(cases)
+        .into_iter()
+        .filter(|(name, _, _)| strict || seen.insert(name.clone()))
+        .map(|(name, kind, _)| (name, kind))
+        .collect()
+}
+
+fn switch_case_lexical_declarations(cases: &[SwitchCase]) -> Vec<(String, DeclKind, bool)> {
+    let mut lexical = Vec::new();
+    for case in cases {
+        for statement in &case.consequent {
+            match statement {
+                Stmt::VarDecl(kind, declarations) if *kind != DeclKind::Var => {
+                    lexical.extend(
+                        declarations_names(*kind, declarations)
+                            .into_iter()
+                            .map(|(name, kind)| (name, kind, false)),
+                    );
+                }
+                Stmt::ClassDecl(class) => lexical.push((
+                    class.name.clone().expect("class declaration has a name"),
+                    DeclKind::Let,
+                    false,
+                )),
+                Stmt::FunctionDecl(function) => lexical.push((
+                    function.name.clone().expect("declaration has a name"),
+                    DeclKind::Let,
+                    !function.generator && !function.is_async,
+                )),
+                _ => {}
+            }
+        }
+    }
+    lexical
+}
+
+/// CaseBlock has its own static declaration rules. Function declarations are
+/// lexical there, unlike at script/function scope; Annex B preserves the
+/// duplicate ordinary-function exception only for sloppy code.
+fn validate_switch_case_declarations(
+    cases: &[SwitchCase],
+    strict: bool,
+) -> Result<(), CompileError> {
+    let lexical = switch_case_lexical_declarations(cases);
+
+    for (index, (name, _, annex_b_function)) in lexical.iter().enumerate() {
+        for (other, _, other_annex_b_function) in &lexical[..index] {
+            if name == other && (strict || !annex_b_function || !other_annex_b_function) {
+                return Err(CompileError::InvalidSyntax(
+                    "duplicate lexical declaration in switch statement",
+                ));
+            }
+        }
+    }
+
+    let vars = switch_var_names(cases);
+    if lexical.iter().any(|(name, _, _)| vars.contains(name)) {
+        return Err(CompileError::InvalidSyntax(
+            "a switch lexical declaration conflicts with a var declaration",
+        ));
+    }
+    // "It is a Syntax Error if UsingDeclaration is contained directly
+    // within the StatementList of either a CaseClause or DefaultClause":
+    // unlike an ordinary `let`/`const`, a `using`/`await using` directly in
+    // a case's statement list has no block of its own to dispose it at the
+    // end of (the switch's own case-block environment spans every case, not
+    // one case's statements), so it is rejected outright rather than wired
+    // up to dispose at the switch's exit.
+    if cases
+        .iter()
+        .flat_map(|case| &case.consequent)
+        .any(|statement| {
+            matches!(
+                statement,
+                Stmt::VarDecl(DeclKind::Using | DeclKind::AwaitUsing, _)
+            )
+        })
+    {
+        return Err(CompileError::InvalidSyntax(
+            "a using declaration cannot appear directly in a switch case",
+        ));
+    }
+    Ok(())
+}
+
+/// `CatchParameter` has an additional early error against lexical names in
+/// its directly nested block. Function declarations participate even though
+/// their broader binding behavior is handled separately for Annex B.
+fn catch_lexical_names(statements: &[Stmt]) -> Vec<String> {
+    let mut names = Vec::new();
+    for statement in statements {
+        match statement {
+            Stmt::VarDecl(kind, declarations) if *kind != DeclKind::Var => {
+                names.extend(
+                    declarations
+                        .iter()
+                        .flat_map(|declaration| pattern_names(&declaration.pattern)),
+                );
+            }
+            Stmt::FunctionDecl(function) => {
+                names.push(function.name.clone().expect("declaration has a name"))
+            }
+            Stmt::ClassDecl(class) => {
+                names.push(class.name.clone().expect("class declaration has a name"))
+            }
+            _ => {}
+        }
+    }
+    names
+}
+
+fn top_level_var_names(statements: &[Stmt]) -> BTreeSet<String> {
+    let mut names = var_names(statements);
+    names.extend(statements.iter().filter_map(|statement| match statement {
+        Stmt::FunctionDecl(function) => function.name.clone(),
+        _ => None,
+    }));
+    names
+}
+
+fn var_names(statements: &[Stmt]) -> BTreeSet<String> {
+    let mut names = BTreeSet::new();
+    let mut pending: Vec<_> = statements.iter().collect();
+    while let Some(statement) = pending.pop() {
+        match statement {
+            Stmt::VarDecl(DeclKind::Var, declarations) => {
+                for declaration in declarations {
+                    names.extend(pattern_names(&declaration.pattern));
+                }
+            }
+            Stmt::Block(body) => pending.extend(body),
+            Stmt::If {
+                consequent,
+                alternate,
+                ..
+            } => {
+                pending.push(consequent);
+                if let Some(alternate) = alternate {
+                    pending.push(alternate);
+                }
+            }
+            Stmt::While { body, .. } | Stmt::DoWhile { body, .. } | Stmt::With { body, .. } => {
+                pending.push(body)
+            }
+            Stmt::Labelled { item, .. } => pending.push(item),
+            Stmt::For { init, body, .. } => {
+                if let Some(ForInit::VarDecl(DeclKind::Var, declarations)) = init {
+                    for declaration in declarations {
+                        names.extend(pattern_names(&declaration.pattern));
+                    }
+                }
+                pending.push(body);
+            }
+            Stmt::ForIn { left, body, .. } | Stmt::ForOf { left, body, .. } => {
+                if let ForHead::Decl(DeclKind::Var, pattern) | ForHead::AnnexBVarInit(pattern, _) =
+                    left
+                {
+                    names.extend(pattern_names(pattern));
+                }
+                pending.push(body);
+            }
+            Stmt::Switch { cases, .. } => {
+                pending.extend(cases.iter().flat_map(|case| case.consequent.iter()))
+            }
+            Stmt::Try {
+                block,
+                handler,
+                finalizer,
+            } => {
+                pending.extend(block);
+                if let Some(handler) = handler {
+                    pending.extend(&handler.body);
+                }
+                if let Some(finalizer) = finalizer {
+                    pending.extend(finalizer);
+                }
+            }
+            _ => {}
+        }
+    }
+    names
+}
+
+fn switch_var_names(cases: &[SwitchCase]) -> BTreeSet<String> {
+    var_names(
+        &cases
+            .iter()
+            .flat_map(|case| case.consequent.iter().cloned())
+            .collect::<Vec<_>>(),
+    )
+}
+
+fn annex_b_function_names(
+    statements: &[Stmt],
+    root_lexical: &[(String, DeclKind)],
+) -> BTreeSet<String> {
+    let mut names = BTreeSet::new();
+    let blocked = root_lexical.iter().map(|(name, _)| name.clone()).collect();
+    collect_annex_b_function_names(statements, &blocked, &mut names);
+    names
+}
+
+fn is_annex_b_function(function: &Function) -> bool {
+    !function.generator && !function.is_async
+}
+
+fn insert_annex_b_function_name(
+    function: &Function,
+    blocked: &BTreeSet<String>,
+    names: &mut BTreeSet<String>,
+) {
+    if is_annex_b_function(function) {
+        let name = function
+            .name
+            .clone()
+            .expect("function declaration has a name");
+        if !blocked.contains(&name) {
+            names.insert(name);
+        }
+    }
+}
+
+/// Annex B only introduces the outer var when replacing the block-level
+/// function with `var f` would not cause a script early error. Track lexical
+/// ancestors while collecting candidates so a nested `let f`, loop binding or
+/// destructuring catch parameter suppresses that legacy outer binding.
+fn collect_annex_b_function_names(
+    statements: &[Stmt],
+    blocked: &BTreeSet<String>,
+    names: &mut BTreeSet<String>,
+) {
+    for statement in statements {
+        match statement {
+            Stmt::Block(body) => {
+                collect_annex_b_block_function_names(body, blocked, names);
+            }
+            Stmt::Switch { cases, .. } => {
+                for case in cases {
+                    for statement in &case.consequent {
+                        if let Stmt::FunctionDecl(function) = statement {
+                            insert_annex_b_function_name(function, blocked, names);
+                        }
+                    }
+                }
+                let mut nested_blocked = blocked.clone();
+                for case in cases {
+                    extend_block_lexical_names(&mut nested_blocked, &case.consequent);
+                }
+                for case in cases {
+                    collect_annex_b_function_names(&case.consequent, &nested_blocked, names);
+                }
+            }
+            Stmt::If {
+                consequent,
+                alternate,
+                ..
+            } => {
+                if let Stmt::FunctionDecl(function) = &**consequent {
+                    insert_annex_b_function_name(function, blocked, names);
+                } else {
+                    collect_annex_b_function_names(
+                        std::slice::from_ref(&**consequent),
+                        blocked,
+                        names,
+                    );
+                }
+                if let Some(alternate) = alternate {
+                    if let Stmt::FunctionDecl(function) = &**alternate {
+                        insert_annex_b_function_name(function, blocked, names);
+                    } else {
+                        collect_annex_b_function_names(
+                            std::slice::from_ref(&**alternate),
+                            blocked,
+                            names,
+                        );
+                    }
+                }
+            }
+            Stmt::For { init, body, .. } => {
+                let mut nested_blocked = blocked.clone();
+                if let Some(ForInit::VarDecl(kind, declarations)) = init {
+                    if *kind != DeclKind::Var {
+                        nested_blocked.extend(
+                            declarations
+                                .iter()
+                                .flat_map(|declaration| pattern_names(&declaration.pattern)),
+                        );
+                    }
+                }
+                collect_annex_b_function_names(
+                    std::slice::from_ref(&**body),
+                    &nested_blocked,
+                    names,
+                );
+            }
+            Stmt::ForIn { left, body, .. } | Stmt::ForOf { left, body, .. } => {
+                let mut nested_blocked = blocked.clone();
+                if let ForHead::Decl(kind, pattern) = left {
+                    if *kind != DeclKind::Var {
+                        nested_blocked.extend(pattern_names(pattern));
+                    }
+                }
+                collect_annex_b_function_names(
+                    std::slice::from_ref(&**body),
+                    &nested_blocked,
+                    names,
+                );
+            }
+            Stmt::While { body, .. }
+            | Stmt::DoWhile { body, .. }
+            | Stmt::With { body, .. }
+            | Stmt::Labelled { item: body, .. } => {
+                collect_annex_b_function_names(std::slice::from_ref(&**body), blocked, names)
+            }
+            Stmt::Try {
+                block,
+                handler,
+                finalizer,
+            } => {
+                collect_annex_b_block_function_names(block, blocked, names);
+                if let Some(handler) = handler {
+                    let mut nested_blocked = blocked.clone();
+                    // Annex B.3.5 makes a simple catch identifier a special
+                    // case: the synthesized var passes through it. A pattern
+                    // parameter still makes the replacement an early error.
+                    if let Some(parameter) = &handler.param {
+                        if !matches!(parameter, Pattern::Identifier(_)) {
+                            nested_blocked.extend(pattern_names(parameter));
+                        }
+                    }
+                    collect_annex_b_block_function_names(&handler.body, &nested_blocked, names);
+                }
+                if let Some(finalizer) = finalizer {
+                    collect_annex_b_block_function_names(finalizer, blocked, names);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+fn collect_annex_b_block_function_names(
+    statements: &[Stmt],
+    blocked: &BTreeSet<String>,
+    names: &mut BTreeSet<String>,
+) {
+    for statement in statements {
+        if let Stmt::FunctionDecl(function) = statement {
+            insert_annex_b_function_name(function, blocked, names);
+        }
+    }
+    let mut nested_blocked = blocked.clone();
+    extend_block_lexical_names(&mut nested_blocked, statements);
+    collect_annex_b_function_names(statements, &nested_blocked, names);
+}
+
+/// An OptionalChain includes every unparenthesized member access and call
+/// built on top of its first optional suffix.  Parentheses intentionally end
+/// the chain, so `(a?.b).c` still attempts the final ordinary access.
+fn optional_chain_root(expr: &Expr) -> bool {
+    match expr {
+        Expr::OptionalMember { .. } | Expr::OptionalCall { .. } => true,
+        Expr::Member { object, .. } => optional_chain_root(object),
+        Expr::Call { callee, .. } => optional_chain_root(callee),
+        _ => false,
+    }
+}
+
+fn extend_block_lexical_names(blocked: &mut BTreeSet<String>, statements: &[Stmt]) {
+    for statement in statements {
+        match statement {
+            Stmt::VarDecl(kind, declarations) if *kind != DeclKind::Var => blocked.extend(
+                declarations
+                    .iter()
+                    .flat_map(|declaration| pattern_names(&declaration.pattern)),
+            ),
+            Stmt::ClassDecl(class) => {
+                blocked.insert(class.name.clone().expect("class declaration has a name"));
+            }
+            Stmt::FunctionDecl(function) => {
+                blocked.insert(
+                    function
+                        .name
+                        .clone()
+                        .expect("function declaration has a name"),
+                );
+            }
+            _ => {}
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parse;
 
-    fn compile_source(source: &str) -> BytecodeModule {
-        compile(&parse(source).unwrap()).unwrap()
+    #[test]
+    fn computed_class_keys_do_not_have_constructor_names() {
+        assert_eq!(
+            class_property_name(&PropertyKey::Computed(Box::new(Expr::Identifier(
+                "key".into()
+            )))),
+            None
+        );
     }
 
     #[test]
-    fn lowers_expression_statements_to_bytecode_not_an_ast_walker_marker() {
-        let module = compile_source("let x = 1; x += 2; x;");
-        let opcodes = module
-            .entry()
-            .code
-            .iter()
-            .map(|instruction| instruction.opcode())
-            .collect::<Vec<_>>();
-
-        assert!(opcodes.contains(&Opcode::DeclareLet));
-        assert!(opcodes.contains(&Opcode::StoreBinding));
-        assert!(opcodes.contains(&Opcode::SetCompletion));
-        assert_eq!(opcodes.last(), Some(&Opcode::Halt));
-    }
-
-    #[test]
-    fn lowers_control_flow_functions_destructuring_and_try_to_fixed_width_instructions() {
-        let module = compile_source(
-            "function twice({ value = 2 }) { try { return value * 2; } catch (error) { return 0; } finally { console.log('done'); } } for (let value of [1, 2]) { if (value) { twice({ value }); } }",
+    fn private_owner_binding_names_decode_both_kinds_and_reject_bad_input() {
+        assert_eq!(
+            private_owner_binding_name("\0bluejs_private_owner_12_static_name"),
+            Some((12, "name".to_owned()))
         );
-        let all_opcodes = module
-            .functions
-            .iter()
-            .flat_map(|function| function.code.iter())
-            .map(|instruction| instruction.opcode())
-            .collect::<Vec<_>>();
-
-        assert!(all_opcodes.contains(&Opcode::MakeFunction));
-        assert!(all_opcodes.contains(&Opcode::TryBegin));
-        assert!(all_opcodes.contains(&Opcode::IteratorStartOf));
-        assert!(all_opcodes.contains(&Opcode::DeclarePatternLet));
-        assert!(
-            !module.patterns.is_empty(),
-            "destructuring metadata is attached to declaration bytecode"
+        assert_eq!(
+            private_owner_binding_name("\0bluejs_private_owner_13_instance_name_with_underscores"),
+            Some((13, "name_with_underscores".to_owned()))
         );
-        assert!(module.functions.iter().all(|function| {
-            function
-                .code
-                .iter()
-                .all(|instruction| std::mem::size_of_val(instruction) == 8)
-        }));
-    }
-
-    #[test]
-    fn computed_destructuring_keys_compile_to_helper_functions() {
-        let module = compile_source("const { [key]: value = 1, ...rest } = source;");
-
-        assert!(
-            module.functions.len() >= 3,
-            "computed key and default are compiled helpers"
-        );
-        assert!(
-            !module.patterns.is_empty(),
-            "the declaration bytecode references the lowered pattern metadata"
-        );
+        for name in [
+            "ordinary",
+            "\0bluejs_private_owner_12_other_name",
+            "\0bluejs_private_owner_invalid_static_name",
+        ] {
+            assert_eq!(private_owner_binding_name(name), None, "{name:?}");
+        }
     }
 }

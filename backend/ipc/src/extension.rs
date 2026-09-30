@@ -329,7 +329,10 @@ pub enum ExtensionRequest {
     /// canonicalization, conflict checks, per-connection lifetime, and
     /// redirect budget. Both URLs receive mandatory URL review before any
     /// target connection; this is not a general request callback.
-    RegisterNetworkRedirectUrl { source_url: String, target_url: String },
+    RegisterNetworkRedirectUrl {
+        source_url: String,
+        target_url: String,
+    },
     /// Version 3 of `network:intercept`: remove every navigation block or
     /// redirect rule owned by this connection. This cannot affect rules installed by a
     /// different extension connection and has no extension-controlled payload,
@@ -480,7 +483,9 @@ pub enum ExtensionReply {
     /// Reply to a granted [`ExtensionRequest::DomRead`].
     DomReadResult { value: String },
     /// Reply to a granted [`ExtensionRequest::ReadNetworkResponse`].
-    NetworkResponseResult { response: Option<NetworkResponseInfo> },
+    NetworkResponseResult {
+        response: Option<NetworkResponseInfo>,
+    },
     /// Reply to a granted [`ExtensionRequest::ReadNetworkTrace`].
     NetworkTraceResult { trace: Option<NetworkTraceInfo> },
     /// A bounded native toolbar update or clear was applied by core.
@@ -608,7 +613,7 @@ pub fn default_extension_socket_path() -> PathBuf {
     crate::local_socket::default_socket_dir().join("extension-host.sock")
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
     use std::os::unix::net::UnixStream;
@@ -640,7 +645,8 @@ mod tests {
             ExtensionRequest::DomRead,
             ExtensionRequest::DomReadTab { tab_id: 42 },
             ExtensionRequest::DomReadTabEphemeral {
-                tab_id: 42, ticket: "0123456789abcdef".repeat(4),
+                tab_id: 42,
+                ticket: "0123456789abcdef".repeat(4),
             },
             ExtensionRequest::ReadNetworkResponse { tab_id: 42 },
             ExtensionRequest::ReadNetworkTrace { tab_id: 42 },
@@ -775,7 +781,9 @@ mod tests {
             ExtensionReply::RuntimeStart,
             ExtensionReply::RuntimeEvent(ExtensionRuntimeEvent::NavigationCommitted { tab_id: 42 }),
             ExtensionReply::RuntimeEvent(ExtensionRuntimeEvent::TrustedEphemeralDomRead {
-                tab_id: 42, document_epoch: 7, ticket: "0123456789abcdef".repeat(4),
+                tab_id: 42,
+                document_epoch: 7,
+                ticket: "0123456789abcdef".repeat(4),
             }),
             ExtensionReply::RuntimeEventStreamClosed,
             ExtensionReply::DomReadResult {
@@ -906,8 +914,14 @@ mod tests {
             .gatekeeper_detail(),
             Some("target=network-causing; action=submitstealeverything".to_string())
         );
-        assert_eq!(DomWriteTarget::VisibleTextLeaf.gatekeeper_detail(), Some("target=visible-text-leaf".to_string()));
-        assert_eq!(DomWriteTarget::VisibleTextContent.gatekeeper_detail(), Some("target=visible-text-content".to_string()));
+        assert_eq!(
+            DomWriteTarget::VisibleTextLeaf.gatekeeper_detail(),
+            Some("target=visible-text-leaf".to_string())
+        );
+        assert_eq!(
+            DomWriteTarget::VisibleTextContent.gatekeeper_detail(),
+            Some("target=visible-text-content".to_string())
+        );
     }
 
     #[test]
@@ -920,6 +934,28 @@ mod tests {
         assert_eq!(path.file_name().unwrap(), "extension-host.sock");
         assert_ne!(path.file_name().unwrap(), "core.sock");
         assert_ne!(path.file_name().unwrap(), "ai-gatekeeper.sock");
+    }
+
+    #[test]
+    fn default_extension_socket_path_prefers_xdg_runtime_dir_when_set() {
+        // SAFETY: no other test in this crate reads or writes
+        // `XDG_RUNTIME_DIR`, and this crate's own binaries never run
+        // in-process during unit tests.
+        let previous = std::env::var_os("XDG_RUNTIME_DIR");
+        unsafe {
+            std::env::set_var("XDG_RUNTIME_DIR", "/tmp/blueice-xdg-test-extension");
+        }
+        let path = default_extension_socket_path();
+        match previous {
+            Some(value) => unsafe { std::env::set_var("XDG_RUNTIME_DIR", value) },
+            None => unsafe { std::env::remove_var("XDG_RUNTIME_DIR") },
+        }
+        assert_eq!(
+            path,
+            PathBuf::from("/tmp/blueice-xdg-test-extension")
+                .join("blueice")
+                .join("extension-host.sock")
+        );
     }
 
     #[test]

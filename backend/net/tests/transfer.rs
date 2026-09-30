@@ -11,11 +11,11 @@ mod common;
 
 use blueice_ipc::downloads::{SegmentState, SingleStreamReason, TransferMode, TransferState};
 use blueice_net::download::clearance::{DownloadClearance, Reviewer};
-use blueice_net::download::probe::{Probe, probe};
-use blueice_net::download::sidecar::{Sidecar, part_path, sidecar_path};
+use blueice_net::download::probe::{probe, Probe};
+use blueice_net::download::sidecar::{part_path, sidecar_path, Sidecar};
 use blueice_net::download::transfer::{DownloadSpec, Snapshot, Transfer};
 use blueice_net::download::{DownloadError, DownloadOptions};
-use common::{FakeGatekeeper, Resource, TempDir, TestServer, body};
+use common::{body, FakeGatekeeper, Resource, TempDir, TestServer};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -152,11 +152,10 @@ fn a_file_is_downloaded_in_parallel_segments_and_arrives_byte_for_byte() {
     assert_eq!(done.total_bytes, Some(MIB as u64));
     assert_eq!(done.completed_bytes, MIB as u64);
     assert_eq!(done.mode, TransferMode::Segmented);
-    assert!(
-        done.segments
-            .iter()
-            .all(|s| s.state == SegmentState::Done && s.completed == s.end - s.start)
-    );
+    assert!(done
+        .segments
+        .iter()
+        .all(|s| s.state == SegmentState::Done && s.completed == s.end - s.start));
     assert!(
         rig.server.peak_concurrency() >= 2,
         "the segments must have been fetched concurrently, peak was {}",
@@ -186,11 +185,9 @@ fn segments_cover_the_file_with_ranged_requests_that_carry_the_validator() {
             .all(|r| r.if_range.as_deref() == Some("\"v1\"")),
         "{segment_requests:?}"
     );
-    assert!(
-        segment_requests
-            .iter()
-            .all(|r| r.accept_encoding.as_deref() == Some("identity"))
-    );
+    assert!(segment_requests
+        .iter()
+        .all(|r| r.accept_encoding.as_deref() == Some("identity")));
     // Together the segment requests cover the whole file with no gap. They
     // may *overlap*: when an idle connection splits a running segment, the
     // original request still names its old end and its worker simply stops
@@ -1559,12 +1556,10 @@ fn a_dangling_destination_symlink_is_never_followed_even_for_an_empty_file() {
         !outside.exists(),
         "opening a dangling destination link must not create its target"
     );
-    assert!(
-        std::fs::symlink_metadata(&dest)
-            .unwrap()
-            .file_type()
-            .is_symlink()
-    );
+    assert!(std::fs::symlink_metadata(&dest)
+        .unwrap()
+        .file_type()
+        .is_symlink());
 }
 
 #[test]

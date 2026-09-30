@@ -1,0 +1,16 @@
+{
+  "cldr_json_revision": "26a79cb42bfcc90def764102aa2af126d9ef3108",
+  "cldr_release": "48.2.1",
+  "generator": "../../tools/generate_cldr_date_time_formats.mjs",
+  "locale_count": 766,
+  "row_count": 38792,
+  "uncompressed_bytes": 833700,
+  "gzip_bytes": 143547,
+  "sha256": "eb2ac091d605a68776c031b10e4be0edad7dcab2a7544c1a6a52774941687746",
+  "append_items": {
+    "row_count": 8426,
+    "uncompressed_bytes": 367768,
+    "gzip_bytes": 53535,
+    "sha256": "ae9095175a99f6bae736aa12c3eb81e94d27e35d5e0e2655159cb6dc0fd7f924"
+  }
+}

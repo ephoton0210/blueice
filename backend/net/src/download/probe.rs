@@ -8,7 +8,7 @@
 
 use crate::download::backend;
 use crate::download::clearance::UrlCleared;
-use crate::download::{DownloadError, DownloadOptions, ensure_transfer_text_limit, http};
+use crate::download::{ensure_transfer_text_limit, http, DownloadError, DownloadOptions};
 use blueice_ipc::downloads::SingleStreamReason;
 use std::time::Duration;
 use ureq::Agent;
@@ -384,27 +384,21 @@ mod tests {
     #[test]
     fn segmenting_needs_working_ranges_and_a_known_non_zero_length() {
         assert!(probe().can_segment());
-        assert!(
-            !Probe {
-                accepts_ranges: false,
-                ..probe()
-            }
-            .can_segment()
-        );
-        assert!(
-            !Probe {
-                total: None,
-                ..probe()
-            }
-            .can_segment()
-        );
-        assert!(
-            !Probe {
-                total: Some(0),
-                ..probe()
-            }
-            .can_segment()
-        );
+        assert!(!Probe {
+            accepts_ranges: false,
+            ..probe()
+        }
+        .can_segment());
+        assert!(!Probe {
+            total: None,
+            ..probe()
+        }
+        .can_segment());
+        assert!(!Probe {
+            total: Some(0),
+            ..probe()
+        }
+        .can_segment());
     }
 
     #[test]
@@ -448,41 +442,33 @@ mod tests {
 
     #[test]
     fn an_empty_resource_is_recognized() {
-        assert!(
-            Probe {
-                total: Some(0),
-                ..probe()
-            }
-            .is_empty()
-        );
+        assert!(Probe {
+            total: Some(0),
+            ..probe()
+        }
+        .is_empty());
         assert!(!probe().is_empty());
-        assert!(
-            !Probe {
-                total: None,
-                ..probe()
-            }
-            .is_empty()
-        );
+        assert!(!Probe {
+            total: None,
+            ..probe()
+        }
+        .is_empty());
     }
 
     #[test]
     fn resume_is_safe_only_when_segmentable_and_validatable() {
         assert!(probe().resume_safe());
-        assert!(
-            !Probe {
-                accepts_ranges: false,
-                ..probe()
-            }
-            .resume_safe()
-        );
-        assert!(
-            !Probe {
-                etag: None,
-                last_modified: None,
-                ..probe()
-            }
-            .resume_safe()
-        );
+        assert!(!Probe {
+            accepts_ranges: false,
+            ..probe()
+        }
+        .resume_safe());
+        assert!(!Probe {
+            etag: None,
+            last_modified: None,
+            ..probe()
+        }
+        .resume_safe());
     }
 
     #[test]

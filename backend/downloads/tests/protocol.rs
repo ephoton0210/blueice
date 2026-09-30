@@ -16,18 +16,18 @@ mod common;
 use blueice_downloads::manager::{ManagerConfig, SubscriptionUpdate, TransferManager};
 use blueice_downloads::server::serve;
 use blueice_ipc::downloads::{
-    ClientError, DOWNLOADS_PROTOCOL_VERSION, DownloadsClient, DownloadsReply, DownloadsRequest,
-    ErrorCode, TransferInfo, TransferState, read_downloads_reply, write_downloads_reply,
-    write_downloads_request,
+    read_downloads_reply, write_downloads_reply, write_downloads_request, ClientError,
+    DownloadsClient, DownloadsReply, DownloadsRequest, ErrorCode, TransferInfo, TransferState,
+    DOWNLOADS_PROTOCOL_VERSION,
 };
 use blueice_net::download::sidecar::{part_path, sidecar_path};
 use blueice_net::download::{DownloadOptions, MAX_TRANSFER_TEXT_BYTES};
-use common::{FakeGatekeeper, GateReply, Resource, TempDir, TestServer, body};
+use common::{body, FakeGatekeeper, GateReply, Resource, TempDir, TestServer};
 use std::os::fd::AsRawFd;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 

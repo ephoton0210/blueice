@@ -42,6 +42,14 @@ fn dom_shape_fixtures() {
         }
     }
 
-    assert!(checked > 0, "at least one fixture must have a #document section");
-    assert!(failures.is_empty(), "{} fixture(s) mismatched:\n\n{}", failures.len(), failures.join("\n"));
+    assert!(
+        checked > 0,
+        "at least one fixture must have a #document section"
+    );
+    assert!(
+        failures.is_empty(),
+        "{} fixture(s) mismatched:\n\n{}",
+        failures.len(),
+        failures.join("\n")
+    );
 }

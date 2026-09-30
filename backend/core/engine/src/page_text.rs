@@ -27,7 +27,14 @@ pub fn visible_text(
 ) -> String {
     let mut out = String::new();
     let mut pending_break = false;
-    walk(doc, styles, doc.root(), max_bytes, &mut out, &mut pending_break);
+    walk(
+        doc,
+        styles,
+        doc.root(),
+        max_bytes,
+        &mut out,
+        &mut pending_break,
+    );
     truncate_at_boundary(&mut out, max_bytes);
     out
 }

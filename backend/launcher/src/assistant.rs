@@ -397,7 +397,10 @@ impl AssistantSupervisor {
     /// supervisor was started with.
     pub fn reconfigure_settings(&self, settings: &AssistantSettings) -> io::Result<()> {
         settings.validate().map_err(io::Error::other)?;
-        crate::trace::event("assistant.reconfigure", &format!("backend {:?}", settings.backend));
+        crate::trace::event(
+            "assistant.reconfigure",
+            &format!("backend {:?}", settings.backend),
+        );
         let bin = self.assistant_bin.clone().ok_or_else(|| {
             io::Error::other("this supervisor has no assistant binary to reconfigure")
         })?;

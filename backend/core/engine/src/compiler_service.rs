@@ -1,0 +1,1188 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+//! Core-owned, registered-project BlueTS compilation.
+//!
+//! This service deliberately receives a complete, caller-authorized module
+//! graph at registration time. Subsequent check, build, and static-metadata
+//! requests carry only opaque project and generation handles; they cannot add
+//! paths, resolver rules, plugins, or compiler options. `build` returns
+//! bounded in-memory artifacts and performs no filesystem write. A future
+//! output transaction and MCP adapter must remain separate, capability-checked
+//! layers above this service.
+
+use blueice_bluets::{
+    source_locations_for_spans, AuthorizedModuleLoader, BlueTsDebugInfo, BuildOutput,
+    CompilerOptions, ContractId, ContractValue, DebugContract, DebugSource, DebugSourceLocation,
+    DebugSymbol, DebugType, Diagnostic, IncrementalCompiler, ModuleLoader, SourceId, SymbolId,
+    TypeId, ValidationError, ValidationLimits,
+};
+use std::collections::{BTreeMap, BTreeSet};
+use std::fmt;
+
+/// Limits for core-owned compiler-service state and responses.
+///
+/// Source parsing, checking, and emission remain bounded by the pinned
+/// [`CompilerOptions`] for each registered project. These limits bound service
+/// retention and what a debugger/MCP adapter can receive in one response.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CompilerServiceLimits {
+    pub max_projects: usize,
+    /// Maximum diagnostics retained for one latest check generation. The
+    /// immediate check reply remains separately capped; later diagnostic
+    /// pagination can inspect this larger, fixed core-owned retention set.
+    pub max_retained_diagnostics: usize,
+    /// Combined UTF-8 bytes and fixed record overhead retained for one
+    /// generation's diagnostic prefix, independent of the entry count.
+    pub max_retained_diagnostic_bytes: usize,
+    pub max_diagnostics: usize,
+    pub max_static_sources: usize,
+    pub max_static_types: usize,
+    pub max_static_symbols: usize,
+    pub max_static_contracts: usize,
+    /// The maximum number of one-shot static-metadata page cursors retained
+    /// across every registered project. A later check for a project releases
+    /// that project's cursors, so remote inventory cannot grow unbounded.
+    pub max_static_metadata_cursors: usize,
+    /// Maximum one-shot diagnostic cursors retained across every registered
+    /// project. This is distinct from static metadata cursors so one family
+    /// cannot consume the other's fixed remote-pagination budget.
+    pub max_diagnostic_cursors: usize,
+    /// Maximum retained work-set cursors across all projects and streams.
+    pub max_work_set_cursors: usize,
+    /// Maximum module identities retained per work-set for one generation.
+    pub max_retained_work_set_entries: usize,
+    /// Maximum combined UTF-8 identity bytes retained across its four sets.
+    pub max_retained_work_set_bytes: usize,
+    /// Fixed core-selected limits for validation requests. Query callers never
+    /// provide or relax these bounds.
+    pub contract_validation: ValidationLimits,
+    pub max_build_artifacts: usize,
+    pub max_build_artifact_bytes: usize,
+}
+
+impl Default for CompilerServiceLimits {
+    fn default() -> Self {
+        Self {
+            max_projects: 128,
+            max_retained_diagnostics: 4_096,
+            max_retained_diagnostic_bytes: 8 * 1_024 * 1_024,
+            max_diagnostics: 256,
+            max_static_sources: 4_096,
+            max_static_types: 16_384,
+            max_static_symbols: 65_536,
+            max_static_contracts: 16_384,
+            max_static_metadata_cursors: 1_024,
+            max_diagnostic_cursors: 1_024,
+            max_work_set_cursors: 1_024,
+            max_retained_work_set_entries: 4_096,
+            max_retained_work_set_bytes: 8 * 1_024 * 1_024,
+            contract_validation: ValidationLimits {
+                max_depth: 64,
+                max_collection_entries: 4_096,
+                max_nodes: 32_768,
+                max_string_bytes: 256 * 1_024,
+            },
+            max_build_artifacts: 4_096,
+            max_build_artifact_bytes: 16 * 1_024 * 1_024,
+        }
+    }
+}
+
+/// A core-minted identity for one registered, immutable compilation project.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct RegisteredProjectId(u64);
+
+impl RegisteredProjectId {
+    pub fn as_u64(self) -> u64 {
+        self.0
+    }
+
+    /// Reconstitutes an opaque, core-minted identifier inside this crate for
+    /// an IPC adapter. This is deliberately crate-private: external callers
+    /// receive the ID only as an untrusted wire value and cannot use it to
+    /// register or alter a project.
+    pub(crate) fn from_wire(value: u64) -> Option<Self> {
+        (value != 0).then_some(Self(value))
+    }
+}
+
+/// A core-minted generation for one check or build result.
+///
+/// Metadata queries require this exact token, preventing a client from using
+/// stale symbols or types after a later request observed the project.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct RegisteredProjectGeneration {
+    project_id: RegisteredProjectId,
+    sequence: u64,
+}
+
+impl RegisteredProjectGeneration {
+    pub fn project_id(self) -> RegisteredProjectId {
+        self.project_id
+    }
+
+    pub fn sequence(self) -> u64 {
+        self.sequence
+    }
+
+    /// Reconstitutes a generation only for an engine-internal adapter after
+    /// both opaque wire components have passed their well-formedness checks.
+    pub(crate) fn from_wire(project_id: RegisteredProjectId, sequence: u64) -> Option<Self> {
+        (sequence != 0).then_some(Self {
+            project_id,
+            sequence,
+        })
+    }
+}
+
+/// Core-owned, immutable inputs for a compilation project.
+///
+/// The three root fields are canonical identities selected by the core, not
+/// paths that this service resolves or writes. Their role is to bind an
+/// eventual output transaction and remote capability grant to this exact
+/// registration.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RegisteredProjectRegistration {
+    pub canonical_project_root: String,
+    pub canonical_config_root: String,
+    pub canonical_output_root: String,
+    pub entry_module: String,
+    pub loader: AuthorizedModuleLoader,
+    pub compiler_options: CompilerOptions,
+}
+
+/// The non-source identity a caller may inspect after registration.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RegisteredProjectIdentity {
+    pub id: RegisteredProjectId,
+    pub canonical_project_root: String,
+    pub canonical_config_root: String,
+    pub canonical_output_root: String,
+    pub entry_module: String,
+}
+
+/// A bounded diagnostic page. Truncation is explicit so no adapter mistakes a
+/// partial report for a clean check.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CompilerServiceDiagnostics {
+    pub entries: Vec<Diagnostic>,
+    pub truncated: bool,
+}
+
+/// A check result with only static, source-text-free metadata.
+#[derive(Debug, Clone)]
+pub struct CompilerServiceCheck {
+    pub generation: RegisteredProjectGeneration,
+    pub cache_hit: bool,
+    pub parsed_modules: BTreeSet<String>,
+    pub reused_parsed_modules: BTreeSet<String>,
+    pub rechecked_modules: BTreeSet<String>,
+    pub reused_checked_modules: BTreeSet<String>,
+    pub diagnostics: CompilerServiceDiagnostics,
+    /// Core-internal full diagnostic retention for the exact generation.
+    /// This is intentionally not a wire field: the IPC adapter must expose it
+    /// only through bounded one-shot pages after it has applied its own field
+    /// and response policy.
+    pub(crate) retained_diagnostics: Vec<Diagnostic>,
+    /// Same-order original-source positions, derived only from the immutable
+    /// authorized graph. Invalid or unavailable source ranges remain absent.
+    pub(crate) retained_diagnostic_locations: Vec<Option<DebugSourceLocation>>,
+    pub has_errors: bool,
+    /// Observed source graph and fixed options for this exact generation,
+    /// present even when errors prevent artifact emission.
+    pub project_fingerprint: String,
+    /// The compiler's graph/options fingerprint when artifact creation was
+    /// successful. It is absent on a no-emit-on-error result.
+    pub artifact_fingerprint: Option<String>,
+    /// VM-independent types, symbols, source hashes, and compiler-options
+    /// identity for this generation. It contains no source text or values.
+    pub static_debug_info: Option<BlueTsDebugInfo>,
+}
+
+/// A build result. Its artifacts are in memory only; a higher layer must
+/// obtain an explicit output-write capability before committing them anywhere.
+#[derive(Debug, Clone)]
+pub struct CompilerServiceBuild {
+    pub check: CompilerServiceCheck,
+    pub output: Option<BuildOutput>,
+}
+
+/// A compiler-owned static metadata collection. It contains compiler-minted
+/// IDs only; callers must use an exact-generation record query to inspect an
+/// ID. It is intentionally independent from the IPC vocabulary.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StaticMetadataInventoryKind {
+    Sources,
+    Types,
+    Symbols,
+    Contracts,
+}
+
+/// One compiler-produced incremental-cache work-set, never a source-read path.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum WorkSetInventoryKind {
+    Parsed,
+    ReusedParsed,
+    Rechecked,
+    ReusedChecked,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorkSetInventoryPage {
+    pub entries: Vec<String>,
+    pub next_cursor: Option<u64>,
+    pub truncated: bool,
+}
+
+/// One bounded static metadata inventory page retained by the service.
+/// `next_cursor` is a core-minted one-shot value, not an offset supplied by a
+/// caller or a source/path capability.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StaticMetadataInventoryPage {
+    pub ids: Vec<u32>,
+    pub next_cursor: Option<u64>,
+}
+
+/// One bounded page of source-text-free diagnostics retained by an exact
+/// check generation. The cursor is an opaque one-shot service receipt, not a
+/// source location or user-controlled offset. `truncated` signals that the
+/// fixed retention limit omitted later compiler diagnostics.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DiagnosticInventoryPage {
+    pub entries: Vec<Diagnostic>,
+    pub locations: Vec<Option<DebugSourceLocation>>,
+    pub next_cursor: Option<u64>,
+    pub truncated: bool,
+}
+
+/// Fail-closed compiler-service errors.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CompilerServiceError {
+    InvalidRegistration {
+        field: &'static str,
+    },
+    EntryModuleNotAuthorized {
+        entry_module: String,
+    },
+    DuplicateRegistration,
+    ProjectLimit {
+        limit: usize,
+    },
+    ProjectIdExhausted,
+    GenerationExhausted {
+        project_id: RegisteredProjectId,
+    },
+    UnknownProject {
+        project_id: RegisteredProjectId,
+    },
+    StaleGeneration {
+        generation: RegisteredProjectGeneration,
+    },
+    NoStaticMetadata {
+        generation: RegisteredProjectGeneration,
+    },
+    UnknownType {
+        generation: RegisteredProjectGeneration,
+        type_id: TypeId,
+    },
+    UnknownSymbol {
+        generation: RegisteredProjectGeneration,
+        symbol_id: SymbolId,
+    },
+    UnknownSource {
+        generation: RegisteredProjectGeneration,
+        source_id: SourceId,
+    },
+    UnknownContract {
+        generation: RegisteredProjectGeneration,
+        contract_id: ContractId,
+    },
+    InvalidStaticMetadataCursor {
+        generation: RegisteredProjectGeneration,
+    },
+    InvalidDiagnosticCursor {
+        generation: RegisteredProjectGeneration,
+    },
+    InvalidWorkSetCursor {
+        generation: RegisteredProjectGeneration,
+    },
+    InvalidStaticMetadataPage {
+        limit: usize,
+    },
+    InvalidDiagnosticPage {
+        limit: usize,
+    },
+    InvalidWorkSetPage {
+        limit: usize,
+    },
+    StaticMetadataCursorLimit {
+        limit: usize,
+    },
+    DiagnosticCursorLimit {
+        limit: usize,
+    },
+    WorkSetCursorLimit {
+        limit: usize,
+    },
+    StaticMetadataLimit {
+        resource: &'static str,
+        limit: usize,
+    },
+    BuildOutputLimit {
+        resource: &'static str,
+        limit: usize,
+    },
+    BuildOutputFingerprintMismatch,
+}
+
+impl fmt::Display for CompilerServiceError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::InvalidRegistration { field } => {
+                write!(formatter, "registered project field `{field}` is invalid")
+            }
+            Self::EntryModuleNotAuthorized { entry_module } => {
+                write!(
+                    formatter,
+                    "entry module `{entry_module}` is not in the authorized graph"
+                )
+            }
+            Self::DuplicateRegistration => formatter
+                .write_str("the canonical project/config/output registration already exists"),
+            Self::ProjectLimit { limit } => {
+                write!(
+                    formatter,
+                    "registered-project limit {limit} has been reached"
+                )
+            }
+            Self::ProjectIdExhausted => {
+                formatter.write_str("registered-project identifiers exhausted")
+            }
+            Self::GenerationExhausted { project_id } => write!(
+                formatter,
+                "compiler-service generations exhausted for project {}",
+                project_id.as_u64()
+            ),
+            Self::UnknownProject { project_id } => {
+                write!(
+                    formatter,
+                    "unknown registered project {}",
+                    project_id.as_u64()
+                )
+            }
+            Self::StaleGeneration { generation } => write!(
+                formatter,
+                "stale compiler-service generation {} for project {}",
+                generation.sequence(),
+                generation.project_id().as_u64()
+            ),
+            Self::NoStaticMetadata { generation } => write!(
+                formatter,
+                "generation {} for project {} has no successful static metadata",
+                generation.sequence(),
+                generation.project_id().as_u64()
+            ),
+            Self::UnknownType {
+                generation,
+                type_id,
+            } => write!(
+                formatter,
+                "unknown static type {} in generation {} for project {}",
+                type_id.0,
+                generation.sequence(),
+                generation.project_id().as_u64()
+            ),
+            Self::UnknownSymbol {
+                generation,
+                symbol_id,
+            } => write!(
+                formatter,
+                "unknown static symbol {} in generation {} for project {}",
+                symbol_id.0,
+                generation.sequence(),
+                generation.project_id().as_u64()
+            ),
+            Self::UnknownSource {
+                generation,
+                source_id,
+            } => write!(
+                formatter,
+                "unknown static source {} in generation {} for project {}",
+                source_id.0,
+                generation.sequence(),
+                generation.project_id().as_u64()
+            ),
+            Self::UnknownContract {
+                generation,
+                contract_id,
+            } => write!(
+                formatter,
+                "unknown static contract {} in generation {} for project {}",
+                contract_id.0,
+                generation.sequence(),
+                generation.project_id().as_u64()
+            ),
+            Self::InvalidStaticMetadataCursor { generation } => write!(
+                formatter,
+                "invalid static metadata cursor for generation {} in project {}",
+                generation.sequence(),
+                generation.project_id().as_u64()
+            ),
+            Self::InvalidDiagnosticCursor { generation } => write!(
+                formatter,
+                "invalid diagnostic cursor for generation {} in project {}",
+                generation.sequence(),
+                generation.project_id().as_u64()
+            ),
+            Self::InvalidWorkSetCursor { generation } => write!(
+                formatter,
+                "invalid work-set cursor for generation {} in project {}",
+                generation.sequence(),
+                generation.project_id().as_u64()
+            ),
+            Self::InvalidStaticMetadataPage { limit } => {
+                write!(formatter, "invalid static metadata page limit {limit}")
+            }
+            Self::InvalidDiagnosticPage { limit } => {
+                write!(formatter, "invalid diagnostic page limit {limit}")
+            }
+            Self::InvalidWorkSetPage { limit } => {
+                write!(formatter, "invalid work-set page limit {limit}")
+            }
+            Self::StaticMetadataCursorLimit { limit } => write!(
+                formatter,
+                "static metadata cursor limit {limit} has been reached"
+            ),
+            Self::DiagnosticCursorLimit { limit } => write!(
+                formatter,
+                "diagnostic cursor limit {limit} has been reached"
+            ),
+            Self::WorkSetCursorLimit { limit } => {
+                write!(formatter, "work-set cursor limit {limit} has been reached")
+            }
+            Self::StaticMetadataLimit { resource, limit } => {
+                write!(
+                    formatter,
+                    "static metadata `{resource}` exceeds service limit {limit}"
+                )
+            }
+            Self::BuildOutputLimit { resource, limit } => {
+                write!(
+                    formatter,
+                    "build output `{resource}` exceeds service limit {limit}"
+                )
+            }
+            Self::BuildOutputFingerprintMismatch => {
+                formatter.write_str("build output fingerprint does not match its generation")
+            }
+        }
+    }
+}
+
+impl std::error::Error for CompilerServiceError {}
+
+/// The native, core-owned compiler authority for closed registered projects.
+#[derive(Debug, Default)]
+pub struct RegisteredProjectCompilerService {
+    limits: CompilerServiceLimits,
+    next_project_id: u64,
+    next_static_metadata_cursor: u64,
+    next_diagnostic_cursor: u64,
+    next_work_set_cursor: u64,
+    projects: BTreeMap<RegisteredProjectId, RegisteredProject>,
+    static_metadata_cursors: BTreeMap<u64, StaticMetadataCursor>,
+    diagnostic_cursors: BTreeMap<u64, DiagnosticCursor>,
+    work_set_cursors: BTreeMap<u64, WorkSetCursor>,
+}
+
+#[derive(Debug)]
+struct RegisteredProject {
+    registration: RegisteredProjectRegistration,
+    compiler: IncrementalCompiler,
+    next_generation: u64,
+    latest: Option<RetainedCompilation>,
+}
+
+#[derive(Debug, Clone)]
+struct RetainedCompilation {
+    generation: RegisteredProjectGeneration,
+    static_debug_info: Option<BlueTsDebugInfo>,
+    diagnostics: Vec<Diagnostic>,
+    diagnostic_locations: Vec<Option<DebugSourceLocation>>,
+    diagnostics_truncated: bool,
+    work_sets: BTreeMap<WorkSetInventoryKind, Vec<String>>,
+    work_sets_truncated: BTreeMap<WorkSetInventoryKind, bool>,
+}
+
+/// A private cursor state cannot be reconstructed from its number: it binds
+/// an opaque cursor to its exact retained generation, collection and next
+/// position. Cursors are consumed after one page so replay cannot act as a
+/// second pagination authority.
+#[derive(Debug, Clone, Copy)]
+struct StaticMetadataCursor {
+    generation: RegisteredProjectGeneration,
+    kind: StaticMetadataInventoryKind,
+    next_index: usize,
+}
+
+/// An opaque diagnostic cursor is scoped only to one exact retained compiler
+/// generation. Its number does not expose a diagnostic index or source span.
+#[derive(Debug, Clone, Copy)]
+struct DiagnosticCursor {
+    generation: RegisteredProjectGeneration,
+    next_index: usize,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct WorkSetCursor {
+    generation: RegisteredProjectGeneration,
+    kind: WorkSetInventoryKind,
+    next_index: usize,
+}
+
+impl RegisteredProjectCompilerService {
+    pub fn new(limits: CompilerServiceLimits) -> Self {
+        Self {
+            limits,
+            next_project_id: 0,
+            next_static_metadata_cursor: 0,
+            next_diagnostic_cursor: 0,
+            next_work_set_cursor: 0,
+            projects: BTreeMap::new(),
+            static_metadata_cursors: BTreeMap::new(),
+            diagnostic_cursors: BTreeMap::new(),
+            work_set_cursors: BTreeMap::new(),
+        }
+    }
+
+    /// Returns the immutable validation budget selected by the core owner.
+    /// IPC adapters use it only to reject an over-budget data shape before
+    /// allocating a second internal representation; clients cannot mutate it.
+    pub fn contract_validation_limits(&self) -> ValidationLimits {
+        self.limits.contract_validation
+    }
+
+    /// Opaque identities already registered by the core owner before this
+    /// service is wrapped by a query-only IPC adapter.
+    pub fn registered_project_ids(&self) -> impl Iterator<Item = RegisteredProjectId> + '_ {
+        self.projects.keys().copied()
+    }
+
+    /// The exact generation retained for this owner project. Output staging
+    /// uses this before touching the filesystem; a guessed or stale token
+    /// cannot select a destination.
+    pub(crate) fn is_current_generation(&self, generation: RegisteredProjectGeneration) -> bool {
+        self.retained_compilation(generation).is_ok()
+    }
+
+    /// Registers a complete project exactly once. No subsequent operation can
+    /// alter its source graph, roots, resolver, or compiler options.
+    pub fn register(
+        &mut self,
+        registration: RegisteredProjectRegistration,
+    ) -> Result<RegisteredProjectId, CompilerServiceError> {
+        validate_registration(&registration)?;
+        registration
+            .loader
+            .load(&registration.entry_module)
+            .map_err(|_| CompilerServiceError::EntryModuleNotAuthorized {
+                entry_module: registration.entry_module.clone(),
+            })?;
+        if self.projects.len() >= self.limits.max_projects {
+            return Err(CompilerServiceError::ProjectLimit {
+                limit: self.limits.max_projects,
+            });
+        }
+        if self
+            .projects
+            .values()
+            .any(|project| same_registration(&project.registration, &registration))
+        {
+            return Err(CompilerServiceError::DuplicateRegistration);
+        }
+        let id = RegisteredProjectId(
+            self.next_project_id
+                .checked_add(1)
+                .ok_or(CompilerServiceError::ProjectIdExhausted)?,
+        );
+        self.next_project_id = id.0;
+        self.projects.insert(
+            id,
+            RegisteredProject {
+                registration,
+                compiler: IncrementalCompiler::new(),
+                next_generation: 0,
+                latest: None,
+            },
+        );
+        Ok(id)
+    }
+
+    /// Returns the immutable, source-text-free identity selected at
+    /// registration time.
+    pub fn identity(
+        &self,
+        project_id: RegisteredProjectId,
+    ) -> Result<RegisteredProjectIdentity, CompilerServiceError> {
+        let project = self.project(project_id)?;
+        Ok(RegisteredProjectIdentity {
+            id: project_id,
+            canonical_project_root: project.registration.canonical_project_root.clone(),
+            canonical_config_root: project.registration.canonical_config_root.clone(),
+            canonical_output_root: project.registration.canonical_output_root.clone(),
+            entry_module: project.registration.entry_module.clone(),
+        })
+    }
+
+    /// Checks the registered project without exposing emitted artifacts or
+    /// performing output writes.
+    pub fn check(
+        &mut self,
+        project_id: RegisteredProjectId,
+    ) -> Result<CompilerServiceCheck, CompilerServiceError> {
+        let (check, _) = self.compile(project_id)?;
+        Ok(check)
+    }
+
+    /// Builds the registered project into bounded in-memory artifacts. A
+    /// diagnostic-bearing compile result returns `None` output, preserving
+    /// BlueTSC's no-emit-on-error invariant.
+    pub fn build(
+        &mut self,
+        project_id: RegisteredProjectId,
+    ) -> Result<CompilerServiceBuild, CompilerServiceError> {
+        let (check, output) = self.compile(project_id)?;
+        if let Some(output) = output.as_ref() {
+            validate_build_output(output, &check.project_fingerprint, self.limits)?;
+        }
+        Ok(CompilerServiceBuild { check, output })
+    }
+
+    /// Returns the latest static metadata only when the caller presents the
+    /// exact generation produced by `check` or `build`.
+    pub fn static_debug_info(
+        &self,
+        generation: RegisteredProjectGeneration,
+    ) -> Result<BlueTsDebugInfo, CompilerServiceError> {
+        Ok(self.static_info(generation)?.clone())
+    }
+
+    /// Lists a bounded page of compiler-minted IDs from one exact successful
+    /// generation. A caller starts with no cursor; every continuation cursor
+    /// is private service state, binds its generation and collection exactly,
+    /// and is consumed after one use. This method exposes neither static text
+    /// nor a positional offset a client can forge.
+    pub fn static_metadata_inventory(
+        &mut self,
+        generation: RegisteredProjectGeneration,
+        kind: StaticMetadataInventoryKind,
+        cursor: Option<u64>,
+        limit: usize,
+    ) -> Result<StaticMetadataInventoryPage, CompilerServiceError> {
+        if limit == 0 {
+            return Err(CompilerServiceError::InvalidStaticMetadataPage { limit });
+        }
+
+        // Validate the successful exact generation before looking at a cursor.
+        // An old generation never regains visibility because a cursor happens
+        // to remain in memory momentarily.
+        let ids = static_metadata_ids(self.static_info(generation)?, kind);
+        let (start, consumed_cursor) = match cursor {
+            None => (0, None),
+            Some(0) => {
+                return Err(CompilerServiceError::InvalidStaticMetadataCursor { generation });
+            }
+            Some(cursor) => {
+                let state = self
+                    .static_metadata_cursors
+                    .get(&cursor)
+                    .copied()
+                    .filter(|state| state.generation == generation && state.kind == kind)
+                    .ok_or(CompilerServiceError::InvalidStaticMetadataCursor { generation })?;
+                if state.next_index >= ids.len() {
+                    return Err(CompilerServiceError::InvalidStaticMetadataCursor { generation });
+                }
+                (state.next_index, Some(cursor))
+            }
+        };
+
+        let end = start.saturating_add(limit).min(ids.len());
+        // An exhausted cursor-ID counter must fail before consuming a valid
+        // continuation. Response budgeting is likewise completed by the IPC
+        // adapter before it reaches this method.
+        if end < ids.len() && self.next_static_metadata_cursor == u64::MAX {
+            return Err(CompilerServiceError::StaticMetadataCursorLimit {
+                limit: self.limits.max_static_metadata_cursors,
+            });
+        }
+        if let Some(cursor) = consumed_cursor {
+            // A valid cursor is intentionally one-shot. Removing it only
+            // after every validation and future-page preflight above lets
+            // malformed/mismatched input fail without consuming it.
+            self.static_metadata_cursors.remove(&cursor);
+        }
+        let next_cursor = if end < ids.len() {
+            Some(self.mint_static_metadata_cursor(StaticMetadataCursor {
+                generation,
+                kind,
+                next_index: end,
+            })?)
+        } else {
+            None
+        };
+        Ok(StaticMetadataInventoryPage {
+            ids: ids[start..end].to_vec(),
+            next_cursor,
+        })
+    }
+
+    /// Lists one source-free page of compiler diagnostics retained for an
+    /// exact latest check generation. Cursor IDs are opaque and one-shot:
+    /// a caller cannot treat them as offsets, replay them, or carry them into
+    /// a subsequent check generation.
+    pub fn diagnostic_inventory(
+        &mut self,
+        generation: RegisteredProjectGeneration,
+        cursor: Option<u64>,
+        limit: usize,
+    ) -> Result<DiagnosticInventoryPage, CompilerServiceError> {
+        if limit == 0 {
+            return Err(CompilerServiceError::InvalidDiagnosticPage { limit });
+        }
+        let (diagnostic_count, truncated) = {
+            let retained = self.retained_compilation(generation)?;
+            (retained.diagnostics.len(), retained.diagnostics_truncated)
+        };
+        let (start, consumed_cursor) = match cursor {
+            None => (0, None),
+            Some(0) => return Err(CompilerServiceError::InvalidDiagnosticCursor { generation }),
+            Some(cursor) => {
+                let state = self
+                    .diagnostic_cursors
+                    .get(&cursor)
+                    .copied()
+                    .filter(|state| state.generation == generation)
+                    .ok_or(CompilerServiceError::InvalidDiagnosticCursor { generation })?;
+                if state.next_index >= diagnostic_count {
+                    return Err(CompilerServiceError::InvalidDiagnosticCursor { generation });
+                }
+                (state.next_index, Some(cursor))
+            }
+        };
+        let end = start.saturating_add(limit).min(diagnostic_count);
+        if end < diagnostic_count && self.next_diagnostic_cursor == u64::MAX {
+            return Err(CompilerServiceError::DiagnosticCursorLimit {
+                limit: self.limits.max_diagnostic_cursors,
+            });
+        }
+        let retained = self.retained_compilation(generation)?;
+        let entries = retained.diagnostics[start..end].to_vec();
+        let locations = retained.diagnostic_locations[start..end].to_vec();
+        if let Some(cursor) = consumed_cursor {
+            self.diagnostic_cursors.remove(&cursor);
+        }
+        let next_cursor = if end < diagnostic_count {
+            Some(self.mint_diagnostic_cursor(DiagnosticCursor {
+                generation,
+                next_index: end,
+            })?)
+        } else {
+            None
+        };
+        Ok(DiagnosticInventoryPage {
+            entries,
+            locations,
+            next_cursor,
+            truncated,
+        })
+    }
+
+    /// Pages one compiler-produced incremental work-set for an exact latest
+    /// generation. The source-free module identities are retained at a fixed
+    /// core-owner bound, and continuation IDs are one-shot and kind-bound.
+    pub fn work_set_inventory(
+        &mut self,
+        generation: RegisteredProjectGeneration,
+        kind: WorkSetInventoryKind,
+        cursor: Option<u64>,
+        limit: usize,
+    ) -> Result<WorkSetInventoryPage, CompilerServiceError> {
+        if limit == 0 {
+            return Err(CompilerServiceError::InvalidWorkSetPage { limit });
+        }
+        let (entry_count, truncated) = {
+            let retained = self.retained_compilation(generation)?;
+            (
+                retained.work_sets.get(&kind).map_or(0, Vec::len),
+                retained
+                    .work_sets_truncated
+                    .get(&kind)
+                    .copied()
+                    .unwrap_or(false),
+            )
+        };
+        let (start, consumed_cursor) = match cursor {
+            None => (0, None),
+            Some(0) => return Err(CompilerServiceError::InvalidWorkSetCursor { generation }),
+            Some(id) => {
+                let state = self
+                    .work_set_cursors
+                    .get(&id)
+                    .copied()
+                    .filter(|state| state.generation == generation && state.kind == kind)
+                    .ok_or(CompilerServiceError::InvalidWorkSetCursor { generation })?;
+                if state.next_index >= entry_count {
+                    return Err(CompilerServiceError::InvalidWorkSetCursor { generation });
+                }
+                (state.next_index, Some(id))
+            }
+        };
+        let end = start.saturating_add(limit).min(entry_count);
+        if end < entry_count && self.next_work_set_cursor == u64::MAX {
+            return Err(CompilerServiceError::WorkSetCursorLimit {
+                limit: self.limits.max_work_set_cursors,
+            });
+        }
+        let entries = self.retained_compilation(generation)?.work_sets[&kind][start..end].to_vec();
+        if let Some(id) = consumed_cursor {
+            self.work_set_cursors.remove(&id);
+        }
+        let next_cursor = if end < entry_count {
+            Some(self.mint_work_set_cursor(WorkSetCursor {
+                generation,
+                kind,
+                next_index: end,
+            })?)
+        } else {
+            None
+        };
+        Ok(WorkSetInventoryPage {
+            entries,
+            next_cursor,
+            truncated,
+        })
+    }
+
+    /// Releases cursors that an accepted compiler IPC stream received but
+    /// abandoned on disconnect. The adapter supplies only IDs from that
+    /// stream's private receipt ledger; this is not a protocol operation and
+    /// cannot change a project, generation, compiler cache, or artifact.
+    pub(crate) fn revoke_inventory_cursors(
+        &mut self,
+        static_metadata_ids: &[u64],
+        diagnostic_ids: &[u64],
+        work_set_ids: &[u64],
+    ) {
+        for id in static_metadata_ids {
+            self.static_metadata_cursors.remove(id);
+        }
+        for id in diagnostic_ids {
+            self.diagnostic_cursors.remove(id);
+        }
+        for id in work_set_ids {
+            self.work_set_cursors.remove(id);
+        }
+    }
+
+    /// Looks up one static type by its compiler-minted ID. This never attempts
+    /// to inspect a BlueJS runtime value.
+    pub fn static_type(
+        &self,
+        generation: RegisteredProjectGeneration,
+        type_id: TypeId,
+    ) -> Result<DebugType, CompilerServiceError> {
+        self.static_info(generation)?
+            .types
+            .iter()
+            .find(|static_type| static_type.id == type_id)
+            .cloned()
+            .ok_or(CompilerServiceError::UnknownType {
+                generation,
+                type_id,
+            })
+    }
+
+    /// Looks up one static symbol by its compiler-minted ID. Its span remains
+    /// a canonical source identity and byte range, not a source-text read.
+    pub fn static_symbol(
+        &self,
+        generation: RegisteredProjectGeneration,
+        symbol_id: SymbolId,
+    ) -> Result<DebugSymbol, CompilerServiceError> {
+        self.static_info(generation)?
+            .symbols
+            .iter()
+            .find(|symbol| symbol.id == symbol_id)
+            .cloned()
+            .ok_or(CompilerServiceError::UnknownSymbol {
+                generation,
+                symbol_id,
+            })
+    }
+
+    /// Returns one compiler-minted source identity and SHA-256 content digest.
+    /// This is provenance metadata only: no method on this service reads the
+    /// source represented by the returned handle.
+    pub fn static_provenance(
+        &self,
+        generation: RegisteredProjectGeneration,
+        source_id: SourceId,
+    ) -> Result<DebugSource, CompilerServiceError> {
+        self.static_info(generation)?
+            .sources
+            .iter()
+            .find(|source| source.id == source_id)
+            .cloned()
+            .ok_or(CompilerServiceError::UnknownSource {
+                generation,
+                source_id,
+            })
+    }
+
+    /// Returns an exact-generation pure contract plan retained by BlueTS.
+    /// The plan remains static data; it has no relationship to a live BlueJS
+    /// value or page realm.
+    pub fn static_contract(
+        &self,
+        generation: RegisteredProjectGeneration,
+        contract_id: ContractId,
+    ) -> Result<DebugContract, CompilerServiceError> {
+        self.static_info(generation)?
+            .contracts
+            .iter()
+            .find(|contract| contract.id == contract_id)
+            .cloned()
+            .ok_or(CompilerServiceError::UnknownContract {
+                generation,
+                contract_id,
+            })
+    }
+
+    /// Validates one caller-provided, data-only snapshot against an exact
+    /// retained static plan. The core's immutable service limits apply; the
+    /// input cannot inspect JavaScript objects, run callbacks, or select a
+    /// different compiler generation.
+    pub fn validate_static_contract(
+        &self,
+        generation: RegisteredProjectGeneration,
+        contract_id: ContractId,
+        value: &ContractValue,
+    ) -> Result<Result<(), ValidationError>, CompilerServiceError> {
+        let contract = self.static_contract(generation, contract_id)?;
+        Ok(contract
+            .plan
+            .validate_with_limits(value, self.limits.contract_validation))
+    }
+
+    fn compile(
+        &mut self,
+        project_id: RegisteredProjectId,
+    ) -> Result<(CompilerServiceCheck, Option<BuildOutput>), CompilerServiceError> {
+        let limits = self.limits;
+        let result = {
+            let project = self.project_mut(project_id)?;
+            let result = project.compiler.compile(
+                &project.registration.entry_module,
+                &project.registration.loader,
+                project.registration.compiler_options.clone(),
+            );
+            let static_debug_info = result.compilation.debug_info.clone();
+            if let Some(static_debug_info) = static_debug_info.as_ref() {
+                validate_static_debug_info(static_debug_info, limits)?;
+            }
+            let sequence = project
+                .next_generation
+                .checked_add(1)
+                .ok_or(CompilerServiceError::GenerationExhausted { project_id })?;
+            project.next_generation = sequence;
+            let generation = RegisteredProjectGeneration {
+                project_id,
+                sequence,
+            };
+            let (retained_diagnostics, diagnostics_truncated) = retain_bounded_diagnostics(
+                &result.compilation.diagnostics,
+                limits.max_retained_diagnostics,
+                limits.max_retained_diagnostic_bytes,
+            );
+            let retained_diagnostic_locations =
+                diagnostic_locations(&project.registration.loader, &retained_diagnostics);
+            let diagnostics = capped_diagnostics(
+                &retained_diagnostics,
+                limits.max_diagnostics,
+                diagnostics_truncated,
+            );
+            let mut work_sets = BTreeMap::new();
+            let mut work_sets_truncated = BTreeMap::new();
+            let mut retained_work_set_bytes = 0usize;
+            for (kind, modules) in [
+                (WorkSetInventoryKind::Parsed, &result.parsed_modules),
+                (
+                    WorkSetInventoryKind::ReusedParsed,
+                    &result.reused_parsed_modules,
+                ),
+                (WorkSetInventoryKind::Rechecked, &result.rechecked_modules),
+                (
+                    WorkSetInventoryKind::ReusedChecked,
+                    &result.reused_checked_modules,
+                ),
+            ] {
+                let mut entries = Vec::new();
+                for module in modules {
+                    let Some(next_bytes) = retained_work_set_bytes.checked_add(module.len()) else {
+                        break;
+                    };
+                    if entries.len() >= limits.max_retained_work_set_entries
+                        || next_bytes > limits.max_retained_work_set_bytes
+                    {
+                        break;
+                    }
+                    retained_work_set_bytes = next_bytes;
+                    entries.push(module.clone());
+                }
+                work_sets_truncated.insert(kind, entries.len() != modules.len());
+                work_sets.insert(kind, entries);
+            }
+            let artifact_fingerprint = result
+                .compilation
+                .output
+                .as_ref()
+                .map(|output| output.fingerprint.clone());
+            let check = CompilerServiceCheck {
+                generation,
+                cache_hit: result.cache_hit,
+                parsed_modules: result.parsed_modules,
+                reused_parsed_modules: result.reused_parsed_modules,
+                rechecked_modules: result.rechecked_modules,
+                reused_checked_modules: result.reused_checked_modules,
+                diagnostics,
+                retained_diagnostics: retained_diagnostics.clone(),
+                retained_diagnostic_locations: retained_diagnostic_locations.clone(),
+                has_errors: result.compilation.has_errors(),
+                project_fingerprint: result.compilation.project_fingerprint.clone(),
+                artifact_fingerprint,
+                static_debug_info: static_debug_info.clone(),
+            };
+            project.latest = Some(RetainedCompilation {
+                generation,
+                static_debug_info,
+                diagnostics: retained_diagnostics,
+                diagnostic_locations: retained_diagnostic_locations,
+                diagnostics_truncated,
+                work_sets,
+                work_sets_truncated,
+            });
+            (check, result.compilation.output)
+        };
+        // A new observed generation invalidates every continuation token for
+        // that project, including one held by a disconnected or malicious
+        // client. The token map is otherwise bounded by service policy.
+        self.static_metadata_cursors
+            .retain(|_, cursor| cursor.generation.project_id() != project_id);
+        self.diagnostic_cursors
+            .retain(|_, cursor| cursor.generation.project_id() != project_id);
+        self.work_set_cursors
+            .retain(|_, cursor| cursor.generation.project_id() != project_id);
+        Ok(result)
+    }
+
+    fn mint_static_metadata_cursor(
+        &mut self,
+        cursor: StaticMetadataCursor,
+    ) -> Result<u64, CompilerServiceError> {
+        if self.static_metadata_cursors.len() >= self.limits.max_static_metadata_cursors {
+            return Err(CompilerServiceError::StaticMetadataCursorLimit {
+                limit: self.limits.max_static_metadata_cursors,
+            });
+        }
+        let id = self.next_static_metadata_cursor.checked_add(1).ok_or(
+            CompilerServiceError::StaticMetadataCursorLimit {
+                limit: self.limits.max_static_metadata_cursors,
+            },
+        )?;
+        self.next_static_metadata_cursor = id;
+        self.static_metadata_cursors.insert(id, cursor);
+        Ok(id)
+    }
+
+    fn mint_diagnostic_cursor(
+        &mut self,
+        cursor: DiagnosticCursor,
+    ) -> Result<u64, CompilerServiceError> {
+        if self.diagnostic_cursors.len() >= self.limits.max_diagnostic_cursors {
+            return Err(CompilerServiceError::DiagnosticCursorLimit {
+                limit: self.limits.max_diagnostic_cursors,
+            });
+        }
+        let id = self.next_diagnostic_cursor.checked_add(1).ok_or(
+            CompilerServiceError::DiagnosticCursorLimit {
+                limit: self.limits.max_diagnostic_cursors,
+            },
+        )?;
+        self.next_diagnostic_cursor = id;
+        self.diagnostic_cursors.insert(id, cursor);
+        Ok(id)
+    }
+
+    fn mint_work_set_cursor(&mut self, cursor: WorkSetCursor) -> Result<u64, CompilerServiceError> {
+        if self.work_set_cursors.len() >= self.limits.max_work_set_cursors {
+            return Err(CompilerServiceError::WorkSetCursorLimit {
+                limit: self.limits.max_work_set_cursors,
+            });
+        }
+        let id = self.next_work_set_cursor.checked_add(1).ok_or(
+            CompilerServiceError::WorkSetCursorLimit {
+                limit: self.limits.max_work_set_cursors,
+            },
+        )?;
+        self.next_work_set_cursor = id;
+        self.work_set_cursors.insert(id, cursor);
+        Ok(id)
+    }
+
+    fn project(
+        &self,
+        project_id: RegisteredProjectId,
+    ) -> Result<&RegisteredProject, CompilerServiceError> {
+        self.projects
+            .get(&project_id)
+            .ok_or(CompilerServiceError::UnknownProject { project_id })
+    }
+
+    fn project_mut(
+        &mut self,
+        project_id: RegisteredProjectId,
+    ) -> Result<&mut RegisteredProject, CompilerServiceError> {
+        self.projects
+            .get_mut(&project_id)
+            .ok_or(CompilerServiceError::UnknownProject { project_id })
+    }
+
+    fn static_info(
+        &self,
+        generation: RegisteredProjectGeneration,
+    ) -> Result<&BlueTsDebugInfo, CompilerServiceError> {
+        self.retained_compilation(generation)?
+            .static_debug_info
+            .as_ref()
+            .ok_or(CompilerServiceError::NoStaticMetadata { generation })
+    }
+
+    fn retained_compilation(
+        &self,
+        generation: RegisteredProjectGeneration,
+    ) -> Result<&RetainedCompilation, CompilerServiceError> {
+        self.project(generation.project_id())?
+            .latest
+            .as_ref()
+            .filter(|retained| retained.generation == generation)
+            .ok_or(CompilerServiceError::StaleGeneration { generation })
+    }
+}
+
+mod validation;
+use validation::*;
+
+#[cfg(test)]
+mod tests;

@@ -2,51 +2,54 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! The values a BlueJS program can put on its operand stack.
-//!
-//! Objects deliberately cross all subsystem boundaries as stable handles,
-//! never as `Rc<RefCell<_>>`.  The owning [`crate::heap::Heap`] can therefore
-//! move a young object to its tenured generation without invalidating a value
-//! held by bytecode, an environment, or a host binding.
+//! Runtime values, separate from the parser's expression/property-key
+//! types. Objects carry handles into [`crate::Heap`], never Rust
+//! references or reference-counted cycles. Strings preserve UTF-16 code
+//! units throughout parsing, execution and property storage.
 
-use crate::heap::ObjectId;
+use crate::{JsString, JsSymbol};
+use num_bigint::BigInt;
 
-/// A JavaScript value in the Phase 2 language subset.
+/// An opaque object identity. The heap identity prevents a handle from
+/// another (even already-dropped) heap aliasing one of this heap's
+/// objects. The counter is never reused, including after collection.
+/// Copying this value does **not** keep the object alive: use
+/// [`crate::Heap::root`] across later allocating operations.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ObjectId {
+    pub(crate) heap: u64,
+    pub(crate) serial: u64,
+}
+
+/// Implemented primitives and an object handle (including native functions
+/// and boxed Strings). `PartialEq` is non-coercing value comparison; JS
+/// abstract equality and the remaining conversions are separate operations.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
     Undefined,
     Null,
     Bool(bool),
     Number(f64),
-    String(String),
+    BigInt(BigInt),
+    String(JsString),
+    Symbol(JsSymbol),
     Object(ObjectId),
 }
 
 impl Value {
-    pub const fn is_nullish(&self) -> bool {
-        matches!(self, Self::Undefined | Self::Null)
-    }
-
-    /// JavaScript's subset of `ToBoolean` needed for control-flow and logical
-    /// bytecode. Objects are always truthy, including an empty array/object.
-    pub fn is_truthy(&self) -> bool {
+    pub(crate) fn object_id(&self) -> Option<ObjectId> {
         match self {
-            Self::Undefined | Self::Null => false,
-            Self::Bool(value) => *value,
-            Self::Number(value) => *value != 0.0 && !value.is_nan(),
-            Self::String(value) => !value.is_empty(),
-            Self::Object(_) => true,
+            Value::Object(id) => Some(*id),
+            _ => None,
         }
     }
 
-    pub const fn type_of(&self) -> &'static str {
+    pub(crate) fn payload_bytes(&self) -> usize {
         match self {
-            Self::Undefined => "undefined",
-            Self::Null => "object",
-            Self::Bool(_) => "boolean",
-            Self::Number(_) => "number",
-            Self::String(_) => "string",
-            Self::Object(_) => "object",
+            Value::String(s) => s.byte_len(),
+            Value::Symbol(s) => s.description.as_ref().map_or(0, JsString::byte_len),
+            Value::BigInt(n) => n.to_signed_bytes_le().len(),
+            _ => 0,
         }
     }
 }

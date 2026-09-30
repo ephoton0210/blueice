@@ -20,11 +20,11 @@
 use crate::InstalledExtension;
 use blueice_ipc::extension::{
     read_extension_reply, write_extension_request, ExtensionReply, ExtensionRequest,
-    MAX_NETWORK_BLOCK_URL_BYTES, MAX_NETWORK_BLOCK_HOST_BYTES, MAX_NETWORK_BLOCK_PATH_BYTES, MAX_STORAGE_KEY_BYTES, MAX_STORAGE_VALUE_BYTES,
-    MAX_STORAGE_KEYS_JSON_BYTES,
-    MAX_TEXT_WRITE_BYTES, MAX_VISIBLE_LEAF_TEXT_BYTES, MAX_NETWORK_OBSERVATION_BYTES, MAX_NETWORK_TRACE_BYTES,
-    MAX_EXTENSION_TOOLBAR_LABEL_BYTES,
-    MAX_EXTENSION_POPUP_TITLE_BYTES, MAX_EXTENSION_POPUP_BODY_BYTES,
+    MAX_EXTENSION_POPUP_BODY_BYTES, MAX_EXTENSION_POPUP_TITLE_BYTES,
+    MAX_EXTENSION_TOOLBAR_LABEL_BYTES, MAX_NETWORK_BLOCK_HOST_BYTES, MAX_NETWORK_BLOCK_PATH_BYTES,
+    MAX_NETWORK_BLOCK_URL_BYTES, MAX_NETWORK_OBSERVATION_BYTES, MAX_NETWORK_TRACE_BYTES,
+    MAX_STORAGE_KEYS_JSON_BYTES, MAX_STORAGE_KEY_BYTES, MAX_STORAGE_VALUE_BYTES,
+    MAX_TEXT_WRITE_BYTES, MAX_VISIBLE_LEAF_TEXT_BYTES,
 };
 use std::os::unix::net::UnixStream;
 use wasmtime::{
@@ -58,10 +58,20 @@ const RESULT_NOT_FOUND: i32 = -4;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RuntimeInvocation {
     Startup,
-    NavigationCommitted { tab_id: u64 },
-    ToolbarActivated { tab_id: u64 },
-    PopupActionActivated { tab_id: u64 },
-    TrustedEphemeralDomRead { tab_id: u64, document_epoch: u64, ticket: String },
+    NavigationCommitted {
+        tab_id: u64,
+    },
+    ToolbarActivated {
+        tab_id: u64,
+    },
+    PopupActionActivated {
+        tab_id: u64,
+    },
+    TrustedEphemeralDomRead {
+        tab_id: u64,
+        document_epoch: u64,
+        ticket: String,
+    },
 }
 
 impl RuntimeInvocation {
@@ -193,7 +203,9 @@ fn install_blueice_abi(linker: &mut Linker<RuntimeState>) -> Result<(), String> 
                 dom_read_ephemeral_utf8(&mut caller, tab_id, destination, capacity)
             },
         )
-        .map_err(|error| format!("could not define the dom_read_ephemeral_utf8 ABI import: {error}"))?;
+        .map_err(|error| {
+            format!("could not define the dom_read_ephemeral_utf8 ABI import: {error}")
+        })?;
     linker
         .func_wrap(
             "blueice",
@@ -202,7 +214,9 @@ fn install_blueice_abi(linker: &mut Linker<RuntimeState>) -> Result<(), String> 
                 network_response_utf8(&mut caller, tab_id, destination, capacity)
             },
         )
-        .map_err(|error| format!("could not define the network_response_utf8 ABI import: {error}"))?;
+        .map_err(|error| {
+            format!("could not define the network_response_utf8 ABI import: {error}")
+        })?;
     linker
         .func_wrap(
             "blueice",
@@ -220,20 +234,36 @@ fn install_blueice_abi(linker: &mut Linker<RuntimeState>) -> Result<(), String> 
                 set_toolbar_button_utf8(&mut caller, pointer, length)
             },
         )
-        .map_err(|error| format!("could not define the set_toolbar_button_utf8 ABI import: {error}"))?;
+        .map_err(|error| {
+            format!("could not define the set_toolbar_button_utf8 ABI import: {error}")
+        })?;
     linker
         .func_wrap(
             "blueice",
             "clear_toolbar_button",
             |mut caller: Caller<'_, RuntimeState>| clear_toolbar_button(&mut caller),
         )
-        .map_err(|error| format!("could not define the clear_toolbar_button ABI import: {error}"))?;
+        .map_err(|error| {
+            format!("could not define the clear_toolbar_button ABI import: {error}")
+        })?;
     linker
         .func_wrap(
             "blueice",
             "show_popup_utf8",
-            |mut caller: Caller<'_, RuntimeState>, tab_id: i64, title_ptr: i32, title_len: i32, body_ptr: i32, body_len: i32| {
-                show_popup_utf8(&mut caller, tab_id, title_ptr, title_len, body_ptr, body_len)
+            |mut caller: Caller<'_, RuntimeState>,
+             tab_id: i64,
+             title_ptr: i32,
+             title_len: i32,
+             body_ptr: i32,
+             body_len: i32| {
+                show_popup_utf8(
+                    &mut caller,
+                    tab_id,
+                    title_ptr,
+                    title_len,
+                    body_ptr,
+                    body_len,
+                )
             },
         )
         .map_err(|error| format!("could not define the show_popup_utf8 ABI import: {error}"))?;
@@ -241,11 +271,29 @@ fn install_blueice_abi(linker: &mut Linker<RuntimeState>) -> Result<(), String> 
         .func_wrap(
             "blueice",
             "show_popup_action_utf8",
-            |mut caller: Caller<'_, RuntimeState>, tab_id: i64, title_ptr: i32, title_len: i32, body_ptr: i32, body_len: i32, action_ptr: i32, action_len: i32| {
-                show_popup_action_utf8(&mut caller, tab_id, title_ptr, title_len, body_ptr, body_len, action_ptr, action_len)
+            |mut caller: Caller<'_, RuntimeState>,
+             tab_id: i64,
+             title_ptr: i32,
+             title_len: i32,
+             body_ptr: i32,
+             body_len: i32,
+             action_ptr: i32,
+             action_len: i32| {
+                show_popup_action_utf8(
+                    &mut caller,
+                    tab_id,
+                    title_ptr,
+                    title_len,
+                    body_ptr,
+                    body_len,
+                    action_ptr,
+                    action_len,
+                )
             },
         )
-        .map_err(|error| format!("could not define the show_popup_action_utf8 ABI import: {error}"))?;
+        .map_err(|error| {
+            format!("could not define the show_popup_action_utf8 ABI import: {error}")
+        })?;
     linker
         .func_wrap(
             "blueice",
@@ -325,20 +373,32 @@ fn install_blueice_abi(linker: &mut Linker<RuntimeState>) -> Result<(), String> 
         .func_wrap(
             "blueice",
             "set_visible_leaf_text",
-            |mut caller: Caller<'_, RuntimeState>, tab_id: i64, node_id: i64, value_ptr: i32, value_len: i32| {
+            |mut caller: Caller<'_, RuntimeState>,
+             tab_id: i64,
+             node_id: i64,
+             value_ptr: i32,
+             value_len: i32| {
                 set_visible_leaf_text(&mut caller, tab_id, node_id, value_ptr, value_len)
             },
         )
-        .map_err(|error| format!("could not define the set_visible_leaf_text ABI import: {error}"))?;
+        .map_err(|error| {
+            format!("could not define the set_visible_leaf_text ABI import: {error}")
+        })?;
     linker
         .func_wrap(
             "blueice",
             "set_visible_text_content",
-            |mut caller: Caller<'_, RuntimeState>, tab_id: i64, node_id: i64, value_ptr: i32, value_len: i32| {
+            |mut caller: Caller<'_, RuntimeState>,
+             tab_id: i64,
+             node_id: i64,
+             value_ptr: i32,
+             value_len: i32| {
                 set_visible_text_content(&mut caller, tab_id, node_id, value_ptr, value_len)
             },
         )
-        .map_err(|error| format!("could not define the set_visible_text_content ABI import: {error}"))?;
+        .map_err(|error| {
+            format!("could not define the set_visible_text_content ABI import: {error}")
+        })?;
     linker
         .func_wrap(
             "blueice",
@@ -374,8 +434,18 @@ fn install_blueice_abi(linker: &mut Linker<RuntimeState>) -> Result<(), String> 
         .func_wrap(
             "blueice",
             "register_network_block_path_prefix",
-            |mut caller: Caller<'_, RuntimeState>, host_ptr: i32, host_len: i32, path_ptr: i32, path_len: i32| {
-                register_network_block_path_prefix(&mut caller, host_ptr, host_len, path_ptr, path_len)
+            |mut caller: Caller<'_, RuntimeState>,
+             host_ptr: i32,
+             host_len: i32,
+             path_ptr: i32,
+             path_len: i32| {
+                register_network_block_path_prefix(
+                    &mut caller,
+                    host_ptr,
+                    host_len,
+                    path_ptr,
+                    path_len,
+                )
             },
         )
         .map_err(|error| {
@@ -385,11 +455,23 @@ fn install_blueice_abi(linker: &mut Linker<RuntimeState>) -> Result<(), String> 
         .func_wrap(
             "blueice",
             "register_network_redirect_url",
-            |mut caller: Caller<'_, RuntimeState>, source_ptr: i32, source_len: i32, target_ptr: i32, target_len: i32| {
-                register_network_redirect_url(&mut caller, source_ptr, source_len, target_ptr, target_len)
+            |mut caller: Caller<'_, RuntimeState>,
+             source_ptr: i32,
+             source_len: i32,
+             target_ptr: i32,
+             target_len: i32| {
+                register_network_redirect_url(
+                    &mut caller,
+                    source_ptr,
+                    source_len,
+                    target_ptr,
+                    target_len,
+                )
             },
         )
-        .map_err(|error| format!("could not define the register_network_redirect_url ABI import: {error}"))?;
+        .map_err(|error| {
+            format!("could not define the register_network_redirect_url ABI import: {error}")
+        })?;
     linker
         .func_wrap(
             "blueice",
@@ -429,20 +511,32 @@ fn install_blueice_abi(linker: &mut Linker<RuntimeState>) -> Result<(), String> 
         .func_wrap(
             "blueice",
             "durable_storage_get_utf8",
-            |mut caller: Caller<'_, RuntimeState>, key_ptr: i32, key_len: i32, destination: i32, capacity: i32| {
+            |mut caller: Caller<'_, RuntimeState>,
+             key_ptr: i32,
+             key_len: i32,
+             destination: i32,
+             capacity: i32| {
                 storage_get(&mut caller, key_ptr, key_len, destination, capacity, true)
             },
         )
-        .map_err(|error| format!("could not define the durable_storage_get_utf8 ABI import: {error}"))?;
+        .map_err(|error| {
+            format!("could not define the durable_storage_get_utf8 ABI import: {error}")
+        })?;
     linker
         .func_wrap(
             "blueice",
             "durable_storage_set_utf8",
-            |mut caller: Caller<'_, RuntimeState>, key_ptr: i32, key_len: i32, value_ptr: i32, value_len: i32| {
+            |mut caller: Caller<'_, RuntimeState>,
+             key_ptr: i32,
+             key_len: i32,
+             value_ptr: i32,
+             value_len: i32| {
                 storage_set(&mut caller, key_ptr, key_len, value_ptr, value_len, true)
             },
         )
-        .map_err(|error| format!("could not define the durable_storage_set_utf8 ABI import: {error}"))?;
+        .map_err(|error| {
+            format!("could not define the durable_storage_set_utf8 ABI import: {error}")
+        })?;
     linker
         .func_wrap(
             "blueice",
@@ -451,7 +545,9 @@ fn install_blueice_abi(linker: &mut Linker<RuntimeState>) -> Result<(), String> 
                 storage_remove(&mut caller, key_ptr, key_len, true)
             },
         )
-        .map_err(|error| format!("could not define the durable_storage_remove_utf8 ABI import: {error}"))?;
+        .map_err(|error| {
+            format!("could not define the durable_storage_remove_utf8 ABI import: {error}")
+        })?;
     linker
         .func_wrap(
             "blueice",
@@ -460,7 +556,9 @@ fn install_blueice_abi(linker: &mut Linker<RuntimeState>) -> Result<(), String> 
                 durable_storage_keys_utf8(&mut caller, destination, capacity)
             },
         )
-        .map_err(|error| format!("could not define the durable_storage_keys_utf8 ABI import: {error}"))?;
+        .map_err(|error| {
+            format!("could not define the durable_storage_keys_utf8 ABI import: {error}")
+        })?;
     linker
         .func_wrap(
             "blueice",
@@ -529,15 +627,22 @@ fn dom_read_ephemeral_utf8(
     let Ok((destination, capacity)) = guest_range(destination, capacity, MAX_DOM_READ_BYTES) else {
         return RESULT_INVALID_ARGUMENT;
     };
-    let RuntimeInvocation::TrustedEphemeralDomRead { tab_id: event_tab, ticket, .. } =
-        &caller.data().invocation else {
+    let RuntimeInvocation::TrustedEphemeralDomRead {
+        tab_id: event_tab,
+        ticket,
+        ..
+    } = &caller.data().invocation
+    else {
         return RESULT_ERROR;
     };
     if *event_tab != tab_id {
         return RESULT_ERROR;
     }
     let ticket = ticket.clone();
-    let value = match request_core(caller, ExtensionRequest::DomReadTabEphemeral { tab_id, ticket }) {
+    let value = match request_core(
+        caller,
+        ExtensionRequest::DomReadTabEphemeral { tab_id, ticket },
+    ) {
         Ok(ExtensionReply::DomReadResult { value }) => value,
         Ok(_) | Err(()) => return RESULT_ERROR,
     };
@@ -568,7 +673,9 @@ fn network_response_utf8(
         return RESULT_INVALID_ARGUMENT;
     };
     let response = match request_core(caller, ExtensionRequest::ReadNetworkResponse { tab_id }) {
-        Ok(ExtensionReply::NetworkResponseResult { response: Some(response) }) => response,
+        Ok(ExtensionReply::NetworkResponseResult {
+            response: Some(response),
+        }) => response,
         Ok(ExtensionReply::NetworkResponseResult { response: None }) => return RESULT_NOT_FOUND,
         Ok(_) | Err(()) => return RESULT_ERROR,
     };
@@ -669,12 +776,20 @@ fn show_popup_utf8(
     let (Ok(title), Ok(body)) = (String::from_utf8(title), String::from_utf8(body)) else {
         return RESULT_INVALID_ARGUMENT;
     };
-    match request_core(caller, ExtensionRequest::ShowPopup { tab_id, title, body }) {
+    match request_core(
+        caller,
+        ExtensionRequest::ShowPopup {
+            tab_id,
+            title,
+            body,
+        },
+    ) {
         Ok(ExtensionReply::UiInjectAck) => RESULT_OK,
         Ok(_) | Err(()) => RESULT_ERROR,
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn show_popup_action_utf8(
     caller: &mut Caller<'_, RuntimeState>,
     tab_id: i64,
@@ -709,12 +824,15 @@ fn show_popup_action_utf8(
     ) else {
         return RESULT_INVALID_ARGUMENT;
     };
-    match request_core(caller, ExtensionRequest::ShowPopupAction {
-        tab_id,
-        title,
-        body,
-        action_label,
-    }) {
+    match request_core(
+        caller,
+        ExtensionRequest::ShowPopupAction {
+            tab_id,
+            title,
+            body,
+            action_label,
+        },
+    ) {
         Ok(ExtensionReply::UiInjectAck) => RESULT_OK,
         Ok(_) | Err(()) => RESULT_ERROR,
     }
@@ -900,7 +1018,8 @@ fn set_visible_text(
     let (Ok(tab_id), Ok(node_id)) = (stable_id(tab_id), stable_id(node_id)) else {
         return RESULT_INVALID_ARGUMENT;
     };
-    let Ok((value_ptr, value_len)) = guest_range(value_ptr, value_len, MAX_VISIBLE_LEAF_TEXT_BYTES) else {
+    let Ok((value_ptr, value_len)) = guest_range(value_ptr, value_len, MAX_VISIBLE_LEAF_TEXT_BYTES)
+    else {
         return RESULT_INVALID_ARGUMENT;
     };
     let Ok(value) = read_guest_bytes(caller, value_ptr, value_len) else {
@@ -909,13 +1028,25 @@ fn set_visible_text(
     let Ok(value) = String::from_utf8(value) else {
         return RESULT_INVALID_ARGUMENT;
     };
-    if value.trim().is_empty() || value.chars().any(|ch| ch.is_control() && ch != '\n' && ch != '\t') {
+    if value.trim().is_empty()
+        || value
+            .chars()
+            .any(|ch| ch.is_control() && ch != '\n' && ch != '\t')
+    {
         return RESULT_INVALID_ARGUMENT;
     }
     let request = if replace_content {
-        ExtensionRequest::SetVisibleTextContent { tab_id, node_id, value }
+        ExtensionRequest::SetVisibleTextContent {
+            tab_id,
+            node_id,
+            value,
+        }
     } else {
-        ExtensionRequest::SetVisibleLeafText { tab_id, node_id, value }
+        ExtensionRequest::SetVisibleLeafText {
+            tab_id,
+            node_id,
+            value,
+        }
     };
     match request_core(caller, request) {
         Ok(ExtensionReply::DomWriteAck) => RESULT_OK,
@@ -989,19 +1120,28 @@ fn register_network_block_path_prefix(
     path_ptr: i32,
     path_len: i32,
 ) -> i32 {
-    let Ok((host_ptr, host_len)) = guest_range(host_ptr, host_len, MAX_NETWORK_BLOCK_HOST_BYTES) else {
+    let Ok((host_ptr, host_len)) = guest_range(host_ptr, host_len, MAX_NETWORK_BLOCK_HOST_BYTES)
+    else {
         return RESULT_INVALID_ARGUMENT;
     };
-    let Ok((path_ptr, path_len)) = guest_range(path_ptr, path_len, MAX_NETWORK_BLOCK_PATH_BYTES) else {
+    let Ok((path_ptr, path_len)) = guest_range(path_ptr, path_len, MAX_NETWORK_BLOCK_PATH_BYTES)
+    else {
         return RESULT_INVALID_ARGUMENT;
     };
-    let Ok(host) = read_guest_bytes(caller, host_ptr, host_len).and_then(|bytes| String::from_utf8(bytes).map_err(|_| ())) else {
+    let Ok(host) = read_guest_bytes(caller, host_ptr, host_len)
+        .and_then(|bytes| String::from_utf8(bytes).map_err(|_| ()))
+    else {
         return RESULT_INVALID_ARGUMENT;
     };
-    let Ok(path_prefix) = read_guest_bytes(caller, path_ptr, path_len).and_then(|bytes| String::from_utf8(bytes).map_err(|_| ())) else {
+    let Ok(path_prefix) = read_guest_bytes(caller, path_ptr, path_len)
+        .and_then(|bytes| String::from_utf8(bytes).map_err(|_| ()))
+    else {
         return RESULT_INVALID_ARGUMENT;
     };
-    match request_core(caller, ExtensionRequest::RegisterNetworkBlockPathPrefix { host, path_prefix }) {
+    match request_core(
+        caller,
+        ExtensionRequest::RegisterNetworkBlockPathPrefix { host, path_prefix },
+    ) {
         Ok(ExtensionReply::NetworkInterceptAck) => RESULT_OK,
         Ok(_) | Err(()) => RESULT_ERROR,
     }
@@ -1016,21 +1156,33 @@ fn register_network_redirect_url(
     target_ptr: i32,
     target_len: i32,
 ) -> i32 {
-    let Ok((source_ptr, source_len)) = guest_range(source_ptr, source_len, MAX_NETWORK_BLOCK_URL_BYTES) else {
+    let Ok((source_ptr, source_len)) =
+        guest_range(source_ptr, source_len, MAX_NETWORK_BLOCK_URL_BYTES)
+    else {
         return RESULT_INVALID_ARGUMENT;
     };
-    let Ok((target_ptr, target_len)) = guest_range(target_ptr, target_len, MAX_NETWORK_BLOCK_URL_BYTES) else {
+    let Ok((target_ptr, target_len)) =
+        guest_range(target_ptr, target_len, MAX_NETWORK_BLOCK_URL_BYTES)
+    else {
         return RESULT_INVALID_ARGUMENT;
     };
     let Ok(source_url) = read_guest_bytes(caller, source_ptr, source_len)
-        .and_then(|bytes| String::from_utf8(bytes).map_err(|_| ())) else {
+        .and_then(|bytes| String::from_utf8(bytes).map_err(|_| ()))
+    else {
         return RESULT_INVALID_ARGUMENT;
     };
     let Ok(target_url) = read_guest_bytes(caller, target_ptr, target_len)
-        .and_then(|bytes| String::from_utf8(bytes).map_err(|_| ())) else {
+        .and_then(|bytes| String::from_utf8(bytes).map_err(|_| ()))
+    else {
         return RESULT_INVALID_ARGUMENT;
     };
-    match request_core(caller, ExtensionRequest::RegisterNetworkRedirectUrl { source_url, target_url }) {
+    match request_core(
+        caller,
+        ExtensionRequest::RegisterNetworkRedirectUrl {
+            source_url,
+            target_url,
+        },
+    ) {
         Ok(ExtensionReply::NetworkInterceptAck) => RESULT_OK,
         Ok(_) | Err(()) => RESULT_ERROR,
     }
@@ -1092,7 +1244,8 @@ fn durable_storage_keys_utf8(
     destination: i32,
     capacity: i32,
 ) -> i32 {
-    let Ok((destination, capacity)) = guest_range(destination, capacity, MAX_STORAGE_KEYS_JSON_BYTES)
+    let Ok((destination, capacity)) =
+        guest_range(destination, capacity, MAX_STORAGE_KEYS_JSON_BYTES)
     else {
         return RESULT_INVALID_ARGUMENT;
     };
@@ -1101,7 +1254,9 @@ fn durable_storage_keys_utf8(
         Ok(_) | Err(()) => return RESULT_ERROR,
     };
     if keys.len() > crate::MAX_STORAGE_ENTRIES_PER_EXTENSION
-        || keys.iter().any(|key| crate::validate_storage_key(key).is_err())
+        || keys
+            .iter()
+            .any(|key| crate::validate_storage_key(key).is_err())
         || keys.windows(2).any(|pair| pair[0] >= pair[1])
     {
         return RESULT_ERROR;
@@ -1560,8 +1715,10 @@ mod tests {
         ] {
             let (guest, mut core) = UnixStream::pair().unwrap();
             execute_installed_extension_for_invocation(&extension, guest, invocation).unwrap();
-            assert!(blueice_ipc::extension::read_extension_request(&mut core).is_err(),
-                "a non-trusted runtime event must not send a core read request");
+            assert!(
+                blueice_ipc::extension::read_extension_request(&mut core).is_err(),
+                "a non-trusted runtime event must not send a core read request"
+            );
         }
         let _ = fs::remove_dir_all(root);
     }
@@ -1605,18 +1762,33 @@ mod tests {
         let core_thread = thread::spawn(move || {
             assert_eq!(
                 blueice_ipc::extension::read_extension_request(&mut core).unwrap(),
-                ExtensionRequest::DomReadTabEphemeral { tab_id: 9, ticket: expected_ticket },
+                ExtensionRequest::DomReadTabEphemeral {
+                    tab_id: 9,
+                    ticket: expected_ticket
+                },
             );
             blueice_ipc::extension::write_extension_reply(
-                &mut core, &ExtensionReply::DomReadResult { value: "snapshot".into() },
-            ).unwrap();
-            assert!(blueice_ipc::extension::read_extension_request(&mut core).is_err(),
-                "the invocation must not send an extra request");
+                &mut core,
+                &ExtensionReply::DomReadResult {
+                    value: "snapshot".into(),
+                },
+            )
+            .unwrap();
+            assert!(
+                blueice_ipc::extension::read_extension_request(&mut core).is_err(),
+                "the invocation must not send an extra request"
+            );
         });
         execute_installed_extension_for_invocation(
-            &extension, guest,
-            RuntimeInvocation::TrustedEphemeralDomRead { tab_id: 9, document_epoch: 12, ticket },
-        ).unwrap();
+            &extension,
+            guest,
+            RuntimeInvocation::TrustedEphemeralDomRead {
+                tab_id: 9,
+                document_epoch: 12,
+                ticket,
+            },
+        )
+        .unwrap();
         core_thread.join().unwrap();
         let _ = fs::remove_dir_all(root);
     }
@@ -1881,12 +2053,15 @@ mod tests {
             assert_eq!(
                 blueice_ipc::extension::read_extension_request(&mut core).unwrap(),
                 ExtensionRequest::RegisterNetworkBlockPathPrefix {
-                    host: "example.test".into(), path_prefix: "/private".into(),
+                    host: "example.test".into(),
+                    path_prefix: "/private".into(),
                 }
             );
             blueice_ipc::extension::write_extension_reply(
-                &mut core, &ExtensionReply::NetworkInterceptAck,
-            ).unwrap();
+                &mut core,
+                &ExtensionReply::NetworkInterceptAck,
+            )
+            .unwrap();
         });
         execute_installed_extension(&extension, guest).unwrap();
         core_thread.join().unwrap();
@@ -1922,8 +2097,10 @@ mod tests {
                 }
             );
             blueice_ipc::extension::write_extension_reply(
-                &mut core, &ExtensionReply::NetworkInterceptAck,
-            ).unwrap();
+                &mut core,
+                &ExtensionReply::NetworkInterceptAck,
+            )
+            .unwrap();
         });
         execute_installed_extension(&extension, guest).unwrap();
         core_thread.join().unwrap();
@@ -2093,20 +2270,29 @@ mod tests {
                     value: "value".to_string(),
                 }
             );
-            blueice_ipc::extension::write_extension_reply(&mut core, &ExtensionReply::StorageSetAck)
-                .unwrap();
-            assert_eq!(
-                blueice_ipc::extension::read_extension_request(&mut core).unwrap(),
-                ExtensionRequest::DurableStorageGet { key: "key".to_string() }
-            );
             blueice_ipc::extension::write_extension_reply(
                 &mut core,
-                &ExtensionReply::StorageGetResult { value: Some("value".to_string()) },
+                &ExtensionReply::StorageSetAck,
             )
             .unwrap();
             assert_eq!(
                 blueice_ipc::extension::read_extension_request(&mut core).unwrap(),
-                ExtensionRequest::DurableStorageRemove { key: "key".to_string() }
+                ExtensionRequest::DurableStorageGet {
+                    key: "key".to_string()
+                }
+            );
+            blueice_ipc::extension::write_extension_reply(
+                &mut core,
+                &ExtensionReply::StorageGetResult {
+                    value: Some("value".to_string()),
+                },
+            )
+            .unwrap();
+            assert_eq!(
+                blueice_ipc::extension::read_extension_request(&mut core).unwrap(),
+                ExtensionRequest::DurableStorageRemove {
+                    key: "key".to_string()
+                }
             );
             blueice_ipc::extension::write_extension_reply(
                 &mut core,
@@ -2151,7 +2337,8 @@ mod tests {
                 blueice_ipc::extension::write_extension_reply(
                     &mut core,
                     &ExtensionReply::StorageKeysResult { keys },
-                ).unwrap();
+                )
+                .unwrap();
             }
         });
         execute_installed_extension(&extension, guest).unwrap();

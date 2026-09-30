@@ -42,10 +42,10 @@ use crate::download::probe::Probe;
 use crate::download::progress::Progress;
 use crate::download::secure_fs;
 use crate::download::sidecar::{
-    RestartReason, Sidecar, SidecarSegment, part_path, remove_partials, sidecar_path,
+    part_path, remove_partials, sidecar_path, RestartReason, Sidecar, SidecarSegment,
 };
 use crate::download::{
-    DownloadError, DownloadOptions, MAX_TRANSFER_SEGMENTS, bounded_transfer_text,
+    bounded_transfer_text, DownloadError, DownloadOptions, MAX_TRANSFER_SEGMENTS,
 };
 use blueice_ipc::downloads::{
     SegmentInfo, SegmentState, SingleStreamReason, TransferEvent, TransferMode, TransferState,

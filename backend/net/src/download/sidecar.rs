@@ -8,9 +8,9 @@
 //! per-segment progress and what is needed to prove the remote file is
 //! still the same one.
 
-use crate::download::MAX_TRANSFER_SEGMENTS;
-use crate::download::probe::{Probe, Validator, is_weak_etag};
+use crate::download::probe::{is_weak_etag, Probe, Validator};
 use crate::download::secure_fs;
+use crate::download::MAX_TRANSFER_SEGMENTS;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::io::{self, Read, Write};
@@ -597,11 +597,9 @@ mod tests {
     #[test]
     fn saving_into_a_missing_directory_is_an_error() {
         let dir = TempDir::new("sidecar-missing-dir");
-        assert!(
-            valid()
-                .save(&dir.path().join("no-such-dir").join("file.iso"))
-                .is_err()
-        );
+        assert!(valid()
+            .save(&dir.path().join("no-such-dir").join("file.iso"))
+            .is_err());
     }
 
     #[test]

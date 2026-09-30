@@ -9,14 +9,14 @@
 use crate::manager::{ManagerConfig, TransferManager};
 use crate::policy::{default_data_dir, default_download_dir};
 use crate::server::serve;
-use blueice_ipc::downloads::{DownloadsClient, default_downloads_socket_path};
+use blueice_ipc::downloads::{default_downloads_socket_path, DownloadsClient};
 use blueice_ipc::gatekeeper::default_gatekeeper_socket_path;
 use blueice_ipc::local_socket::{bind_private_listener, ensure_private_socket_dir};
 use std::io::{self, Read};
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
+use std::sync::Arc;
 
 pub const USAGE: &str = "usage: blueice-downloads [--socket PATH] [--download-dir DIR] [--data-dir DIR] [--gatekeeper-socket PATH] [--max-concurrent N] [--sftp-known-hosts PATH] [--sftp-private-key PATH]";
 pub const CREDENTIAL_USAGE: &str = "usage: blueice-downloads credential set <sftp-password|sftp-key-passphrase|ftps-password> --host HOST --username USER [--port PORT] [--socket PATH] --secret-stdin";
@@ -360,13 +360,11 @@ mod tests {
         assert_eq!(credential.kind, CredentialKind::SftpPassword);
         assert_eq!(credential.port, 22);
         assert_eq!(credential.socket, default_downloads_socket_path());
-        assert!(
-            parse_credential_args(
-                ["set", "ftps-password", "--host", "h", "--username", "u"].map(str::to_string)
-            )
-            .unwrap_err()
-            .contains("--secret-stdin")
-        );
+        assert!(parse_credential_args(
+            ["set", "ftps-password", "--host", "h", "--username", "u"].map(str::to_string)
+        )
+        .unwrap_err()
+        .contains("--secret-stdin"));
     }
 
     #[test]

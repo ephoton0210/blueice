@@ -10,8 +10,8 @@ path = "src/main.rs"
 
 [dependencies]
 base64 = "0.23.1"
+blueice-ecma402 = { version = "0.1.0", path = "../ecma402" }
 blueice-ipc = { version = "0.1.0", path = "../ipc" }
-blueice-bluejs = { version = "0.1.0", path = "../bluejs" }
 blueice-launcher = { version = "0.1.0", path = "../launcher" }
 blueice-assistant-settings = { path = "../assistant-settings" }
 blueice-raster = { version = "0.1.0", path = "../core/raster" }
@@ -27,3 +27,5 @@ url = "2.5.8"
 # rather than a second hand-written JSON-RPC implementation.
 rmcp = { version = "3.2.0", features = ["client", "transport-child-process"] }
 tokio = { version = "1.53.1", features = ["process"] }
+blueice-bluets = { path = "../bluets" }
+blueice-engine = { path = "../core/engine" }

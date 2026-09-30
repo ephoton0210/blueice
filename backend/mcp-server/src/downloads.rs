@@ -11,8 +11,8 @@
 //! reconnecting client (spawning the downloads process if nobody has).
 
 use blueice_ipc::downloads::{
-    ClientError, DownloadsClient, ErrorCode, SingleStreamReason, TransferInfo, TransferMode,
-    TransferState, default_downloads_socket_path,
+    default_downloads_socket_path, ClientError, DownloadsClient, ErrorCode, SingleStreamReason,
+    TransferInfo, TransferMode, TransferState,
 };
 use std::fmt;
 use std::io;
@@ -450,14 +450,14 @@ impl Default for DownloadsHandle {
 mod tests {
     use super::*;
     use blueice_ipc::downloads::{
-        BlockedInfo, DOWNLOADS_PROTOCOL_VERSION, DownloadsReply, DownloadsRequest,
-        SingleStreamReason, TransferEvent, TransferMode, read_downloads_request,
-        write_downloads_reply,
+        read_downloads_request, write_downloads_reply, BlockedInfo, DownloadsReply,
+        DownloadsRequest, SingleStreamReason, TransferEvent, TransferMode,
+        DOWNLOADS_PROTOCOL_VERSION,
     };
     use std::os::unix::net::UnixListener;
     use std::path::Path;
-    use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
     use std::thread;
 
     const MIB: u64 = 1024 * 1024;
@@ -665,12 +665,10 @@ mod tests {
         ]);
         assert_eq!(json["summary"], "2 transfers: 1 completed, 1 cancelled.");
         assert_eq!(json["transfers"].as_array().unwrap().len(), 2);
-        assert!(
-            json["transfers"][1]["summary"]
-                .as_str()
-                .unwrap()
-                .starts_with("Cancelled")
-        );
+        assert!(json["transfers"][1]["summary"]
+            .as_str()
+            .unwrap()
+            .starts_with("Cancelled"));
     }
 
     #[test]

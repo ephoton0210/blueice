@@ -12,8 +12,8 @@
 //! not a live remote policy download that an attacker could replace.
 
 use blueice_ipc::gatekeeper::{
-    GatekeeperLocalModel, GatekeeperReply, GatekeeperRequest, GatekeeperRuleInfo, GatekeeperSettings,
-    GatekeeperWorkflowStep, GatekeeperUserCondition,
+    GatekeeperLocalModel, GatekeeperReply, GatekeeperRequest, GatekeeperRuleInfo,
+    GatekeeperSettings, GatekeeperUserCondition, GatekeeperWorkflowStep,
 };
 
 /// Version carried in diagnostics and release notes for this compiled rule
@@ -38,19 +38,32 @@ const DANGEROUS_CONTENT_TYPES: &[&str] = &[
 ];
 const SENSITIVE_INPUT_TYPES: &[&str] = &["password", "credit-card", "payment"];
 const POPUP_BLOCKED_PHRASES: &[&str] = &[
-    "password", "seed phrase", "recovery phrase", "one-time code", "credit card",
-    "disable gatekeeper", "http://", "https://",
+    "password",
+    "seed phrase",
+    "recovery phrase",
+    "one-time code",
+    "credit card",
+    "disable gatekeeper",
+    "http://",
+    "https://",
 ];
 // Toolbar labels are only 20 characters, so use high-precision phrases that
 // can actually fit in that constrained native UI surface. A generic word
 // like "password" would wrongly reject a legitimate password-manager button.
 const TOOLBAR_BLOCKED_PHRASES: &[&str] = &[
-    "enter password", "seed phrase", "recovery phrase", "one-time code",
+    "enter password",
+    "seed phrase",
+    "recovery phrase",
+    "one-time code",
     "disable gatekeeper",
 ];
 const HIDDEN_CONTENT_MARKERS: &[&str] = &[
-    "aria-hidden=\"true\"", "aria-hidden='true'", "display:none",
-    "visibility:hidden", "opacity:0", "left:-999",
+    "aria-hidden=\"true\"",
+    "aria-hidden='true'",
+    "display:none",
+    "visibility:hidden",
+    "opacity:0",
+    "left:-999",
 ];
 
 fn signatures(values: &[&str]) -> Vec<String> {
@@ -228,10 +241,11 @@ pub fn settings(
     for step in &mut workflow {
         step.review_order.push("compiled-rule-base".to_string());
         let mut add_conditions = |kind: &str, values: &[String]| {
-            step.active_user_conditions.extend(values.iter().map(|value| GatekeeperUserCondition {
-                kind: kind.to_string(),
-                value: value.clone(),
-            }));
+            step.active_user_conditions
+                .extend(values.iter().map(|value| GatekeeperUserCondition {
+                    kind: kind.to_string(),
+                    value: value.clone(),
+                }));
         };
         match step.id.as_str() {
             "url-before-fetch" => add_conditions("host", &custom_blocked_hosts),
@@ -246,14 +260,14 @@ pub fn settings(
             _ => {}
         }
         let custom_layer = match step.id.as_str() {
-            "url-before-fetch" if !custom_blocked_hosts.is_empty() => {
-                Some("user-blocked-hosts")
-            }
+            "url-before-fetch" if !custom_blocked_hosts.is_empty() => Some("user-blocked-hosts"),
             "content-before-parse" if !custom_blocked_phrases.is_empty() => {
                 Some("user-blocked-html-phrases")
             }
-            "download-before-bytes" if !custom_blocked_hosts.is_empty()
-                || !custom_blocked_download_extensions.is_empty() => {
+            "download-before-bytes"
+                if !custom_blocked_hosts.is_empty()
+                    || !custom_blocked_download_extensions.is_empty() =>
+            {
                 Some("user-blocked-downloads")
             }
             "extension-popup-before-publish" if !custom_blocked_popup_phrases.is_empty() => {
@@ -299,7 +313,9 @@ pub fn review_with_custom_policy(
 ) -> GatekeeperReply {
     match request {
         GatekeeperRequest::CheckUrl { url } => review_url(url, custom_blocked_hosts),
-        GatekeeperRequest::CheckContent { url, html } => review_content(url, html, custom_blocked_phrases),
+        GatekeeperRequest::CheckContent { url, html } => {
+            review_content(url, html, custom_blocked_phrases)
+        }
         GatekeeperRequest::CheckDownload {
             url,
             file_name,
@@ -316,7 +332,12 @@ pub fn review_with_custom_policy(
             extension_id,
             capability,
             detail,
-        } => review_extension_action(extension_id, capability, detail, custom_blocked_popup_phrases),
+        } => review_extension_action(
+            extension_id,
+            capability,
+            detail,
+            custom_blocked_popup_phrases,
+        ),
     }
 }
 
@@ -406,13 +427,15 @@ fn review_download(
         .iter()
         .any(|extension| lower_name.ends_with(extension));
     let dangerous_content_type = content_type.is_some_and(|content_type| {
-        DANGEROUS_CONTENT_TYPES.contains(&content_type
-            .split(';')
-            .next()
-            .unwrap_or_default()
-            .trim()
-            .to_ascii_lowercase()
-            .as_str())
+        DANGEROUS_CONTENT_TYPES.contains(
+            &content_type
+                .split(';')
+                .next()
+                .unwrap_or_default()
+                .trim()
+                .to_ascii_lowercase()
+                .as_str(),
+        )
     });
     if dangerous_extension || dangerous_content_type {
         return reject(
@@ -462,7 +485,9 @@ fn review_extension_action(
 
     let detail = detail.to_lowercase();
     if detail.starts_with("action=set-native-toolbar-button;")
-        && TOOLBAR_BLOCKED_PHRASES.iter().any(|phrase| detail.contains(phrase))
+        && TOOLBAR_BLOCKED_PHRASES
+            .iter()
+            .any(|phrase| detail.contains(phrase))
     {
         return reject(
             "the extension toolbar label contains a credential or safety-control prompt",
@@ -470,8 +495,9 @@ fn review_extension_action(
         );
     }
     if detail.starts_with("action=show-native-popup;")
-        && (POPUP_BLOCKED_PHRASES.iter()
-        .any(|phrase| detail.contains(phrase))
+        && (POPUP_BLOCKED_PHRASES
+            .iter()
+            .any(|phrase| detail.contains(phrase))
             || PROMPT_INJECTION_PHRASES
                 .iter()
                 .any(|phrase| detail.contains(phrase)))
@@ -483,8 +509,12 @@ fn review_extension_action(
     }
     if (detail.starts_with("action=set-visible-leaf-text; text=")
         || detail.starts_with("action=set-visible-text-content; text="))
-        && (POPUP_BLOCKED_PHRASES.iter().any(|phrase| detail.contains(phrase))
-            || PROMPT_INJECTION_PHRASES.iter().any(|phrase| detail.contains(phrase)))
+        && (POPUP_BLOCKED_PHRASES
+            .iter()
+            .any(|phrase| detail.contains(phrase))
+            || PROMPT_INJECTION_PHRASES
+                .iter()
+                .any(|phrase| detail.contains(phrase)))
     {
         return reject(
             "the extension-proposed visible text contains a credential, external-URL, or instruction-override phrase",
@@ -616,7 +646,9 @@ fn has_hidden_content_marker(html: &str) -> bool {
         .filter(|character| !character.is_ascii_whitespace())
         .flat_map(char::to_lowercase)
         .collect();
-    HIDDEN_CONTENT_MARKERS.iter().any(|marker| compact.contains(marker))
+    HIDDEN_CONTENT_MARKERS
+        .iter()
+        .any(|marker| compact.contains(marker))
         || (compact.contains("color:#fff") && compact.contains("background:#fff"))
         || (compact.contains("color:white") && compact.contains("background:white"))
 }
@@ -630,20 +662,32 @@ mod tests {
         let workflow = mandatory_workflow();
         let step_ids: std::collections::HashSet<_> =
             workflow.iter().map(|step| step.id.as_str()).collect();
-        assert!(workflow.iter().all(|step| step.mandatory && !step.failure_behavior.is_empty()));
+        assert!(workflow
+            .iter()
+            .all(|step| step.mandatory && !step.failure_behavior.is_empty()));
         let rules = baseline_rules();
         assert!(rules.iter().all(|rule| {
             rule.mandatory
                 && !rule.match_logic.is_empty()
                 && !rule.workflow_steps.is_empty()
-                && rule.workflow_steps.iter().all(|id| step_ids.contains(id.as_str()))
+                && rule
+                    .workflow_steps
+                    .iter()
+                    .all(|id| step_ids.contains(id.as_str()))
         }));
-        let hidden_rule = rules.iter().find(|rule| rule.id == "hidden-prompt-injection").unwrap();
+        let hidden_rule = rules
+            .iter()
+            .find(|rule| rule.id == "hidden-prompt-injection")
+            .unwrap();
         assert!(hidden_rule.match_logic.contains(" AND "));
         assert_eq!(hidden_rule.workflow_steps, ["content-before-parse"]);
-        let obfuscation_rule = rules.iter()
-            .find(|rule| rule.id == "sensitive-extension-action").unwrap();
-        assert!(obfuscation_rule.workflow_steps.contains(&"extension-toolbar-before-publish".to_string()));
+        let obfuscation_rule = rules
+            .iter()
+            .find(|rule| rule.id == "sensitive-extension-action")
+            .unwrap();
+        assert!(obfuscation_rule
+            .workflow_steps
+            .contains(&"extension-toolbar-before-publish".to_string()));
     }
 
     #[test]
@@ -664,50 +708,84 @@ mod tests {
             vec![".zip".into()],
             vec!["blocked popup".into()],
         );
-        let order = |id: &str| configured.workflow.iter()
-            .find(|step| step.id == id).unwrap().review_order.clone();
-        assert_eq!(order("url-before-fetch"), [
-            "compiled-rule-base",
-            "user-blocked-hosts",
-            "local-model",
-        ]);
-        assert_eq!(order("content-before-parse"), [
-            "compiled-rule-base",
-            "user-blocked-html-phrases",
-            "local-model",
-        ]);
-        assert_eq!(order("download-before-bytes"), [
-            "compiled-rule-base",
-            "user-blocked-downloads",
-            "local-model",
-        ]);
-        assert_eq!(order("extension-before-side-effect"), [
-            "compiled-rule-base",
-            "local-model",
-        ]);
-        assert_eq!(order("extension-popup-before-publish"), [
-            "compiled-rule-base",
-            "user-blocked-popup-phrases",
-            "local-model",
-        ]);
-        assert_eq!(order("extension-toolbar-before-publish"), [
-            "compiled-rule-base",
-            "local-model",
-        ]);
-        let conditions = |id: &str| configured.workflow.iter()
-            .find(|step| step.id == id).unwrap().active_user_conditions.clone();
-        let condition = |kind: &str, value: &str| GatekeeperUserCondition {
-            kind: kind.to_string(), value: value.to_string(),
+        let order = |id: &str| {
+            configured
+                .workflow
+                .iter()
+                .find(|step| step.id == id)
+                .unwrap()
+                .review_order
+                .clone()
         };
-        assert_eq!(conditions("url-before-fetch"), [condition("host", "blocked.example")]);
-        assert_eq!(conditions("content-before-parse"), [condition("phrase", "blocked text")]);
-        assert_eq!(conditions("download-before-bytes"), [
-            condition("host", "blocked.example"), condition("download-extension", ".zip"),
-        ]);
+        assert_eq!(
+            order("url-before-fetch"),
+            ["compiled-rule-base", "user-blocked-hosts", "local-model",]
+        );
+        assert_eq!(
+            order("content-before-parse"),
+            [
+                "compiled-rule-base",
+                "user-blocked-html-phrases",
+                "local-model",
+            ]
+        );
+        assert_eq!(
+            order("download-before-bytes"),
+            [
+                "compiled-rule-base",
+                "user-blocked-downloads",
+                "local-model",
+            ]
+        );
+        assert_eq!(
+            order("extension-before-side-effect"),
+            ["compiled-rule-base", "local-model",]
+        );
+        assert_eq!(
+            order("extension-popup-before-publish"),
+            [
+                "compiled-rule-base",
+                "user-blocked-popup-phrases",
+                "local-model",
+            ]
+        );
+        assert_eq!(
+            order("extension-toolbar-before-publish"),
+            ["compiled-rule-base", "local-model",]
+        );
+        let conditions = |id: &str| {
+            configured
+                .workflow
+                .iter()
+                .find(|step| step.id == id)
+                .unwrap()
+                .active_user_conditions
+                .clone()
+        };
+        let condition = |kind: &str, value: &str| GatekeeperUserCondition {
+            kind: kind.to_string(),
+            value: value.to_string(),
+        };
+        assert_eq!(
+            conditions("url-before-fetch"),
+            [condition("host", "blocked.example")]
+        );
+        assert_eq!(
+            conditions("content-before-parse"),
+            [condition("phrase", "blocked text")]
+        );
+        assert_eq!(
+            conditions("download-before-bytes"),
+            [
+                condition("host", "blocked.example"),
+                condition("download-extension", ".zip"),
+            ]
+        );
         assert!(conditions("extension-before-side-effect").is_empty());
-        assert_eq!(conditions("extension-popup-before-publish"), [
-            condition("popup-phrase", "blocked popup"),
-        ]);
+        assert_eq!(
+            conditions("extension-popup-before-publish"),
+            [condition("popup-phrase", "blocked popup"),]
+        );
         assert!(conditions("extension-toolbar-before-publish").is_empty());
     }
 
@@ -938,7 +1016,10 @@ mod tests {
                     capability: "dom:write".to_string(),
                     detail: format!("action={action}; text={text}"),
                 };
-                assert_eq!(matches!(review(&request), GatekeeperReply::Rejected { .. }), blocked);
+                assert_eq!(
+                    matches!(review(&request), GatekeeperReply::Rejected { .. }),
+                    blocked
+                );
             }
         }
     }

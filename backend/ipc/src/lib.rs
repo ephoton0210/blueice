@@ -36,10 +36,16 @@ pub const MAX_FRAME_BYTES: usize = 8 * 1024 * 1024;
 
 pub mod ai;
 pub mod assistant;
+pub mod compiler;
+pub mod compiler_catalog;
+pub mod compiler_output;
+pub mod debugger;
 pub mod downloads;
 pub mod extension;
 pub mod gatekeeper;
 pub mod local_socket;
+pub mod owner_bootstrap;
+pub mod page_host;
 pub mod permission_control;
 pub mod script;
 pub mod shm;
@@ -51,7 +57,7 @@ pub use ai::{AiNode, AiSnapshot, Bounds, NameFrom, NodeAction, NodeState, Role};
 /// one coarse version, bumped only on a breaking change (a variant
 /// removed/renamed, a field's meaning changed) -- adding a new variant
 /// or a new `#[serde(default)]` field does not bump it.
-pub const PROTOCOL_VERSION: u32 = 1;
+pub const PROTOCOL_VERSION: u32 = 2;
 
 /// Browser-chrome control actions -- distinct from page-content
 /// messages (`Navigate`, `ActOn`, ...) per
@@ -110,11 +116,15 @@ pub enum ClientMessage {
     /// a client can choose a language but never point `core` at a socket. An
     /// error reply says translation is unavailable when core has no assistant.
     /// Replied to with [`ServerMessage::TranslationState`].
-    SetTranslationLanguage { target_language: Option<String> },
+    SetTranslationLanguage {
+        target_language: Option<String>,
+    },
     /// Shows the addressed tab's translation (`true`) or the page's original
     /// text (`false`), replied to with [`ServerMessage::TranslationState`]
     /// and, when the page changed, a fresh frame.
-    ShowTranslation { shown: bool },
+    ShowTranslation {
+        shown: bool,
+    },
     /// Requests the translation state, replied to with
     /// [`ServerMessage::TranslationState`].
     GetTranslationState,
@@ -127,7 +137,9 @@ pub enum ClientMessage {
     /// Asks the local assistant to reorganize the addressed tab's shown text
     /// per `instruction` (for example "make a table of names and prices").
     /// Completes like [`ClientMessage::SummarizePage`].
-    OrganizePage { instruction: String },
+    OrganizePage {
+        instruction: String,
+    },
     /// The viewport size changed; `core` re-lays-out at the new width.
     Resize {
         width: u32,
@@ -195,6 +207,16 @@ pub enum ClientMessage {
     /// Chromium differential-testing harness, `TEST_PLAN.md`) needs to
     /// *not* have filtered out.
     GetDom,
+    /// Requests source-free execution outcomes for inline BlueTS scripts in
+    /// the addressed tab, replied to with [`ServerMessage::BlueTsScriptReports`].
+    /// This is observability only: it neither enables inline execution nor
+    /// exposes a script's source, diagnostics, or runtime values.
+    GetBlueTsScriptReports,
+    /// Requests source-free execution outcomes for standard JavaScript scripts
+    /// in the addressed tab, replied to with [`ServerMessage::BlueJsScriptReports`].
+    /// This is observability only: it neither enables JavaScript execution nor
+    /// exposes a script's source, diagnostics, or runtime values.
+    GetBlueJsScriptReports,
     /// Opens a new, blank tab, replied to with [`ServerMessage::TabOpened`]
     /// -- `phase-16-multi-tab-and-tab-groups/PLAN.md`'s minimal first
     /// slice. `url` is optional purely for convenience (equivalent to
@@ -264,7 +286,9 @@ pub enum ClientMessage {
     /// Activate the current popup's one native action button. The core checks
     /// the popup ID so a stale click cannot activate a newer popup. As with
     /// toolbar activation, this wire message is not proof of a human gesture.
-    ActivateExtensionPopupAction { popup_id: u64 },
+    ActivateExtensionPopupAction {
+        popup_id: u64,
+    },
     Chrome(ChromeCommand),
     Shutdown,
     /// Catch-all for a variant this build doesn't recognize (e.g. sent
@@ -341,6 +365,17 @@ pub enum ServerMessage {
     Representation(AiSnapshot),
     /// Reply to [`ClientMessage::GetDom`].
     Dom(String),
+    /// Reply to [`ClientMessage::GetBlueTsScriptReports`].
+    ///
+    /// The reports deliberately include only stable tab/document identity,
+    /// script kind, ordinal, and a source-free outcome category. They are not
+    /// an execution-result, diagnostic, or source-inspection API.
+    BlueTsScriptReports(Vec<BlueTsScriptExecutionReport>),
+    /// Reply to [`ClientMessage::GetBlueJsScriptReports`]. These bounded
+    /// records have the same source-free shape as BlueTS reports, but identify
+    /// standard JavaScript declarations executed by an explicitly enabled
+    /// BlueJS page host.
+    BlueJsScriptReports(Vec<BlueJsScriptExecutionReport>),
     /// Reply to [`ClientMessage::OpenTab`]. `url` reflects whatever
     /// actually ended up loaded -- `None` for a blank tab (`OpenTab`
     /// was given no `url`), `Some(final_url)` once a requested
@@ -378,10 +413,14 @@ pub enum ServerMessage {
     TabGroups(Vec<TabGroupSummary>),
     /// Current native toolbar label, returned for a query or broadcast when
     /// the installed extension changes/disconnects. `None` removes it.
-    ExtensionToolbar { label: Option<String> },
+    ExtensionToolbar {
+        label: Option<String>,
+    },
     /// A native, non-interactive extension message associated with a tab.
     /// Frontends must distinguish it visually from browser-owned UI.
-    ExtensionPopup { popup: Option<ExtensionPopup> },
+    ExtensionPopup {
+        popup: Option<ExtensionPopup>,
+    },
     Error {
         message: String,
     },
@@ -443,15 +482,94 @@ pub struct TabGroupSummary {
     pub collapsed: bool,
 }
 
+/// The HTML script classification used by a [`BlueTsScriptExecutionReport`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum BlueTsScriptKind {
+    Classic,
+    Module,
+}
+
+/// The source-free outcome of an inline BlueTS script attempt.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum BlueTsScriptExecutionOutcome {
+    Executed,
+    Rejected {
+        /// A bounded policy/compiler category, never source or diagnostics.
+        category: String,
+    },
+}
+
+/// Core-selected BlueTS runtime policy; transpile-only cannot run on pages.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum BlueTsScriptRuntimePolicy {
+    Checked,
+    StrictRuntime,
+}
+
+/// A verified half-open byte range in the original inline BlueTS input.
+/// The report never carries its module identity or source contents.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BlueTsScriptSourcePosition {
+    pub start: u32,
+    pub end: u32,
+}
+
+/// One source-free inline BlueTS execution report for a tab/document pair.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BlueTsScriptExecutionReport {
+    pub tab_id: u64,
+    pub document_generation: u64,
+    pub ordinal: u32,
+    pub kind: BlueTsScriptKind,
+    pub policy: BlueTsScriptRuntimePolicy,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_position: Option<BlueTsScriptSourcePosition>,
+    pub outcome: BlueTsScriptExecutionOutcome,
+}
+
+/// The HTML script classification used by a [`BlueJsScriptExecutionReport`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum BlueJsScriptKind {
+    Classic,
+    Module,
+}
+
+/// The source-free outcome of one standard JavaScript script attempt.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum BlueJsScriptExecutionOutcome {
+    Executed,
+    Rejected {
+        /// A bounded host/parser/compiler/runtime category, never page source
+        /// or diagnostics.
+        category: String,
+    },
+}
+
+/// One source-free standard JavaScript execution report for a tab/document
+/// pair. This is not a JavaScript completion, debugger, or source API.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BlueJsScriptExecutionReport {
+    pub tab_id: u64,
+    pub document_generation: u64,
+    pub ordinal: u32,
+    pub kind: BlueJsScriptKind,
+    pub outcome: BlueJsScriptExecutionOutcome,
+}
+
 fn write_framed<W: Write, T: Serialize>(w: &mut W, msg: &T) -> io::Result<()> {
+    write_framed_with_limit(w, msg, MAX_FRAME_BYTES)
+}
+
+pub(crate) fn write_framed_with_limit<W: Write, T: Serialize>(
+    w: &mut W,
+    msg: &T,
+    max_bytes: usize,
+) -> io::Result<()> {
     let bytes = serde_json::to_vec(msg).map_err(io::Error::other)?;
-    if bytes.len() > MAX_FRAME_BYTES {
+    if bytes.len() > max_bytes {
         return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            format!(
-                "IPC frame is {} bytes; the maximum is {MAX_FRAME_BYTES}",
-                bytes.len()
-            ),
+            io::ErrorKind::InvalidInput,
+            "frame exceeds protocol byte limit",
         ));
     }
     let len = u32::try_from(bytes.len()).map_err(io::Error::other)?;
@@ -461,18 +579,36 @@ fn write_framed<W: Write, T: Serialize>(w: &mut W, msg: &T) -> io::Result<()> {
 }
 
 fn read_frame_bytes<R: Read>(r: &mut R) -> io::Result<Vec<u8>> {
+    read_frame_bytes_with_limit(r, MAX_FRAME_BYTES)
+}
+
+/// Reads one framed payload while rejecting an oversized length before any
+/// payload allocation. Private protocol modules with materially larger source
+/// records use this instead of trusting an unbounded `u32` length from their
+/// peer. It is crate-visible so every protocol still shares the same partial-
+/// read/timeout framing discipline below.
+pub(crate) fn read_frame_bytes_with_limit<R: Read>(
+    r: &mut R,
+    max_bytes: usize,
+) -> io::Result<Vec<u8>> {
     let mut len_bytes = [0u8; 4];
     read_exact_no_progress_loss(r, &mut len_bytes)?;
     let len = u32::from_le_bytes(len_bytes) as usize;
-    if len > MAX_FRAME_BYTES {
+    if len > max_bytes {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
-            format!("IPC peer advertised a {len}-byte frame; the maximum is {MAX_FRAME_BYTES}"),
+            format!("frame length {len} exceeds the protocol maximum of {max_bytes}"),
         ));
     }
     let mut buf = vec![0u8; len];
     read_exact_no_progress_loss(r, &mut buf)?;
     Ok(buf)
+}
+
+/// Reads one framed payload while rejecting an advertised size before it can
+/// allocate. Retained for compiler IPC's independently documented bound.
+fn read_frame_bytes_bounded<R: Read>(r: &mut R, maximum_bytes: usize) -> io::Result<Vec<u8>> {
+    read_frame_bytes_with_limit(r, maximum_bytes)
 }
 
 /// Like [`Read::read_exact`], but a read *timeout* that occurs after
@@ -751,6 +887,18 @@ pub fn client_handshake<S: Read + Write>(stream: &mut S) -> io::Result<()> {
 mod tests {
     use super::*;
     use std::io::Cursor;
+    use std::net::{TcpListener, TcpStream};
+
+    /// Exercises framing across a real OS socket on every supported platform.
+    /// TCP keeps this protocol-boundary seam available on Windows while the
+    /// Unix-domain-socket services themselves remain Unix-only.
+    fn tcp_pair() -> (TcpStream, TcpStream) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let client = TcpStream::connect(address).unwrap();
+        let (server, _) = listener.accept().unwrap();
+        (client, server)
+    }
 
     #[test]
     fn client_message_round_trips_through_the_wire_format() {
@@ -783,6 +931,8 @@ mod tests {
             ClientMessage::Highlight { id: Some(7) },
             ClientMessage::Highlight { id: None },
             ClientMessage::GetDom,
+            ClientMessage::GetBlueTsScriptReports,
+            ClientMessage::GetBlueJsScriptReports,
             ClientMessage::OpenTab {
                 url: Some("https://example.com".to_string()),
             },
@@ -891,6 +1041,42 @@ mod tests {
                 }],
             }),
             ServerMessage::Dom("| <html>\n".to_string()),
+            ServerMessage::BlueTsScriptReports(vec![BlueTsScriptExecutionReport {
+                tab_id: 2,
+                document_generation: 42,
+                ordinal: 0,
+                kind: BlueTsScriptKind::Classic,
+                policy: BlueTsScriptRuntimePolicy::Checked,
+                source_position: None,
+                outcome: BlueTsScriptExecutionOutcome::Executed,
+            }]),
+            ServerMessage::BlueJsScriptReports(vec![BlueJsScriptExecutionReport {
+                tab_id: 2,
+                document_generation: 42,
+                ordinal: 0,
+                kind: BlueJsScriptKind::Classic,
+                outcome: BlueJsScriptExecutionOutcome::Executed,
+            }]),
+            ServerMessage::BlueJsScriptReports(vec![BlueJsScriptExecutionReport {
+                tab_id: 2,
+                document_generation: 42,
+                ordinal: 1,
+                kind: BlueJsScriptKind::Module,
+                outcome: BlueJsScriptExecutionOutcome::Rejected {
+                    category: "BlueJS compilation rejected the page script".to_string(),
+                },
+            }]),
+            ServerMessage::BlueTsScriptReports(vec![BlueTsScriptExecutionReport {
+                tab_id: 2,
+                document_generation: 42,
+                ordinal: 1,
+                kind: BlueTsScriptKind::Module,
+                policy: BlueTsScriptRuntimePolicy::StrictRuntime,
+                source_position: Some(BlueTsScriptSourcePosition { start: 3, end: 8 }),
+                outcome: BlueTsScriptExecutionOutcome::Rejected {
+                    category: "BlueTS compilation rejected the page script".to_string(),
+                },
+            }]),
             ServerMessage::TabOpened {
                 tab_id: 2,
                 url: Some("https://example.com/".to_string()),
@@ -1028,8 +1214,7 @@ mod tests {
         // boundary tests should drive the real protocol with a test
         // client, not just an in-memory buffer -- this is that test,
         // now actionable since Phase 4 is underway.
-        use std::os::unix::net::UnixStream;
-        let (mut a, mut b) = UnixStream::pair().unwrap();
+        let (mut a, mut b) = tcp_pair();
 
         let sent = ClientMessage::Navigate {
             url: "https://example.com".to_string(),
@@ -1202,8 +1387,7 @@ mod tests {
 
     #[test]
     fn client_handshake_succeeds_against_a_matching_hello_reply() {
-        use std::os::unix::net::UnixStream;
-        let (mut client, mut server) = UnixStream::pair().unwrap();
+        let (mut client, mut server) = tcp_pair();
         let responder = std::thread::spawn(move || {
             assert_eq!(
                 read_client_message(&mut server).unwrap(),
@@ -1225,8 +1409,7 @@ mod tests {
 
     #[test]
     fn client_handshake_surfaces_an_error_reply_as_an_io_error() {
-        use std::os::unix::net::UnixStream;
-        let (mut client, mut server) = UnixStream::pair().unwrap();
+        let (mut client, mut server) = tcp_pair();
         let responder = std::thread::spawn(move || {
             let _ = read_client_message(&mut server).unwrap();
             write_server_message(
@@ -1244,8 +1427,7 @@ mod tests {
 
     #[test]
     fn client_handshake_rejects_an_unexpected_reply_type() {
-        use std::os::unix::net::UnixStream;
-        let (mut client, mut server) = UnixStream::pair().unwrap();
+        let (mut client, mut server) = tcp_pair();
         let responder = std::thread::spawn(move || {
             let _ = read_client_message(&mut server).unwrap();
             write_server_message(

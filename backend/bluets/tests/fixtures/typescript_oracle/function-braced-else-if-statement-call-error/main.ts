@@ -1,0 +1,15 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+function takesNumber(value: number): number { return value; }
+
+function choose(): number {
+    if (false) {
+        return 0;
+    } else if (takesNumber("wrong")) {
+        return 1;
+    } else {
+        return 2;
+    }
+}

@@ -7,10 +7,10 @@
 //! retryable workers, and avoids sharing a stateful SFTP channel between
 //! workers.  Host verification is strict -- no trust-on-first-use fallback.
 
-use crate::download::backend::{ByteRange, ByteStream, TransferBackend, plain_stream};
+use crate::download::backend::{plain_stream, ByteRange, ByteStream, TransferBackend};
 use crate::download::credentials::{
-    SftpCredentialRef, SftpPrivateKeyPassphraseRef, load_sftp_password,
-    load_sftp_private_key_passphrase,
+    load_sftp_password, load_sftp_private_key_passphrase, SftpCredentialRef,
+    SftpPrivateKeyPassphraseRef,
 };
 use crate::download::probe::Probe;
 use crate::download::{DownloadError, DownloadOptions};

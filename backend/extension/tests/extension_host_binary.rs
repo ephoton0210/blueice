@@ -2,6 +2,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+#![cfg(unix)]
+
 //! Exercises the actual compiled `blueice-extension-host` binary as a
 //! real subprocess -- `main`'s own argument parsing, socket binding,
 //! and accept-loop wiring, none of which `src/main.rs`'s own unit tests
@@ -235,7 +237,10 @@ fn network_host_rule_manifest_package(label: &str) -> (PathBuf, PathBuf, String)
                     if unreachable end))"#,
         ).unwrap(),
     ).unwrap();
-    let extension_id = load_installed_extension(&manifest).unwrap().extension_id().to_string();
+    let extension_id = load_installed_extension(&manifest)
+        .unwrap()
+        .extension_id()
+        .to_string();
     (root, manifest, extension_id)
 }
 
@@ -243,7 +248,8 @@ fn network_path_prefix_and_redirect_manifest_package(label: &str) -> (PathBuf, P
     static NEXT: AtomicU64 = AtomicU64::new(0);
     let id = NEXT.fetch_add(1, Ordering::Relaxed);
     let root = std::env::temp_dir().join(format!(
-        "blueice-extension-host-path-package-{label}-{}-{id}", std::process::id()
+        "blueice-extension-host-path-package-{label}-{}-{id}",
+        std::process::id()
     ));
     std::fs::create_dir_all(&root).unwrap();
     let manifest = root.join("extension.json");
@@ -277,7 +283,10 @@ fn network_path_prefix_and_redirect_manifest_package(label: &str) -> (PathBuf, P
                 i32.ne
                 if unreachable end))"#,
     ).unwrap()).unwrap();
-    let extension_id = load_installed_extension(&manifest).unwrap().extension_id().to_string();
+    let extension_id = load_installed_extension(&manifest)
+        .unwrap()
+        .extension_id()
+        .to_string();
     (root, manifest, extension_id)
 }
 
@@ -358,8 +367,10 @@ fn network_trace_manifest_package(label: &str) -> (PathBuf, PathBuf, String) {
         &manifest,
         r#"{"name":"Trace","version":"1.0.0","blueice_api_version":1,"entry_point":"extension.wasm","capabilities":{"declared":["network:observe"]}}"#,
     ).unwrap();
-    std::fs::write(root.join("extension.wasm"), wat::parse_str(
-        r#"(module
+    std::fs::write(
+        root.join("extension.wasm"),
+        wat::parse_str(
+            r#"(module
             (import "blueice" "network_trace_utf8" (func $trace (param i64 i32 i32) (result i32)))
             (memory (export "memory") 1)
             (func (export "blueice_start")
@@ -370,8 +381,14 @@ fn network_trace_manifest_package(label: &str) -> (PathBuf, PathBuf, String) {
                 i32.const 0
                 i32.le_s
                 if unreachable end))"#,
-    ).unwrap()).unwrap();
-    let extension_id = load_installed_extension(&manifest).unwrap().extension_id().to_string();
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let extension_id = load_installed_extension(&manifest)
+        .unwrap()
+        .extension_id()
+        .to_string();
     (root, manifest, extension_id)
 }
 
@@ -499,7 +516,10 @@ fn popup_action_manifest_package(label: &str) -> (PathBuf, PathBuf, String) {
                     if unreachable end
                 end))"#).unwrap(),
     ).unwrap();
-    let extension_id = load_installed_extension(&manifest).unwrap().extension_id().to_string();
+    let extension_id = load_installed_extension(&manifest)
+        .unwrap()
+        .extension_id()
+        .to_string();
     (root, manifest, extension_id)
 }
 
@@ -618,7 +638,10 @@ fn core_connection_mode_authenticates_then_runs_a_navigation_event_reactor_over_
         r#"{"name":"Binary test","version":"1.0.0","blueice_api_version":1,"entry_point":"extension.wasm","capabilities":{"declared":["dom:read"],"optional":["storage"],"runtime_ephemeral":["dom:write"]}}"#,
     )
     .unwrap();
-    let extension_id = load_installed_extension(&manifest).unwrap().extension_id().to_string();
+    let extension_id = load_installed_extension(&manifest)
+        .unwrap()
+        .extension_id()
+        .to_string();
     let socket = unique_socket_path("core-connect");
     let _ = std::fs::remove_file(&socket);
     let listener = UnixListener::bind(&socket).unwrap();
@@ -704,7 +727,10 @@ fn core_connection_mode_keeps_an_ephemeral_ticket_out_of_guest_memory() {
         &manifest,
         r#"{"name":"Binary test","version":"1.0.0","blueice_api_version":1,"entry_point":"extension.wasm","capabilities":{"runtime_ephemeral":["dom:read"]}}"#,
     ).unwrap();
-    std::fs::write(root.join("extension.wasm"), wat::parse_str(r#"(module
+    std::fs::write(
+        root.join("extension.wasm"),
+        wat::parse_str(
+            r#"(module
         (import "blueice" "runtime_event_kind" (func $kind (result i32)))
         (import "blueice" "runtime_event_tab_id" (func $tab (result i64)))
         (import "blueice" "dom_read_ephemeral_utf8" (func $read (param i64 i32 i32) (result i32)))
@@ -733,57 +759,106 @@ fn core_connection_mode_keeps_an_ephemeral_ticket_out_of_guest_memory() {
                 i32.const -1
                 i32.ne
                 if unreachable end
-            end))"#).unwrap()).unwrap();
-    let extension_id = load_installed_extension(&manifest).unwrap().extension_id().to_string();
+            end))"#,
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let extension_id = load_installed_extension(&manifest)
+        .unwrap()
+        .extension_id()
+        .to_string();
     let socket = unique_socket_path("core-ephemeral");
     let _ = std::fs::remove_file(&socket);
     let listener = UnixListener::bind(&socket).unwrap();
     let authentication = "test-only-ephemeral-credential";
     let mut host = Command::new(env!("CARGO_BIN_EXE_blueice-extension-host"))
-        .args(["--connect", socket.to_str().unwrap(), "--manifest", manifest.to_str().unwrap()])
+        .args([
+            "--connect",
+            socket.to_str().unwrap(),
+            "--manifest",
+            manifest.to_str().unwrap(),
+        ])
         .env("BLUEICE_EXTENSION_AUTH_TOKEN", authentication)
         .spawn()
         .expect("failed to launch the authenticated extension host");
     let (mut stream, _) = listener.accept().unwrap();
-    stream.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
-    assert_eq!(blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
+    stream
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .unwrap();
+    assert_eq!(
+        blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
         ExtensionRequest::HelloAuthenticated {
             extension_id,
             capability_versions: BTreeMap::from([("dom:read".to_string(), 3)]),
             authentication: authentication.to_string(),
-        });
-    blueice_ipc::extension::write_extension_reply(&mut stream,
-        &ExtensionReply::HelloAck { unsupported_capabilities: BTreeMap::new() }).unwrap();
-    assert_eq!(blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
-        ExtensionRequest::RuntimeReady);
-    blueice_ipc::extension::write_extension_reply(&mut stream, &ExtensionReply::RuntimeStart).unwrap();
-    assert_eq!(blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
+        }
+    );
+    blueice_ipc::extension::write_extension_reply(
+        &mut stream,
+        &ExtensionReply::HelloAck {
+            unsupported_capabilities: BTreeMap::new(),
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
+        ExtensionRequest::RuntimeReady
+    );
+    blueice_ipc::extension::write_extension_reply(&mut stream, &ExtensionReply::RuntimeStart)
+        .unwrap();
+    assert_eq!(
+        blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
         ExtensionRequest::NextRuntimeEvent,
-        "startup must not borrow the ephemeral read");
-    blueice_ipc::extension::write_extension_reply(&mut stream,
+        "startup must not borrow the ephemeral read"
+    );
+    blueice_ipc::extension::write_extension_reply(
+        &mut stream,
         &ExtensionReply::RuntimeEvent(
             blueice_ipc::extension::ExtensionRuntimeEvent::ToolbarActivated {
-                tab_id: 7, grant_generation: 0,
+                tab_id: 7,
+                grant_generation: 0,
             },
-        )).unwrap();
-    assert_eq!(blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
+        ),
+    )
+    .unwrap();
+    assert_eq!(
+        blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
         ExtensionRequest::NextRuntimeEvent,
-        "toolbar activation must not borrow the ephemeral read");
+        "toolbar activation must not borrow the ephemeral read"
+    );
     let ticket = "b".repeat(64);
-    blueice_ipc::extension::write_extension_reply(&mut stream,
+    blueice_ipc::extension::write_extension_reply(
+        &mut stream,
         &ExtensionReply::RuntimeEvent(
             blueice_ipc::extension::ExtensionRuntimeEvent::TrustedEphemeralDomRead {
-                tab_id: 7, document_epoch: 3, ticket: ticket.clone(),
+                tab_id: 7,
+                document_epoch: 3,
+                ticket: ticket.clone(),
             },
-        )).unwrap();
-    assert_eq!(blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
-        ExtensionRequest::DomReadTabEphemeral { tab_id: 7, ticket });
-    blueice_ipc::extension::write_extension_reply(&mut stream,
-        &ExtensionReply::DomReadResult { value: "snapshot".into() }).unwrap();
-    assert_eq!(blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
-        ExtensionRequest::NextRuntimeEvent);
-    blueice_ipc::extension::write_extension_reply(&mut stream,
-        &ExtensionReply::RuntimeEventStreamClosed).unwrap();
+        ),
+    )
+    .unwrap();
+    assert_eq!(
+        blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
+        ExtensionRequest::DomReadTabEphemeral { tab_id: 7, ticket }
+    );
+    blueice_ipc::extension::write_extension_reply(
+        &mut stream,
+        &ExtensionReply::DomReadResult {
+            value: "snapshot".into(),
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
+        ExtensionRequest::NextRuntimeEvent
+    );
+    blueice_ipc::extension::write_extension_reply(
+        &mut stream,
+        &ExtensionReply::RuntimeEventStreamClosed,
+    )
+    .unwrap();
     drop(listener);
     assert!(host.wait().unwrap().success());
     let _ = std::fs::remove_file(socket);
@@ -799,14 +874,18 @@ fn core_connection_mode_runs_ui_v3_popup_action_over_a_real_host_process() {
     let authentication = "test-only-popup-action-credential";
     let mut host = Command::new(env!("CARGO_BIN_EXE_blueice-extension-host"))
         .args([
-            "--connect", socket.to_str().unwrap(),
-            "--manifest", manifest.to_str().unwrap(),
+            "--connect",
+            socket.to_str().unwrap(),
+            "--manifest",
+            manifest.to_str().unwrap(),
         ])
         .env("BLUEICE_EXTENSION_AUTH_TOKEN", authentication)
         .spawn()
         .expect("failed to launch blueice-extension-host for popup action");
     let (mut stream, _) = listener.accept().unwrap();
-    stream.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+    stream
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .unwrap();
     assert_eq!(
         blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
         ExtensionRequest::HelloAuthenticated {
@@ -817,51 +896,81 @@ fn core_connection_mode_runs_ui_v3_popup_action_over_a_real_host_process() {
     );
     blueice_ipc::extension::write_extension_reply(
         &mut stream,
-        &ExtensionReply::HelloAck { unsupported_capabilities: BTreeMap::new() },
-    ).unwrap();
-    assert_eq!(blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
-        ExtensionRequest::RuntimeReady);
+        &ExtensionReply::HelloAck {
+            unsupported_capabilities: BTreeMap::new(),
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
+        ExtensionRequest::RuntimeReady
+    );
     blueice_ipc::extension::write_extension_reply(&mut stream, &ExtensionReply::RuntimeStart)
         .unwrap();
-    assert_eq!(blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
-        ExtensionRequest::SetToolbarButton { label: "Notes".to_string() });
+    assert_eq!(
+        blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
+        ExtensionRequest::SetToolbarButton {
+            label: "Notes".to_string()
+        }
+    );
     blueice_ipc::extension::write_extension_reply(&mut stream, &ExtensionReply::UiInjectAck)
         .unwrap();
-    assert_eq!(blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
-        ExtensionRequest::NextRuntimeEvent);
+    assert_eq!(
+        blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
+        ExtensionRequest::NextRuntimeEvent
+    );
     blueice_ipc::extension::write_extension_reply(
         &mut stream,
         &ExtensionReply::RuntimeEvent(
-            blueice_ipc::extension::ExtensionRuntimeEvent::ToolbarActivated { tab_id: 7, grant_generation: 0 },
+            blueice_ipc::extension::ExtensionRuntimeEvent::ToolbarActivated {
+                tab_id: 7,
+                grant_generation: 0,
+            },
         ),
-    ).unwrap();
-    assert_eq!(blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
         ExtensionRequest::ShowPopupAction {
             tab_id: 7,
             title: "Notes".to_string(),
             body: "Ready to open".to_string(),
             action_label: "Open".to_string(),
-        });
+        }
+    );
     blueice_ipc::extension::write_extension_reply(&mut stream, &ExtensionReply::UiInjectAck)
         .unwrap();
-    assert_eq!(blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
-        ExtensionRequest::NextRuntimeEvent);
+    assert_eq!(
+        blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
+        ExtensionRequest::NextRuntimeEvent
+    );
     blueice_ipc::extension::write_extension_reply(
         &mut stream,
         &ExtensionReply::RuntimeEvent(
-            blueice_ipc::extension::ExtensionRuntimeEvent::PopupActionActivated { tab_id: 7, grant_generation: 0 },
+            blueice_ipc::extension::ExtensionRuntimeEvent::PopupActionActivated {
+                tab_id: 7,
+                grant_generation: 0,
+            },
         ),
-    ).unwrap();
-    assert_eq!(blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
-        ExtensionRequest::SetToolbarButton { label: "Done".to_string() });
+    )
+    .unwrap();
+    assert_eq!(
+        blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
+        ExtensionRequest::SetToolbarButton {
+            label: "Done".to_string()
+        }
+    );
     blueice_ipc::extension::write_extension_reply(&mut stream, &ExtensionReply::UiInjectAck)
         .unwrap();
-    assert_eq!(blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
-        ExtensionRequest::NextRuntimeEvent);
+    assert_eq!(
+        blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
+        ExtensionRequest::NextRuntimeEvent
+    );
     blueice_ipc::extension::write_extension_reply(
         &mut stream,
         &ExtensionReply::RuntimeEventStreamClosed,
-    ).unwrap();
+    )
+    .unwrap();
     drop(listener);
     assert!(host.wait().unwrap().success());
     let _ = std::fs::remove_file(socket);
@@ -941,8 +1050,10 @@ fn core_connection_mode_negotiates_v6_and_runs_host_rule_over_real_ipc() {
     let authentication = "test-only-network-host-credential";
     let mut host = Command::new(env!("CARGO_BIN_EXE_blueice-extension-host"))
         .args([
-            "--connect", socket.to_str().unwrap(),
-            "--manifest", manifest.to_str().unwrap(),
+            "--connect",
+            socket.to_str().unwrap(),
+            "--manifest",
+            manifest.to_str().unwrap(),
         ])
         .env("BLUEICE_EXTENSION_AUTH_TOKEN", authentication)
         .spawn()
@@ -959,8 +1070,11 @@ fn core_connection_mode_negotiates_v6_and_runs_host_rule_over_real_ipc() {
     );
     blueice_ipc::extension::write_extension_reply(
         &mut stream,
-        &ExtensionReply::HelloAck { unsupported_capabilities: BTreeMap::new() },
-    ).unwrap();
+        &ExtensionReply::HelloAck {
+            unsupported_capabilities: BTreeMap::new(),
+        },
+    )
+    .unwrap();
     assert_eq!(
         blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
         ExtensionRequest::RuntimeReady
@@ -969,18 +1083,24 @@ fn core_connection_mode_negotiates_v6_and_runs_host_rule_over_real_ipc() {
         .unwrap();
     assert_eq!(
         blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
-        ExtensionRequest::RegisterNetworkBlockHost { host: "example.test".to_string() }
+        ExtensionRequest::RegisterNetworkBlockHost {
+            host: "example.test".to_string()
+        }
     );
     blueice_ipc::extension::write_extension_reply(
-        &mut stream, &ExtensionReply::NetworkInterceptAck,
-    ).unwrap();
+        &mut stream,
+        &ExtensionReply::NetworkInterceptAck,
+    )
+    .unwrap();
     assert_eq!(
         blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
         ExtensionRequest::NextRuntimeEvent
     );
     blueice_ipc::extension::write_extension_reply(
-        &mut stream, &ExtensionReply::RuntimeEventStreamClosed,
-    ).unwrap();
+        &mut stream,
+        &ExtensionReply::RuntimeEventStreamClosed,
+    )
+    .unwrap();
     drop(listener);
     assert!(host.wait().unwrap().success());
     let _ = std::fs::remove_file(socket);
@@ -989,44 +1109,78 @@ fn core_connection_mode_negotiates_v6_and_runs_host_rule_over_real_ipc() {
 
 #[test]
 fn core_connection_mode_runs_v5_path_and_v6_redirect_imports_over_real_ipc() {
-    let (root, manifest, extension_id) = network_path_prefix_and_redirect_manifest_package("core-connect");
+    let (root, manifest, extension_id) =
+        network_path_prefix_and_redirect_manifest_package("core-connect");
     let socket = unique_socket_path("core-path");
     let _ = std::fs::remove_file(&socket);
     let listener = UnixListener::bind(&socket).unwrap();
     let authentication = "test-only-network-path-credential";
     let mut host = Command::new(env!("CARGO_BIN_EXE_blueice-extension-host"))
-        .args(["--connect", socket.to_str().unwrap(), "--manifest", manifest.to_str().unwrap()])
+        .args([
+            "--connect",
+            socket.to_str().unwrap(),
+            "--manifest",
+            manifest.to_str().unwrap(),
+        ])
         .env("BLUEICE_EXTENSION_AUTH_TOKEN", authentication)
         .spawn()
         .expect("failed to launch extension host for the v5 path rule");
 
     let (mut stream, _) = listener.accept().unwrap();
-    assert_eq!(blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
+    assert_eq!(
+        blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
         ExtensionRequest::HelloAuthenticated {
             extension_id,
             capability_versions: BTreeMap::from([("network:intercept".to_string(), 6)]),
             authentication: authentication.to_string(),
-        });
-    blueice_ipc::extension::write_extension_reply(&mut stream,
-        &ExtensionReply::HelloAck { unsupported_capabilities: BTreeMap::new() },
-    ).unwrap();
-    assert_eq!(blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
-        ExtensionRequest::RuntimeReady);
-    blueice_ipc::extension::write_extension_reply(&mut stream, &ExtensionReply::RuntimeStart).unwrap();
-    assert_eq!(blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
+        }
+    );
+    blueice_ipc::extension::write_extension_reply(
+        &mut stream,
+        &ExtensionReply::HelloAck {
+            unsupported_capabilities: BTreeMap::new(),
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
+        ExtensionRequest::RuntimeReady
+    );
+    blueice_ipc::extension::write_extension_reply(&mut stream, &ExtensionReply::RuntimeStart)
+        .unwrap();
+    assert_eq!(
+        blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
         ExtensionRequest::RegisterNetworkBlockPathPrefix {
-            host: "example.test".into(), path_prefix: "/private".into(),
-        });
-    blueice_ipc::extension::write_extension_reply(&mut stream, &ExtensionReply::NetworkInterceptAck).unwrap();
-    assert_eq!(blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
+            host: "example.test".into(),
+            path_prefix: "/private".into(),
+        }
+    );
+    blueice_ipc::extension::write_extension_reply(
+        &mut stream,
+        &ExtensionReply::NetworkInterceptAck,
+    )
+    .unwrap();
+    assert_eq!(
+        blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
         ExtensionRequest::RegisterNetworkRedirectUrl {
             source_url: "https://example.test/old".into(),
             target_url: "https://example.test/new".into(),
-        });
-    blueice_ipc::extension::write_extension_reply(&mut stream, &ExtensionReply::NetworkInterceptAck).unwrap();
-    assert_eq!(blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
-        ExtensionRequest::NextRuntimeEvent);
-    blueice_ipc::extension::write_extension_reply(&mut stream, &ExtensionReply::RuntimeEventStreamClosed).unwrap();
+        }
+    );
+    blueice_ipc::extension::write_extension_reply(
+        &mut stream,
+        &ExtensionReply::NetworkInterceptAck,
+    )
+    .unwrap();
+    assert_eq!(
+        blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
+        ExtensionRequest::NextRuntimeEvent
+    );
+    blueice_ipc::extension::write_extension_reply(
+        &mut stream,
+        &ExtensionReply::RuntimeEventStreamClosed,
+    )
+    .unwrap();
     drop(listener);
     assert!(host.wait().unwrap().success());
     let _ = std::fs::remove_file(socket);
@@ -1041,43 +1195,67 @@ fn core_connection_mode_negotiates_network_observe_v2_and_runs_trace_import() {
     let listener = UnixListener::bind(&socket).unwrap();
     let authentication = "test-only-network-trace-credential";
     let mut host = Command::new(env!("CARGO_BIN_EXE_blueice-extension-host"))
-        .args(["--connect", socket.to_str().unwrap(), "--manifest", manifest.to_str().unwrap()])
+        .args([
+            "--connect",
+            socket.to_str().unwrap(),
+            "--manifest",
+            manifest.to_str().unwrap(),
+        ])
         .env("BLUEICE_EXTENSION_AUTH_TOKEN", authentication)
         .spawn()
         .expect("failed to launch blueice-extension-host for network trace");
 
     let (mut stream, _) = listener.accept().unwrap();
-    assert_eq!(blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
+    assert_eq!(
+        blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
         ExtensionRequest::HelloAuthenticated {
             extension_id,
             capability_versions: BTreeMap::from([("network:observe".to_string(), 2)]),
             authentication: authentication.to_string(),
-        });
-    blueice_ipc::extension::write_extension_reply(&mut stream, &ExtensionReply::HelloAck {
-        unsupported_capabilities: BTreeMap::new(),
-    }).unwrap();
-    assert_eq!(blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
-        ExtensionRequest::RuntimeReady);
-    blueice_ipc::extension::write_extension_reply(&mut stream, &ExtensionReply::RuntimeStart).unwrap();
-    assert_eq!(blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
-        ExtensionRequest::ReadNetworkTrace { tab_id: 1 });
-    blueice_ipc::extension::write_extension_reply(&mut stream, &ExtensionReply::NetworkTraceResult {
-        trace: Some(blueice_ipc::extension::NetworkTraceInfo {
-            request_url: "https://example.test/start".to_string(),
-            redirects: vec![],
-            response: blueice_ipc::extension::NetworkResponseInfo {
-                method: "GET".to_string(),
-                final_url: "https://example.test/start".to_string(),
-                status: 200,
-                content_type: Some("text/html".to_string()),
-            },
-        }),
-    }).unwrap();
-    assert_eq!(blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
-        ExtensionRequest::NextRuntimeEvent);
+        }
+    );
     blueice_ipc::extension::write_extension_reply(
-        &mut stream, &ExtensionReply::RuntimeEventStreamClosed,
-    ).unwrap();
+        &mut stream,
+        &ExtensionReply::HelloAck {
+            unsupported_capabilities: BTreeMap::new(),
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
+        ExtensionRequest::RuntimeReady
+    );
+    blueice_ipc::extension::write_extension_reply(&mut stream, &ExtensionReply::RuntimeStart)
+        .unwrap();
+    assert_eq!(
+        blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
+        ExtensionRequest::ReadNetworkTrace { tab_id: 1 }
+    );
+    blueice_ipc::extension::write_extension_reply(
+        &mut stream,
+        &ExtensionReply::NetworkTraceResult {
+            trace: Some(blueice_ipc::extension::NetworkTraceInfo {
+                request_url: "https://example.test/start".to_string(),
+                redirects: vec![],
+                response: blueice_ipc::extension::NetworkResponseInfo {
+                    method: "GET".to_string(),
+                    final_url: "https://example.test/start".to_string(),
+                    status: 200,
+                    content_type: Some("text/html".to_string()),
+                },
+            }),
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
+        ExtensionRequest::NextRuntimeEvent
+    );
+    blueice_ipc::extension::write_extension_reply(
+        &mut stream,
+        &ExtensionReply::RuntimeEventStreamClosed,
+    )
+    .unwrap();
     drop(listener);
     assert!(host.wait().unwrap().success());
     let _ = std::fs::remove_file(socket);
@@ -1148,8 +1326,11 @@ fn core_connection_mode_negotiates_storage_v3_and_keeps_v1_v2_imports_compatible
     );
     blueice_ipc::extension::write_extension_reply(
         &mut stream,
-        &ExtensionReply::StorageKeysResult { keys: vec!["task-state".to_string()] },
-    ).unwrap();
+        &ExtensionReply::StorageKeysResult {
+            keys: vec!["task-state".to_string()],
+        },
+    )
+    .unwrap();
     assert_eq!(
         blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
         ExtensionRequest::NextRuntimeEvent

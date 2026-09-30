@@ -31,7 +31,11 @@ fn socket_dir_from(runtime_dir: Option<OsString>, temp_dir: PathBuf, uid: u32) -
 
 /// The default directory containing all local BlueIce sockets.
 pub fn default_socket_dir() -> PathBuf {
-    socket_dir_from(std::env::var_os("XDG_RUNTIME_DIR"), std::env::temp_dir(), current_uid())
+    socket_dir_from(
+        std::env::var_os("XDG_RUNTIME_DIR"),
+        std::env::temp_dir(),
+        current_uid(),
+    )
 }
 
 /// Creates `dir` if necessary, then verifies that it is an ordinary directory
@@ -42,10 +46,22 @@ pub fn ensure_private_dir(dir: &Path) -> io::Result<()> {
     fs::create_dir_all(dir)?;
     let metadata = fs::symlink_metadata(dir)?;
     if metadata.file_type().is_symlink() || !metadata.is_dir() {
-        return Err(io::Error::new(io::ErrorKind::PermissionDenied, format!("the socket directory {} is not a real directory", dir.display())));
+        return Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            format!(
+                "the socket directory {} is not a real directory",
+                dir.display()
+            ),
+        ));
     }
     if metadata.uid() != current_uid() {
-        return Err(io::Error::new(io::ErrorKind::PermissionDenied, format!("the socket directory {} is not owned by this user", dir.display())));
+        return Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            format!(
+                "the socket directory {} is not owned by this user",
+                dir.display()
+            ),
+        ));
     }
     fs::set_permissions(dir, fs::Permissions::from_mode(0o700))
 }
@@ -75,7 +91,11 @@ mod tests {
 
     fn scratch(label: &str) -> PathBuf {
         static NEXT: AtomicU64 = AtomicU64::new(0);
-        let path = std::env::temp_dir().join(format!("bi-ipc-{label}-{}-{}", std::process::id(), NEXT.fetch_add(1, Ordering::Relaxed)));
+        let path = std::env::temp_dir().join(format!(
+            "bi-ipc-{label}-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ));
         fs::create_dir_all(&path).unwrap();
         path
     }
@@ -83,8 +103,14 @@ mod tests {
     #[test]
     fn fallback_socket_paths_are_keyed_by_the_real_uid_not_a_process_id() {
         let temp = PathBuf::from("/tmp/blueice-test");
-        assert_eq!(socket_dir_from(None, temp.clone(), 42), temp.join("blueice-42"));
-        assert_eq!(socket_dir_from(Some(OsString::from("/run/user/42")), temp, 999), PathBuf::from("/run/user/42/blueice"));
+        assert_eq!(
+            socket_dir_from(None, temp.clone(), 42),
+            temp.join("blueice-42")
+        );
+        assert_eq!(
+            socket_dir_from(Some(OsString::from("/run/user/42")), temp, 999),
+            PathBuf::from("/run/user/42/blueice")
+        );
         assert_eq!(current_uid(), unsafe { libc::getuid() });
     }
 
@@ -93,11 +119,17 @@ mod tests {
         let root = scratch("private");
         let dir = root.join("blueice");
         ensure_private_socket_dir(&dir).unwrap();
-        assert_eq!(fs::metadata(&dir).unwrap().permissions().mode() & 0o777, 0o700);
+        assert_eq!(
+            fs::metadata(&dir).unwrap().permissions().mode() & 0o777,
+            0o700
+        );
 
         let socket = dir.join("test.sock");
         let listener = bind_private_listener(&socket).unwrap();
-        assert_eq!(fs::metadata(&socket).unwrap().permissions().mode() & 0o777, 0o600);
+        assert_eq!(
+            fs::metadata(&socket).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
         drop(listener);
         let _ = fs::remove_dir_all(root);
     }

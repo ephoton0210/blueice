@@ -68,7 +68,13 @@ pub struct Word {
 /// walk descends into nested inline elements). Does not itself decide
 /// what counts as "inline-level" content -- the caller (`block.rs`)
 /// only calls this on nodes it already classified as inline-level.
-pub fn collect_words(doc: &Document, node: NodeId, styles: &StyleMap, style_node: NodeId, out: &mut Vec<Word>) {
+pub fn collect_words(
+    doc: &Document,
+    node: NodeId,
+    styles: &StyleMap,
+    style_node: NodeId,
+    out: &mut Vec<Word>,
+) {
     match doc.data(node) {
         NodeData::Text { data } => {
             let style = styles.get(&style_node);
@@ -77,7 +83,11 @@ pub fn collect_words(doc: &Document, node: NodeId, styles: &StyleMap, style_node
             let italic = style.is_some_and(ComputedStyle::is_italic);
             for word in data.split_whitespace() {
                 let width = blueice_font::measure_text_width(word, font_size, bold, italic);
-                out.push(Word { text: word.to_string(), width, style_node });
+                out.push(Word {
+                    text: word.to_string(),
+                    width,
+                    style_node,
+                });
             }
         }
         NodeData::Element { .. } => {
@@ -103,7 +113,11 @@ pub fn break_into_lines(words: &[Word], available_width: f64, space_width: f64) 
     let mut line_width = 0.0;
 
     for i in 0..words.len() {
-        let would_add = if i == line_start { words[i].width } else { space_width + words[i].width };
+        let would_add = if i == line_start {
+            words[i].width
+        } else {
+            space_width + words[i].width
+        };
         if i > line_start && line_width + would_add > available_width {
             lines.push(&words[line_start..i]);
             line_start = i;
@@ -122,18 +136,28 @@ mod tests {
     use blueice_dom::NodeData;
 
     fn word(text: &str, style_node: NodeId) -> Word {
-        Word { text: text.to_string(), width: blueice_font::measure_text_width(text, 16.0, false, false), style_node }
+        Word {
+            text: text.to_string(),
+            width: blueice_font::measure_text_width(text, 16.0, false, false),
+            style_node,
+        }
     }
 
     fn dummy_node() -> NodeId {
         let mut doc = Document::new();
-        doc.create_node(NodeData::Text { data: String::new() })
+        doc.create_node(NodeData::Text {
+            data: String::new(),
+        })
     }
 
     #[test]
     fn word_widths_scale_with_font_size_and_length_via_real_font_metrics() {
         let measure = |t: &str, size: f64| blueice_font::measure_text_width(t, size, false, false);
-        assert_eq!(measure("abcabc", 16.0), 2.0 * measure("abc", 16.0), "no kerning is applied, so repeating the same text exactly doubles its width");
+        assert_eq!(
+            measure("abcabc", 16.0),
+            2.0 * measure("abc", 16.0),
+            "no kerning is applied, so repeating the same text exactly doubles its width"
+        );
         assert!(measure("abc", 32.0) > measure("abc", 16.0));
     }
 
@@ -197,7 +221,13 @@ mod tests {
         let space = space_width(16.0);
         // three words of width 20 each: an available width that fits
         // exactly two words plus the gap between them, but not a third.
-        let words: Vec<Word> = (0..3).map(|_| Word { text: "xx".to_string(), width: 20.0, style_node: n }).collect();
+        let words: Vec<Word> = (0..3)
+            .map(|_| Word {
+                text: "xx".to_string(),
+                width: 20.0,
+                style_node: n,
+            })
+            .collect();
         let available = 20.0 + space + 20.0 + 1.0;
         let lines = break_into_lines(&words, available, space);
         assert_eq!(lines.len(), 2);
@@ -209,28 +239,46 @@ mod tests {
     fn collect_words_splits_on_whitespace_and_skips_empty_text() {
         let mut doc = Document::new();
         let root = doc.root();
-        let p = doc.create_node(NodeData::Element { tag_name: "p".to_string(), attributes: vec![] });
+        let p = doc.create_node(NodeData::Element {
+            tag_name: "p".to_string(),
+            attributes: vec![],
+        });
         doc.append_child(root, p);
-        let text = doc.create_node(NodeData::Text { data: "  hello   world  ".to_string() });
+        let text = doc.create_node(NodeData::Text {
+            data: "  hello   world  ".to_string(),
+        });
         doc.append_child(p, text);
 
         let styles = StyleMap::new();
         let mut words = Vec::new();
         collect_words(&doc, p, &styles, p, &mut words);
-        assert_eq!(words.iter().map(|w| w.text.as_str()).collect::<Vec<_>>(), vec!["hello", "world"]);
+        assert_eq!(
+            words.iter().map(|w| w.text.as_str()).collect::<Vec<_>>(),
+            vec!["hello", "world"]
+        );
     }
 
     #[test]
     fn collect_words_flattens_nested_inline_elements_tagging_their_own_style_node() {
         let mut doc = Document::new();
         let root = doc.root();
-        let p = doc.create_node(NodeData::Element { tag_name: "p".to_string(), attributes: vec![] });
+        let p = doc.create_node(NodeData::Element {
+            tag_name: "p".to_string(),
+            attributes: vec![],
+        });
         doc.append_child(root, p);
-        let t1 = doc.create_node(NodeData::Text { data: "one".to_string() });
+        let t1 = doc.create_node(NodeData::Text {
+            data: "one".to_string(),
+        });
         doc.append_child(p, t1);
-        let b = doc.create_node(NodeData::Element { tag_name: "b".to_string(), attributes: vec![] });
+        let b = doc.create_node(NodeData::Element {
+            tag_name: "b".to_string(),
+            attributes: vec![],
+        });
         doc.append_child(p, b);
-        let t2 = doc.create_node(NodeData::Text { data: "two".to_string() });
+        let t2 = doc.create_node(NodeData::Text {
+            data: "two".to_string(),
+        });
         doc.append_child(b, t2);
 
         let styles = StyleMap::new();
@@ -238,16 +286,24 @@ mod tests {
         collect_words(&doc, p, &styles, p, &mut words);
         assert_eq!(words.len(), 2);
         assert_eq!(words[0].style_node, p);
-        assert_eq!(words[1].style_node, b, "word inside <b> is tagged with <b>, not <p>");
+        assert_eq!(
+            words[1].style_node, b,
+            "word inside <b> is tagged with <b>, not <p>"
+        );
     }
 
     #[test]
     fn collect_words_uses_the_style_nodes_own_font_size() {
         let mut doc = Document::new();
         let root = doc.root();
-        let p = doc.create_node(NodeData::Element { tag_name: "p".to_string(), attributes: vec![] });
+        let p = doc.create_node(NodeData::Element {
+            tag_name: "p".to_string(),
+            attributes: vec![],
+        });
         doc.append_child(root, p);
-        let text = doc.create_node(NodeData::Text { data: "hi".to_string() });
+        let text = doc.create_node(NodeData::Text {
+            data: "hi".to_string(),
+        });
         doc.append_child(p, text);
 
         let mut styles = StyleMap::new();
@@ -266,7 +322,10 @@ mod tests {
         );
         let mut words = Vec::new();
         collect_words(&doc, p, &styles, p, &mut words);
-        assert_eq!(words[0].width, blueice_font::measure_text_width("hi", 32.0, false, false));
+        assert_eq!(
+            words[0].width,
+            blueice_font::measure_text_width("hi", 32.0, false, false)
+        );
     }
 
     #[test]
@@ -278,9 +337,14 @@ mod tests {
         // words visually overlap.
         let mut doc = Document::new();
         let root = doc.root();
-        let b = doc.create_node(NodeData::Element { tag_name: "b".to_string(), attributes: vec![] });
+        let b = doc.create_node(NodeData::Element {
+            tag_name: "b".to_string(),
+            attributes: vec![],
+        });
         doc.append_child(root, b);
-        let text = doc.create_node(NodeData::Text { data: "Example".to_string() });
+        let text = doc.create_node(NodeData::Text {
+            data: "Example".to_string(),
+        });
         doc.append_child(b, text);
 
         let mut styles = StyleMap::new();
@@ -294,12 +358,21 @@ mod tests {
             text_align: None,
             other: Default::default(),
         };
-        style.other.insert("font-weight".to_string(), blueice_css::Value::Keyword("bold".to_string()));
+        style.other.insert(
+            "font-weight".to_string(),
+            blueice_css::Value::Keyword("bold".to_string()),
+        );
         styles.insert(b, style);
 
         let mut words = Vec::new();
         collect_words(&doc, b, &styles, b, &mut words);
-        assert_eq!(words[0].width, blueice_font::measure_text_width("Example", 32.0, true, false));
-        assert!(words[0].width > blueice_font::measure_text_width("Example", 32.0, false, false), "bold must measure wider than regular for the same text");
+        assert_eq!(
+            words[0].width,
+            blueice_font::measure_text_width("Example", 32.0, true, false)
+        );
+        assert!(
+            words[0].width > blueice_font::measure_text_width("Example", 32.0, false, false),
+            "bold must measure wider than regular for the same text"
+        );
     }
 }

@@ -21,28 +21,37 @@
 //! installed module's bounded
 //! `blueice_start` reactor without WASI or ambient OS authority.
 
+#[cfg(unix)]
 use blueice_extension_host::{
     execute_installed_extension, execute_installed_extension_for_invocation,
     handle_extension_connection_with_gatekeeper, load_installed_extension,
     registry_for_installed_extension, ExtensionRegistry, RuntimeInvocation, CAPABILITY_DOM_READ,
-    CAPABILITY_DOM_WRITE, CAPABILITY_NETWORK_INTERCEPT, CAPABILITY_NETWORK_OBSERVE, CAPABILITY_STORAGE,
-    CAPABILITY_UI_INJECT,
+    CAPABILITY_DOM_WRITE, CAPABILITY_NETWORK_INTERCEPT, CAPABILITY_NETWORK_OBSERVE,
+    CAPABILITY_STORAGE, CAPABILITY_UI_INJECT,
 };
+#[cfg(unix)]
 use blueice_ipc::extension::{
     read_extension_reply, write_extension_request, ExtensionReply, ExtensionRequest,
     ExtensionRuntimeEvent,
 };
+#[cfg(unix)]
 use blueice_ipc::gatekeeper::default_gatekeeper_socket_path;
+#[cfg(unix)]
 use std::collections::BTreeMap;
+#[cfg(unix)]
 use std::os::unix::net::UnixStream;
+#[cfg(unix)]
 use std::path::PathBuf;
+#[cfg(unix)]
 use std::process::ExitCode;
 
+#[cfg(unix)]
 #[derive(Debug, PartialEq)]
 struct Args {
     mode: Mode,
 }
 
+#[cfg(unix)]
 #[derive(Debug, PartialEq)]
 enum Mode {
     Serve {
@@ -60,6 +69,7 @@ enum Mode {
 /// `std::env::args()` directly) so every flag-parsing branch is a plain
 /// unit test -- mirrors `blueice-core`'s own `parse_args` for the same
 /// reason (see that binary's docs).
+#[cfg(unix)]
 fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut socket = None;
     let mut connect = None;
@@ -103,6 +113,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     }
 }
 
+#[cfg(unix)]
 fn serve(socket: PathBuf, gatekeeper_socket: PathBuf, manifest: Option<PathBuf>) -> ExitCode {
     // Validate the package and populate the server-side registry before
     // publishing a socket. A client must never race a briefly listening host
@@ -159,6 +170,7 @@ fn serve(socket: PathBuf, gatekeeper_socket: PathBuf, manifest: Option<PathBuf>)
 /// The core's child-side handshake. The token comes only from core's child
 /// environment -- there is intentionally no command-line flag for it, where a
 /// process listing or shell history could disclose it.
+#[cfg(unix)]
 fn connect_to_core(socket: PathBuf, manifest: PathBuf) -> Result<(), String> {
     let installed = load_installed_extension(&manifest).map_err(|error| {
         format!(
@@ -184,7 +196,13 @@ fn connect_to_core(socket: PathBuf, manifest: PathBuf) -> Result<(), String> {
         .declared()
         .iter()
         .chain(installed.manifest().capabilities().optional().iter())
-        .chain(installed.manifest().capabilities().runtime_ephemeral().iter())
+        .chain(
+            installed
+                .manifest()
+                .capabilities()
+                .runtime_ephemeral()
+                .iter(),
+        )
         .map(|capability| {
             let version = match capability.as_str() {
                 CAPABILITY_DOM_READ => 3,
@@ -272,9 +290,13 @@ fn connect_to_core(socket: PathBuf, manifest: PathBuf) -> Result<(), String> {
                         RuntimeInvocation::PopupActionActivated { tab_id }
                     }
                     ExtensionRuntimeEvent::TrustedEphemeralDomRead {
-                        tab_id, document_epoch, ticket,
+                        tab_id,
+                        document_epoch,
+                        ticket,
                     } => RuntimeInvocation::TrustedEphemeralDomRead {
-                        tab_id, document_epoch, ticket,
+                        tab_id,
+                        document_epoch,
+                        ticket,
                     },
                 };
                 let event_stream = stream.try_clone().map_err(|error| {
@@ -297,6 +319,7 @@ fn connect_to_core(socket: PathBuf, manifest: PathBuf) -> Result<(), String> {
     }
 }
 
+#[cfg(unix)]
 fn main() -> ExitCode {
     let args = match parse_args(std::env::args().skip(1)) {
         Ok(args) => args,
@@ -322,7 +345,13 @@ fn main() -> ExitCode {
     }
 }
 
-#[cfg(test)]
+#[cfg(not(unix))]
+fn main() {
+    eprintln!("blueice-extension-host is currently supported only on Unix platforms");
+    std::process::exit(1);
+}
+
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
 

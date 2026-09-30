@@ -137,7 +137,11 @@ mod tests {
     #[test]
     fn keyword() {
         assert_eq!(value_of("block"), Some(Value::Keyword("block".to_string())));
-        assert_eq!(value_of("Block"), Some(Value::Keyword("block".to_string())), "keywords are case-insensitive");
+        assert_eq!(
+            value_of("Block"),
+            Some(Value::Keyword("block".to_string())),
+            "keywords are case-insensitive"
+        );
     }
 
     #[test]
@@ -166,26 +170,47 @@ mod tests {
     #[test]
     fn zero_as_length_accepts_bare_zero_number() {
         assert_eq!(zero_as_length(&value_of("0").unwrap()), Some(Length::Zero));
-        assert_eq!(zero_as_length(&value_of("5px").unwrap()), Some(Length::Px(5.0)));
+        assert_eq!(
+            zero_as_length(&value_of("5px").unwrap()),
+            Some(Length::Px(5.0))
+        );
         assert_eq!(zero_as_length(&value_of("block").unwrap()), None);
     }
 
     #[test]
     fn named_colors() {
-        assert_eq!(value_of("red"), Some(Value::Color(Color::Rgba(255, 0, 0, 255))));
-        assert_eq!(value_of("BLUE"), Some(Value::Color(Color::Rgba(0, 0, 255, 255))));
+        assert_eq!(
+            value_of("red"),
+            Some(Value::Color(Color::Rgba(255, 0, 0, 255)))
+        );
+        assert_eq!(
+            value_of("BLUE"),
+            Some(Value::Color(Color::Rgba(0, 0, 255, 255)))
+        );
     }
 
     #[test]
     fn current_color_keyword() {
-        assert_eq!(value_of("currentColor"), Some(Value::Color(Color::CurrentColor)));
+        assert_eq!(
+            value_of("currentColor"),
+            Some(Value::Color(Color::CurrentColor))
+        );
     }
 
     #[test]
     fn hex_colors_short_and_long() {
-        assert_eq!(value_of("#f00"), Some(Value::Color(Color::Rgba(255, 0, 0, 255))));
-        assert_eq!(value_of("#ff0000"), Some(Value::Color(Color::Rgba(255, 0, 0, 255))));
-        assert_eq!(value_of("#1a2b3c"), Some(Value::Color(Color::Rgba(0x1a, 0x2b, 0x3c, 255))));
+        assert_eq!(
+            value_of("#f00"),
+            Some(Value::Color(Color::Rgba(255, 0, 0, 255)))
+        );
+        assert_eq!(
+            value_of("#ff0000"),
+            Some(Value::Color(Color::Rgba(255, 0, 0, 255)))
+        );
+        assert_eq!(
+            value_of("#1a2b3c"),
+            Some(Value::Color(Color::Rgba(0x1a, 0x2b, 0x3c, 255)))
+        );
     }
 
     #[test]
@@ -196,6 +221,10 @@ mod tests {
     #[test]
     fn empty_or_multi_token_component_is_none() {
         assert_eq!(parse_value(&[]), None);
-        assert_eq!(value_of("1px solid"), None, "two meaningful tokens is not a single value component");
+        assert_eq!(
+            value_of("1px solid"),
+            None,
+            "two meaningful tokens is not a single value component"
+        );
     }
 }

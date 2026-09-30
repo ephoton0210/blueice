@@ -1,0 +1,13 @@
+{
+  "cldrJsonRevision": "26a79cb42bfcc90def764102aa2af126d9ef3108",
+  "calendarRegions": 52,
+  "hourCycleRules": 276,
+  "weekRegions": 151,
+  "timeZoneRegions": 247,
+  "timeZones": 419,
+  "rows": 726,
+  "tsvBytes": 21784,
+  "gzipBytes": 6102,
+  "base64Bytes": 8244,
+  "sha256": "1d84274c0fbfe7e95b6128922e96fff56269c6468c61bc250d2d2d08eeae2d5d"
+}

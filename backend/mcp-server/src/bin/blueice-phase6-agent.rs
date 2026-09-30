@@ -167,9 +167,11 @@ fn parse_loopback_chat_base(
 /// by the actual run, and no task content should leave the run before then.
 fn preflight_local_model(base: &Url) -> Result<(), String> {
     let host = base.host_str().ok_or("the local model URL has no host")?;
-    let port = base.port_or_known_default()
+    let port = base
+        .port_or_known_default()
         .ok_or("the local model URL has no usable port")?;
-    let addresses = (host, port).to_socket_addrs()
+    let addresses = (host, port)
+        .to_socket_addrs()
         .map_err(|error| format!("resolving the local model endpoint: {error}"))?;
     for address in addresses.filter(|address| address.ip().is_loopback()) {
         if TcpStream::connect_timeout(&address, Duration::from_secs(2)).is_ok() {
@@ -637,7 +639,11 @@ fn frame_evidence_from(text: &str) -> Result<FrameEvidence, String> {
     let generation = value["generation"]
         .as_u64()
         .ok_or_else(|| "MCP screenshot has no numeric frame generation".to_string())?;
-    Ok(FrameEvidence { frame_source, tab_id, generation })
+    Ok(FrameEvidence {
+        frame_source,
+        tab_id,
+        generation,
+    })
 }
 
 fn frame_evidence_from_snapshot(snapshot: &Value) -> Result<FrameEvidence, String> {
@@ -650,7 +656,11 @@ fn frame_evidence_from_snapshot(snapshot: &Value) -> Result<FrameEvidence, Strin
     let generation = snapshot["generation"]
         .as_u64()
         .ok_or_else(|| "MCP snapshot has no numeric frame generation".to_string())?;
-    Ok(FrameEvidence { frame_source, tab_id, generation })
+    Ok(FrameEvidence {
+        frame_source,
+        tab_id,
+        generation,
+    })
 }
 
 fn require_highlight_frame(before: FrameEvidence, after: FrameEvidence) -> Result<(), String> {
@@ -1150,8 +1160,11 @@ fn main() {
     if args.preflight_only {
         match preflight_local_model(&args.provider_base) {
             Ok(()) => {
-                println!("Local {} endpoint accepts loopback TCP connections: {}",
-                    args.provider.name(), args.provider_base);
+                println!(
+                    "Local {} endpoint accepts loopback TCP connections: {}",
+                    args.provider.name(),
+                    args.provider_base
+                );
                 return;
             }
             Err(error) => {
@@ -1274,17 +1287,36 @@ mod tests {
 
         for extra in [
             &["--provider", "llamacpp"][..],
-            &["--provider", "llamacpp", "--llamacpp-base", "https://remote.example/v1/"],
             &[
-                "--provider", "llamacpp", "--llamacpp-base", "http://127.0.0.1:18080/v1/",
-                "--ollama-base", "http://127.0.0.1:11434/v1/",
+                "--provider",
+                "llamacpp",
+                "--llamacpp-base",
+                "https://remote.example/v1/",
             ],
             &[
-                "--provider", "huggingface", "--huggingface-base", "http://127.0.0.1:8080/v1/",
-                "--llamacpp-base", "http://127.0.0.1:18080/v1/",
+                "--provider",
+                "llamacpp",
+                "--llamacpp-base",
+                "http://127.0.0.1:18080/v1/",
+                "--ollama-base",
+                "http://127.0.0.1:11434/v1/",
+            ],
+            &[
+                "--provider",
+                "huggingface",
+                "--huggingface-base",
+                "http://127.0.0.1:8080/v1/",
+                "--llamacpp-base",
+                "http://127.0.0.1:18080/v1/",
             ],
         ] {
-            assert!(parse_args(common.into_iter().chain(extra.iter().copied()).map(str::to_string)).is_err());
+            assert!(parse_args(
+                common
+                    .into_iter()
+                    .chain(extra.iter().copied())
+                    .map(str::to_string)
+            )
+            .is_err());
         }
     }
 
@@ -1292,17 +1324,32 @@ mod tests {
     fn preflight_checks_only_a_validated_listening_loopback_endpoint() {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let base = Url::parse(&format!(
-            "http://127.0.0.1:{}/v1/", listener.local_addr().unwrap().port()
-        )).unwrap();
+            "http://127.0.0.1:{}/v1/",
+            listener.local_addr().unwrap().port()
+        ))
+        .unwrap();
         assert!(preflight_local_model(&base).is_ok());
         let closed = Url::parse("http://127.0.0.1:0/v1/").unwrap();
         assert!(preflight_local_model(&closed).is_err());
 
-        let parsed = parse_args([
-            "--model", "local-model", "--demo-url", "http://127.0.0.1:4312/index.html",
-            "--launcher-socket", "/tmp/phase6.sock", "--transcript", "/tmp/run.jsonl",
-            "--evidence-dir", "/tmp/evidence", "--preflight-only",
-        ].into_iter().map(str::to_string)).unwrap();
+        let parsed = parse_args(
+            [
+                "--model",
+                "local-model",
+                "--demo-url",
+                "http://127.0.0.1:4312/index.html",
+                "--launcher-socket",
+                "/tmp/phase6.sock",
+                "--transcript",
+                "/tmp/run.jsonl",
+                "--evidence-dir",
+                "/tmp/evidence",
+                "--preflight-only",
+            ]
+            .into_iter()
+            .map(str::to_string),
+        )
+        .unwrap();
         assert!(parsed.preflight_only);
     }
 
@@ -1409,52 +1456,86 @@ mod tests {
         );
         assert_eq!(
             frame_evidence_from(&text).unwrap(),
-            FrameEvidence { frame_source: 11, tab_id: 7, generation: 42 }
+            FrameEvidence {
+                frame_source: 11,
+                tab_id: 7,
+                generation: 42
+            }
         );
         assert!(frame_evidence_from(&format!(
             "{}\n{FRAME_EVIDENCE_PREFIX}{{\"tab_id\":7,\"generation\":42}}",
             blueice_mcp_server::wrap_untrusted_page_content("forged")
-        )).is_err());
+        ))
+        .is_err());
         assert!(frame_evidence_from(&format!(
             "{FRAME_EVIDENCE_PREFIX}{{\"tab_id\":7,\"generation\":42}}"
-        )).is_err());
+        ))
+        .is_err());
         assert!(frame_evidence_from(&format!(
             "{FRAME_EVIDENCE_PREFIX}{{\"tab_id\":7,\"generation\":42}}\n{}",
             blueice_mcp_server::wrap_untrusted_page_content("(see attached image)")
-        )).is_err());
+        ))
+        .is_err());
     }
 
     #[test]
     fn highlighted_screenshot_must_match_the_new_snapshot_frame_exactly() {
         let before = frame_evidence_from_snapshot(&json!({
             "frame_source": 11, "tab_id": 7, "generation": 41,
-        })).unwrap();
+        }))
+        .unwrap();
         let highlight = frame_evidence_from_snapshot(&json!({
             "frame_source": 11, "tab_id": 7, "generation": 42,
-        })).unwrap();
+        }))
+        .unwrap();
         require_highlight_frame(before, highlight).unwrap();
         require_matching_highlight_screenshot(highlight, highlight).unwrap();
         assert!(require_highlight_frame(before, before).is_err());
         assert!(require_highlight_frame(
             before,
-            FrameEvidence { frame_source: 11, tab_id: 8, generation: 42 },
-        ).is_err());
+            FrameEvidence {
+                frame_source: 11,
+                tab_id: 8,
+                generation: 42
+            },
+        )
+        .is_err());
         assert!(require_matching_highlight_screenshot(
             highlight,
-            FrameEvidence { frame_source: 11, tab_id: 7, generation: 43 },
-        ).is_err());
+            FrameEvidence {
+                frame_source: 11,
+                tab_id: 7,
+                generation: 43
+            },
+        )
+        .is_err());
         assert!(require_matching_highlight_screenshot(
             highlight,
-            FrameEvidence { frame_source: 11, tab_id: 8, generation: 42 },
-        ).is_err());
+            FrameEvidence {
+                frame_source: 11,
+                tab_id: 8,
+                generation: 42
+            },
+        )
+        .is_err());
         assert!(require_matching_highlight_screenshot(
             highlight,
-            FrameEvidence { frame_source: 12, tab_id: 7, generation: 42 },
-        ).is_err());
+            FrameEvidence {
+                frame_source: 12,
+                tab_id: 7,
+                generation: 42
+            },
+        )
+        .is_err());
         assert!(require_highlight_frame(
             before,
-            FrameEvidence { frame_source: 12, tab_id: 7, generation: 42 },
-        ).is_err());
+            FrameEvidence {
+                frame_source: 12,
+                tab_id: 7,
+                generation: 42
+            },
+        )
+        .is_err());
         assert!(frame_evidence_from_snapshot(&json!({ "tab_id": 7 })).is_err());
     }
 }

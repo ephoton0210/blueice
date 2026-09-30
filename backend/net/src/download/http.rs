@@ -9,7 +9,7 @@
 //! Phase 11") means replacing this file's callers' one call, not
 //! threading a new abstraction through the engine.
 
-use crate::download::{DownloadError, DownloadOptions, bounded_transfer_text};
+use crate::download::{bounded_transfer_text, DownloadError, DownloadOptions};
 use ureq::http::Response;
 use ureq::{Agent, Body};
 

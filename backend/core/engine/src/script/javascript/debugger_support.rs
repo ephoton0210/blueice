@@ -1,0 +1,1257 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+//! Private native-debugger support for the bounded JavaScript page executor.
+//!
+//! This module owns opaque identity translation, exact safe-point validation,
+//! bounded breakpoint configuration, and the deliberately narrow root-code
+//! unit continuation seam. Page lifecycle, source authorization, binding
+//! installation, and ordinary execution remain in sibling modules.
+
+use super::execution_support::DeferredJavaScriptExecution;
+use super::*;
+
+mod execution_driver;
+
+/// One opaque live-program identity available to the private native debugger
+/// path. It deliberately contains neither source identity nor bytecode: those
+/// remain inside the core-owned page executor.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct JavaScriptPageDebuggerProgram {
+    pub program_handle: u64,
+    pub program_generation: u64,
+}
+
+/// One source-free static-metadata inventory identity for an exact live
+/// program. The core remints it from a child-private handle, so neither the
+/// child handle nor any compiler source/type/symbol/span/contract data crosses
+/// the page-executor boundary.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct JavaScriptPageDebuggerStaticMetadata {
+    pub metadata_handle: u64,
+    pub metadata_generation: u64,
+}
+
+/// A bounded source-free summary for one exact static-metadata inventory
+/// identity. It deliberately contains no source identity/text, span, name,
+/// type display, symbol, contract, bytecode, VM object, or runtime value.
+/// The debugger dispatcher binds it back to the public opaque handle.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct JavaScriptPageDebuggerStaticMetadataSummary {
+    pub language_version: String,
+    pub compiler_options_hash: String,
+    pub source_count: u32,
+    pub type_count: u32,
+    pub symbol_count: u32,
+    pub contract_count: u32,
+}
+
+/// A source-free aggregate summary of the verified direct BlueTS-to-BlueJS
+/// lowering map under one exact opaque metadata attachment. It carries only
+/// fixed ABI labels, a source-set fingerprint, and a count; source spans, map
+/// entries, AST nodes, code-unit identities, and bytecode offsets stay in the
+/// private child.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct JavaScriptPageDebuggerStaticMetadataLoweringSummary {
+    pub safe_point_map_abi: String,
+    pub program_abi: String,
+    pub source_set_hash: String,
+    pub bound_safe_point_count: u32,
+}
+
+/// One compiler-minted source-record identity for an exact static metadata
+/// attachment. It has no module, hash, text, span, or record payload.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct JavaScriptPageDebuggerStaticMetadataSourceId {
+    pub source_id: u32,
+}
+
+/// One compiler-minted type-record identity for an exact static metadata
+/// attachment. It contains no type display or static-record payload.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct JavaScriptPageDebuggerStaticMetadataTypeId {
+    pub type_id: u32,
+}
+
+/// One compiler-minted symbol-record identity for an exact static metadata
+/// attachment. It contains no name, source span, declared type, contract, or
+/// static-record payload.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct JavaScriptPageDebuggerStaticMetadataSymbolId {
+    pub symbol_id: u32,
+}
+
+/// One compiler-minted contract identity for an exact static metadata
+/// attachment. It contains no contract name, source span, plan, validation,
+/// or static-record payload.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct JavaScriptPageDebuggerStaticMetadataContractId {
+    pub contract_id: u32,
+}
+
+/// One child-validated compiler-produced display for an exact contract
+/// identity. Its only plan-derived data is a fixed root-kind category; it
+/// carries no source span, plan edges, field names, validation behavior,
+/// bytecode, VM object, value, or arbitrary metadata record.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct JavaScriptPageDebuggerStaticMetadataContractDisplay {
+    pub contract_id: u32,
+    pub display: String,
+    pub root_kind: blueice_ipc::debugger::DebuggerStaticMetadataContractRootKind,
+}
+
+/// One child-validated boolean outcome for a data-only snapshot against an
+/// exact contract identity. It carries no submitted data, plan, failure path,
+/// expected shape, observed category, bytecode, VM object, or runtime value.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct JavaScriptPageDebuggerStaticMetadataContractValidation {
+    pub contract_id: u32,
+    pub valid: bool,
+}
+
+/// One exact opaque parent and compiler-minted contract-ID target for the
+/// separately authorized contract-display operation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct JavaScriptPageDebuggerStaticMetadataContractTarget {
+    pub program_handle: u64,
+    pub program_generation: u64,
+    pub metadata_handle: u64,
+    pub metadata_generation: u64,
+    pub contract_id: u32,
+}
+
+/// One child-validated compiler-produced display for an exact symbol identity.
+/// It carries no source span, static type, contract, bytecode, VM object,
+/// value, or arbitrary metadata record.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct JavaScriptPageDebuggerStaticMetadataSymbolDisplay {
+    pub symbol_id: u32,
+    pub display: String,
+    pub kind: blueice_ipc::debugger::DebuggerStaticMetadataSymbolKind,
+    pub exported: bool,
+}
+
+/// One child-validated source-text-free half-open declaration range for an
+/// exact symbol. The paired source ID must be independently receipted by the
+/// public dispatcher; this value carries no module identity, source text,
+/// arbitrary line/column translation, bytecode, type, contract, or runtime value.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct JavaScriptPageDebuggerStaticMetadataSymbolLocation {
+    pub symbol_id: u32,
+    pub source_id: u32,
+    pub start_byte: u32,
+    pub end_byte: u32,
+    pub coordinates: blueice_ipc::debugger::DebuggerSourceCoordinates,
+}
+
+/// One exact opaque parent, symbol-ID, and source-ID target for a
+/// source-text-free symbol location. Both IDs were independently inventoried
+/// by the public debugger stream before the child can see this request.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct JavaScriptPageDebuggerStaticMetadataSymbolLocationTarget {
+    pub program_handle: u64,
+    pub program_generation: u64,
+    pub metadata_handle: u64,
+    pub metadata_generation: u64,
+    pub symbol_id: u32,
+    pub source_id: u32,
+}
+
+/// One exact direct-BlueTS lowering span after core has translated its
+/// public program and metadata identities to child-private handles. The
+/// source ID is checked against a separately inventoried public target.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct JavaScriptPageDebuggerStaticMetadataSafePointSpan {
+    pub source_id: u32,
+    pub start_byte: u32,
+    pub end_byte: u32,
+    pub coordinates: blueice_ipc::debugger::DebuggerSourceCoordinates,
+}
+
+/// The exact public tuple accepted by core only after the debugger stream
+/// has independently inventoried the metadata parent and source ID.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct JavaScriptPageDebuggerStaticMetadataSafePointSpanTarget {
+    pub program_handle: u64,
+    pub program_generation: u64,
+    pub metadata_handle: u64,
+    pub metadata_generation: u64,
+    pub source_id: u32,
+    pub code_unit_ordinal: u32,
+    pub bytecode_offset: u32,
+}
+
+/// Core-facing numeric identities for one terminal BlueTS exception query.
+/// The public stream independently authorizes and receipts the source; the
+/// out-of-process adapter translates these IDs to one live child attachment.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct JavaScriptPageDebuggerExceptionLocationTarget {
+    pub program_handle: u64,
+    pub program_generation: u64,
+    pub metadata_handle: u64,
+    pub metadata_generation: u64,
+    pub source_id: u32,
+}
+
+/// One exact, source-text-free child result under the target's core-minted
+/// identities. No child program, error, VM value, message, or stack escapes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct JavaScriptPageDebuggerExceptionLocation {
+    pub source_id: u32,
+    pub code_unit_ordinal: u32,
+    pub bytecode_offset: u32,
+    pub start_byte: u32,
+    pub end_byte: u32,
+    pub coordinates: blueice_ipc::debugger::DebuggerSourceCoordinates,
+}
+
+/// One core-reminted program/metadata tuple and separately receipted source
+/// ID for a bounded original BlueTS byte-position binding. The resulting
+/// safe point is never a child handle on the public debugger channel.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct JavaScriptPageDebuggerStaticMetadataSourceBreakpointTarget {
+    pub program_handle: u64,
+    pub program_generation: u64,
+    pub metadata_handle: u64,
+    pub metadata_generation: u64,
+    pub source_id: u32,
+    pub source_byte: u32,
+}
+
+/// One child-validated contract declaration range with no source text,
+/// module identity, plan, or runtime value.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct JavaScriptPageDebuggerStaticMetadataContractLocation {
+    pub contract_id: u32,
+    pub source_id: u32,
+    pub start_byte: u32,
+    pub end_byte: u32,
+    pub coordinates: blueice_ipc::debugger::DebuggerSourceCoordinates,
+}
+
+/// The exact live attachment and independently receipted contract/source IDs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct JavaScriptPageDebuggerStaticMetadataContractLocationTarget {
+    pub program_handle: u64,
+    pub program_generation: u64,
+    pub metadata_handle: u64,
+    pub metadata_generation: u64,
+    pub contract_id: u32,
+    pub source_id: u32,
+}
+
+/// One compiler-verified relation between separately inventoried symbol and
+/// type IDs. It carries no display, source, span, or static record.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct JavaScriptPageDebuggerStaticMetadataSymbolType {
+    pub symbol_id: u32,
+    pub type_id: u32,
+}
+
+/// An exact relation target bound to one live program and metadata record.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct JavaScriptPageDebuggerStaticMetadataSymbolTypeTarget {
+    pub program_handle: u64,
+    pub program_generation: u64,
+    pub metadata_handle: u64,
+    pub metadata_generation: u64,
+    pub symbol_id: u32,
+    pub type_id: u32,
+}
+
+/// One compiler-verified relation between separately inventoried symbol and
+/// reifiable contract IDs. It carries no plan, validation result, or record.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct JavaScriptPageDebuggerStaticMetadataSymbolContract {
+    pub symbol_id: u32,
+    pub contract_id: u32,
+}
+
+/// An exact relation target bound to one live program and metadata record.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct JavaScriptPageDebuggerStaticMetadataSymbolContractTarget {
+    pub program_handle: u64,
+    pub program_generation: u64,
+    pub metadata_handle: u64,
+    pub metadata_generation: u64,
+    pub symbol_id: u32,
+    pub contract_id: u32,
+}
+
+/// One exact opaque parent and compiler-minted symbol-ID target for the
+/// separately authorized symbol-display operation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct JavaScriptPageDebuggerStaticMetadataSymbolTarget {
+    pub program_handle: u64,
+    pub program_generation: u64,
+    pub metadata_handle: u64,
+    pub metadata_generation: u64,
+    pub symbol_id: u32,
+}
+
+/// One child-validated compiler-produced display for an exact static type
+/// identity. It carries no source text, span, symbol, contract, bytecode, VM
+/// object, value, or arbitrary metadata record.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct JavaScriptPageDebuggerStaticMetadataTypeDisplay {
+    pub type_id: u32,
+    pub display: String,
+}
+
+/// One child-validated source-text-free provenance description. The caller
+/// supplies the parent metadata handle and compiler-minted source ID; this
+/// internal transport value never carries a source read capability.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct JavaScriptPageDebuggerStaticMetadataSourceProvenance {
+    pub source_id: u32,
+    pub module: String,
+    pub content_hash: String,
+}
+
+/// One exact opaque parent and compiler-minted source-ID target for the
+/// separately authorized source-provenance operation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct JavaScriptPageDebuggerStaticMetadataSourceTarget {
+    pub program_handle: u64,
+    pub program_generation: u64,
+    pub metadata_handle: u64,
+    pub metadata_generation: u64,
+    pub source_id: u32,
+}
+
+/// One exact opaque parent and compiler-minted type-ID target for the
+/// separately authorized type-display operation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct JavaScriptPageDebuggerStaticMetadataTypeTarget {
+    pub program_handle: u64,
+    pub program_generation: u64,
+    pub metadata_handle: u64,
+    pub metadata_generation: u64,
+    pub type_id: u32,
+}
+
+/// One compiler-verified instruction boundary represented without source or
+/// bytecode contents for the native debugger path.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct JavaScriptPageDebuggerSafePoint {
+    pub code_unit_ordinal: u32,
+    pub bytecode_offset: u32,
+}
+
+/// Core-facing identity for one actually paused nested invocation. The child
+/// program handle is remapped to the enclosing core program identity before
+/// this leaves the out-of-process executor; no runtime handle is included.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct JavaScriptPageDebuggerFrame {
+    pub tab_id: TabId,
+    pub document_generation: u64,
+    pub program_handle: u64,
+    pub program_generation: u64,
+    pub code_unit_ordinal: u32,
+    /// Binds the public handle to this core instance across replacement.
+    pub core_instance: [u8; 16],
+    /// Process-unique core handle; the child invocation serial stays inside
+    /// the out-of-process executor's exact active-frame association.
+    pub frame_handle: u64,
+}
+
+/// Source-free lexical slot copied from an active paused interpreter scope.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct JavaScriptPageDebuggerScopeEntry {
+    pub slot_ordinal: u32,
+    pub scope_depth: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct JavaScriptPageDebuggerStackFrame {
+    pub code_unit_ordinal: u32,
+    pub bytecode_offset: u32,
+    pub scope_entries: Vec<JavaScriptPageDebuggerScopeEntry>,
+    pub scope_truncated: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct JavaScriptPageDebuggerStackSnapshot {
+    pub frames: Vec<JavaScriptPageDebuggerStackFrame>,
+    pub stack_truncated: bool,
+}
+
+/// One frame and exact safe point in a complete linked dependency/entry
+/// pause. The entry caller may have root ordinal zero; both identities remain
+/// core-reminted and contain no child program or invocation serial.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct JavaScriptPageDebuggerLinkedStackFrame {
+    pub frame: JavaScriptPageDebuggerFrame,
+    pub safe_point: JavaScriptPageDebuggerSafePoint,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct JavaScriptPageDebuggerLinkedStackSnapshot {
+    pub frames: [JavaScriptPageDebuggerLinkedStackFrame; 2],
+}
+
+/// Complete private core-facing entry-root lexical slots for an exact live
+/// linked pause. The dependency frame's captures and all child identities
+/// stay out of this snapshot; public receipt/grant work is separate.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct JavaScriptPageDebuggerLinkedScopeSnapshot {
+    pub stack: JavaScriptPageDebuggerLinkedStackSnapshot,
+    pub scope_entries: Vec<JavaScriptPageDebuggerScopeEntry>,
+}
+
+/// Core-owned selector for one linked entry-root value. The complete stack
+/// and slot are identities only; public Value authority is checked later.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct JavaScriptPageDebuggerLinkedValueTarget {
+    pub expected_stack: JavaScriptPageDebuggerLinkedStackSnapshot,
+    pub frame_index: u32,
+    pub scope_entry: JavaScriptPageDebuggerScopeEntry,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum JavaScriptPageDebuggerLinkedExecutionState {
+    Pending,
+    Paused {
+        stack: JavaScriptPageDebuggerLinkedStackSnapshot,
+    },
+    Resuming {
+        frame: JavaScriptPageDebuggerFrame,
+    },
+    Completed,
+}
+
+/// Facts checked by the owner-selected debugger stream before an exact
+/// two-source coordinate read. Core still revalidates every live attachment.
+#[derive(Debug, Clone, Copy)]
+pub struct JavaScriptPageDebuggerLinkedSpanAccess {
+    pub granted: bool,
+    pub metadata_receipted: [bool; 2],
+    pub source_receipted: [bool; 2],
+    pub targets: [JavaScriptPageDebuggerStaticMetadataSafePointSpanTarget; 2],
+}
+
+/// Exact core-owned selection of one active binding in a paused stack. This
+/// carries no child program, frame, or heap-object handle.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct JavaScriptPageDebuggerValueTarget {
+    pub program: JavaScriptPageDebuggerProgram,
+    pub frame: Option<JavaScriptPageDebuggerFrame>,
+    pub frame_index: u32,
+    pub safe_point: JavaScriptPageDebuggerSafePoint,
+    pub scope_entry: JavaScriptPageDebuggerScopeEntry,
+}
+
+/// Core-owned static compiler relation selector. Neither form asks the VM for
+/// a runtime value. Linked scope receipt/grant remains a later public step.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum JavaScriptPageDebuggerStaticScopeTarget {
+    Ordinary {
+        metadata: JavaScriptPageDebuggerStaticMetadata,
+        target: JavaScriptPageDebuggerValueTarget,
+    },
+    Linked {
+        metadata: JavaScriptPageDebuggerStaticMetadata,
+        expected_stack: JavaScriptPageDebuggerLinkedStackSnapshot,
+        frame_index: u32,
+        scope_entry: JavaScriptPageDebuggerScopeEntry,
+    },
+}
+
+/// Compiler IDs for one exact echoed core-owned paused slot, without name,
+/// display, source, runtime tag, preview, or reusable child identity.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct JavaScriptPageDebuggerStaticScopeRelation {
+    pub target: JavaScriptPageDebuggerStaticScopeTarget,
+    pub symbol_type: JavaScriptPageDebuggerStaticMetadataSymbolType,
+}
+
+/// A complete bounded value copied out of a paused VM, with no reusable
+/// object identity. UTF-16 units and IEEE-754 bits remain lossless.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum JavaScriptPageDebuggerValuePreview {
+    Undefined,
+    Null,
+    Bool(bool),
+    NumberBits(u64),
+    BigIntBytes(Vec<u8>),
+    StringUnits(Vec<u16>),
+    Array(Vec<Option<Self>>),
+    Record(Vec<(Vec<u16>, Self)>),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum JavaScriptPageDebuggerNestedExecutionState {
+    Paused {
+        frame: JavaScriptPageDebuggerFrame,
+        bytecode_offset: u32,
+    },
+    Stepping {
+        frame: JavaScriptPageDebuggerFrame,
+    },
+    Resuming {
+        frame: JavaScriptPageDebuggerFrame,
+    },
+}
+
+/// One source-free, exact breakpoint record retained for a live program. A
+/// configured record does not imply that the synchronous page runtime has
+/// paused or can resume at this location.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct JavaScriptPageDebuggerBreakpoint {
+    pub program_handle: u64,
+    pub program_generation: u64,
+    pub code_unit_ordinal: u32,
+    pub bytecode_offset: u32,
+}
+
+/// Source-free execution state for the opt-in native debugger root-frame
+/// continuation seam. `Paused` can name a non-entry root instruction, but
+/// this alone does not imply stack inspection, nested-function pause, or
+/// stepping support; each has a separately gated route.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum JavaScriptPageDebuggerExecutionState {
+    Pending,
+    Paused {
+        code_unit_ordinal: u32,
+        bytecode_offset: u32,
+    },
+    SourceStepLimitReached {
+        code_unit_ordinal: u32,
+        bytecode_offset: u32,
+    },
+    Stepping,
+    Resuming,
+    Completed,
+}
+
+/// Fixed failure categories for debugger requests resolved by the current
+/// bounded JavaScript page host. None carries page-controlled source or a VM
+/// value across the debugger boundary.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum JavaScriptPageDebuggerError {
+    NoLiveRealm,
+    UnknownProgram,
+    StaleProgram,
+    InvalidSafePoint,
+    ResourceLimit,
+    BreakpointLimit,
+    ExecutionControlUnavailable,
+    NotExecutableEntry,
+    NotResumableRootSafePoint,
+    InvalidExecutionState,
+}
+
+/// Internal association between a core-minted debugger identity and one live
+/// BlueJS generation. It is discarded with the page realm; the raw BlueJS
+/// handle never crosses the executor's debugger methods.
+#[derive(Debug, Clone, Copy)]
+pub(super) struct DebuggerProgramRecord {
+    program_handle: u64,
+    program_generation: u64,
+    bluejs_handle: BlueJsProgramHandle,
+}
+
+/// Internal orderable form of a source-free breakpoint record. It excludes
+/// BlueJS handles, source identities, bytecode, VM state, and result values.
+/// The parent drops the complete set before a realm successor becomes live.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub(super) struct DebuggerBreakpointRecord {
+    program_handle: u64,
+    program_generation: u64,
+    code_unit_ordinal: u32,
+    bytecode_offset: u32,
+}
+
+/// The identity portion of a debugger program record. It is kept separately
+/// from a source-free breakpoint because completed entry-pause state does not
+/// need to retain an instruction location.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub(super) struct DebuggerProgramKey {
+    program_handle: u64,
+    program_generation: u64,
+}
+
+/// Session-thread-only execution state. A pending state becomes paused at an
+/// armed root-code-unit boundary. `ResumeRequested` and `StepRequested` are
+/// transient owner-session states; the scheduler alone may advance the VM.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum DebuggerExecutionStatus {
+    Pending,
+    Paused(DebuggerBreakpointRecord),
+    StepRequested,
+    ResumeRequested,
+    Completed,
+}
+
+/// One admitted declaration waiting for the native-debugger scheduler. It
+/// never owns source text, bytecode, a VM, a completion value, or a page
+/// object: the runtime retains those behind tab-local handles.
+#[derive(Debug, Clone)]
+pub(super) struct PendingDebuggerExecution {
+    program: DebuggerProgramKey,
+    /// The current arm target. It starts at root entry for compatibility and
+    /// is replaced only by the explicit root-safe-point arm operation while
+    /// this declaration is still pending.
+    entry_breakpoint: DebuggerBreakpointRecord,
+    /// A root-safe-point continuation is deliberately one-shot. Keeping this
+    /// state with the pending declaration prevents a second debugger peer (or
+    /// a pipelined request) from moving the execution target before the
+    /// scheduler gets its next turn. Ordinary breakpoint configuration and
+    /// the v4 root-entry compatibility arm do not set this flag.
+    root_safe_point_armed: bool,
+    /// Entry compatibility pauses before VM setup. A first root step creates
+    /// the real entry continuation; non-entry arms already own one.
+    root_continuation_started: bool,
+    document_generation: u64,
+    ordinal: u32,
+    kind: BlueJsPageScriptKind,
+    execution: DeferredJavaScriptExecution,
+}
+
+impl JavaScriptPageExecutor {
+    /// Whether this executor owns the exact currently-live JavaScript realm
+    /// for a tab/document target. Callers use this to avoid advertising a
+    /// native program-location operation for an ordinary page with no opted-in
+    /// JavaScript runtime.
+    pub fn debugger_has_live_realm(&self, tab_id: TabId, document_generation: u64) -> bool {
+        self.live_documents
+            .get(&tab_id)
+            .is_some_and(|identity| identity.document_generation == document_generation)
+    }
+
+    /// The fixed maximum number of locations that one private debugger query
+    /// may receive for a program in this executor.
+    pub fn max_debugger_safe_points_per_program(&self) -> usize {
+        self.config.max_debugger_safe_points_per_program
+    }
+
+    /// The maximum number of exact breakpoint configuration records the core
+    /// retains for one live realm. This is a storage limit, not an execution
+    /// or pause limit.
+    pub fn max_debugger_breakpoints_per_realm(&self) -> usize {
+        self.config.max_debugger_breakpoints_per_realm
+    }
+
+    /// Whether this explicit executor configuration has the native entry-pause
+    /// scheduler installed. A debugger socket alone is insufficient: normal
+    /// inline JavaScript execution intentionally retains its historic
+    /// immediate scheduling behavior.
+    pub fn debugger_execution_control_available(&self) -> bool {
+        self.config.native_debugger_execution_control
+    }
+
+    /// Preserves one pending root-entry declaration across the next lifecycle
+    /// synchronization after a handshaken debugger discovery request. The
+    /// request receiver uses this bounded one-turn hold so a peer can obtain
+    /// the opaque program and verified entry location before ordinary idle
+    /// scheduling starts it. An arm or resume request deliberately does not
+    /// take this hold: its following lifecycle turn must pause or execute.
+    pub(crate) fn hold_pending_debugger_execution_once(&mut self) {
+        if self.debugger_execution_control_available()
+            && self
+                .pending_debugger_executions
+                .values()
+                .any(|pending| !pending.is_empty())
+        {
+            self.hold_pending_debugger_execution_once = true;
+        }
+    }
+
+    /// Returns only opaque debugger program identities for one exact live
+    /// tab/document realm. The result has no source, canonical module ID,
+    /// bytecode, completion value, or VM object identity.
+    pub fn debugger_programs(
+        &self,
+        tab_id: TabId,
+        document_generation: u64,
+    ) -> Result<Vec<JavaScriptPageDebuggerProgram>, JavaScriptPageDebuggerError> {
+        self.require_live_debugger_realm(tab_id, document_generation)?;
+        Ok(self
+            .debugger_programs
+            .get(&tab_id)
+            .into_iter()
+            .flatten()
+            .map(|record| JavaScriptPageDebuggerProgram {
+                program_handle: record.program_handle,
+                program_generation: record.program_generation,
+            })
+            .collect())
+    }
+
+    /// Enumerates only the exact compiler-verified instruction boundaries for
+    /// one opaque live debugger program. It is an inventory operation, not a
+    /// request to execute, pause, inspect, or remap source in the VM.
+    pub fn debugger_safe_points(
+        &self,
+        tab_id: TabId,
+        document_generation: u64,
+        program_handle: u64,
+        program_generation: u64,
+    ) -> Result<Vec<JavaScriptPageDebuggerSafePoint>, JavaScriptPageDebuggerError> {
+        let record = self.debugger_program_record(
+            tab_id,
+            document_generation,
+            program_handle,
+            program_generation,
+        )?;
+        self.runtime
+            .safe_points(
+                tab_id.as_u64(),
+                record.bluejs_handle,
+                self.config.max_debugger_safe_points_per_program,
+            )
+            .map(|safe_points| {
+                safe_points
+                    .into_iter()
+                    .map(|safe_point| JavaScriptPageDebuggerSafePoint {
+                        code_unit_ordinal: safe_point.code_unit.ordinal(),
+                        bytecode_offset: safe_point.bytecode_offset,
+                    })
+                    .collect()
+            })
+            .map_err(debugger_page_runtime_error)
+    }
+
+    /// Revalidates one caller-supplied location against the exact currently
+    /// retained BlueJS program generation. The caller cannot construct a
+    /// BlueJS handle or safe point through this API, and there is no nearest
+    /// source/offset fallback.
+    pub fn validate_debugger_safe_point(
+        &self,
+        tab_id: TabId,
+        document_generation: u64,
+        program_handle: u64,
+        program_generation: u64,
+        code_unit_ordinal: u32,
+        bytecode_offset: u32,
+    ) -> Result<(), JavaScriptPageDebuggerError> {
+        let record = self.debugger_program_record(
+            tab_id,
+            document_generation,
+            program_handle,
+            program_generation,
+        )?;
+        let safe_point = self
+            .runtime
+            .safe_points(
+                tab_id.as_u64(),
+                record.bluejs_handle,
+                self.config.max_debugger_safe_points_per_program,
+            )
+            .map_err(debugger_page_runtime_error)?
+            .into_iter()
+            .find(|safe_point| {
+                safe_point.code_unit.ordinal() == code_unit_ordinal
+                    && safe_point.bytecode_offset == bytecode_offset
+            })
+            .ok_or(JavaScriptPageDebuggerError::InvalidSafePoint)?;
+        self.runtime
+            .validate_safe_point(tab_id.as_u64(), record.bluejs_handle, safe_point)
+            .map_err(debugger_page_runtime_error)
+    }
+
+    /// Stores one exact compiler-verified breakpoint record for a current
+    /// opaque program generation. This is intentionally idempotent: retrying
+    /// a request cannot consume additional bounded realm storage. It neither
+    /// executes page code nor changes the synchronous VM's control flow.
+    pub fn set_debugger_breakpoint(
+        &mut self,
+        tab_id: TabId,
+        document_generation: u64,
+        program_handle: u64,
+        program_generation: u64,
+        code_unit_ordinal: u32,
+        bytecode_offset: u32,
+    ) -> Result<(), JavaScriptPageDebuggerError> {
+        self.validate_debugger_safe_point(
+            tab_id,
+            document_generation,
+            program_handle,
+            program_generation,
+            code_unit_ordinal,
+            bytecode_offset,
+        )?;
+        self.insert_debugger_breakpoint(
+            tab_id,
+            DebuggerBreakpointRecord {
+                program_handle,
+                program_generation,
+                code_unit_ordinal,
+                bytecode_offset,
+            },
+        )
+    }
+
+    /// Arms a compiler-verified root-entry breakpoint for a declaration that
+    /// is admitted but has not entered the BlueJS VM. This is intentionally
+    /// narrower than generic breakpoint configuration: the root entry has a
+    /// zero-execution continuation, so resume can safely invoke the ordinary
+    /// VM entry point without claiming an arbitrary interpreter continuation.
+    pub fn arm_debugger_entry_breakpoint(
+        &mut self,
+        tab_id: TabId,
+        document_generation: u64,
+        program_handle: u64,
+        program_generation: u64,
+        code_unit_ordinal: u32,
+        bytecode_offset: u32,
+    ) -> Result<(), JavaScriptPageDebuggerError> {
+        if !self.debugger_execution_control_available() {
+            return Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable);
+        }
+        self.validate_debugger_safe_point(
+            tab_id,
+            document_generation,
+            program_handle,
+            program_generation,
+            code_unit_ordinal,
+            bytecode_offset,
+        )?;
+        let key = DebuggerProgramKey {
+            program_handle,
+            program_generation,
+        };
+        let entry_breakpoint = self.debugger_entry_breakpoint(tab_id, key)?;
+        if entry_breakpoint.code_unit_ordinal != code_unit_ordinal
+            || entry_breakpoint.bytecode_offset != bytecode_offset
+        {
+            return Err(JavaScriptPageDebuggerError::NotExecutableEntry);
+        }
+        let status = self
+            .debugger_execution_states
+            .get(&tab_id)
+            .and_then(|states| states.get(&key))
+            .copied()
+            .ok_or(JavaScriptPageDebuggerError::NotExecutableEntry)?;
+        if status != DebuggerExecutionStatus::Pending {
+            return Err(JavaScriptPageDebuggerError::InvalidExecutionState);
+        }
+        self.insert_debugger_breakpoint(tab_id, entry_breakpoint)?;
+        Ok(())
+    }
+
+    /// Arms one verified root-code-unit location for a still-pending classic
+    /// script. A nonzero offset is reached by the BlueJS continuation API,
+    /// which preserves the root interpreter frame before returning control to
+    /// this session thread. Modules and child code units are rejected because
+    /// their continuation state is not represented by this scheduler.
+    #[allow(clippy::too_many_arguments)]
+    pub fn arm_debugger_root_safe_point_breakpoint(
+        &mut self,
+        tab_id: TabId,
+        document_generation: u64,
+        program_handle: u64,
+        program_generation: u64,
+        code_unit_ordinal: u32,
+        bytecode_offset: u32,
+    ) -> Result<(), JavaScriptPageDebuggerError> {
+        if !self.debugger_execution_control_available() {
+            return Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable);
+        }
+        self.validate_debugger_safe_point(
+            tab_id,
+            document_generation,
+            program_handle,
+            program_generation,
+            code_unit_ordinal,
+            bytecode_offset,
+        )?;
+        if code_unit_ordinal != 0 {
+            return Err(JavaScriptPageDebuggerError::NotResumableRootSafePoint);
+        }
+        let key = DebuggerProgramKey {
+            program_handle,
+            program_generation,
+        };
+        let status = self
+            .debugger_execution_states
+            .get(&tab_id)
+            .and_then(|states| states.get(&key))
+            .copied()
+            .ok_or(JavaScriptPageDebuggerError::NotResumableRootSafePoint)?;
+        if status != DebuggerExecutionStatus::Pending {
+            return Err(JavaScriptPageDebuggerError::InvalidExecutionState);
+        }
+        let target = DebuggerBreakpointRecord {
+            program_handle,
+            program_generation,
+            code_unit_ordinal,
+            bytecode_offset,
+        };
+        let pending = self
+            .pending_debugger_executions
+            .get(&tab_id)
+            .into_iter()
+            .flatten()
+            .find(|pending| pending.program == key)
+            .ok_or(JavaScriptPageDebuggerError::NotResumableRootSafePoint)?;
+        if pending.root_safe_point_armed {
+            return Err(JavaScriptPageDebuggerError::InvalidExecutionState);
+        }
+        if !matches!(
+            pending.execution,
+            DeferredJavaScriptExecution::Classic { .. }
+        ) {
+            return Err(JavaScriptPageDebuggerError::NotResumableRootSafePoint);
+        }
+        self.insert_debugger_breakpoint(tab_id, target)?;
+        let pending = self
+            .pending_debugger_executions
+            .get_mut(&tab_id)
+            .expect("the inspected pending debugger queue remains live")
+            .iter_mut()
+            .find(|pending| pending.program == key)
+            .expect("the inspected pending debugger declaration remains queued");
+        pending.entry_breakpoint = target;
+        pending.root_safe_point_armed = true;
+        Ok(())
+    }
+
+    /// Reads only source-free scheduling state for one pending, paused, or
+    /// completed root-entry declaration. Programs admitted in the ordinary
+    /// immediate-scheduling mode never expose this operation.
+    pub fn debugger_execution_state(
+        &self,
+        tab_id: TabId,
+        document_generation: u64,
+        program_handle: u64,
+        program_generation: u64,
+    ) -> Result<JavaScriptPageDebuggerExecutionState, JavaScriptPageDebuggerError> {
+        if !self.debugger_execution_control_available() {
+            return Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable);
+        }
+        self.debugger_program_record(
+            tab_id,
+            document_generation,
+            program_handle,
+            program_generation,
+        )?;
+        let status = self
+            .debugger_execution_states
+            .get(&tab_id)
+            .and_then(|states| {
+                states.get(&DebuggerProgramKey {
+                    program_handle,
+                    program_generation,
+                })
+            })
+            .copied()
+            .ok_or(JavaScriptPageDebuggerError::NotExecutableEntry)?;
+        Ok(public_execution_state(status))
+    }
+
+    /// Authorizes one paused root-entry declaration to pass through the
+    /// session-owned scheduler. The reply does not carry a completion value;
+    /// callers observe only a later source-free completion state.
+    pub fn resume_debugger_execution(
+        &mut self,
+        tab_id: TabId,
+        document_generation: u64,
+        program_handle: u64,
+        program_generation: u64,
+    ) -> Result<(), JavaScriptPageDebuggerError> {
+        if !self.debugger_execution_control_available() {
+            return Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable);
+        }
+        self.debugger_program_record(
+            tab_id,
+            document_generation,
+            program_handle,
+            program_generation,
+        )?;
+        let Some(status) = self
+            .debugger_execution_states
+            .get_mut(&tab_id)
+            .and_then(|states| {
+                states.get_mut(&DebuggerProgramKey {
+                    program_handle,
+                    program_generation,
+                })
+            })
+        else {
+            return Err(JavaScriptPageDebuggerError::NotExecutableEntry);
+        };
+        if !matches!(status, DebuggerExecutionStatus::Paused(_)) {
+            return Err(JavaScriptPageDebuggerError::InvalidExecutionState);
+        }
+        *status = DebuggerExecutionStatus::ResumeRequested;
+        Ok(())
+    }
+
+    /// Schedules exactly one root instruction for the paused classic at the
+    /// head of this tab's document-order queue. An entry-only pause gets a
+    /// real VM continuation on the following scheduler turn; module roots,
+    /// stale programs, and any non-paused state fail before VM execution.
+    pub fn step_debugger_root_instruction(
+        &mut self,
+        tab_id: TabId,
+        document_generation: u64,
+        program_handle: u64,
+        program_generation: u64,
+    ) -> Result<(), JavaScriptPageDebuggerError> {
+        if !self.debugger_execution_control_available() {
+            return Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable);
+        }
+        self.debugger_program_record(
+            tab_id,
+            document_generation,
+            program_handle,
+            program_generation,
+        )?;
+        let program = DebuggerProgramKey {
+            program_handle,
+            program_generation,
+        };
+        let pending = self
+            .pending_debugger_executions
+            .get(&tab_id)
+            .and_then(|queue| queue.front())
+            .ok_or(JavaScriptPageDebuggerError::InvalidExecutionState)?;
+        if pending.program != program
+            || !matches!(
+                &pending.execution,
+                DeferredJavaScriptExecution::Classic { .. }
+            )
+        {
+            return Err(JavaScriptPageDebuggerError::InvalidExecutionState);
+        }
+        let status = self
+            .debugger_execution_states
+            .get_mut(&tab_id)
+            .and_then(|states| states.get_mut(&program))
+            .ok_or(JavaScriptPageDebuggerError::NotExecutableEntry)?;
+        if !matches!(status, DebuggerExecutionStatus::Paused(_)) {
+            return Err(JavaScriptPageDebuggerError::InvalidExecutionState);
+        }
+        *status = DebuggerExecutionStatus::StepRequested;
+        Ok(())
+    }
+
+    /// Returns the exact, source-free breakpoint configuration retained for a
+    /// current realm. The records are sorted by opaque identity and compiler
+    /// boundary, never by source text or a VM address.
+    pub fn debugger_breakpoints(
+        &self,
+        tab_id: TabId,
+        document_generation: u64,
+    ) -> Result<Vec<JavaScriptPageDebuggerBreakpoint>, JavaScriptPageDebuggerError> {
+        self.require_live_debugger_realm(tab_id, document_generation)?;
+        Ok(self
+            .debugger_breakpoints
+            .get(&tab_id)
+            .into_iter()
+            .flatten()
+            .map(|breakpoint| JavaScriptPageDebuggerBreakpoint {
+                program_handle: breakpoint.program_handle,
+                program_generation: breakpoint.program_generation,
+                code_unit_ordinal: breakpoint.code_unit_ordinal,
+                bytecode_offset: breakpoint.bytecode_offset,
+            })
+            .collect())
+    }
+
+    /// Removes one current exact breakpoint record after revalidating its
+    /// complete program-generation and compiler-boundary tuple. An already
+    /// absent exact record returns `false`; a stale/malformed target remains
+    /// an error rather than silently affecting a successor program.
+    pub fn clear_debugger_breakpoint(
+        &mut self,
+        tab_id: TabId,
+        document_generation: u64,
+        program_handle: u64,
+        program_generation: u64,
+        code_unit_ordinal: u32,
+        bytecode_offset: u32,
+    ) -> Result<bool, JavaScriptPageDebuggerError> {
+        self.validate_debugger_safe_point(
+            tab_id,
+            document_generation,
+            program_handle,
+            program_generation,
+            code_unit_ordinal,
+            bytecode_offset,
+        )?;
+        Ok(self
+            .debugger_breakpoints
+            .get_mut(&tab_id)
+            .is_some_and(|breakpoints| {
+                breakpoints.remove(&DebuggerBreakpointRecord {
+                    program_handle,
+                    program_generation,
+                    code_unit_ordinal,
+                    bytecode_offset,
+                })
+            }))
+    }
+
+    pub(super) fn register_debugger_programs(
+        &mut self,
+        tab_id: TabId,
+        handles: &[BlueJsProgramHandle],
+    ) -> Result<(), &'static str> {
+        let count = u64::try_from(handles.len())
+            .map_err(|_| "native debugger program identities are exhausted")?;
+        let next_after = self
+            .next_debugger_program_handle
+            .checked_add(count)
+            .ok_or("native debugger program identities are exhausted")?;
+        let mut records = Vec::with_capacity(handles.len());
+        for (offset, &bluejs_handle) in handles.iter().enumerate() {
+            let offset = u64::try_from(offset)
+                .expect("a Vec length convertible to u64 has every index convertible to u64");
+            let program_handle = self
+                .next_debugger_program_handle
+                .checked_add(offset)
+                .expect("the preflight checked the complete debugger handle range");
+            records.push(DebuggerProgramRecord {
+                program_handle,
+                program_generation: bluejs_handle.generation().as_u64(),
+                bluejs_handle,
+            });
+        }
+        self.next_debugger_program_handle = next_after;
+        self.debugger_programs
+            .entry(tab_id)
+            .or_default()
+            .extend(records);
+        Ok(())
+    }
+
+    fn insert_debugger_breakpoint(
+        &mut self,
+        tab_id: TabId,
+        breakpoint: DebuggerBreakpointRecord,
+    ) -> Result<(), JavaScriptPageDebuggerError> {
+        let max_breakpoints = self.config.max_debugger_breakpoints_per_realm;
+        let breakpoints = self.debugger_breakpoints.entry(tab_id).or_default();
+        if !breakpoints.contains(&breakpoint) && breakpoints.len() == max_breakpoints {
+            return Err(JavaScriptPageDebuggerError::BreakpointLimit);
+        }
+        breakpoints.insert(breakpoint);
+        Ok(())
+    }
+
+    fn debugger_program_record_for_bluejs(
+        &self,
+        tab_id: TabId,
+        bluejs_handle: BlueJsProgramHandle,
+    ) -> Option<DebuggerProgramRecord> {
+        self.debugger_programs
+            .get(&tab_id)
+            .into_iter()
+            .flatten()
+            .find(|record| record.bluejs_handle == bluejs_handle)
+            .copied()
+    }
+
+    fn debugger_entry_breakpoint(
+        &self,
+        tab_id: TabId,
+        program: DebuggerProgramKey,
+    ) -> Result<DebuggerBreakpointRecord, JavaScriptPageDebuggerError> {
+        let record = self
+            .debugger_programs
+            .get(&tab_id)
+            .into_iter()
+            .flatten()
+            .find(|record| {
+                record.program_handle == program.program_handle
+                    && record.program_generation == program.program_generation
+            })
+            .ok_or(JavaScriptPageDebuggerError::UnknownProgram)?;
+        let safe_point = self
+            .runtime
+            .safe_points(
+                tab_id.as_u64(),
+                record.bluejs_handle,
+                self.config.max_debugger_safe_points_per_program,
+            )
+            .map_err(debugger_page_runtime_error)?
+            .into_iter()
+            .find(|safe_point| {
+                safe_point.code_unit.ordinal() == 0 && safe_point.bytecode_offset == 0
+            })
+            .ok_or(JavaScriptPageDebuggerError::NotExecutableEntry)?;
+        self.runtime
+            .validate_safe_point(tab_id.as_u64(), record.bluejs_handle, safe_point)
+            .map_err(debugger_page_runtime_error)?;
+        Ok(DebuggerBreakpointRecord {
+            program_handle: program.program_handle,
+            program_generation: program.program_generation,
+            code_unit_ordinal: safe_point.code_unit.ordinal(),
+            bytecode_offset: safe_point.bytecode_offset,
+        })
+    }
+
+    fn push_deferred_rejection(
+        &mut self,
+        tab_id: TabId,
+        pending: &PendingDebuggerExecution,
+        category: &'static str,
+    ) {
+        self.push_report(JavaScriptPageExecutionReport::Rejected {
+            tab_id: tab_id.as_u64(),
+            document_generation: pending.document_generation,
+            ordinal: pending.ordinal,
+            kind: pending.kind,
+            category,
+        });
+    }
+
+    fn require_live_debugger_realm(
+        &self,
+        tab_id: TabId,
+        document_generation: u64,
+    ) -> Result<(), JavaScriptPageDebuggerError> {
+        self.debugger_has_live_realm(tab_id, document_generation)
+            .then_some(())
+            .ok_or(JavaScriptPageDebuggerError::NoLiveRealm)
+    }
+
+    fn debugger_program_record(
+        &self,
+        tab_id: TabId,
+        document_generation: u64,
+        program_handle: u64,
+        program_generation: u64,
+    ) -> Result<&DebuggerProgramRecord, JavaScriptPageDebuggerError> {
+        self.require_live_debugger_realm(tab_id, document_generation)?;
+        let record = self
+            .debugger_programs
+            .get(&tab_id)
+            .into_iter()
+            .flatten()
+            .find(|record| record.program_handle == program_handle)
+            .ok_or(JavaScriptPageDebuggerError::UnknownProgram)?;
+        (record.program_generation == program_generation)
+            .then_some(record)
+            .ok_or(JavaScriptPageDebuggerError::StaleProgram)
+    }
+}
+
+fn public_execution_state(status: DebuggerExecutionStatus) -> JavaScriptPageDebuggerExecutionState {
+    match status {
+        DebuggerExecutionStatus::Pending => JavaScriptPageDebuggerExecutionState::Pending,
+        DebuggerExecutionStatus::Paused(breakpoint) => {
+            JavaScriptPageDebuggerExecutionState::Paused {
+                code_unit_ordinal: breakpoint.code_unit_ordinal,
+                bytecode_offset: breakpoint.bytecode_offset,
+            }
+        }
+        DebuggerExecutionStatus::StepRequested => JavaScriptPageDebuggerExecutionState::Stepping,
+        DebuggerExecutionStatus::ResumeRequested => JavaScriptPageDebuggerExecutionState::Resuming,
+        DebuggerExecutionStatus::Completed => JavaScriptPageDebuggerExecutionState::Completed,
+    }
+}
+
+fn debugger_page_runtime_error(error: BlueJsPageRuntimeError) -> JavaScriptPageDebuggerError {
+    match error {
+        BlueJsPageRuntimeError::SafePointLimit { .. } => JavaScriptPageDebuggerError::ResourceLimit,
+        _ => JavaScriptPageDebuggerError::StaleProgram,
+    }
+}
+
+#[cfg(test)]
+#[path = "debugger_support/tests.rs"]
+mod tests;

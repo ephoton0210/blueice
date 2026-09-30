@@ -14,10 +14,10 @@
 mod common;
 
 use blueice_ipc::downloads::{
-    DOWNLOADS_PROTOCOL_VERSION, DownloadsClient, DownloadsReply, DownloadsRequest, TransferInfo,
-    TransferState,
+    DownloadsClient, DownloadsReply, DownloadsRequest, TransferInfo, TransferState,
+    DOWNLOADS_PROTOCOL_VERSION,
 };
-use common::{FakeGatekeeper, GateReply, Resource, TempDir, TestServer, body};
+use common::{body, FakeGatekeeper, GateReply, Resource, TempDir, TestServer};
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;

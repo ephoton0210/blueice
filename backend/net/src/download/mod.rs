@@ -378,36 +378,24 @@ mod tests {
             DownloadError::DestinationExists(PathBuf::from("/d/f")).to_string(),
             "the destination /d/f already exists"
         );
-        assert!(
-            DownloadError::ResourceChanged("ETag changed".to_string())
-                .to_string()
-                .contains("ETag changed")
-        );
-        assert!(
-            DownloadError::Io("disk full".to_string())
-                .to_string()
-                .contains("disk full")
-        );
-        assert!(
-            DownloadError::Network("refused".to_string())
-                .to_string()
-                .contains("refused")
-        );
-        assert!(
-            DownloadError::Protocol("bad".to_string())
-                .to_string()
-                .contains("bad")
-        );
-        assert!(
-            DownloadError::InvalidUrl("x".to_string())
-                .to_string()
-                .contains("x")
-        );
-        assert!(
-            DownloadError::ClearanceMismatch("wrong url".to_string())
-                .to_string()
-                .contains("wrong url")
-        );
+        assert!(DownloadError::ResourceChanged("ETag changed".to_string())
+            .to_string()
+            .contains("ETag changed"));
+        assert!(DownloadError::Io("disk full".to_string())
+            .to_string()
+            .contains("disk full"));
+        assert!(DownloadError::Network("refused".to_string())
+            .to_string()
+            .contains("refused"));
+        assert!(DownloadError::Protocol("bad".to_string())
+            .to_string()
+            .contains("bad"));
+        assert!(DownloadError::InvalidUrl("x".to_string())
+            .to_string()
+            .contains("x"));
+        assert!(DownloadError::ClearanceMismatch("wrong url".to_string())
+            .to_string()
+            .contains("wrong url"));
         assert!(
             DownloadError::HostVerification("unknown server".to_string())
                 .to_string()
@@ -418,18 +406,14 @@ mod tests {
                 .to_string()
                 .contains("no SSH agent identity")
         );
-        assert!(
-            DownloadError::Credentials("keychain is locked".to_string())
-                .to_string()
-                .contains("keychain is locked")
-        );
-        assert!(
-            DownloadError::SizeLimit {
-                requested: 101,
-                limit: 100
-            }
+        assert!(DownloadError::Credentials("keychain is locked".to_string())
             .to_string()
-            .contains("100-byte")
-        );
+            .contains("keychain is locked"));
+        assert!(DownloadError::SizeLimit {
+            requested: 101,
+            limit: 100
+        }
+        .to_string()
+        .contains("100-byte"));
     }
 }

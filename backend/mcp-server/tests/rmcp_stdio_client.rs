@@ -92,37 +92,6 @@ async fn an_official_mcp_client_lists_tools_without_a_sibling_core_binary() {
         names.contains(&"remove_sftp_password"),
         "missing Phase 11 credential removal: {names:?}"
     );
-    assert!(
-        names.contains(&"bluejs_run") && names.contains(&"bluejs_analyze"),
-        "missing BlueJS tools: {names:?}"
-    );
-
-    let arguments = serde_json::from_value(json!({ "code": "console.log('hello'); 2 + 3;" }))
-        .expect("bluejs_run arguments are a JSON object");
-    let result = client
-        .call_tool(CallToolRequestParams::new("bluejs_run").with_arguments(arguments))
-        .await
-        .expect("run BlueJS through rmcp");
-    assert_ne!(result.is_error, Some(true), "{result:?}");
-    let result = serde_json::to_value(result).expect("tool result serializes");
-    let text = result["content"][0]["text"]
-        .as_str()
-        .expect("bluejs output is text");
-    assert!(text.contains("\"completion\": \"5\""), "{text}");
-    assert!(text.contains("\"hello\""), "{text}");
-
-    let arguments = serde_json::from_value(json!({ "code": "document.getElementById('target');" }))
-        .expect("bluejs_analyze arguments are a JSON object");
-    let result = client
-        .call_tool(CallToolRequestParams::new("bluejs_analyze").with_arguments(arguments))
-        .await
-        .expect("analyze BlueJS through rmcp");
-    assert_ne!(result.is_error, Some(true), "{result:?}");
-    let result = serde_json::to_value(result).expect("tool result serializes");
-    let text = result["content"][0]["text"]
-        .as_str()
-        .expect("bluejs analysis is text");
-    assert!(text.contains("dom_read"), "{text}");
 
     client.cancel().await.expect("close the stdio MCP session");
 }
@@ -340,8 +309,8 @@ async fn blueice_status_reports_the_launchers_state_in_plain_lines() {
     use blueice_launcher::control::{
         AssistantStatus, ControlReply, ControlRequest, LauncherStatus, PendingProposalStatus,
     };
-    let (control, launcher) = fake_control_socket(vec![ControlReply::Status(Box::new(
-        LauncherStatus {
+    let (control, launcher) =
+        fake_control_socket(vec![ControlReply::Status(Box::new(LauncherStatus {
             launcher_pid: 111,
             core_generation: 2,
             core_pid: Some(222),
@@ -354,8 +323,7 @@ async fn blueice_status_reports_the_launchers_state_in_plain_lines() {
                 id: 9,
                 seconds_left: 41,
             }),
-        },
-    ))]);
+        }))]);
     let runtime = TempDir::new();
     let data = TempDir::new();
     let downloads = TempDir::new();

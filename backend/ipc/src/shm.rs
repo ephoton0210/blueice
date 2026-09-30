@@ -132,8 +132,14 @@ mod tests {
         );
         use std::os::unix::ffi::OsStrExt;
         let non_utf8 = Path::new(std::ffi::OsStr::from_bytes(b"/tmp/frames-\xff"));
-        let wire_path = non_utf8.join("frame-1-1.rgba").to_string_lossy().into_owned();
-        assert_eq!(frame_source_id(non_utf8), frame_source_id_for_path(&wire_path));
+        let wire_path = non_utf8
+            .join("frame-1-1.rgba")
+            .to_string_lossy()
+            .into_owned();
+        assert_eq!(
+            frame_source_id(non_utf8),
+            frame_source_id_for_path(&wire_path)
+        );
     }
 
     #[test]

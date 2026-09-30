@@ -60,7 +60,10 @@ struct FontSet {
 fn fonts() -> &'static FontSet {
     static FONTS: OnceLock<FontSet> = OnceLock::new();
     FONTS.get_or_init(|| {
-        let load = |bytes| fontdue::Font::from_bytes(bytes, fontdue::FontSettings::default()).expect("bundled font must parse");
+        let load = |bytes| {
+            fontdue::Font::from_bytes(bytes, fontdue::FontSettings::default())
+                .expect("bundled font must parse")
+        };
         FontSet {
             regular: load(FONT_REGULAR),
             bold: load(FONT_BOLD),
@@ -110,7 +113,13 @@ pub fn font_for_char(c: char, bold: bool, italic: bool) -> &'static fontdue::Fon
 /// never disagree about how wide a run of text is, even across a
 /// script-fallback boundary.
 pub fn measure_text_width(text: &str, font_size_px: f64, bold: bool, italic: bool) -> f64 {
-    text.chars().map(|c| font_for_char(c, bold, italic).metrics(c, font_size_px as f32).advance_width as f64).sum()
+    text.chars()
+        .map(|c| {
+            font_for_char(c, bold, italic)
+                .metrics(c, font_size_px as f32)
+                .advance_width as f64
+        })
+        .sum()
 }
 
 #[cfg(test)]
@@ -124,12 +133,18 @@ mod tests {
 
     #[test]
     fn longer_text_measures_wider() {
-        assert!(measure_text_width("hello", 16.0, false, false) > measure_text_width("hi", 16.0, false, false));
+        assert!(
+            measure_text_width("hello", 16.0, false, false)
+                > measure_text_width("hi", 16.0, false, false)
+        );
     }
 
     #[test]
     fn larger_font_size_measures_wider_for_the_same_text() {
-        assert!(measure_text_width("hello", 32.0, false, false) > measure_text_width("hello", 16.0, false, false));
+        assert!(
+            measure_text_width("hello", 32.0, false, false)
+                > measure_text_width("hello", 16.0, false, false)
+        );
     }
 
     #[test]
@@ -187,7 +202,10 @@ mod tests {
     fn bold_measures_at_least_as_wide_as_regular_for_the_same_text() {
         // real font data, not an assumption: DejaVu Sans Bold's glyphs
         // are never narrower than Regular's for ordinary latin text.
-        assert!(measure_text_width("Example Domain", 32.0, true, false) >= measure_text_width("Example Domain", 32.0, false, false));
+        assert!(
+            measure_text_width("Example Domain", 32.0, true, false)
+                >= measure_text_width("Example Domain", 32.0, false, false)
+        );
     }
 
     #[test]
@@ -195,7 +213,10 @@ mod tests {
         // pins down the exact "measure and rasterize must agree"
         // property the module docs describe: this function must not
         // silently diverge from `font_for(..).metrics(..)`.
-        let expected: f64 = "abc".chars().map(|c| font_for(false, false).metrics(c, 16.0).advance_width as f64).sum();
+        let expected: f64 = "abc"
+            .chars()
+            .map(|c| font_for(false, false).metrics(c, 16.0).advance_width as f64)
+            .sum();
         assert_eq!(measure_text_width("abc", 16.0, false, false), expected);
     }
 

@@ -350,7 +350,9 @@ mod tests {
         assert!(first.list_keys(FIRST_ID).unwrap().is_empty());
         first.set(FIRST_ID, "zeta".into(), "one".into()).unwrap();
         first.set(FIRST_ID, "alpha".into(), "two".into()).unwrap();
-        first.set(SECOND_ID, "private".into(), "three".into()).unwrap();
+        first
+            .set(SECOND_ID, "private".into(), "three".into())
+            .unwrap();
         let restarted = DurableExtensionStorage::new(root.clone());
         assert_eq!(restarted.list_keys(FIRST_ID).unwrap(), ["alpha", "zeta"]);
         assert_eq!(restarted.list_keys(SECOND_ID).unwrap(), ["private"]);

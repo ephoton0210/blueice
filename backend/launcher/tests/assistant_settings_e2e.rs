@@ -657,7 +657,10 @@ fn the_trace_file_tells_the_story_of_a_proposal_without_leaking_settings_or_dige
         &format!("proposal.approved: id {id}"),
         "assistant.reconfigure",
     ] {
-        assert!(trace.contains(expected), "missing {expected:?} in:\n{trace}");
+        assert!(
+            trace.contains(expected),
+            "missing {expected:?} in:\n{trace}"
+        );
     }
     assert!(!trace.contains(&digest), "the digest leaked into the trace");
     assert!(!trace.contains(&model), "settings leaked into the trace");
@@ -694,5 +697,8 @@ fn status_reports_pids_generation_the_assistant_and_a_waiting_proposal_without_s
     assert_eq!(assistant.spawn_count, 1);
     assert_eq!(busy.pending_proposal.as_ref().unwrap().id, id);
     let text = format!("{busy:?}");
-    assert!(!text.contains(&model), "settings values must not appear: {text}");
+    assert!(
+        !text.contains(&model),
+        "settings values must not appear: {text}"
+    );
 }

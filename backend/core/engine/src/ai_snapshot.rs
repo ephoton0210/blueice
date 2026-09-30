@@ -224,11 +224,7 @@ fn compute_name(
 /// Scans the whole document for a `<label for="id_attr">` -- one input
 /// at a time is fine at MVP page sizes; a document-wide index would
 /// only pay for itself on pages with many labeled inputs.
-fn find_label_text_for(
-    doc: &Document,
-    id_attr: &str,
-    originals: Option<&Page>,
-) -> Option<String> {
+fn find_label_text_for(doc: &Document, id_attr: &str, originals: Option<&Page>) -> Option<String> {
     fn walk(
         doc: &Document,
         node: NodeId,
@@ -697,7 +693,10 @@ mod tests {
         let snap = build(&page, 1, 1);
         // An explicit attribute name is not page text and is never translated.
         assert_eq!(find(&snap.nodes, "Greeting").original_name, None);
-        assert_eq!(find(&snap.nodes, "再見").original_name.as_deref(), Some("Bye"));
+        assert_eq!(
+            find(&snap.nodes, "再見").original_name.as_deref(),
+            Some("Bye")
+        );
     }
 
     #[test]

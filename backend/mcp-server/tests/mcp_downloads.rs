@@ -22,17 +22,17 @@
 mod common;
 
 use blueice_ipc::downloads::{
-    DOWNLOADS_PROTOCOL_VERSION, DownloadsRequest, read_downloads_reply, write_downloads_request,
+    read_downloads_reply, write_downloads_request, DownloadsRequest, DOWNLOADS_PROTOCOL_VERSION,
 };
 use blueice_mcp_server::{FRAME_EVIDENCE_PREFIX, UNTRUSTED_CONTENT_MARKER};
-use common::{FakeGatekeeper, GateReply, Resource, TempDir, TestServer, body};
-use serde_json::{Value, json};
+use common::{body, FakeGatekeeper, GateReply, Resource, TempDir, TestServer};
+use serde_json::{json, Value};
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{Receiver, channel};
+use std::sync::mpsc::{channel, Receiver};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -658,9 +658,8 @@ fn the_browsing_tools_still_work_over_the_same_protocol_alongside_the_download_t
         "an image can carry hostile text too, so it is framed"
     );
     let metadata_line = content[0]["text"].as_str().unwrap().lines().next().unwrap();
-    let metadata: serde_json::Value = serde_json::from_str(
-        metadata_line.strip_prefix(FRAME_EVIDENCE_PREFIX).unwrap()
-    ).unwrap();
+    let metadata: serde_json::Value =
+        serde_json::from_str(metadata_line.strip_prefix(FRAME_EVIDENCE_PREFIX).unwrap()).unwrap();
     assert_eq!(metadata["tab_id"], expected_snapshot["tab_id"]);
     assert_eq!(metadata["generation"], expected_snapshot["generation"]);
     assert_eq!(content[1]["type"], "image");
@@ -677,11 +676,10 @@ fn the_browsing_tools_still_work_over_the_same_protocol_alongside_the_download_t
         !mcp.call("get_page_representation", json!({"tab_id": tab}))
             .is_error
     );
-    assert!(
-        mcp.call("close_tab", json!({"tab_id": tab}))
-            .text
-            .contains("closed")
-    );
+    assert!(mcp
+        .call("close_tab", json!({"tab_id": tab}))
+        .text
+        .contains("closed"));
     assert_eq!(
         mcp.call("list_tabs", json!({}))
             .json()

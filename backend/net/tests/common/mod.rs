@@ -18,7 +18,7 @@
 #![allow(dead_code)]
 
 use blueice_ipc::gatekeeper::{
-    GatekeeperReply, GatekeeperRequest, read_gatekeeper_request, write_gatekeeper_reply,
+    read_gatekeeper_request, write_gatekeeper_reply, GatekeeperReply, GatekeeperRequest,
 };
 use std::collections::HashMap;
 use std::io::{Read, Write};

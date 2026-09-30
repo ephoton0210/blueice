@@ -34,6 +34,7 @@ pub enum SettingsNotice {
     Rejected(String),
 }
 
+#[allow(clippy::large_enum_variant)]
 pub enum GatekeeperSettingsView {
     Settings(GatekeeperSettings),
     Unavailable,
@@ -144,7 +145,11 @@ pub fn gatekeeper_settings_html(
             SettingsNotice::Saved => ("adjustable", t("saved")),
             SettingsNotice::Rejected(reason) => (
                 "error",
-                format!("{} {}", t("invalid"), reason.chars().take(240).collect::<String>()),
+                format!(
+                    "{} {}",
+                    t("invalid"),
+                    reason.chars().take(240).collect::<String>()
+                ),
             ),
         };
         body.push_str(&format!(
@@ -166,11 +171,27 @@ pub fn gatekeeper_settings_html(
             body.push_str(&format!(
                 "<p>{} <b>{}</b></p>",
                 escape_html(&t("model-review")),
-                escape_html(&t(if settings.model_review_active { "model-active" } else { "model-inactive" })),
+                escape_html(&t(if settings.model_review_active {
+                    "model-active"
+                } else {
+                    "model-inactive"
+                })),
             ));
-            let provider = settings.local_model.as_ref().map(|config| config.provider.as_str()).unwrap_or("ollama");
-            let base_url = settings.local_model.as_ref().map(|config| config.base_url.as_str()).unwrap_or("http://127.0.0.1:11434/v1/");
-            let model = settings.local_model.as_ref().map(|config| config.model.as_str()).unwrap_or("");
+            let provider = settings
+                .local_model
+                .as_ref()
+                .map(|config| config.provider.as_str())
+                .unwrap_or("ollama");
+            let base_url = settings
+                .local_model
+                .as_ref()
+                .map(|config| config.base_url.as_str())
+                .unwrap_or("http://127.0.0.1:11434/v1/");
+            let model = settings
+                .local_model
+                .as_ref()
+                .map(|config| config.model.as_str())
+                .unwrap_or("");
             body.push_str(&format!(
                 "<div class=\"section\"><h2>{}</h2><p class=\"note\">{}</p><label for=\"gatekeeper-model-provider\">{}</label><input id=\"gatekeeper-model-provider\" type=\"text\" value=\"{}\"><label for=\"gatekeeper-model-base\">{}</label><input id=\"gatekeeper-model-base\" type=\"text\" value=\"{}\"><label for=\"gatekeeper-model-name\">{}</label><input id=\"gatekeeper-model-name\" type=\"text\" value=\"{}\"><button data-gatekeeper-action=\"configure-model\">{}</button>",
                 escape_html(&t("local-model-heading")),
@@ -323,7 +344,10 @@ pub fn gatekeeper_settings_html(
                 escape_html(&t("add-host-label")),
                 escape_html(&t("add-host-button")),
             ));
-            body.push_str(&format!("<p class=\"detail\">{}</p>", escape_html(&t("custom-blocklist-match"))));
+            body.push_str(&format!(
+                "<p class=\"detail\">{}</p>",
+                escape_html(&t("custom-blocklist-match"))
+            ));
             if settings.custom_blocked_hosts.is_empty() {
                 body.push_str(&format!(
                     "<p>{}</p>",
@@ -350,9 +374,15 @@ pub fn gatekeeper_settings_html(
                 escape_html(&t("add-phrase-label")),
                 escape_html(&t("add-phrase-button")),
             ));
-            body.push_str(&format!("<p class=\"detail\">{}</p>", escape_html(&t("custom-phrases-match"))));
+            body.push_str(&format!(
+                "<p class=\"detail\">{}</p>",
+                escape_html(&t("custom-phrases-match"))
+            ));
             if settings.custom_blocked_phrases.is_empty() {
-                body.push_str(&format!("<p>{}</p>", escape_html(&t("custom-phrases-empty"))));
+                body.push_str(&format!(
+                    "<p>{}</p>",
+                    escape_html(&t("custom-phrases-empty"))
+                ));
             } else {
                 body.push_str("<ul>");
                 for phrase in &settings.custom_blocked_phrases {
@@ -374,9 +404,15 @@ pub fn gatekeeper_settings_html(
                 escape_html(&t("add-extension-label")),
                 escape_html(&t("add-extension-button")),
             ));
-            body.push_str(&format!("<p class=\"detail\">{}</p>", escape_html(&t("custom-extensions-match"))));
+            body.push_str(&format!(
+                "<p class=\"detail\">{}</p>",
+                escape_html(&t("custom-extensions-match"))
+            ));
             if settings.custom_blocked_download_extensions.is_empty() {
-                body.push_str(&format!("<p>{}</p>", escape_html(&t("custom-extensions-empty"))));
+                body.push_str(&format!(
+                    "<p>{}</p>",
+                    escape_html(&t("custom-extensions-empty"))
+                ));
             } else {
                 body.push_str("<ul>");
                 for extension in &settings.custom_blocked_download_extensions {
@@ -398,9 +434,15 @@ pub fn gatekeeper_settings_html(
                 escape_html(&t("add-popup-phrase-label")),
                 escape_html(&t("add-popup-phrase-button")),
             ));
-            body.push_str(&format!("<p class=\"detail\">{}</p>", escape_html(&t("custom-popup-phrases-match"))));
+            body.push_str(&format!(
+                "<p class=\"detail\">{}</p>",
+                escape_html(&t("custom-popup-phrases-match"))
+            ));
             if settings.custom_blocked_popup_phrases.is_empty() {
-                body.push_str(&format!("<p>{}</p>", escape_html(&t("custom-popup-phrases-empty"))));
+                body.push_str(&format!(
+                    "<p>{}</p>",
+                    escape_html(&t("custom-popup-phrases-empty"))
+                ));
             } else {
                 body.push_str("<ul>");
                 for phrase in &settings.custom_blocked_popup_phrases {
@@ -425,18 +467,24 @@ pub fn gatekeeper_settings_html(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use blueice_ipc::gatekeeper::{GatekeeperLocalModel, GatekeeperRuleInfo, GatekeeperUserCondition, GatekeeperWorkflowStep};
+    use blueice_ipc::gatekeeper::{
+        GatekeeperLocalModel, GatekeeperRuleInfo, GatekeeperUserCondition, GatekeeperWorkflowStep,
+    };
 
     fn settings() -> GatekeeperSettings {
         let condition = |kind: &str, value: &str| GatekeeperUserCondition {
-            kind: kind.to_string(), value: value.to_string(),
+            kind: kind.to_string(),
+            value: value.to_string(),
         };
         let mut workflow = vec![GatekeeperWorkflowStep {
             id: "url-before-fetch".to_string(),
             trigger: "Every navigation".to_string(),
             description: "Review first.".to_string(),
             failure_behavior: "Block <unsafe> navigation.".to_string(),
-            review_order: vec!["compiled-rule-base".to_string(), "User <unsafe> rules".to_string()],
+            review_order: vec![
+                "compiled-rule-base".to_string(),
+                "User <unsafe> rules".to_string(),
+            ],
             active_user_conditions: vec![condition("host", "tracker.example")],
             mandatory: true,
         }];
@@ -455,8 +503,13 @@ mod tests {
                 review_order: vec!["compiled-rule-base".to_string()],
                 active_user_conditions: match id {
                     "content-before-parse" => vec![condition("phrase", "ignore <instructions>")],
-                    "download-before-bytes" => vec![condition("host", "tracker.example"), condition("download-extension", ".zip")],
-                    "extension-popup-before-publish" => vec![condition("popup-phrase", "send <secrets>")],
+                    "download-before-bytes" => vec![
+                        condition("host", "tracker.example"),
+                        condition("download-extension", ".zip"),
+                    ],
+                    "extension-popup-before-publish" => {
+                        vec![condition("popup-phrase", "send <secrets>")]
+                    }
                     _ => Vec::new(),
                 },
                 mandatory: true,
@@ -522,23 +575,32 @@ mod tests {
         assert!(html.contains("Active review order:"));
         assert!(html.contains("<li>Compiled deterministic rule base (required)</li><li>User &lt;unsafe&gt; rules</li>"));
         assert!(html.contains("Applied at workflow steps: url-before-fetch"));
-        assert!(html.contains("Compiled rules at this step:</p><ul><li><code>domain-rule</code></li></ul>"));
+        assert!(html.contains(
+            "Compiled rules at this step:</p><ul><li><code>domain-rule</code></li></ul>"
+        ));
         assert!(html.contains("A host also blocks its dot-boundary subdomains"));
         assert!(html.contains("ignore &lt;instructions&gt;"));
         assert!(html.contains("send &lt;secrets&gt;"));
         let step = |id: &str| {
             let marker = format!("data-gatekeeper-step=\"{id}\"");
-            html.split(&marker).nth(1).unwrap().split("</div>").next().unwrap().to_string()
+            html.split(&marker)
+                .nth(1)
+                .unwrap()
+                .split("</div>")
+                .next()
+                .unwrap()
+                .to_string()
         };
         assert!(step("url-before-fetch").contains("Host: <code>tracker.example</code>"));
-        assert!(step("content-before-parse").contains("HTML-text phrase: <code>ignore &lt;instructions&gt;</code>"));
+        assert!(step("content-before-parse")
+            .contains("HTML-text phrase: <code>ignore &lt;instructions&gt;</code>"));
         assert!(!step("content-before-parse").contains("tracker.example"));
         assert!(step("download-before-bytes").contains("Host: <code>tracker.example</code>"));
         assert!(step("download-before-bytes").contains("Download extension: <code>.zip</code>"));
-        assert!(step("extension-popup-before-publish").contains("Extension-popup phrase: <code>send &lt;secrets&gt;</code>"));
-        assert!(step("extension-toolbar-before-publish").contains(
-            "<code>extension-toolbar-social-engineering</code>"
-        ));
+        assert!(step("extension-popup-before-publish")
+            .contains("Extension-popup phrase: <code>send &lt;secrets&gt;</code>"));
+        assert!(step("extension-toolbar-before-publish")
+            .contains("<code>extension-toolbar-social-engineering</code>"));
         assert!(!step("extension-before-side-effect").contains("Your active blocking conditions"));
     }
 
@@ -555,7 +617,9 @@ mod tests {
         assert!(html.contains("value=\"huggingface\""));
         assert!(html.contains("value=\"local&lt;model&gt;\""));
         assert!(html.contains("data-gatekeeper-action=\"disable-model\""));
-        assert!(html.contains("timeout, malformed reply, oversized input, or unavailable local service blocks"));
+        assert!(html.contains(
+            "timeout, malformed reply, oversized input, or unavailable local service blocks"
+        ));
     }
 
     #[test]
@@ -566,17 +630,21 @@ mod tests {
             "user-blocked-hosts".into(),
             "local-model".into(),
         ];
-        let html = gatekeeper_settings_html(&GatekeeperSettingsView::Settings(config), "zh-TW", None);
+        let html =
+            gatekeeper_settings_html(&GatekeeperSettingsView::Settings(config), "zh-TW", None);
         assert!(html.contains("目前生效的審查順序："));
         assert!(html.contains("<li>編譯內建確定性規則（必要）</li><li>您封鎖的主機</li><li>選用的本機模型（無法審查時會阻擋）</li>"));
-        assert!(html.contains("此步驟套用的內建規則：</p><ul><li><code>domain-rule</code></li></ul>"));
+        assert!(
+            html.contains("此步驟套用的內建規則：</p><ul><li><code>domain-rule</code></li></ul>")
+        );
         assert!(html.contains("此步驟生效的自訂封鎖條件："));
     }
 
     #[test]
     fn rejected_model_configuration_shows_an_escaped_reason() {
         let html = gatekeeper_settings_html(
-            &GatekeeperSettingsView::Settings(settings()), "en",
+            &GatekeeperSettingsView::Settings(settings()),
+            "en",
             Some(SettingsNotice::Rejected("invalid <remote> endpoint".into())),
         );
         assert!(html.contains("invalid &lt;remote&gt; endpoint"));
@@ -622,9 +690,8 @@ mod tests {
                 && !step.failure_behavior.is_empty()
                 && step.review_order == ["compiled-rule-base"]
         }));
-        let live_html = gatekeeper_settings_html(
-            &GatekeeperSettingsView::Settings(live.clone()), "en", None,
-        );
+        let live_html =
+            gatekeeper_settings_html(&GatekeeperSettingsView::Settings(live.clone()), "en", None);
         assert!(live_html.contains(&live.ruleset_version));
         for rule in &live.baseline_rules {
             assert!(live_html.contains(&escape_html(&rule.id)));
@@ -637,7 +704,8 @@ mod tests {
         }
         for step in &live.workflow {
             assert!(live_html.contains(&format!(
-                "data-gatekeeper-step=\"{}\"", escape_html(&step.id)
+                "data-gatekeeper-step=\"{}\"",
+                escape_html(&step.id)
             )));
             assert!(live_html.contains(&escape_html(&step.trigger)));
             assert!(live_html.contains(&escape_html(&step.description)));
@@ -653,18 +721,24 @@ mod tests {
         assert!(toolbar_step.contains("<code>sensitive-extension-action</code>"));
         assert!(toolbar_step.contains("<code>extension-toolbar-social-engineering</code>"));
         let updated = source
-                .update(GatekeeperSettingsChange::AddBlockedHost {
-                    host: "tracker.example".to_string(),
-                })
-                .unwrap();
+            .update(GatekeeperSettingsChange::AddBlockedHost {
+                host: "tracker.example".to_string(),
+            })
+            .unwrap();
         assert_eq!(updated.custom_blocked_hosts, vec!["tracker.example"]);
-        assert_eq!(updated.workflow[0].review_order, ["compiled-rule-base", "user-blocked-hosts"]);
-        assert_eq!(updated.workflow[0].active_user_conditions, [GatekeeperUserCondition {
-            kind: "host".to_string(), value: "tracker.example".to_string(),
-        }]);
-        let updated_html = gatekeeper_settings_html(
-            &GatekeeperSettingsView::Settings(updated), "en", None,
+        assert_eq!(
+            updated.workflow[0].review_order,
+            ["compiled-rule-base", "user-blocked-hosts"]
         );
+        assert_eq!(
+            updated.workflow[0].active_user_conditions,
+            [GatekeeperUserCondition {
+                kind: "host".to_string(),
+                value: "tracker.example".to_string(),
+            }]
+        );
+        let updated_html =
+            gatekeeper_settings_html(&GatekeeperSettingsView::Settings(updated), "en", None);
         assert!(updated_html.contains("Host: <code>tracker.example</code>"));
         assert!(updated_html.contains("<li>Your blocked hosts</li>"));
         worker.join().unwrap();

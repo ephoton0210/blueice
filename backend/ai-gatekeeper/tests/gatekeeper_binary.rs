@@ -9,9 +9,8 @@
 
 use blueice_ipc::gatekeeper::{
     read_gatekeeper_reply, read_gatekeeper_settings_reply, write_gatekeeper_request,
-    write_gatekeeper_settings_request, GatekeeperReply, GatekeeperRequest,
-    GatekeeperSettings, GatekeeperSettingsChange, GatekeeperSettingsReply,
-    GatekeeperSettingsRequest,
+    write_gatekeeper_settings_request, GatekeeperReply, GatekeeperRequest, GatekeeperSettings,
+    GatekeeperSettingsChange, GatekeeperSettingsReply, GatekeeperSettingsRequest,
 };
 use std::io::{Read, Write};
 use std::net::TcpListener;
@@ -118,7 +117,9 @@ impl GatekeeperProcess {
     fn settings(&self) -> GatekeeperSettings {
         let mut stream = UnixStream::connect(&self.socket).unwrap();
         write_gatekeeper_settings_request(&mut stream, &GatekeeperSettingsRequest::Read).unwrap();
-        let GatekeeperSettingsReply::Settings(settings) = read_gatekeeper_settings_reply(&mut stream).unwrap() else {
+        let GatekeeperSettingsReply::Settings(settings) =
+            read_gatekeeper_settings_reply(&mut stream).unwrap()
+        else {
             panic!("the live gatekeeper rejected a settings read")
         };
         settings
@@ -173,11 +174,17 @@ fn real_gatekeeper_process_applies_persisted_settings_to_the_next_review() {
 fn real_gatekeeper_process_reviews_extension_actions_on_an_overridden_private_socket() {
     let gatekeeper = GatekeeperProcess::spawn();
     let settings = gatekeeper.settings();
-    let toolbar = settings.workflow.iter().find(|step| step.id == "extension-toolbar-before-publish").unwrap();
+    let toolbar = settings
+        .workflow
+        .iter()
+        .find(|step| step.id == "extension-toolbar-before-publish")
+        .unwrap();
     assert!(toolbar.mandatory);
     assert_eq!(toolbar.review_order, ["compiled-rule-base"]);
-    assert!(settings.baseline_rules.iter().any(|rule|
-        rule.id == "extension-toolbar-social-engineering"
+    assert!(settings
+        .baseline_rules
+        .iter()
+        .any(|rule| rule.id == "extension-toolbar-social-engineering"
             && rule.workflow_steps == ["extension-toolbar-before-publish"]));
     assert_eq!(
         gatekeeper.check("target=form-input; input_type=email"),

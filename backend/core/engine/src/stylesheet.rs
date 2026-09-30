@@ -50,7 +50,9 @@ mod tests {
 
     #[test]
     fn extracts_rules_from_a_single_style_tag() {
-        let doc = blueice_html::parse("<html><head><style>p { color: red; }</style></head><body><p>x</p></body></html>");
+        let doc = blueice_html::parse(
+            "<html><head><style>p { color: red; }</style></head><body><p>x</p></body></html>",
+        );
         let rules = extract_inline_stylesheets(&doc);
         assert_eq!(rules.len(), 1);
         assert_eq!(rules[0].declarations[0].property, "color");
@@ -58,11 +60,19 @@ mod tests {
 
     #[test]
     fn extracts_and_concatenates_rules_from_multiple_style_tags_in_document_order() {
-        let doc = blueice_html::parse("<style>p { color: red; }</style><body><style>div { color: blue; }</style></body>");
+        let doc = blueice_html::parse(
+            "<style>p { color: red; }</style><body><style>div { color: blue; }</style></body>",
+        );
         let rules = extract_inline_stylesheets(&doc);
         assert_eq!(rules.len(), 2);
-        assert_eq!(rules[0].declarations[0].value, blueice_css::Value::Color(blueice_css::Color::Rgba(255, 0, 0, 255)));
-        assert_eq!(rules[1].declarations[0].value, blueice_css::Value::Color(blueice_css::Color::Rgba(0, 0, 255, 255)));
+        assert_eq!(
+            rules[0].declarations[0].value,
+            blueice_css::Value::Color(blueice_css::Color::Rgba(255, 0, 0, 255))
+        );
+        assert_eq!(
+            rules[1].declarations[0].value,
+            blueice_css::Value::Color(blueice_css::Color::Rgba(0, 0, 255, 255))
+        );
     }
 
     #[test]
@@ -76,9 +86,13 @@ mod tests {
         // sanity check on the tree-walk itself: a <script> tag right
         // next to a <style> tag must not have its (RAWTEXT, non-CSS)
         // content merged in.
-        let doc = blueice_html::parse("<script>var x = 1;</script><style>p { color: green; }</style>");
+        let doc =
+            blueice_html::parse("<script>var x = 1;</script><style>p { color: green; }</style>");
         let rules = extract_inline_stylesheets(&doc);
         assert_eq!(rules.len(), 1);
-        assert_eq!(rules[0].declarations[0].value, blueice_css::Value::Color(blueice_css::Color::Rgba(0, 128, 0, 255)));
+        assert_eq!(
+            rules[0].declarations[0].value,
+            blueice_css::Value::Color(blueice_css::Color::Rgba(0, 128, 0, 255))
+        );
     }
 }

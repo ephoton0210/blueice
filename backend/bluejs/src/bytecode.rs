@@ -2,315 +2,804 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! BlueJS's fixed-width operand-stack bytecode.
-//!
-//! An [`Instruction`] is exactly one `u64`: eight opcode bits, eight reserved
-//! tiering/inline-cache-hint bits, and a 48-bit operand.  Keeping that shape
-//! stable lets a later optimizing tier attach metadata to an instruction site
-//! without changing the compiler's byte stream or replacing the interpreter.
+//! Compiler-owned bytecode: one byte per opcode plus a fixed u32 operand
+//! where needed. The table defines decoding, width and tiering metadata
+//! together; VM dispatch is an exhaustive match on its generated enum.
+//! Jumps use byte offsets. No public deserializer accepts arbitrary code:
+//! serialization/versioning and hostile-bytecode validation are future work.
 
-use crate::value::Value;
-
-const OPCODE_MASK: u64 = 0xff;
-const TIERING_SHIFT: u64 = 8;
-const OPERAND_SHIFT: u64 = 16;
-const OPERAND_MASK: u64 = (1_u64 << 48) - 1;
-
-/// One stack-machine operation. Values are explicit instead of relying on a
-/// Rust enum's layout so every encoded instruction has one fixed width.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[repr(u8)]
-pub enum Opcode {
-    Nop,
-    LoadConstant,
-    LoadUndefined,
-    LoadNull,
-    LoadTrue,
-    LoadFalse,
-    LoadThis,
-    LoadBinding,
-    StoreBinding,
-    DeclareVar,
-    DeclareLet,
-    DeclareConst,
-    EnterScope,
-    LeaveScope,
-    Pop,
-    SetCompletion,
-    Dup,
-    Dup2,
-    MakeArray,
-    ArrayPush,
-    ArrayHole,
-    ArraySpread,
-    MakeObject,
-    ObjectSet,
-    ObjectSpread,
-    MakeFunction,
-    GetProperty,
-    SetProperty,
-    UnaryNeg,
-    UnaryPos,
-    UnaryNot,
-    Typeof,
-    Add,
-    Subtract,
-    Multiply,
-    Divide,
-    Remainder,
-    Equal,
-    NotEqual,
-    StrictEqual,
-    StrictNotEqual,
-    LessThan,
-    GreaterThan,
-    LessThanOrEqual,
-    GreaterThanOrEqual,
-    Instanceof,
-    In,
-    Jump,
-    JumpIfFalse,
-    JumpIfTrue,
-    JumpIfNullish,
-    JumpIfNotNullish,
-    Call,
-    CallWithThis,
-    Construct,
-    Return,
-    Throw,
-    TryBegin,
-    TryEnd,
-    BindPattern,
-    IteratorStartOf,
-    IteratorStartIn,
-    IteratorNext,
-    Halt,
-    Rotate3,
-    DeclarePatternVar,
-    DeclarePatternLet,
-    DeclarePatternConst,
-    SetPropertyKeepOld,
-    JumpIfTruePop,
-    /// Invokes a function with an argument array assembled by the compiler
-    /// when any syntactic argument uses `...spread`.
-    CallSpread,
-    CallWithThisSpread,
-    ConstructSpread,
-}
-
-impl Opcode {
-    pub const fn from_u8(value: u8) -> Option<Self> {
-        Some(match value {
-            0 => Self::Nop,
-            1 => Self::LoadConstant,
-            2 => Self::LoadUndefined,
-            3 => Self::LoadNull,
-            4 => Self::LoadTrue,
-            5 => Self::LoadFalse,
-            6 => Self::LoadThis,
-            7 => Self::LoadBinding,
-            8 => Self::StoreBinding,
-            9 => Self::DeclareVar,
-            10 => Self::DeclareLet,
-            11 => Self::DeclareConst,
-            12 => Self::EnterScope,
-            13 => Self::LeaveScope,
-            14 => Self::Pop,
-            15 => Self::SetCompletion,
-            16 => Self::Dup,
-            17 => Self::Dup2,
-            18 => Self::MakeArray,
-            19 => Self::ArrayPush,
-            20 => Self::ArrayHole,
-            21 => Self::ArraySpread,
-            22 => Self::MakeObject,
-            23 => Self::ObjectSet,
-            24 => Self::ObjectSpread,
-            25 => Self::MakeFunction,
-            26 => Self::GetProperty,
-            27 => Self::SetProperty,
-            28 => Self::UnaryNeg,
-            29 => Self::UnaryPos,
-            30 => Self::UnaryNot,
-            31 => Self::Typeof,
-            32 => Self::Add,
-            33 => Self::Subtract,
-            34 => Self::Multiply,
-            35 => Self::Divide,
-            36 => Self::Remainder,
-            37 => Self::Equal,
-            38 => Self::NotEqual,
-            39 => Self::StrictEqual,
-            40 => Self::StrictNotEqual,
-            41 => Self::LessThan,
-            42 => Self::GreaterThan,
-            43 => Self::LessThanOrEqual,
-            44 => Self::GreaterThanOrEqual,
-            45 => Self::Instanceof,
-            46 => Self::In,
-            47 => Self::Jump,
-            48 => Self::JumpIfFalse,
-            49 => Self::JumpIfTrue,
-            50 => Self::JumpIfNullish,
-            51 => Self::JumpIfNotNullish,
-            52 => Self::Call,
-            53 => Self::CallWithThis,
-            54 => Self::Construct,
-            55 => Self::Return,
-            56 => Self::Throw,
-            57 => Self::TryBegin,
-            58 => Self::TryEnd,
-            59 => Self::BindPattern,
-            60 => Self::IteratorStartOf,
-            61 => Self::IteratorStartIn,
-            62 => Self::IteratorNext,
-            63 => Self::Halt,
-            64 => Self::Rotate3,
-            65 => Self::DeclarePatternVar,
-            66 => Self::DeclarePatternLet,
-            67 => Self::DeclarePatternConst,
-            68 => Self::SetPropertyKeepOld,
-            69 => Self::JumpIfTruePop,
-            70 => Self::CallSpread,
-            71 => Self::CallWithThisSpread,
-            72 => Self::ConstructSpread,
-            _ => return None,
-        })
-    }
-}
-
-/// A packed fixed-width instruction.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[repr(transparent)]
-pub struct Instruction(u64);
-
-impl Instruction {
-    pub const fn new(opcode: Opcode, operand: u64) -> Self {
-        assert!(
-            operand <= OPERAND_MASK,
-            "BlueJS bytecode operand exceeds 48 bits"
-        );
-        Self((opcode as u64) | (operand << OPERAND_SHIFT))
-    }
-
-    pub const fn opcode(self) -> Opcode {
-        match Opcode::from_u8((self.0 & OPCODE_MASK) as u8) {
-            Some(opcode) => opcode,
-            None => panic!("invalid BlueJS opcode"),
-        }
-    }
-
-    pub const fn operand(self) -> u64 {
-        self.0 >> OPERAND_SHIFT
-    }
-
-    /// Reserved for a future interpreter/JIT tier to annotate a bytecode site
-    /// (the role of SpiderMonkey's `JOF_IC`). The MVP interpreter leaves it at
-    /// zero and never gives it semantic meaning.
-    pub const fn tiering_hint(self) -> u8 {
-        ((self.0 >> TIERING_SHIFT) & OPCODE_MASK) as u8
-    }
-
-    pub const fn with_tiering_hint(self, hint: u8) -> Self {
-        Self((self.0 & !(OPCODE_MASK << TIERING_SHIFT)) | ((hint as u64) << TIERING_SHIFT))
-    }
-}
-
-/// Constants are module data, not instructions, so their values do not affect
-/// the byte stream's fixed width.
-#[derive(Debug, Clone, PartialEq)]
-pub enum Constant {
-    Value(Value),
-    String(String),
-}
-
-/// A compiler-lowered binding pattern. It intentionally is not an AST type:
-/// the VM consumes this compact runtime plan and never walks the parser AST.
-#[derive(Debug, Clone, PartialEq)]
-pub enum BindingPattern {
-    Identifier(String),
-    Array(Vec<Option<ArrayBindingElement>>),
-    Object(Vec<ObjectBindingProperty>),
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct ArrayBindingElement {
-    pub pattern: BindingPattern,
-    pub default_function: Option<u32>,
-    pub rest: bool,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum BindingKey {
-    Static(String),
-    ComputedFunction(u32),
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum ObjectBindingProperty {
-    KeyValue {
-        key: BindingKey,
-        value: BindingPattern,
-        default_function: Option<u32>,
-    },
-    Rest(BindingPattern),
-}
-
-/// Parameter lowering metadata. A default expression is compiled into a
-/// zero-argument helper function, so parameter binding is still bytecode-only
-/// at execution time.
-#[derive(Debug, Clone, PartialEq)]
-pub struct CompiledParameter {
-    pub pattern: BindingPattern,
-    pub default_function: Option<u32>,
-    pub rest: bool,
-}
-
-/// The code and binding metadata for one function (function 0 is the script's
-/// top-level function).
-#[derive(Debug, Clone, PartialEq)]
-pub struct BytecodeFunction {
-    pub name: Option<String>,
-    pub parameters: Vec<CompiledParameter>,
-    pub code: Vec<Instruction>,
-    pub is_arrow: bool,
-}
-
-/// A complete compiled script.
-#[derive(Debug, Clone, PartialEq)]
-pub struct BytecodeModule {
-    pub constants: Vec<Constant>,
-    pub functions: Vec<BytecodeFunction>,
-    pub patterns: Vec<BindingPattern>,
-}
-
-impl BytecodeModule {
-    pub fn entry(&self) -> &BytecodeFunction {
-        &self.functions[0]
-    }
-}
+use crate::{ModuleType, Value};
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use std::mem::size_of;
+#[path = "../tests/support/bytecode_internal.rs"]
+mod tests;
 
-    #[test]
-    fn instruction_is_a_fixed_eight_byte_word_with_reserved_tiering_bits() {
-        let instruction = Instruction::new(Opcode::LoadConstant, 123).with_tiering_hint(9);
+/// Reserved opcode metadata for later inline-cache tiers. No cache is
+/// allocated or consulted by the first interpreter.
+pub const MAY_USE_INLINE_CACHE: u8 = 1;
 
-        assert_eq!(size_of::<Instruction>(), 8);
-        assert_eq!(instruction.opcode(), Opcode::LoadConstant);
-        assert_eq!(instruction.operand(), 123);
-        assert_eq!(instruction.tiering_hint(), 9);
+macro_rules! opcodes {
+    ($($name:ident: $width:literal, $flags:expr;)*) => {
+        #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+        #[repr(u8)]
+        pub enum Opcode { $($name,)* }
+
+        impl Opcode {
+            pub fn width(self) -> usize { match self { $(Self::$name => $width,)* } }
+            pub fn flags(self) -> u8 { match self { $(Self::$name => $flags,)* } }
+            /// Decode an opcode byte, rejecting values outside the opcode table.
+            pub fn decode(byte: u8) -> Option<Self> {
+                match byte { $(n if n == Self::$name as u8 => Some(Self::$name),)* _ => None }
+            }
+        }
+    };
+}
+
+opcodes! {
+    Constant: 5, 0;
+    GetBinding: 5, 0;
+    InitializeBinding: 5, 0;
+    StoreBinding: 5, 0;
+    UnboundName: 5, 0;
+    SetUnboundName: 5, 0;
+    DeleteUnboundName: 5, 0;
+    // Strict `name = value` for a name that no binding resolves: resolves the
+    // reference before the right-hand side runs (pushes whether it resolved),
+    // and SetResolvedUnboundName stores through it (stack: flag, value).
+    ResolveUnboundName: 5, 0;
+    SetResolvedUnboundName: 5, 0;
+    // `delete name` inside `with`: deletes the property of the innermost with
+    // object that has the binding and pushes the result, or pushes `undefined`
+    // when no with object has it (the caller then falls back to the binding).
+    DeleteWithBinding: 5, 0;
+    DeleteDynamicBinding: 5, 0;
+    EnterScope: 5, 0;
+    CloneScope: 5, 0;
+    LeaveScope: 5, 0;
+    Pop: 1, 0;
+    Dup: 1, 0;
+    Dup2: 1, 0;
+    Swap: 1, 0;
+    Add: 1, 0;
+    Subtract: 1, 0;
+    Multiply: 1, 0;
+    Exponentiate: 1, 0;
+    Divide: 1, 0;
+    Remainder: 1, 0;
+    ShiftLeft: 1, 0;
+    ShiftRight: 1, 0;
+    UnsignedShiftRight: 1, 0;
+    BitAnd: 1, 0;
+    BitXor: 1, 0;
+    BitOr: 1, 0;
+    StrictEqual: 1, 0;
+    StrictNotEqual: 1, 0;
+    Equal: 1, 0;
+    NotEqual: 1, 0;
+    Less: 1, 0;
+    Greater: 1, 0;
+    LessEqual: 1, 0;
+    GreaterEqual: 1, 0;
+    Negate: 1, 0;
+    BitNot: 1, 0;
+    ToNumber: 1, 0;
+    // ToNumeric: like ToNumber, but a BigInt operand passes through
+    // unchanged instead of throwing. Used by `++`/`--` on a plain
+    // identifier, whose result must stay a BigInt when its operand is one.
+    ToNumeric: 1, 0;
+    // Pushes `1` matching the numeric type already on top of the stack
+    // (Number `1.0` or BigInt `1n`), so the following Add/Subtract never
+    // mixes BigInt with Number. Always immediately preceded by ToNumeric
+    // (possibly through a Dup), so the peeked type is always Number or
+    // BigInt.
+    PushOne: 1, 0;
+    ToString: 1, 0;
+    Not: 1, 0;
+    Typeof: 1, 0;
+    Jump: 5, 0;
+    JumpIfFalse: 5, 0;
+    JumpIfTrue: 5, 0;
+    JumpIfNotNullish: 5, 0;
+    NewObject: 1, 0;
+    GetProperty: 1, MAY_USE_INLINE_CACHE;
+    SetProperty: 1, MAY_USE_INLINE_CACHE;
+    SetDestructureProperty: 1, MAY_USE_INLINE_CACHE;
+    SetDestructurePropertyReference: 1, MAY_USE_INLINE_CACHE;
+    UpdateProperty: 5, MAY_USE_INLINE_CACHE;
+    SetLiteralPrototype: 1, 0;
+    SetCompletion: 1, 0;
+    ClearCompletion: 1, 0;
+    // Stores the value on top of the stack (left in place) into the eval-created
+    // `var` slot named by the operand as the initialization of its `var`
+    // declaration. It differs from `StoreBinding` only when the binding was
+    // deleted in the meantime (`var x = delete x`): the reference was resolved
+    // before the initializer ran, so the store recreates the binding.
+    StoreEvalVar: 5, 0;
+    // Sets the VM's runtime strictness flag (operand 1 strict, 0 sloppy) for
+    // code that is strict inside an otherwise sloppy function: a class's
+    // heritage and computed keys.
+    SetStrictMode: 5, 0;
+    Halt: 1, 0;
+    NewArray: 5, 0;
+    GlobalString: 1, 0;
+    GetMethod: 1, MAY_USE_INLINE_CACHE;
+    Call: 5, 0;
+    // `return callee(args)` in tail position (§15.10.2). Same stack layout as
+    // Call. Operand: argument count << 1, plus 1 when the callee is spelled
+    // `eval` (a direct eval candidate). The frame is replaced by the callee's
+    // when the current call can be replaced; otherwise it is an ordinary call.
+    TailCall: 5, 0;
+    DirectEval: 5, 0;
+    Construct: 5, 0;
+    Closure: 5, 0;
+    This: 1, 0;
+    NewTarget: 1, 0;
+    Argument: 5, 0;
+    RestArguments: 5, 0;
+    ArgumentsObject: 1, 0;
+    Return: 1, 0;
+    TailRecur: 5, 0;
+    Yield: 1, 0;
+    Await: 1, 0;
+    DynamicImport: 5, 0;
+    ImportMeta: 1, 0;
+    EnterWith: 1, 0;
+    LeaveWith: 1, 0;
+    WithGet: 5, 0;
+    WithGetOrUndefined: 5, 0;
+    // Callee of `name(...)` inside `with`: pushes the function and its `this`
+    // (the with object the name was found on, else undefined).
+    WithGetMethod: 5, 0;
+    WithSet: 5, 0;
+    ResolveWithReference: 5, 0;
+    LoadWithReference: 1, 0;
+    StoreWithReference: 1, 0;
+    // Like StoreWithReference, for a reference resolved *after* the value:
+    // stack `value, target, marker`. Leaves the value.
+    StoreResolvedWithReference: 1, 0;
+    // `name++` etc. on a `ResolveWithReference` pair. Operand bit 0:
+    // decrement; bit 1: prefix.
+    UpdateWithReference: 5, 0;
+    // The parameter list has been evaluated: later direct evals declare their
+    // `var`s in the function body's own environment again.
+    EndParameterEvalScope: 1, 0;
+    Global: 5, 0;
+    ToPropertyKey: 1, 0;
+    PreparePropertyReference: 1, MAY_USE_INLINE_CACHE;
+    GetIterator: 1, 0;
+    IteratorNext: 5, 0;
+    IteratorStepValue: 5, 0;
+    GetAsyncIterator: 1, 0;
+    ForInKeys: 1, 0;
+    IteratorStep: 5, 0;
+    AsyncIteratorNext: 5, 0;
+    AsyncIteratorStep: 5, 0;
+    AsyncIteratorStepValue: 5, 0;
+    IteratorStepReference: 5, 0;
+    IteratorElision: 1, 0;
+    IteratorClose: 1, 0;
+    // Control-transfer cleanup may resume after a handler already closed the
+    // iterator and unwound the scope that held this compiler-private slot.
+    CloseIteratorBinding: 5, 0;
+    IteratorFinish: 1, 0;
+    IteratorRest: 1, 0;
+    IteratorRestReference: 1, 0;
+    RequireObject: 1, 0;
+    DestructureProperty: 1, 0;
+    DestructurePropertyReference: 1, 0;
+    ObjectRest: 1, 0;
+    CopyDataProperties: 1, 0;
+    RegExpLiteral: 1, 0;
+    TemplateObject: 5, 0;
+    ArrayPush: 5, 0;
+    CallSpread: 5, 0;
+    DirectEvalSpread: 1, 0;
+    Throw: 1, 0;
+    InvalidAssignmentTarget: 1, 0;
+    PushHandler: 5, 0;
+    PopHandler: 1, 0;
+    ResumeCompletion: 5, 0;
+    // Normal completion of a try or catch block whose statement has a
+    // finalizer: turns the active handler frame into the one that runs the
+    // finalizer (an abrupt completion does the same) and saves the block's
+    // completion value, which `ResumeCompletion` restores afterwards.
+    EnterFinalizer: 1, 0;
+    // Explicit Resource Management: `MarkDisposables` records the current
+    // depth of the VM's disposable-resource stack when a `using`-declaring
+    // block/function body is entered; `AddDisposableResource` (operand 0 =
+    // sync-dispose, 1 = async-dispose) pops an initialized `using` binding's
+    // value and appends its disposal record; `DisposeResources` drains back
+    // down to the last mark, disposing in reverse order and merging a
+    // disposal error with any already-pending completion as a
+    // `SuppressedError`. Always compiled as a matched Mark/Dispose pair
+    // around a synthetic try/finally (see `statements_with_disposal`), so
+    // depths never need cross-checking at runtime.
+    MarkDisposables: 1, 0;
+    AddDisposableResource: 5, 0;
+    // `await using`-capable disposal: drains this block's disposable-resource
+    // stack (the same runtime state `DisposeResources` drains) into a plain
+    // JS value `[hasError, pendingError, entries]` where `entries` is a real
+    // Array of `[receiver, method, hasArgument, argument, isAsync,
+    // syncFallback]` records, one per resource in declaration order. The
+    // compiler then compiles an
+    // ordinary (synthesized) `while`/`try`/`catch` loop over that value using
+    // its normal statement/expression compiling -- `Await` included -- so a
+    // dispose call that needs awaiting uses the same suspend/resume path as
+    // any other `await`. See `Compiler::compile_async_dispose_finally`.
+    // Operand: same "am I an abrupt or normal entry" handler index as
+    // `DisposeResources`.
+    DrainAsyncDisposables: 5, 0;
+    // Operand: the static index (into `Bytecode::handlers`) of the
+    // synthetic try/finally this disposal is the finally clause of. Lets
+    // the interpreter tell an abrupt entry (the handler frame is on the
+    // runtime handler stack, in `Finally` state, with a pending completion to
+    // merge a disposal error into as a `SuppressedError`) apart from a
+    // normal-completion entry (the frame is in `Finally` state too but has no
+    // pending completion, so no prior error can exist to merge with).
+    DisposeResources: 5, 0;
+    AbruptJump: 5, 0;
+    // SetFunctionName from a property key: stack `key, function`, both left
+    // in place. Operand: 0 plain, 1 `get ` prefix, 2 `set ` prefix.
+    SetFunctionName: 5, 0;
+    DefineData: 1, 0;
+    DefineAccessor: 5, 0;
+    // Operand: non-zero for an object-literal method (enumerable), zero for a
+    // class method.
+    DefineMethod: 5, 0;
+    DefineClassAccessor: 5, 0;
+    DefineInstanceField: 1, 0;
+    // `receiver, name, value` -> nothing: PrivateFieldAdd for the private
+    // name whose owner is in the operand's slot.
+    PrivateFieldAdd: 5, 0;
+    DefinePrivateField: 5, 0;
+    DefinePrivateMethod: 5, 0;
+    DefinePrivateAccessor: 5, 0;
+    CallClassStaticBlock: 1, 0;
+    SetClassHome: 1, 0;
+    SetClassHeritage: 1, 0;
+    // `F, initializer` -> `F`: install the class's [[Fields]] (a method-like
+    // function run with the new instance as `this`) and give it the class
+    // prototype as its home object.
+    SetClassFields: 1, 0;
+    // Pops the receiver to brand with the owner in the operand's slot.
+    InitializePrivateBrand: 5, 0;
+    PrivateGet: 5, MAY_USE_INLINE_CACHE;
+    PrivateGetMethod: 5, MAY_USE_INLINE_CACHE;
+    PrivateSet: 5, MAY_USE_INLINE_CACHE;
+    // A destructuring leaf's PrivateSet: `value, receiver, name` -> `value`.
+    PrivateSetLeaf: 5, 0;
+    // `++`/`--` on a private member: `receiver, name` -> the old or new
+    // number. The full u32 operand is the owner slot; the opcode carries the
+    // update operation and result choice.
+    PrivatePostIncrement: 5, MAY_USE_INLINE_CACHE;
+    PrivatePreIncrement: 5, MAY_USE_INLINE_CACHE;
+    PrivatePostDecrement: 5, MAY_USE_INLINE_CACHE;
+    PrivatePreDecrement: 5, MAY_USE_INLINE_CACHE;
+    PrivateIn: 5, MAY_USE_INLINE_CACHE;
+    // A super property Reference is the operand pair `base, key` (like any
+    // other property Reference) with the `this` value pushed on top just
+    // before its consuming opcode: `SuperBase` (below) captures the base once
+    // the key expression has been evaluated, and `this` is re-read (it can
+    // only ever go from uninitialized to a fixed value) rather than stored.
+    // `SuperGet`: `base, key, this` -> value. `SuperGetMethod`: `base, key,
+    // this` -> function, this. `SuperSet`: operand 0 takes `base, key, value,
+    // this`, operand 1 takes the destructuring-leaf order `value, base, key,
+    // this`; both leave the value. `SuperUpdate`: `base, key, this` -> the
+    // old or new number (operand bit 0 decrement, bit 1 prefix).
+    SuperGet: 1, MAY_USE_INLINE_CACHE;
+    SuperGetMethod: 1, MAY_USE_INLINE_CACHE;
+    SuperSet: 5, MAY_USE_INLINE_CACHE;
+    SuperUpdate: 5, MAY_USE_INLINE_CACHE;
+    // Pushes GetSuperBase, the home object's [[Prototype]] (an object or
+    // null), above the already-evaluated key.
+    SuperBase: 1, 0;
+    // Pops any evaluated key and throws the ReferenceError of `delete
+    // super.x`.
+    DeleteSuperProperty: 1, 0;
+    // Pushes a derived constructor's (or one of its arrows') `this` binding
+    // held in the operand's hidden slot; a ReferenceError until `super()`
+    // has bound it.
+    ThisBinding: 5, 0;
+    // `F` -> `F.[[GetPrototypeOf]]()`, GetSuperConstructor for the active
+    // function `F`; evaluated before the `super()` arguments.
+    SuperConstructor: 1, 0;
+    // `F, superCtor, arg...` -> `F, result`: the IsConstructor check that follows
+    // argument evaluation, then Construct(superCtor, args, new.target). The
+    // operand is the argument count (`SuperCallSpread` takes one argument
+    // array, `SuperCallForward` the frame's own arguments).
+    SuperCall: 5, 0;
+    SuperCallSpread: 1, 0;
+    SuperCallForward: 1, 0;
+    // Peeks the constructed value and binds it as the operand slot's `this`;
+    // a second bind is a ReferenceError.
+    BindThisValue: 5, 0;
+    // `F, result` -> `result` after InitializeInstanceElements(result, F).
+    InitializeInstanceElements: 1, 0;
+    // Decorators. `F` -> `F, metadata`: a fresh metadata object whose
+    // prototype is the superclass's `Symbol.metadata` (or null).
+    CreateMetadata: 1, 0;
+    // `class, metadata` -> nothing: defines `class[Symbol.metadata]`.
+    DefineMetadata: 1, 0;
+    // `list, decorator, receiver` -> `list`: appends the value of one decorator
+    // expression and the `this` value it is called with to a decorator list.
+    PushDecorator: 1, 0;
+    // `F, receiver, function` -> `F`: runs a static field's or static block's
+    // function with `this` = receiver (the decorated class) while its home
+    // object stays F.
+    CallDecoratedStaticElement: 1, 0;
+    // `decorators, name, owner, privateName, value, value2, metadata` ->
+    // `record`: applies one class element's decorators, last to first, and
+    // returns `[extraInitializers, ...]` (the operand encodes the element
+    // kind, `static` and `private`; see `vm/builtins/decorators.rs`).
+    DecorateElement: 5, 0;
+    // `F, decorators, name, metadata` -> `[extraInitializers, F']`.
+    DecorateClass: 1, 0;
+    // `target, key, original, replacement` -> nothing: puts a decorated
+    // method or accessor half back on its class (or private owner) unless a
+    // later element already replaced it. The operand encodes the kind and
+    // whether the name is private.
+    ReplaceClassElement: 5, 0;
+    // `receiver, initializers` -> nothing: calls each with `this` = receiver.
+    RunInitializers: 1, 0;
+    // `value, receiver, initializers` -> `value'`: threads a field's initial
+    // value through each initializer with `this` = receiver.
+    ApplyInitializers: 1, 0;
+    DeleteProperty: 1, 0;
+    Instanceof: 1, 0;
+    In: 1, 0;
+    TypeofName: 5, 0;
+    // `typeof name` where `name` resolves to a slot that a sloppy direct
+    // eval created (deletable at runtime): reading it never throws, even
+    // once `delete name` has removed the binding and no outer scope has it
+    // either -- ECMA-262 §13.5.3's `typeof` on an unresolvable reference is
+    // `"undefined"`, not a ReferenceError (a TDZ binding is never eval_var).
+    TypeofBinding: 5, 0;
+    // A lexical binding reference is resolved before an assignment's RHS.
+    // Direct eval can add a same-named var binding during that RHS, so the
+    // reference needs to retain its original target until PutValue.
+    ResolveBindingReference: 5, 0;
+    LoadBindingReference: 1, 0;
+    StoreBindingReference: 5, 0;
+    // Drop a retained Reference beneath the assignment's expression value.
+    // The operand gives the number of stack values encoding that Reference.
+    DiscardReference: 5, 0;
+}
+
+/// The operand encoding shared by `DecorateElement` and `ReplaceClassElement`:
+/// bits 0-2 are the element kind, bit 3 is `static` and bit 4 is `private`.
+pub(crate) mod decoration {
+    pub const METHOD: u32 = 0;
+    pub const GETTER: u32 = 1;
+    pub const SETTER: u32 = 2;
+    pub const FIELD: u32 = 3;
+    pub const ACCESSOR: u32 = 4;
+    pub const KIND_MASK: u32 = 7;
+    pub const STATIC: u32 = 8;
+    pub const PRIVATE: u32 = 16;
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Instruction {
+    pub offset: usize,
+    pub opcode: Opcode,
+    pub operand: Option<u32>,
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub(crate) struct Binding {
+    pub name: String,
+    pub mutable: bool,
+    /// Immutable lexical bindings created by `const` reject every write.
+    /// A named function expression instead has an immutable but non-strict
+    /// binding: sloppy references ignore its writes while strict references
+    /// throw.
+    pub strict_immutable: bool,
+    pub lexical: bool,
+    /// Annex B lets a direct eval in the immediately containing catch block
+    /// redeclare a simple catch parameter with `var` or a function.
+    pub catch_parameter: bool,
+    /// A `var` or function that a sloppy direct eval created: unlike any other
+    /// variable it is deletable. Closures and nested evals capture the
+    /// binding with this flag, so `delete name` reaches the binding from
+    /// there and, once deleted, the name resolves outward again.
+    pub eval_var: bool,
+}
+
+/// A linked import's local slot.  The VM replaces that slot's cell with the
+/// resolved exporter cell before module initialization, preserving the live
+/// binding rather than copying a value.
+#[derive(Clone)]
+pub(crate) enum ModuleImportName {
+    Named(String),
+    Namespace,
+    DeferredNamespace,
+    Source,
+}
+
+#[derive(Clone)]
+pub(crate) struct ModuleImport {
+    pub module_request: String,
+    pub import_name: ModuleImportName,
+    pub local_slot: Option<u32>,
+    /// This request's `with { type }` attribute. Drives the synthetic
+    /// module (JSON, text, bytes) routing instead of ordinary Source Text
+    /// Module linking; other attribute keys/values are accepted but not
+    /// otherwise acted on (see `parser/module_items.rs`).
+    pub module_type: ModuleType,
+}
+
+/// One executable [[RequestedModules]] entry, in source-text order.
+/// Source-phase records resolve during linking but do not participate in
+/// module evaluation, so they are omitted from this sequence. A deferred
+/// request (`import defer * as ns from`) contributes only its asynchronous
+/// transitive dependencies to evaluation, never the module itself.
+#[derive(Clone)]
+pub(crate) struct ModuleRequest {
+    pub module_request: String,
+    pub module_type: ModuleType,
+    pub deferred: bool,
+}
+
+#[derive(Clone)]
+pub(crate) enum ModuleExport {
+    Local {
+        export_name: String,
+        local_slot: u32,
+    },
+    Indirect {
+        export_name: String,
+        module_request: String,
+        import_name: String,
+        module_type: ModuleType,
+    },
+    Star {
+        module_request: String,
+        module_type: ModuleType,
+    },
+    Namespace {
+        export_name: String,
+        module_request: String,
+        module_type: ModuleType,
+    },
+    /// A re-export of a deferred namespace import (`import defer * as ns`
+    /// then `export { ns }`): the export resolves to the target's deferred
+    /// namespace object rather than a lexical cell.
+    DeferredNamespace {
+        export_name: String,
+        module_request: String,
+        module_type: ModuleType,
+    },
+    /// A local re-export of a source-phase import. It resolves to the
+    /// source record's Module Source Object rather than a lexical cell.
+    Source {
+        export_name: String,
+        module_request: String,
+    },
+}
+
+/// Identity shared by clones of one compiled site. The VM keeps a clone as
+/// the cache key, so its allocation cannot be reused while that entry lives.
+#[derive(Clone)]
+pub(crate) struct TemplateSiteId(std::sync::Arc<()>);
+
+impl TemplateSiteId {
+    pub(crate) fn new() -> Self {
+        Self(std::sync::Arc::new(()))
+    }
+}
+
+impl PartialEq for TemplateSiteId {
+    fn eq(&self, other: &Self) -> bool {
+        std::sync::Arc::ptr_eq(&self.0, &other.0)
+    }
+}
+
+impl Eq for TemplateSiteId {}
+
+impl std::hash::Hash for TemplateSiteId {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        std::hash::Hash::hash(&std::sync::Arc::as_ptr(&self.0), state);
+    }
+}
+
+#[derive(Clone)]
+pub(crate) struct TemplateSite {
+    pub id: TemplateSiteId,
+    pub raw: Vec<crate::JsString>,
+    pub cooked: Vec<Option<crate::JsString>>,
+}
+
+/// Static destinations for one `try` statement. Runtime handler frames add
+/// the operand-stack, lexical-scope and iterator depths needed to restore the
+/// execution state on an abrupt completion.
+#[derive(Clone)]
+pub(crate) struct Handler {
+    pub try_start: u32,
+    pub try_end: u32,
+    pub catch: Option<u32>,
+    pub catch_end: Option<u32>,
+    pub finally: Option<u32>,
+    /// One past the finalizer's closing `ResumeCompletion`.
+    pub finally_end: Option<u32>,
+}
+
+/// One control-transfer continuation. `cleanup` runs after every enclosing
+/// finalizer; `target` is the eventual destination used to decide which
+/// enclosing handlers the transfer actually leaves.
+#[derive(Clone)]
+pub(crate) struct AbruptJump {
+    pub cleanup: u32,
+    pub target: u32,
+}
+
+/// Read-only compiled code plus its constant pool and binding/scope
+/// metadata. Can execute repeatedly in the same or independent VMs;
+/// runtime object handles are never stored in its constant pool.
+#[derive(Clone)]
+pub struct Bytecode {
+    pub(crate) code: Vec<u8>,
+    /// Deterministic pre-order code-unit identity assigned only when a
+    /// program enters the debugger registry. A bare compiled bytecode has no
+    /// program identity, and this ordinal alone is never a frame handle.
+    pub(crate) debugger_code_unit_ordinal: Option<u32>,
+    /// Exact debugger-registry program generation. A code-unit ordinal is
+    /// meaningful only inside this generation: a closure left on the realm
+    /// global by an earlier program must not match a newer program's target.
+    pub(crate) debugger_program_generation: Option<u64>,
+    /// Compiler-recorded instruction starts for the root program's source
+    /// order statements. `None` means the statement emits no root-code-unit
+    /// instruction and therefore has no executable safe point.
+    pub(crate) root_statement_offsets: Vec<Option<u32>>,
+    /// Exact emitted instruction ranges for root statements, in source order.
+    /// The compiler records both ends; consumers must not infer ownership by
+    /// searching for a nearby statement start.
+    pub(crate) root_statement_ranges: Vec<Option<(u32, u32)>>,
+    /// Direct child closure created by each root function declaration.
+    pub(crate) root_function_child_indices: Vec<Option<u32>>,
+    /// Compiler-resolved root-scope lexical slot for each supported direct
+    /// single-identifier declaration, in root statement order. A nested,
+    /// erased, or compound statement has no declaration-slot evidence.
+    pub(crate) root_declaration_binding_slots: Vec<Option<u32>>,
+    pub(crate) constants: Vec<Value>,
+    pub(crate) bindings: Vec<Binding>,
+    pub(crate) scopes: Vec<Vec<u32>>,
+    /// Names declared by top-level function declarations. Global declaration
+    /// instantiation treats these differently from `var` declarations.
+    pub(crate) global_function_names: Vec<String>,
+    /// Slots introduced by a sloppy direct eval's VariableEnvironment. They
+    /// are backed by the caller frame's dynamic binding table rather than by
+    /// ordinary lexical slots, and remain deletable after eval returns.
+    pub(crate) dynamic_eval_slots: Vec<u32>,
+    /// Scope holding a function's VariableEnvironment. Non-simple parameter
+    /// lists use a preceding parameter scope, which direct eval must inspect
+    /// for lexical conflicts before reaching this scope.
+    pub(crate) variable_scope: u32,
+    /// Generator functions execute their parameter/instantiation prefix when
+    /// called, then suspend at this bytecode offset until `.next()` begins
+    /// evaluating the body.
+    pub(crate) generator_entry: u32,
+    pub(crate) generator_initializes_parameters: bool,
+    /// Whether direct eval may read an enclosing function's `new.target`.
+    pub(crate) new_target_allowed: bool,
+    /// Whether this code was parsed under the Module goal, including a nested
+    /// function whose own bytecode is not a module record.
+    pub(crate) import_meta_allowed: bool,
+    /// How many enclosing `with` statements this function was created inside.
+    /// A closure over such a function captures the with objects that are
+    /// active when it is created.
+    pub(crate) with_depth: u32,
+    /// A sloppy function whose parameter list contains a direct eval: its
+    /// calls get an environment of their own, outside the parameters, for the
+    /// `var`s such an eval declares (see `Vm::call_closure`).
+    pub(crate) parameter_eval_scope: bool,
+    pub(crate) functions: Vec<std::rc::Rc<Bytecode>>,
+    pub(crate) captures: Vec<u32>,
+    /// The immutable name environment binding of a named function expression.
+    /// It is initialized to the closure object when that closure is called.
+    pub(crate) self_slot: Option<u32>,
+    pub(crate) function_name: String,
+    /// The source text of the function this code implements, which
+    /// `Function.prototype.toString` returns; empty for code that is not a
+    /// function created from source. It is a range of the text its whole
+    /// program was parsed from, shared with every other function of that
+    /// program rather than copied.
+    pub(crate) source_text: crate::ast::SourceText,
+    pub(crate) function_length: u32,
+    /// The per-invocation `arguments` binding of a non-arrow function.  The
+    /// interpreter creates it after its function environment has entered.
+    pub(crate) arguments_slot: Option<u32>,
+    /// For a non-strict simple parameter list, the formal binding cell mapped
+    /// by each arguments index. `None` means either an unmapped arguments
+    /// object or a duplicate formal shadowed by a later occurrence.
+    pub(crate) arguments_mapped_slots: Vec<Option<u32>>,
+    pub(crate) arguments_mapped: bool,
+    pub(crate) arrow: bool,
+    pub(crate) generator: bool,
+    /// Async functions require Promise capabilities and job-queue integration
+    /// at call time. Keeping the declaration bit in bytecode lets lexical
+    /// instantiation remain correct before that execution support exists.
+    pub(crate) async_function: bool,
+    pub(crate) constructible: bool,
+    /// Class constructors require `new`, unlike ordinary constructible
+    /// closures. Class methods are non-constructible closures.
+    pub(crate) class_constructor: bool,
+    /// Derived class constructors receive their `this` binding from a
+    /// superclass construction rather than from their own call entry.
+    pub(crate) derived_constructor: bool,
+    /// The hidden lexical slot holding a derived constructor's `this` binding
+    /// (`None` for every other function).
+    pub(crate) derived_this_slot: Option<u32>,
+    /// This function is a class field initializer: it may not observe an
+    /// `arguments` binding, which a direct eval inside it (or inside an arrow
+    /// function it creates) must respect.
+    pub(crate) class_field_initializer: bool,
+    pub(crate) strict: bool,
+    pub(crate) templates: Vec<TemplateSite>,
+    pub(crate) handlers: Vec<Handler>,
+    pub(crate) abrupt_jumps: Vec<AbruptJump>,
+    /// Resume and exit offsets for compiler-emitted async `yield*` loops.
+    /// The VM copies the matching entry into the suspended generator frame,
+    /// so later `.return()` and `.throw()` do not depend on recognizing a
+    /// bytecode instruction pattern.
+    pub(crate) async_yield_delegates: Vec<(u32, u32)>,
+    /// Resume and exit offsets for compiler-emitted synchronous `yield*`
+    /// loops. The suspended frame carries the matching record so public
+    /// `throw()` and `return()` can forward into the delegate.
+    pub(crate) yield_delegates: Vec<(u32, u32)>,
+    /// This code was compiled with the Module goal.  Its outer scope may be
+    /// suspended after declaration instantiation and resumed for evaluation.
+    pub(crate) module: bool,
+    /// Byte offset immediately after top-level function instantiation.
+    /// `None` for scripts and nested function bytecode.
+    pub(crate) module_evaluate_entry: Option<u32>,
+    pub(crate) module_imports: Vec<ModuleImport>,
+    pub(crate) module_exports: Vec<ModuleExport>,
+    pub(crate) module_requests: Vec<ModuleRequest>,
+    /// Set only for a host-synthesized module (`ParseJSONModule`,
+    /// `CreateTextModule`, `CreateBytesModule`, each ending in
+    /// `CreateDefaultExportSyntheticModule`): the value of its sole
+    /// `default` export. This is a deliberate, narrow exception to "runtime
+    /// object handles are never stored in its constant pool" above -- a
+    /// synthetic module's Bytecode is synthesized fresh per-`Vm` by
+    /// `vm/modules.rs::ensure_synthetic_module` from host-supplied resource
+    /// data, never shared across independent VMs, so a live heap value tied
+    /// to this realm is safe to carry here (never in `constants`).
+    pub(crate) synthetic_default_export: Option<Value>,
+}
+
+impl Bytecode {
+    pub(crate) fn empty() -> Self {
+        Self {
+            code: Vec::new(),
+            debugger_code_unit_ordinal: None,
+            debugger_program_generation: None,
+            root_statement_offsets: Vec::new(),
+            root_statement_ranges: Vec::new(),
+            root_function_child_indices: Vec::new(),
+            root_declaration_binding_slots: Vec::new(),
+            constants: Vec::new(),
+            bindings: Vec::new(),
+            scopes: Vec::new(),
+            global_function_names: Vec::new(),
+            dynamic_eval_slots: Vec::new(),
+            variable_scope: 0,
+            generator_entry: 0,
+            generator_initializes_parameters: false,
+            new_target_allowed: false,
+            import_meta_allowed: false,
+            with_depth: 0,
+            parameter_eval_scope: false,
+            functions: Vec::new(),
+            captures: Vec::new(),
+            self_slot: None,
+            function_name: String::new(),
+            source_text: crate::ast::SourceText::default(),
+            function_length: 0,
+            arguments_slot: None,
+            arguments_mapped_slots: Vec::new(),
+            arguments_mapped: false,
+            arrow: false,
+            generator: false,
+            async_function: false,
+            constructible: false,
+            class_constructor: false,
+            derived_constructor: false,
+            derived_this_slot: None,
+            class_field_initializer: false,
+            strict: false,
+            templates: Vec::new(),
+            handlers: Vec::new(),
+            abrupt_jumps: Vec::new(),
+            async_yield_delegates: Vec::new(),
+            yield_delegates: Vec::new(),
+            module: false,
+            module_evaluate_entry: None,
+            module_imports: Vec::new(),
+            module_exports: Vec::new(),
+            module_requests: Vec::new(),
+            synthetic_default_export: None,
+        }
     }
 
-    #[test]
-    fn every_emitted_opcode_round_trips_through_its_fixed_encoding() {
-        for byte in 0..=72 {
-            let opcode = Opcode::from_u8(byte).unwrap();
-            assert_eq!(Instruction::new(opcode, 0).opcode(), opcode);
-        }
-        assert!(Opcode::from_u8(73).is_none());
+    pub fn bytes(&self) -> &[u8] {
+        &self.code
+    }
+
+    /// Root-program statement instruction starts in source order.
+    ///
+    /// This is compiler-produced provenance metadata, not a heuristic based
+    /// on source text or bytecode scanning. A `None` entry is an explicit
+    /// unbound result for a statement that contributes no root instruction.
+    pub fn root_statement_offsets(&self) -> &[Option<u32>] {
+        &self.root_statement_offsets
+    }
+
+    /// Compiler-recorded half-open instruction range for each root statement.
+    pub fn root_statement_ranges(&self) -> &[Option<(u32, u32)>] {
+        &self.root_statement_ranges
+    }
+
+    /// Direct child closure index for each root function declaration.
+    pub fn root_function_child_indices(&self) -> &[Option<u32>] {
+        &self.root_function_child_indices
+    }
+
+    /// Exact root-scope binding for each root statement's supported single
+    /// identifier variable or named function declaration. These compiler
+    /// results must still be paired with an exact installed program and
+    /// checked source declaration; a matching name alone is not proof.
+    pub fn root_declaration_binding_slots(&self) -> &[Option<u32>] {
+        &self.root_declaration_binding_slots
+    }
+
+    /// Whether two code units retain exactly the same lexical binding and
+    /// activation layout. Equal instruction bytes or slot ordinals alone do
+    /// not prove that a slot still names the same declaration. This exposes
+    /// only equality, never binding names or runtime values.
+    pub fn debugger_binding_layout_matches(&self, other: &Self) -> bool {
+        self.bindings == other.bindings
+            && self.scopes == other.scopes
+            && self.captures == other.captures
+            && self.dynamic_eval_slots == other.dynamic_eval_slots
+            && self.global_function_names == other.global_function_names
+            && self.variable_scope == other.variable_scope
+    }
+
+    pub fn constants(&self) -> &[Value] {
+        &self.constants
+    }
+
+    pub fn instructions(&self) -> impl Iterator<Item = Instruction> + '_ {
+        let mut offset = 0;
+        std::iter::from_fn(move || {
+            let instruction = self.instruction(offset)?;
+            offset += instruction.opcode.width();
+            Some(instruction)
+        })
+    }
+
+    /// Nested executable code units created for local function closures.
+    ///
+    /// The returned order is the compiler's stable closure-table order. A
+    /// host that needs generation-bound code-unit identifiers must traverse
+    /// this tree deterministically rather than deriving an identity from a
+    /// byte offset or a heap object address.
+    pub fn child_code_units(&self) -> impl Iterator<Item = &Bytecode> {
+        self.functions.iter().map(std::rc::Rc::as_ref)
+    }
+
+    pub(crate) fn instruction(&self, offset: usize) -> Option<Instruction> {
+        let opcode = Opcode::decode(*self.code.get(offset)?)?;
+        let operand = if opcode.width() == 5 {
+            let bytes = self.code.get(offset + 1..offset + 5)?;
+            Some(u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
+        } else {
+            None
+        };
+        Some(Instruction {
+            offset,
+            opcode,
+            operand,
+        })
     }
 }

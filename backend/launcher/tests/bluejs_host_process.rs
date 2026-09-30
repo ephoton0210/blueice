@@ -1,0 +1,1128 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+#![cfg(unix)]
+
+//! Real-subprocess evidence for the launcher-owned BlueJS child host. The
+//! library tests cover source-graph validation; this test proves the actual
+//! sibling binary, private socket readiness, authenticated handshake,
+//! document generation lifecycle, source-free responses, and cleanup path.
+
+use blueice_ipc::page_host::{
+    PageHostDebuggerExecutionState, PageHostDocument, PageHostDocumentSnapshot, PageHostErrorCode,
+    PageHostModuleGraph, PageHostReply, PageHostRequest, PageHostScript, PageHostScriptKind,
+    PageHostScriptLanguage, PageHostScriptOutcome, PageHostScriptReport, PageHostSource,
+    PageHostStaticResolution,
+};
+use blueice_launcher::bluejs_host::{BlueJsHostRuntimeLimits, SpawnedBlueJsHost};
+use std::os::unix::net::UnixStream;
+
+// Ensure Cargo builds the sibling child binary before `SpawnedBlueJsHost`
+// derives its path from this integration-test executable.
+const CHILD_BINARY: &str = env!("CARGO_BIN_EXE_blueice-bluejs-host");
+
+#[path = "bluejs_host_process/direct_page_acceptance.rs"]
+mod direct_page_acceptance;
+#[path = "bluejs_host_process/metadata_contracts.rs"]
+mod metadata_contracts;
+#[path = "bluejs_host_process/resource_attribution.rs"]
+mod resource_attribution;
+
+fn graph(entry: &str, modules: Vec<PageHostSource>) -> PageHostModuleGraph {
+    PageHostModuleGraph {
+        entry: entry.to_string(),
+        modules,
+        resolutions: Vec::new(),
+        resolver_fingerprint: "core-page-loader-v1".to_string(),
+    }
+}
+
+fn document(generation: u64, scripts: Vec<PageHostScript>) -> PageHostDocument {
+    PageHostDocument {
+        tab_id: 41,
+        document_generation: generation,
+        snapshot: PageHostDocumentSnapshot {
+            document_text: "test document snapshot".to_string(),
+            document_origin: "https://example.test".to_string(),
+        },
+        debugger_execution_control: false,
+        scripts,
+    }
+}
+
+fn blue_ts_classic(ordinal: u32, source: &str) -> PageHostScript {
+    let source_id = format!("blueice://page/typed-{ordinal}.ts");
+    PageHostScript {
+        ordinal,
+        language: PageHostScriptLanguage::BlueTs,
+        kind: PageHostScriptKind::Classic,
+        graph: graph(
+            &source_id,
+            vec![PageHostSource::new(source_id.clone(), source)],
+        ),
+    }
+}
+
+#[test]
+fn isolated_child_returns_only_exact_terminal_bluets_exception_locations() {
+    assert!(std::path::Path::new(CHILD_BINARY).exists());
+    let mut host = SpawnedBlueJsHost::spawn().unwrap();
+    let mut page = document(
+        1,
+        vec![
+            blue_ts_classic(0, "function fail(): number { throw 7; } fail();"),
+            blue_ts_classic(1, "const successor: number = 1;"),
+        ],
+    );
+    page.debugger_execution_control = true;
+    assert!(matches!(
+        host.synchronize_document(page).unwrap(),
+        PageHostReply::Synchronized { reports, .. } if reports.is_empty()
+    ));
+    let programs = match host
+        .request(PageHostRequest::ListDebuggerPrograms {
+            tab_id: 41,
+            document_generation: 1,
+        })
+        .unwrap()
+    {
+        PageHostReply::DebuggerPrograms { programs, .. } => programs,
+        reply => panic!("expected private programs, got {reply:?}"),
+    };
+    assert_eq!(programs.len(), 2);
+    let metadata = match host
+        .request(PageHostRequest::ListDebuggerBlueTsMetadata {
+            tab_id: 41,
+            document_generation: 1,
+            program: programs[0],
+        })
+        .unwrap()
+    {
+        PageHostReply::DebuggerBlueTsMetadata { metadata, .. } => metadata[0],
+        reply => panic!("expected private BlueTS metadata, got {reply:?}"),
+    };
+    let request = PageHostRequest::DescribeDebuggerBlueTsExceptionLocation {
+        tab_id: 41,
+        document_generation: 1,
+        program: programs[0],
+        metadata,
+    };
+    assert!(matches!(
+        host.request(request.clone()).unwrap(),
+        PageHostReply::Error {
+            code: PageHostErrorCode::InvalidDebuggerState,
+            ..
+        }
+    ));
+    assert!(matches!(
+        host.request(PageHostRequest::AdvanceDebuggerExecution {
+            tab_id: 41,
+            document_generation: 1,
+        })
+        .unwrap(),
+        PageHostReply::DebuggerExecutionAdvanced { reports, .. } if reports.len() == 2
+    ));
+    let reply = host.request(request.clone()).unwrap();
+    let PageHostReply::DebuggerBlueTsExceptionLocation {
+        tab_id: 41,
+        document_generation: 1,
+        program,
+        metadata: echoed_metadata,
+        location,
+    } = reply.clone()
+    else {
+        panic!("expected exact private exception location, got {reply:?}");
+    };
+    assert_eq!(program, programs[0]);
+    assert_eq!(echoed_metadata, metadata);
+    assert_eq!(location.safe_point.program, program);
+    assert_eq!(location.safe_point.code_unit_ordinal, 1);
+    assert!(location
+        .span
+        .coordinates
+        .is_well_formed_for_range(location.span.start_byte, location.span.end_byte));
+    assert!(!format!("{reply:?}").contains("throw 7"));
+    assert!(matches!(
+        host.request(PageHostRequest::DescribeDebuggerBlueTsExceptionLocation {
+            tab_id: 41,
+            document_generation: 1,
+            program: programs[1],
+            metadata,
+        })
+        .unwrap(),
+        PageHostReply::Error {
+            code: PageHostErrorCode::InvalidRequest,
+            ..
+        }
+    ));
+    assert!(matches!(
+        host.request(PageHostRequest::DescribeDebuggerBlueTsExceptionLocation {
+            tab_id: 41,
+            document_generation: 1,
+            program: programs[0],
+            metadata: blueice_ipc::page_host::PageHostDebuggerMetadataHandle {
+                metadata_generation: metadata.metadata_generation + 1,
+                ..metadata
+            },
+        })
+        .unwrap(),
+        PageHostReply::Error {
+            code: PageHostErrorCode::InvalidRequest,
+            ..
+        }
+    ));
+    assert!(matches!(
+        host.synchronize_document(document(
+            2,
+            vec![blue_ts_classic(0, "const replacement: number = 2;")],
+        ))
+        .unwrap(),
+        PageHostReply::Synchronized { .. }
+    ));
+    assert!(matches!(
+        host.request(request).unwrap(),
+        PageHostReply::Error {
+            code: PageHostErrorCode::StaleDocument,
+            ..
+        }
+    ));
+    host.shutdown().unwrap();
+}
+
+#[test]
+fn isolated_child_steps_one_verified_bluets_source_span_over_its_private_protocol() {
+    assert!(std::path::Path::new(CHILD_BINARY).exists());
+    let mut host = SpawnedBlueJsHost::spawn().unwrap();
+    let mut page = document(
+        1,
+        vec![blue_ts_classic(
+            0,
+            "let first: number = 1; let middle: number = first + 1; let last: number = middle + 1;",
+        )],
+    );
+    page.debugger_execution_control = true;
+    assert!(matches!(
+        host.synchronize_document(page).unwrap(),
+        PageHostReply::Synchronized { reports, .. } if reports.is_empty()
+    ));
+    let program = match host
+        .request(PageHostRequest::ListDebuggerPrograms {
+            tab_id: 41,
+            document_generation: 1,
+        })
+        .unwrap()
+    {
+        PageHostReply::DebuggerPrograms { programs, .. } => programs[0],
+        reply => panic!("expected child-private program, got {reply:?}"),
+    };
+    let metadata = match host
+        .request(PageHostRequest::ListDebuggerBlueTsMetadata {
+            tab_id: 41,
+            document_generation: 1,
+            program,
+        })
+        .unwrap()
+    {
+        PageHostReply::DebuggerBlueTsMetadata { metadata, .. } => metadata[0],
+        reply => panic!("expected child-private BlueTS metadata, got {reply:?}"),
+    };
+    let safe_points = match host
+        .request(PageHostRequest::ListDebuggerSafePoints {
+            tab_id: 41,
+            document_generation: 1,
+            program,
+        })
+        .unwrap()
+    {
+        PageHostReply::DebuggerSafePoints { safe_points, .. } => safe_points,
+        reply => panic!("expected verified child safe points, got {reply:?}"),
+    };
+    let mut mapped = Vec::new();
+    for safe_point in safe_points {
+        if let PageHostReply::DebuggerBlueTsSafePointSpan { span, .. } = host
+            .request(PageHostRequest::DescribeDebuggerBlueTsSafePointSpan {
+                tab_id: 41,
+                document_generation: 1,
+                metadata,
+                safe_point,
+            })
+            .unwrap()
+        {
+            mapped.push((safe_point, span));
+        }
+    }
+    mapped.sort_by_key(|(point, _)| (point.code_unit_ordinal, point.bytecode_offset));
+    assert!(mapped.len() >= 3);
+    let (target, span) = mapped[1];
+    assert_ne!(target.bytecode_offset, 0);
+    assert!(matches!(
+        host.request(PageHostRequest::ArmDebuggerRootSafePointBreakpoint {
+            tab_id: 41,
+            document_generation: 1,
+            safe_point: target,
+        })
+        .unwrap(),
+        PageHostReply::DebuggerRootSafePointBreakpointArmed { .. }
+    ));
+    assert!(matches!(
+        host.request(PageHostRequest::AdvanceDebuggerExecution {
+            tab_id: 41,
+            document_generation: 1,
+        })
+        .unwrap(),
+        PageHostReply::DebuggerExecutionAdvanced { reports, .. } if reports.is_empty()
+    ));
+    let reply = host
+        .request(PageHostRequest::StepDebuggerBlueTsSourceSpan {
+            tab_id: 41,
+            document_generation: 1,
+            metadata,
+            source_id: span.source_id,
+            safe_point: target,
+        })
+        .unwrap();
+    assert!(matches!(
+        reply,
+        PageHostReply::DebuggerBlueTsSourceStepRequested { .. }
+    ));
+    assert!(!format!("{reply:?}").contains("middle"));
+    let mut stopped = None;
+    for _ in 0..256 {
+        assert!(matches!(
+            host.request(PageHostRequest::AdvanceDebuggerExecution {
+                tab_id: 41,
+                document_generation: 1,
+            })
+            .unwrap(),
+            PageHostReply::DebuggerExecutionAdvanced { reports, .. } if reports.is_empty()
+        ));
+        match host
+            .request(PageHostRequest::GetDebuggerExecutionState {
+                tab_id: 41,
+                document_generation: 1,
+                program,
+            })
+            .unwrap()
+        {
+            PageHostReply::DebuggerExecutionState {
+                state: PageHostDebuggerExecutionState::Stepping,
+                ..
+            } => {}
+            PageHostReply::DebuggerExecutionState {
+                state: PageHostDebuggerExecutionState::Paused { safe_point },
+                ..
+            } => {
+                stopped = Some(safe_point);
+                break;
+            }
+            reply => panic!("child source span step failed: {reply:?}"),
+        }
+    }
+    assert_eq!(stopped, Some(mapped[2].0));
+    host.shutdown().unwrap();
+}
+
+fn blue_ts_module_with_dependency(ordinal: u32) -> PageHostScript {
+    let entry = "https://cdn.example.test/assets/external.ts";
+    let dependency = "https://cdn.example.test/assets/answer.ts";
+    let mut graph = graph(
+        entry,
+        vec![
+            PageHostSource::new(
+                entry,
+                "import { answer } from './answer.ts'; export const result: number = answer;",
+            ),
+            PageHostSource::new(dependency, "export const answer: number = 41;"),
+        ],
+    );
+    graph.resolver_fingerprint = "core-external-bluets-policy-v1".to_string();
+    graph.resolutions.push(PageHostStaticResolution {
+        from_module: entry.to_string(),
+        specifier: "./answer.ts".to_string(),
+        canonical_target: dependency.to_string(),
+    });
+    PageHostScript {
+        ordinal,
+        language: PageHostScriptLanguage::BlueTs,
+        kind: PageHostScriptKind::Module,
+        graph,
+    }
+}
+
+#[test]
+fn isolated_child_admits_a_bluets_module_graph_before_debugger_advance() {
+    assert!(std::path::Path::new(CHILD_BINARY).exists());
+    let mut host = SpawnedBlueJsHost::spawn().unwrap();
+    let mut page = document(1, vec![blue_ts_module_with_dependency(0)]);
+    page.debugger_execution_control = true;
+    assert!(matches!(
+        host.synchronize_document(page).unwrap(),
+        PageHostReply::Synchronized { reports, .. } if reports.is_empty()
+    ));
+    let programs = match host
+        .request(PageHostRequest::ListDebuggerPrograms {
+            tab_id: 41,
+            document_generation: 1,
+        })
+        .unwrap()
+    {
+        PageHostReply::DebuggerPrograms { programs, .. } => programs,
+        reply => panic!("expected both linked BlueTS programs, got {reply:?}"),
+    };
+    assert_eq!(programs.len(), 2);
+    let mut entry = None;
+    for program in programs {
+        assert!(matches!(
+            host.request(PageHostRequest::ListDebuggerBlueTsMetadata {
+                tab_id: 41,
+                document_generation: 1,
+                program,
+            })
+            .unwrap(),
+            PageHostReply::DebuggerBlueTsMetadata { metadata, .. } if metadata.len() == 1
+        ));
+        if matches!(
+            host.request(PageHostRequest::GetDebuggerExecutionState {
+                tab_id: 41,
+                document_generation: 1,
+                program,
+            })
+            .unwrap(),
+            PageHostReply::DebuggerExecutionState {
+                state: PageHostDebuggerExecutionState::Pending,
+                ..
+            }
+        ) {
+            assert!(entry.replace(program).is_none());
+        }
+    }
+    let entry = entry.expect("exactly one module entry must be pending");
+    assert!(matches!(
+        host.request(PageHostRequest::AdvanceDebuggerExecution {
+            tab_id: 41,
+            document_generation: 1,
+        })
+        .unwrap(),
+        PageHostReply::DebuggerExecutionAdvanced { reports, .. }
+            if reports.len() == 1 && reports[0].outcome == PageHostScriptOutcome::Executed
+    ));
+    assert!(matches!(
+        host.request(PageHostRequest::GetDebuggerExecutionState {
+            tab_id: 41,
+            document_generation: 1,
+            program: entry,
+        })
+        .unwrap(),
+        PageHostReply::DebuggerExecutionState {
+            state: PageHostDebuggerExecutionState::Completed,
+            ..
+        }
+    ));
+    host.shutdown().unwrap();
+}
+
+#[test]
+fn launcher_spawns_an_isolated_host_that_executes_closed_graphs_and_reaps_cleanly() {
+    assert!(
+        std::path::Path::new(CHILD_BINARY).exists(),
+        "Cargo must build the actual sibling BlueJS child host"
+    );
+    let mut host = SpawnedBlueJsHost::spawn()
+        .expect("launcher must start and authenticate an isolated BlueJS child");
+    let private_socket = host.socket_path().to_path_buf();
+    assert!(private_socket.exists());
+
+    let entry = "blueice://page/entry.js";
+    let dependency = "blueice://page/dependency.js";
+    let mut module = PageHostScript {
+        ordinal: 1,
+        language: PageHostScriptLanguage::JavaScript,
+        kind: PageHostScriptKind::Module,
+        graph: graph(
+            entry,
+            vec![
+                PageHostSource::new(
+                    entry,
+                    "import { answer } from './dependency.js'; export const result = answer;",
+                ),
+                PageHostSource::new(dependency, "export const answer = 42;"),
+            ],
+        ),
+    };
+    module.graph.resolutions.push(PageHostStaticResolution {
+        from_module: entry.to_string(),
+        specifier: "./dependency.js".to_string(),
+        canonical_target: dependency.to_string(),
+    });
+    let classic_id = "blueice://page/classic.js";
+    let classic = PageHostScript {
+        ordinal: 0,
+        language: PageHostScriptLanguage::JavaScript,
+        kind: PageHostScriptKind::Classic,
+        graph: graph(
+            classic_id,
+            vec![PageHostSource::new(classic_id, "globalThis.answer = 42;")],
+        ),
+    };
+
+    let reply = host
+        .synchronize_document(document(1, vec![classic, module]))
+        .expect("private host request must receive a reply");
+    assert!(matches!(
+        &reply,
+        PageHostReply::Synchronized {
+            already_current: false,
+            reports,
+            ..
+        } if reports.len() == 2
+            && reports.iter().all(|report| report.outcome == PageHostScriptOutcome::Executed)
+    ));
+
+    // Repeating a generation is a protocol-level idempotency guarantee: it
+    // must not execute source again or offer stale callers a replay gadget.
+    let replay = host
+        .synchronize_document(document(1, Vec::new()))
+        .expect("current-generation sync must be answered");
+    assert!(matches!(
+        replay,
+        PageHostReply::Synchronized {
+            already_current: true,
+            reports,
+            ..
+        } if reports.is_empty()
+    ));
+
+    host.shutdown()
+        .expect("launcher must obtain child shutdown acknowledgement");
+    assert!(
+        !private_socket.exists(),
+        "launcher must clean the private child socket after a clean shutdown"
+    );
+}
+
+#[test]
+fn launcher_owner_runtime_limits_reach_the_real_child_before_program_admission() {
+    assert!(
+        std::path::Path::new(CHILD_BINARY).exists(),
+        "Cargo must build the actual sibling BlueJS child host"
+    );
+    let limits = BlueJsHostRuntimeLimits {
+        max_realms: 1,
+        max_programs_per_realm: 1,
+        max_bytecode_bytes_per_realm: 1,
+        max_heap_bytes_per_realm: BlueJsHostRuntimeLimits::default().max_heap_bytes_per_realm,
+        max_reserved_programs: 1,
+        max_reserved_bytecode_bytes: 1,
+        max_reserved_heap_bytes: BlueJsHostRuntimeLimits::default().max_heap_bytes_per_realm,
+    };
+    let mut host = SpawnedBlueJsHost::spawn_with_runtime_limits(limits)
+        .expect("the launcher must bootstrap the child with owner limits");
+    let source_id = "blueice://page/over-bytecode-budget.js";
+    let reply = host
+        .synchronize_document(document(
+            1,
+            vec![PageHostScript {
+                ordinal: 0,
+                language: PageHostScriptLanguage::JavaScript,
+                kind: PageHostScriptKind::Classic,
+                graph: graph(
+                    source_id,
+                    vec![PageHostSource::new(source_id, "globalThis.answer = 42;")],
+                ),
+            }],
+        ))
+        .expect("the child must answer the bounded document request");
+    assert!(matches!(
+        reply,
+        PageHostReply::Synchronized { reports, .. }
+            if matches!(
+                reports.as_slice(),
+                [PageHostScriptReport {
+                    outcome: PageHostScriptOutcome::Rejected { .. },
+                    ..
+                }]
+            )
+    ));
+    assert!(matches!(
+        host.request(blueice_ipc::page_host::PageHostRequest::GetRealmStats {
+            tab_id: 41,
+            document_generation: 1,
+        })
+        .expect("the child must report its source-free accounting"),
+        PageHostReply::RealmStats(stats)
+            if stats.program_count == 0 && stats.bytecode_bytes == 0
+    ));
+    host.shutdown()
+        .expect("the owner must cleanly stop the bounded child");
+}
+
+#[test]
+fn launcher_child_reserves_aggregate_capacity_before_admitting_a_second_tab() {
+    assert!(std::path::Path::new(CHILD_BINARY).exists());
+    let per_realm_heap = BlueJsHostRuntimeLimits::default().max_heap_bytes_per_realm;
+    let limits = BlueJsHostRuntimeLimits {
+        max_realms: 2,
+        max_programs_per_realm: 1,
+        max_bytecode_bytes_per_realm: 4096,
+        max_heap_bytes_per_realm: per_realm_heap,
+        max_reserved_programs: 1,
+        max_reserved_bytecode_bytes: 8192,
+        max_reserved_heap_bytes: per_realm_heap.saturating_mul(2),
+    };
+    let mut host = SpawnedBlueJsHost::spawn_with_runtime_limits(limits)
+        .expect("launcher must pass the aggregate envelope to the real child");
+    let first = document(1, vec![blue_ts_classic(0, "let answer: number = 42;")]);
+    assert!(matches!(
+        host.synchronize_document(first).unwrap(),
+        PageHostReply::Synchronized { reports, .. }
+            if matches!(reports.as_slice(), [PageHostScriptReport {
+                outcome: PageHostScriptOutcome::Executed,
+                ..
+            }])
+    ));
+    let PageHostReply::ChildStats(first_usage) =
+        host.request(PageHostRequest::GetChildStats).unwrap()
+    else {
+        panic!("the authenticated child must report actual aggregate usage");
+    };
+    assert_eq!(first_usage.realm_count, 1);
+    assert_eq!(first_usage.program_count, 1);
+    assert!(first_usage.bytecode_bytes > 0 && first_usage.heap_bytes > 0);
+
+    let mut second = document(1, vec![blue_ts_classic(0, "let other: number = 7;")]);
+    second.tab_id = 42;
+    assert!(matches!(
+        host.synchronize_document(second.clone()).unwrap(),
+        PageHostReply::Error {
+            code: PageHostErrorCode::ResourceLimit,
+            ..
+        }
+    ));
+    assert_eq!(
+        host.request(PageHostRequest::GetChildStats).unwrap(),
+        PageHostReply::ChildStats(first_usage),
+        "a denied second realm must not change actual usage"
+    );
+    assert!(matches!(
+        host.request(PageHostRequest::GetRealmStats {
+            tab_id: 41,
+            document_generation: 1,
+        }).unwrap(),
+        PageHostReply::RealmStats(stats) if stats.program_count == 1
+    ));
+    assert!(matches!(
+        host.request(PageHostRequest::CloseRealm {
+            tab_id: 41,
+            document_generation: 1,
+        })
+        .unwrap(),
+        PageHostReply::RealmClosed { .. }
+    ));
+    assert!(matches!(
+        host.request(PageHostRequest::GetChildStats).unwrap(),
+        PageHostReply::ChildStats(stats)
+            if stats.realm_count == 0
+                && stats.program_count == 0
+                && stats.bytecode_bytes == 0
+                && stats.heap_bytes == 0
+    ));
+    assert!(matches!(
+        host.synchronize_document(second).unwrap(),
+        PageHostReply::Synchronized { .. }
+    ));
+    assert!(matches!(
+        host.request(PageHostRequest::GetChildStats).unwrap(),
+        PageHostReply::ChildStats(stats)
+            if stats.realm_count == 1
+                && stats.program_count == 1
+                && stats.bytecode_bytes > 0
+                && stats.heap_bytes > 0
+    ));
+    host.shutdown().unwrap();
+}
+
+#[test]
+fn launcher_child_executes_external_language_graphs_rejects_missing_edges_and_invalidates_navigation(
+) {
+    assert!(
+        std::path::Path::new(CHILD_BINARY).exists(),
+        "Cargo must build the actual sibling BlueJS child host"
+    );
+    let mut host = SpawnedBlueJsHost::spawn()
+        .expect("launcher must start and authenticate an isolated BlueJS child");
+    let external_js = "https://cdn.example.test/assets/external.js";
+    let missing_edge = "https://cdn.example.test/assets/missing-edge.js";
+    let mut missing_edge_graph = graph(
+        missing_edge,
+        vec![PageHostSource::new(
+            missing_edge,
+            "import './not-authorized.js';",
+        )],
+    );
+    missing_edge_graph.resolver_fingerprint = "core-no-fallback-policy-v1".to_string();
+    let reply = host
+        .synchronize_document(document(
+            1,
+            vec![
+                PageHostScript {
+                    ordinal: 0,
+                    language: PageHostScriptLanguage::JavaScript,
+                    kind: PageHostScriptKind::Classic,
+                    graph: PageHostModuleGraph {
+                        resolver_fingerprint: "core-external-javascript-policy-v1".to_string(),
+                        ..graph(
+                            external_js,
+                            vec![PageHostSource::new(
+                                external_js,
+                                "globalThis.externalFirstGeneration = 1;",
+                            )],
+                        )
+                    },
+                },
+                blue_ts_module_with_dependency(1),
+                PageHostScript {
+                    ordinal: 2,
+                    language: PageHostScriptLanguage::JavaScript,
+                    kind: PageHostScriptKind::Module,
+                    graph: missing_edge_graph,
+                },
+            ],
+        ))
+        .expect("the child must execute only supplied external graphs");
+    assert!(matches!(
+        reply,
+        PageHostReply::Synchronized { reports, .. }
+            if reports.len() == 3
+                && reports[0].outcome == PageHostScriptOutcome::Executed
+                && reports[1].outcome == PageHostScriptOutcome::Executed
+                && matches!(reports[2].outcome, PageHostScriptOutcome::Rejected { .. })
+    ));
+
+    let second = "https://cdn.example.test/assets/second.js";
+    let reply = host
+        .synchronize_document(document(
+            2,
+            vec![PageHostScript {
+                ordinal: 0,
+                language: PageHostScriptLanguage::JavaScript,
+                kind: PageHostScriptKind::Classic,
+                graph: PageHostModuleGraph {
+                    resolver_fingerprint: "core-navigation-policy-two-v1".to_string(),
+                    ..graph(
+                        second,
+                        vec![PageHostSource::new(
+                            second,
+                            concat!(
+                                "if (typeof globalThis.externalFirstGeneration !== 'undefined') ",
+                                "throw new Error('stale realm');",
+                                "globalThis.externalSecondGeneration = 2;"
+                            ),
+                        )],
+                    )
+                },
+            }],
+        ))
+        .expect("the child must replace its old realm on navigation");
+    assert!(matches!(
+        reply,
+        PageHostReply::Synchronized { reports, .. }
+            if matches!(
+                reports.as_slice(),
+                [report] if report.outcome == PageHostScriptOutcome::Executed
+            )
+    ));
+    host.shutdown()
+        .expect("launcher must obtain child shutdown acknowledgement");
+}
+
+#[test]
+fn launcher_child_binds_only_the_core_document_snapshots_and_returns_no_value() {
+    assert!(
+        std::path::Path::new(CHILD_BINARY).exists(),
+        "Cargo must build the actual sibling BlueJS child host"
+    );
+    let mut host = SpawnedBlueJsHost::spawn()
+        .expect("launcher must start and authenticate an isolated BlueJS child");
+    let source_id = "blueice://page/snapshot.js";
+    let reply = host
+        .synchronize_document(document(
+            1,
+            vec![PageHostScript {
+                ordinal: 0,
+                language: PageHostScriptLanguage::JavaScript,
+                kind: PageHostScriptKind::Classic,
+                graph: graph(
+                    source_id,
+                    vec![PageHostSource::new(
+                        source_id,
+                        concat!(
+                            "if (blueiceDocumentText() !== 'test document snapshot') throw 'text';",
+                            "if (blueiceDocumentOrigin() !== 'https://example.test') throw 'origin';",
+                            "if (typeof document !== 'undefined' || typeof fetch !== 'undefined') throw 'ambient';"
+                        ),
+                    )],
+                ),
+            }],
+        ))
+        .expect("private host request must receive a reply");
+    assert!(matches!(
+        &reply,
+        PageHostReply::Synchronized {
+            reports,
+            ..
+        } if matches!(
+            reports.as_slice(),
+            [report] if report.outcome == PageHostScriptOutcome::Executed
+        )
+    ));
+    assert!(
+        !format!("{reply:?}").contains("test document snapshot"),
+        "the source-free protocol reply must not disclose a callback result"
+    );
+    host.shutdown()
+        .expect("launcher must obtain child shutdown acknowledgement");
+}
+
+#[test]
+fn launcher_child_types_only_the_verified_snapshot_callbacks_for_bluets() {
+    assert!(
+        std::path::Path::new(CHILD_BINARY).exists(),
+        "Cargo must build the actual sibling BlueJS child host"
+    );
+    let mut host = SpawnedBlueJsHost::spawn()
+        .expect("launcher must start and authenticate an isolated BlueJS child");
+    let verifier_id = "blueice://page/typed-snapshot-verifier.js";
+    let reply = host
+        .synchronize_document(document(
+            1,
+            vec![
+                // The type annotation prevents a JavaScript parser from
+                // accepting this source; execution proves direct lowering.
+                blue_ts_classic(
+                    0,
+                    concat!(
+                        "const typedSnapshot: string = blueiceDocumentText();",
+                        "const typedOrigin: string = blueiceDocumentOrigin();"
+                    ),
+                ),
+                PageHostScript {
+                    ordinal: 1,
+                    language: PageHostScriptLanguage::JavaScript,
+                    kind: PageHostScriptKind::Classic,
+                    graph: graph(
+                        verifier_id,
+                        vec![PageHostSource::new(
+                            verifier_id,
+                            concat!(
+                                "if (typedSnapshot !== 'test document snapshot') throw 'text';",
+                                "if (typedOrigin !== 'https://example.test') throw 'origin';"
+                            ),
+                        )],
+                    ),
+                },
+                blue_ts_classic(2, "fetch('https://example.test/');"),
+            ],
+        ))
+        .expect("private host request must receive a reply");
+    assert!(matches!(
+        &reply,
+        PageHostReply::Synchronized { reports, .. }
+            if reports.len() == 3
+                && reports[0].language == PageHostScriptLanguage::BlueTs
+                && reports[0].outcome == PageHostScriptOutcome::Executed
+                && reports[1].language == PageHostScriptLanguage::JavaScript
+                && reports[1].outcome == PageHostScriptOutcome::Executed
+                && reports[2].language == PageHostScriptLanguage::BlueTs
+                && matches!(reports[2].outcome, PageHostScriptOutcome::Rejected { .. })
+    ));
+    assert!(
+        !format!("{reply:?}").contains("test document snapshot"),
+        "source-free reports must not disclose typed callback results"
+    );
+    host.shutdown()
+        .expect("launcher must obtain child shutdown acknowledgement");
+}
+
+#[test]
+fn launcher_child_mints_source_free_bluets_metadata_handles_only_for_live_typed_programs() {
+    assert!(
+        std::path::Path::new(CHILD_BINARY).exists(),
+        "Cargo must build the actual sibling BlueJS child host"
+    );
+    let mut host = SpawnedBlueJsHost::spawn()
+        .expect("launcher must start and authenticate an isolated BlueJS child");
+    let javascript_id = "blueice://page/private-metadata.js";
+    let reply = host
+        .synchronize_document(document(
+            1,
+            vec![
+                PageHostScript {
+                    ordinal: 0,
+                    language: PageHostScriptLanguage::JavaScript,
+                    kind: PageHostScriptKind::Classic,
+                    graph: graph(
+                        javascript_id,
+                        vec![PageHostSource::new(
+                            javascript_id,
+                            "globalThis.javaScriptOnly = true;",
+                        )],
+                    ),
+                },
+                blue_ts_classic(1, "const processTypedAnswer: number = 42;"),
+            ],
+        ))
+        .expect("the child must execute the authorized document");
+    assert!(matches!(
+        reply,
+        PageHostReply::Synchronized { reports, .. }
+            if reports.iter().all(|report| report.outcome == PageHostScriptOutcome::Executed)
+    ));
+    let programs = match host
+        .request(PageHostRequest::ListDebuggerPrograms {
+            tab_id: 41,
+            document_generation: 1,
+        })
+        .expect("the child must return private program IDs")
+    {
+        PageHostReply::DebuggerPrograms { programs, .. } => programs,
+        reply => panic!("expected private program inventory, got {reply:?}"),
+    };
+    assert_eq!(programs.len(), 2);
+
+    let mut metadata_handle = None;
+    let mut javascript_program = None;
+    for program in programs {
+        let reply = host
+            .request(PageHostRequest::ListDebuggerBlueTsMetadata {
+                tab_id: 41,
+                document_generation: 1,
+                program,
+            })
+            .expect("the child must answer the private metadata inventory");
+        let PageHostReply::DebuggerBlueTsMetadata { metadata, .. } = &reply else {
+            panic!("expected private BlueTS metadata inventory, got {reply:?}");
+        };
+        assert!(
+            !format!("{reply:?}").contains("processTypedAnswer")
+                && !format!("{reply:?}").contains("private-metadata")
+                && !format!("{reply:?}").contains("number"),
+            "the subprocess reply must carry only opaque metadata handles"
+        );
+        if let [metadata] = metadata.as_slice() {
+            assert_ne!(metadata.metadata_handle, program.program_handle);
+            metadata_handle = Some((program, *metadata));
+        } else {
+            assert!(metadata.is_empty(), "the JavaScript program is ineligible");
+            javascript_program = Some(program);
+        }
+    }
+    let (typed_program, metadata_handle) =
+        metadata_handle.expect("the direct BlueTS program must have a live attachment");
+    assert!(metadata_handle.is_well_formed());
+    let source_ids = match host
+        .request(PageHostRequest::ListDebuggerBlueTsMetadataSources {
+            tab_id: 41,
+            document_generation: 1,
+            program: typed_program,
+            metadata: metadata_handle,
+        })
+        .expect("the child must return the exact private source inventory")
+    {
+        PageHostReply::DebuggerBlueTsMetadataSources { sources, .. } => sources,
+        reply => panic!("expected private BlueTS source IDs, got {reply:?}"),
+    };
+    let safe_points = match host
+        .request(PageHostRequest::ListDebuggerSafePoints {
+            tab_id: 41,
+            document_generation: 1,
+            program: typed_program,
+        })
+        .expect("the child must return verified private safe points")
+    {
+        PageHostReply::DebuggerSafePoints { safe_points, .. } => safe_points,
+        reply => panic!("expected verified private safe points, got {reply:?}"),
+    };
+    let mapped = safe_points.into_iter().find_map(|safe_point| {
+        let reply = host
+            .request(PageHostRequest::DescribeDebuggerBlueTsSafePointSpan {
+                tab_id: 41,
+                document_generation: 1,
+                metadata: metadata_handle,
+                safe_point,
+            })
+            .expect("the child must answer each exact private lookup");
+        match reply {
+            PageHostReply::DebuggerBlueTsSafePointSpan {
+                safe_point: echoed,
+                span,
+                ..
+            } => Some((safe_point, echoed, span)),
+            PageHostReply::Error {
+                code: PageHostErrorCode::InvalidRequest,
+                ..
+            } => None,
+            reply => panic!("unexpected private source-map reply: {reply:?}"),
+        }
+    });
+    let (mapped_safe_point, echoed, span) =
+        mapped.expect("one typed instruction must retain its original source span");
+    assert_eq!(mapped_safe_point, echoed);
+    assert!(span.start_byte < span.end_byte);
+    assert!(source_ids
+        .iter()
+        .any(|source| source.source_id == span.source_id));
+    assert!(!format!("{span:?}").contains("processTypedAnswer"));
+    assert!(!format!("{span:?}").contains("typed-1.ts"));
+    let javascript_program = javascript_program.expect("the fixture also admitted JavaScript");
+    assert!(matches!(
+        host.request(PageHostRequest::DescribeDebuggerBlueTsSafePointSpan {
+            tab_id: 41,
+            document_generation: 1,
+            metadata: metadata_handle,
+            safe_point: blueice_ipc::page_host::PageHostDebuggerSafePoint {
+                program: javascript_program,
+                ..mapped_safe_point
+            },
+        })
+        .expect("the child must reject cross-program metadata reuse"),
+        PageHostReply::Error {
+            code: PageHostErrorCode::InvalidRequest,
+            ..
+        }
+    ));
+
+    let replacement = host
+        .synchronize_document(document(
+            2,
+            vec![blue_ts_classic(
+                0,
+                "const successorTypedAnswer: number = 43;",
+            )],
+        ))
+        .expect("the child must replace the first realm");
+    assert!(matches!(replacement, PageHostReply::Synchronized { .. }));
+    assert!(matches!(
+        host.request(PageHostRequest::ListDebuggerBlueTsMetadata {
+            tab_id: 41,
+            document_generation: 1,
+            program: typed_program,
+        })
+        .expect("the child must reject a stale metadata request"),
+        PageHostReply::Error {
+            code: blueice_ipc::page_host::PageHostErrorCode::StaleDocument,
+            ..
+        }
+    ));
+    assert!(matches!(
+        host.request(PageHostRequest::DescribeDebuggerBlueTsSafePointSpan {
+            tab_id: 41,
+            document_generation: 1,
+            metadata: metadata_handle,
+            safe_point: mapped_safe_point,
+        })
+        .expect("the child must reject the stale source span lookup"),
+        PageHostReply::Error {
+            code: PageHostErrorCode::StaleDocument,
+            ..
+        }
+    ));
+    host.shutdown()
+        .expect("launcher must obtain child shutdown acknowledgement");
+}
+
+#[test]
+fn launcher_can_delegate_the_single_authenticated_connection_to_a_trusted_core() {
+    assert!(
+        std::path::Path::new(CHILD_BINARY).exists(),
+        "Cargo must build the actual sibling BlueJS child host"
+    );
+    let (mut host, connection) = SpawnedBlueJsHost::spawn_for_core()
+        .expect("launcher must supervise a child before delegating it to core");
+    let private_socket = connection.socket_path().to_path_buf();
+    assert!(private_socket.exists());
+    assert!(
+        host.request(blueice_ipc::page_host::PageHostRequest::Shutdown)
+            .is_err(),
+        "the supervisor must not retain a second protocol connection after hand-off"
+    );
+
+    let mut core = UnixStream::connect(connection.socket_path())
+        .expect("the trusted core must reach the delegated private socket");
+    blueice_ipc::page_host::write_page_host_request(
+        &mut core,
+        &blueice_ipc::page_host::PageHostRequest::Hello {
+            protocol_version: blueice_ipc::page_host::PAGE_HOST_PROTOCOL_VERSION,
+            session_token: connection.session_token().to_string(),
+        },
+    )
+    .expect("the trusted core must send its capability handshake");
+    assert!(matches!(
+        blueice_ipc::page_host::read_page_host_reply(&mut core)
+            .expect("the delegated child must answer the capability handshake"),
+        PageHostReply::HelloAck { .. }
+    ));
+    let source_id = "blueice://page/delegated-classic.js";
+    blueice_ipc::page_host::write_page_host_request(
+        &mut core,
+        &blueice_ipc::page_host::PageHostRequest::SynchronizeDocument {
+            document: document(
+                1,
+                vec![PageHostScript {
+                    ordinal: 0,
+                    language: PageHostScriptLanguage::JavaScript,
+                    kind: PageHostScriptKind::Classic,
+                    graph: graph(
+                        source_id,
+                        vec![PageHostSource::new(source_id, "globalThis.answer = 42;")],
+                    ),
+                }],
+            ),
+        },
+    )
+    .expect("the trusted core must send an authorized document");
+    assert!(matches!(
+        blueice_ipc::page_host::read_page_host_reply(&mut core)
+            .expect("the child must execute the delegated document"),
+        PageHostReply::Synchronized { reports, .. }
+            if reports.len() == 1 && reports[0].outcome == PageHostScriptOutcome::Executed
+    ));
+    blueice_ipc::page_host::write_page_host_request(
+        &mut core,
+        &blueice_ipc::page_host::PageHostRequest::Shutdown,
+    )
+    .expect("the trusted core must stop its delegated child");
+    assert_eq!(
+        blueice_ipc::page_host::read_page_host_reply(&mut core)
+            .expect("the child must acknowledge delegated shutdown"),
+        PageHostReply::ShutdownAck
+    );
+    drop(core);
+    drop(host);
+    assert!(
+        !private_socket.exists(),
+        "supervisor teardown must remove the delegated child socket"
+    );
+}
+
+#[test]
+fn delegated_child_is_reaped_when_core_startup_never_claims_its_connection() {
+    assert!(
+        std::path::Path::new(CHILD_BINARY).exists(),
+        "Cargo must build the actual sibling BlueJS child host"
+    );
+    let (host, connection) = SpawnedBlueJsHost::spawn_for_core()
+        .expect("launcher must supervise the child before core startup");
+    let private_socket = connection.socket_path().to_path_buf();
+    assert!(private_socket.exists());
+
+    // This models a core spawn/early-handshake failure: no trusted core ever
+    // claims the one authenticated connection. The launcher owner must still
+    // reap the child and unlink its private endpoint rather than leaving an
+    // orphaned capability-bearing listener behind.
+    drop(host);
+    assert!(
+        !private_socket.exists(),
+        "dropping an unclaimed delegated child must remove its private socket"
+    );
+}

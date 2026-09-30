@@ -5,43 +5,106 @@
 //! BlueJS: BlueIce's own JavaScript engine
 //! (`development/browser_core/phase-13-bluejs-engine/PLAN.md`).
 //!
-//! This crate currently provides the tokenizer/parser plus the managed
-//! value/object layer that the bytecode compiler and interpreter build on.
-//! It is scoped throughout to exactly `phase-2-mvp-scope/PLAN.md`'s
-//! "MVP JS scope (decided)" section, not the full ECMAScript grammar.
+//! The front end tokenizes/parses the Phase 2 language subset into an
+//! AST. The runtime-storage slices add [`Value`] and [`Heap`]: ordinary
+//! objects and sparse arrays with stable handles, explicit roots, prototype
+//! lookup, and a two-generation collector. [`compile`] and [`Vm`] execute
+//! the first subset via operand-stack bytecode: primitive expressions,
+//! bindings, control flow, ordinary objects and array literals/indexing.
+//! Arrays preserve holes and enforce length growth/truncation. Native calls,
+//! boxed Strings and a growing String library execute via bytecode; user
+//! functions/closures, remaining builtins and browser integration remain.
+//! The ECMAScript 2026 track adds lexical TDZ, radix/separator Number
+//! literals and short-circuit/newline grammar corrections. It is not yet
+//! a complete edition 17 implementation. [`JsString`] preserves UTF-16
+//! code units, including lone surrogates, in values and property keys.
+//!
+//! ```
+//! use blueice_bluejs::{compile, parse, Value, Vm};
+//!
+//! let program = parse("let a=[1,2,3,4,5]; let sum=0; for(let i=0;i<a.length;i++){sum+=a[i];} sum").unwrap();
+//! let code = compile(&program)?;
+//! assert_eq!(Vm::default().execute(&code)?, Value::Number(15.0));
+//! # Ok::<(), Box<dyn std::error::Error>>(())
+//! ```
+//!
+//! Objects held across allocating calls must be rooted or reachable
+//! from a root. The heap's public API includes collection so this
+//! contract is testable independently of the interpreter or browser host:
+//!
+//! ```
+//! use blueice_bluejs::{Heap, Value};
+//!
+//! let mut heap = Heap::default();
+//! let global = heap.alloc_object(None)?;
+//! let root = heap.root(global)?;
+//! let object = heap.alloc_object(None)?;
+//! heap.set(global, "widget", Value::Object(object))?;
+//! heap.set(object, "label", Value::String("BlueIce".into()))?;
+//! heap.collect_minor();
+//! assert_eq!(heap.get(object, "label")?, Value::String("BlueIce".into()));
+//! heap.unroot(root)?;
+//! heap.collect_major();
+//! assert!(!heap.contains(object));
+//! # Ok::<(), blueice_bluejs::HeapError>(())
+//! ```
 
-mod analysis;
 mod ast;
-mod batch;
 mod bytecode;
 mod compiler;
-mod event_loop;
 mod heap;
-mod interpreter;
+mod intl;
+mod native;
+mod page_runtime;
 mod parser;
-mod script_host;
-mod script_process;
+mod primitive;
+mod program_abi;
+mod program_debug;
+mod property;
+mod regex_backrefs;
+mod regex_canonicalize;
+mod regex_escapes;
+mod regex_group_names;
+#[doc(hidden)]
+pub mod regex_worker;
+mod regexp;
+mod source_encoding;
+mod string;
 mod token;
 mod value;
+mod vm;
 
-pub use analysis::{
-    CapabilitySummary, CapabilityUse, ScriptCapability, ScriptGatekeeperHook, analyze,
-    analyze_program,
-};
 pub use ast::*;
-pub use batch::{BatchResult, run_batch};
-pub use bytecode::{
-    ArrayBindingElement, BindingKey, BindingPattern, BytecodeFunction, BytecodeModule,
-    CompiledParameter, Constant, Instruction, ObjectBindingProperty, Opcode,
+pub use bytecode::{Bytecode, Instruction, Opcode, MAY_USE_INLINE_CACHE};
+pub use compiler::{
+    compile, compile_module, compile_module_with_limit, compile_module_with_limits,
+    compile_with_limit, compile_with_limits, validate_private_early_errors, CompileError,
+    CompileLimits,
 };
-pub use compiler::{CompileError, compile};
-pub use event_loop::EventLoop;
-pub use heap::{
-    EnvironmentId, Heap, HeapError, HeapLimits, HeapRoots, HeapStats, HostObjectKind, ObjectAccess,
-    ObjectId, ObjectKind,
+pub use heap::{Heap, HeapConfig, HeapError, HeapStats, RootId};
+pub use page_runtime::{
+    BlueJsHostBindingRegistrar, BlueJsPageDebuggerExecutionState, BlueJsPageDebuggerFrame,
+    BlueJsPageDebuggerLinkedExecutionState, BlueJsPageDebuggerLinkedFrame,
+    BlueJsPageDebuggerNestedExecutionState, BlueJsPageDebuggerValueTarget, BlueJsPageOrigin,
+    BlueJsPageRealmStats, BlueJsPageRuntime, BlueJsPageRuntimeConfig, BlueJsPageRuntimeError,
+    BLUEJS_PAGE_RUNTIME_ABI_V1,
 };
-pub use interpreter::{ClassListOperation, DEFAULT_INSTRUCTION_BUDGET, DomHost, Vm, VmError};
-pub use parser::{ParseError, parse};
-pub use script_host::ScriptDomClient;
-pub use script_process::run_script_process;
-pub use value::Value;
+pub(crate) use parser::parse_eval;
+pub use parser::{parse, parse_module, ParseError};
+pub use program_abi::{BlueJsProgramV1, BLUEJS_PROGRAM_ABI_V1};
+pub use program_debug::{
+    BlueJsAstNodeId, BlueJsAstNodeInfo, BlueJsAstNodeKind, BlueJsCodeUnitId, BlueJsCodeUnitInfo,
+    BlueJsCompiledProgram, BlueJsProgramDebugError, BlueJsProgramGeneration, BlueJsProgramHandle,
+    BlueJsProgramRegistry, BlueJsSafePoint, BlueJsSourceIdentity, BLUEJS_PROGRAM_DEBUG_ABI_V1,
+};
+pub use property::{JsSymbol, PropertyDescriptor, PropertyName};
+pub use string::JsString;
+pub use value::{ObjectId, Value};
+pub use vm::{
+    HostFunction, HostFunctionError, HostObject, HostObjectFactory, HostObjectFamily,
+    HostObjectKey, HostObjectMethod, HostObjectPairMethod, HostValue, RuntimeError, Vm, VmConfig,
+    VmDebuggerExecutionState, VmDebuggerLinkedPauseTarget, VmDebuggerNestedExecutionState,
+    VmDebuggerScopeEntry, VmDebuggerStackFrame, VmDebuggerStackSnapshot, VmDebuggerThrowSite,
+    VmDebuggerValuePreview, VM_DEBUGGER_MAX_SCOPE_ENTRIES, VM_DEBUGGER_MAX_STACK_FRAMES,
+    VM_DEBUGGER_MAX_VALUE_PAYLOAD_BYTES,
+};

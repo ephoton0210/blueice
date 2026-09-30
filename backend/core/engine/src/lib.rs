@@ -9,12 +9,15 @@
 //! binary (`src/bin/blueice-core.rs`) drives from IPC messages.
 
 mod ai_snapshot;
-pub mod credits;
-pub mod downloads_page;
-pub mod gatekeeper_settings_page;
 pub mod assistant_client;
 pub mod assistant_page;
+pub mod compiler_ipc;
+pub mod compiler_service;
+pub mod credits;
+pub mod debugger;
+pub mod downloads_page;
 mod gatekeeper_client;
+pub mod gatekeeper_settings_page;
 mod page;
 mod page_text;
 pub mod script;
@@ -23,10 +26,10 @@ mod stylesheet;
 mod tabs;
 mod translation;
 
-use blueice_css::{Origin, cascade, ua_stylesheet};
+use blueice_css::{cascade, ua_stylesheet, Origin};
 use blueice_paint::Frame;
 
-pub use page::{Page, ScriptClassListOperation};
+pub use page::Page;
 pub use tabs::{GroupId, HistorySnapshotMode, TabGroup, TabId, TabManager};
 
 /// One-shot render: parse `html`, cascade with `css` (an explicit
@@ -63,12 +66,10 @@ mod tests {
     fn render_produces_a_frame_with_paint_commands_for_a_simple_page() {
         let frame = render("<p>hi</p>", "p { color: red; }", 320.0);
         assert_eq!(frame.width, 320.0);
-        assert!(
-            frame
-                .commands
-                .iter()
-                .any(|c| matches!(c, PaintCommand::Text { text, .. } if text == "hi"))
-        );
+        assert!(frame
+            .commands
+            .iter()
+            .any(|c| matches!(c, PaintCommand::Text { text, .. } if text == "hi")));
     }
 
     #[test]

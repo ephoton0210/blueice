@@ -1,0 +1,1458 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+use super::*;
+use crate::heap::TemporalKind;
+
+#[test]
+fn collection_and_array_helpers_reject_foreign_heap_handles() {
+    let mut vm = Vm::default();
+    let mut other = Vm::default();
+    let foreign = other.heap.alloc_object(None).unwrap();
+    let value = Value::Object(foreign);
+
+    assert!(matches!(
+        vm.array_to_sorted(&Value::Null, &value),
+        Err(RuntimeError::Heap(HeapError::InvalidObject(_)))
+    ));
+    assert!(matches!(
+        vm.collection_iterator_next(true, &value),
+        Err(RuntimeError::Heap(HeapError::InvalidObject(_)))
+    ));
+
+    let callback = vm
+        .execute(&crate::compile(&crate::parse("(function () {})").unwrap()).unwrap())
+        .unwrap();
+    assert!(matches!(
+        vm.collection_for_each(foreign, true, &[callback]),
+        Err(RuntimeError::Heap(HeapError::InvalidObject(_)))
+    ));
+}
+
+#[test]
+fn temporal_zone_helpers_reject_foreign_handles_and_invalid_stored_zones() {
+    let mut vm = Vm::default();
+    let mut other = Vm::default();
+    let foreign = Value::Object(other.heap.alloc_object(None).unwrap());
+    assert!(matches!(
+        vm.temporal_time_zone_identifier(&foreign),
+        Err(RuntimeError::Heap(HeapError::InvalidObject(_)))
+    ));
+    assert!(matches!(
+        vm.temporal_time_zone(&foreign),
+        Err(RuntimeError::Heap(HeapError::InvalidObject(_)))
+    ));
+
+    let code =
+        crate::compile(&crate::parse("new Temporal.ZonedDateTime(0n, 'UTC')").unwrap()).unwrap();
+    let valid = vm.execute(&code).unwrap();
+    let mut stored = vm
+        .heap
+        .temporal_value(valid.object_id().unwrap())
+        .unwrap()
+        .unwrap();
+    stored.time_zone = "not/a-zone".into();
+    let invalid = vm.alloc_temporal_value(stored, false).unwrap();
+    assert!(matches!(
+        vm.temporal_now_local_fields(&invalid),
+        Err(RuntimeError::RangeError(_))
+    ));
+    assert!(matches!(
+        vm.temporal_time_zone(&invalid),
+        Err(RuntimeError::RangeError(_))
+    ));
+    assert!(matches!(
+        vm.temporal_instant_to_zoned_date_time_iso(&Value::Null, &invalid),
+        Err(RuntimeError::TypeError(_))
+    ));
+}
+
+#[test]
+fn temporal_zone_helpers_complete_the_valid_instant_and_current_clock_paths() {
+    let mut vm = Vm::default();
+    let utc = Value::String("UTC".into());
+    assert_eq!(
+        vm.temporal_time_zone_identifier(&Value::Undefined).unwrap(),
+        "UTC"
+    );
+    assert_eq!(vm.temporal_time_zone_identifier(&utc).unwrap(), "UTC");
+    assert_eq!(vm.temporal_time_zone(&utc).unwrap().identifier(), "UTC");
+    let ((year, month, day), _) = vm.temporal_now_local_fields(&utc).unwrap();
+    assert!(
+        (1970..=275760).contains(&year) && (1..=12).contains(&month) && (1..=31).contains(&day)
+    );
+
+    let code = crate::compile(&crate::parse("new Temporal.Instant(0n)").unwrap()).unwrap();
+    let instant = vm.execute(&code).unwrap();
+    let zoned = vm
+        .temporal_instant_to_zoned_date_time_iso(&instant, &utc)
+        .unwrap();
+    let stored = vm
+        .heap
+        .temporal_value(zoned.object_id().unwrap())
+        .unwrap()
+        .unwrap();
+    assert_eq!(stored.kind, TemporalKind::ZonedDateTime);
+    assert_eq!(stored.time_zone, "UTC");
+    assert_eq!(stored.epoch_nanoseconds, BigInt::from(0));
+}
+
+#[test]
+fn bound_function_and_instanceof_report_invalid_handles_and_instruction_limits() {
+    let mut vm = Vm::default();
+    let mut other = Vm::default();
+    let foreign = Value::Object(other.heap.alloc_object(None).unwrap());
+    assert!(matches!(
+        vm.bind_function(foreign.clone(), &[]),
+        Err(RuntimeError::Heap(HeapError::InvalidObject(_)))
+    ));
+    vm.remaining_instructions = 100;
+    let hook_lookup = vm.has_instance(Value::Null, foreign.clone(), false);
+    assert!(
+        matches!(
+            hook_lookup,
+            Err(RuntimeError::Heap(HeapError::InvalidObject(_)))
+        ),
+        "{hook_lookup:?}"
+    );
+    assert!(matches!(
+        vm.has_instance(Value::Null, foreign, true),
+        Err(RuntimeError::Heap(HeapError::InvalidObject(_)))
+    ));
+    let mut limited = Vm::new(VmConfig {
+        instruction_budget: 0,
+        ..VmConfig::default()
+    })
+    .unwrap();
+    assert_eq!(
+        limited.has_instance(Value::Null, Value::Null, true),
+        Err(RuntimeError::InstructionLimit)
+    );
+}
+
+#[test]
+fn native_uri_helpers_enforce_limits_for_each_decoded_output_shape() {
+    let limited = |result: Result<JsString, native::UriCodingError>, limit| {
+        assert_eq!(result, Err(native::UriCodingError::StringLimit { limit }));
+    };
+    limited(native::encode_uri(&"A".into(), false, 1), 1);
+    limited(native::decode_uri(&"A".into(), false, 1), 1);
+    limited(native::decode_uri(&"%23".into(), false, 1), 1);
+    limited(native::decode_uri(&"%41".into(), true, 1), 1);
+    limited(native::decode_uri(&"%C3%A9".into(), true, 1), 1);
+    limited(native::escape(&"A".into(), 1), 1);
+    limited(native::unescape(&"%41".into(), 1), 1);
+    limited(native::unescape(&"A".into(), 1), 1);
+}
+
+#[test]
+fn native_string_helpers_propagate_conversion_and_output_errors() {
+    use native::StringMethod;
+
+    let symbol = Value::Symbol(JsSymbol::new(None));
+    let receiver = Value::String("abc".into());
+    assert!(matches!(
+        native::integer(&symbol),
+        Err(RuntimeError::TypeError(_))
+    ));
+    assert!(matches!(
+        native::length(&symbol),
+        Err(RuntimeError::TypeError(_))
+    ));
+    assert!(matches!(
+        native::from_codes(std::slice::from_ref(&symbol), false, usize::MAX),
+        Err(RuntimeError::TypeError(_))
+    ));
+    assert_eq!(
+        native::from_codes(&[Value::Number(65.0)], false, 1),
+        Err(RuntimeError::StringLimit { limit: 1 })
+    );
+    assert!(matches!(
+        native::string_method(StringMethod::CharAt, &symbol, &[], usize::MAX),
+        Err(RuntimeError::TypeError(_))
+    ));
+
+    for (method, args) in [
+        (StringMethod::At, vec![symbol.clone()]),
+        (StringMethod::Slice, vec![symbol.clone()]),
+        (
+            StringMethod::Substring,
+            vec![Value::Number(0.0), symbol.clone()],
+        ),
+        (StringMethod::IndexOf, vec![symbol.clone()]),
+        (
+            StringMethod::LastIndexOf,
+            vec![Value::String("a".into()), symbol.clone()],
+        ),
+        (
+            StringMethod::Includes,
+            vec![Value::String("a".into()), symbol.clone()],
+        ),
+        (StringMethod::Concat, vec![symbol.clone()]),
+        (StringMethod::PadStart, vec![symbol.clone()]),
+        (
+            StringMethod::PadEnd,
+            vec![Value::Number(4.0), symbol.clone()],
+        ),
+        (StringMethod::Repeat, vec![symbol.clone()]),
+        (StringMethod::Normalize, vec![symbol.clone()]),
+        (StringMethod::Substr, vec![symbol.clone()]),
+        (
+            StringMethod::Substr,
+            vec![Value::Number(0.0), symbol.clone()],
+        ),
+        (
+            StringMethod::Html {
+                tag: "a",
+                attribute: "href",
+            },
+            vec![symbol.clone()],
+        ),
+    ] {
+        assert!(matches!(
+            native::string_method(method, &receiver, &args, usize::MAX),
+            Err(RuntimeError::TypeError(_))
+        ));
+    }
+
+    assert_eq!(
+        native::substitution(&"abcd".into(), &"abcd".into(), 0, &"$&$&".into(), 8),
+        Err(RuntimeError::StringLimit { limit: 8 })
+    );
+    assert_eq!(
+        native::string_method(
+            StringMethod::Concat,
+            &receiver,
+            &[Value::String("d".into())],
+            6
+        ),
+        Err(RuntimeError::StringLimit { limit: 6 })
+    );
+    assert_eq!(
+        native::string_method(
+            StringMethod::Html {
+                tag: "a",
+                attribute: "href",
+            },
+            &receiver,
+            &[Value::String("".into())],
+            4,
+        ),
+        Err(RuntimeError::StringLimit { limit: 4 })
+    );
+    let surrogate = Value::String(JsString::from_code_units(vec![0x0130, 0xd800]));
+    for limit in [2, 4] {
+        assert_eq!(
+            native::string_method(StringMethod::ToLowerCase, &surrogate, &[], limit),
+            Err(RuntimeError::StringLimit { limit })
+        );
+    }
+}
+
+#[test]
+fn vm_construction_reports_a_limit_that_cannot_hold_both_prototypes() {
+    let mut probe = Heap::new(HeapConfig::default()).unwrap();
+    probe.alloc_object(None).unwrap();
+    let one_object = probe.stats().managed_bytes;
+    let config = VmConfig {
+        heap: HeapConfig {
+            nursery_capacity: 1,
+            major_threshold_bytes: one_object,
+            max_heap_bytes: one_object,
+        },
+        ..VmConfig::default()
+    };
+    assert!(matches!(
+        Vm::new(config),
+        Err(HeapError::HeapLimitExceeded { .. })
+    ));
+}
+
+#[test]
+fn temporal_receiver_checks_propagate_invalid_object_handles() {
+    let mut vm = Vm::default();
+    let mut other_vm = Vm::default();
+    let foreign = other_vm.heap.alloc_object(None).unwrap();
+    let receiver = Value::Object(foreign);
+    assert_eq!(
+        vm.require_temporal_receiver(&receiver, TemporalKind::PlainDate),
+        Err(RuntimeError::Heap(HeapError::InvalidObject(foreign)))
+    );
+    let ordinary = vm.heap.alloc_object(None).unwrap();
+    assert_eq!(
+        vm.require_temporal_receiver(&Value::Object(ordinary), TemporalKind::PlainDate),
+        Err(RuntimeError::TypeError(
+            "receiver is not a Temporal.PlainDate".into()
+        ))
+    );
+    assert_eq!(
+        vm.require_temporal_receiver(&Value::Null, TemporalKind::PlainDate),
+        Err(RuntimeError::TypeError(
+            "receiver is not a Temporal.PlainDate".into()
+        ))
+    );
+    let date = vm
+        .execute(
+            &crate::compile(&crate::parse("new Temporal.PlainDate(2020, 1, 1)").unwrap()).unwrap(),
+        )
+        .unwrap();
+    assert_eq!(
+        vm.require_temporal_receiver(&date, TemporalKind::PlainDate),
+        Ok(())
+    );
+}
+
+#[test]
+fn an_import_that_joins_a_running_graph_leaves_its_roots_with_that_graph() {
+    // While module code runs, its graph's records are parked in
+    // `evaluating_linked` and its root list lives in the evaluation's own
+    // frame, out of an `import()`'s reach. `dep.js` is compiled and linked
+    // only by such a nested import: every root it registers (its two binding
+    // cells and its namespace) must be handed to the graph once the running
+    // evaluation stores it, where a teardown would unroot them, not dropped.
+    let mut vm = Vm::default();
+    vm.set_dynamic_module_sources(HashMap::from([(
+        "t/dep.js".to_string(),
+        "export var x = 1; export var y = 2;".to_string(),
+    )]));
+    vm.evaluating_linked = Some(HashMap::new());
+    vm.execute_module_graph_inner(
+        "t/dep.js",
+        &HashMap::new(),
+        false,
+        true,
+        ImportPhase::Evaluation,
+    )
+    .unwrap();
+    assert!(
+        vm.nested_module_roots.len() >= 3,
+        "the nested load's roots wait for the running graph: {}",
+        vm.nested_module_roots.len()
+    );
+    let linked = vm.evaluating_linked.take().expect("still parked");
+    assert!(linked.contains_key("t/dep.js"));
+    vm.store_module_graph(
+        ModuleGraphState {
+            linked,
+            roots: Vec::new(),
+        },
+        false,
+    );
+    assert!(vm.nested_module_roots.is_empty());
+    assert!(vm.module_graph.as_ref().unwrap().roots.len() >= 3);
+}
+
+#[test]
+fn interpreter_converts_catchable_errors_and_rejects_a_top_level_yield() {
+    let mut vm = Vm::default();
+    vm.install_test262_harness().unwrap();
+    vm.remaining_instructions = vm.config.instruction_budget;
+    let test262_error = vm.error_value(RuntimeError::Test262("failure".into()));
+    assert!(
+        matches!(test262_error, Ok(Value::Object(_))),
+        "{test262_error:?}"
+    );
+    assert_eq!(
+        vm.error_value(RuntimeError::InstructionLimit),
+        Err(RuntimeError::InstructionLimit)
+    );
+    let mut code = Bytecode::empty();
+    code.constants.push(Value::Undefined);
+    code.code
+        .extend([Opcode::Constant as u8, 0, 0, 0, 0, Opcode::Yield as u8]);
+    vm.remaining_instructions = vm.config.instruction_budget;
+    let yield_error = vm.execute(&code);
+    assert!(
+        matches!(yield_error, Err(RuntimeError::TypeError(ref message)) if message == "yield is not supported in this execution context"),
+        "{yield_error:?}"
+    );
+    code.generator = true;
+    vm.remaining_instructions = vm.config.instruction_budget;
+    assert!(
+        matches!(vm.execute(&code), Err(RuntimeError::TypeError(message)) if message == "yield requires a generator function")
+    );
+}
+
+#[test]
+fn with_lookup_uses_the_object_then_reports_an_unbound_name() {
+    let mut vm = Vm::default();
+    let object = vm.heap.alloc_object(None).unwrap();
+    vm.heap.set(object, "value", Value::Number(7.0)).unwrap();
+    vm.with_objects.push(Value::Object(object));
+    assert_eq!(vm.with_get("value", None), Ok(Value::Number(7.0)));
+    assert_eq!(
+        vm.with_get("missing", None),
+        Err(RuntimeError::ReferenceError("missing".into()))
+    );
+}
+
+#[test]
+fn class_definition_opcodes_assign_home_objects_to_closures() {
+    let mut vm = Vm::default();
+    let target = vm.heap.alloc_object(None).unwrap();
+    let mut function_code = Bytecode::empty();
+    function_code.code.push(Opcode::Halt as u8);
+    let function = vm
+        .heap
+        .alloc_closure(
+            std::rc::Rc::new(function_code),
+            Vec::new(),
+            Value::Undefined,
+            vm.object_prototype,
+        )
+        .unwrap();
+    // DefineMethod carries an operand (non-zero: object-literal method).
+    let mut method_code = Bytecode::empty();
+    method_code.code.push(Opcode::DefineMethod as u8);
+    method_code.code.extend(0u32.to_le_bytes());
+    method_code.code.push(Opcode::Halt as u8);
+    let mut code = Bytecode::empty();
+    code.code
+        .extend([Opcode::DefineMethod as u8, Opcode::Halt as u8]);
+
+    vm.stack = vec![
+        Value::Object(target),
+        Value::String("method".into()),
+        Value::Object(function),
+    ];
+    vm.remaining_instructions = vm.config.instruction_budget;
+    assert!(matches!(
+        vm.interpret(&method_code, &mut Vec::new(), 0, None, None, None),
+        Ok(InterpreterExit::Return(Value::Undefined))
+    ));
+    vm.stack = vec![
+        Value::Object(target),
+        Value::String("empty".into()),
+        Value::Undefined,
+    ];
+    vm.remaining_instructions = vm.config.instruction_budget;
+    assert!(matches!(
+        vm.interpret(&method_code, &mut Vec::new(), 0, None, None, None),
+        Ok(InterpreterExit::Return(Value::Undefined))
+    ));
+
+    code.code[0] = Opcode::CallClassStaticBlock as u8;
+    vm.stack = vec![Value::Object(target), Value::Object(function)];
+    vm.remaining_instructions = vm.config.instruction_budget;
+    assert!(matches!(
+        vm.interpret(&code, &mut Vec::new(), 0, None, None, None),
+        Ok(InterpreterExit::Return(Value::Undefined))
+    ));
+    vm.stack = vec![Value::Object(target), Value::Undefined];
+    vm.remaining_instructions = vm.config.instruction_budget;
+    assert!(matches!(
+        vm.interpret(&code, &mut Vec::new(), 0, None, None, None),
+        Err(RuntimeError::TypeError(_))
+    ));
+}
+
+#[test]
+fn super_assignment_reports_a_non_extensible_receiver() {
+    let mut vm = Vm::default();
+    let base = vm.heap.alloc_object(None).unwrap();
+    let home = vm.heap.alloc_object(Some(base)).unwrap();
+    let receiver = vm.heap.alloc_object(None).unwrap();
+    vm.heap.prevent_extensions(receiver).unwrap();
+    vm.home_object = Some(home);
+    vm.strict = true;
+    let super_base = vm.super_base().unwrap();
+    assert_eq!(super_base, Value::Object(base));
+    assert_eq!(
+        vm.super_set(
+            &super_base,
+            &Value::String("value".into()),
+            &Value::Number(1.0),
+            &Value::Object(receiver)
+        ),
+        Err(RuntimeError::TypeError(
+            "super property cannot be assigned".into()
+        ))
+    );
+
+    let base = vm.heap.alloc_object(None).unwrap();
+    let home = vm.heap.alloc_object(Some(base)).unwrap();
+    vm.heap.root(home).unwrap();
+    let stale_receiver = vm.heap.alloc_object(None).unwrap();
+    vm.heap.collect_major();
+    vm.home_object = Some(home);
+    let super_base = vm.super_base().unwrap();
+    assert_eq!(
+        vm.super_set(
+            &super_base,
+            &Value::String("value".into()),
+            &Value::Number(1.0),
+            &Value::Object(stale_receiver)
+        ),
+        Err(RuntimeError::Heap(HeapError::InvalidObject(stale_receiver)))
+    );
+}
+
+#[test]
+fn super_and_eval_context_errors_describe_missing_internal_context() {
+    let mut vm = Vm::default();
+    assert_eq!(
+        vm.super_base(),
+        Err(RuntimeError::TypeError(
+            "super is not available in this function".into()
+        ))
+    );
+    let home = vm.heap.alloc_object(None).unwrap();
+    vm.home_object = Some(home);
+    // A null super base is only an error once a property is read through it.
+    assert_eq!(vm.super_base(), Ok(Value::Null));
+    assert_eq!(
+        vm.super_get(&Value::Null, &Value::String("x".into()), &Value::Undefined),
+        Err(RuntimeError::TypeError(
+            "cannot access a property through a null super base".into()
+        ))
+    );
+    assert_eq!(
+        vm.super_call(Value::Null, Vec::new()),
+        Err(RuntimeError::TypeError(
+            "super constructor is not a constructor".into()
+        ))
+    );
+    vm.binding_metadata.push(Binding {
+        name: "captured".into(),
+        mutable: true,
+        strict_immutable: false,
+        lexical: true,
+        catch_parameter: false,
+        eval_var: false,
+    });
+    vm.cells.insert(0, home);
+    assert_eq!(
+        vm.eval_visible_bindings()
+            .into_iter()
+            .map(|(name, _, slot)| (name, slot))
+            .collect::<Vec<_>>(),
+        vec![("captured".into(), 0)]
+    );
+}
+
+#[test]
+fn compiler_owned_bytecode_invariants_fail_loudly() {
+    let no_handler = Bytecode::empty();
+    let mut vm = Vm::default();
+    assert!(
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| vm.resolve_completion(
+            &no_handler,
+            &mut Vec::new(),
+            &mut Vec::new(),
+            Completion::Yield(Value::Undefined)
+        )))
+        .is_err()
+    );
+    let mut vm = Vm::default();
+    vm.stack.push(Value::Number(0.0));
+    assert!(
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| vm.set_class_heritage())).is_err()
+    );
+    let mut vm = Vm::default();
+    vm.stack.push(Value::Number(0.0));
+    assert!(
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| vm.set_class_home())).is_err()
+    );
+}
+
+#[test]
+fn host_object_methods_are_realm_local_callable_globals() {
+    let mut vm = Vm::default();
+    vm.install_host_function("double", 1, |args: &[HostValue]| {
+        let Some(HostValue::Number(value)) = args.first() else {
+            return Err(HostFunctionError::new("double requires a number"));
+        };
+        Ok(HostValue::Number(value * 2.0))
+    })
+    .unwrap();
+    let code = crate::compile(&crate::parse("double(21);").unwrap()).unwrap();
+    assert_eq!(vm.execute_script(&code).unwrap(), Value::Number(42.0));
+
+    let host = vm.install_host_object("blueice").unwrap();
+    vm.install_host_method(host, "increment", 1, |args: &[HostValue]| {
+        let Some(HostValue::Number(value)) = args.first() else {
+            return Err(HostFunctionError::new("increment requires a number"));
+        };
+        Ok(HostValue::Number(value + 1.0))
+    })
+    .unwrap();
+    let code = crate::compile(&crate::parse("blueice.increment(41);").unwrap()).unwrap();
+    assert_eq!(vm.execute_script(&code).unwrap(), Value::Number(42.0));
+
+    let wrong_arity = crate::compile(&crate::parse("blueice.increment('x');").unwrap()).unwrap();
+    assert!(matches!(
+        vm.execute_script(&wrong_arity),
+        Err(RuntimeError::TypeError(message)) if message == "increment requires a number"
+    ));
+    let object_argument =
+        crate::compile(&crate::parse("blueice.increment({ value: 1 });").unwrap()).unwrap();
+    assert!(matches!(
+        vm.execute_script(&object_argument),
+        Err(RuntimeError::TypeError(message)) if message == "host functions accept primitive values only"
+    ));
+}
+
+#[test]
+fn opaque_host_object_factory_roots_identity_without_exposing_its_key() {
+    let mut vm = Vm::default();
+    let family = vm.create_host_object_family().unwrap();
+    vm.install_host_object_factory("findHostNode", 1, family, |args: &[HostValue]| {
+        let [HostValue::String(id)] = args else {
+            return Err(HostFunctionError::new("a string ID is required"));
+        };
+        Ok((id.to_utf8().ok().as_deref() == Some("present"))
+            .then_some(HostObjectKey::new(7, 3, 42)))
+    })
+    .unwrap();
+    let code = crate::compile(&crate::parse("findHostNode('present');").unwrap()).unwrap();
+    let Value::Object(first) = vm.execute_script(&code).unwrap() else {
+        panic!("a host key must become a JavaScript object");
+    };
+    vm.execute_script(&crate::compile(&crate::parse("undefined;").unwrap()).unwrap())
+        .unwrap();
+    vm.heap.collect_major();
+    assert!(
+        vm.heap.contains(first),
+        "the VM-owned host wrapper must remain collector-rooted"
+    );
+    assert_eq!(vm.execute_script(&code).unwrap(), Value::Object(first));
+    let inspection = crate::compile(
+        &crate::parse(
+            "let node = findHostNode('present'); \
+             node === findHostNode('present') && \
+             typeof node === 'object' && \
+             Object.keys(node).length === 0 && \
+             node.nodeId === undefined && \
+             findHostNode('missing') === null;",
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(vm.execute_script(&inspection).unwrap(), Value::Bool(true));
+    assert!(matches!(
+        vm.execute_script(&crate::compile(&crate::parse("findHostNode({});").unwrap()).unwrap()),
+        Err(RuntimeError::TypeError(_))
+    ));
+    let mut other = Vm::default();
+    assert!(matches!(
+        other.install_host_object_factory("foreign", 0, family, |_args: &[HostValue]| { Ok(None) }),
+        Err(RuntimeError::TypeError(_))
+    ));
+}
+
+#[test]
+fn opaque_host_object_methods_require_an_exact_live_wrapper_receiver() {
+    let mut vm = Vm::default();
+    let family = vm.create_host_object_family().unwrap();
+    vm.install_host_object_factory("findHostNode", 1, family, |args: &[HostValue]| {
+        let [HostValue::Number(id)] = args else {
+            return Err(HostFunctionError::new("a numeric test ID is required"));
+        };
+        Ok(Some(HostObjectKey::new(7, 3, *id as u64)))
+    })
+    .unwrap();
+    vm.install_host_object_method(family, "requireLive", 0, |key, args: &[HostValue]| {
+        if !args.is_empty() {
+            return Err(HostFunctionError::new("no arguments allowed"));
+        }
+        if key == HostObjectKey::new(7, 3, 42) {
+            Ok(HostValue::Bool(true))
+        } else {
+            Err(HostFunctionError::new("node is no longer live"))
+        }
+    })
+    .unwrap();
+    let valid =
+        crate::compile(&crate::parse("let node = findHostNode(42); node.requireLive();").unwrap())
+            .unwrap();
+    assert_eq!(vm.execute_script(&valid).unwrap(), Value::Bool(true));
+    for source in [
+        "findHostNode(43).requireLive();",
+        "node.requireLive.call({});",
+        "node.requireLive.call(Object.create(node));",
+        "node.requireLive.call(findHostNode(43));",
+        "new node.requireLive();",
+    ] {
+        let code = crate::compile(&crate::parse(source).unwrap()).unwrap();
+        assert!(
+            matches!(vm.execute_script(&code), Err(RuntimeError::TypeError(_))),
+            "{source}"
+        );
+    }
+    let other_family = vm.create_host_object_family().unwrap();
+    vm.install_host_object_factory("otherHostNode", 0, other_family, |_args: &[HostValue]| {
+        Ok(Some(HostObjectKey::new(7, 3, 42)))
+    })
+    .unwrap();
+    let code =
+        crate::compile(&crate::parse("node.requireLive.call(otherHostNode());").unwrap()).unwrap();
+    assert!(matches!(
+        vm.execute_script(&code),
+        Err(RuntimeError::TypeError(_))
+    ));
+    let mut successor = Vm::default();
+    assert!(matches!(
+        successor.install_host_object_method(family, "stale", 0, |_key, _args: &[HostValue]| {
+            Ok(HostValue::Bool(true))
+        }),
+        Err(RuntimeError::TypeError(_))
+    ));
+}
+
+#[test]
+fn host_document_factory_and_node_accessor_verify_both_receivers() {
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    let mut vm = Vm::default();
+    let document = vm.install_host_object("document").unwrap();
+    let family = vm.create_host_object_family().unwrap();
+    vm.install_host_object_factory_method(
+        document,
+        "getElementById",
+        1,
+        family,
+        |args: &[HostValue]| {
+            let [HostValue::String(id)] = args else {
+                return Err(HostFunctionError::new("a string ID is required"));
+            };
+            Ok((id.to_utf8().ok().as_deref() == Some("present"))
+                .then_some(HostObjectKey::new(7, 3, 42)))
+        },
+    )
+    .unwrap();
+    let text = Rc::new(RefCell::new(String::from("before")));
+    let getter_text = Rc::clone(&text);
+    let setter_text = Rc::clone(&text);
+    vm.install_host_object_accessor(
+        family,
+        "textContent",
+        move |key, args: &[HostValue]| {
+            if key != HostObjectKey::new(7, 3, 42) || !args.is_empty() {
+                return Err(HostFunctionError::new("invalid text getter"));
+            }
+            Ok(HostValue::String(getter_text.borrow().clone().into()))
+        },
+        move |key, args: &[HostValue]| {
+            let [HostValue::String(value)] = args else {
+                return Err(HostFunctionError::new("text setter requires a string"));
+            };
+            if key != HostObjectKey::new(7, 3, 42) {
+                return Err(HostFunctionError::new("invalid text setter"));
+            }
+            *setter_text.borrow_mut() = value.to_utf8().unwrap();
+            Ok(HostValue::Undefined)
+        },
+    )
+    .unwrap();
+    let code = crate::compile(
+        &crate::parse(
+            "let node = document.getElementById('present'); \
+             if (node !== document.getElementById('present')) throw 'identity'; \
+             if (document.getElementById('absent') !== null) throw 'miss'; \
+             if (node.textContent !== 'before') throw 'getter'; \
+             node.textContent = 'after'; node.textContent;",
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        vm.execute_script(&code).unwrap(),
+        Value::String("after".into())
+    );
+    assert_eq!(&*text.borrow(), "after");
+    for source in [
+        "document.getElementById.call({}, 'present');",
+        "node.textContent = {};",
+        "Object.getOwnPropertyDescriptor(Object.getPrototypeOf(node), 'textContent').get.call({});",
+        "Object.getOwnPropertyDescriptor(Object.getPrototypeOf(node), 'textContent').set.call(Object.create(node), 'forged');",
+    ] {
+        let code = crate::compile(&crate::parse(source).unwrap()).unwrap();
+        assert!(matches!(vm.execute_script(&code), Err(RuntimeError::TypeError(_))), "{source}");
+    }
+    assert_eq!(&*text.borrow(), "after");
+}
+
+#[test]
+fn host_pair_method_requires_two_exact_minted_wrappers_and_returns_the_child() {
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    let mut vm = Vm::default();
+    let family = vm.create_host_object_family().unwrap();
+    vm.install_host_object_factory("findNode", 1, family, |args: &[HostValue]| {
+        let [HostValue::Number(id)] = args else {
+            return Err(HostFunctionError::new("a numeric fixture ID is required"));
+        };
+        let generation = if *id == 3.0 { 4 } else { 3 };
+        Ok(Some(HostObjectKey::new(7, generation, *id as u64)))
+    })
+    .unwrap();
+    let calls = Rc::new(RefCell::new(Vec::new()));
+    let recorded = Rc::clone(&calls);
+    vm.install_host_object_pair_method(
+        family,
+        "appendChild",
+        1,
+        move |parent: HostObjectKey, child: HostObjectKey| {
+            if !parent.matches_owner(7, 3) || !child.matches_owner(7, 3) {
+                return Err(HostFunctionError::new("cross-document child"));
+            }
+            recorded.borrow_mut().push((parent, child));
+            Ok(())
+        },
+    )
+    .unwrap();
+    let valid = crate::compile(
+        &crate::parse(
+            "let parent = findNode(1); let child = findNode(2); parent.appendChild(child) === child;",
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(vm.execute_script(&valid).unwrap(), Value::Bool(true));
+    assert_eq!(
+        calls.borrow().as_slice(),
+        &[(HostObjectKey::new(7, 3, 1), HostObjectKey::new(7, 3, 2))]
+    );
+    let other_family = vm.create_host_object_family().unwrap();
+    vm.install_host_object_factory("otherNode", 0, other_family, |_args: &[HostValue]| {
+        Ok(Some(HostObjectKey::new(7, 3, 2)))
+    })
+    .unwrap();
+    for source in [
+        "parent.appendChild({});",
+        "parent.appendChild(Object.create(child));",
+        "parent.appendChild(otherNode());",
+        "parent.appendChild(findNode(3));",
+        "parent.appendChild();",
+        "parent.appendChild(child, child);",
+        "parent.appendChild.call({}, child);",
+        "parent.appendChild.call(Object.create(parent), child);",
+        "new parent.appendChild(child);",
+    ] {
+        let code = crate::compile(&crate::parse(source).unwrap()).unwrap();
+        assert!(
+            matches!(vm.execute_script(&code), Err(RuntimeError::TypeError(_))),
+            "{source}"
+        );
+    }
+    assert_eq!(calls.borrow().len(), 1);
+}
+
+#[test]
+fn host_click_listeners_are_vm_rooted_and_prevent_default_only_during_dispatch() {
+    let mut vm = Vm::default();
+    let family = vm.create_host_object_family().unwrap();
+    vm.install_host_object_factory("findNode", 0, family, |_args: &[HostValue]| {
+        Ok(Some(HostObjectKey::new(7, 3, 42)))
+    })
+    .unwrap();
+    vm.install_host_click_event_methods(family).unwrap();
+    let source = "globalThis.calls = 0; findNode().addEventListener('click', function(event) { \
+                  if (event.type !== 'click' || event.target !== this || \
+                      event.currentTarget !== this) throw 'event target'; \
+                  globalThis.calls += 1; event.preventDefault(); globalThis.savedEvent = event; });";
+    vm.execute_script(&crate::compile(&crate::parse(source).unwrap()).unwrap())
+        .unwrap();
+    vm.execute_script(&crate::compile(&crate::parse("undefined;").unwrap()).unwrap())
+        .unwrap();
+    vm.heap.collect_major();
+
+    assert!(vm
+        .dispatch_host_click(family, HostObjectKey::new(7, 3, 42))
+        .unwrap());
+    let read_calls = crate::compile(&crate::parse("globalThis.calls;").unwrap()).unwrap();
+    assert_eq!(vm.execute_script(&read_calls).unwrap(), Value::Number(1.0));
+    assert!(vm
+        .dispatch_host_click(family, HostObjectKey::new(7, 3, 42))
+        .unwrap());
+    assert_eq!(vm.execute_script(&read_calls).unwrap(), Value::Number(2.0));
+    assert!(!vm
+        .dispatch_host_click(family, HostObjectKey::new(7, 3, 99))
+        .unwrap());
+    let late = crate::compile(&crate::parse("savedEvent.preventDefault();").unwrap()).unwrap();
+    assert!(matches!(
+        vm.execute_script(&late),
+        Err(RuntimeError::TypeError(_))
+    ));
+
+    let mut successor = Vm::default();
+    assert!(matches!(
+        successor.dispatch_host_click(family, HostObjectKey::new(7, 3, 42)),
+        Err(RuntimeError::TypeError(_))
+    ));
+}
+
+#[test]
+fn host_click_listener_exceptions_preserve_cancellation_and_later_listeners() {
+    let mut vm = Vm::default();
+    let family = vm.create_host_object_family().unwrap();
+    vm.install_host_object_factory("findNode", 0, family, |_args: &[HostValue]| {
+        Ok(Some(HostObjectKey::new(7, 3, 42)))
+    })
+    .unwrap();
+    vm.install_host_click_event_methods(family).unwrap();
+    let source = "globalThis.order = ''; var node = findNode(); \
+                  node.addEventListener('click', function(event) { \
+                    order += 'a'; event.preventDefault(); \
+                    Promise.resolve().then(function() { order += 'c'; }); \
+                    throw 'listener failure'; \
+                  }); \
+                  node.addEventListener('click', function() { order += 'b'; });";
+    vm.execute_script(&crate::compile(&crate::parse(source).unwrap()).unwrap())
+        .unwrap();
+
+    assert!(vm
+        .dispatch_host_click(family, HostObjectKey::new(7, 3, 42))
+        .unwrap());
+    let read_order = crate::compile(&crate::parse("order;").unwrap()).unwrap();
+    assert_eq!(
+        vm.execute_script(&read_order).unwrap(),
+        Value::String("ab".into())
+    );
+    vm.run_promise_jobs_bounded(8).unwrap();
+    assert_eq!(
+        vm.execute_script(&read_order).unwrap(),
+        Value::String("abc".into())
+    );
+}
+
+#[test]
+fn host_click_microtask_checkpoint_has_a_fixed_job_limit() {
+    let mut vm = Vm::default();
+    vm.execute_script(
+        &crate::compile(
+            &crate::parse("globalThis.jobs = 0; Promise.resolve().then(function() { jobs++; }).then(function() { jobs++; });").unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    assert!(matches!(
+        vm.run_promise_jobs_bounded(1),
+        Err(RuntimeError::InstructionLimit)
+    ));
+    let read_jobs = crate::compile(&crate::parse("jobs;").unwrap()).unwrap();
+    assert_eq!(vm.execute_script(&read_jobs).unwrap(), Value::Number(1.0));
+    vm.run_promise_jobs_bounded(8).unwrap();
+    assert_eq!(vm.execute_script(&read_jobs).unwrap(), Value::Number(2.0));
+}
+
+#[test]
+fn host_click_listener_removal_and_receiver_checks_are_exact() {
+    let mut vm = Vm::default();
+    let family = vm.create_host_object_family().unwrap();
+    vm.install_host_object_factory("findNode", 1, family, |args: &[HostValue]| {
+        let [HostValue::Number(id)] = args else {
+            return Err(HostFunctionError::new("numeric node ID required"));
+        };
+        Ok(Some(HostObjectKey::new(7, 3, *id as u64)))
+    })
+    .unwrap();
+    vm.install_host_click_event_methods(family).unwrap();
+    let source = "globalThis.calls = 0; var node = findNode(42); \
+                  var listener = function(event) { globalThis.calls += 1; }; \
+                  node.addEventListener('click', listener); \
+                  node.addEventListener('click', listener);";
+    vm.execute_script(&crate::compile(&crate::parse(source).unwrap()).unwrap())
+        .unwrap();
+    let callback = vm
+        .execute_script(&crate::compile(&crate::parse("listener;").unwrap()).unwrap())
+        .unwrap()
+        .object_id()
+        .expect("the registered listener is a JavaScript function object");
+    assert!(!vm
+        .dispatch_host_click(family, HostObjectKey::new(7, 3, 42))
+        .unwrap());
+    let read_calls = crate::compile(&crate::parse("globalThis.calls;").unwrap()).unwrap();
+    assert_eq!(vm.execute_script(&read_calls).unwrap(), Value::Number(1.0));
+    for source in [
+        "node.addEventListener.call({}, 'click', listener);",
+        "node.addEventListener.call(Object.create(node), 'click', listener);",
+        "node.addEventListener('mouseover', listener);",
+        "node.addEventListener('click', {});",
+        "node.addEventListener('click', listener, true);",
+        "new node.addEventListener('click', listener);",
+    ] {
+        assert!(matches!(
+            vm.execute_script(&crate::compile(&crate::parse(source).unwrap()).unwrap()),
+            Err(RuntimeError::TypeError(_))
+        ));
+    }
+    vm.execute_script(
+        &crate::compile(&crate::parse("node.removeEventListener('click', listener);").unwrap())
+            .unwrap(),
+    )
+    .unwrap();
+    vm.execute_script(&crate::compile(&crate::parse("listener = undefined;").unwrap()).unwrap())
+        .unwrap();
+    vm.execute_script(&crate::compile(&crate::parse("undefined;").unwrap()).unwrap())
+        .unwrap();
+    vm.heap.collect_major();
+    assert!(
+        !vm.heap.contains(callback),
+        "removal must release the VM root"
+    );
+    assert!(!vm
+        .dispatch_host_click(family, HostObjectKey::new(7, 3, 42))
+        .unwrap());
+    assert_eq!(vm.execute_script(&read_calls).unwrap(), Value::Number(1.0));
+}
+
+#[test]
+fn opaque_host_object_family_has_a_fixed_root_limit() {
+    let mut vm = Vm::default();
+    let family = vm.create_host_object_family().unwrap();
+    vm.install_host_object_factory("makeHostNode", 1, family, |args: &[HostValue]| {
+        let [HostValue::Number(id)] = args else {
+            return Err(HostFunctionError::new("a numeric test ID is required"));
+        };
+        Ok(Some(HostObjectKey::new(7, 3, *id as u64)))
+    })
+    .unwrap();
+    let fill = crate::compile(
+        &crate::parse(&format!(
+            "for (let i = 0; i < {}; i++) makeHostNode(i);",
+            host_objects::MAX_HOST_OBJECTS_PER_FAMILY
+        ))
+        .unwrap(),
+    )
+    .unwrap();
+    vm.execute_script(&fill).unwrap();
+    assert!(matches!(
+        vm.execute_script(&crate::compile(&crate::parse("makeHostNode(0);").unwrap()).unwrap()),
+        Ok(Value::Object(_))
+    ));
+    assert!(matches!(
+        vm.execute_script(
+            &crate::compile(&crate::parse("makeHostNode(4096);").unwrap()).unwrap()
+        ),
+        Err(RuntimeError::RangeError(message)) if message == "host-object wrapper limit exceeded"
+    ));
+}
+
+#[test]
+fn host_objects_and_methods_reject_collisions_and_construction() {
+    let mut vm = Vm::default();
+    let code = crate::compile(&crate::parse("globalThis.reserved = undefined;").unwrap()).unwrap();
+    vm.execute_script(&code).unwrap();
+    assert!(matches!(
+        vm.install_host_object("reserved"),
+        Err(RuntimeError::TypeError(_))
+    ));
+    let host = vm.install_host_object("blueice").unwrap();
+    assert!(matches!(
+        vm.install_host_object("blueice"),
+        Err(RuntimeError::TypeError(_))
+    ));
+    vm.install_host_method(host, "value", 0, |_args: &[HostValue]| {
+        Ok(HostValue::Number(1.0))
+    })
+    .unwrap();
+    let code = crate::compile(&crate::parse("blueice.reserved = undefined;").unwrap()).unwrap();
+    vm.execute_script(&code).unwrap();
+    assert!(matches!(
+        vm.install_host_method(host, "reserved", 0, |_args: &[HostValue]| Ok(
+            HostValue::Number(2.0)
+        )),
+        Err(RuntimeError::TypeError(_))
+    ));
+    assert!(matches!(
+        vm.install_host_method(host, "value", 0, |_args: &[HostValue]| Ok(
+            HostValue::Number(2.0)
+        )),
+        Err(RuntimeError::TypeError(_))
+    ));
+    let code = crate::compile(&crate::parse("new blueice.value();").unwrap()).unwrap();
+    assert!(matches!(
+        vm.execute_script(&code),
+        Err(RuntimeError::TypeError(message)) if message == "value is not a constructor"
+    ));
+}
+
+#[test]
+fn a_call_is_refused_exactly_when_the_native_stack_falls_below_the_red_zone() {
+    use super::completion::CALL_STACK_RED_ZONE;
+    // The depth is irrelevant once the thread's stack can be measured: only
+    // the bytes left decide, so a deep-but-cheap chain is not cut short and a
+    // shallow-but-nearly-overflowing one is.
+    for depth in [0, 1, 32, 500, usize::MAX] {
+        assert!(!call_stack_exhausted(Some(CALL_STACK_RED_ZONE), depth));
+        assert!(!call_stack_exhausted(Some(usize::MAX), depth));
+        assert!(call_stack_exhausted(Some(CALL_STACK_RED_ZONE - 1), depth));
+        assert!(call_stack_exhausted(Some(0), depth));
+    }
+}
+
+#[test]
+fn an_unmeasurable_stack_falls_back_to_the_conservative_frame_count() {
+    use super::completion::UNMEASURED_STACK_MAX_CALL_DEPTH;
+    assert!(!call_stack_exhausted(None, 0));
+    assert!(!call_stack_exhausted(
+        None,
+        UNMEASURED_STACK_MAX_CALL_DEPTH - 1
+    ));
+    assert!(call_stack_exhausted(None, UNMEASURED_STACK_MAX_CALL_DEPTH));
+    assert!(call_stack_exhausted(None, usize::MAX));
+}
+
+#[test]
+fn host_values_convert_both_ways_for_every_primitive_and_refuse_objects() {
+    let primitives = [
+        (Value::Undefined, HostValue::Undefined),
+        (Value::Null, HostValue::Null),
+        (Value::Bool(true), HostValue::Bool(true)),
+        (Value::Number(1.5), HostValue::Number(1.5)),
+        (
+            Value::String("host".into()),
+            HostValue::String("host".into()),
+        ),
+    ];
+    for (value, host) in primitives {
+        assert_eq!(HostValue::try_from(&value).unwrap(), host);
+        assert_eq!(Value::from(host), value);
+    }
+    let mut vm = Vm::default();
+    let object = vm.with_roots(|heap| heap.alloc_object(None)).unwrap();
+    assert_eq!(
+        HostValue::try_from(&Value::Object(object))
+            .unwrap_err()
+            .to_string(),
+        "host functions accept primitive values only"
+    );
+}
+
+#[test]
+fn every_runtime_error_renders_and_only_a_heap_error_has_a_source() {
+    let rendered = [
+        (
+            RuntimeError::ReferenceError("x".into()),
+            "ReferenceError: x is not defined",
+        ),
+        (RuntimeError::TypeError("t".into()), "TypeError: t"),
+        (RuntimeError::RangeError("r".into()), "RangeError: r"),
+        (RuntimeError::SyntaxError("s".into()), "SyntaxError: s"),
+        (
+            RuntimeError::Thrown(Value::Null),
+            "uncaught JavaScript value: Null",
+        ),
+        (
+            RuntimeError::Heap(HeapError::InvalidConfig),
+            "invalid BlueJS heap configuration",
+        ),
+        (
+            RuntimeError::InstructionLimit,
+            "BlueJS instruction budget exhausted",
+        ),
+        (
+            RuntimeError::StringLimit { limit: 7 },
+            "BlueJS string exceeds 7 bytes",
+        ),
+        (RuntimeError::Test262("t".into()), "Test262Error: t"),
+        (RuntimeError::RegexTimeout, "BlueJS regex deadline exceeded"),
+        (
+            RuntimeError::RegexWorker("w".into()),
+            "BlueJS regex worker failed: w",
+        ),
+        (
+            RuntimeError::ModuleResolution("no such module".into()),
+            "module resolution error: no such module",
+        ),
+        (
+            RuntimeError::Unsupported("a missing feature"),
+            "BlueJS unsupported: a missing feature",
+        ),
+    ];
+    for (error, text) in rendered {
+        assert_eq!(error.to_string(), text);
+        let source = std::error::Error::source(&error);
+        assert_eq!(source.is_some(), matches!(error, RuntimeError::Heap(_)));
+    }
+}
+
+#[test]
+fn heap_errors_map_to_the_language_error_they_stand_for() {
+    let object = ObjectId { heap: 0, serial: 0 };
+    assert!(matches!(
+        RuntimeError::from(HeapError::InvalidArrayLength),
+        RuntimeError::RangeError(message) if message == "invalid array length"
+    ));
+    assert!(matches!(
+        RuntimeError::from(HeapError::InvalidBufferRange),
+        RuntimeError::RangeError(message) if message == "invalid ArrayBuffer view range"
+    ));
+    for error in [
+        HeapError::DetachedArrayBuffer,
+        HeapError::ImmutableArrayBuffer,
+        HeapError::InvalidWeakTarget,
+        HeapError::InvalidInternalSlot(object),
+        HeapError::RevokedProxy,
+    ] {
+        let message = error.to_string();
+        assert_eq!(RuntimeError::from(error), RuntimeError::TypeError(message));
+    }
+    assert!(matches!(
+        RuntimeError::from(HeapError::UninitializedModuleExport),
+        RuntimeError::ReferenceError(message) if message == "module export is uninitialized"
+    ));
+    // Every other heap error is carried through unchanged.
+    assert_eq!(
+        RuntimeError::from(HeapError::PrototypeCycle),
+        RuntimeError::Heap(HeapError::PrototypeCycle)
+    );
+}
+
+#[test]
+fn host_function_installation_walks_every_branch_with_one_callback_type() {
+    let mut vm = Vm::default();
+    // One callback type for every call, so each installer's single
+    // monomorphised instance takes every branch below.
+    let noop = |_args: &[HostValue]| Ok(HostValue::Undefined);
+
+    vm.install_host_function("taken", 0, noop).unwrap();
+    for name in ["", "has space", "1leading", "taken"] {
+        assert!(
+            matches!(
+                vm.install_host_function(name, 0, noop),
+                Err(RuntimeError::TypeError(message))
+                    if message == "host global name is invalid or already defined"
+            ),
+            "{name:?}"
+        );
+    }
+
+    let own = vm.install_host_object("here").unwrap();
+    let foreign = Vm::default().install_host_object("elsewhere").unwrap();
+    vm.install_host_method(own, "method", 0, noop).unwrap();
+    for (owner, name, reason) in [
+        (foreign, "method", "host object or method name is invalid"),
+        (own, "bad name", "host object or method name is invalid"),
+        (own, "method", "host method is already defined"),
+    ] {
+        assert!(
+            matches!(
+                vm.install_host_method(owner, name, 0, noop),
+                Err(RuntimeError::TypeError(message)) if message == reason
+            ),
+            "{name:?}: {reason}"
+        );
+    }
+    assert!(matches!(
+        vm.install_host_object("here"),
+        Err(RuntimeError::TypeError(_))
+    ));
+    assert!(matches!(
+        vm.install_host_object("no good"),
+        Err(RuntimeError::TypeError(_))
+    ));
+}
+
+#[test]
+fn a_host_function_reached_directly_refuses_construction_and_unknown_indexes() {
+    let mut vm = Vm::default();
+    vm.install_host_function("callable", 0, |_args: &[HostValue]| Ok(HostValue::Null))
+        .unwrap();
+    // JavaScript never gets past `IsConstructor` first, or past a valid index.
+    assert!(matches!(
+        vm.host_function_call(0, Value::Undefined, &[], true),
+        Err(RuntimeError::TypeError(message)) if message == "host functions are not constructors"
+    ));
+    assert!(matches!(
+        vm.host_function_call(99, Value::Undefined, &[], false),
+        Err(RuntimeError::TypeError(message)) if message == "host function is unavailable"
+    ));
+    assert_eq!(
+        vm.host_function_call(0, Value::Undefined, &[], false),
+        Ok(Value::Null)
+    );
+}
+
+#[test]
+fn the_function_prototype_is_reported_missing_when_string_lost_its_prototype() {
+    let mut vm = Vm::default();
+    let script = crate::compile(&crate::parse("Object.setPrototypeOf(String, null);").unwrap());
+    vm.execute_script(&script.unwrap()).unwrap();
+    assert!(matches!(
+        vm.function_prototype(),
+        Err(RuntimeError::TypeError(message)) if message == "Function prototype is unavailable"
+    ));
+}
+
+#[test]
+fn the_lazy_object_prototype_methods_are_left_alone_when_a_script_defined_them() {
+    let mut vm = Vm::default();
+    // Touching either name already installs the built-in (and records that),
+    // and only then does the assignment replace it.
+    let script = crate::compile(
+        &crate::parse(
+            "Object.prototype.propertyIsEnumerable = 1; Object.prototype.hasOwnProperty = 2;",
+        )
+        .unwrap(),
+    );
+    vm.execute_script(&script.unwrap()).unwrap();
+    // With the record cleared, the script's own values are what is found.
+    vm.property_is_enumerable_installed = false;
+    vm.has_own_property_installed = false;
+    // The second call finds the work already recorded as done.
+    for _ in 0..2 {
+        vm.property_is_enumerable_intrinsic().unwrap();
+        vm.has_own_property_intrinsic().unwrap();
+    }
+    let after = crate::compile(&crate::parse("Object.prototype.hasOwnProperty").unwrap());
+    assert_eq!(vm.execute_script(&after.unwrap()), Ok(Value::Number(2.0)));
+}
+
+/// A VM, with the function prototype and `globalThis` already built, whose
+/// heap ceiling leaves only `extra` bytes over what that took; `None` when
+/// even that does not fit. Building those lazily is what an operation under
+/// test must not be charged for, or every run would fail before reaching it.
+fn vm_with_heap_headroom(extra: usize) -> Option<Vm> {
+    fn warm_up(vm: &mut Vm) -> Result<(), RuntimeError> {
+        vm.function_prototype()?;
+        vm.global("globalThis")?;
+        Ok(())
+    }
+    let mut probe = Vm::default();
+    warm_up(&mut probe).unwrap();
+    let limit = probe.heap().stats().managed_bytes + extra;
+    let mut vm = Vm::new(VmConfig {
+        heap: HeapConfig {
+            major_threshold_bytes: limit.min(HeapConfig::default().major_threshold_bytes),
+            max_heap_bytes: limit,
+            ..HeapConfig::default()
+        },
+        ..VmConfig::default()
+    })
+    .ok()?;
+    warm_up(&mut vm).ok()?;
+    Some(vm)
+}
+
+/// Runs `operation` on VMs with ever more heap headroom, so that each
+/// allocation it makes fails in turn. Every outcome must be either success or
+/// the heap-limit error, never a panic or some other error; returns how many
+/// runs hit the limit.
+fn heap_limit_failures(mut operation: impl FnMut(&mut Vm) -> Result<(), RuntimeError>) -> usize {
+    let mut failures = 0;
+    for extra in (0..6144).step_by(8) {
+        let Some(mut vm) = vm_with_heap_headroom(extra) else {
+            continue;
+        };
+        match operation(&mut vm) {
+            Ok(()) => {}
+            Err(RuntimeError::Heap(HeapError::HeapLimitExceeded { .. })) => failures += 1,
+            Err(other) => panic!("headroom {extra}: {other:?}"),
+        }
+    }
+    failures
+}
+
+#[test]
+fn installing_a_host_function_survives_running_out_of_heap_at_each_step() {
+    let failures = heap_limit_failures(|vm| {
+        vm.install_host_function("probe", 2, |_args: &[HostValue]| Ok(HostValue::Undefined))
+    });
+    assert!(failures > 3, "only {failures} failing points were reached");
+}
+
+#[test]
+fn installing_native_getters_and_accessors_survives_running_out_of_heap() {
+    let object_method = || NativeFunction::ObjectMethod(native::ObjectMethod::HasOwn);
+    for (label, failures) in [
+        (
+            "getter",
+            heap_limit_failures(|vm| {
+                let prototype = vm.function_prototype()?;
+                let owner = vm.object_prototype;
+                vm.install_native_getter(owner, prototype, "probe", object_method())
+            }),
+        ),
+        (
+            "symbol getter",
+            heap_limit_failures(|vm| {
+                let prototype = vm.function_prototype()?;
+                let owner = vm.object_prototype;
+                vm.install_symbol_native_getter(owner, prototype, "toStringTag", object_method())
+            }),
+        ),
+        (
+            "accessor",
+            heap_limit_failures(|vm| {
+                let prototype = vm.function_prototype()?;
+                let owner = vm.object_prototype;
+                vm.install_native_accessor(
+                    owner,
+                    prototype,
+                    "probe",
+                    object_method(),
+                    object_method(),
+                )
+            }),
+        ),
+    ] {
+        assert!(failures > 3, "{label}: only {failures} failing points");
+    }
+}
+
+#[test]
+fn installing_the_lazy_object_prototype_methods_survives_running_out_of_heap() {
+    let failures = heap_limit_failures(|vm| vm.property_is_enumerable_intrinsic());
+    assert!(failures > 0, "propertyIsEnumerable: {failures}");
+    let failures = heap_limit_failures(|vm| vm.has_own_property_intrinsic());
+    assert!(failures > 0, "hasOwnProperty: {failures}");
+}
+
+#[test]
+fn initializing_string_and_array_intrinsics_survives_heap_limits() {
+    let initial = Vm::default().heap.stats().managed_bytes;
+    let mut probe = Vm::default();
+    probe.string_intrinsics().unwrap();
+    let baseline = probe.heap.stats().managed_bytes;
+    let mut completed = 0;
+    let mut exhausted = 0;
+
+    for limit in (initial..=baseline + 16_384).step_by(64) {
+        let config = VmConfig {
+            heap: HeapConfig {
+                major_threshold_bytes: limit.min(HeapConfig::default().major_threshold_bytes),
+                max_heap_bytes: limit,
+                ..HeapConfig::default()
+            },
+            ..VmConfig::default()
+        };
+        let Ok(mut vm) = Vm::new(config) else {
+            continue;
+        };
+        match vm.string_intrinsics() {
+            Ok(_) => completed += 1,
+            Err(RuntimeError::Heap(HeapError::HeapLimitExceeded { .. })) => exhausted += 1,
+            other => panic!("heap limit {limit}: {other:?}"),
+        }
+    }
+    assert!(completed > 0 && exhausted > 0);
+}
+
+#[test]
+fn a_native_accessor_cannot_replace_a_non_configurable_property() {
+    let mut vm = Vm::default();
+    let prototype = vm.function_prototype().unwrap();
+    let owner = vm.object_prototype;
+    vm.define_data(owner, "locked", Value::Number(1.0), false, false, false)
+        .unwrap();
+    let native = NativeFunction::ObjectMethod(native::ObjectMethod::HasOwn);
+    assert!(matches!(
+        vm.install_native_accessor(owner, prototype, "locked", native, native),
+        Err(RuntimeError::TypeError(message)) if message == "cannot install native accessor"
+    ));
+}
+
+#[test]
+fn temporal_duration_receiver_rejects_invalid_internal_values() {
+    let vm = Vm::default();
+    let invalid = Value::Undefined;
+    assert!(matches!(
+        vm.temporal_duration_receiver(&invalid),
+        Err(RuntimeError::TypeError(_))
+    ));
+}

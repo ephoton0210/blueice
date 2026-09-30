@@ -18,9 +18,14 @@ blueice-assistant-settings = { path = "../../assistant-settings" }
 blueice-extension-host = { path = "../../extension" }
 serde_json = "1"
 url = "2"
+blueice-bluets = { path = "../../bluets" }
+blueice-bluets-bluejs = { path = "../../bluets-bluejs" }
+blueice-bluejs = { path = "../../bluejs" }
+ureq = "3"
+getrandom = "0.3"
 
 [dev-dependencies]
 blueice-testing = { path = "../../testing" }
 blueice-ai-gatekeeper = { path = "../../ai-gatekeeper" }
 blueice-ai-assistant = { path = "../../ai-assistant" }
-blueice-bluejs = { path = "../../bluejs" }
+blueice-launcher = { path = "../../launcher" }

@@ -6,7 +6,11 @@ license.workspace = true
 
 [dependencies]
 blueice-assistant-settings = { path = "../assistant-settings" }
+blueice-bluejs = { path = "../bluejs" }
+blueice-bluets = { path = "../bluets" }
+blueice-bluets-bluejs = { path = "../bluets-bluejs" }
 blueice-ipc = { path = "../ipc" }
+blueice-net = { path = "../net" }
 sysinfo = "0.39.6"
 libc = "0.2"
 serde = { version = "1", features = ["derive"] }
@@ -14,3 +18,4 @@ serde_json = "1"
 
 [dev-dependencies]
 wat = "1"
+blueice-ai-gatekeeper = { path = "../ai-gatekeeper" }

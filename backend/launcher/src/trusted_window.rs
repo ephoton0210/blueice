@@ -63,11 +63,18 @@ pub enum TrustedWindowRequest {
     /// The person approves the proposal they were shown. It names the id *and*
     /// the digest of the settings displayed, so a different or swapped proposal
     /// cannot ride this approval.
-    ApproveAssistantProposal { id: u64, digest: String },
-    DenyAssistantProposal { id: u64 },
+    ApproveAssistantProposal {
+        id: u64,
+        digest: String,
+    },
+    DenyAssistantProposal {
+        id: u64,
+    },
     /// The person edits the settings directly. The rule-base that screens an
     /// agent's proposals does not apply: only the validator does.
-    EditAssistantSettings { settings: AssistantSettings },
+    EditAssistantSettings {
+        settings: AssistantSettings,
+    },
 }
 
 /// An agent's proposal, as shown to the person for a decision.
@@ -116,7 +123,9 @@ pub enum TrustedWindowReply {
         tab_id: u64,
         document_epoch: u64,
     },
-    Rejected { reason: String },
+    Rejected {
+        reason: String,
+    },
 }
 
 /// Rejects stale or misaddressed native-window decisions before they can
@@ -139,7 +148,11 @@ pub(crate) fn validate_change_target(
     if installed.extension_id != expected_extension_id {
         return Err("the installed extension changed after this permission was inspected");
     }
-    if !installed.optional.iter().any(|entry| entry.capability == capability) {
+    if !installed
+        .optional
+        .iter()
+        .any(|entry| entry.capability == capability)
+    {
         return Err("the capability is not an installed optional declaration");
     }
     Ok(())
@@ -162,8 +175,12 @@ pub(crate) fn validate_ephemeral_target(
     if installed.extension_id != expected_extension_id {
         return Err("the installed extension changed after this one-shot permission was inspected");
     }
-    if tab_id == 0 || capability != "dom:read"
-        || !installed.runtime_ephemeral.iter().any(|entry| entry.capability == capability)
+    if tab_id == 0
+        || capability != "dom:read"
+        || !installed
+            .runtime_ephemeral
+            .iter()
+            .any(|entry| entry.capability == capability)
     {
         return Err("the target is not a supported installed one-shot declaration");
     }
@@ -173,7 +190,10 @@ pub(crate) fn validate_ephemeral_target(
 fn write_frame<W: Write, T: Serialize>(writer: &mut W, value: &T) -> io::Result<()> {
     let bytes = serde_json::to_vec(value).map_err(io::Error::other)?;
     if bytes.is_empty() || bytes.len() > MAX_FRAME_BYTES {
-        return Err(io::Error::new(io::ErrorKind::InvalidData, "trusted-window frame is oversized"));
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "trusted-window frame is oversized",
+        ));
     }
     writer.write_all(&(bytes.len() as u32).to_le_bytes())?;
     writer.write_all(&bytes)?;
@@ -191,11 +211,16 @@ fn read_frame<R: Read, T: for<'de> Deserialize<'de>>(reader: &mut R) -> io::Resu
     reader.read_exact(&mut rest)?;
     let len = u32::from_le_bytes([first[0], rest[0], rest[1], rest[2]]) as usize;
     if len == 0 || len > MAX_FRAME_BYTES {
-        return Err(io::Error::new(io::ErrorKind::InvalidData, "trusted-window frame has an invalid length"));
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "trusted-window frame has an invalid length",
+        ));
     }
     let mut bytes = vec![0_u8; len];
     reader.read_exact(&mut bytes)?;
-    serde_json::from_slice(&bytes).map(Some).map_err(io::Error::other)
+    serde_json::from_slice(&bytes)
+        .map(Some)
+        .map_err(io::Error::other)
 }
 
 pub fn write_request<W: Write>(writer: &mut W, request: &TrustedWindowRequest) -> io::Result<()> {
@@ -255,12 +280,15 @@ mod tests {
             TrustedWindowRequest::InspectEphemeral {
                 expected_core_generation: 4,
                 expected_extension_id: "sha256:package-a".into(),
-                capability: "dom:read".into(), tab_id: 7,
+                capability: "dom:read".into(),
+                tab_id: 7,
             },
             TrustedWindowRequest::ArmEphemeral {
                 expected_core_generation: 4,
                 expected_extension_id: "sha256:package-a".into(),
-                capability: "dom:read".into(), tab_id: 7, document_epoch: 12,
+                capability: "dom:read".into(),
+                tab_id: 7,
+                document_epoch: 12,
             },
         ] {
             let mut wire = Vec::new();
@@ -276,55 +304,106 @@ mod tests {
         assert_eq!(read_reply(&mut wire.as_slice()).unwrap(), Some(reply));
         for reply in [
             TrustedWindowReply::EphemeralReview {
-                core_generation: 4, installed: installed(),
-                capability: "dom:read".into(), tab_id: 7, document_epoch: 12,
+                core_generation: 4,
+                installed: installed(),
+                capability: "dom:read".into(),
+                tab_id: 7,
+                document_epoch: 12,
                 url: "https://example.test/page".into(),
             },
             TrustedWindowReply::EphemeralArmed {
-                core_generation: 4, installed: installed(),
-                capability: "dom:read".into(), tab_id: 7, document_epoch: 12,
+                core_generation: 4,
+                installed: installed(),
+                capability: "dom:read".into(),
+                tab_id: 7,
+                document_epoch: 12,
             },
         ] {
             let mut wire = Vec::new();
             write_reply(&mut wire, &reply).unwrap();
             assert_eq!(read_reply(&mut wire.as_slice()).unwrap(), Some(reply));
             let wire_text = String::from_utf8_lossy(&wire);
-            assert!(!wire_text.contains("ticket"), "the native reply must not expose a bearer");
+            assert!(
+                !wire_text.contains("ticket"),
+                "the native reply must not expose a bearer"
+            );
         }
     }
 
     #[test]
     fn stale_generation_wrong_package_and_non_optional_capability_are_rejected() {
         let package = installed();
-        assert_eq!(validate_change_target(4, Some(&package), 4, &package.extension_id, "storage"), Ok(()));
-        assert!(validate_change_target(5, Some(&package), 4, &package.extension_id, "storage").is_err());
+        assert_eq!(
+            validate_change_target(4, Some(&package), 4, &package.extension_id, "storage"),
+            Ok(())
+        );
+        assert!(
+            validate_change_target(5, Some(&package), 4, &package.extension_id, "storage").is_err()
+        );
         assert!(validate_change_target(4, Some(&package), 4, "sha256:other", "storage").is_err());
-        assert!(validate_change_target(4, Some(&package), 4, &package.extension_id, "ui:inject").is_err());
+        assert!(
+            validate_change_target(4, Some(&package), 4, &package.extension_id, "ui:inject")
+                .is_err()
+        );
         assert!(validate_change_target(4, None, 4, &package.extension_id, "storage").is_err());
-        assert_eq!(validate_ephemeral_target(4, Some(&package), 4,
-            &package.extension_id, "dom:read", 7), Ok(()));
-        assert!(validate_ephemeral_target(5, Some(&package), 4,
-            &package.extension_id, "dom:read", 7).is_err());
-        assert!(validate_ephemeral_target(4, Some(&package), 4,
-            "sha256:other", "dom:read", 7).is_err());
-        assert!(validate_ephemeral_target(4, Some(&package), 4,
-            &package.extension_id, "storage", 7).is_err());
-        assert!(validate_ephemeral_target(4, Some(&package), 4,
-            &package.extension_id, "dom:read", 0).is_err());
+        assert_eq!(
+            validate_ephemeral_target(4, Some(&package), 4, &package.extension_id, "dom:read", 7),
+            Ok(())
+        );
+        assert!(validate_ephemeral_target(
+            5,
+            Some(&package),
+            4,
+            &package.extension_id,
+            "dom:read",
+            7
+        )
+        .is_err());
+        assert!(
+            validate_ephemeral_target(4, Some(&package), 4, "sha256:other", "dom:read", 7).is_err()
+        );
+        assert!(validate_ephemeral_target(
+            4,
+            Some(&package),
+            4,
+            &package.extension_id,
+            "storage",
+            7
+        )
+        .is_err());
+        assert!(validate_ephemeral_target(
+            4,
+            Some(&package),
+            4,
+            &package.extension_id,
+            "dom:read",
+            0
+        )
+        .is_err());
     }
 
     #[test]
     fn malformed_or_oversized_frames_never_decode_as_a_decision() {
         assert_eq!(read_request(&mut [].as_slice()).unwrap(), None);
         let mut oversized = ((MAX_FRAME_BYTES + 1) as u32).to_le_bytes().to_vec();
-        assert_eq!(read_request(&mut oversized.as_slice()).unwrap_err().kind(), io::ErrorKind::InvalidData);
+        assert_eq!(
+            read_request(&mut oversized.as_slice()).unwrap_err().kind(),
+            io::ErrorKind::InvalidData
+        );
         oversized = vec![5, 0, 0, 0, b'{'];
-        assert_eq!(read_request(&mut oversized.as_slice()).unwrap_err().kind(), io::ErrorKind::UnexpectedEof);
-        assert!(write_request(&mut Vec::new(), &TrustedWindowRequest::Change {
-            expected_core_generation: 0,
-            expected_extension_id: "sha256:a".into(),
-            capability: "x".repeat(MAX_FRAME_BYTES),
-            action: PermissionAction::Grant,
-        }).is_err());
+        assert_eq!(
+            read_request(&mut oversized.as_slice()).unwrap_err().kind(),
+            io::ErrorKind::UnexpectedEof
+        );
+        assert!(write_request(
+            &mut Vec::new(),
+            &TrustedWindowRequest::Change {
+                expected_core_generation: 0,
+                expected_extension_id: "sha256:a".into(),
+                capability: "x".repeat(MAX_FRAME_BYTES),
+                action: PermissionAction::Grant,
+            }
+        )
+        .is_err());
     }
 }

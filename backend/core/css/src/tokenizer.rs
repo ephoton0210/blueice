@@ -116,9 +116,23 @@ impl Tokenizer {
             Some('#') => self.consume_hash(),
             Some('@') => self.consume_at_keyword(),
             Some(c) if c.is_ascii_digit() => self.consume_numeric(),
-            Some('.') if self.peek_at(1).is_some_and(|c| c.is_ascii_digit()) => self.consume_numeric(),
-            Some('+') if self.peek_at(1).is_some_and(|c| c.is_ascii_digit() || c == '.') => self.consume_numeric(),
-            Some('-') if self.peek_at(1).is_some_and(|c| c.is_ascii_digit() || c == '.') => self.consume_numeric(),
+            Some('.') if self.peek_at(1).is_some_and(|c| c.is_ascii_digit()) => {
+                self.consume_numeric()
+            }
+            Some('+')
+                if self
+                    .peek_at(1)
+                    .is_some_and(|c| c.is_ascii_digit() || c == '.') =>
+            {
+                self.consume_numeric()
+            }
+            Some('-')
+                if self
+                    .peek_at(1)
+                    .is_some_and(|c| c.is_ascii_digit() || c == '.') =>
+            {
+                self.consume_numeric()
+            }
             Some('-') if self.starts_ident_after_minus() => self.consume_ident_like(),
             Some(c) if c != '-' && is_ident_start(c) => self.consume_ident_like(),
             Some(':') => {
@@ -315,13 +329,22 @@ mod tests {
     #[test]
     fn idents_and_keywords() {
         assert_eq!(tokenize("div"), vec![Token::Ident("div".to_string())]);
-        assert_eq!(tokenize("-webkit-foo"), vec![Token::Ident("-webkit-foo".to_string())]);
-        assert_eq!(tokenize("--custom"), vec![Token::Ident("--custom".to_string())]);
+        assert_eq!(
+            tokenize("-webkit-foo"),
+            vec![Token::Ident("-webkit-foo".to_string())]
+        );
+        assert_eq!(
+            tokenize("--custom"),
+            vec![Token::Ident("--custom".to_string())]
+        );
     }
 
     #[test]
     fn at_keyword() {
-        assert_eq!(tokenize("@media"), vec![Token::AtKeyword("media".to_string())]);
+        assert_eq!(
+            tokenize("@media"),
+            vec![Token::AtKeyword("media".to_string())]
+        );
     }
 
     #[test]
@@ -334,21 +357,36 @@ mod tests {
     fn numbers_dimensions_and_percentages() {
         assert_eq!(tokenize("12"), vec![Token::Number(12.0)]);
         assert_eq!(tokenize("1.5"), vec![Token::Number(1.5)]);
-        assert_eq!(tokenize("-3px"), vec![Token::Dimension(-3.0, "px".to_string())]);
+        assert_eq!(
+            tokenize("-3px"),
+            vec![Token::Dimension(-3.0, "px".to_string())]
+        );
         assert_eq!(tokenize("50%"), vec![Token::Percentage(50.0)]);
         assert_eq!(tokenize("0"), vec![Token::Number(0.0)]);
-        assert_eq!(tokenize("1.5em"), vec![Token::Dimension(1.5, "em".to_string())]);
+        assert_eq!(
+            tokenize("1.5em"),
+            vec![Token::Dimension(1.5, "em".to_string())]
+        );
     }
 
     #[test]
     fn strings_single_and_double_quoted() {
-        assert_eq!(tokenize(r#""hello""#), vec![Token::QuotedString("hello".to_string())]);
-        assert_eq!(tokenize("'hello'"), vec![Token::QuotedString("hello".to_string())]);
+        assert_eq!(
+            tokenize(r#""hello""#),
+            vec![Token::QuotedString("hello".to_string())]
+        );
+        assert_eq!(
+            tokenize("'hello'"),
+            vec![Token::QuotedString("hello".to_string())]
+        );
     }
 
     #[test]
     fn string_with_escaped_quote() {
-        assert_eq!(tokenize(r#""a\"b""#), vec![Token::QuotedString("a\"b".to_string())]);
+        assert_eq!(
+            tokenize(r#""a\"b""#),
+            vec![Token::QuotedString("a\"b".to_string())]
+        );
     }
 
     #[test]
@@ -387,8 +425,22 @@ mod tests {
 
     #[test]
     fn whitespace_is_a_single_token_regardless_of_run_length() {
-        assert_eq!(tokenize("a   b"), vec![Token::Ident("a".to_string()), Token::Whitespace, Token::Ident("b".to_string())]);
-        assert_eq!(tokenize("a\n\t b"), vec![Token::Ident("a".to_string()), Token::Whitespace, Token::Ident("b".to_string())]);
+        assert_eq!(
+            tokenize("a   b"),
+            vec![
+                Token::Ident("a".to_string()),
+                Token::Whitespace,
+                Token::Ident("b".to_string())
+            ]
+        );
+        assert_eq!(
+            tokenize("a\n\t b"),
+            vec![
+                Token::Ident("a".to_string()),
+                Token::Whitespace,
+                Token::Ident("b".to_string())
+            ]
+        );
     }
 
     #[test]
@@ -398,14 +450,21 @@ mod tests {
         // separator between them, not the same as `a b`. This is why
         // the selector parser must not treat "no Whitespace token
         // between two idents" as ambiguous with descendant combinator.
-        assert_eq!(tokenize("a/* comment */b"), vec![Token::Ident("a".to_string()), Token::Ident("b".to_string())]);
+        assert_eq!(
+            tokenize("a/* comment */b"),
+            vec![Token::Ident("a".to_string()), Token::Ident("b".to_string())]
+        );
     }
 
     #[test]
     fn comment_next_to_real_whitespace_still_collapses_to_one_whitespace_token() {
         assert_eq!(
             tokenize("a /* comment */ b"),
-            vec![Token::Ident("a".to_string()), Token::Whitespace, Token::Ident("b".to_string())]
+            vec![
+                Token::Ident("a".to_string()),
+                Token::Whitespace,
+                Token::Ident("b".to_string())
+            ]
         );
     }
 
@@ -416,24 +475,45 @@ mod tests {
 
     #[test]
     fn unterminated_comment_consumes_to_eof_without_hanging() {
-        assert_eq!(tokenize("a/* unterminated"), vec![Token::Ident("a".to_string())]);
+        assert_eq!(
+            tokenize("a/* unterminated"),
+            vec![Token::Ident("a".to_string())]
+        );
     }
 
     #[test]
     fn negative_dimension_is_not_misread_as_an_identifier() {
-        assert_eq!(tokenize("-3px"), vec![Token::Dimension(-3.0, "px".to_string())]);
-        assert_eq!(tokenize("-0.5em"), vec![Token::Dimension(-0.5, "em".to_string())]);
+        assert_eq!(
+            tokenize("-3px"),
+            vec![Token::Dimension(-3.0, "px".to_string())]
+        );
+        assert_eq!(
+            tokenize("-0.5em"),
+            vec![Token::Dimension(-0.5, "em".to_string())]
+        );
         assert_eq!(tokenize("-3"), vec![Token::Number(-3.0)]);
     }
 
     #[test]
     fn bare_minus_not_starting_a_number_or_identifier_is_a_delimiter() {
-        assert_eq!(tokenize("1 - 2"), vec![Token::Number(1.0), Token::Whitespace, Token::Delim('-'), Token::Whitespace, Token::Number(2.0)]);
+        assert_eq!(
+            tokenize("1 - 2"),
+            vec![
+                Token::Number(1.0),
+                Token::Whitespace,
+                Token::Delim('-'),
+                Token::Whitespace,
+                Token::Number(2.0)
+            ]
+        );
     }
 
     #[test]
     fn unterminated_string_consumes_to_eof() {
-        assert_eq!(tokenize(r#""unterminated"#), vec![Token::QuotedString("unterminated".to_string())]);
+        assert_eq!(
+            tokenize(r#""unterminated"#),
+            vec![Token::QuotedString("unterminated".to_string())]
+        );
     }
 
     #[test]

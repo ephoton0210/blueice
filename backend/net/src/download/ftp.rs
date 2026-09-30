@@ -16,7 +16,7 @@
 //! across a restart.
 
 use crate::download::backend::{ByteRange, ByteStream, FinishableRead, TransferBackend};
-use crate::download::credentials::{FtpsCredentialRef, load_ftps_password};
+use crate::download::credentials::{load_ftps_password, FtpsCredentialRef};
 use crate::download::probe::Probe;
 use crate::download::{DownloadError, DownloadOptions};
 use percent_encoding::percent_decode_str;
@@ -455,7 +455,7 @@ mod tests {
     use openssl::pkcs12::Pkcs12;
     use openssl::pkey::PKey;
     use openssl::rsa::Rsa;
-    use openssl::x509::{X509, X509NameBuilder};
+    use openssl::x509::{X509NameBuilder, X509};
     use std::io::{BufRead, BufReader, Write};
     use std::net::TcpListener;
     use std::thread;

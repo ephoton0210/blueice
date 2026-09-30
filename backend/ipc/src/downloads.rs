@@ -1898,10 +1898,8 @@ mod tests {
             ClientError::Unexpected("x".to_string()).to_string(),
             "unexpected reply from the downloads process: x"
         );
-        assert!(
-            ClientError::Read(std::io::Error::other("boom"))
-                .to_string()
-                .contains("boom")
-        );
+        assert!(ClientError::Read(std::io::Error::other("boom"))
+            .to_string()
+            .contains("boom"));
     }
 }

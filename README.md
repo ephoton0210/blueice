@@ -12,9 +12,59 @@ The core rendering pipeline is complete end to end — HTML in, real pixels out 
 
 Also implemented: multi-tab and named/colored/collapsible tab groups, a fleet-wide process/memory supervisor, i18n/localization, a Chromium differential-testing pipeline, and manual live `core` hot-swap without dropping connected clients. The always-resident safety gatekeeper applies a versioned deterministic rule base before navigation, downloads, and high-risk extension effects, fails closed when unavailable, and exposes its enforced rules and user controls in `about:settings`. An optional loopback-only Ollama or Hugging Face TGI model reviewer can be configured there as a second, fail-closed layer; its transport is tested with scripted local services, while a real model-quality run remains open.
 
-The [Phase 9 extension-author reference](development/browser_core/phase-9-extension-protocol/PROTOCOL.md) documents the installed manifest, authenticated no-WASI host, versioned guest ABI, and current bounded DOM, network, UI, and storage capabilities. Optional/ephemeral grants and broader extension effects remain open. BlueJS is the separate JavaScript engine and DOM host; `core` runs document scripts before paint, dispatches events before browser defaults, and polls timers between frontend reads.
+The [Phase 9 extension-author reference](development/browser_core/phase-9-extension-protocol/PROTOCOL.md) documents the installed manifest, authenticated no-WASI host, versioned guest ABI, and current bounded DOM, network, UI, and storage capabilities. Optional/ephemeral grants and broader extension effects remain open.
 
 The isolated download manager provides segmented/resumable HTTP(S) transfers plus checked single-stream anonymous FTP, SFTP, and explicit FTPS downloads. Starts are gatekeeper-reviewed, AI clients can control and inspect transfers over MCP, and a human can use the live `about:downloads` page. A scheduler, speed limits, and human-facing pause/cancel controls remain open. See the [phase-by-phase plan](development/browser_core/BROWSER_CORE_PLAN.md), the denser [implementation status](CLAUDE.md), and the [test policy](development/browser_core/testing/TEST_PLAN.md).
+
+BlueJS targets [ECMAScript 2026 edition 17](development/browser_core/phase-13-bluejs-engine/ECMASCRIPT_2026.md), beyond its original MVP subset. Its [String implementation](development/browser_core/phase-13-bluejs-engine/STRING_BUILTINS.md) now includes all 35 core prototype methods, three statics and Annex B extensions, backed by lossless UTF-16, Unicode 17 normalization/casing, RegExp/Symbol protocols, iterators, compiled and bound replacement callbacks, object coercion and descriptors. RegExp.escape, bound constructors, instanceof/Symbol.hasInstance, Math constants/functions, abstract equality and property-presence are also implemented. String locale methods now use ICU-backed Intl.Collator, locale canonicalization and locale-sensitive casing; Intl.Locale supplies canonical locale objects, Unicode options, likely-subtag transforms and Locale-info queries. Test262 harness scripts can share classic-script globals and receive native descriptor/constructibility helpers. Regex compilation/matching run in a terminable helper process. The [Intl/deadline/Test262 report](development/browser_core/phase-13-bluejs-engine/INTL_CONFORMANCE.md) records the complete 102,926-mode inventory; the current platform-verification status is documented below. The latest BlueJS line, function and region coverage is recorded in the current coverage section below; CI enforces an 88% BlueJS line floor. The String inventory records resource limits and remaining language dependencies; neither coverage nor the Node oracle is a full Test262/ECMAScript conformance claim.
+
+## Test262 results by platform
+
+macOS and Ubuntu ran the unfiltered, pinned Test262 inventory (53,582 files / 102,926 modes, snapshot `72faf8ec…`) at commit `1947afb` of `feature/bluejs-object-heap` on 2026-09-21; the earlier `eaeb5c1`, `4ef9a44`, `fff18c4` and `b0b0021` commits were confirmed byte-for-byte identical for this inventory. Windows ran the same inventory on a tree equal to `fff18c4` with `backend/bluejs/src/regex_worker.rs`, `backend/bluejs/tests/regex_worker_reuse.rs` and `Cargo.toml` updated to their `b0b0021` state (the RegExp-request memo that fixed Windows' Test262 timeouts, see below); `1947afb`'s only further change is a `#[cfg(unix)]`-gated socket-connect race fix that the Windows build never compiles, so it does not affect this platform. Every row below is a real complete run on that platform's own hardware and toolchain; no row is inferred from another. The Ubuntu run used the repository's pinned Rust 1.95.0; the macOS run used Homebrew's Rust 1.98.0 (there is no `rustup` there, so the pin was not in effect).
+
+Test262 does not provide an official "Core" switch, so the reports use explicit top-level-directory scopes: **ECMA-262 Core** is `language/` + `built-ins/` (91,820 modes); **complete ECMA-262 Test262 scope** adds `annexB/` and `staging/` (95,980 modes); and **ECMA-402** is `intl402/` (6,714 modes). `harness/` (232 modes) validates Test262 support code and is retained only in the all-inventory total. Every scope is calculated from the same unfiltered complete run, not from separately filtered invocations. The complete ECMA-262 scope is an inventory label, not an assertion that time-based staging/proposal tests belong to one published ECMA edition.
+
+| Platform / evidence | ECMA-262 Core | Complete ECMA-262 scope | ECMA-402 | All modes: pass / fail / timeout |
+| --- | ---: | ---: | ---: | ---: |
+| macOS 26.6.2, Apple M4 (arm64); Rust 1.98.0; 8 jobs; 127.8 s | 89,444 / 91,820 (97.412%) | 92,975 / 95,980 (96.869%) | 6,714 / 6,714 (100.000%) | 99,899 / 3,025 / 2 (97.059%) |
+| Ubuntu 24.04.4 LTS (native), Core i5-9400T (x86_64); Rust 1.95.0; 6 jobs; 522.6 s | 89,444 / 91,820 (97.412%) | 92,973 / 95,980 (96.867%) | 6,714 / 6,714 (100.000%) | 99,897 / 3,027 / 2 (97.057%) |
+| Windows 11 Pro (build 26100) VM (x86_64, 6 vCPU); Rust 1.95.0; 6 jobs; 801.8 s | 89,444 / 91,820 (97.412%) | 92,973 / 95,980 (96.867%) | 6,714 / 6,714 (100.000%) | 99,897 / 3,027 / 2 (97.057%) |
+
+Every run recorded zero `harness_error` records; macOS recorded 2 `timeout` records and Ubuntu 2 (both are the two modes of `staging/explicit-resource-management/async-disposal-from-sync-method-returning-a-promise.js`); Windows recorded 2. These are conformance progress measurements, not a claim of full ECMAScript conformance: the remaining failures are classified in the [triage report](development/browser_core/phase-13-bluejs-engine/TEST262_ANALYSIS_REPORT.md). Between macOS and Ubuntu only `staging/sm/Math/acosh-approx.js` differs (it passes on macOS and fails on Ubuntu; the cause is not yet isolated). Exact scope, provenance and rerun commands are in the per-platform reports: [macOS](development/browser_core/phase-13-bluejs-engine/TEST262_MACOS_REPORT.md), [Ubuntu](development/browser_core/phase-13-bluejs-engine/TEST262_LINUX_REPORT.md) and [Windows](development/browser_core/phase-13-bluejs-engine/TEST262_WINDOWS_REPORT.md).
+
+### Test suites and coverage on the same revision
+
+| Platform | Workspace tests | Line coverage: workspace (gate 90%) | `blueice-bluejs` (gate 88%) | `blueice-ecma402` | Node oracle (22,268 scripts) | TypeScript oracle (68 cases) |
+| --- | --- | --- | --- | --- | --- | --- |
+| macOS | 2,992 pass / 0 fail / 5 ignored | 92.30% (90,775 / 98,347) | 91.36% (58,943 / 64,517) | 93.55% (9,471 / 10,124) | 4 / 4 pass | pass |
+| Ubuntu | 2,992 pass / 0 fail / 5 ignored | 92.19% (90,657 / 98,341) | 91.37% (58,944 / 64,511) | 93.28% (9,444 / 10,124) | 4 / 4 pass | pass |
+| Windows | 2,747 pass / 0 fail / 5 ignored | 91.28% (86,461 / 94,723) | 91.33% (58,919 / 64,514) | 93.54% (9,470 / 10,124) | 4 / 4 pass | pass |
+
+Line coverage is a different measure from a Test262 pass rate and the two are not interchangeable. The BlueJS figure was 91.36% (58,943 / 64,517) on macOS and 91.37% (58,944 / 64,511) on Ubuntu, up from the previously recorded 88.38%; the workspace and BlueJS gates in CI are 90% and 88%. The Node oracle compares 22,268 scripts with Node 24; the TypeScript oracle runs BlueTSC's 68-case fixture matrix against TypeScript 5.9.3. BlueTS's own results are in the [BlueTS test report](development/browser_core/phase-18-bluets/TEST_REPORT.md).
+
+### Current BlueJS coverage (2026-09-24)
+
+At commit `06724eed` on macOS 27.0, Rust 1.95.0 and `cargo-llvm-cov` 0.9.1, `cargo llvm-cov -p blueice-bluejs --summary-only --quiet` completed successfully with the default BlueJS test suite and no source-file exclusions. The opt-in Node oracle and the external full Test262 runner are not part of this measurement. The BlueJS CI gate is 88% line coverage; workspace coverage was not remeasured at this commit.
+
+| Measure | Covered / instrumented | Coverage |
+| --- | ---: | ---: |
+| Lines | 67,872 / 73,153 | 92.78% |
+| Functions | 4,971 / 5,329 | 93.28% |
+| Regions | 113,547 / 126,212 | 89.97% |
+
+The [macOS report's per-file table](development/browser_core/phase-13-bluejs-engine/TEST262_MACOS_REPORT.md#later-bluejs-per-file-coverage-2026-09-24) lists the line, function and region counts for every BlueJS source file in this measurement.
+
+### ECMA-402 breakdown and Temporal
+
+Every `intl402/` service passes in full on the platforms measured, including `Temporal/` (4,058 of the 6,714 `intl402/` modes). `Temporal/` is ECMA-262 (a core language built-in, like `Date`), not an ECMA-402 service, and is scoped as its own effort — [Phase 26](development/browser_core/phase-26-ecma262-temporal/PLAN.md) — separate from ECMA-402's [Phase 25](development/browser_core/phase-25-ecma402-internationalization/PLAN.md). Test262 also has a larger, separate `built-ins/Temporal/` tree (9,210 modes) that is excluded from the `intl402/`-scoped column above but is Temporal's primary test surface.
+
+| Platform | `intl402/` non-`Temporal` (11 services) | `intl402/Temporal/` | Combined Temporal (`built-ins/` + `intl402/`) |
+| --- | ---: | ---: | ---: |
+| macOS, 2026-09-21 | 2,656 / 2,656 (100.000%) | 4,058 / 4,058 (100.000%) | 13,268 / 13,268 (100.000%) |
+| Ubuntu 24.04.4 LTS, 2026-09-21 | 2,656 / 2,656 (100.000%) | 4,058 / 4,058 (100.000%) | 13,268 / 13,268 (100.000%) |
+| Windows 11 VM, 2026-09-21 | 2,656 / 2,656 (100.000%) | 4,058 / 4,058 (100.000%) | 13,268 / 13,268 (100.000%) |
+
+The breakdown comes from the same unfiltered complete inventory as the first table. The full per-service and per-Temporal-type breakdown, provenance and reproduction commands are in the [Ubuntu report](development/browser_core/phase-13-bluejs-engine/TEST262_LINUX_REPORT.md), the [macOS report](development/browser_core/phase-13-bluejs-engine/TEST262_MACOS_REPORT.md) and the [Windows report](development/browser_core/phase-13-bluejs-engine/TEST262_WINDOWS_REPORT.md).
 
 Design and planning documents live under [`development/`](development/); it is not source code. Each subdirectory covers one major component of the project, following the same design-first workflow: a plan is drafted before implementation starts, and updated as the design evolves.
 

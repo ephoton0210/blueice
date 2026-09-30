@@ -26,14 +26,31 @@ fn paint_command_fixtures() {
     let mut failures = Vec::new();
 
     for fixture in &fixtures {
-        let Some(expected) = fixture.section("paint") else { continue };
+        let Some(expected) = fixture.section("paint") else {
+            continue;
+        };
         checked += 1;
 
         let doc = blueice_html::parse(fixture.data());
-        let author: Vec<Rule> = fixture.section("css").map(blueice_css::parse).map(|s| s.rules).unwrap_or_default();
-        let sheets: Vec<(Origin, &[Rule])> = if author.is_empty() { vec![(Origin::Ua, &ua)] } else { vec![(Origin::Ua, &ua), (Origin::Author, &author)] };
+        let author: Vec<Rule> = fixture
+            .section("css")
+            .map(blueice_css::parse)
+            .map(|s| s.rules)
+            .unwrap_or_default();
+        let sheets: Vec<(Origin, &[Rule])> = if author.is_empty() {
+            vec![(Origin::Ua, &ua)]
+        } else {
+            vec![(Origin::Ua, &ua), (Origin::Author, &author)]
+        };
         let styles = cascade(&doc, &sheets);
-        let fragment = layout(&doc, doc.root(), &styles, Constraints { available_width: VIEWPORT_WIDTH });
+        let fragment = layout(
+            &doc,
+            doc.root(),
+            &styles,
+            Constraints {
+                available_width: VIEWPORT_WIDTH,
+            },
+        );
         let frame = paint(&fragment, &styles);
 
         let actual = dump_frame(&frame);
@@ -50,6 +67,14 @@ fn paint_command_fixtures() {
         }
     }
 
-    assert!(checked > 0, "at least one fixture must have a #paint section");
-    assert!(failures.is_empty(), "{} fixture(s) mismatched:\n\n{}", failures.len(), failures.join("\n"));
+    assert!(
+        checked > 0,
+        "at least one fixture must have a #paint section"
+    );
+    assert!(
+        failures.is_empty(),
+        "{} fixture(s) mismatched:\n\n{}",
+        failures.len(),
+        failures.join("\n")
+    );
 }

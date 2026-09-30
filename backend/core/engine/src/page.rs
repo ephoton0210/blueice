@@ -31,20 +31,14 @@ use blueice_ipc::{AiSnapshot, NodeAction};
 use blueice_layout::{layout, Constraints, Fragment};
 use blueice_paint::{paint, Color, Frame, PaintCommand, Rect};
 use blueice_raster::{rasterize, Pixmap};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use url::Url;
 
-/// The mutation requested through an element's `classList` proxy. Keeping it
-/// typed at the core boundary avoids sending JavaScript method spelling into
-/// the DOM owner as an unvalidated free-form operation.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ScriptClassListOperation {
-    Add,
-    Remove,
-    Toggle,
-    Contains,
-}
+// A child-visible handle must never numerically alias a node in another
+// document, even when both DOM allocators assign the same internal NodeId.
+static NEXT_SCRIPT_NODE_HANDLE: AtomicU64 = AtomicU64::new(1);
 
 pub struct Page {
     doc: Document,
@@ -57,6 +51,13 @@ pub struct Page {
     url: Option<String>,
     network_response: Option<blueice_ipc::extension::NetworkResponseInfo>,
     network_trace: Option<blueice_ipc::extension::NetworkTraceInfo>,
+    /// Monotonically changes whenever this navigable context receives a
+    /// replacement document. Page-script realms use it to distinguish a
+    /// same-origin navigation from the document that preceded it.
+    document_generation: u64,
+    /// Only handles minted for this exact document can resolve to its nodes.
+    script_nodes: HashMap<u64, NodeId>,
+    script_node_handles: HashMap<NodeId, u64>,
     hovered: Option<NodeId>,
     focused: Option<NodeId>,
     highlighted: Option<NodeId>,
@@ -108,6 +109,9 @@ impl Page {
             url: None,
             network_response: None,
             network_trace: None,
+            document_generation: 0,
+            script_nodes: HashMap::new(),
+            script_node_handles: HashMap::new(),
             hovered: None,
             focused: None,
             highlighted: None,
@@ -146,6 +150,9 @@ impl Page {
             .unwrap_or_default();
         self.network_response = None;
         self.network_trace = None;
+        self.document_generation = self.document_generation.wrapping_add(1);
+        self.script_nodes.clear();
+        self.script_node_handles.clear();
         self.scroll_y = 0.0;
         // A fresh document invalidates every NodeId a prior interaction
         // might have recorded -- holding onto a stale ID here would let
@@ -162,11 +169,7 @@ impl Page {
     /// navigation has no entry in the prior `styles` map; layout would leave
     /// script DOM state and the rendered frame out of sync.
     fn restyle_and_relayout(&mut self) {
-        let author = crate::stylesheet::extract_inline_stylesheets(&self.doc);
-        self.styles = cascade(
-            &self.doc,
-            &[(Origin::Ua, &self.ua), (Origin::Author, &author)],
-        );
+        self.recascade();
         self.relayout();
     }
 
@@ -183,10 +186,22 @@ impl Page {
         self.scroll_y = self.scroll_y.min(max_scroll);
     }
 
-    /// Fetches `url` over the network and loads it as the current
-    /// page -- except for the handful of built-in `about:` pages
-    /// ([`built_in_page`]), which never hit the network at all.
-    pub fn navigate(&mut self, url: &str) -> Result<(), blueice_net::FetchError> {
+    fn recascade(&mut self) {
+        let author = crate::stylesheet::extract_inline_stylesheets(&self.doc);
+        self.styles = cascade(
+            &self.doc,
+            &[(Origin::Ua, &self.ua), (Origin::Author, &author)],
+        );
+    }
+
+    /// Test-only direct navigation for exercising the fetch-to-document path.
+    ///
+    /// Production navigation goes through `session`, which obtains
+    /// gatekeeper clearance before fetching a non-built-in URL. Keeping this
+    /// helper out of non-test builds means external `Page` users cannot bypass
+    /// that boundary by calling a convenient network method directly.
+    #[cfg(test)]
+    pub(crate) fn navigate(&mut self, url: &str) -> Result<(), blueice_net::FetchError> {
         if self.load_built_in(url) {
             return Ok(());
         }
@@ -319,8 +334,8 @@ impl Page {
         self.url = url;
     }
 
-    /// The gated counterpart to [`Page::navigate`]'s network-fetching
-    /// half, per `phase-7-local-ai/PLAN.md`'s "Wiring design": `session.
+    /// The gated navigation completion path, per `phase-7-local-ai/PLAN.md`'s
+    /// "Wiring design": `session.
     /// rs`'s background thread does the actual gatekeeper round trips
     /// and the fetch itself (never touching `Page` state, since it
     /// doesn't run on the main thread); once that's all cleared, this
@@ -462,6 +477,26 @@ impl Page {
         true
     }
 
+    /// The live element receiving an owner-originated click. Text fragments
+    /// hit-test to text nodes, but the first event profile exposes element
+    /// listeners, so route to their nearest element ancestor.
+    pub(crate) fn click_event_target(&self, x: f64, y: f64) -> Option<NodeId> {
+        let node = hit_test(&self.fragment, x, y + self.scroll_y)?;
+        self.event_element_target(node)
+    }
+
+    pub(crate) fn event_element_target(&self, mut node: NodeId) -> Option<NodeId> {
+        if !self.doc.contains(node) {
+            return None;
+        }
+        loop {
+            if matches!(self.doc.data(node), NodeData::Element { .. }) {
+                return Some(node);
+            }
+            node = self.doc.parent(node)?;
+        }
+    }
+
     /// Hit-tests a pointer move the same way [`Page::click`] hit-tests
     /// a click, becoming the single source of truth for "what's
     /// hovered" -- see `phase-1-ai-representation-layer/PLAN.md` §4.
@@ -549,7 +584,9 @@ impl Page {
             .map(crate::credits::locale_from_url)
             .unwrap_or(blueice_i18n::DEFAULT_LOCALE);
         let Some(source) = self.gatekeeper_settings.as_ref() else {
-            self.settings_notice = Some(SettingsNotice::Rejected("the settings service is unavailable".to_string()));
+            self.settings_notice = Some(SettingsNotice::Rejected(
+                "the settings service is unavailable".to_string(),
+            ));
             let html = gatekeeper_settings_html(
                 &GatekeeperSettingsView::Unavailable,
                 locale,
@@ -570,7 +607,11 @@ impl Page {
                     .fetch()
                     .map(GatekeeperSettingsView::Settings)
                     .unwrap_or(GatekeeperSettingsView::Unavailable);
-                let html = gatekeeper_settings_html(&view, locale, Some(SettingsNotice::Rejected(error.clone())));
+                let html = gatekeeper_settings_html(
+                    &view,
+                    locale,
+                    Some(SettingsNotice::Rejected(error.clone())),
+                );
                 self.load_html(&html);
                 return Some(Err(error));
             }
@@ -621,22 +662,29 @@ impl Page {
                 phrase: element_attribute(&self.doc, node, "data-gatekeeper-phrase")?.to_string(),
             }),
             "add-extension" => {
-                let input = find_element_by_id(&self.doc, self.doc.root(), "gatekeeper-custom-extension")?;
+                let input =
+                    find_element_by_id(&self.doc, self.doc.root(), "gatekeeper-custom-extension")?;
                 Some(GatekeeperSettingsChange::AddBlockedDownloadExtension {
                     extension: element_attribute(&self.doc, input, "value")?.to_string(),
                 })
             }
             "remove-extension" => Some(GatekeeperSettingsChange::RemoveBlockedDownloadExtension {
-                extension: element_attribute(&self.doc, node, "data-gatekeeper-extension")?.to_string(),
+                extension: element_attribute(&self.doc, node, "data-gatekeeper-extension")?
+                    .to_string(),
             }),
             "add-popup-phrase" => {
-                let input = find_element_by_id(&self.doc, self.doc.root(), "gatekeeper-custom-popup-phrase")?;
+                let input = find_element_by_id(
+                    &self.doc,
+                    self.doc.root(),
+                    "gatekeeper-custom-popup-phrase",
+                )?;
                 Some(GatekeeperSettingsChange::AddBlockedPopupPhrase {
                     phrase: element_attribute(&self.doc, input, "value")?.to_string(),
                 })
             }
             "remove-popup-phrase" => Some(GatekeeperSettingsChange::RemoveBlockedPopupPhrase {
-                phrase: element_attribute(&self.doc, node, "data-gatekeeper-popup-phrase")?.to_string(),
+                phrase: element_attribute(&self.doc, node, "data-gatekeeper-popup-phrase")?
+                    .to_string(),
             }),
             _ => None,
         }
@@ -740,13 +788,17 @@ impl Page {
                 id.as_u64()
             ));
         }
-        self.script_set_text_content(id, value)
+        self.set_node_text_content(id, value)
     }
 
     /// Narrow v8 extension mutation: only text inside an ordinary rendered
     /// semantic leaf. Keeping the existing text node avoids removing links,
     /// controls, event targets, or arbitrary subtrees through textContent.
-    pub(crate) fn set_visible_leaf_text(&mut self, id: NodeId, value: String) -> Result<(), String> {
+    pub(crate) fn set_visible_leaf_text(
+        &mut self,
+        id: NodeId,
+        value: String,
+    ) -> Result<(), String> {
         self.validate_visible_text_write(id, &value)?;
         let children = self.doc.children(id).collect::<Vec<_>>();
         let [text_id] = children.as_slice() else {
@@ -787,7 +839,17 @@ impl Page {
                     attributes,
                 } if matches!(
                     tag_name.as_str(),
-                    "span" | "strong" | "em" | "b" | "i" | "small" | "code" | "mark" | "u" | "s" | "br"
+                    "span"
+                        | "strong"
+                        | "em"
+                        | "b"
+                        | "i"
+                        | "small"
+                        | "code"
+                        | "mark"
+                        | "u"
+                        | "s"
+                        | "br"
                 ) && !attributes.iter().any(|(name, _)| {
                     let name = name.to_ascii_lowercase();
                     matches!(
@@ -796,7 +858,10 @@ impl Page {
                     ) || name.starts_with("on")
                 }) && !self.styles.get(&node).is_some_and(|style| {
                     style.display.eq_ignore_ascii_case("none") || style.opacity() <= 0.0
-                }) => pending.extend(self.doc.children(node)),
+                }) =>
+                {
+                    pending.extend(self.doc.children(node))
+                }
                 _ => {
                     return Err(
                         "visible text content may replace only ordinary inline formatting"
@@ -805,7 +870,7 @@ impl Page {
                 }
             }
         }
-        self.script_set_text_content(id, value)
+        self.set_node_text_content(id, value)
     }
 
     fn validate_visible_text_write(&self, id: NodeId, value: &str) -> Result<(), String> {
@@ -815,7 +880,10 @@ impl Page {
         if value.trim().is_empty() {
             return Err("visible text cannot be empty".to_string());
         }
-        if value.chars().any(|ch| ch.is_control() && ch != '\n' && ch != '\t') {
+        if value
+            .chars()
+            .any(|ch| ch.is_control() && ch != '\n' && ch != '\t')
+        {
             return Err("visible text contains a control character".to_string());
         }
         if !self
@@ -1100,131 +1168,143 @@ impl Page {
         blueice_dom::dump(&self.doc)
     }
 
-    /// The script-host-facing `document.getElementById` operation.  It lives
-    /// here rather than exposing `Document` to BlueJS so only `core` owns
-    /// mutable DOM state across the process boundary.
-    pub fn script_get_element_by_id(&self, id: &str) -> Option<NodeId> {
+    /// Resolves the first element whose literal `id` attribute matches the
+    /// page-script request. This is crate-visible only: script authority must
+    /// enter through the core-owned IPC dispatcher rather than letting an
+    /// arbitrary caller mutate a page's DOM directly.
+    pub(crate) fn script_get_element_by_id(&self, id: &str) -> Option<NodeId> {
         find_element_by_id(&self.doc, self.doc.root(), id)
     }
 
-    /// Runs the existing CSS selector matcher against the live DOM rather
-    /// than growing a second, subtly divergent selector implementation for
-    /// JavaScript. Unsupported/invalid selectors are reported to the script
-    /// host as a normal runtime error.
-    pub fn script_query_selector(&self, selector: &str) -> Result<Option<NodeId>, String> {
-        Ok(self.script_query_selector_all(selector)?.into_iter().next())
+    /// Mints one stable child-private handle for a node in this document.
+    /// Handles are process-unique, but resolve only in the page that minted
+    /// them; they are not DOM `NodeId`s or page JavaScript values.
+    pub(crate) fn script_handle_for_node(&mut self, node: NodeId) -> u64 {
+        assert!(
+            self.doc.contains(node),
+            "cannot mint a handle for a foreign DOM node"
+        );
+        if let Some(handle) = self.script_node_handles.get(&node) {
+            return *handle;
+        }
+        let handle = NEXT_SCRIPT_NODE_HANDLE
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |next| {
+                next.checked_add(1)
+            })
+            .expect("script node handle space exhausted");
+        self.script_nodes.insert(handle, node);
+        self.script_node_handles.insert(node, handle);
+        handle
     }
 
-    pub fn script_query_selector_all(&self, selector: &str) -> Result<Vec<NodeId>, String> {
-        let stylesheet = blueice_css::parse(&format!("{selector} {{ color: inherit; }}"));
-        let selectors = stylesheet
-            .rules
-            .first()
-            .map(|rule| &rule.selectors)
-            .filter(|selectors| !selectors.is_empty())
-            .ok_or_else(|| format!("unsupported selector: {selector}"))?;
-        let mut nodes = Vec::new();
-        collect_matching_nodes(&self.doc, self.doc.root(), selectors, &mut nodes);
-        Ok(nodes)
+    /// Converts a core hit-test NodeId into the same child-private handle
+    /// used by script IPC, if the hit still belongs to this live document.
+    #[cfg(unix)]
+    pub(crate) fn script_handle_for_raw_node(&mut self, raw: u64) -> Option<u64> {
+        let node = NodeId::from_u64(raw);
+        self.doc
+            .contains(node)
+            .then(|| self.script_handle_for_node(node))
     }
 
-    /// Inline classic-script source in document order. The HTML parser keeps
-    /// `<script>` text opaque (as it must); Phase 13's script scheduler uses
-    /// this extraction point to hand that already-parsed text to BlueJS rather
-    /// than re-parsing HTML or scanning raw response bytes itself.
-    pub fn inline_script_sources(&self) -> Vec<String> {
-        let mut sources = Vec::new();
-        collect_inline_script_sources(&self.doc, self.doc.root(), &mut sources);
-        sources
+    /// Checks whether a child-private node handle still belongs to this
+    /// document. Detached nodes remain valid until their subtree is removed.
+    pub(crate) fn script_validate_node(&self, node: u64) -> Result<(), String> {
+        self.script_node(node).map(|_| ())
     }
 
-    /// Allocates a detached element for the script host. The caller must use
-    /// [`Self::script_append_child`] to attach it, exactly matching DOM's
-    /// `document.createElement`/`appendChild` split.
-    pub fn script_create_element(&mut self, tag_name: String) -> NodeId {
-        self.doc.create_node(NodeData::Element {
+    /// Creates a detached element for the page-script IPC surface.
+    pub(crate) fn script_create_element(&mut self, tag_name: String) -> Result<NodeId, String> {
+        if tag_name.is_empty() {
+            return Err("element tag name must not be empty".to_string());
+        }
+        Ok(self.doc.create_node(NodeData::Element {
             tag_name,
             attributes: Vec::new(),
-        })
+        }))
     }
 
-    pub fn script_create_text_node(&mut self, data: String) -> NodeId {
+    /// Creates a detached text node for the page-script IPC surface.
+    pub(crate) fn script_create_text_node(&mut self, data: String) -> NodeId {
         self.doc.create_node(NodeData::Text { data })
     }
 
-    /// Appends two IPC-supplied node handles only after validating that they
-    /// belong to this document and the child is detached. This turns the DOM
-    /// crate's internal panic precondition into a structured script error.
-    pub fn script_append_child(&mut self, parent: NodeId, child: NodeId) -> Result<(), String> {
-        if !self.doc.contains(parent) || !self.doc.contains(child) {
-            return Err("script node does not belong to this document".to_string());
+    /// Appends a detached child after validating that both raw IPC handles
+    /// belong to this document and cannot produce a malformed DOM tree.
+    pub(crate) fn script_append_child(&mut self, parent: u64, child: u64) -> Result<(), String> {
+        let parent = self.script_node(parent)?;
+        let child = self.script_node(child)?;
+        if parent == child {
+            return Err("a node cannot be appended to itself".to_string());
+        }
+        if child == self.doc.root() {
+            return Err("the document root cannot be appended".to_string());
+        }
+        if matches!(self.doc.data(parent), NodeData::Text { .. }) {
+            return Err("a text node cannot have children".to_string());
         }
         if self.doc.parent(child).is_some() {
-            return Err("script appendChild requires a detached child".to_string());
+            return Err("the child node is already attached".to_string());
         }
         self.doc.append_child(parent, child);
-        self.restyle_and_relayout();
+        // Newly created elements have no computed style until they join this
+        // document. Recompute author/UA styles before layout and paint.
+        self.recascade();
+        self.relayout();
         Ok(())
     }
 
-    pub fn script_insert_before(
+    /// Returns the recursive text content for one live page-script node.
+    pub(crate) fn script_text_content(&self, node: u64) -> Result<String, String> {
+        Ok(node_text_content(&self.doc, self.script_node(node)?))
+    }
+
+    /// Returns a snapshot of the current document's recursive text content for
+    /// the first read-only BlueJS page binding. The value is copied into the
+    /// realm callback at binding installation, so it grants neither a DOM
+    /// reference nor a cross-document handle to the VM.
+    pub(crate) fn script_document_text_content(&self) -> String {
+        node_text_content(&self.doc, self.doc.root())
+    }
+
+    /// Implements the narrow page-script `textContent` setter. Existing child
+    /// subtrees are removed before a non-empty replacement text node is
+    /// attached, matching the DOM operation's observable tree replacement.
+    pub(crate) fn script_set_text_content(
         &mut self,
-        parent: NodeId,
-        child: NodeId,
-        reference: Option<NodeId>,
+        node: u64,
+        value: String,
     ) -> Result<(), String> {
-        if !self.doc.contains(parent) || !self.doc.contains(child) {
-            return Err("script node does not belong to this document".to_string());
-        }
-        if self.doc.parent(child).is_some() {
-            return Err("script insertBefore requires a detached child".to_string());
-        }
-        if let Some(reference) = reference {
-            if !self.doc.contains(reference) || self.doc.parent(reference) != Some(parent) {
-                return Err("script insertBefore reference is not a child of parent".to_string());
+        let node = self.script_node(node)?;
+        if let NodeData::Text { data } = self.doc.data_mut(node) {
+            *data = value;
+        } else {
+            let children = self.doc.children(node).collect::<Vec<_>>();
+            for child in children {
+                self.doc.remove_subtree(child);
+            }
+            if !value.is_empty() {
+                let text = self.doc.create_node(NodeData::Text { data: value });
+                self.doc.append_child(node, text);
             }
         }
-        self.doc.insert_before(parent, child, reference);
-        self.restyle_and_relayout();
+        self.relayout();
         Ok(())
     }
 
-    pub fn script_remove_child(&mut self, parent: NodeId, child: NodeId) -> Result<(), String> {
-        if !self.doc.contains(parent) || !self.doc.contains(child) {
-            return Err("script node does not belong to this document".to_string());
-        }
-        if self.doc.parent(child) != Some(parent) {
-            return Err("script removeChild requires a child of parent".to_string());
-        }
-        self.doc.detach(child);
-        self.restyle_and_relayout();
-        Ok(())
-    }
-
-    pub fn script_remove(&mut self, node: NodeId) -> Result<(), String> {
-        if !self.doc.contains(node) {
-            return Err("script node does not belong to this document".to_string());
-        }
-        if self.doc.parent(node).is_none() {
-            return Err("script remove requires an attached node".to_string());
-        }
-        self.doc.detach(node);
-        self.restyle_and_relayout();
-        Ok(())
-    }
-
-    pub fn script_text_content(&self, node: NodeId) -> Result<String, String> {
-        if !self.doc.contains(node) {
-            return Err("script node does not belong to this document".to_string());
-        }
-        Ok(node_text_content(&self.doc, node))
+    fn script_node(&self, raw: u64) -> Result<NodeId, String> {
+        self.script_nodes
+            .get(&raw)
+            .copied()
+            .filter(|node| self.doc.contains(*node))
+            .ok_or_else(|| "unknown script node handle".to_string())
     }
 
     /// Replaces an element's children with one text node (or updates a Text
-    /// node in place), then recascades/layouts before the next render pass.
-    pub fn script_set_text_content(&mut self, node: NodeId, value: String) -> Result<(), String> {
+    /// node in place) for core-owned form edits, then restyles and relayouts.
+    fn set_node_text_content(&mut self, node: NodeId, value: String) -> Result<(), String> {
         if !self.doc.contains(node) {
-            return Err("script node does not belong to this document".to_string());
+            return Err("node does not belong to this document".to_string());
         }
         if let NodeData::Text { data } = self.doc.data_mut(node) {
             *data = value;
@@ -1240,163 +1320,6 @@ impl Page {
         Ok(())
     }
 
-    pub fn script_get_attribute(&self, node: NodeId, name: &str) -> Result<Option<String>, String> {
-        let attributes = self.script_element_attributes(node)?;
-        Ok(attributes
-            .iter()
-            .find(|(attribute, _)| attribute.eq_ignore_ascii_case(name))
-            .map(|(_, value)| value.clone()))
-    }
-
-    pub fn script_set_attribute(
-        &mut self,
-        node: NodeId,
-        name: String,
-        value: String,
-    ) -> Result<(), String> {
-        let attributes = self.script_element_attributes_mut(node)?;
-        match attributes
-            .iter_mut()
-            .find(|(attribute, _)| attribute.eq_ignore_ascii_case(&name))
-        {
-            Some((_, existing)) => *existing = value,
-            None => attributes.push((name, value)),
-        }
-        self.restyle_and_relayout();
-        Ok(())
-    }
-
-    pub fn script_remove_attribute(&mut self, node: NodeId, name: &str) -> Result<(), String> {
-        let attributes = self.script_element_attributes_mut(node)?;
-        attributes.retain(|(attribute, _)| !attribute.eq_ignore_ascii_case(name));
-        self.restyle_and_relayout();
-        Ok(())
-    }
-
-    pub fn script_inner_html(&self, node: NodeId) -> Result<String, String> {
-        if !self.doc.contains(node) {
-            return Err("script node does not belong to this document".to_string());
-        }
-        let mut html = String::new();
-        for child in self.doc.children(node) {
-            serialize_html_node(&self.doc, child, &mut html);
-        }
-        Ok(html)
-    }
-
-    pub fn script_get_style_property(
-        &self,
-        node: NodeId,
-        property: &str,
-    ) -> Result<String, String> {
-        let style = self
-            .script_get_attribute(node, "style")?
-            .unwrap_or_default();
-        let mut declarations = parse_inline_style(&style);
-        Ok(declarations
-            .remove(&css_property_name(property))
-            .unwrap_or_default())
-    }
-
-    pub fn script_set_style_property(
-        &mut self,
-        node: NodeId,
-        property: String,
-        value: String,
-    ) -> Result<(), String> {
-        let mut style = parse_inline_style(
-            &self
-                .script_get_attribute(node, "style")?
-                .unwrap_or_default(),
-        );
-        let property = css_property_name(&property);
-        if value.is_empty() {
-            style.remove(&property);
-        } else {
-            style.insert(property, value);
-        }
-        let serialized = style
-            .into_iter()
-            .map(|(property, value)| format!("{property}: {value}"))
-            .collect::<Vec<_>>()
-            .join("; ");
-        if serialized.is_empty() {
-            self.script_remove_attribute(node, "style")
-        } else {
-            self.script_set_attribute(node, "style".to_string(), serialized)
-        }
-    }
-
-    pub fn script_class_list(
-        &mut self,
-        node: NodeId,
-        operation: ScriptClassListOperation,
-        class_name: String,
-    ) -> Result<bool, String> {
-        let mut classes = self
-            .script_get_attribute(node, "class")?
-            .unwrap_or_default()
-            .split_whitespace()
-            .map(str::to_string)
-            .collect::<Vec<_>>();
-        let present = classes.iter().any(|class| class == &class_name);
-        let result = match operation {
-            ScriptClassListOperation::Contains => present,
-            ScriptClassListOperation::Add => {
-                if !present && !class_name.is_empty() {
-                    classes.push(class_name);
-                }
-                true
-            }
-            ScriptClassListOperation::Remove => {
-                classes.retain(|class| class != &class_name);
-                false
-            }
-            ScriptClassListOperation::Toggle => {
-                if present {
-                    classes.retain(|class| class != &class_name);
-                    false
-                } else if class_name.is_empty() {
-                    false
-                } else {
-                    classes.push(class_name);
-                    true
-                }
-            }
-        };
-        if !matches!(operation, ScriptClassListOperation::Contains) {
-            if classes.is_empty() {
-                self.script_remove_attribute(node, "class")?;
-            } else {
-                self.script_set_attribute(node, "class".to_string(), classes.join(" "))?;
-            }
-        }
-        Ok(result)
-    }
-
-    fn script_element_attributes(&self, node: NodeId) -> Result<&[(String, String)], String> {
-        if !self.doc.contains(node) {
-            return Err("script node does not belong to this document".to_string());
-        }
-        match self.doc.data(node) {
-            NodeData::Element { attributes, .. } => Ok(attributes),
-            _ => Err("script operation requires an element node".to_string()),
-        }
-    }
-
-    fn script_element_attributes_mut(
-        &mut self,
-        node: NodeId,
-    ) -> Result<&mut Vec<(String, String)>, String> {
-        if !self.doc.contains(node) {
-            return Err("script node does not belong to this document".to_string());
-        }
-        match self.doc.data_mut(node) {
-            NodeData::Element { attributes, .. } => Ok(attributes),
-            _ => Err("script operation requires an element node".to_string()),
-        }
-    }
-
     /// Advances this tab's render-pass generation. `session` calls this
     /// immediately before writing the corresponding frame.
     pub(crate) fn advance_frame_generation(&mut self) -> u64 {
@@ -1405,6 +1328,16 @@ impl Page {
             .checked_add(1)
             .expect("a page cannot render more than u64::MAX frames");
         self.frame_generation
+    }
+
+    /// Makes this page the successor of `previous` within one tab: its frame
+    /// generation continues from the departing page's (so a frontend that only
+    /// accepts newer frames never drops the first frame of a new document), and
+    /// its document generation is strictly greater (so a page-script realm bound
+    /// to the departed document can never alias this one).
+    pub(crate) fn continue_tab_generations_from(&mut self, previous: &Page) {
+        self.frame_generation = previous.frame_generation;
+        self.document_generation = previous.document_generation.wrapping_add(1);
     }
 
     /// The generation of this tab's most recently written frame, or zero
@@ -1441,6 +1374,40 @@ impl Page {
 
     pub fn url(&self) -> Option<&str> {
         self.url.as_deref()
+    }
+
+    /// Returns this document's explicitly opted-in BlueTS script declarations
+    /// in source order. The result has no loader, origin, capability, or
+    /// execution authority; an external `src` remains only a declaration for
+    /// a future authorized page-script loader.
+    pub fn blue_ts_script_declarations(&self) -> Vec<crate::script::BlueTsPageScriptDeclaration> {
+        crate::script::discover_blue_ts_page_scripts(&self.doc)
+    }
+
+    /// Returns supported standard JavaScript declarations in source order.
+    /// Like the BlueTS accessor, this is observation only: an external `src`
+    /// remains inert until a core-owned host authorizes a closed source graph.
+    pub fn blue_js_script_declarations(&self) -> Vec<crate::script::BlueJsPageScriptDeclaration> {
+        crate::script::discover_blue_js_page_scripts(&self.doc)
+    }
+
+    /// Returns every supported page-script declaration under one document-order
+    /// sequence. Only the launcher-supervised shared BlueTS/JavaScript host
+    /// consumes this inventory; it remains an observation API with no source
+    /// loader, compiler-profile, DOM, or execution authority.
+    pub fn combined_page_script_declarations(
+        &self,
+    ) -> Vec<crate::script::CombinedPageScriptDeclaration> {
+        crate::script::discover_combined_page_scripts(&self.doc)
+    }
+
+    /// The identity of the currently loaded document within this page.
+    ///
+    /// This is intentionally crate-visible: it is a core lifecycle token, not
+    /// web-observable state. It lets the script host invalidate a realm even
+    /// when a navigation keeps the same origin.
+    pub(crate) fn document_generation(&self) -> u64 {
+        self.document_generation
     }
 
     pub fn viewport_size(&self) -> (f64, f64) {
@@ -1688,97 +1655,6 @@ fn node_text_content(doc: &Document, node: NodeId) -> String {
             .map(|child| node_text_content(doc, child))
             .collect(),
     }
-}
-
-fn collect_inline_script_sources(doc: &Document, node: NodeId, sources: &mut Vec<String>) {
-    if let NodeData::Element { tag_name, .. } = doc.data(node) {
-        if tag_name.eq_ignore_ascii_case("script") {
-            sources.push(node_text_content(doc, node));
-            return;
-        }
-    }
-    for child in doc.children(node) {
-        collect_inline_script_sources(doc, child, sources);
-    }
-}
-
-fn collect_matching_nodes(
-    doc: &Document,
-    node: NodeId,
-    selectors: &[blueice_css::ComplexSelector],
-    nodes: &mut Vec<NodeId>,
-) {
-    if selectors
-        .iter()
-        .any(|selector| blueice_css::matches(doc, node, selector))
-    {
-        nodes.push(node);
-    }
-    for child in doc.children(node) {
-        collect_matching_nodes(doc, child, selectors, nodes);
-    }
-}
-
-fn serialize_html_node(doc: &Document, node: NodeId, html: &mut String) {
-    match doc.data(node) {
-        NodeData::Document => {
-            for child in doc.children(node) {
-                serialize_html_node(doc, child, html);
-            }
-        }
-        NodeData::Text { data } => html.push_str(&escape_html_text(data)),
-        NodeData::Element {
-            tag_name,
-            attributes,
-        } => {
-            html.push('<');
-            html.push_str(tag_name);
-            for (name, value) in attributes {
-                html.push(' ');
-                html.push_str(name);
-                html.push_str("=\"");
-                html.push_str(&escape_html_attribute(value));
-                html.push('"');
-            }
-            html.push('>');
-            for child in doc.children(node) {
-                serialize_html_node(doc, child, html);
-            }
-            html.push_str("</");
-            html.push_str(tag_name);
-            html.push('>');
-        }
-    }
-}
-
-fn escape_html_text(value: &str) -> String {
-    value.replace('&', "&amp;").replace('<', "&lt;")
-}
-
-fn escape_html_attribute(value: &str) -> String {
-    escape_html_text(value).replace('"', "&quot;")
-}
-
-fn parse_inline_style(style: &str) -> BTreeMap<String, String> {
-    style
-        .split(';')
-        .filter_map(|declaration| declaration.split_once(':'))
-        .map(|(property, value)| (css_property_name(property.trim()), value.trim().to_string()))
-        .filter(|(property, _)| !property.is_empty())
-        .collect()
-}
-
-fn css_property_name(property: &str) -> String {
-    let mut name = String::with_capacity(property.len() + 4);
-    for character in property.trim().chars() {
-        if character.is_ascii_uppercase() {
-            name.push('-');
-            name.push(character.to_ascii_lowercase());
-        } else {
-            name.push(character.to_ascii_lowercase());
-        }
-    }
-    name
 }
 
 fn crop(pixmap: &Pixmap, top: f64, width: f64, height: f64) -> Pixmap {
@@ -2131,6 +2007,64 @@ mod tests {
     }
 
     #[test]
+    fn page_exposes_only_explicit_blue_ts_script_declarations() {
+        let mut page = Page::new(320.0, 200.0);
+        page.load_html_str(
+            r#"
+                <script>const javascript = true;</script>
+                <script type="application/x-blueice-typescript">const typed: number = 42;</script>
+                <script type="application/x-blueice-typescript-module" src="/module.ts"></script>
+            "#,
+            Some("https://example.test/".to_string()),
+        );
+
+        assert_eq!(
+            page.blue_ts_script_declarations(),
+            vec![
+                crate::script::BlueTsPageScriptDeclaration::Inline {
+                    ordinal: 0,
+                    kind: crate::script::direct_page::DirectPageScriptKind::Classic,
+                    source: "const typed: number = 42;".to_string(),
+                },
+                crate::script::BlueTsPageScriptDeclaration::External {
+                    ordinal: 1,
+                    kind: crate::script::direct_page::DirectPageScriptKind::Module,
+                    src: "/module.ts".to_string(),
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn page_exposes_standard_javascript_declarations_separately_from_bluets() {
+        let mut page = Page::new(320.0, 200.0);
+        page.load_html_str(
+            r#"
+                <script>const javascript = true;</script>
+                <script type="module">export const module = true;</script>
+                <script type="application/x-blueice-typescript">const typed: number = 42;</script>
+            "#,
+            Some("https://example.test/".to_string()),
+        );
+
+        assert_eq!(
+            page.blue_js_script_declarations(),
+            vec![
+                crate::script::BlueJsPageScriptDeclaration::Inline {
+                    ordinal: 0,
+                    kind: crate::script::BlueJsPageScriptKind::Classic,
+                    source: "const javascript = true;".to_string(),
+                },
+                crate::script::BlueJsPageScriptDeclaration::Inline {
+                    ordinal: 1,
+                    kind: crate::script::BlueJsPageScriptKind::Module,
+                    source: "export const module = true;".to_string(),
+                },
+            ]
+        );
+    }
+
+    #[test]
     fn navigate_to_about_credits_loads_the_built_in_credits_page_without_network() {
         let mut page = Page::new(320.0, 200.0);
         page.navigate("about:credits").unwrap();
@@ -2252,24 +2186,36 @@ mod tests {
         )));
         page.navigate("about:settings?lang=en").unwrap();
         assert!(page.dom_dump().contains("known-malicious-domain"));
-        assert!(page.dom_dump().contains("extension-visible-text-social-engineering"));
-        assert!(page.dom_dump().contains("Exact host or dot-boundary subdomain match"));
+        assert!(page
+            .dom_dump()
+            .contains("extension-visible-text-social-engineering"));
+        assert!(page
+            .dom_dump()
+            .contains("Exact host or dot-boundary subdomain match"));
         assert!(page.dom_dump().contains("If rejected or unavailable"));
         assert!(page.dom_dump().contains("Active review order"));
-        assert!(page.dom_dump().contains("Compiled deterministic rule base (required)"));
+        assert!(page
+            .dom_dump()
+            .contains("Compiled deterministic rule base (required)"));
         assert!(page.dom_dump().contains("Compiled rules at this step"));
-        let model_name = find_element_by_id(page.doc(), page.doc().root(), "gatekeeper-model-name").unwrap();
+        let model_name =
+            find_element_by_id(page.doc(), page.doc().root(), "gatekeeper-model-name").unwrap();
         page.act(model_name, NodeAction::SetValue("local-model".to_string()));
         let configure_model = find_by_attribute(
-            page.doc(), page.doc().root(), "data-gatekeeper-action", "configure-model",
-        ).unwrap();
-        assert_eq!(page.gatekeeper_settings_change_for(configure_model), Some(
-            GatekeeperSettingsChange::ConfigureLocalModel {
+            page.doc(),
+            page.doc().root(),
+            "data-gatekeeper-action",
+            "configure-model",
+        )
+        .unwrap();
+        assert_eq!(
+            page.gatekeeper_settings_change_for(configure_model),
+            Some(GatekeeperSettingsChange::ConfigureLocalModel {
                 provider: "ollama".to_string(),
                 base_url: "http://127.0.0.1:11434/v1/".to_string(),
                 model: "local-model".to_string(),
-            }
-        ));
+            })
+        );
         let input =
             find_element_by_id(page.doc(), page.doc().root(), "gatekeeper-custom-host").unwrap();
         let add = find_by_attribute(
@@ -2291,74 +2237,136 @@ mod tests {
         assert!(page.dom_dump().contains("tracker.example"));
         assert!(page.dom_dump().contains("Your blocked hosts"));
         assert!(page.dom_dump().contains("Gatekeeper settings saved"));
-        let phrase_input = find_element_by_id(
-            page.doc(),
-            page.doc().root(),
-            "gatekeeper-custom-phrase",
-        ).unwrap();
+        let phrase_input =
+            find_element_by_id(page.doc(), page.doc().root(), "gatekeeper-custom-phrase").unwrap();
         let add_phrase = find_by_attribute(
             page.doc(),
             page.doc().root(),
             "data-gatekeeper-action",
             "add-phrase",
-        ).unwrap();
-        page.act(phrase_input, NodeAction::SetValue("Private Code".to_string()));
+        )
+        .unwrap();
+        page.act(
+            phrase_input,
+            NodeAction::SetValue("Private Code".to_string()),
+        );
         assert_eq!(
             page.gatekeeper_settings_change_for(add_phrase),
             Some(GatekeeperSettingsChange::AddBlockedPhrase {
                 phrase: "Private Code".to_string(),
             })
         );
-        assert_eq!(page.apply_gatekeeper_settings_control(add_phrase), Some(Ok(())));
+        assert_eq!(
+            page.apply_gatekeeper_settings_control(add_phrase),
+            Some(Ok(()))
+        );
         assert!(page.dom_dump().contains("private code"));
         let remove_phrase = find_by_attribute(
             page.doc(),
             page.doc().root(),
             "data-gatekeeper-action",
             "remove-phrase",
-        ).unwrap();
-        assert_eq!(page.apply_gatekeeper_settings_control(remove_phrase), Some(Ok(())));
+        )
+        .unwrap();
+        assert_eq!(
+            page.apply_gatekeeper_settings_control(remove_phrase),
+            Some(Ok(()))
+        );
         assert!(service.settings().custom_blocked_phrases.is_empty());
-        let extension_input = find_element_by_id(
-            page.doc(), page.doc().root(), "gatekeeper-custom-extension",
-        ).unwrap();
+        let extension_input =
+            find_element_by_id(page.doc(), page.doc().root(), "gatekeeper-custom-extension")
+                .unwrap();
         let add_extension = find_by_attribute(
-            page.doc(), page.doc().root(), "data-gatekeeper-action", "add-extension",
-        ).unwrap();
+            page.doc(),
+            page.doc().root(),
+            "data-gatekeeper-action",
+            "add-extension",
+        )
+        .unwrap();
         page.act(extension_input, NodeAction::SetValue(".zip".to_string()));
-        assert_eq!(page.apply_gatekeeper_settings_control(add_extension), Some(Ok(())));
+        assert_eq!(
+            page.apply_gatekeeper_settings_control(add_extension),
+            Some(Ok(()))
+        );
         assert!(page.dom_dump().contains(".zip"));
         let remove_extension = find_by_attribute(
-            page.doc(), page.doc().root(), "data-gatekeeper-action", "remove-extension",
-        ).unwrap();
-        assert_eq!(page.apply_gatekeeper_settings_control(remove_extension), Some(Ok(())));
-        assert!(service.settings().custom_blocked_download_extensions.is_empty());
+            page.doc(),
+            page.doc().root(),
+            "data-gatekeeper-action",
+            "remove-extension",
+        )
+        .unwrap();
+        assert_eq!(
+            page.apply_gatekeeper_settings_control(remove_extension),
+            Some(Ok(()))
+        );
+        assert!(service
+            .settings()
+            .custom_blocked_download_extensions
+            .is_empty());
         let popup_input = find_element_by_id(
-            page.doc(), page.doc().root(), "gatekeeper-custom-popup-phrase",
-        ).unwrap();
+            page.doc(),
+            page.doc().root(),
+            "gatekeeper-custom-popup-phrase",
+        )
+        .unwrap();
         let add_popup = find_by_attribute(
-            page.doc(), page.doc().root(), "data-gatekeeper-action", "add-popup-phrase",
-        ).unwrap();
-        page.act(popup_input, NodeAction::SetValue("send secrets".to_string()));
-        assert_eq!(page.apply_gatekeeper_settings_control(add_popup), Some(Ok(())));
+            page.doc(),
+            page.doc().root(),
+            "data-gatekeeper-action",
+            "add-popup-phrase",
+        )
+        .unwrap();
+        page.act(
+            popup_input,
+            NodeAction::SetValue("send secrets".to_string()),
+        );
+        assert_eq!(
+            page.apply_gatekeeper_settings_control(add_popup),
+            Some(Ok(()))
+        );
         assert!(page.dom_dump().contains("send secrets"));
         let remove_popup = find_by_attribute(
-            page.doc(), page.doc().root(), "data-gatekeeper-action", "remove-popup-phrase",
-        ).unwrap();
-        assert_eq!(page.apply_gatekeeper_settings_control(remove_popup), Some(Ok(())));
+            page.doc(),
+            page.doc().root(),
+            "data-gatekeeper-action",
+            "remove-popup-phrase",
+        )
+        .unwrap();
+        assert_eq!(
+            page.apply_gatekeeper_settings_control(remove_popup),
+            Some(Ok(()))
+        );
         assert!(service.settings().custom_blocked_popup_phrases.is_empty());
-        let model_name = find_element_by_id(page.doc(), page.doc().root(), "gatekeeper-model-name").unwrap();
+        let model_name =
+            find_element_by_id(page.doc(), page.doc().root(), "gatekeeper-model-name").unwrap();
         page.act(model_name, NodeAction::SetValue("local-model".to_string()));
         let configure_model = find_by_attribute(
-            page.doc(), page.doc().root(), "data-gatekeeper-action", "configure-model",
-        ).unwrap();
-        assert_eq!(page.apply_gatekeeper_settings_control(configure_model), Some(Ok(())));
+            page.doc(),
+            page.doc().root(),
+            "data-gatekeeper-action",
+            "configure-model",
+        )
+        .unwrap();
+        assert_eq!(
+            page.apply_gatekeeper_settings_control(configure_model),
+            Some(Ok(()))
+        );
         assert!(service.settings().model_review_active);
-        assert!(page.dom_dump().contains("Optional local model (blocks if unavailable)"));
+        assert!(page
+            .dom_dump()
+            .contains("Optional local model (blocks if unavailable)"));
         let disable_model = find_by_attribute(
-            page.doc(), page.doc().root(), "data-gatekeeper-action", "disable-model",
-        ).unwrap();
-        assert_eq!(page.apply_gatekeeper_settings_control(disable_model), Some(Ok(())));
+            page.doc(),
+            page.doc().root(),
+            "data-gatekeeper-action",
+            "disable-model",
+        )
+        .unwrap();
+        assert_eq!(
+            page.apply_gatekeeper_settings_control(disable_model),
+            Some(Ok(()))
+        );
         assert!(!service.settings().model_review_active);
         worker.join().unwrap();
         let _ = std::fs::remove_file(socket);
@@ -2495,7 +2503,8 @@ mod tests {
         );
         let title = page.script_get_element_by_id("title").unwrap();
         let original_text = page.doc.children(title).next().unwrap();
-        page.set_visible_leaf_text(title, "After".to_string()).unwrap();
+        page.set_visible_leaf_text(title, "After".to_string())
+            .unwrap();
         assert_eq!(page.doc.children(title).next(), Some(original_text));
         assert_eq!(
             page.snapshot(1, 1)
@@ -2519,9 +2528,13 @@ mod tests {
                 "x".repeat(blueice_ipc::extension::MAX_VISIBLE_LEAF_TEXT_BYTES + 1)
             )
             .is_err());
-        assert!(page.set_visible_leaf_text(title, "  \n  ".to_string()).is_err());
+        assert!(page
+            .set_visible_leaf_text(title, "  \n  ".to_string())
+            .is_err());
         page.navigate("about:credits").unwrap();
-        assert!(page.set_visible_leaf_text(title, "changed".to_string()).is_err());
+        assert!(page
+            .set_visible_leaf_text(title, "changed".to_string())
+            .is_err());
     }
 
     #[test]
@@ -2545,7 +2558,14 @@ mod tests {
                 .and_then(|node| node.name.as_deref()),
             Some("After")
         );
-        for id in ["linked", "event", "named", "hidden-child", "hidden", "field"] {
+        for id in [
+            "linked",
+            "event",
+            "named",
+            "hidden-child",
+            "hidden",
+            "field",
+        ] {
             let node = page.script_get_element_by_id(id).unwrap();
             assert!(
                 page.set_visible_text_content(node, "must not change".to_string())
@@ -2772,6 +2792,33 @@ mod tests {
         assert!(page.snapshot(0, 1).nodes.is_empty());
     }
 
+    #[test]
+    fn script_appended_element_receives_author_style_before_rasterization() {
+        let mut page = Page::new(320.0, 200.0);
+        page.load_html_str(
+            "<style>span { display: block; width: 100px; height: 30px; background-color: red; }</style><div id='target'></div>",
+            None,
+        );
+        let mut static_page = Page::new(320.0, 200.0);
+        static_page.load_html_str(
+            "<style>span { display: block; width: 100px; height: 30px; background-color: red; }</style><div id='target'><span></span></div>",
+            None,
+        );
+        assert_eq!(
+            static_page.render_visible().get_pixel(0, 0),
+            [255, 0, 0, 255]
+        );
+        let baseline = page.render_visible();
+        let parent = page.script_get_element_by_id("target").unwrap();
+        let child = page.script_create_element("span".to_string()).unwrap();
+        let parent = page.script_handle_for_node(parent);
+        let child = page.script_handle_for_node(child);
+        page.script_append_child(parent, child).unwrap();
+        let appended = page.render_visible();
+        assert_ne!(baseline.get_pixel(0, 0), appended.get_pixel(0, 0));
+        assert_eq!(appended.get_pixel(0, 0), [255, 0, 0, 255]);
+    }
+
     fn all_text(frame: &Frame) -> String {
         frame
             .commands
@@ -2805,7 +2852,9 @@ mod tests {
         });
         let mut page = Page::new(320.0, 200.0);
         page.navigate(&format!("http://{addr}")).unwrap();
-        let response = page.network_response().expect("a network page has response metadata");
+        let response = page
+            .network_response()
+            .expect("a network page has response metadata");
         assert_eq!(response.method, "GET");
         assert_eq!(response.status, 200);
         assert_eq!(response.final_url, format!("http://{addr}"));

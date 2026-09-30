@@ -34,15 +34,15 @@ use blueice_ipc::local_socket::ensure_private_dir;
 use blueice_net::download::backend::validate_url;
 use blueice_net::download::clearance::{Blocked, Reviewer};
 use blueice_net::download::credentials::{
-    FtpsCredentialRef, SftpCredentialRef, SftpPrivateKeyPassphraseRef, delete_ftps_password,
-    delete_sftp_password, delete_sftp_private_key_passphrase, save_ftps_password,
-    save_sftp_password, save_sftp_private_key_passphrase,
+    delete_ftps_password, delete_sftp_password, delete_sftp_private_key_passphrase,
+    save_ftps_password, save_sftp_password, save_sftp_private_key_passphrase, FtpsCredentialRef,
+    SftpCredentialRef, SftpPrivateKeyPassphraseRef,
 };
 use blueice_net::download::file_name::choose_file_name;
 use blueice_net::download::probe::probe;
 use blueice_net::download::sidecar::remove_partials;
 use blueice_net::download::transfer::{DownloadSpec, Snapshot, Transfer};
-use blueice_net::download::{DownloadOptions, MAX_TRANSFER_SEGMENTS, bounded_transfer_text};
+use blueice_net::download::{bounded_transfer_text, DownloadOptions, MAX_TRANSFER_SEGMENTS};
 use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::fmt;
 use std::io;
@@ -1516,11 +1516,9 @@ mod tests {
         });
 
         assert!(persister.wait_for(revision).is_err());
-        assert!(
-            persister
-                .last_error()
-                .is_some_and(|error| !error.is_empty())
-        );
+        assert!(persister
+            .last_error()
+            .is_some_and(|error| !error.is_empty()));
         drop(persister);
         let _ = std::fs::remove_file(path);
     }
@@ -1599,11 +1597,10 @@ mod tests {
         assert!(blocked.reason.len() <= MAX_TRANSFER_TEXT_BYTES);
         assert!(blocked.category.len() <= MAX_TRANSFER_TEXT_BYTES);
         assert_eq!(info.events.len(), MAX_EVENTS);
-        assert!(
-            info.events
-                .iter()
-                .all(|event| event.message.len() <= MAX_TRANSFER_TEXT_BYTES)
-        );
+        assert!(info
+            .events
+            .iter()
+            .all(|event| event.message.len() <= MAX_TRANSFER_TEXT_BYTES));
         assert_eq!(info.segments.len(), MAX_TRANSFER_SEGMENTS);
     }
 }
