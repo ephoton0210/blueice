@@ -2726,6 +2726,45 @@ optional property is `T | undefined`, and an unannotated non-literal default
 needs an annotation. Declaration output lists the properties first, in parameter
 order.
 
+### J.3.2.4 Accessors
+
+`get name(): T { .. }` and `set name(value: T) { .. }` are recognized when `get`
+or `set` is followed by a name and `(`; a member merely named `get` (`get = 1`,
+`get()`) is still a field or method. The accessibility keyword and the
+annotations are erased and everything else is emitted as written, so the output
+keeps the original accessors. Grammar errors (a getter with a parameter, a setter
+with none, two, an optional, defaulted or rest one, or a result annotation) are
+parse errors, as TypeScript reports them.
+
+A getter and its setter are one property in the type record. It reads as the
+getter's annotation, or the setter's parameter annotation when the getter has
+none, and is read-only when there is no setter, so assignments through it, in a
+constructor and through an alias, are checked by the existing readonly rules. A
+setter-only property reads as its parameter type, which TypeScript also allows.
+Accessor bodies are checked by the method machinery through a method-shaped view
+(`ClassDeclaration::accessor_methods`): a getter must return its annotated type
+and cannot fall off the end, and a setter's result is `void`, so returning a
+value is an error.
+
+TypeScript 5.9 allows a getter and setter of unrelated types, which needs a read
+type and a write type on one property. BlueTS records one type, so a pair whose
+types differ is refused as unsupported rather than typed as one of them. For the
+same reason of inference, a getter with no annotation and no annotated setter is
+refused: its type would come from its body. An accessor pair must agree on
+accessibility (TS2808) and on placement (an instance and a static accessor of one
+name are separate members).
+
+Inheritance. A member cannot change kind when redeclared: a property over an
+accessor or method, an accessor over a property or method, a method over a
+property or accessor. The nearest declaration is found in the chain of local base
+classes; for a base outside the module only its type record is known, so an
+accessor redeclaring one of its members is unsupported. An accessor over an
+accessor must be assignable to the base property type.
+
+Declaration output follows tsc: each accessor is `get name(): T;` or
+`set name(param: T);` in source order, a private one is `private get name();` and
+`private set name(value);`, with the setter's parameter renamed as tsc does.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process

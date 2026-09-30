@@ -257,6 +257,38 @@ fn direct_page_parameter_properties_assign_after_super_like_node() {
 }
 
 #[test]
+fn direct_page_accessors_get_set_static_and_inherit_like_node() {
+    let source = "class Temperature { \
+        private _celsius: number = 0; static made: number = 0; \
+        get celsius(): number { return this._celsius; } \
+        set celsius(value: number) { this._celsius = value; } \
+        get fahrenheit(): number { return this._celsius * 2 + 32; } \
+        set kelvin(value: number) { this._celsius = value - 273; } \
+        static get unit(): number { Temperature.made = Temperature.made + 1; return Temperature.made; } \
+        constructor(start: number) { this.celsius = start; } } \
+        class Warm extends Temperature { \
+        get celsius(): number { return super.celsius + 1; } \
+        set celsius(value: number) { super.celsius = value; } } \
+        const t = new Temperature(10); t.celsius = t.celsius + 5; t.kelvin = 300; \
+        const w = new Warm(20); \
+        t.celsius + t.fahrenheit + Temperature.unit + Temperature.unit + w.celsius;";
+    let artifact = compile_direct_script(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+        class_options(),
+    )
+    .unwrap();
+    let mut owner = DirectPageRealmOwner::default();
+    owner.open_realm(7, origin()).unwrap();
+    let attachment = owner.attach_script(&artifact, 7, &origin()).unwrap();
+    // Node runs the same program (annotations erased) to 27 + 86 + 1 + 2 + 21.
+    assert_eq!(
+        owner.execute_program(7, &attachment).unwrap(),
+        bluejs::Value::Number(137.0)
+    );
+}
+
+#[test]
 fn direct_page_while_runs_zero_and_multiple_iterations() {
     let artifact = compile_direct_script(
         ENTRY,

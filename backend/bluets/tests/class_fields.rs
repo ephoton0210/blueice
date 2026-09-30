@@ -271,10 +271,11 @@ fn fields_are_refused_for_an_es2020_target_until_they_can_be_lowered() {
 }
 
 #[test]
-fn accessors_and_ecmascript_private_names_are_still_refused() {
+fn ecmascript_private_names_and_computed_members_are_still_refused() {
     for source in [
-        "class A { get x(): number { return 1; } }",
         "class A { #x = 1; }",
+        "class A { #m() {} }",
+        "class A { ['computed'] = 1; }",
     ] {
         let compiled = compile_with(source, CompilerOptions::default());
         assert!(

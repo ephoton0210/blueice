@@ -315,7 +315,12 @@ impl ModuleChecker<'_> {
 
     /// The type of `name` on the named base class, found through its own or
     /// inherited members.
-    fn inherited_member(&self, base_name: &str, name: &str, is_static: bool) -> Option<Type> {
+    pub(super) fn inherited_member(
+        &self,
+        base_name: &str,
+        name: &str,
+        is_static: bool,
+    ) -> Option<Type> {
         let surface = if is_static {
             self.values.get(base_name)
         } else {

@@ -160,6 +160,18 @@ impl ModuleChecker<'_> {
                 field.name_span.clone(),
             ));
         }
+        for accessor in class
+            .members
+            .iter()
+            .filter_map(|member| member.accessor.as_ref())
+        {
+            members.push((
+                accessor.name.clone(),
+                accessor.is_static,
+                accessor.visibility,
+                accessor.name_span.clone(),
+            ));
+        }
         for group in &class.method_groups {
             let indices: Vec<usize> = group
                 .signature_member_indices

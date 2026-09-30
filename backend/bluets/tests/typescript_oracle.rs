@@ -194,6 +194,24 @@ const CASES: &[OracleCase] = &[
         expected_diagnostics: &[],
     },
     OracleCase {
+        name: "class-accessor-emit-runtime",
+        modules: &[(
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/class-accessor-emit-runtime/main.ts"),
+        )],
+        expected_stdout: Some("27 86 C1 C2 21 _celsius\nconstructor,celsius,fahrenheit,kelvin\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
+        name: "class-accessor-emit-declaration",
+        modules: &[(
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/class-accessor-emit-declaration/main.ts"),
+        )],
+        expected_stdout: Some(""),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
         name: "generic-property",
         modules: &[(
             "memory:///main.ts",
@@ -4853,6 +4871,12 @@ fn expected_declaration(case: &OracleCase) -> Option<&'static str> {
              export declare class Derived extends Base {\n    q: number;\n    \
              protected r?: number | undefined;\n    constructor(q: number, r?: number | undefined);\n}\n\
              export declare class Plain {\n    constructor(a: number, b?: string);\n}\n",
+        ),
+        "class-accessor-emit-declaration" => Some(
+            "export declare class A {\n    private _v;\n    get v(): number;\n    set v(x: number);\n    \
+             get ro(): string;\n    set wo(x: number);\n    static get count(): number;\n    \
+             static set count(x: number);\n    protected get p(): number;\n    private get hidden();\n    \
+             private set hidden(value);\n    set both(x: number);\n    get both(): number;\n}\n",
         ),
         _ => None,
     }

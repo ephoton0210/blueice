@@ -184,8 +184,8 @@ impl<'a> ModuleChecker<'a> {
                         self.diagnostics.push(Diagnostic::error(
                             DiagnosticCode::UnsupportedSyntax,
                             class.span.clone(),
-                            "a class member other than a constructor, method or public field \
-                             (an accessor or private member) is not supported yet",
+                            "a class member other than a constructor, method, field or accessor \
+                             (an ECMAScript private name or a computed member) is not supported yet",
                         ));
                     }
                 }
@@ -712,6 +712,7 @@ impl<'a> ModuleChecker<'a> {
                     self.validate_class_constructor_group(class);
                     self.validate_class_method_groups(class);
                     self.validate_class_method_overrides(class);
+                    self.validate_class_accessors(class);
                     self.validate_class_visibility(class);
                     self.with_class_access(class, |checker| {
                         checker.validate_class_fields(class);

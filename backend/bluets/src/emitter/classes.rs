@@ -358,6 +358,52 @@ pub(super) fn emit_class_declaration(
                 output.push_str(&type_to_ts(&value));
             }
             output.push_str(";\n");
+        } else if let Some(accessor) = &member.accessor {
+            output.push_str("    ");
+            output.push_str(visibility_prefix(accessor.visibility));
+            if accessor.is_static {
+                output.push_str("static ");
+            }
+            output.push_str(if accessor.getter { "get " } else { "set " });
+            output.push_str(&accessor.name);
+            if accessor.visibility == Visibility::Private {
+                // A private accessor is declared by name only; TypeScript
+                // names a setter's parameter `value`.
+                output.push_str(if accessor.getter {
+                    "();\n"
+                } else {
+                    "(value);\n"
+                });
+                continue;
+            }
+            if accessor.getter {
+                let result = accessor.return_type.clone().or_else(|| {
+                    class
+                        .members
+                        .iter()
+                        .filter_map(|other| other.accessor.as_ref())
+                        .find(|other| {
+                            !other.getter
+                                && other.name == accessor.name
+                                && other.is_static == accessor.is_static
+                        })
+                        .and_then(|setter| setter.parameters.first())
+                        .and_then(|parameter| parameter.annotation.clone())
+                });
+                let Some(result) = result else {
+                    return Err(Diagnostic::error(
+                        DiagnosticCode::UnsupportedSyntax,
+                        accessor.span.clone(),
+                        "declaration output requires an explicit getter return type",
+                    ));
+                };
+                output.push_str("(): ");
+                output.push_str(&type_to_ts(&result));
+                output.push_str(";\n");
+            } else {
+                output.push_str(&parameters_to_ts(&accessor.parameters));
+                output.push_str(";\n");
+            }
         } else if member.method.is_some() {
             let Some(group) = class.method_groups.iter().find(|group| {
                 group.signature_member_indices.contains(&index)

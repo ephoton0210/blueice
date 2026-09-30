@@ -67,6 +67,8 @@ impl Parser {
                 );
             } else if member.kind == ClassMemberKind::Method {
                 self.parse_class_method(opening + 1 + member.token_start, member);
+            } else if member.kind == ClassMemberKind::Accessor {
+                self.parse_class_accessor(opening + 1 + member.token_start, member);
             } else if member.kind == ClassMemberKind::Opaque
                 && !body
                     .get(member.token_start + 1)
@@ -298,6 +300,85 @@ impl Parser {
         true
     }
 
+    /// `[accessibility] [static] get|set name(..) [: T] { .. }`. The result
+    /// annotation and the value parameter's annotation are erased; the checker
+    /// requires a getter's annotation and a setter's parameter annotation.
+    fn parse_class_accessor(&mut self, start: usize, member: &mut ClassMemberShell) {
+        let end = start + (member.token_end - member.token_start);
+        let Some(modifiers) = scan_member_modifiers(&self.tokens, start, end) else {
+            return;
+        };
+        self.erase_visibility_keyword(&modifiers);
+        let keyword = modifiers.name_index;
+        let getter = self.tokens[keyword].is("get");
+        let name_token = self.tokens[keyword + 1].clone();
+        self.index = keyword + 2;
+        let parameters = self.parse_parameters();
+        let return_start = self.current().start;
+        let (return_type, return_type_span) = if self.consume(":") {
+            let type_start = self.current().start;
+            let value = self.parse_type_until(&["{"]);
+            let type_end = self.previous().end;
+            self.edits.push(TextEdit {
+                start: return_start,
+                end: self.current().start,
+                replacement: String::new(),
+            });
+            (
+                Some(value),
+                Some(SourceSpan::new(&self.id, type_start, type_end)),
+            )
+        } else {
+            (None, None)
+        };
+        // The accessor grammar: a getter has no parameters; a setter has one
+        // plain parameter, no default, and no result annotation.
+        let arity_error = if getter {
+            (!parameters.is_empty()).then_some("a getter cannot have parameters")
+        } else if return_type.is_some() {
+            Some("a setter cannot have a return type annotation")
+        } else if parameters.len() != 1 {
+            Some("a setter must have exactly one parameter")
+        } else if parameters[0].rest || parameters[0].optional || parameters[0].pattern.is_some() {
+            Some("a setter parameter cannot be a rest, optional, defaulted or destructured parameter")
+        } else {
+            None
+        };
+        if let Some(message) = arity_error {
+            self.error_at(member.span.clone(), DiagnosticCode::ParseError, message);
+        }
+        if !self.consume("{") {
+            self.error_here(DiagnosticCode::ParseError, "expected an accessor body");
+            return;
+        }
+        let body_start = self.previous().start;
+        let mut body = Vec::new();
+        let mut returns = Vec::new();
+        let mut locals = Vec::new();
+        self.parse_function_body(body_start, &mut body, &mut returns, &mut locals);
+        if self.previous().end != member.span.end {
+            self.error_at(
+                member.span.clone(),
+                DiagnosticCode::ParseError,
+                "accessor body did not match its source boundary",
+            );
+            return;
+        }
+        member.name = Some(name_token.text.clone());
+        member.accessor = Some(ClassAccessor {
+            name: name_token.text.clone(),
+            name_span: name_token.span(&self.id),
+            visibility: modifiers.visibility,
+            is_static: modifiers.is_static,
+            getter,
+            parameters,
+            return_type,
+            return_type_span,
+            body,
+            span: member.span.clone(),
+        });
+    }
+
     fn parse_class_method(&mut self, start: usize, member: &mut ClassMemberShell) {
         let end = start + (member.token_end - member.token_start);
         let Some(modifiers) = scan_member_modifiers(&self.tokens, start, end) else {
@@ -501,16 +582,31 @@ fn class_member_shells(module: &str, tokens: &[Token]) -> Vec<ClassMemberShell> 
             .as_ref()
             .map_or(index, |modifiers| modifiers.name_index);
         let name_token = &tokens[name_index];
-        let method_head = modifiers
+        // `get name(` / `set name(` is an accessor; a member named `get`
+        // followed by `(` is an ordinary method.
+        let accessor_head = modifiers
             .as_ref()
             .is_some_and(|modifiers| modifiers.readonly_token.is_none())
-            && matches!(name_token.kind, TokenKind::Identifier | TokenKind::Keyword)
+            && (name_token.is("get") || name_token.is("set"))
+            && tokens.get(name_index + 1).is_some_and(|token| {
+                matches!(token.kind, TokenKind::Identifier | TokenKind::Keyword)
+            })
             && tokens
-                .get(name_index + 1)
+                .get(name_index + 2)
                 .is_some_and(|token| token.is("("));
+        let head_index = name_index + usize::from(accessor_head);
+        let name_token = &tokens[head_index];
+        let method_head = accessor_head
+            || (modifiers
+                .as_ref()
+                .is_some_and(|modifiers| modifiers.readonly_token.is_none())
+                && matches!(name_token.kind, TokenKind::Identifier | TokenKind::Keyword)
+                && tokens
+                    .get(head_index + 1)
+                    .is_some_and(|token| token.is("(")));
         if method_head {
             if let Some(parameters_end) =
-                matching_closing_delimiter(tokens, name_index + 1, tokens.len(), "(", ")")
+                matching_closing_delimiter(tokens, head_index + 1, tokens.len(), "(", ")")
             {
                 let boundary = method_body_boundary(tokens, parameters_end + 1);
                 let member_end = match boundary
@@ -529,7 +625,9 @@ fn class_member_shells(module: &str, tokens: &[Token]) -> Vec<ClassMemberShell> 
                         tokens,
                         start,
                         end,
-                        if !static_modifier && name_token.is("constructor") {
+                        if accessor_head {
+                            ClassMemberKind::Accessor
+                        } else if !static_modifier && name_token.is("constructor") {
                             ClassMemberKind::Constructor
                         } else {
                             ClassMemberKind::Method
@@ -613,5 +711,6 @@ fn class_member_shell(
         constructor: None,
         method: None,
         field: None,
+        accessor: None,
     }
 }

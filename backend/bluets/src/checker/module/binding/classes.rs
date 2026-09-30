@@ -8,6 +8,7 @@ use super::functions::hoist_local_functions;
 use super::*;
 use crate::parser::{ClassConstructor, ClassDeclaration, ClassMemberKind, ClassMethod, Visibility};
 
+mod accessors;
 mod fields;
 mod overrides;
 mod super_calls;
@@ -718,10 +719,12 @@ impl ModuleChecker<'_> {
             .get(&class.name)
             .cloned()
             .unwrap_or_else(|| class_constructor_side_type(class));
+        let accessor_methods = class.accessor_methods();
         for method in class
             .members
             .iter()
             .filter_map(|member| member.method.as_ref())
+            .chain(accessor_methods.iter())
         {
             self.validate_class_parameters(&method.parameters, method.body.is_some(), "method");
             let return_type = method.return_type.as_ref().filter(|return_type| {
@@ -1279,6 +1282,7 @@ pub(in crate::checker::module) fn class_is_fully_structured(class: &ClassDeclara
         ClassMemberKind::Constructor => member.constructor.is_some(),
         ClassMemberKind::Method => member.method.is_some(),
         ClassMemberKind::Field => member.field.is_some(),
+        ClassMemberKind::Accessor => member.accessor.is_some(),
         ClassMemberKind::Opaque => false,
     })
 }
@@ -1324,6 +1328,7 @@ pub(in crate::checker) fn class_instance_type(class: &ClassDeclaration) -> Type 
 
 fn class_method_fields(class: &ClassDeclaration, is_static: bool) -> Vec<TypeField> {
     let mut fields = fields::class_field_type_fields(class, is_static);
+    fields.extend(accessors::class_accessor_type_fields(class, is_static));
     for group in &class.method_groups {
         if group.is_static != is_static {
             continue;

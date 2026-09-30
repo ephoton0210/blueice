@@ -51,7 +51,7 @@ pub use emitter::{
     SourceMap,
 };
 pub use parser::{
-    parse_module, ClassConstructor, ClassDeclaration, ClassField, ClassMemberKind,
+    parse_module, ClassAccessor, ClassConstructor, ClassDeclaration, ClassField, ClassMemberKind,
     ClassMemberShell, ClassMethod, ClassMethodGroup, Declaration, FunctionBodyItem,
     FunctionCatchClause, FunctionDeclaration, FunctionElseBranch, FunctionIfStatement,
     FunctionTryStatement, FunctionWhileStatement, ImportDeclaration, InterfaceDeclaration, Module,

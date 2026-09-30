@@ -328,7 +328,7 @@ fn transpile_only_emits_structured_classes_and_still_refuses_unstructured_ones()
     ));
     assert!(structured.output.is_some(), "{:#?}", structured.diagnostics);
     // A member the parser cannot erase is refused even without checking.
-    let unstructured = compile_transpile("class A { get x() { return 1; } }");
+    let unstructured = compile_transpile("class A { #x = 1; }");
     assert!(unstructured.output.is_none());
     assert!(unstructured
         .diagnostics
@@ -4090,8 +4090,8 @@ fn unsupported_and_misplaced_syntax_is_diagnosed_not_passed_through() {
             "decorators and TSX/JSX are not in the initial BlueTS matrix",
         ),
         (
-            "class A { get x() { return 1; } }",
-            "a class member other than a constructor, method or public field",
+            "class A { #x = 1; }",
+            "a class member other than a constructor, method, field or accessor",
         ),
         (
             "abstract class A {}",

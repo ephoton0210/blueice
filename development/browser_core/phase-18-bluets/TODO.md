@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: J.3.2.4.** H and I are complete. The requested class, enum,
+**Current leaf: J.3.2.5.** H and I are complete. The requested class, enum,
 decorator, namespace, JSX, CommonJS, and package-resolution expansion has
 passed J.1/J.2 planning; implementation and pinned-`tsc` parity remain open.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
@@ -2203,8 +2203,33 @@ done to the page-runs-and-debugs goal at the top of this file.
       tests plus a bridge test with Node parity pin codes and text. A
       parameter named with a contextual keyword (`readonly`, `public`) is not
       accepted as a parameter name; that pre-dates this work and is left open.
-    - [ ] **J.3.2.4** Accessors (`get`/`set`, static, paired types, getter-only
-      readonly semantics, override rules) and their declaration output.
+    - [x] **J.3.2.4** Accessors: `[accessibility] [static] get|set name(..)`.
+      The parser structures each accessor (a getter takes no parameter; a
+      setter takes exactly one plain parameter and no result annotation, else a
+      parse error) and erases the accessibility keyword and the annotations, so
+      the emitted `get`/`set` are the original text. A getter/setter pair is
+      one property in the class's type record: read as the getter's type
+      (or, for a getter with no annotation, the setter's parameter
+      annotation), read-only when there is no setter, and writable with a
+      setter (a setter-only property reads as the setter's type, as in
+      TypeScript). Accessor bodies are checked as methods (a getter returns its
+      annotated type; a setter returns nothing). A pair must agree on
+      accessibility and, because a separate write type is not modelled, on its
+      type; a getter with no annotation anywhere, a pair with unrelated types,
+      an auto-accessor (`accessor x`) and a computed or `#private` name are
+      refused as unsupported. Duplicate accessors and an accessor sharing a name
+      with a field, method or parameter property are duplicate declarations.
+      Redeclaring a member as a different kind is an error in every direction
+      (property/accessor/method), and an accessor over an accessor must be
+      assignable to the base type; a member redeclared over one in an imported
+      base is unsupported when its kind cannot be told. Visibility and
+      nominal rules are those of J.3.2.2. Declaration output matches tsc
+      (`get v(): number;`, `private get h();`, `private set h(value);`); the
+      direct bridge lowers each to a BlueJS accessor, including `super.x`.
+      35 `class-accessor-*` entries join the pinned-TypeScript class matrix
+      (all agree; three accepted by TypeScript are deferred as unsupported),
+      two more compare emitted stdout and the `.d.ts` with pinned tsc, and 12
+      public tests plus a bridge test with Node parity pin codes and text.
     - [ ] **J.3.2.5** ECMAScript private names (`#x` fields, methods,
       accessors, `#x in obj`) and their brand behaviour.
     - [ ] **J.3.2.6** Static blocks and static initialization order.

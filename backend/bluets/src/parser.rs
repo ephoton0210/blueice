@@ -225,6 +225,7 @@ pub enum ClassMemberKind {
     Constructor,
     Method,
     Field,
+    Accessor,
     Opaque,
 }
 
@@ -242,6 +243,25 @@ pub struct ClassMemberShell {
     pub constructor: Option<ClassConstructor>,
     pub method: Option<ClassMethod>,
     pub field: Option<ClassField>,
+    pub accessor: Option<ClassAccessor>,
+}
+
+/// A `get name(): T { .. }` or `set name(value: T) { .. }` member.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ClassAccessor {
+    pub name: String,
+    pub name_span: SourceSpan,
+    pub visibility: Visibility,
+    pub is_static: bool,
+    /// `true` for `get`, `false` for `set`.
+    pub getter: bool,
+    /// Empty for a getter; the one value parameter for a setter.
+    pub parameters: Vec<Parameter>,
+    /// A getter's annotated result. A setter has none.
+    pub return_type: Option<Type>,
+    pub return_type_span: Option<SourceSpan>,
+    pub body: Vec<FunctionBodyItem>,
+    pub span: SourceSpan,
 }
 
 /// A public instance or static property declaration:
@@ -266,6 +286,29 @@ pub struct ClassField {
 }
 
 impl ClassDeclaration {
+    /// Each accessor as the method it behaves like when its body is checked: a
+    /// getter returns its annotated type, a setter returns nothing.
+    pub fn accessor_methods(&self) -> Vec<ClassMethod> {
+        self.members
+            .iter()
+            .filter_map(|member| member.accessor.as_ref())
+            .map(|accessor| ClassMethod {
+                name: accessor.name.clone(),
+                visibility: accessor.visibility,
+                is_static: accessor.is_static,
+                parameters: accessor.parameters.clone(),
+                return_type: if accessor.getter {
+                    accessor.return_type.clone()
+                } else {
+                    Some(Type::Void)
+                },
+                return_type_span: accessor.return_type_span.clone(),
+                body: Some(accessor.body.clone()),
+                span: accessor.span.clone(),
+            })
+            .collect()
+    }
+
     /// The properties the constructor's parameter properties declare, as
     /// fields, in parameter order. A default initializer with no annotation
     /// gives the widened type of a literal default; readonly does not keep the
