@@ -623,3 +623,226 @@ fn private_child_bluets_source_step_rejects_an_uncaught_throw() {
         ChildDebuggerExecutionStatus::Completed
     );
 }
+
+#[test]
+fn private_child_bluets_module_root_step_rejects_an_uncaught_throw() {
+    let mut host = BlueJsChildHost::default();
+    let entry = "blueice://page/error-paths-module-root-step-entry.ts";
+    let dependency = "blueice://page/error-paths-module-root-step-dependency.ts";
+    let module = PageHostScript {
+        ordinal: 0,
+        language: PageHostScriptLanguage::BlueTs,
+        kind: PageHostScriptKind::Module,
+        graph: graph(
+            entry,
+            vec![
+                PageHostSource::new(
+                    entry,
+                    "function fails(): number { throw 'boom'; } fails();",
+                ),
+                PageHostSource::new(dependency, "export const unused: number = 0;"),
+            ],
+        ),
+    };
+    assert!(matches!(
+        host.handle_request(PageHostRequest::SynchronizeDocument {
+            document: debugger_document(1, vec![module]),
+        }),
+        PageHostReply::Synchronized { reports, .. } if reports.is_empty()
+    ));
+    let pending = host.documents[&7]
+        .pending_debugger_executions
+        .front()
+        .unwrap();
+    let program = pending.program.unwrap();
+    let DeferredChildExecution::BlueTsModule { attachment, .. } = &pending.execution else {
+        panic!("the entry module remains pending");
+    };
+    let entry_handle = attachment.entry.handle;
+    let point = host
+        .runtime
+        .module_evaluate_entry_safe_point(7, entry_handle)
+        .unwrap();
+    let target = PageHostDebuggerSafePoint {
+        program,
+        code_unit_ordinal: 0,
+        bytecode_offset: point.bytecode_offset,
+    };
+    assert!(matches!(
+        host.handle_request(PageHostRequest::ArmDebuggerRootSafePointBreakpoint {
+            tab_id: 7,
+            document_generation: 1,
+            safe_point: target,
+        }),
+        PageHostReply::DebuggerRootSafePointBreakpointArmed { .. }
+    ));
+    assert!(matches!(
+        host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
+            tab_id: 7,
+            document_generation: 1,
+        }),
+        PageHostReply::DebuggerExecutionAdvanced { reports, .. } if reports.is_empty()
+    ));
+    let mut rejected = false;
+    for _ in 0..32 {
+        assert!(matches!(
+            host.handle_request(PageHostRequest::StepDebuggerRootInstruction {
+                tab_id: 7,
+                document_generation: 1,
+                program,
+            }),
+            PageHostReply::DebuggerExecutionStepRequested { .. }
+        ));
+        match host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
+            tab_id: 7,
+            document_generation: 1,
+        }) {
+            PageHostReply::DebuggerExecutionAdvanced { reports, .. } if reports.is_empty() => {}
+            PageHostReply::DebuggerExecutionAdvanced { reports, .. }
+                if matches!(
+                    reports.as_slice(),
+                    [PageHostScriptReport {
+                        outcome: PageHostScriptOutcome::Rejected { .. },
+                        ..
+                    }]
+                ) =>
+            {
+                rejected = true;
+                break;
+            }
+            reply => panic!("unexpected module root step outcome: {reply:?}"),
+        }
+    }
+    assert!(
+        rejected,
+        "an uncaught throw during a module root single-step must reject the script"
+    );
+    assert_eq!(
+        host.documents[&7].debugger_execution_states[&program],
+        ChildDebuggerExecutionStatus::Completed
+    );
+}
+
+#[test]
+fn private_child_bluets_linked_resume_rejects_an_uncaught_throw_in_the_dependency() {
+    let entry = "blueice://page/error-paths-linked-resume-entry.ts";
+    let dependency = "blueice://page/error-paths-linked-resume-dependency.ts";
+    let mut module = PageHostScript {
+        ordinal: 0,
+        language: PageHostScriptLanguage::BlueTs,
+        kind: PageHostScriptKind::Module,
+        graph: graph(
+            entry,
+            vec![
+                PageHostSource::new(
+                    entry,
+                    "import { fails } from './error-paths-linked-resume-dependency.ts'; export const answer: number = fails();",
+                ),
+                PageHostSource::new(
+                    dependency,
+                    "export function fails(): number { throw 'boom'; }",
+                ),
+            ],
+        ),
+    };
+    module.graph.resolutions.push(PageHostStaticResolution {
+        from_module: entry.to_string(),
+        specifier: "./error-paths-linked-resume-dependency.ts".to_string(),
+        canonical_target: dependency.to_string(),
+    });
+    let mut host = BlueJsChildHost::default();
+    assert!(matches!(
+        host.handle_request(PageHostRequest::SynchronizeDocument {
+            document: debugger_document(1, vec![module]),
+        }),
+        PageHostReply::Synchronized { reports, .. } if reports.is_empty()
+    ));
+    let pending = host.documents[&7]
+        .pending_debugger_executions
+        .front()
+        .unwrap();
+    let entry_program = pending.program.unwrap();
+    let DeferredChildExecution::BlueTsModule { attachment, .. } = &pending.execution else {
+        panic!("the linked module remains pending");
+    };
+    let dependency_handle = attachment.modules[dependency].handle;
+    let dependency_program = host.documents[&7]
+        .debugger_programs
+        .iter()
+        .find(|(_, record)| record.runtime_handle == dependency_handle)
+        .map(|(handle, record)| PageHostDebuggerProgram {
+            program_handle: *handle,
+            program_generation: record.program_generation,
+        })
+        .unwrap();
+    let point = host
+        .runtime
+        .safe_points(7, dependency_handle, 1024)
+        .unwrap()
+        .into_iter()
+        .find(|point| point.code_unit.ordinal() == 1 && point.bytecode_offset == 0)
+        .unwrap();
+    let target = PageHostDebuggerSafePoint {
+        program: dependency_program,
+        code_unit_ordinal: point.code_unit.ordinal(),
+        bytecode_offset: point.bytecode_offset,
+    };
+    assert_eq!(
+        host.handle_request(
+            PageHostRequest::ArmDebuggerLinkedNestedSafePointBreakpoint {
+                tab_id: 7,
+                document_generation: 1,
+                entry_program,
+                safe_point: target,
+            }
+        ),
+        PageHostReply::DebuggerLinkedNestedSafePointBreakpointArmed {
+            tab_id: 7,
+            document_generation: 1,
+            entry_program,
+            safe_point: target,
+        }
+    );
+    assert!(matches!(
+        host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
+            tab_id: 7,
+            document_generation: 1,
+        }),
+        PageHostReply::DebuggerExecutionAdvanced { reports, .. } if reports.is_empty()
+    ));
+    let wire_frame = match host.handle_request(PageHostRequest::GetDebuggerExecutionState {
+        tab_id: 7,
+        document_generation: 1,
+        program: entry_program,
+    }) {
+        PageHostReply::DebuggerLinkedExecutionState {
+            frame,
+            state: PageHostDebuggerLinkedExecutionState::Paused { .. },
+        } => frame,
+        reply => panic!("expected a linked pause inside the dependency: {reply:?}"),
+    };
+    assert_eq!(
+        host.handle_request(PageHostRequest::ResumeDebuggerLinkedNestedExecution {
+            frame: wire_frame,
+        }),
+        PageHostReply::DebuggerLinkedNestedResumeRequested { frame: wire_frame }
+    );
+    assert!(matches!(
+        host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
+            tab_id: 7,
+            document_generation: 1,
+        }),
+        PageHostReply::DebuggerExecutionAdvanced { reports, .. }
+            if matches!(
+                reports.as_slice(),
+                [PageHostScriptReport {
+                    outcome: PageHostScriptOutcome::Rejected { .. },
+                    ..
+                }]
+            )
+    ));
+    assert_eq!(
+        host.documents[&7].debugger_execution_states[&entry_program],
+        ChildDebuggerExecutionStatus::Completed
+    );
+}
