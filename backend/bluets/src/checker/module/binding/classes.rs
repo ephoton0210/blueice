@@ -6,11 +6,12 @@
 
 use super::functions::hoist_local_functions;
 use super::*;
-use crate::parser::{ClassConstructor, ClassDeclaration, ClassMemberKind, ClassMethod};
+use crate::parser::{ClassConstructor, ClassDeclaration, ClassMemberKind, ClassMethod, Visibility};
 
 mod fields;
 mod overrides;
 mod super_calls;
+mod visibility;
 
 #[derive(Clone, Copy)]
 enum ClassBodyReturnRule<'a> {
@@ -164,6 +165,7 @@ impl ModuleChecker<'_> {
             ClassConstructorBinding {
                 signatures,
                 inherited: class.constructor_binding.inherited,
+                visibility: class.constructor_binding.visibility,
             },
         );
     }
@@ -226,6 +228,7 @@ impl ModuleChecker<'_> {
             ClassConstructorBinding {
                 signatures: class_constructor_signatures(class),
                 inherited: class.extends_name.is_some() && !class_declares_constructor(class),
+                visibility: class_constructor_visibility(class),
             },
         );
     }
@@ -474,6 +477,7 @@ impl ModuleChecker<'_> {
                 ClassConstructorBinding {
                     signatures,
                     inherited: false,
+                    visibility: base.visibility,
                 },
             );
         }
@@ -1062,6 +1066,21 @@ impl ModuleChecker<'_> {
                 .expect("constructor call has closing paren")
                 .end,
         );
+        let constructor_visibility = binding.visibility;
+        if !self.constructor_is_accessible(&call.callee.text, constructor_visibility) {
+            self.type_error(
+                &call_span,
+                format!(
+                    "constructor of class {} is {} and is not accessible here",
+                    call.callee.text,
+                    constructor_visibility.keyword()
+                ),
+                DiagnosticCode::TypeMismatch,
+            );
+        }
+        let Some(binding) = self.class_constructors.get(&call.callee.text) else {
+            return;
+        };
         if binding.inherited {
             // The base signature is unresolved. Its heritage diagnostic and
             // the class-output refusal prevent an invented constructor check.
@@ -1263,6 +1282,19 @@ pub(in crate::checker::module) fn class_is_fully_structured(class: &ClassDeclara
     })
 }
 
+/// The accessibility of the class's declared constructor, public when it
+/// declares none. An omitted constructor's inherited accessibility is filled in
+/// once the base is bound.
+fn class_constructor_visibility(class: &ClassDeclaration) -> Visibility {
+    class
+        .members
+        .iter()
+        .filter_map(|member| member.constructor.as_ref())
+        .map(|constructor| constructor.visibility)
+        .next()
+        .unwrap_or_default()
+}
+
 fn class_declares_constructor(class: &ClassDeclaration) -> bool {
     class
         .members
@@ -1278,6 +1310,7 @@ pub(in crate::checker) fn class_export(class: &ClassDeclaration) -> ExportedClas
         constructor_binding: ClassConstructorBinding {
             signatures: class_constructor_signatures(class),
             inherited: class.extends_name.is_some() && !class_declares_constructor(class),
+            visibility: class_constructor_visibility(class),
         },
         value_exported: class.exported,
         heritage_depth: 0,
@@ -1307,7 +1340,7 @@ fn class_method_fields(class: &ClassDeclaration, is_static: bool) -> Vec<TypeFie
                 .as_ref()
                 .expect("method group member is parsed");
             fields.push(TypeField {
-                name: method.name.clone(),
+                name: visibility::member_field_name(class, method.visibility, &method.name),
                 readonly: false,
                 optional: false,
                 value: Type::Function {

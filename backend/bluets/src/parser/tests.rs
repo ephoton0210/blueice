@@ -449,9 +449,9 @@ fn opaque_class_member_interrupts_method_overload_group() {
 #[test]
 fn routes_unimplemented_class_member_shapes_to_opaque_shells() {
     for source in [
-        "class C { public read() {} }",
-        "class C { private read() {} }",
         "class C { get value() { return 1; } }",
+        "class C { static private read() {} }",
+        "class C { async read() {} }",
         "class C { [key]() {} }",
         "class C { #secret() {} }",
         "class C { generic<T>() {} }",

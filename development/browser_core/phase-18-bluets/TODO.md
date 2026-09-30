@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: J.3.2.2.** H and I are complete. The requested class, enum,
+**Current leaf: J.3.2.3.** H and I are complete. The requested class, enum,
 decorator, namespace, JSX, CommonJS, and package-resolution expansion has
 passed J.1/J.2 planning; implementation and pinned-`tsc` parity remain open.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
@@ -2140,10 +2140,39 @@ done to the page-runs-and-debugs goal at the top of this file.
       with pinned tsc, and 12 public tests plus 2 bridge tests pin codes,
       messages and emitted text. Nothing else in the workspace changed except
       a fixed listener race in `extension_host_binary`'s `wait_for`.
-    - [ ] **J.3.2.2** Member visibility modifiers (`private`, `protected`),
-      including the nominal-style assignability TypeScript gives a class with
-      a private member, access checks from outside and from subclasses, and
-      declaration output.
+    - [x] **J.3.2.2** Member visibility modifiers. `public`, `protected` and
+      `private` on fields, methods, static members and constructors are parsed
+      (`[accessibility] [static] [readonly]`, that order only) and erased. A
+      restricted member lives in the class's type record only under a marker
+      name that carries its declaring class, so TypeScript's nominal rule
+      falls out of ordinary assignability: an object literal, an unrelated
+      class with the same private member, or a public structural type is not
+      assignable to a class with a private or protected member, while a
+      subclass is. While a class body is checked the markers that body may use
+      are exposed under their plain names: a private member to the declaring
+      class, a protected one to the class and its subclasses (through
+      `this`-type instances for instance members, through any constructor for
+      static ones, and `super.method()`). A scan of every runtime expression
+      applies the rule to `b.x + 1`, `new Box().x`, `list[0].x`, `f().x`,
+      `(b).x` and `b?.x`, not only to bare `b.x`, and refuses a receiver whose
+      type cannot be settled rather than assuming access. `b["x"]` and `any`
+      stay permitted, as in TypeScript. Redeclaring a base member with less
+      accessibility, redeclaring a private member, mixed-accessibility
+      overloads, and a protected member redeclared over an imported base
+      (unsupported) are diagnosed. A private constructor allows `new` only in
+      its class and forbids extending; a protected one also allows `new` and
+      `super()` in subclasses, and an omitted constructor inherits its base's
+      accessibility. Declaration output matches tsc (`private x;` with no
+      type, `private constructor();`, private overloads once). 54
+      `class-visibility-*` entries are rows of the pinned-TypeScript class
+      matrix and agree; two more compare emitted stdout and the `.d.ts` with
+      pinned tsc. 15 public tests and a bridge test with Node parity pin codes,
+      messages and text. Found while doing this: only a bare `a.b` was ever
+      checked for a missing property, so `new Box().missing` and `b.x + 1`
+      were not checked; the restricted-name scan closes that for restricted
+      members only, and the general case is left as a known gap. A method
+      named with a contextual keyword (`get`, `set`) is not recognized by
+      member-call inference (`S.get()` is typed as a record); also left open.
     - [ ] **J.3.2.3** Constructor parameter properties (`constructor(public x:
       number)`): erasure, the synthesized field and the assignment emitted
       after `super(..)`, readonly parameter properties, and declaration

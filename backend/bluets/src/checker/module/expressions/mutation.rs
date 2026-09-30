@@ -32,6 +32,9 @@ impl<'a> ModuleChecker<'a> {
             &mut budget,
         ) {
             PropertyType::Found { .. } | PropertyType::Indeterminate => {}
+            // A private or protected member is diagnosed, with its accessibility,
+            // by the restricted-member scan over the whole expression.
+            PropertyType::Missing if self.hidden_member(&value, &property.text).is_some() => {}
             PropertyType::Missing => {
                 let direct_span = SourceSpan::new(&span.module, base.start, property.end);
                 let diagnostic_span = if self.is_bound_class_constructor_value(&base.text, scope)
@@ -148,6 +151,7 @@ impl<'a> ModuleChecker<'a> {
                     );
                 }
             }
+            PropertyType::Missing if self.hidden_member(&owner, property).is_some() => {}
             PropertyType::Missing => self.type_error(
                 span,
                 format!(

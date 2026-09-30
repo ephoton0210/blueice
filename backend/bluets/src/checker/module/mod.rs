@@ -36,6 +36,10 @@ pub(super) struct ModuleChecker<'a> {
     /// assign through `this`; `None` outside a constructor and inside any
     /// function nested in one.
     constructor_readonly_fields: Option<BTreeSet<String>>,
+    /// The class whose body is being checked, for `private`/`protected` access.
+    access_class: Option<String>,
+    /// Names of every private or protected class member in scope.
+    restricted_member_names: BTreeSet<String>,
     pub(super) diagnostics: Vec<Diagnostic>,
     pub(super) symbols: Vec<Symbol>,
     types: BTreeMap<String, TypeDefinition>,

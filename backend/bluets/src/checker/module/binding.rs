@@ -50,6 +50,8 @@ impl<'a> ModuleChecker<'a> {
             checked_nested_functions: BTreeSet::new(),
             async_context: None,
             constructor_readonly_fields: None,
+            access_class: None,
+            restricted_member_names: BTreeSet::new(),
             diagnostics: Vec::new(),
             symbols: Vec::new(),
             types: BTreeMap::new(),
@@ -657,6 +659,7 @@ impl<'a> ModuleChecker<'a> {
         self.bind_inherited_class_instance_methods();
         self.bind_inherited_class_static_methods();
         self.bind_inherited_class_constructors();
+        self.collect_restricted_member_names();
         for declaration in &self.module.declarations {
             match declaration {
                 Declaration::TypeAlias(alias) => {
@@ -707,11 +710,14 @@ impl<'a> ModuleChecker<'a> {
                 Declaration::Class(class) => {
                     self.validate_class_heritage_name(class);
                     self.validate_class_constructor_group(class);
-                    self.validate_class_fields(class);
                     self.validate_class_method_groups(class);
                     self.validate_class_method_overrides(class);
-                    self.check_class_constructor_bodies(class);
-                    self.check_class_method_bodies(class);
+                    self.validate_class_visibility(class);
+                    self.with_class_access(class, |checker| {
+                        checker.validate_class_fields(class);
+                        checker.check_class_constructor_bodies(class);
+                        checker.check_class_method_bodies(class);
+                    });
                 }
                 Declaration::Import(_)
                 | Declaration::TypeExport(_)
@@ -938,6 +944,7 @@ impl<'a> ModuleChecker<'a> {
         self.check_member_calls_in_expression(tokens, scope, span);
         self.check_direct_property_access(tokens, scope, span);
         self.check_member_assignment(tokens, scope, span);
+        self.check_restricted_member_access(tokens, scope, span);
         self.check_arithmetic_operators(tokens, scope, span);
     }
 

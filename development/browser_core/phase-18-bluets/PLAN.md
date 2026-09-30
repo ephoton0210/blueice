@@ -2651,6 +2651,52 @@ cannot be told from a function-typed field there.
 The direct bridge lowers a field to a BlueJS class field, so the class-wide
 debugger mapping from J.3.1.6a covers the initializer closures as well.
 
+### J.3.2.2 Member visibility
+
+`private`, `protected` and `public` are parsed before a member name, in the only
+order TypeScript allows (`accessibility static readonly`); a modifier word counts
+only when a name follows, so `private: number` and `public()` are still members.
+The keyword is erased with the gap after it and never reaches the output.
+
+Types. A restricted member is recorded in the class's type record only under a
+marker name, `private Box@main.ts secret`, that carries the declaring class and
+module. It is never under `secret`. Everything TypeScript does for such a class
+then follows from ordinary record assignability. A public structural target
+(`{ secret: number }`) is not satisfied by a class whose `secret` is private, an
+object literal or an unrelated class with an identical private member lacks the
+marker, and a subclass inherits it, so it is assignable to its base. A subclass
+that redeclares a protected member as public has both the base marker and the
+plain name, which is what TypeScript allows.
+
+Access. While a class body is checked, `with_class_access` exposes the markers
+that body may use under their plain names and restores the records afterwards:
+a private member for the declaring class only, a protected member for the
+declaring class and its subclasses, reached through instances of the class being
+checked or a subclass (`other.value` on a `Base` is refused, as TypeScript's
+TS2446), and for static members through any class constructor. `super` is bound
+to a synthetic record that adds the protected methods, so `super.method()` works
+and `super.secret` does not. Outside every class body nothing is exposed.
+
+Only a bare `a.b` was ever checked for a missing property, so a private member
+would have been readable as `b.secret + 1` or `new Box().secret`. A scan of every
+checked runtime expression now visits each `.name` and `?.name` whose name is
+restricted in some class, finds the receiver expression's extent, infers its type
+and reports a marker it cannot use. A receiver whose type cannot be settled is
+refused as unsupported instead of assumed accessible; `any` and bracket access
+are permitted, as in TypeScript. The general missing-property check is not
+widened, since that would change every existing program; it remains a known gap.
+
+Rules between classes: a base's private member cannot be redeclared, protected
+may be kept or made public, public must stay public, all overloads of one
+member agree, and a protected member redeclared over an imported base is
+unsupported because its signature cannot be compared. A private constructor
+allows `new` only inside its class and forbids extending; a protected one also
+allows it inside a subclass; an omitted constructor inherits its base's.
+
+Declaration output follows tsc: a private member is `private name;` with no type
+(`private constructor();`, overloads once), protected members keep their types,
+and `public` is omitted.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process

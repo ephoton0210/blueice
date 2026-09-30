@@ -57,7 +57,7 @@ pub use parser::{
     FunctionTryStatement, FunctionWhileStatement, ImportDeclaration, InterfaceDeclaration, Module,
     Parameter, ParserLimits, RawDeclaration, TupleTypeElement, TypeAliasDeclaration,
     TypeExportDeclaration, TypeParameter, ValueExportBinding, ValueExportDeclaration,
-    VariableDeclaration, VariableKind,
+    VariableDeclaration, VariableKind, Visibility,
 };
 pub use syntax::{lex, Token, TokenKind};
 

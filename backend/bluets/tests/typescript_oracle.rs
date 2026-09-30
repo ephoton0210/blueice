@@ -158,6 +158,24 @@ const CASES: &[OracleCase] = &[
         expected_diagnostics: &[],
     },
     OracleCase {
+        name: "class-visibility-emit-runtime",
+        modules: &[(
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/class-visibility-emit-runtime/main.ts"),
+        )],
+        expected_stdout: Some("12 adaV-vadaV- 8\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
+        name: "class-visibility-emit-declaration",
+        modules: &[(
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/class-visibility-emit-declaration/main.ts"),
+        )],
+        expected_stdout: Some(""),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
         name: "generic-property",
         modules: &[(
             "memory:///main.ts",
@@ -1081,8 +1099,8 @@ fn pinned_class_method_boundary_matches_typescript_without_emit() {
             &[],
         ),
         (
-            "deferred-private",
-            include_str!("fixtures/typescript_oracle/class-method-deferred-private/main.ts"),
+            "private",
+            include_str!("fixtures/typescript_oracle/class-method-private/main.ts"),
             &[],
         ),
         (
@@ -4797,6 +4815,16 @@ fn expected_declaration(case: &OracleCase) -> Option<&'static str> {
             "export declare class Shape {\n    count: number;\n    static total: number;\n    \
              label: string;\n    readonly id: number;\n    tag?: string;\n    name: string;\n    \
              static readonly kind = \"shape\";\n    describe(): string;\n}\n",
+        ),
+        "class-visibility-emit-declaration" => Some(
+            "export declare class Vault {\n    private balance;\n    protected owner: string;\n    \
+             label: string;\n    private readonly id;\n    protected readonly kind = \"vault\";\n    \
+             private static count;\n    protected static prefix: string;\n    private bump;\n    \
+             protected who(): string;\n    open(): number;\n    private static reset;\n    \
+             protected static tag(): string;\n    private tail?;\n    \
+             protected constructor(seed: number);\n    static make(): Vault;\n}\n\
+             export declare class Sealed {\n    private constructor();\n    \
+             static create(): Sealed;\n}\n",
         ),
         _ => None,
     }

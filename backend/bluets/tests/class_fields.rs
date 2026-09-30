@@ -271,10 +271,9 @@ fn fields_are_refused_for_an_es2020_target_until_they_can_be_lowered() {
 }
 
 #[test]
-fn accessors_private_members_and_parameter_properties_are_still_refused() {
+fn accessors_ecmascript_private_names_and_parameter_properties_are_still_refused() {
     for source in [
         "class A { get x(): number { return 1; } }",
-        "class A { private x: number = 1; }",
         "class A { #x = 1; }",
         "class A { constructor(public x: number) {} }",
     ] {

@@ -97,6 +97,11 @@ impl<'a> ModuleChecker<'a> {
                 // rejecting missing members on declared host interfaces.
                 return;
             }
+            PropertyType::Missing if self.hidden_member(&base, &call.member.text).is_some() => {
+                // Diagnosed, with its accessibility, by the restricted-member
+                // scan over the whole expression.
+                return;
+            }
             PropertyType::Missing => {
                 let call_span = SourceSpan::new(
                     &span.module,

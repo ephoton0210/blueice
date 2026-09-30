@@ -108,8 +108,25 @@ impl Parser {
         }));
     }
 
+    /// Erases an explicit `public`/`protected`/`private` keyword and the gap
+    /// after it; accessibility is checked, never emitted.
+    fn erase_visibility_keyword(&mut self, modifiers: &MemberModifiers) {
+        if let Some(token) = modifiers.visibility_token {
+            self.edits.push(TextEdit {
+                start: self.tokens[token].start,
+                end: self.tokens[token + 1].start,
+                replacement: String::new(),
+            });
+        }
+    }
+
     fn parse_class_constructor(&mut self, start: usize, member: &mut ClassMemberShell) {
-        self.index = start + 1;
+        let end = start + (member.token_end - member.token_start);
+        let Some(modifiers) = scan_member_modifiers(&self.tokens, start, end) else {
+            return;
+        };
+        self.erase_visibility_keyword(&modifiers);
+        self.index = modifiers.name_index + 1;
         let parameters = self.parse_parameters();
         let body = if self.consume("{") {
             let body_start = self.previous().start;
@@ -133,6 +150,7 @@ impl Parser {
             return;
         }
         member.constructor = Some(ClassConstructor {
+            visibility: modifiers.visibility,
             parameters,
             body,
             span: member.span.clone(),
@@ -151,28 +169,24 @@ impl Parser {
         end: usize,
         member: &mut ClassMemberShell,
     ) -> bool {
-        let name_like = |token: Option<&Token>| {
-            token.is_some_and(|token| {
-                matches!(token.kind, TokenKind::Identifier | TokenKind::Keyword)
-            })
+        let Some(modifiers) = scan_member_modifiers(&self.tokens, start, end) else {
+            return false;
         };
-        let mut index = start;
+        let is_static = modifiers.is_static;
+        let readonly = modifiers.readonly_token.is_some();
         let mut erased_modifiers = Vec::new();
-        if self.tokens[index].is("public") && name_like(self.tokens.get(index + 1)) {
-            erased_modifiers.push((self.tokens[index].start, self.tokens[index + 1].start));
-            index += 1;
+        for token in [modifiers.visibility_token, modifiers.readonly_token]
+            .into_iter()
+            .flatten()
+        {
+            erased_modifiers.push((self.tokens[token].start, self.tokens[token + 1].start));
         }
-        let is_static = self.tokens[index].is("static") && name_like(self.tokens.get(index + 1));
-        if is_static {
-            index += 1;
-        }
-        let readonly = self.tokens[index].is("readonly") && name_like(self.tokens.get(index + 1));
-        if readonly {
-            erased_modifiers.push((self.tokens[index].start, self.tokens[index + 1].start));
-            index += 1;
-        }
+        let mut index = modifiers.name_index;
         let name_token = self.tokens[index].clone();
-        if !name_like(Some(&name_token)) || name_token.is("constructor") || index >= end {
+        if !matches!(name_token.kind, TokenKind::Identifier | TokenKind::Keyword)
+            || name_token.is("constructor")
+            || index >= end
+        {
             return false;
         }
         index += 1;
@@ -242,6 +256,7 @@ impl Parser {
         member.field = Some(ClassField {
             name: name_token.text.clone(),
             name_span: name_token.span(&self.id),
+            visibility: modifiers.visibility,
             is_static,
             readonly,
             optional,
@@ -255,12 +270,13 @@ impl Parser {
     }
 
     fn parse_class_method(&mut self, start: usize, member: &mut ClassMemberShell) {
-        let is_static = self.tokens[start].is("static")
-            && self
-                .tokens
-                .get(start + 2)
-                .is_some_and(|token| token.is("("));
-        let name_index = start + usize::from(is_static);
+        let end = start + (member.token_end - member.token_start);
+        let Some(modifiers) = scan_member_modifiers(&self.tokens, start, end) else {
+            return;
+        };
+        self.erase_visibility_keyword(&modifiers);
+        let is_static = modifiers.is_static;
+        let name_index = modifiers.name_index;
         let name = self.tokens[name_index].text.clone();
         self.index = name_index + 1;
         let parameters = self.parse_parameters();
@@ -304,6 +320,7 @@ impl Parser {
         }
         member.method = Some(ClassMethod {
             name,
+            visibility: modifiers.visibility,
             is_static,
             parameters,
             return_type,
@@ -312,6 +329,68 @@ impl Parser {
             span: member.span.clone(),
         });
     }
+}
+
+/// The modifiers before a member name, in the only order TypeScript allows:
+/// `[public|protected|private] [static] [readonly]`. A modifier word counts
+/// only when a name follows it, so a member named `static` or `private` is
+/// still a name.
+struct MemberModifiers {
+    visibility: Visibility,
+    /// Token index of an explicit accessibility keyword.
+    visibility_token: Option<usize>,
+    is_static: bool,
+    readonly_token: Option<usize>,
+    name_index: usize,
+}
+
+fn scan_member_modifiers(tokens: &[Token], start: usize, end: usize) -> Option<MemberModifiers> {
+    let name_like = |index: usize| {
+        index < end
+            && tokens.get(index).is_some_and(|token| {
+                matches!(token.kind, TokenKind::Identifier | TokenKind::Keyword)
+            })
+    };
+    let mut index = start;
+    let mut modifiers = MemberModifiers {
+        visibility: Visibility::Public,
+        visibility_token: None,
+        is_static: false,
+        readonly_token: None,
+        name_index: start,
+    };
+    let visibility = match tokens.get(index).map(|token| token.text.as_str()) {
+        Some("public") => Some(Visibility::Public),
+        Some("protected") => Some(Visibility::Protected),
+        Some("private") => Some(Visibility::Private),
+        _ => None,
+    };
+    if let Some(visibility) = visibility.filter(|_| name_like(index + 1)) {
+        modifiers.visibility = visibility;
+        modifiers.visibility_token = Some(index);
+        index += 1;
+    }
+    if tokens.get(index).is_some_and(|token| token.is("static")) && name_like(index + 1) {
+        modifiers.is_static = true;
+        index += 1;
+    }
+    if tokens.get(index).is_some_and(|token| token.is("readonly")) && name_like(index + 1) {
+        modifiers.readonly_token = Some(index);
+        index += 1;
+    }
+    // A modifier out of order (`static private x`) or repeated is not a
+    // member this parser structures.
+    if tokens.get(index).is_some_and(|token| {
+        matches!(
+            token.text.as_str(),
+            "public" | "protected" | "private" | "static" | "readonly"
+        )
+    }) && name_like(index + 1)
+    {
+        return None;
+    }
+    modifiers.name_index = index;
+    Some(modifiers)
 }
 
 fn class_method_groups(module: &str, members: &[ClassMemberShell]) -> Vec<ClassMethodGroup> {
@@ -358,14 +437,18 @@ fn class_member_shells(module: &str, tokens: &[Token]) -> Vec<ClassMemberShell> 
             continue;
         }
         let start = index;
-        let static_modifier = tokens[index].is("static")
-            && tokens.get(index + 1).is_some_and(|token| {
-                matches!(token.kind, TokenKind::Identifier | TokenKind::Keyword)
-            })
-            && tokens.get(index + 2).is_some_and(|token| token.is("("));
-        let name_index = index + usize::from(static_modifier);
+        let modifiers = scan_member_modifiers(tokens, index, tokens.len());
+        let static_modifier = modifiers
+            .as_ref()
+            .is_some_and(|modifiers| modifiers.is_static);
+        let name_index = modifiers
+            .as_ref()
+            .map_or(index, |modifiers| modifiers.name_index);
         let name_token = &tokens[name_index];
-        let method_head = matches!(name_token.kind, TokenKind::Identifier | TokenKind::Keyword)
+        let method_head = modifiers
+            .as_ref()
+            .is_some_and(|modifiers| modifiers.readonly_token.is_none())
+            && matches!(name_token.kind, TokenKind::Identifier | TokenKind::Keyword)
             && tokens
                 .get(name_index + 1)
                 .is_some_and(|token| token.is("("));

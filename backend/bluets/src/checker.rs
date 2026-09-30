@@ -94,6 +94,8 @@ struct ClassConstructorBinding {
     signatures: Vec<FunctionSignature>,
     /// An omitted derived constructor whose base signature is not yet bound.
     inherited: bool,
+    /// Who may `new` the class: an omitted constructor takes its base's.
+    visibility: crate::parser::Visibility,
 }
 
 #[derive(Clone, PartialEq, Eq)]

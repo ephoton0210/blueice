@@ -82,11 +82,19 @@ impl ModuleChecker<'_> {
         if !self.class_constructors.contains_key(base) {
             return None;
         }
+        let synthetic = super::visibility::super_type_name(class);
         if is_static {
-            self.values.get(base).cloned()
+            self.values
+                .get(&synthetic)
+                .or_else(|| self.values.get(base))
+                .cloned()
         } else {
             Some(Type::Named {
-                name: base.clone(),
+                name: if self.types.contains_key(&synthetic) {
+                    synthetic
+                } else {
+                    base.clone()
+                },
                 arguments: Vec::new(),
             })
         }

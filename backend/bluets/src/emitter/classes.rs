@@ -13,7 +13,7 @@
 use super::{type_to_ts, Module, TextEdit};
 use crate::compiler::EcmaTarget;
 use crate::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
-use crate::parser::{ClassDeclaration, ClassMemberShell, Declaration, Parameter, Type};
+use crate::parser::{ClassDeclaration, ClassMemberShell, Declaration, Parameter, Type, Visibility};
 
 /// Erase every constructor and method overload signature: a declaration with
 /// no body has no JavaScript form.
@@ -90,6 +90,15 @@ fn declaration_literal(literal: &str, span: &SourceSpan) -> Result<String, Diagn
         ));
     }
     Ok(format!("\"{inner}\""))
+}
+
+/// A declaration file writes `public` as nothing.
+fn visibility_prefix(visibility: Visibility) -> &'static str {
+    match visibility {
+        Visibility::Public => "",
+        Visibility::Protected => "protected ",
+        Visibility::Private => "private ",
+    }
 }
 
 fn parameters_to_ts(parameters: &[Parameter]) -> String {
@@ -179,7 +188,15 @@ pub(super) fn emit_class_declaration(
             });
             for shell in visible(class, &constructor_signatures, implementation) {
                 let constructor = shell.constructor.as_ref().expect("constructor member");
-                output.push_str("    constructor");
+                output.push_str("    ");
+                output.push_str(visibility_prefix(constructor.visibility));
+                output.push_str("constructor");
+                // TypeScript prints a private constructor without its
+                // parameters, and only once.
+                if constructor.visibility == Visibility::Private {
+                    output.push_str("();\n");
+                    break;
+                }
                 output.push_str(&parameters_to_ts(&constructor.parameters));
                 output.push_str(";\n");
             }
@@ -192,6 +209,7 @@ pub(super) fn emit_class_declaration(
                 ));
             };
             output.push_str("    ");
+            output.push_str(visibility_prefix(field.visibility));
             if field.is_static {
                 output.push_str("static ");
             }
@@ -201,6 +219,11 @@ pub(super) fn emit_class_declaration(
             output.push_str(&field.name);
             if field.optional {
                 output.push('?');
+            }
+            // A private member's type is not part of its declaration.
+            if field.visibility == Visibility::Private {
+                output.push_str(";\n");
+                continue;
             }
             // TypeScript prints a `readonly` field with a literal initializer
             // and no annotation as its literal value, not as a type.
@@ -236,6 +259,16 @@ pub(super) fn emit_class_declaration(
                 group.implementation_member_index,
             ) {
                 let method = shell.method.as_ref().expect("method member");
+                if method.visibility == Visibility::Private {
+                    // A private method is declared by name only, once.
+                    output.push_str("    private ");
+                    if method.is_static {
+                        output.push_str("static ");
+                    }
+                    output.push_str(&method.name);
+                    output.push_str(";\n");
+                    break;
+                }
                 let Some(result) = &method.return_type else {
                     return Err(Diagnostic::error(
                         DiagnosticCode::UnsupportedSyntax,
@@ -244,6 +277,7 @@ pub(super) fn emit_class_declaration(
                     ));
                 };
                 output.push_str("    ");
+                output.push_str(visibility_prefix(method.visibility));
                 if method.is_static {
                     output.push_str("static ");
                 }

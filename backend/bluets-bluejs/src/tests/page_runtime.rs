@@ -198,6 +198,36 @@ fn direct_page_class_field_initializers_map_to_the_original_class() {
 }
 
 #[test]
+fn direct_page_private_and_protected_members_run_like_node() {
+    let source = "class Vault { \
+        private balance: number = 0; protected owner: number = 2; public label: number = 3; \
+        private static count: number = 0; protected static prefix: number = 100; \
+        private bump(step: number): number { this.balance = this.balance + step; return this.balance; } \
+        protected who(): number { return this.owner + Vault.prefix; } \
+        public open(): number { Vault.count = Vault.count + 1; return this.bump(1) + Vault.count; } \
+        protected constructor(seed: number) { this.balance = seed; } \
+        static make(seed: number): Vault { return new Vault(seed); } } \
+        class Branch extends Vault { constructor() { super(10); } \
+        describe(): number { return this.who() + this.label + super.who(); } } \
+        const branch = new Branch(); \
+        branch.open() + branch.describe() + Vault.make(5).open();";
+    let artifact = compile_direct_script(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+        class_options(),
+    )
+    .unwrap();
+    let mut owner = DirectPageRealmOwner::default();
+    owner.open_realm(7, origin()).unwrap();
+    let attachment = owner.attach_script(&artifact, 7, &origin()).unwrap();
+    // Node runs the same program (accessibility erased) to 227.
+    assert_eq!(
+        owner.execute_program(7, &attachment).unwrap(),
+        bluejs::Value::Number(227.0)
+    );
+}
+
+#[test]
 fn direct_page_while_runs_zero_and_multiple_iterations() {
     let artifact = compile_direct_script(
         ENTRY,

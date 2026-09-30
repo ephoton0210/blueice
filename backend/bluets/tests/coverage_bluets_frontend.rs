@@ -143,8 +143,8 @@ fn class_method_oracle_fixtures_remain_source_bound_and_emit_nothing() {
             include_str!("fixtures/typescript_oracle/class-method-record-return/main.ts"),
         ),
         (
-            "deferred-private",
-            include_str!("fixtures/typescript_oracle/class-method-deferred-private/main.ts"),
+            "private",
+            include_str!("fixtures/typescript_oracle/class-method-private/main.ts"),
         ),
         (
             "orphan-signature",
@@ -181,9 +181,13 @@ fn class_method_oracle_fixtures_remain_source_bound_and_emit_nothing() {
                 assert_eq!(class.method_groups.len(), 1);
                 assert_eq!(class.method_groups[0].implementation_member_index, Some(0));
             }
-            "deferred-private" => {
-                assert_eq!(class.method_groups.len(), 0);
-                assert_eq!(class.members[0].kind, ClassMemberKind::Opaque);
+            "private" => {
+                assert_eq!(class.method_groups.len(), 1);
+                assert_eq!(class.members[0].kind, ClassMemberKind::Method);
+                assert_eq!(
+                    class.members[0].method.as_ref().unwrap().visibility,
+                    blueice_bluets::Visibility::Private
+                );
             }
             "orphan-signature" => {
                 assert_eq!(class.method_groups[0].signature_member_indices, [0]);
@@ -250,8 +254,8 @@ fn class_method_groups_report_original_source_checker_failures() {
             &[],
         ),
         (
-            "deferred-private",
-            include_str!("fixtures/typescript_oracle/class-method-deferred-private/main.ts"),
+            "private",
+            include_str!("fixtures/typescript_oracle/class-method-private/main.ts"),
             &[],
         ),
         (

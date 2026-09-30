@@ -20,7 +20,7 @@ pub(super) fn class_field_type_fields(class: &ClassDeclaration, is_static: bool)
         .filter_map(|member| member.field.as_ref())
         .filter(|field| field.is_static == is_static)
         .map(|field| TypeField {
-            name: field.name.clone(),
+            name: visibility::member_field_name(class, field.visibility, &field.name),
             readonly: field.readonly,
             optional: field.optional,
             value: class_field_type(field).unwrap_or(Type::Unknown),
@@ -313,6 +313,16 @@ impl ModuleChecker<'_> {
         fields
             .iter()
             .find(|field| field.name == name)
+            .or_else(|| {
+                // A protected member exists only under its marker name.
+                fields.iter().find(|field| {
+                    visibility::parse_restricted_name(&field.name).is_some_and(
+                        |(visibility, _, member)| {
+                            visibility == crate::parser::Visibility::Protected && member == name
+                        },
+                    )
+                })
+            })
             .map(|field| field.value.clone())
     }
 }

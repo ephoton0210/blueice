@@ -201,6 +201,25 @@ pub struct ClassDeclaration {
     pub span: SourceSpan,
 }
 
+/// A class member's TypeScript accessibility modifier.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
+pub enum Visibility {
+    #[default]
+    Public,
+    Protected,
+    Private,
+}
+
+impl Visibility {
+    pub fn keyword(self) -> &'static str {
+        match self {
+            Self::Public => "public",
+            Self::Protected => "protected",
+            Self::Private => "private",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ClassMemberKind {
     Constructor,
@@ -231,6 +250,7 @@ pub struct ClassMemberShell {
 pub struct ClassField {
     pub name: String,
     pub name_span: SourceSpan,
+    pub visibility: Visibility,
     pub is_static: bool,
     pub readonly: bool,
     pub optional: bool,
@@ -288,6 +308,7 @@ impl ClassField {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClassConstructor {
+    pub visibility: Visibility,
     pub parameters: Vec<Parameter>,
     /// `None` denotes a signature declaration; `Some` retains body items,
     /// including an empty implementation body.
@@ -298,6 +319,7 @@ pub struct ClassConstructor {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClassMethod {
     pub name: String,
+    pub visibility: Visibility,
     pub is_static: bool,
     pub parameters: Vec<Parameter>,
     pub return_type: Option<Type>,

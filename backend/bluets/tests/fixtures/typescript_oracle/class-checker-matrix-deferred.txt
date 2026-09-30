@@ -1,1 +1,1 @@
-class-method-deferred-private/main.ts
+class-visibility-imported/redeclare-protected-valid.ts
