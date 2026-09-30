@@ -321,7 +321,13 @@ fn apply_edits(source: &str, mut edits: Vec<TextEdit>) -> EmittedJavaScript {
 
 fn emit_declaration(module: &Module) -> Result<String, Diagnostic> {
     let mut output = String::new();
+    let enum_evaluations = crate::enum_eval::evaluate_enums(module);
+    let mut enum_position = 0usize;
     for declaration in &module.declarations {
+        let enum_index = enum_position;
+        if matches!(declaration, Declaration::Enum(_)) {
+            enum_position += 1;
+        }
         match declaration {
             Declaration::Import(import) if import.type_only => {
                 output.push_str(&module.source[import.span.start..import.span.end]);
@@ -445,6 +451,14 @@ fn emit_declaration(module: &Module) -> Result<String, Diagnostic> {
                         .unwrap_or_else(|| "unknown".to_string()),
                 );
                 output.push_str(";\n");
+            }
+            Declaration::Enum(declaration)
+                if declaration.exported || is_value_export_name(module, &declaration.name) =>
+            {
+                let evaluation = enum_evaluations
+                    .get(enum_index)
+                    .expect("every enum was evaluated");
+                output.push_str(&enums::emit_enum_declaration(declaration, evaluation));
             }
             Declaration::Class(class)
                 if class.exported

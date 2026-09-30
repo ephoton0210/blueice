@@ -388,6 +388,9 @@ impl<'a> ModuleChecker<'a> {
                                     && !function.overload
                             }
                             Declaration::Class(class) => class.name == binding.local,
+                            Declaration::Enum(declaration) => {
+                                declaration.name == binding.local && !declaration.declared
+                            }
                             _ => false,
                         });
                 if !has_local_runtime_binding {

@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: J.3.4.4.** H and I are complete. The requested class, enum,
+**Current leaf: J.3.4.5.** H and I are complete. The requested class, enum,
 decorator, namespace, JSX, CommonJS, and package-resolution expansion has
 passed J.1/J.2 planning; implementation and pinned-`tsc` parity remain open.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
@@ -2430,7 +2430,20 @@ done to the page-runs-and-debugs goal at the top of this file.
       `preserveConstEnums`, `isolatedModules` and both together; 18 more enum
       matrix entries (56 in all) agree with tsc, and 8 public tests, 2 CLI
       tests and a CLI parse test pin the text and the options.
-    - [ ] **J.3.4.4** Declaration output and isolation options.
+    - [x] **J.3.4.4** Declaration output and isolation options. An exported
+      enum (or one named in `export { .. }`) prints as TypeScript prints it:
+      `[export ]declare [const ]enum E { .. }` with one member per line, a
+      constant member as `name = value` (numbers as JavaScript prints them,
+      `1e+21`, `Infinity`, `NaN`; strings double-quoted; non-identifier names
+      quoted), a computed or uninitialized ambient member by name alone, merged
+      declarations printed separately, a non-exported enum omitted, all in source
+      order. A local enum can now be exported by name. The text is identical to
+      pinned tsc's for a fixture of numeric, string, heterogeneous, computed,
+      const, ambient, merged, empty, large and renamed-export enums (an oracle
+      case that also compares stdout and the source map), and does not depend on
+      the const-enum options; an incremental session recompiles when they
+      change. Ambient enums declared in a host `.d.ts` module stay refused,
+      since their values would have to reach the emitter for inlining.
     - [ ] **J.3.4.5** Direct runtime (bridge) and Node/pinned-tsc parity.
   - [ ] **J.3.5** Implement runtime namespaces/modules and declaration merging,
     including initialization order, export visibility, nested maps, direct

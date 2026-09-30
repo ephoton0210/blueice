@@ -24,6 +24,7 @@ enum-cross-member/main.ts	reject
 enum-declare/main.ts	accept
 enum-different-enums/main.ts	reject
 enum-duplicate-member/main.ts	reject
+enum-emit-declaration/main.ts	accept
 enum-enum-to-string-wrong/main.ts	reject
 enum-forward-reference/main.ts	reject
 enum-heterogeneous/main.ts	accept

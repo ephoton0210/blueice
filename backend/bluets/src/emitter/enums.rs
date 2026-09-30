@@ -390,3 +390,42 @@ fn json_string(text: &str) -> String {
     output.push('"');
     output
 }
+
+/// The declaration file text of one enum: a constant member with its value and a
+/// computed one by name alone, as TypeScript prints them.
+pub(super) fn emit_enum_declaration(
+    declaration: &EnumDeclaration,
+    evaluation: &crate::enum_eval::EvaluatedEnum,
+) -> String {
+    let mut output = format!(
+        "{}declare {}enum {} {{\n",
+        if declaration.exported { "export " } else { "" },
+        if declaration.is_const { "const " } else { "" },
+        declaration.name
+    );
+    let members: Vec<String> = declaration
+        .members
+        .iter()
+        .zip(&evaluation.members)
+        .map(|(member, evaluated)| {
+            let name = if is_identifier_name(&member.name) {
+                member.name.clone()
+            } else {
+                json_string(&member.name)
+            };
+            match &evaluated.value {
+                Some(EnumValue::Number(number)) => {
+                    format!("    {name} = {}", js_number_text(*number))
+                }
+                Some(EnumValue::Text(text)) => format!("    {name} = {}", json_string(text)),
+                None => format!("    {name}"),
+            }
+        })
+        .collect();
+    output.push_str(&members.join(",\n"));
+    if !members.is_empty() {
+        output.push('\n');
+    }
+    output.push_str("}\n");
+    output
+}

@@ -627,3 +627,93 @@ fn the_const_enum_options_are_part_of_the_fingerprint() {
     assert_ne!(base, fingerprint(options(false, true)));
     assert_eq!(base, fingerprint(options(false, false)));
 }
+
+fn declaration_of(source: &str, options: CompilerOptions) -> String {
+    let compiled = compile_modules(
+        &[("main.ts", source)],
+        CompilerOptions {
+            declaration: true,
+            ..options
+        },
+    );
+    assert!(
+        compiled.diagnostics.is_empty(),
+        "{:?}",
+        compiled.diagnostics
+    );
+    compiled.output.unwrap().artifacts["memory:///main.ts"]
+        .declaration
+        .clone()
+        .expect("declaration requested")
+}
+
+#[test]
+fn declaration_output_prints_enums_the_way_typescript_does() {
+    let output = declaration_of(
+        "declare function seed(): number; \
+         export enum Num { A, B = 5, C, Neg = -1, F = 1.5 } \
+         export enum Str { A = 'a', 'q-r' = 'x' } \
+         export enum Computed { A = seed(), B = 2 } \
+         export const enum Konst { X = 1, Y = 'y' } \
+         export declare enum Amb { A, B = 2, C } \
+         export enum Merged { A } export enum Merged { B = 1 } \
+         enum Local { A } export { Local } \
+         enum Private { A } \
+         export enum Empty {} \
+         export enum Big { A = 2 ** 40, B = 1e21, Inf = 1 / 0, N = 0 / 0 }",
+        CompilerOptions::default(),
+    );
+    assert_eq!(
+        output,
+        "export declare enum Num {\n    A = 0,\n    B = 5,\n    C = 6,\n    Neg = -1,\n    F = 1.5\n}\n\
+         export declare enum Str {\n    A = \"a\",\n    \"q-r\" = \"x\"\n}\n\
+         export declare enum Computed {\n    A,\n    B = 2\n}\n\
+         export declare const enum Konst {\n    X = 1,\n    Y = \"y\"\n}\n\
+         export declare enum Amb {\n    A,\n    B = 2,\n    C\n}\n\
+         export declare enum Merged {\n    A = 0\n}\n\
+         export declare enum Merged {\n    B = 1\n}\n\
+         declare enum Local {\n    A = 0\n}\n\
+         export { Local };\n\
+         export declare enum Empty {\n}\n\
+         export declare enum Big {\n    A = 1099511627776,\n    B = 1e+21,\n    Inf = Infinity,\n    N = NaN\n}\n"
+    );
+}
+
+#[test]
+fn declaration_output_does_not_depend_on_the_const_enum_options() {
+    let source =
+        "export const enum K { A = 1 } export enum E { X } export declare const enum Ambient { Q }";
+    let base = declaration_of(source, options(false, false));
+    for (preserve, isolated) in [(true, false), (false, true), (true, true)] {
+        assert_eq!(base, declaration_of(source, options(preserve, isolated)));
+    }
+}
+
+#[test]
+fn an_incremental_session_recompiles_when_a_const_enum_option_changes() {
+    use blueice_bluets::IncrementalCompiler;
+    let loader = MapLoader::from([ModuleSource::new(
+        ENTRY,
+        "const enum E { A = 1 } const n: number = E.A;",
+    )]);
+    let mut session = IncrementalCompiler::new();
+    let inlined = session.compile(ENTRY, &loader, options(false, false));
+    assert!(!inlined.cache_hit);
+    assert!(
+        session
+            .compile(ENTRY, &loader, options(false, false))
+            .cache_hit
+    );
+    let isolated = session.compile(ENTRY, &loader, options(false, true));
+    assert!(
+        !isolated.cache_hit,
+        "a changed option must not reuse the cache"
+    );
+    let inlined_text = inlined.compilation.output.unwrap().artifacts[ENTRY]
+        .javascript
+        .clone();
+    let isolated_text = isolated.compilation.output.unwrap().artifacts[ENTRY]
+        .javascript
+        .clone();
+    assert!(inlined_text.contains("/* E.A */") && !isolated_text.contains("/* E.A */"));
+}
