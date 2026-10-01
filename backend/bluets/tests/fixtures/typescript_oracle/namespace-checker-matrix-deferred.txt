@@ -1,0 +1,1 @@
+namespace-imported/value-import-of-types-only-valid.ts

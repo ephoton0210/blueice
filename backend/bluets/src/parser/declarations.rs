@@ -36,6 +36,7 @@ impl Parser {
             parameter_properties: Vec::new(),
             namespace_depth: 0,
             ambient_depth: 0,
+            namespace_export_markers: 0,
         }
     }
 
@@ -87,6 +88,21 @@ impl Parser {
             }
             let start = self.current().start;
             let exported = self.consume("export");
+            // `export {};` in a namespace body only says that exports are explicit.
+            if self.namespace_depth > 0
+                && exported
+                && self.peek("{")
+                && self
+                    .tokens
+                    .get(self.index + 1)
+                    .is_some_and(|token| token.is("}"))
+            {
+                self.bump();
+                self.bump();
+                self.consume(";");
+                self.namespace_export_markers += 1;
+                continue;
+            }
             if self.namespace_depth > 0
                 && ((exported
                     && (self.peek("default")

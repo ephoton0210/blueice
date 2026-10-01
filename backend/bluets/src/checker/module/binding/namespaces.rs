@@ -22,13 +22,76 @@ use crate::parser::NamespaceDeclaration;
 
 /// What one namespace (all its blocks) exports.
 #[derive(Debug, Clone, Default)]
-pub(in crate::checker::module) struct NamespaceMembers {
+pub(crate) struct NamespaceMembers {
     values: BTreeSet<String>,
     types: BTreeSet<String>,
     /// Types declared but not exported; they exist under qualified keys so an
     /// exported declaration may mention them, but no reference may name them.
     hidden_types: BTreeSet<String>,
     namespaces: BTreeSet<String>,
+}
+
+/// A namespace as another module imports it: every entry keyed by the name the
+/// exporting module declares it under, and the exporting module's own types the
+/// entries mention, kept under keys marked with that module.
+#[derive(Debug, Clone)]
+pub(crate) struct NamespaceExport {
+    source_name: String,
+    values: BTreeMap<String, Type>,
+    functions: BTreeMap<String, Vec<FunctionSignature>>,
+    class_constructors: BTreeMap<String, ClassConstructorBinding>,
+    types: BTreeMap<String, TypeDefinition>,
+    members: BTreeMap<String, NamespaceMembers>,
+    has_values: bool,
+}
+
+impl std::fmt::Debug for ClassConstructorBinding {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("ClassConstructorBinding")
+            .field("signatures", &self.signatures)
+            .finish_non_exhaustive()
+    }
+}
+
+/// Every named type a type mentions.
+fn named_types(value: &Type, into: &mut BTreeSet<String>) {
+    match value {
+        Type::Named { name, arguments } => {
+            into.insert(name.clone());
+            for argument in arguments {
+                named_types(argument, into);
+            }
+        }
+        Type::Literal(text) => {
+            into.insert(text.clone());
+        }
+        Type::Array(element) => named_types(element, into),
+        Type::Tuple(elements) => {
+            for element in elements {
+                named_types(&element.annotation, into);
+            }
+        }
+        Type::Record(fields) => {
+            for field in fields {
+                named_types(&field.value, into);
+            }
+        }
+        Type::Function { parameters, result } => {
+            for parameter in parameters {
+                if let Some(annotation) = &parameter.annotation {
+                    named_types(annotation, into);
+                }
+            }
+            named_types(result, into);
+        }
+        Type::Union(options) | Type::Intersection(options) => {
+            for option in options {
+                named_types(option, into);
+            }
+        }
+        _ => {}
+    }
 }
 
 /// The entries one body publishes, all under qualified keys.
@@ -65,7 +128,7 @@ fn join(prefix: &str, name: &str) -> String {
 }
 
 /// Whether a body declares anything that exists at run time.
-fn body_has_values(body: &[Declaration]) -> bool {
+pub(super) fn body_has_values(body: &[Declaration]) -> bool {
     body.iter().any(|declaration| match declaration {
         Declaration::Variable(_)
         | Declaration::Function(_)
@@ -293,11 +356,13 @@ impl ModuleChecker<'_> {
             &body_module,
             self.exports,
             self.ambient,
+            self.namespace_exports,
             self.policy(),
             self.max_type_expansions,
         );
         sub.namespace_path = path.to_string();
         sub.namespaces = self.namespaces.clone();
+        sub.type_only_namespaces = self.type_only_namespaces.clone();
         sub.types = self.types.clone();
         sub.values = self.values.clone();
         sub.functions = self.functions.clone();
@@ -707,6 +772,15 @@ impl ModuleChecker<'_> {
         if first.kind != TokenKind::Identifier || self.values.contains_key(&first.text) {
             return;
         }
+        let head = first.text.split('.').next().unwrap_or(&first.text);
+        if self.type_only_namespaces.contains(head) {
+            self.type_error(
+                span,
+                format!("namespace `{head}` was imported with `import type` and cannot be used as a value"),
+                DiagnosticCode::TypeMismatch,
+            );
+            return;
+        }
         if first.text.contains('.') {
             if let Some((members, path, root)) = self.namespace_member_of(&first.text) {
                 let type_only = (members.types.contains(&root)
@@ -739,6 +813,310 @@ impl ModuleChecker<'_> {
                 ),
                 DiagnosticCode::TypeMismatch,
             );
+        }
+    }
+
+    /// The namespaces this module exports, as the modules that import it bind them.
+    pub(in crate::checker) fn exported_namespaces(&self) -> BTreeMap<String, NamespaceExport> {
+        let mut sources: BTreeMap<String, String> = BTreeMap::new();
+        for declaration in &self.module.declarations {
+            match declaration {
+                Declaration::Namespace(namespace) if namespace.exported => {
+                    sources.insert(namespace.name.clone(), namespace.name.clone());
+                }
+                Declaration::ValueExport(export) => {
+                    for binding in &export.bindings {
+                        let is_namespace = self.module.declarations.iter().any(|candidate| {
+                            matches!(candidate, Declaration::Namespace(namespace)
+                                if namespace.name == binding.local)
+                        });
+                        if is_namespace {
+                            sources.insert(binding.exported.clone(), binding.local.clone());
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        sources
+            .into_iter()
+            .map(|(exported, source)| (exported, self.namespace_export_of(&source)))
+            .collect()
+    }
+
+    fn namespace_export_of(&self, source: &str) -> NamespaceExport {
+        let nested = format!("{source}.");
+        let object = format!("typeof {source}");
+        let object_nested = format!("typeof {source}.");
+        let belongs = |key: &str| {
+            key == source
+                || key.starts_with(&nested)
+                || key == object
+                || key.starts_with(&object_nested)
+        };
+        let mut export = NamespaceExport {
+            source_name: source.to_string(),
+            values: self
+                .values
+                .iter()
+                .filter(|(key, _)| belongs(key))
+                .map(|(key, value)| (key.clone(), value.clone()))
+                .collect(),
+            functions: self
+                .functions
+                .iter()
+                .filter(|(key, _)| belongs(key))
+                .map(|(key, value)| (key.clone(), value.clone()))
+                .collect(),
+            class_constructors: self
+                .class_constructors
+                .iter()
+                .filter(|(key, _)| belongs(key))
+                .map(|(key, value)| (key.clone(), value.clone()))
+                .collect(),
+            types: self
+                .types
+                .iter()
+                .filter(|(key, _)| belongs(key))
+                .map(|(key, value)| (key.clone(), value.clone()))
+                .collect(),
+            members: self
+                .namespaces
+                .iter()
+                .filter(|(path, _)| path.as_str() == source || path.starts_with(&nested))
+                .map(|(path, members)| (path.clone(), members.clone()))
+                .collect(),
+            has_values: self.module.declarations.iter().any(|declaration| {
+                matches!(declaration, Declaration::Namespace(namespace)
+                    if namespace.name == source
+                        && !namespace.declared
+                        && body_has_values(&namespace.body))
+            }),
+        };
+        // The module's own types the entries mention travel with them, under
+        // keys that say which module they belong to.
+        let local_roots: BTreeSet<String> = self
+            .module
+            .declarations
+            .iter()
+            .filter_map(|declaration| match declaration {
+                Declaration::Interface(item) => Some(item.name.clone()),
+                Declaration::TypeAlias(item) => Some(item.name.clone()),
+                Declaration::Class(item) => Some(item.name.clone()),
+                Declaration::Enum(item) => Some(item.name.clone()),
+                _ => None,
+            })
+            .collect();
+        let mut dependencies: BTreeSet<String> = BTreeSet::new();
+        let mut pending: Vec<Type> = Vec::new();
+        let scan = |export: &NamespaceExport, pending: &mut Vec<Type>| {
+            pending.extend(export.values.values().cloned());
+            for signatures in export.functions.values() {
+                for signature in signatures {
+                    pending.push(Type::Function {
+                        parameters: signature.parameters.clone(),
+                        result: Box::new(signature.return_type.clone()),
+                    });
+                }
+            }
+            for binding in export.class_constructors.values() {
+                for signature in &binding.signatures {
+                    pending.push(Type::Function {
+                        parameters: signature.parameters.clone(),
+                        result: Box::new(signature.return_type.clone()),
+                    });
+                }
+            }
+            pending.extend(
+                export
+                    .types
+                    .values()
+                    .map(|definition| definition.value.clone()),
+            );
+        };
+        scan(&export, &mut pending);
+        while let Some(value) = pending.pop() {
+            let mut names = BTreeSet::new();
+            named_types(&value, &mut names);
+            for name in names {
+                let bare = name.strip_prefix("typeof ").unwrap_or(&name);
+                let root = bare.split('.').next().unwrap_or(bare);
+                if !local_roots.contains(root) || belongs(bare) {
+                    continue;
+                }
+                if dependencies.insert(root.to_string()) {
+                    let root_nested = format!("{root}.");
+                    let root_object = format!("typeof {root}");
+                    for (key, definition) in &self.types {
+                        if key == root
+                            || key.starts_with(&root_nested)
+                            || *key == root_object
+                            || key.starts_with(&format!("typeof {root}."))
+                        {
+                            pending.push(definition.value.clone());
+                        }
+                    }
+                }
+            }
+        }
+        if dependencies.is_empty() {
+            return export;
+        }
+        let mut rename: BTreeMap<String, String> = BTreeMap::new();
+        for root in &dependencies {
+            let root_nested = format!("{root}.");
+            let root_object = format!("typeof {root}");
+            let root_object_nested = format!("typeof {root}.");
+            for key in self.types.keys() {
+                if key == root
+                    || key.starts_with(&root_nested)
+                    || *key == root_object
+                    || key.starts_with(&root_object_nested)
+                {
+                    rename.insert(key.clone(), format!("{key}@{}", self.module.id));
+                }
+            }
+        }
+        let qualify = Qualifier { rename: &rename };
+        export.values = export
+            .values
+            .iter()
+            .map(|(key, value)| (key.clone(), qualify.ty(value)))
+            .collect();
+        export.functions = export
+            .functions
+            .iter()
+            .map(|(key, value)| (key.clone(), qualify.signatures(value)))
+            .collect();
+        export.class_constructors = export
+            .class_constructors
+            .iter()
+            .map(|(key, binding)| {
+                (
+                    key.clone(),
+                    ClassConstructorBinding {
+                        signatures: qualify.signatures(&binding.signatures),
+                        ..binding.clone()
+                    },
+                )
+            })
+            .collect();
+        export.types = export
+            .types
+            .iter()
+            .map(|(key, definition)| (key.clone(), qualify.definition(definition)))
+            .collect();
+        for (old, new) in &rename {
+            if let Some(definition) = self.types.get(old) {
+                export
+                    .types
+                    .insert(new.clone(), qualify.definition(definition));
+            }
+        }
+        export
+    }
+
+    /// Binds a namespace imported from another module under `local`.
+    pub(super) fn bind_imported_namespace(
+        &mut self,
+        local: &str,
+        export: &NamespaceExport,
+        span: &SourceSpan,
+        with_value: bool,
+        merged: bool,
+    ) {
+        let source = export.source_name.as_str();
+        let mut with_value = with_value;
+        if with_value && !export.has_values && !merged {
+            self.diagnostics.push(Diagnostic::error(
+                DiagnosticCode::UnsupportedSyntax,
+                span.clone(),
+                format!(
+                    "namespace `{source}` has no run-time members; import it with `import type`"
+                ),
+            ));
+            // Bind it as a type-only import, so this is the only diagnostic.
+            with_value = false;
+        }
+        if !merged
+            && ((with_value && self.values.contains_key(local))
+                || self.types.contains_key(&format!("typeof {local}")))
+        {
+            self.duplicate(local, span.clone());
+            return;
+        }
+        let rename_key = |key: &str| -> Option<String> {
+            if let Some(rest) = key.strip_prefix("typeof ") {
+                let tail = rest.strip_prefix(source)?;
+                return (tail.is_empty() || tail.starts_with('.'))
+                    .then(|| format!("typeof {local}{tail}"));
+            }
+            let tail = key.strip_prefix(source)?;
+            (tail.is_empty() || tail.starts_with('.')).then(|| format!("{local}{tail}"))
+        };
+        let mut rename: BTreeMap<String, String> = BTreeMap::new();
+        for key in export.types.keys() {
+            if let Some(new) = rename_key(key) {
+                rename.insert(key.clone(), new);
+            }
+        }
+        let qualify = Qualifier { rename: &rename };
+        if with_value {
+            for (key, value) in &export.values {
+                if let Some(new) = rename_key(key) {
+                    if !(merged && new == local) {
+                        self.values.insert(new, qualify.ty(value));
+                    }
+                }
+            }
+            for (key, signatures) in &export.functions {
+                if let Some(new) = rename_key(key) {
+                    if !(merged && new == local) {
+                        self.functions.insert(new, qualify.signatures(signatures));
+                    }
+                }
+            }
+            for (key, binding) in &export.class_constructors {
+                if let Some(new) = rename_key(key) {
+                    if merged && new == local {
+                        continue;
+                    }
+                    self.class_constructors.insert(
+                        new,
+                        ClassConstructorBinding {
+                            signatures: qualify.signatures(&binding.signatures),
+                            ..binding.clone()
+                        },
+                    );
+                }
+            }
+        }
+        for (key, definition) in &export.types {
+            let new = rename_key(key).unwrap_or_else(|| key.clone());
+            // What the merged class, enum or function already bound stays.
+            if merged && self.types.contains_key(&new) {
+                continue;
+            }
+            self.types.insert(new, qualify.definition(definition));
+        }
+        for (path, members) in &export.members {
+            if let Some(new) = rename_key(path) {
+                self.namespaces.insert(new, members.clone());
+            }
+        }
+        if merged {
+            return;
+        }
+        if with_value {
+            self.values.insert(
+                local.to_string(),
+                Type::Named {
+                    name: format!("typeof {local}"),
+                    arguments: Vec::new(),
+                },
+            );
+        } else {
+            self.type_only_namespaces.insert(local.to_string());
         }
     }
 }

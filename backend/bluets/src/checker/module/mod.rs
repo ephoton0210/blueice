@@ -31,6 +31,7 @@ pub(super) struct ModuleChecker<'a> {
     module: &'a Module,
     exports: &'a ProjectExports,
     ambient: Option<&'a AmbientDeclarations>,
+    namespace_exports: &'a NamespaceExports,
     enforce_types: bool,
     require_declared_global_calls: bool,
     define_class_fields: bool,
@@ -61,6 +62,9 @@ pub(super) struct ModuleChecker<'a> {
     /// empty for a module; and what every namespace seen so far exports.
     namespace_path: String,
     namespaces: BTreeMap<String, binding::NamespaceMembers>,
+    /// Local names of namespaces imported with `import type`, which have no
+    /// value to read.
+    type_only_namespaces: BTreeSet<String>,
     pub(super) diagnostics: Vec<Diagnostic>,
     pub(super) symbols: Vec<Symbol>,
     types: BTreeMap<String, TypeDefinition>,
@@ -81,4 +85,5 @@ pub(super) struct ModuleChecker<'a> {
 
 mod binding;
 mod expressions;
+pub(crate) use binding::NamespaceExport;
 pub(in crate::checker) use binding::{class_export, class_instance_type};

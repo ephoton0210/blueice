@@ -26,6 +26,8 @@ pub(super) struct Parser {
     /// ambient (`declare namespace`).
     namespace_depth: usize,
     ambient_depth: usize,
+    /// How many `export {};` markers the body being parsed has had.
+    namespace_export_markers: usize,
 }
 
 #[path = "declarations.rs"]

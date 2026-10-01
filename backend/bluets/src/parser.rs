@@ -262,6 +262,9 @@ pub struct NamespaceDeclaration {
     pub exported: bool,
     /// `declare namespace`: an ambient declaration with no runtime form.
     pub declared: bool,
+    /// The body has `export {};`, which makes only members with their own
+    /// `export` exported even in an ambient namespace.
+    pub explicit_exports: bool,
     /// A segment of a dotted name after the first: written only as part of its
     /// parent's header.
     pub implicit: bool,
@@ -279,7 +282,7 @@ impl NamespaceDeclaration {
     /// Whether the body has any explicit `export`; an ambient body without one
     /// exports every member.
     pub fn exports_every_member(&self) -> bool {
-        self.declared && !self.body.iter().any(declaration_is_exported)
+        self.declared && !self.explicit_exports && !self.body.iter().any(declaration_is_exported)
     }
 }
 
@@ -909,6 +912,17 @@ pub(crate) fn parse_module_with_limits(
     source: impl Into<String>,
     limits: ParserLimits,
 ) -> Result<Module, Vec<Diagnostic>> {
+    parse_module_with_namespaces(id, source, limits, &[])
+}
+
+/// Parses a module that imports namespaces, given each by its local name and
+/// what it exports, so a reference to one of their members is one token.
+pub(crate) fn parse_module_with_namespaces(
+    id: impl Into<String>,
+    source: impl Into<String>,
+    limits: ParserLimits,
+    imported_namespaces: &[(String, NamespaceTree)],
+) -> Result<Module, Vec<Diagnostic>> {
     let id = id.into();
     let source = source.into();
     let tokens = if limits == ParserLimits::default() {
@@ -926,7 +940,9 @@ pub(crate) fn parse_module_with_limits(
         limits.max_type_depth,
     )
     .parse_module()?;
-    let Some(names) = namespace_names::NamespaceNames::collect(&first.declarations) else {
+    let Some(names) =
+        namespace_names::NamespaceNames::collect(&first.declarations, imported_namespaces)
+    else {
         return Ok(first);
     };
     Parser::new(id, source, tokens, limits.max_type_depth)
@@ -938,6 +954,7 @@ pub(crate) fn parse_module_with_limits(
 mod implementation;
 mod namespace_names;
 use implementation::Parser;
+pub use namespace_names::{exported_namespace_trees, NamespaceTree};
 
 #[cfg(test)]
 mod tests;

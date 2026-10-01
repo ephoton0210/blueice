@@ -731,6 +731,46 @@ impl<'a> ProjectBuilder<'a> {
                 )),
             }
         }
+        // A module that imports a namespace is parsed again with what the
+        // namespace exports, so a reference to its members is one token.
+        let mut imported_namespaces: Vec<(String, crate::parser::NamespaceTree)> = Vec::new();
+        for declaration in &module.declarations {
+            let crate::parser::Declaration::Import(import) = declaration else {
+                continue;
+            };
+            let Some(resolved) = self
+                .project
+                .resolutions
+                .get(&(module_id.to_string(), import.specifier.clone()))
+            else {
+                continue;
+            };
+            let Some(dependency) = self.project.modules.get(resolved) else {
+                continue;
+            };
+            let trees = crate::parser::exported_namespace_trees(dependency);
+            for binding in &import.bindings {
+                if let Some(tree) = trees.get(&binding.imported) {
+                    imported_namespaces.push((binding.local.clone(), tree.clone()));
+                }
+            }
+        }
+        let module = if imported_namespaces.is_empty() {
+            module
+        } else {
+            match crate::parser::parse_module_with_namespaces(
+                module.id.clone(),
+                module.source.clone(),
+                self.limits.parser.clone(),
+                &imported_namespaces,
+            ) {
+                Ok(merged) => merged,
+                Err(mut parse_diagnostics) => {
+                    self.diagnostics.append(&mut parse_diagnostics);
+                    module
+                }
+            }
+        };
         self.project.modules.insert(module_id.to_string(), module);
         self.state.insert(module_id.to_string(), VisitState::Done);
     }

@@ -57,6 +57,8 @@ pub struct Symbol {
 pub struct CheckedModule {
     pub module: Module,
     pub symbols: Vec<Symbol>,
+    /// The namespaces the module exports, as an importer binds them.
+    pub(crate) namespace_exports: BTreeMap<String, NamespaceExport>,
 }
 
 #[derive(Debug, Clone)]
@@ -176,11 +178,17 @@ pub(crate) fn check_incremental(
         enums: project::exported_enums(project),
         exported_names: project::exported_names(project),
     };
-    let mut checked_modules = BTreeMap::new();
+    let mut checked_modules: BTreeMap<String, CheckedModule> = BTreeMap::new();
+    // What each checked module exports as a namespace, for the modules that
+    // import it; modules are checked after the modules they import.
+    let mut namespace_exports: NamespaceExports = BTreeMap::new();
 
-    for (module_id, module) in &project.modules {
+    for module_id in dependency_order(project) {
+        let module = &project.modules[&module_id];
+        let module_id = &module_id;
         if !rechecked.contains(module_id) {
             if let Some(previous) = previous.and_then(|previous| previous.modules.get(module_id)) {
+                namespace_exports.insert(module_id.clone(), previous.namespace_exports.clone());
                 checked_modules.insert(module_id.clone(), previous.clone());
                 continue;
             }
@@ -190,6 +198,7 @@ pub(crate) fn check_incremental(
             module,
             &exports,
             (!project.ambient_declaration_modules.contains(module_id)).then_some(&ambient),
+            &namespace_exports,
             policy,
             max_type_expansions,
         );
@@ -197,12 +206,16 @@ pub(crate) fn check_incremental(
         if policy.enforce_types {
             checker.check_types();
         }
+        let exported_namespaces = checker.exported_namespaces();
         diagnostics.extend(checker.diagnostics);
+        let symbols = checker.symbols;
+        namespace_exports.insert(module_id.clone(), exported_namespaces.clone());
         checked_modules.insert(
             module_id.clone(),
             CheckedModule {
                 module: module.clone(),
-                symbols: checker.symbols,
+                symbols,
+                namespace_exports: exported_namespaces,
             },
         );
     }
@@ -212,6 +225,28 @@ pub(crate) fn check_incremental(
         },
         diagnostics,
     )
+}
+
+/// The modules of a project with every module after the ones it imports (a
+/// cycle is broken where it is first entered).
+fn dependency_order(project: &Project) -> Vec<String> {
+    fn visit(project: &Project, id: &str, seen: &mut BTreeSet<String>, order: &mut Vec<String>) {
+        if !project.modules.contains_key(id) || !seen.insert(id.to_string()) {
+            return;
+        }
+        for ((from, _), resolved) in &project.resolutions {
+            if from == id {
+                visit(project, resolved, seen, order);
+            }
+        }
+        order.push(id.to_string());
+    }
+    let mut order = Vec::new();
+    let mut seen = BTreeSet::new();
+    for id in project.modules.keys() {
+        visit(project, id, &mut seen, &mut order);
+    }
+    order
 }
 
 fn ambient_declarations(project: &Project) -> (AmbientDeclarations, Vec<Diagnostic>) {
@@ -327,6 +362,10 @@ fn insert_ambient_function(
 
 mod module;
 pub(crate) use module::CheckerPolicy;
+pub(crate) use module::NamespaceExport;
+
+/// What each module exports as a namespace, by module and exported name.
+type NamespaceExports = BTreeMap<String, BTreeMap<String, NamespaceExport>>;
 mod project;
 
 fn interface_value(interface: &InterfaceDeclaration) -> Type {

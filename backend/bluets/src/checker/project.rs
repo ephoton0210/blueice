@@ -544,6 +544,9 @@ pub(super) fn exported_names(project: &Project) -> BTreeMap<String, (BTreeSet<St
                 Declaration::Enum(declaration) if declaration.exported => {
                     names.insert(declaration.name.clone());
                 }
+                Declaration::Namespace(namespace) if namespace.exported => {
+                    names.insert(namespace.name.clone());
+                }
                 Declaration::TypeAlias(alias) if alias.exported => {
                     names.insert(alias.name.clone());
                 }

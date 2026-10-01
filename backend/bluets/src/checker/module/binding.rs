@@ -11,7 +11,7 @@ mod enums;
 mod functions;
 mod namespaces;
 pub(in crate::checker::module) use functions::promise_value_type;
-pub(in crate::checker::module) use namespaces::NamespaceMembers;
+pub(crate) use namespaces::{NamespaceExport, NamespaceMembers};
 pub(in crate::checker::module) use nested_functions::async_result;
 mod nested_functions;
 pub(in crate::checker) use classes::{class_export, class_instance_type};
@@ -40,6 +40,7 @@ impl<'a> ModuleChecker<'a> {
         module: &'a Module,
         exports: &'a ProjectExports,
         ambient: Option<&'a AmbientDeclarations>,
+        namespace_exports: &'a NamespaceExports,
         policy: CheckerPolicy,
         max_type_expansions: usize,
     ) -> Self {
@@ -48,6 +49,7 @@ impl<'a> ModuleChecker<'a> {
             module,
             exports,
             ambient,
+            namespace_exports,
             enforce_types: policy.enforce_types,
             require_declared_global_calls: policy.require_declared_global_calls,
             define_class_fields: policy.define_class_fields,
@@ -64,6 +66,7 @@ impl<'a> ModuleChecker<'a> {
             restricted_member_names: BTreeSet::new(),
             namespace_path: String::new(),
             namespaces: BTreeMap::new(),
+            type_only_namespaces: BTreeSet::new(),
             diagnostics: Vec::new(),
             symbols: Vec::new(),
             types: BTreeMap::new(),
@@ -401,6 +404,12 @@ impl<'a> ModuleChecker<'a> {
                             Declaration::Enum(declaration) => {
                                 declaration.name == binding.local && !declaration.declared
                             }
+                            Declaration::Namespace(namespace) => {
+                                namespace.name == binding.local
+                                    && (is_declaration_module(&self.module.id)
+                                        || (!namespace.declared
+                                            && namespaces::body_has_values(&namespace.body)))
+                            }
                             _ => false,
                         });
                 if !has_local_runtime_binding {
@@ -500,7 +509,46 @@ impl<'a> ModuleChecker<'a> {
         };
         let exported = self.exports.types.get(resolved);
         let exported_classes = self.exports.classes.get(resolved);
+        let mut merged_namespaces: Vec<(String, NamespaceExport, bool)> = Vec::new();
         for binding in &import.bindings {
+            if let Some(namespace) = self
+                .namespace_exports
+                .get(resolved)
+                .and_then(|namespaces| namespaces.get(&binding.imported))
+            {
+                // A namespace merged into a class, enum or function of the same
+                // name is bound beside it, which is bound as usual.
+                let merged = exported_classes
+                    .is_some_and(|classes| classes.contains_key(&binding.imported))
+                    || self
+                        .exports
+                        .enums
+                        .get(resolved)
+                        .is_some_and(|enums| enums.contains_key(&binding.imported))
+                    || self.project.modules.get(resolved).is_some_and(|module| {
+                        module.declarations.iter().any(|declaration| {
+                            matches!(declaration, Declaration::Function(function)
+                                if function.name == binding.imported && !function.declared)
+                        })
+                    });
+                if merged {
+                    // Bound after the class, enum or function it merges into.
+                    merged_namespaces.push((
+                        binding.local.clone(),
+                        namespace.clone(),
+                        !binding.type_only,
+                    ));
+                } else {
+                    self.bind_imported_namespace(
+                        &binding.local,
+                        namespace,
+                        &import.span,
+                        !binding.type_only,
+                        false,
+                    );
+                    continue;
+                }
+            }
             if binding.type_only {
                 if binding.imported == "*" {
                     if let Some(source_types) = exported {
@@ -635,6 +683,9 @@ impl<'a> ModuleChecker<'a> {
                     false,
                 );
             }
+        }
+        for (local, namespace, with_value) in merged_namespaces {
+            self.bind_imported_namespace(&local, &namespace, &import.span, with_value, true);
         }
     }
 

@@ -4,6 +4,7 @@ namespace-arrow-member/main.ts	accept
 namespace-async-member/main.ts	accept
 namespace-basic/main.ts	accept
 namespace-const-enum-inside/main.ts	accept
+namespace-declaration-output/main.ts	accept
 namespace-dotted-merge/main.ts	accept
 namespace-enum-inside/main.ts	accept
 namespace-error-ambient-initializer/main.ts	reject
@@ -31,6 +32,16 @@ namespace-error-variable-conflict/main.ts	reject
 namespace-error-wrong-type/main.ts	reject
 namespace-exported-let/main.ts	accept
 namespace-generic-function/main.ts	accept
+namespace-imported-merge/valid.ts	accept
+namespace-imported/alias-valid.ts	accept
+namespace-imported/bad-argument-error.ts	reject
+namespace-imported/hidden-type-error.ts	reject
+namespace-imported/missing-member-error.ts	reject
+namespace-imported/type-only-value-error.ts	reject
+namespace-imported/unexported-error.ts	reject
+namespace-imported/valid.ts	accept
+namespace-imported/value-import-of-types-only-valid.ts	accept
+namespace-imported/wrong-type-error.ts	reject
 namespace-initialization-order/main.ts	accept
 namespace-inner-calls-outer/main.ts	accept
 namespace-inner-uses-outer-type/main.ts	accept

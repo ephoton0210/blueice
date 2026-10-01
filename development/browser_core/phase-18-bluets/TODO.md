@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: J.3.5.4.** H and I are complete. The requested class, enum,
+**Current leaf: J.3.5.5.** H and I are complete. The requested class, enum,
 decorator, namespace, JSX, CommonJS, and package-resolution expansion has
 passed J.1/J.2 planning; implementation and pinned-`tsc` parity remain open.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
@@ -2508,8 +2508,31 @@ done to the page-runs-and-debugs goal at the top of this file.
       a namespace's class when the target lowers private names (the helpers would
       need a place in each namespace's function). Nested const enums are kept as
       objects; they are not inlined.
-    - [ ] **J.3.5.4** Declaration output, cross-module namespaces and ambient
-      namespaces in `.d.ts` modules.
+    - [x] **J.3.5.4** Declaration output, cross-module namespaces and ambient
+      namespaces in `.d.ts` modules. An exported namespace (or one named in
+      `export { N }`) prints as `declare namespace A.B { .. }`, a dotted name as
+      one declaration, members without `export` unless a member that is not
+      exported has to be printed because an exported one names it, in which case
+      TypeScript's explicit form is used (each exported member keeps `export`,
+      the hidden type is printed, `export {};` closes the body); `export {};`
+      is now accepted in a namespace body and makes exports explicit. The
+      `.d.ts` is accepted by tsc and a consumer is accepted or rejected the same
+      way against it as against the source (`namespace_declaration_oracle`).
+      Modules are now checked after the modules they import, each recording the
+      namespaces it exports (members, hidden types, the exporting module's own
+      types they mention, kept under `Name@module` keys), and an importer of a
+      namespace is parsed again with what it exports so a reference to a member
+      is one token. `import { N }`, `import { N as M }` and `import type { N }`
+      bind the members, types and hidden-member record; a namespace merged into
+      an exported class, enum or function is bound beside it; a type-only import
+      cannot be read as a value; a namespace with no run-time members must be
+      imported with `import type`, as an interface must (TypeScript accepts the
+      plain import and elides it; that fixture is on the matrix's deferred
+      list). 76 fixtures, 7 of them multi-module, agree with pinned tsc and
+      the accepted ones print the same under Node. A namespace in a `.d.ts`
+      module is bound like any other and can be exported by name; a class
+      inside an ambient namespace is still refused, as a `declare class` is
+      everywhere.
     - [ ] **J.3.5.5** Direct bridge lowering with oracle parity; class and
       interface declaration merging.
   - [ ] **J.3.6** Extend tuple-literal context to the remaining positions,

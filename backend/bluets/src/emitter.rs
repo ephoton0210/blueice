@@ -482,6 +482,18 @@ fn emit_declaration(module: &Module) -> Result<String, Diagnostic> {
                     .expect("every enum was evaluated");
                 output.push_str(&enums::emit_enum_declaration(declaration, evaluation));
             }
+            Declaration::Namespace(namespace)
+                if namespace.exported || is_value_export_name(module, &namespace.name) =>
+            {
+                let prefix = if namespace.exported {
+                    "export declare "
+                } else {
+                    "declare "
+                };
+                output.push_str(&namespaces::emit_namespace_declaration(
+                    module, namespace, prefix,
+                )?);
+            }
             Declaration::Class(class)
                 if class.exported
                     || is_default_export_name(module, &class.name)

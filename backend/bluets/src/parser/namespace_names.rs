@@ -58,12 +58,130 @@ fn declared_name(declaration: &Declaration) -> Option<&str> {
     }
 }
 
+/// The members a namespace exports, as another module sees them, by name; the
+/// inner namespaces nest.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct NamespaceTree {
+    /// Every exported member name.
+    pub members: BTreeSet<String>,
+    /// The exported members that are namespaces, with theirs.
+    pub namespaces: BTreeMap<String, NamespaceTree>,
+}
+
+/// The namespaces a module exports, by the name they are exported under: every
+/// block of one namespace contributes to it.
+pub fn exported_namespace_trees(module: &Module) -> BTreeMap<String, NamespaceTree> {
+    fn tree_of(blocks: &[&NamespaceDeclaration]) -> NamespaceTree {
+        let mut tree = NamespaceTree::default();
+        for block in blocks {
+            let every = block.exports_every_member();
+            for inner in &block.body {
+                let Some(name) = declared_name(inner) else {
+                    continue;
+                };
+                let exported = every
+                    || match inner {
+                        Declaration::Variable(item) => item.exported,
+                        Declaration::Function(item) => item.exported,
+                        Declaration::Class(item) => item.exported,
+                        Declaration::Enum(item) => item.exported,
+                        Declaration::Interface(item) => item.exported,
+                        Declaration::TypeAlias(item) => item.exported,
+                        Declaration::Namespace(item) => item.exported,
+                        _ => false,
+                    };
+                if exported {
+                    tree.members.insert(name.to_string());
+                }
+            }
+        }
+        let mut inner_names: BTreeSet<&str> = BTreeSet::new();
+        for block in blocks {
+            for inner in &block.body {
+                if let Declaration::Namespace(item) = inner {
+                    if item.exported || block.exports_every_member() {
+                        inner_names.insert(&item.name);
+                    }
+                }
+            }
+        }
+        for name in inner_names {
+            let inner_blocks: Vec<&NamespaceDeclaration> = blocks
+                .iter()
+                .flat_map(|block| block.body.iter())
+                .filter_map(|declaration| match declaration {
+                    Declaration::Namespace(item) if item.name == name => Some(item),
+                    _ => None,
+                })
+                .collect();
+            tree.namespaces
+                .insert(name.to_string(), tree_of(&inner_blocks));
+        }
+        tree
+    }
+    let exported_by_name: BTreeMap<&str, &str> = module
+        .declarations
+        .iter()
+        .filter_map(|declaration| match declaration {
+            Declaration::ValueExport(export) => Some(export.bindings.iter()),
+            _ => None,
+        })
+        .flatten()
+        .map(|binding| (binding.local.as_str(), binding.exported.as_str()))
+        .collect();
+    let mut by_export: BTreeMap<String, Vec<&NamespaceDeclaration>> = BTreeMap::new();
+    for declaration in &module.declarations {
+        let Declaration::Namespace(namespace) = declaration else {
+            continue;
+        };
+        if namespace.exported {
+            by_export
+                .entry(namespace.name.clone())
+                .or_default()
+                .push(namespace);
+        } else if let Some(exported) = exported_by_name.get(namespace.name.as_str()) {
+            by_export
+                .entry((*exported).to_string())
+                .or_default()
+                .push(namespace);
+        }
+    }
+    by_export
+        .into_iter()
+        .map(|(name, blocks)| (name, tree_of(&blocks)))
+        .collect()
+}
+
 impl NamespaceNames {
-    /// `None` when the module declares no namespace.
-    pub(super) fn collect(declarations: &[Declaration]) -> Option<Self> {
+    /// `None` when the module declares no namespace and imports none.
+    pub(super) fn collect(
+        declarations: &[Declaration],
+        imported: &[(String, NamespaceTree)],
+    ) -> Option<Self> {
         let mut names = Self::default();
         names.visit("", declarations, true);
-        (!names.bodies.is_empty()).then_some(names)
+        for (local, tree) in imported {
+            names.add_imported(local, tree);
+        }
+        (!names.bodies.is_empty() || !imported.is_empty()).then_some(names)
+    }
+
+    /// Adds a namespace imported under `local`, in scope everywhere.
+    fn add_imported(&mut self, local: &str, tree: &NamespaceTree) {
+        let root = self.members.entry(String::new()).or_default();
+        root.all.insert(local.to_string());
+        root.namespaces.insert(local.to_string());
+        self.add_tree(local, tree);
+    }
+
+    fn add_tree(&mut self, path: &str, tree: &NamespaceTree) {
+        let members = self.members.entry(path.to_string()).or_default();
+        members.all.extend(tree.members.iter().cloned());
+        members.all.extend(tree.namespaces.keys().cloned());
+        members.namespaces.extend(tree.namespaces.keys().cloned());
+        for (name, inner) in &tree.namespaces {
+            self.add_tree(&join(path, name), inner);
+        }
     }
 
     fn visit(&mut self, scope: &str, declarations: &[Declaration], whole_scope: bool) {

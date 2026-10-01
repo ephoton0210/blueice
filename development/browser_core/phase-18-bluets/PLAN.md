@@ -3090,3 +3090,26 @@ catch bindings, nested function expressions, class members) and from the tokens
 binding has the name of an exported variable it could see. An exported variable
 with several declarators in one statement is refused as well, because the
 statement would assign only the first through the object.
+
+### J.3.5.4 Declarations and namespaces across modules
+
+Declaration text for a namespace reuses the module-level printer: the exported
+members are printed as if each were a module export, then each first line loses
+`export declare` (or `export`, in the explicit form), and an inner namespace
+recurses. A member that is not exported is printed when a printed member names
+it, found by repeating until no new name appears, and that is exactly when
+TypeScript switches to the explicit form.
+
+An importer needs what the exporting module's checker computed, such as variable
+types it inferred, so modules are checked in dependency order and each records
+`NamespaceExport`: the published entries of its exported namespaces keyed by the
+name it declared them under, the registry of members and hidden types, and a copy
+of every type of the exporting module that those entries mention, under a key
+marked `@module`. Importing renames the namespace's name to the importer's local
+one in every key and every type, so `import { Geo as G }` works and a type that
+refers to another module's interface still means the same interface.
+
+The references have to be single tokens in the importer too, and the parse of a
+module happens before its imports' namespaces are known, so a module that imports
+a namespace is parsed again once its dependencies have been parsed, with the
+names each one exports.

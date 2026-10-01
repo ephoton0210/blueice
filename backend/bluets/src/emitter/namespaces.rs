@@ -869,3 +869,239 @@ fn scan(
         });
     }
 }
+
+/// The declaration file text of a namespace: `declare namespace N { .. }` with
+/// the members it exports, plus the types they mention that it does not.
+///
+/// Members are printed as a module's exports are, then stripped of `export
+/// declare`, because inside an ambient namespace every member is exported
+/// unless the namespace says otherwise. TypeScript says otherwise (an explicit
+/// `export` on each exported member and a closing `export {};`) exactly when a
+/// member that is not exported has to be printed because an exported one names
+/// it, so that is when this does.
+pub(super) fn emit_namespace_declaration(
+    module: &Module,
+    namespace: &NamespaceDeclaration,
+    prefix: &str,
+) -> Result<String, Diagnostic> {
+    // `A.B.C` is one declaration with a dotted name.
+    let mut name = namespace.name.clone();
+    let mut current = namespace;
+    while let [Declaration::Namespace(inner)] = current.body.as_slice() {
+        if !inner.implicit {
+            break;
+        }
+        name.push('.');
+        name.push_str(&inner.name);
+        current = inner;
+    }
+    let body = render_namespace_body(module, current)?;
+    let mut output = format!("{prefix}namespace {name} {{");
+    if body.is_empty() {
+        output.push_str(" }\n");
+    } else {
+        output.push('\n');
+        output.push_str(&body);
+        output.push_str("}\n");
+    }
+    Ok(output)
+}
+
+fn is_exported_member(namespace: &NamespaceDeclaration, declaration: &Declaration) -> bool {
+    let explicit = match declaration {
+        Declaration::Variable(item) => item.exported,
+        Declaration::Function(item) => item.exported,
+        Declaration::Class(item) => item.exported,
+        Declaration::Enum(item) => item.exported,
+        Declaration::Interface(item) => item.exported,
+        Declaration::TypeAlias(item) => item.exported,
+        Declaration::Namespace(item) => item.exported,
+        _ => false,
+    };
+    explicit || (namespace.exports_every_member() && declared_name(declaration).is_some())
+}
+
+fn declared_name(declaration: &Declaration) -> Option<&str> {
+    match declaration {
+        Declaration::Variable(item) => Some(&item.name),
+        Declaration::Function(item) => Some(&item.name),
+        Declaration::Class(item) => Some(&item.name),
+        Declaration::Enum(item) => Some(&item.name),
+        Declaration::Interface(item) => Some(&item.name),
+        Declaration::TypeAlias(item) => Some(&item.name),
+        Declaration::Namespace(item) => Some(&item.name),
+        _ => None,
+    }
+}
+
+/// A member as a module-level export, so the declaration printer prints it.
+fn as_export(declaration: &Declaration) -> Declaration {
+    let mut declaration = declaration.clone();
+    match &mut declaration {
+        Declaration::Variable(item) => {
+            item.exported = true;
+            item.declared = false;
+        }
+        Declaration::Function(item) => {
+            item.exported = true;
+            item.declared = false;
+        }
+        Declaration::Class(item) => item.exported = true,
+        Declaration::Enum(item) => {
+            item.exported = true;
+        }
+        Declaration::Interface(item) => item.exported = true,
+        Declaration::TypeAlias(item) => item.exported = true,
+        _ => {}
+    }
+    declaration
+}
+
+/// The identifier-like words of some text.
+fn words(text: &str) -> BTreeSet<String> {
+    text.split(|character: char| !(character.is_alphanumeric() || matches!(character, '_' | '$')))
+        .filter(|word| !word.is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
+fn render_namespace_body(
+    module: &Module,
+    namespace: &NamespaceDeclaration,
+) -> Result<String, Diagnostic> {
+    let body = &namespace.body;
+    let mut included: Vec<bool> = body
+        .iter()
+        .map(|declaration| is_exported_member(namespace, declaration))
+        .collect();
+    let mut hidden: BTreeSet<usize> = BTreeSet::new();
+    // A member that is not exported is printed when a printed member names it.
+    loop {
+        let text = render_members(module, namespace, &included, &hidden, false)?;
+        let mentioned = words(&text);
+        let mut changed = false;
+        for (index, declaration) in body.iter().enumerate() {
+            if included[index] {
+                continue;
+            }
+            let typelike = matches!(
+                declaration,
+                Declaration::Interface(_)
+                    | Declaration::TypeAlias(_)
+                    | Declaration::Class(_)
+                    | Declaration::Enum(_)
+                    | Declaration::Namespace(_)
+            );
+            let named = declared_name(declaration).is_some_and(|name| mentioned.contains(name));
+            if typelike && named {
+                included[index] = true;
+                hidden.insert(index);
+                changed = true;
+            }
+        }
+        if !changed {
+            break;
+        }
+    }
+    let explicit = !hidden.is_empty();
+    let mut text = render_members(module, namespace, &included, &hidden, explicit)?;
+    if explicit {
+        text.push_str("    export {};\n");
+    }
+    Ok(text)
+}
+
+/// The printed members, indented one level. In `explicit` mode each exported
+/// member keeps its `export`; otherwise none shows it.
+fn render_members(
+    module: &Module,
+    namespace: &NamespaceDeclaration,
+    included: &[bool],
+    hidden: &BTreeSet<usize>,
+    explicit: bool,
+) -> Result<String, Diagnostic> {
+    let mut output = String::new();
+    let mut chunk: Vec<(usize, Declaration)> = Vec::new();
+    let flush =
+        |chunk: &mut Vec<(usize, Declaration)>, output: &mut String| -> Result<(), Diagnostic> {
+            if chunk.is_empty() {
+                return Ok(());
+            }
+            let synthetic = Module {
+                id: module.id.clone(),
+                source: module.source.clone(),
+                declarations: chunk
+                    .iter()
+                    .map(|(_, declaration)| declaration.clone())
+                    .collect(),
+                edits: Vec::new(),
+                generic_call_type_arguments: BTreeMap::new(),
+                nested_functions: BTreeMap::new(),
+            };
+            let text = super::emit_declaration(&synthetic)?;
+            let hidden_names: BTreeSet<&str> = chunk
+                .iter()
+                .filter(|(index, _)| hidden.contains(index))
+                .filter_map(|(_, declaration)| declared_name(declaration))
+                .collect();
+            for line in text.lines() {
+                let mut line = line.to_string();
+                if !line.starts_with(' ') && !line.starts_with('}') {
+                    let stripped = line
+                        .strip_prefix("export declare ")
+                        .or_else(|| line.strip_prefix("export "))
+                        .unwrap_or(&line)
+                        .to_string();
+                    let name = [
+                        "const enum ",
+                        "enum ",
+                        "const ",
+                        "let ",
+                        "var ",
+                        "function ",
+                        "class ",
+                        "interface ",
+                        "type ",
+                    ]
+                    .iter()
+                    .find_map(|keyword| stripped.strip_prefix(keyword))
+                    .map(|rest| {
+                        rest.split(|character: char| {
+                            !(character.is_alphanumeric() || matches!(character, '_' | '$'))
+                        })
+                        .next()
+                        .unwrap_or("")
+                        .to_string()
+                    })
+                    .unwrap_or_default();
+                    let keep_export = explicit && !hidden_names.contains(name.as_str());
+                    line = format!("{}{stripped}", if keep_export { "export " } else { "" });
+                }
+                output.push_str(&format!("    {line}\n"));
+            }
+            chunk.clear();
+            Ok(())
+        };
+    for (index, declaration) in namespace.body.iter().enumerate() {
+        if !included[index] {
+            continue;
+        }
+        match declaration {
+            Declaration::Namespace(inner) => {
+                flush(&mut chunk, &mut output)?;
+                let prefix = if explicit && !hidden.contains(&index) {
+                    "export "
+                } else {
+                    ""
+                };
+                let text = emit_namespace_declaration(module, inner, prefix)?;
+                for line in text.lines() {
+                    output.push_str(&format!("    {line}\n"));
+                }
+            }
+            other => chunk.push((index, as_export(other))),
+        }
+    }
+    flush(&mut chunk, &mut output)?;
+    Ok(output)
+}

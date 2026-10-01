@@ -555,3 +555,216 @@ fn a_private_name_in_a_namespace_class_is_refused_below_es2022_only() {
     );
     assert!(native.output.is_some(), "{:?}", native.diagnostics);
 }
+
+fn declaration(source: &str) -> String {
+    let compiled = compile(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+        CompilerOptions {
+            declaration: true,
+            ..CompilerOptions::default()
+        },
+    );
+    assert!(
+        compiled.diagnostics.is_empty(),
+        "{:?}",
+        compiled.diagnostics
+    );
+    compiled.output.unwrap().artifacts[ENTRY]
+        .declaration
+        .clone()
+        .expect("declaration requested")
+}
+
+#[test]
+fn a_declaration_prints_the_exported_members_without_export_when_none_is_hidden() {
+    let output = declaration(
+        "export namespace N { export const a: number = 1; const hidden: number = 2; \
+         export function f(x: number): number { return x + hidden; } \
+         export namespace Inner { export const z: number = 3; } }",
+    );
+    assert_eq!(
+        output,
+        "export declare namespace N {\n    const a: number;\n    function f(x: number): number;\n    namespace Inner {\n        const z: number;\n    }\n}\n"
+    );
+}
+
+#[test]
+fn a_declaration_prints_a_hidden_type_an_exported_member_names_and_marks_exports() {
+    let output = declaration(
+        "export namespace N { interface Hidden { h: number } \
+         export function make(): Hidden { return { h: 1 }; } export const k: number = 1; }",
+    );
+    assert!(output.contains("    interface Hidden {"), "{output}");
+    assert!(
+        output.contains("    export function make(): Hidden;"),
+        "{output}"
+    );
+    assert!(output.contains("    export const k: number;"), "{output}");
+    assert!(output.contains("    export {};\n}"), "{output}");
+}
+
+#[test]
+fn a_dotted_namespace_prints_as_one_declaration_and_an_empty_one_prints_braces() {
+    assert_eq!(
+        declaration("export namespace A.B { export const k: string = 'k'; }"),
+        "export declare namespace A.B {\n    const k: string;\n}\n"
+    );
+    assert_eq!(
+        declaration("export namespace Empty { }"),
+        "export declare namespace Empty { }\n"
+    );
+}
+
+#[test]
+fn a_local_namespace_is_declared_and_exported_by_name() {
+    assert_eq!(
+        declaration("namespace Local { export const l: number = 1; } export { Local };"),
+        "declare namespace Local {\n    const l: number;\n}\nexport { Local };\n"
+    );
+}
+
+#[test]
+fn an_export_marker_makes_only_explicit_members_exported_in_an_ambient_body() {
+    let found = namespaces(
+        "declare namespace M { interface Hidden {} export const v: number; export {}; }",
+    );
+    assert!(found[0].explicit_exports);
+    assert!(!found[0].exports_every_member());
+}
+
+fn compile_two(main: &str, lib: &str) -> blueice_bluets::Compilation {
+    compile(
+        ENTRY,
+        &MapLoader::from([
+            ModuleSource::new(ENTRY, main),
+            ModuleSource::new("memory:///lib.ts", lib),
+        ]),
+        CompilerOptions::default(),
+    )
+}
+
+const LIB: &str = "export interface Shape { sides: number } \
+    export namespace Geo { export const origin: number = 0; \
+    export function area(s: Shape): number { return s.sides * 2; } \
+    export class Point { x: number = 1; } export enum Kind { Flat, Round } \
+    export namespace Deep { export const depth: number = 3; } \
+    interface Internal { i: number } export function inner(): Internal { return { i: 1 }; } } \
+    export namespace Only { export interface T { v: number } }";
+
+#[test]
+fn an_imported_namespace_is_checked_like_a_local_one() {
+    let compiled = compile_two(
+        "import { Geo } from './lib.ts'; import type { Shape, Only } from './lib.ts'; \
+         const s: Shape = { sides: 2 }; const a: number = Geo.area(s); const p: Geo.Point = new Geo.Point(); \
+         const k: Geo.Kind = Geo.Kind.Round; const d: number = Geo.Deep.depth; const o: Only.T = { v: 1 }; \
+         const i: number = Geo.inner().i;",
+        LIB,
+    );
+    assert!(
+        compiled.diagnostics.is_empty(),
+        "{:?}",
+        compiled.diagnostics
+    );
+    assert!(compiled.output.is_some());
+}
+
+#[test]
+fn an_imported_namespace_keeps_its_hidden_members_hidden_and_checks_arguments() {
+    for (main, message) in [
+        (
+            "import { Geo } from './lib.ts'; const h: Geo.Internal = { i: 1 };",
+            "namespace `Geo` has no exported member `Internal`",
+        ),
+        (
+            "import { Geo } from './lib.ts'; const n: number = Geo.area({ sides: 'x' });",
+            "not assignable",
+        ),
+        (
+            "import { Geo } from './lib.ts'; const s: string = Geo.origin;",
+            "not assignable",
+        ),
+        (
+            "import type { Geo } from './lib.ts'; const x = Geo.origin;",
+            "imported with `import type`",
+        ),
+    ] {
+        let compiled = compile_two(main, LIB);
+        assert!(
+            compiled
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.message.contains(message)),
+            "`{main}`: {message}: {:?}",
+            compiled.diagnostics
+        );
+    }
+}
+
+#[test]
+fn a_type_only_namespace_must_be_imported_as_a_type_and_an_alias_is_followed() {
+    let compiled = compile_two(
+        "import { Only } from './lib.ts'; const o: Only.T = { v: 1 };",
+        LIB,
+    );
+    assert!(compiled.diagnostics.iter().any(|diagnostic| diagnostic.code
+        == DiagnosticCode::UnsupportedSyntax
+        && diagnostic.message.contains("import it with `import type`")));
+    let aliased = compile_two(
+        "import { Geo as G } from './lib.ts'; const n: number = G.Deep.depth; const p: G.Point = new G.Point();",
+        LIB,
+    );
+    assert!(aliased.diagnostics.is_empty(), "{:?}", aliased.diagnostics);
+}
+
+#[test]
+fn an_imported_namespace_merged_into_a_class_or_function_binds_both() {
+    let lib = "export class K { static s: number = 1; v: number = 2; } \
+               export namespace K { export const t: number = 3; } \
+               export function g(x: number): number { return x; } \
+               export namespace g { export const meta: string = 'm'; }";
+    let compiled = compile_two(
+        "import { K, g } from './lib.ts'; const n: number = K.s + K.t; const k: K = new K(); \
+         const m: string = g.meta; const r: number = g(1);",
+        lib,
+    );
+    assert!(
+        compiled.diagnostics.is_empty(),
+        "{:?}",
+        compiled.diagnostics
+    );
+}
+
+#[test]
+fn an_importer_is_rechecked_when_the_namespace_it_imports_changes() {
+    use blueice_bluets::IncrementalCompiler;
+    let main = "import { Geo } from './lib.ts'; const n: number = Geo.origin;";
+    let mut session = IncrementalCompiler::new();
+    let first = session.compile(
+        ENTRY,
+        &MapLoader::from([
+            ModuleSource::new(ENTRY, main),
+            ModuleSource::new(
+                "memory:///lib.ts",
+                "export namespace Geo { export const origin: number = 0; }",
+            ),
+        ]),
+        CompilerOptions::default(),
+    );
+    assert!(first.compilation.diagnostics.is_empty());
+    let second = session.compile(
+        ENTRY,
+        &MapLoader::from([
+            ModuleSource::new(ENTRY, main),
+            ModuleSource::new(
+                "memory:///lib.ts",
+                "export namespace Geo { export const origin: string = 'x'; }",
+            ),
+        ]),
+        CompilerOptions::default(),
+    );
+    assert!(
+        !second.compilation.diagnostics.is_empty(),
+        "the importer must see the new type of the member"
+    );
+}

@@ -62,6 +62,7 @@ impl Parser {
         });
         self.index = opening + 1;
         let outer = std::mem::take(&mut self.declarations);
+        let outer_markers = std::mem::take(&mut self.namespace_export_markers);
         self.namespace_depth += 1;
         self.ambient_depth += usize::from(declared);
         self.parse_items();
@@ -72,6 +73,9 @@ impl Parser {
         self.tokens.extend(tail);
         self.index = closing + 1;
 
+        let explicit_exports = self.namespace_export_markers > 0;
+        self.namespace_export_markers = outer_markers;
+        let names_len = names.len();
         let header_span = SourceSpan::new(&self.id, start, self.tokens[opening].end);
         let closing_span = closing_token.span(&self.id);
         let span = SourceSpan::new(&self.id, start, closing_token.end);
@@ -84,6 +88,7 @@ impl Parser {
                 name_span,
                 exported: if index == 0 { exported } else { true },
                 declared,
+                explicit_exports: explicit_exports && index == names_len - 1,
                 implicit: index > 0,
                 body: match inner {
                     Some(inner) => vec![Declaration::Namespace(inner)],

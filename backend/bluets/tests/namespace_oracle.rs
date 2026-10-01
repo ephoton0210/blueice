@@ -20,22 +20,44 @@ use blueice_bluets::{compile, CompilerOptions, EcmaTarget, MapLoader, ModuleSour
 static COUNTER: AtomicUsize = AtomicUsize::new(0);
 
 const MATRIX: &str = include_str!("fixtures/typescript_oracle/namespace-checker-matrix.tsv");
+const DEFERRED: &str =
+    include_str!("fixtures/typescript_oracle/namespace-checker-matrix-deferred.txt");
 
 fn fixtures() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/typescript_oracle")
 }
 
-/// Every single-module namespace fixture pinned TypeScript accepts, as
-/// `(name, entry text)`.
-fn accepted_programs() -> Vec<(String, String)> {
+/// One program: its name, entry file, and every module as `(file, text)`.
+type Program = (String, String, Vec<(String, String)>);
+
+/// Every namespace fixture pinned TypeScript accepts and BlueTSC builds: a
+/// directory with a `main.ts`, or one with several entries (`*valid.ts`) beside
+/// the modules they import.
+fn accepted_programs() -> Vec<Program> {
+    let deferred: Vec<&str> = DEFERRED.lines().collect();
     MATRIX
         .lines()
         .filter_map(|line| line.split_once('\t'))
-        .filter(|(path, verdict)| *verdict == "accept" && path.ends_with("/main.ts"))
+        .filter(|(path, verdict)| *verdict == "accept" && !deferred.contains(path))
         .map(|(path, _)| {
-            let name = path.trim_end_matches("/main.ts").to_string();
-            let text = fs::read_to_string(fixtures().join(path)).unwrap();
-            (name, text)
+            let (directory, entry) = path.split_once('/').unwrap();
+            let modules = fs::read_dir(fixtures().join(directory))
+                .unwrap()
+                .map(|file| file.unwrap().file_name().into_string().unwrap())
+                .filter(|file| file.ends_with(".ts"))
+                .filter(|file| {
+                    // Other entries of the directory are separate programs.
+                    file == entry
+                        || !(file.ends_with("valid.ts")
+                            || file.ends_with("error.ts")
+                            || file == "main.ts")
+                })
+                .map(|file| {
+                    let text = fs::read_to_string(fixtures().join(directory).join(&file)).unwrap();
+                    (file, text)
+                })
+                .collect();
+            (path.replace('/', ":"), entry.to_string(), modules)
         })
         .collect()
 }
@@ -53,19 +75,30 @@ fn pinned_namespace_emit_prints_what_typescript_prints_for_every_target() {
     let node = env::var_os("BLUEICE_NODE").unwrap_or_else(|| "node".into());
     let programs = accepted_programs();
     assert!(programs.len() >= 20, "the accepted fixtures were found");
-    for (name, text) in &programs {
+    for (name, entry, modules) in &programs {
         for target in TARGETS {
-            compare(name, text, *target, &tsc, &node);
+            compare(name, entry, modules, *target, &tsc, &node);
         }
     }
 }
 
-fn compare(name: &str, text: &str, target: EcmaTarget, tsc: &Path, node: &std::ffi::OsStr) {
+fn compare(
+    name: &str,
+    entry: &str,
+    modules: &[(String, String)],
+    target: EcmaTarget,
+    tsc: &Path,
+    node: &std::ffi::OsStr,
+) {
     let mode = format!("{name} target={}", target.as_str());
     let directory = Directory::new();
+    let sources: Vec<ModuleSource> = modules
+        .iter()
+        .map(|(file, text)| ModuleSource::new(format!("memory:///{file}"), text.as_str()))
+        .collect();
     let compiled = compile(
-        "memory:///main.ts",
-        &MapLoader::from([ModuleSource::new("memory:///main.ts", text)]),
+        &format!("memory:///{entry}"),
+        &MapLoader::from(sources),
         CompilerOptions {
             target,
             ..CompilerOptions::default()
@@ -85,9 +118,13 @@ fn compare(name: &str, text: &str, target: EcmaTarget, tsc: &Path, node: &std::f
     for folder in [&blue, &reference] {
         fs::write(folder.join("package.json"), "{\"type\":\"module\"}\n").unwrap();
     }
-    fs::write(input.join("main.ts"), text).unwrap();
-    let javascript = &compiled.output.as_ref().unwrap().artifacts["memory:///main.ts"].javascript;
-    fs::write(blue.join("main.js"), javascript).unwrap();
+    for (file, text) in modules {
+        fs::write(input.join(file), text).unwrap();
+    }
+    for (id, artifact) in &compiled.output.as_ref().unwrap().artifacts {
+        let relative = id.strip_prefix("memory:///").unwrap().replace(".ts", ".js");
+        fs::write(blue.join(relative), &artifact.javascript).unwrap();
+    }
 
     let module = if target == EcmaTarget::Es2022 {
         "ES2022"
@@ -103,22 +140,25 @@ fn compare(name: &str, text: &str, target: EcmaTarget, tsc: &Path, node: &std::f
             "--strict",
             "--pretty",
             "false",
+            "--allowImportingTsExtensions",
+            "--rewriteRelativeImportExtensions",
             "--outDir",
         ])
         .arg(&reference)
-        .arg(input.join("main.ts"))
+        .arg(input.join(entry))
         .output()
         .unwrap();
+    let entry_js = entry.replace(".ts", ".js");
     assert!(
-        reference.join("main.js").exists(),
+        reference.join(&entry_js).exists(),
         "tsc emitted nothing for {mode}: {emitted:?}"
     );
 
-    let blue_run = run(node, &blue.join("main.js"));
-    let tsc_run = run(node, &reference.join("main.js"));
+    let blue_run = run(node, &blue.join(&entry_js));
+    let tsc_run = run(node, &reference.join(&entry_js));
     assert!(
         blue_run.status.success(),
-        "{mode}: BlueTSC output failed: {blue_run:?}\n{javascript}"
+        "{mode}: BlueTSC output failed: {blue_run:?}"
     );
     assert!(
         tsc_run.status.success(),
@@ -127,7 +167,7 @@ fn compare(name: &str, text: &str, target: EcmaTarget, tsc: &Path, node: &std::f
     assert_eq!(
         String::from_utf8_lossy(&blue_run.stdout),
         String::from_utf8_lossy(&tsc_run.stdout),
-        "{mode}: BlueTSC and TypeScript print different output\n--- BlueTSC output ---\n{javascript}"
+        "{mode}: BlueTSC and TypeScript print different output"
     );
 }
 
