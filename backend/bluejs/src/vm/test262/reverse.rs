@@ -671,25 +671,44 @@ mod tests {
         assert_eq!(evaluate(source), Ok(Value::Bool(true)), "{source}");
     }
 
-    /// A child-realm getter whose body performs `operation` on a facade of
-    /// the parent's `target` (and `fn`), read through the forward membrane.
-    /// The parent is not registered active for that read, so the operation
-    /// must fail with a catchable TypeError instead of dereferencing a
-    /// dangling parent.
-    fn operation_without_a_live_parent(operation: &str) -> String {
-        // The operation sits inside a single-quoted string of the child script.
-        let operation = operation.replace('\'', "\"");
-        format!(
-            "(() => {{
-               var other = $262.createRealm();
-               var target = {{ x: 1, get y() {{ return 2 }} }};
-               function fn() {{ return 1 }}
-               other.global.target = target;
-               other.global.fn = fn;
-               other.evalScript('Object.defineProperty(globalThis, \"probe\", {{ get: function () {{ return ({operation}) }} }});');
-               try {{ other.global.probe; return false }} catch (e) {{ return e.constructor.name === 'TypeError' && e.message.includes('no longer reachable') }}
-             }})()"
+    /// Enters the child directly, after the parent's export call returned.
+    /// A forward getter keeps its parent active; bypass that boundary here
+    /// to verify a facade really refuses an absent parent instead of using
+    /// a stale pointer.
+    fn operation_without_a_live_parent(operation: &str) -> Result<Value, RuntimeError> {
+        let mut parent = Vm::default();
+        parent.install_test262_harness().unwrap();
+        parent
+            .execute(
+                &compile(
+                    &parse(
+                        "var other = $262.createRealm();
+             var target = { x: 1, get y() { return 2 } };
+             function fn() { return 1 }
+             other.global.target = target; other.global.fn = fn;",
+                    )
+                    .unwrap(),
+                )
+                .unwrap(),
+            )
+            .unwrap();
+        let code = compile(
+            &parse(&format!(
+                "var caught = false;
+             try {{ ({operation}); }} catch (e) {{
+               caught = e instanceof TypeError && e.message.includes('no longer reachable');
+             }} caught"
+            ))
+            .unwrap(),
         )
+        .unwrap();
+        parent
+            .test262_realms
+            .values_mut()
+            .next()
+            .unwrap()
+            .vm
+            .execute(&code)
     }
 
     #[test]
@@ -711,7 +730,7 @@ mod tests {
             "fn.call({}, 1, 2)",
         ] {
             assert_eq!(
-                evaluate(&operation_without_a_live_parent(operation)),
+                operation_without_a_live_parent(operation),
                 Ok(Value::Bool(true)),
                 "{operation}"
             );

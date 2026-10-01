@@ -6,6 +6,62 @@ use super::*;
 use crate::heap::TemporalKind;
 
 #[test]
+fn internal_array_append_propagates_length_overflow_and_preserves_prior_writes() {
+    for nursery_capacity in [VmConfig::default().heap.nursery_capacity, 1] {
+        for kind in [0, 1] {
+            let mut config = VmConfig::default();
+            config.heap.nursery_capacity = nursery_capacity;
+            let mut vm = Vm::new(config).unwrap();
+            // Sparse storage reaches the valid array-length boundary without
+            // allocating billions of elements or changing internal heap state.
+            let id = vm.heap.alloc_array(u32::MAX - 1, None).unwrap();
+            vm.heap.root(id).unwrap();
+            let array = Value::Object(id);
+            let value = Value::String("appended".into());
+
+            assert_eq!(vm.array_push(&array, &value, kind), Ok(()));
+            assert_eq!(
+                vm.heap.get(id, "length").unwrap(),
+                Value::Number(u32::MAX as f64)
+            );
+            assert_eq!(
+                vm.heap.get_own(id, "4294967294").unwrap(),
+                (kind == 0).then(|| value.clone())
+            );
+
+            // At the maximum length, an element is written as an ordinary
+            // non-index property before the length update returns its error.
+            // An elision reaches the same length error without an element write.
+            assert_eq!(
+                vm.array_push(&array, &value, kind),
+                Err(RuntimeError::RangeError("invalid array length".into()))
+            );
+            assert_eq!(
+                vm.heap.get(id, "length").unwrap(),
+                Value::Number(u32::MAX as f64)
+            );
+            assert_eq!(
+                vm.heap.get_own(id, "4294967294").unwrap(),
+                (kind == 0).then(|| value.clone())
+            );
+            assert_eq!(
+                vm.heap.get_own(id, "4294967295").unwrap(),
+                (kind == 0).then(|| value.clone())
+            );
+
+            // A rejected append leaves the helper usable for subsequent work.
+            vm.heap.set(id, "length", Value::Number(0.0)).unwrap();
+            assert_eq!(vm.array_push(&array, &value, kind), Ok(()));
+            assert_eq!(vm.heap.get(id, "length").unwrap(), Value::Number(1.0));
+            assert_eq!(
+                vm.heap.get_own(id, "0").unwrap(),
+                (kind == 0).then(|| value.clone())
+            );
+        }
+    }
+}
+
+#[test]
 fn collection_and_array_helpers_reject_foreign_heap_handles() {
     let mut vm = Vm::default();
     let mut other = Vm::default();

@@ -342,9 +342,9 @@ impl Vm {
             Self::nested_debugger_target_generation(code, code_unit_ordinal, bytecode_offset)?;
         self.prepare_root_execution(code, false)?;
         if let Err(error) = self.prepare_global_declarations(code) {
-            return self.finish_root_execution(Err(error)).map(|_| {
-                unreachable!("an abrupt debugger setup cannot produce a completion value")
-            });
+            return Err(self
+                .finish_root_execution(Err(error))
+                .expect_err("root cleanup preserves an abrupt completion"));
         }
         self.debugger_nested_pause_request = Some(NestedDebuggerPauseRequest {
             program_generation: generation,
@@ -668,9 +668,9 @@ impl Vm {
                                 return self.abort_nested_module_execution(error);
                             }
                             self.debugger_continuation = None;
-                            return self.finish_root_execution(Err(error)).map(|_| {
-                                unreachable!("failed nested completion cannot finish the root")
-                            });
+                            return Err(self
+                                .finish_root_execution(Err(error))
+                                .expect_err("root cleanup preserves an abrupt completion"));
                         }
                         if let Some(root) = self.debugger_module_continuation.as_mut() {
                             let call = root
@@ -713,9 +713,9 @@ impl Vm {
                         }
                         if !error.is_catchable() {
                             self.debugger_continuation = None;
-                            return self.finish_root_execution(Err(error)).map(|_| {
-                                unreachable!("uncatchable nested failure cannot finish the root")
-                            });
+                            return Err(self
+                                .finish_root_execution(Err(error))
+                                .expect_err("root cleanup preserves an abrupt completion"));
                         }
                         let mut root = self
                             .debugger_continuation
@@ -739,9 +739,9 @@ impl Vm {
                             Ok(CompletionAction::Return(value)) => self
                                 .finish_root_execution(Ok(value))
                                 .map(|_| VmDebuggerNestedExecutionState::Completed),
-                            Ok(CompletionAction::Throw(error)) | Err(error) => self
+                            Ok(CompletionAction::Throw(error)) | Err(error) => Err(self
                                 .finish_root_execution(Err(error))
-                                .map(|_| unreachable!("failed nested step cannot finish the root")),
+                                .expect_err("root cleanup preserves an abrupt completion")),
                             Ok(
                                 CompletionAction::Continue
                                 | CompletionAction::TailRecur(_)
@@ -865,9 +865,12 @@ impl Vm {
             record.evaluated = true;
             record.error = Some(value.clone());
         }
-        let error = result.unwrap_or_else(|error| error);
-        self.finish_module_graph_execution(Err(error))
-            .map(|_| unreachable!("failed nested module cannot complete successfully"))
+        let error = match result {
+            Ok(error) | Err(error) => error,
+        };
+        Err(self
+            .finish_module_graph_execution(Err(error))
+            .expect_err("module cleanup preserves an abrupt completion"))
     }
 
     /// Runs a classic script until the exact compiler-provided root code-unit
@@ -901,9 +904,9 @@ impl Vm {
 
         self.prepare_root_execution(code, false)?;
         if let Err(error) = self.prepare_global_declarations(code) {
-            return self.finish_root_execution(Err(error)).map(|_| {
-                unreachable!("an abrupt debugger setup cannot produce a completion value")
-            });
+            return Err(self
+                .finish_root_execution(Err(error))
+                .expect_err("root cleanup preserves an abrupt completion"));
         }
 
         match self.run_debugger_script(code, Some(InterpreterSuspensionPoint::Offset(target))) {

@@ -676,21 +676,23 @@ impl Vm {
         )
         .total_nanoseconds()
             + record.days * DAY_NS;
-        let target_days =
-            i64::try_from(time_total.div_euclid(DAY_NS)).map_err(|_| out_of_range())?;
         let target_time =
             duration_math::time_fields_from_nanoseconds(time_total.rem_euclid(DAY_NS));
-        let target_date = plain_date::calendar_add_date(
-            calendar,
-            anchor,
-            record.years as i64,
-            record.months as i64,
-            record.weeks as i64,
-            target_days,
-            false,
-        )
-        .filter(|date| epoch::is_date_within_limits(*date))
-        .ok_or_else(out_of_range)?;
+        let target_date = i64::try_from(time_total.div_euclid(DAY_NS))
+            .ok()
+            .and_then(|target_days| {
+                plain_date::calendar_add_date(
+                    calendar,
+                    anchor,
+                    record.years as i64,
+                    record.months as i64,
+                    record.weeks as i64,
+                    target_days,
+                    false,
+                )
+            })
+            .filter(|date| epoch::is_date_within_limits(*date))
+            .ok_or_else(out_of_range)?;
         let origin = (anchor, MIDNIGHT);
         let target = (target_date, target_time);
         if origin != target {

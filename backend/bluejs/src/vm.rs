@@ -496,6 +496,9 @@ enum AsyncGeneratorDelegateKind {
     /// The delegate of a `yield*` has no `return` method, so the operand is
     /// awaited a second time before it is returned.
     AwaitReturnNoMethod,
+    /// AsyncIteratorClose is awaiting `return()` because `yield*`'s delegate
+    /// has no `throw` method. Its completion is thrown at the delegation site.
+    CloseMissingThrow,
 }
 
 struct PromiseRecord {

@@ -36,6 +36,10 @@ use super::plain_date::{self, DateUnit};
 use super::rounding::{self, TemporalUnit};
 use icu_calendar::AnyCalendarKind;
 
+#[cfg(test)]
+#[path = "../../../tests/fixtures/plain_difference_boundaries.rs"]
+mod boundary_tests;
+
 /// The ten `Temporal.Duration` fields, in `years..nanoseconds` order. `i128`
 /// throughout, because folding a multi-century span into `nanoseconds`
 /// (`largestUnit: "nanoseconds"`) overflows `i64` long before the caller's
@@ -227,7 +231,9 @@ pub(crate) fn difference_plain_date_time_total(
     if !unit.is_calendar() {
         // `unit` is a day or a time unit: `diff` has no year, month or week.
         let nanoseconds = diff.time + i128::from(diff.days) * NANOSECONDS_PER_DAY;
-        let length = unit.nanoseconds()?;
+        let length = unit
+            .nanoseconds()
+            .expect("every non-calendar unit has an exact length");
         return Some((nanoseconds, length));
     }
     let origin = Point {
@@ -243,10 +249,11 @@ pub(crate) fn difference_plain_date_time_total(
     } = nudge_position(origin, epoch_nanoseconds(date2, time2), diff, 1, unit)?;
     // total = r1 + progress * sign, with progress = numerator / denominator.
     let count = i128::from(window.r1);
+    // Both endpoints of the bracket are representable dates. Its count is
+    // bounded by a 201,000,000-day upper bound, as are its length and the
+    // destination offset. Even their product fits well within i128.
     Some((
-        count
-            .checked_mul(denominator)?
-            .checked_add(numerator.checked_mul(i128::from(diff.sign()))?)?,
+        count * denominator + numerator * i128::from(diff.sign()),
         denominator,
     ))
 }

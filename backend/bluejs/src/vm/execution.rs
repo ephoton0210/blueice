@@ -798,15 +798,18 @@ impl Vm {
     }
 
     pub(super) fn delete_dynamic_eval_binding(&mut self, name: &str) -> Result<bool, RuntimeError> {
-        let binding = self.dynamic_eval_bindings.remove(name).or_else(|| {
-            self.dynamic_eval_outer_bindings
-                .iter_mut()
-                .rev()
-                .find_map(|bindings| bindings.remove(name))
-        });
-        let Some(binding) = binding else {
-            return Ok(true);
-        };
+        // delete_unbound_name selects this path only after finding the name;
+        // no user code runs between that lookup and removing its binding.
+        let binding = self
+            .dynamic_eval_bindings
+            .remove(name)
+            .or_else(|| {
+                self.dynamic_eval_outer_bindings
+                    .iter_mut()
+                    .rev()
+                    .find_map(|bindings| bindings.remove(name))
+            })
+            .expect("deletion resolved a dynamic eval binding");
         self.heap.delete(binding.cell, "value").map_err(Into::into)
     }
 

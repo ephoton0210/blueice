@@ -310,17 +310,11 @@ fn a_revoked_parent_proxy_reached_through_a_reverse_facade_throws_a_catchable_er
 }
 
 #[test]
-fn a_reverse_call_reached_without_a_live_ancestor_on_the_call_chain_is_a_catchable_type_error() {
-    // Not every forward-direction internal-method boundary re-establishes
-    // `register_active` for its own dynamic extent -- only `test262_foreign_
-    // call`'s own generic-forwarding path does, since it is the one place
-    // the three target fixtures actually need it (see `vm/test262/
-    // reverse.rs`'s module documentation). A parent-owned accessor
-    // property, read through `test262_foreign_get` (deliberately left
-    // unwrapped), whose getter calls back into a reverse facade must
-    // therefore still fail *safely* -- a catchable TypeError, never a
-    // dangling-pointer dereference -- rather than silently doing the wrong
-    // thing.
+fn a_foreign_accessor_keeps_its_parent_active_for_a_reverse_callback() {
+    // The forward [[Get]] boundary keeps the parent active while the
+    // child's getter calls a parent-owned function through its facade.
+    // The private reverse-membrane tests separately cover a truly absent
+    // parent by entering the child directly after the parent call ends.
     assert_true(
         "(() => { \
            var other = $262.createRealm(); \
@@ -330,12 +324,7 @@ fn a_reverse_call_reached_without_a_live_ancestor_on_the_call_chain_is_a_catchab
              'Object.defineProperty(globalThis, \"accessor\", ' + \
              '{ get: function () { return pfn(); } });' \
            ); \
-           try { \
-             other.global.accessor; \
-             return false; \
-           } catch (e) { \
-             return true; \
-           } \
+           return other.global.accessor === 99; \
          })()",
     );
 }

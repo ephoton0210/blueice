@@ -7,6 +7,10 @@
 
 use super::super::*;
 
+#[cfg(test)]
+#[path = "../../../../tests/fixtures/temporal_from_string.rs"]
+mod tests;
+
 impl Vm {
     pub(in super::super::super) fn temporal_value_from_args(
         &mut self,

@@ -314,16 +314,11 @@ impl Vm {
     /// specification's realm comparison holds by construction.
     fn regexp_compile(
         &mut self,
-        receiver: &Value,
+        receiver: ObjectId,
         pattern: &Value,
         flags: &Value,
     ) -> Result<Value, RuntimeError> {
-        let Value::Object(id) = receiver else {
-            return Err(RuntimeError::TypeError(
-                "RegExp.prototype.compile requires a RegExp".into(),
-            ));
-        };
-        let Some(current) = self.heap.regexp(*id)? else {
+        let Some(current) = self.heap.regexp(receiver)? else {
             return Err(RuntimeError::TypeError(
                 "RegExp.prototype.compile requires a RegExp".into(),
             ));
@@ -356,9 +351,9 @@ impl Vm {
         };
         self.check_string(&Value::String(source.clone()))?;
         let regexp = RegExp::compile_with_timeout(source, &flags, self.config.regex_timeout)?;
-        self.heap.set_regexp(*id, Rc::new(regexp))?;
-        self.set_required(receiver, "lastIndex", Value::Number(0.0))?;
-        Ok(receiver.clone())
+        self.heap.set_regexp(receiver, Rc::new(regexp))?;
+        self.set_required(&Value::Object(receiver), "lastIndex", Value::Number(0.0))?;
+        Ok(Value::Object(receiver))
     }
 
     /// Installs the Annex B legacy static accessors on `%RegExp%`.
@@ -793,30 +788,27 @@ impl Vm {
         args: &[Value],
     ) -> Result<Value, RuntimeError> {
         use RegExpMethod::*;
-        if !matches!(receiver, Value::Object(_)) {
+        let Value::Object(object) = receiver else {
             return Err(RuntimeError::TypeError(
                 "RegExp method requires an object".into(),
             ));
-        }
-        if method == Compile {
-            return self.regexp_compile(
-                receiver,
-                native::argument(args, 0),
-                native::argument(args, 1),
-            );
-        }
-        if method == Exec && self.heap.regexp(receiver.object_id().unwrap())?.is_none() {
+        };
+        if method == Exec && self.heap.regexp(*object)?.is_none() {
             return Err(RuntimeError::TypeError(
                 "RegExp exec requires a RegExp".into(),
             ));
         }
-        let string = if method == ToString {
+        let string = if matches!(method, Compile | ToString) {
             JsString::default()
         } else {
             self.coerce_string(native::argument(args, 0))?
         };
         match method {
-            Compile => unreachable!("compile returns before the string argument is coerced"),
+            Compile => self.regexp_compile(
+                *object,
+                native::argument(args, 0),
+                native::argument(args, 1),
+            ),
             Exec => self.regexp_exec(receiver, &string, true),
             Test => Ok(Value::Bool(
                 self.regexp_exec(receiver, &string, false)? != Value::Null,

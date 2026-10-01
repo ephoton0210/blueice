@@ -761,14 +761,11 @@ impl Vm {
         let object = receiver.object_id().ok_or_else(|| {
             RuntimeError::TypeError("DataView method requires a DataView receiver".into())
         })?;
-        self.heap
-            .data_view_raw_info(object)
-            .map_err(|error| match error {
-                HeapError::InvalidObject(_) | HeapError::InvalidInternalSlot(_) => {
-                    RuntimeError::TypeError("DataView method requires a DataView receiver".into())
-                }
-                error => error.into(),
-            })
+        self.heap.data_view_raw_info(object).map_err(|_| {
+            // A raw slot lookup only rejects an invalid handle or brand;
+            // detachment and current bounds are checked separately.
+            RuntimeError::TypeError("DataView method requires a DataView receiver".into())
+        })
     }
 
     pub(super) fn data_view_get(
@@ -783,10 +780,7 @@ impl Vm {
         self.data_view_raw_receiver(receiver)?;
         let index = self.buffer_index(native::argument(args, 0))?;
         let (buffer, offset, length) = self.data_view_receiver(receiver)?;
-        let end = index.checked_add(width).ok_or_else(|| {
-            RuntimeError::RangeError("DataView access is outside its view".into())
-        })?;
-        if end > length {
+        if index.checked_add(width).is_none_or(|end| end > length) {
             return Err(RuntimeError::RangeError(
                 "DataView access is outside its view".into(),
             ));
@@ -834,10 +828,7 @@ impl Vm {
         };
         let value = self.typed_array_element_value(kind, native::argument(args, 1))?;
         let (buffer, offset, length) = self.data_view_receiver(receiver)?;
-        let end = index.checked_add(width).ok_or_else(|| {
-            RuntimeError::RangeError("DataView access is outside its view".into())
-        })?;
-        if end > length {
+        if index.checked_add(width).is_none_or(|end| end > length) {
             return Err(RuntimeError::RangeError(
                 "DataView access is outside its view".into(),
             ));
@@ -1351,14 +1342,14 @@ impl Vm {
         length: usize,
         kind: TypedArrayKind,
     ) -> Result<ObjectId, RuntimeError> {
-        let bytes = length
+        let Some(bytes) = length
             .checked_mul(kind.byte_width())
-            .ok_or_else(|| RuntimeError::RangeError("TypedArray length is too large".into()))?;
-        if bytes > self.heap.max_array_buffer_byte_length() {
+            .filter(|bytes| *bytes <= self.heap.max_array_buffer_byte_length())
+        else {
             return Err(RuntimeError::RangeError(
                 "TypedArray length is too large".into(),
             ));
-        }
+        };
         let prototype = self.buffer_prototype("ArrayBuffer")?;
         self.with_roots(|heap| heap.alloc_array_buffer(bytes, Some(prototype)))
     }
@@ -1617,14 +1608,9 @@ impl Vm {
                 "TypedArray is out of bounds".into(),
             ));
         }
-        self.heap
-            .typed_array_info(object)
-            .map_err(|error| match error {
-                HeapError::InvalidObject(_) => RuntimeError::TypeError(
-                    "TypedArray method requires a TypedArray receiver".into(),
-                ),
-                error => error.into(),
-            })
+        // The out-of-bounds lookup above validated the same live view. No
+        // callback or collection occurs between the two immutable lookups.
+        self.heap.typed_array_info(object).map_err(Into::into)
     }
 
     pub(super) fn typed_array_set(

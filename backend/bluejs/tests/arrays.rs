@@ -782,6 +782,36 @@ fn array_push_length_overflow_is_catchable_and_preserves_written_elements() {
 }
 
 #[test]
+fn single_element_push_overflow_preserves_properties_and_allows_subsequent_pushes() {
+    for directive in ["", "'use strict';"] {
+        for source in [
+            "let a=[];a.length=4294967294;\
+             let grown=a.push('last')===4294967295;\
+             let caught=false;try{a.push('overflow')}catch(e){caught=e instanceof RangeError}\
+             let preserved=a.length===4294967295&&a[4294967294]==='last'&&a[4294967295]==='overflow';\
+             a.length=0;grown&&caught&&preserved&&a.push('next')===1&&a[0]==='next'&&a[4294967295]==='overflow'",
+            // A descriptor on the overflow key selects the generic path;
+            // its setter runs once before the invalid final length is written.
+            "let a=[];a.length=4294967295;let calls=0;let seen;\
+             let prototype=Object.create(Array.prototype);\
+             Object.defineProperty(prototype,'4294967295',{set(v){calls++;seen=v}});\
+             Object.setPrototypeOf(a,prototype);\
+             let caught=false;try{a.push('overflow')}catch(e){caught=e instanceof RangeError}\
+             caught&&calls===1&&seen==='overflow'&&a.length===4294967295&&!a.hasOwnProperty('4294967295')",
+        ] {
+            let source = format!("{directive}{source}");
+            for nursery in [VmConfig::default().heap.nursery_capacity, 1] {
+                assert_eq!(
+                    evaluate_with_nursery(&source, nursery),
+                    Ok(Value::Bool(true)),
+                    "{source}, nursery={nursery}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn array_push_on_a_typed_array_throws_a_type_error_instead_of_crashing() {
     assert_all_true(&[
         // `length` is a getter-only accessor on %TypedArray%.prototype, so the

@@ -961,7 +961,8 @@ impl Vm {
             AsyncGeneratorDelegateKind::Return => "return",
             AsyncGeneratorDelegateKind::Throw => "throw",
             AsyncGeneratorDelegateKind::AwaitReturn
-            | AsyncGeneratorDelegateKind::AwaitReturnNoMethod => {
+            | AsyncGeneratorDelegateKind::AwaitReturnNoMethod
+            | AsyncGeneratorDelegateKind::CloseMissingThrow => {
                 unreachable!("an await is not forwarded to a delegate")
             }
         };
@@ -977,10 +978,73 @@ impl Vm {
         };
         if method == Value::Undefined {
             if matches!(kind, AsyncGeneratorDelegateKind::Throw) {
-                self.close_async_generator(generator)?;
-                return Err(RuntimeError::TypeError(
-                    "yield* iterator does not provide a throw method".into(),
-                ));
+                // AsyncIteratorClose runs before the protocol TypeError. A
+                // failed close replaces that error, and both completions
+                // must enter the generator's enclosing catch/finally.
+                let close = self
+                    .get_method(&iterator, &"return".into())
+                    .and_then(|method| {
+                        if method == Value::Undefined {
+                            Ok(None)
+                        } else {
+                            self.call_native(method, iterator, Vec::new(), false)
+                                .map(Some)
+                        }
+                    });
+                if matches!(
+                    self.heap.get_own(record, "asyncFromSync")?,
+                    Some(Value::Bool(true))
+                ) {
+                    // AsyncFromSyncIterator.throw uses IteratorClose, without
+                    // assimilating the return value. The outer yield* awaits
+                    // the wrapper's rejected Promise before entering handlers.
+                    let error = match close {
+                        Err(error) => self.error_value(error)?,
+                        Ok(Some(result)) if !matches!(result, Value::Object(_)) => self
+                            .error_object(
+                                "TypeError",
+                                "yield* delegate method must return an object".into(),
+                            )?,
+                        Ok(_) => self.error_object(
+                            "TypeError",
+                            "yield* iterator does not provide a throw method".into(),
+                        )?,
+                    };
+                    self.promise_jobs
+                        .push_back(PromiseJob::AsyncGeneratorDelegate {
+                            generator,
+                            target,
+                            kind: AsyncGeneratorDelegateKind::CloseMissingThrow,
+                            value: error,
+                            fulfilled: false,
+                        });
+                    return Ok(Some(Value::Undefined));
+                }
+                match close {
+                    Ok(Some(result)) => {
+                        if let Err(error) = self.start_async_generator_await(
+                            generator,
+                            target,
+                            AsyncGeneratorDelegateKind::CloseMissingThrow,
+                            result,
+                        ) {
+                            let error = self.error_value(error)?;
+                            self.throw_at_async_delegate_exit(generator, target, error)?;
+                        }
+                    }
+                    Ok(None) => self.finish_async_generator_delegate(
+                        generator,
+                        target,
+                        AsyncGeneratorDelegateKind::CloseMissingThrow,
+                        Value::Object(record),
+                        true,
+                    )?,
+                    Err(error) => {
+                        let error = self.error_value(error)?;
+                        self.throw_at_async_delegate_exit(generator, target, error)?;
+                    }
+                }
+                return Ok(Some(Value::Undefined));
             }
             // GetMethod already observed the delegate's `return` property.
             // The yield* step for a delegate without `return` awaits the
@@ -1667,6 +1731,13 @@ impl Vm {
             )?;
             return self.throw_at_async_delegate_exit(generator, target, error);
         }
+        if matches!(kind, AsyncGeneratorDelegateKind::CloseMissingThrow) {
+            let error = self.error_object(
+                "TypeError",
+                "yield* iterator does not provide a throw method".into(),
+            )?;
+            return self.throw_at_async_delegate_exit(generator, target, error);
+        }
         // IteratorComplete and IteratorValue run inside the generator, so an
         // exception from a getter is thrown at the `yield*` site (where the
         // generator's own try/catch can see it), not out of this reaction.
@@ -1783,7 +1854,8 @@ impl Vm {
                 }
             }
             AsyncGeneratorDelegateKind::AwaitReturn
-            | AsyncGeneratorDelegateKind::AwaitReturnNoMethod => {
+            | AsyncGeneratorDelegateKind::AwaitReturnNoMethod
+            | AsyncGeneratorDelegateKind::CloseMissingThrow => {
                 unreachable!("handled before the delegate's answer is read")
             }
         }

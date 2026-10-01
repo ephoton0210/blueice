@@ -32,6 +32,10 @@ use super::zoned_date_time;
 use icu_calendar::AnyCalendarKind;
 use num_bigint::BigInt;
 
+#[cfg(test)]
+#[path = "../../../tests/fixtures/zoned_difference_boundaries.rs"]
+mod boundary_tests;
+
 /// The specification's `InternalDuration`: a calendar `years`/`months`/
 /// `weeks`/`days` part plus one exact nanosecond time part (kept unbalanced,
 /// since how it splits into hours/minutes/... depends on the caller's
@@ -451,10 +455,11 @@ fn nudge_to_calendar_unit(
         numerator = -numerator;
         denominator = -denominator;
     }
+    // Representable bracket endpoints and a common-sign date duration bound
+    // the count and nanosecond distances by a 201,000,000-day upper bound.
+    // The numerator product therefore fits within i128.
     let total = (
-        i128::from(window.r1)
-            .checked_mul(denominator)?
-            .checked_add(numerator.checked_mul(i128::from(sign))?)?,
+        i128::from(window.r1) * denominator + numerator * i128::from(sign),
         denominator,
     );
     // `ApplyUnsignedRoundingMode` over the exact position inside the window --

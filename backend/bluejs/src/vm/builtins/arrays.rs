@@ -108,9 +108,9 @@ impl Vm {
         let live = "the receiver and its prototypes are live";
         let length = primitive::number(&self.heap.get(object, "length").expect(live))
             .expect("an Array's length is a Number");
-        // Push stores every argument before setting the final length. The
-        // per-element length updates would throw too early on overflow.
-        if length + count as f64 > f64::from(u32::MAX) {
+        // Multiple arguments must all be stored before an overflowing length
+        // write. A single append preserves that order when it returns the error.
+        if count > 1 && length + count as f64 > f64::from(u32::MAX) {
             return Ok(false);
         }
         let mut current = self.heap.prototype(object).expect(live);
