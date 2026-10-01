@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: J.3.5.** H and I are complete. The requested class, enum,
+**Current leaf: J.3.5.3.** H and I are complete. The requested class, enum,
 decorator, namespace, JSX, CommonJS, and package-resolution expansion has
 passed J.1/J.2 planning; implementation and pinned-`tsc` parity remain open.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
@@ -2466,10 +2466,26 @@ done to the page-runs-and-debugs goal at the top of this file.
       default`, `export =`, `export *` or export list inside a body and a
       redundant `declare` are refused. The checker still refuses a namespace
       as "not supported yet".
-    - [ ] **J.3.5.2** Check namespaces: a body scope over the flat binding
-      maps, exported members reached as `N.x` and `N.T`, merging with a
-      namespace, function, class or enum, non-exported members hidden, verdicts
-      against pinned tsc (matrix).
+    - [x] **J.3.5.2** Check namespaces. A body is checked as a module of its
+      own over a copy of the enclosing scope, so bare names, shadowing and
+      merging with an earlier block work with the ordinary checker; what a body
+      exports is published under qualified keys (`N.f`, `N.I`, `N.Inner.z`) with
+      the types it mentions renamed to their qualified form, again after the
+      body is checked so inferred variable types are known. A second parse pass
+      merges each qualified reference chain into one token. 54 fixtures
+      (`namespace-*`) agree with pinned tsc on accept/reject: members, nested
+      and dotted namespaces, merging with namespaces/functions/classes/enums,
+      classes, enums, generics and overloads inside a namespace, ambient
+      namespaces, hidden members, a type or type-only namespace used as a value,
+      and redeclarations. An ambient variable with an initializer is now an
+      error, and a class may now extend a qualified name (`extends N.Base`).
+      Emission still refuses a namespace (J.3.5.3), so the accepted
+      fixtures are on the matrix's deferred list for now. Recorded gaps: an
+      unknown or out-of-scope bare identifier is still not diagnosed (so a
+      non-exported member named from another block is accepted), assignment to
+      an exported `const` is not diagnosed (nor is any `const` reassignment), a
+      local that shares a namespace's name would be read as the namespace, and a
+      namespace declared before the enum it merges into is a redeclaration.
     - [ ] **J.3.5.3** Emit namespaces: the `var N; (function (N) { .. })(N ||
       (N = {}))` form with exported variables rewritten to `N.x`, nested and
       merged blocks, erasure of type-only namespaces, line preservation,

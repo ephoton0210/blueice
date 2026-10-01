@@ -39,6 +39,15 @@ impl Parser {
         }
     }
 
+    /// Merges qualified namespace references into single tokens.
+    pub(crate) fn with_namespace_names(
+        mut self,
+        names: &super::super::namespace_names::NamespaceNames,
+    ) -> Self {
+        self.tokens = names.merge(std::mem::take(&mut self.tokens));
+        self
+    }
+
     pub(crate) fn parse_module(mut self) -> Result<Module, Vec<Diagnostic>> {
         if self.id.ends_with(".tsx") {
             self.unsupported(

@@ -22,8 +22,22 @@ impl Parser {
                 self.index = self.tokens.len() - 1;
                 return;
             }
-            let token = self.current().clone();
+            let mut token = self.current().clone();
             self.bump();
+            // A qualified name, `N.Base`, is one token, as the second parse pass
+            // merges it for a namespace member.
+            while self.peek(".")
+                && self
+                    .tokens
+                    .get(self.index + 1)
+                    .is_some_and(|member| member.kind == TokenKind::Identifier)
+            {
+                self.bump();
+                let member = self.current().clone();
+                self.bump();
+                token.text = format!("{}.{}", token.text, member.text);
+                token.end = member.end;
+            }
             Some(token)
         } else {
             None

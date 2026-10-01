@@ -139,3 +139,271 @@ fn what_a_namespace_body_cannot_hold_is_refused() {
         parse_module("memory:///main.ts", "namespace N { const x = 1;").expect_err("unterminated");
     assert!(error[0].message.contains("unterminated namespace body"));
 }
+
+fn initializer_texts(source: &str, name: &str) -> Vec<String> {
+    let module = parse_module("memory:///main.ts", source).expect("the source parses");
+    for declaration in &module.declarations {
+        if let Declaration::Variable(variable) = declaration {
+            if variable.name == name {
+                return variable
+                    .initializer
+                    .iter()
+                    .map(|token| token.text.clone())
+                    .collect();
+            }
+        }
+    }
+    panic!("no variable {name}");
+}
+
+#[test]
+fn a_reference_to_an_exported_member_is_one_token() {
+    let source =
+        "namespace N { export const a = 1; export namespace Inner { export const z = 2; } \
+                  const hidden = 3; } \
+                  const x = N.a + N.Inner.z; const h = N.hidden;";
+    assert_eq!(initializer_texts(source, "x"), ["N.a", "+", "N.Inner.z"]);
+    // A non-exported member is not a member as far as a reference goes.
+    assert_eq!(initializer_texts(source, "h"), ["N", ".", "hidden"]);
+}
+
+#[test]
+fn a_class_merged_with_a_namespace_keeps_its_static_member_unmerged() {
+    let source = "class K { static s = 1; } namespace K { export const t = 2; } \
+                  const y = K.s + K.t;";
+    assert_eq!(initializer_texts(source, "y"), ["K", ".", "s", "+", "K.t"]);
+}
+
+#[test]
+fn inside_a_namespace_an_inner_reference_is_relative_and_spans_stay_exact() {
+    let source = "namespace N { export namespace Inner { export const z = 2; } \
+                  export const w = Inner.z + 1; }";
+    let module = parse_module("memory:///main.ts", source).unwrap();
+    let Declaration::Namespace(namespace) = &module.declarations[0] else {
+        panic!("expected N");
+    };
+    let variable = namespace
+        .body
+        .iter()
+        .find_map(|declaration| match declaration {
+            Declaration::Variable(variable) => Some(variable),
+            _ => None,
+        })
+        .unwrap();
+    assert_eq!(variable.initializer[0].text, "Inner.z");
+    let (start, end) = (variable.initializer[0].start, variable.initializer[0].end);
+    assert_eq!(&source[start..end], "Inner.z");
+}
+
+#[test]
+fn a_dotted_declaration_header_is_not_merged() {
+    let found =
+        namespaces("namespace A { export namespace B {} } namespace A.B { export const k = 1; }");
+    assert_eq!(found.len(), 2);
+    let Declaration::Namespace(inner) = &found[1].body[0] else {
+        panic!("expected B");
+    };
+    assert_eq!(inner.name, "B");
+}
+
+use blueice_bluets::{
+    compile, CompilerOptions, Diagnostic, DiagnosticCode, MapLoader, ModuleSource,
+};
+
+const ENTRY: &str = "memory:///main.ts";
+
+/// The diagnostics of checking `source`, without the temporary refusal to emit
+/// a namespace.
+fn check(source: &str) -> Vec<Diagnostic> {
+    compile(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+        CompilerOptions::default(),
+    )
+    .diagnostics
+    .into_iter()
+    .filter(|diagnostic| diagnostic.message != "a namespace is not emitted yet")
+    .collect()
+}
+
+#[track_caller]
+fn assert_accepted(source: &str) {
+    let found = check(source);
+    assert!(found.is_empty(), "`{source}` should be accepted: {found:?}");
+}
+
+#[track_caller]
+fn assert_rejected(source: &str, code: DiagnosticCode, message: &str) {
+    let found = check(source);
+    assert!(
+        found
+            .iter()
+            .any(|diagnostic| diagnostic.code == code && diagnostic.message.contains(message)),
+        "`{source}` should be rejected with {code:?} containing `{message}`: {found:?}"
+    );
+}
+
+#[test]
+fn exported_members_are_reached_through_the_namespace() {
+    assert_accepted(
+        "namespace N { export const a: number = 1; export function f(x: number): number { return x + a; } \
+         export interface I { q: number } export type T = string; } \
+         const x: number = N.a + N.f(2); const i: N.I = { q: 1 }; const t: N.T = 'v';",
+    );
+}
+
+#[test]
+fn a_member_of_the_wrong_type_is_a_type_error() {
+    assert_rejected(
+        "namespace N { export const a: number = 1; } const s: string = N.a;",
+        DiagnosticCode::TypeMismatch,
+        "",
+    );
+    assert_rejected(
+        "namespace N { export function f(x: number): number { return x; } } N.f('a');",
+        DiagnosticCode::TypeMismatch,
+        "",
+    );
+}
+
+#[test]
+fn a_hidden_member_cannot_be_named_from_outside() {
+    assert_rejected(
+        "namespace N { interface H { q: number } export interface P { q: number } } \
+         const h: N.H = { q: 1 };",
+        DiagnosticCode::UnknownType,
+        "namespace `N` has no exported member `H`",
+    );
+    assert_rejected(
+        "namespace N { const secret: number = 1; export const open: number = 2; } \
+         const v: number = N.secret;",
+        DiagnosticCode::TypeMismatch,
+        "",
+    );
+}
+
+#[test]
+fn a_type_or_a_type_only_namespace_cannot_be_used_as_a_value() {
+    assert_rejected(
+        "namespace N { export interface I { q: number } } const v = N.I;",
+        DiagnosticCode::TypeMismatch,
+        "`N.I` only refers to a type",
+    );
+    assert_rejected(
+        "namespace N { export interface I { q: number } } const v = N;",
+        DiagnosticCode::TypeMismatch,
+        "namespace `N` has no run-time members",
+    );
+}
+
+#[test]
+fn merged_blocks_see_earlier_exports_but_cannot_redeclare_them() {
+    assert_accepted(
+        "namespace N { export const a: number = 1; } \
+         namespace N { export const b: number = a + 1; } const c: number = N.b;",
+    );
+    assert_rejected(
+        "namespace N { export const a: number = 1; } namespace N { export const a: number = 2; }",
+        DiagnosticCode::DuplicateDeclaration,
+        "duplicate declaration of `a`",
+    );
+}
+
+#[test]
+fn a_namespace_merges_into_a_function_class_or_enum_that_precedes_it() {
+    assert_accepted(
+        "function g(): number { return 1; } namespace g { export const m: string = 'm'; } \
+         const s: string = g.m; const n: number = g();",
+    );
+    assert_accepted(
+        "class K { static s: number = 1; } namespace K { export const t: number = 2; } \
+         const a: number = K.s + K.t;",
+    );
+    assert_accepted(
+        "enum E { A } namespace E { export function f(): number { return 1; } } \
+         const e: E = E.A; const n: number = E.f();",
+    );
+    // The namespace must follow the declaration it merges into.
+    assert_rejected(
+        "namespace K { export const t: number = 1; } class K { v: number = 1; }",
+        DiagnosticCode::DuplicateDeclaration,
+        "duplicate declaration of `K`",
+    );
+}
+
+#[test]
+fn an_inner_declaration_shadows_the_enclosing_scope() {
+    assert_accepted(
+        "const x: string = 'top'; namespace N { const x: number = 5; export const y: number = x + 1; } \
+         const s: string = x; const n: number = N.y;",
+    );
+    assert_rejected(
+        "const x: string = 'top'; namespace N { const x: number = 5; export const y: string = x; }",
+        DiagnosticCode::TypeMismatch,
+        "",
+    );
+}
+
+#[test]
+fn nested_and_dotted_namespaces_check_through_every_level() {
+    assert_accepted(
+        "namespace A.B.C { export const deep: string = 'd'; } const s: string = A.B.C.deep;",
+    );
+    assert_rejected(
+        "namespace A.B.C { export const deep: string = 'd'; } const n: number = A.B.C.deep;",
+        DiagnosticCode::TypeMismatch,
+        "",
+    );
+    assert_accepted(
+        "namespace O { export const base: number = 10; export namespace I { export const z: number = base * 2; } \
+         export const w: number = I.z; } const n: number = O.I.z + O.w;",
+    );
+}
+
+#[test]
+fn a_body_is_checked_like_the_rest_of_the_module() {
+    assert_rejected(
+        "namespace N { export function f(): number { return 'a'; } }",
+        DiagnosticCode::ReturnTypeMismatch,
+        "",
+    );
+    assert_rejected(
+        "namespace N { export const a: number = 'a'; }",
+        DiagnosticCode::TypeMismatch,
+        "",
+    );
+}
+
+#[test]
+fn an_ambient_variable_cannot_have_an_initializer_but_a_literal_const_may() {
+    assert_rejected(
+        "declare namespace N { const x: number = 1; }",
+        DiagnosticCode::ParseError,
+        "initializers are not allowed in ambient contexts",
+    );
+    assert_rejected(
+        "declare let y = 1;",
+        DiagnosticCode::ParseError,
+        "initializers are not allowed in ambient contexts",
+    );
+    assert_accepted("declare const z = 1; declare const s = 'a'; const n: number = z;");
+}
+
+#[test]
+fn an_ambient_namespace_exports_every_member_and_has_no_emit() {
+    let compiled = compile(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(
+            ENTRY,
+            "declare namespace Lib { const version: number; function describe(n: number): string; } \
+             const s: string = Lib.describe(Lib.version);",
+        )]),
+        CompilerOptions::default(),
+    );
+    let errors: Vec<_> = compiled
+        .diagnostics
+        .iter()
+        .filter(|diagnostic| diagnostic.message != "a namespace is not emitted yet")
+        .collect();
+    assert!(errors.is_empty(), "{errors:?}");
+}

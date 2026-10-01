@@ -57,6 +57,10 @@ pub(super) struct ModuleChecker<'a> {
     enum_evaluations: Vec<crate::enum_eval::EvaluatedEnum>,
     /// Names of every private or protected class member in scope.
     restricted_member_names: BTreeSet<String>,
+    /// The path of the namespace whose body this checker binds and checks, or
+    /// empty for a module; and what every namespace seen so far exports.
+    namespace_path: String,
+    namespaces: BTreeMap<String, binding::NamespaceMembers>,
     pub(super) diagnostics: Vec<Diagnostic>,
     pub(super) symbols: Vec<Symbol>,
     types: BTreeMap<String, TypeDefinition>,

@@ -88,6 +88,9 @@ enum TypeDefinitionKind {
     EnumMember,
     /// The value `E`: an object with the enum's members, keyed `typeof E`.
     EnumObject,
+    /// The value `N` of a namespace: an object with its exported values, keyed
+    /// `typeof N`.
+    NamespaceObject,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

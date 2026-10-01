@@ -9,7 +9,9 @@ use super::*;
 mod classes;
 mod enums;
 mod functions;
+mod namespaces;
 pub(in crate::checker::module) use functions::promise_value_type;
+pub(in crate::checker::module) use namespaces::NamespaceMembers;
 pub(in crate::checker::module) use nested_functions::async_result;
 mod nested_functions;
 pub(in crate::checker) use classes::{class_export, class_instance_type};
@@ -60,6 +62,8 @@ impl<'a> ModuleChecker<'a> {
             ambient_const_enums: BTreeSet::new(),
             enum_evaluations: Vec::new(),
             restricted_member_names: BTreeSet::new(),
+            namespace_path: String::new(),
+            namespaces: BTreeMap::new(),
             diagnostics: Vec::new(),
             symbols: Vec::new(),
             types: BTreeMap::new(),
@@ -77,6 +81,16 @@ impl<'a> ModuleChecker<'a> {
     }
 
     pub(crate) fn bind(&mut self) {
+        self.bind_declarations();
+        self.bind_ambient_declarations();
+        self.bind_builtin_promise();
+        self.validate_function_overloads();
+        self.validate_default_exports();
+        self.validate_value_exports();
+    }
+
+    /// Binds what the module's (or a namespace body's) own declarations declare.
+    pub(super) fn bind_declarations(&mut self) {
         self.enum_evaluations = crate::enum_eval::evaluate_enums(self.module);
         let mut enum_index = 0usize;
         for declaration in &self.module.declarations {
@@ -204,15 +218,10 @@ impl<'a> ModuleChecker<'a> {
                         ));
                     }
                 }
-                Declaration::Namespace(namespace) => self.refuse_namespace(namespace),
+                Declaration::Namespace(namespace) => self.bind_namespace(namespace),
                 Declaration::Raw(_) => {}
             }
         }
-        self.bind_ambient_declarations();
-        self.bind_builtin_promise();
-        self.validate_function_overloads();
-        self.validate_default_exports();
-        self.validate_value_exports();
     }
 
     /// The global `Promise<T>` used by `async` functions and `await`, unless a
@@ -705,15 +714,6 @@ impl<'a> ModuleChecker<'a> {
         });
     }
 
-    /// A namespace parses but has no checking or emission yet.
-    fn refuse_namespace(&mut self, namespace: &crate::parser::NamespaceDeclaration) {
-        self.diagnostics.push(Diagnostic::error(
-            DiagnosticCode::UnsupportedSyntax,
-            namespace.span.clone(),
-            "a namespace is not supported yet",
-        ));
-    }
-
     pub(super) fn duplicate(&mut self, name: &str, span: SourceSpan) {
         self.diagnostics.push(Diagnostic::error(
             DiagnosticCode::DuplicateDeclaration,
@@ -798,8 +798,8 @@ impl<'a> ModuleChecker<'a> {
                 Declaration::Import(_)
                 | Declaration::TypeExport(_)
                 | Declaration::DefaultExport(_)
-                | Declaration::ValueExport(_)
-                | Declaration::Namespace(_) => {}
+                | Declaration::ValueExport(_) => {}
+                Declaration::Namespace(namespace) => self.check_namespace(namespace),
                 Declaration::Raw(raw) => {
                     let scope = self.values.clone();
                     self.check_direct_runtime_expression(&raw.tokens, &scope, &raw.span);
@@ -951,6 +951,7 @@ impl<'a> ModuleChecker<'a> {
         if tokens.is_empty() {
             return;
         }
+        self.check_namespace_value_use(tokens, span);
         let before_arrows = self.diagnostics.len();
         self.check_nested_functions_in(tokens, scope);
         self.dedupe_diagnostics_since(before_arrows);
@@ -1031,6 +1032,9 @@ impl<'a> ModuleChecker<'a> {
     pub(super) fn check_type(&mut self, value: &Type, span: &SourceSpan) {
         match value {
             Type::Named { name, arguments } => {
+                if self.refuse_hidden_namespace_type(name, span) {
+                    return;
+                }
                 if let Some(definition) = self.types.get(name).cloned() {
                     self.check_type_arguments(name, arguments, &definition, span);
                 } else if !self.type_parameters.contains(name) {

@@ -916,11 +916,27 @@ pub(crate) fn parse_module_with_limits(
     } else {
         lex_with_limits(&id, &source, limits.max_source_bytes, limits.max_tokens)?
     };
-    Parser::new(id, source, tokens, limits.max_type_depth).parse_module()
+    // A module with namespaces is parsed twice: the first pass learns which
+    // names are namespaces and what they export, and the second merges each
+    // qualified reference (`N.x`) into one token before parsing again.
+    let first = Parser::new(
+        id.clone(),
+        source.clone(),
+        tokens.clone(),
+        limits.max_type_depth,
+    )
+    .parse_module()?;
+    let Some(names) = namespace_names::NamespaceNames::collect(&first.declarations) else {
+        return Ok(first);
+    };
+    Parser::new(id, source, tokens, limits.max_type_depth)
+        .with_namespace_names(&names)
+        .parse_module()
 }
 
 #[path = "parser/implementation.rs"]
 mod implementation;
+mod namespace_names;
 use implementation::Parser;
 
 #[cfg(test)]

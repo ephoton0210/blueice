@@ -245,6 +245,17 @@ fn emit_javascript(
     exported_enums: &BTreeMap<String, BTreeMap<String, crate::checker::ExportedEnum>>,
     options: &CompilerOptions,
 ) -> Result<(EmittedJavaScript, Option<EmittedStrictModule>), Diagnostic> {
+    if let Some(Declaration::Namespace(namespace)) = module
+        .declarations
+        .iter()
+        .find(|declaration| matches!(declaration, Declaration::Namespace(_)))
+    {
+        return Err(Diagnostic::error(
+            DiagnosticCode::UnsupportedSyntax,
+            namespace.span.clone(),
+            "a namespace is not emitted yet",
+        ));
+    }
     let mut edits = module.edits.clone();
     for declaration in &module.declarations {
         let Declaration::Import(import) = declaration else {

@@ -3028,3 +3028,35 @@ constants; a computed member keeps its own initializer. A `const enum` is read
 through its object, which is observably the same as inlining it; an ambient
 `enum` is erased; an ambient `const enum` is refused because its uses would need
 inlining. Script routes refuse an exported enum like any export.
+
+### J.3.5.2 Checking namespaces
+
+The checker's maps are flat and keyed by name, so a namespace is checked by
+running a second `ModuleChecker` over the body: its module is the body's
+declaration list, its maps start as copies of the enclosing scope's with the
+names the body declares removed (so a declaration of the same name is not a
+redeclaration), and the earlier blocks' exports are added by their bare names.
+The body then binds and checks exactly as a module does, including classes,
+enums, overloads and nested namespaces, which recurse through the same path.
+
+What the body exports is published into the enclosing checker under keys
+qualified from the root: `N.f` for a value, `N.I` for a type, `N.E.A` and
+`typeof N.E` for an enum's member and object, `N.Inner.z` for an inner
+namespace's value. Every type in a published entry is renamed to its qualified
+key, so the entry means the same anywhere; types the body declares but does not
+export are published too, since an exported declaration may mention them, and
+the registry records them as hidden so a reference by name is refused. Inside a
+namespace the entries are also kept under keys relative to it. A namespace is
+published when it is bound, with declared types, and again after its body is
+checked, because a variable's type is inferred as its declaration is checked.
+The namespace's own value `N` is an object type with its exported values, unless
+`N` is already a function, class or enum that it merges into.
+
+References are matched by a second parse pass. The first pass learns every
+namespace and what it exports; the second merges each chain `N.a.b` whose head
+is a namespace in scope and whose every next name is an exported member of the
+previous namespace into one identifier token spelled `N.a.b`, spans intact, so
+emission is unchanged. Merging stops where the member is not a namespace
+member, so a class merged with a namespace still reads its static member
+`K.s` as three tokens. The checker then finds `N.a.b` in its maps with no
+change to its expression handling.

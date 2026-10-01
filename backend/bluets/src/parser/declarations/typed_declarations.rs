@@ -152,6 +152,24 @@ impl Parser {
         } else {
             Vec::new()
         };
+        if declared && !initializer.is_empty() {
+            // An ambient `const` may only be initialized, without a type, by a
+            // literal.
+            let literal = matches!(
+                initializer.as_slice(),
+                [token] if matches!(token.kind, TokenKind::String | TokenKind::Number)
+            ) || matches!(
+                initializer.as_slice(),
+                [sign, token] if sign.is("-") && token.kind == TokenKind::Number
+            );
+            if annotation.is_some() || kind != VariableKind::Const || !literal {
+                self.error_at(
+                    initializer[0].span(&self.id),
+                    DiagnosticCode::ParseError,
+                    "initializers are not allowed in ambient contexts",
+                );
+            }
+        }
         self.consume(";");
         let end = self.previous().end;
         if declared {

@@ -206,7 +206,6 @@ fn class_header_errors_and_unimplemented_forms_fail_closed_and_a_plain_class_com
         "class Missing",
         "class { }",
         "class Box<T> {}",
-        "class C extends Base.Member {}",
         "class C extends Base[0] {}",
         "class C implements Shape {}",
     ] {
