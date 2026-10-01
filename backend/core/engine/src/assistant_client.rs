@@ -18,14 +18,20 @@
 //! them explicitly, so a failure is reported as `Err(reason)` rather than
 //! silently dropped.
 
+use blueice_ipc::assistant::AssistantRequest;
+#[cfg(unix)]
 use blueice_ipc::assistant::{
-    read_assistant_reply, write_assistant_request, AssistantReply, AssistantRequest,
-    ASSISTANT_PROTOCOL_VERSION, MAX_REQUEST_TEXT_BYTES, MAX_TRANSLATE_ITEMS,
+    read_assistant_reply, write_assistant_request, AssistantReply, ASSISTANT_PROTOCOL_VERSION,
+    MAX_REQUEST_TEXT_BYTES, MAX_TRANSLATE_ITEMS,
 };
+#[cfg(unix)]
 use std::ops::Range;
+#[cfg(unix)]
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
-use std::time::{Duration, Instant};
+use std::time::Duration;
+#[cfg(unix)]
+use std::time::Instant;
 
 /// How long an explicitly requested task (summary, organize) may take: a local
 /// model can be slow, and the person is waiting on a result, not a page load.
@@ -34,6 +40,7 @@ pub const DEFAULT_TASK_DEADLINE: Duration = Duration::from_secs(60);
 /// Most batches (requests) one navigation may spend; text beyond them stays
 /// original. Together with the per-batch bounds this caps the work a single
 /// hostile page can cause.
+#[cfg(unix)]
 const MAX_BATCHES: usize = 8;
 
 /// Where the assistant listens and what to translate into.
@@ -48,6 +55,7 @@ pub struct AssistantConfig {
 
 /// Splits `texts` into consecutive batches within the protocol's item and byte
 /// bounds, at most [`MAX_BATCHES`] of them.
+#[cfg(unix)]
 fn plan_batches(texts: &[String]) -> Vec<Range<usize>> {
     let mut batches = Vec::new();
     let mut start = 0;
@@ -73,6 +81,7 @@ fn plan_batches(texts: &[String]) -> Vec<Range<usize>> {
 /// [`crate::translation::translatable_texts`] in the same order (untranslated
 /// entries carry their original text). `None` means nothing was translated --
 /// keep the original page.
+#[cfg(unix)]
 pub fn translate_html(config: &AssistantConfig, html: &str) -> Option<Vec<String>> {
     let doc = blueice_html::parse(html);
     let sources: Vec<String> = crate::translation::translatable_texts(&doc)
@@ -109,7 +118,8 @@ pub fn translate_html(config: &AssistantConfig, html: &str) -> Option<Vec<String
     translated_any.then_some(out)
 }
 
-/// Summarizes `text` (at most [`MAX_REQUEST_TEXT_BYTES`]) with the assistant.
+/// Summarizes `text` (at most [`blueice_ipc::assistant::MAX_REQUEST_TEXT_BYTES`])
+/// with the assistant.
 pub fn summarize_text(socket: &Path, deadline: Duration, text: &str) -> Result<String, String> {
     run_task(
         socket,
@@ -141,6 +151,7 @@ pub fn organize_text(
 
 /// One request on its own connection, every failure reported with a reason a
 /// person can act on.
+#[cfg(unix)]
 fn run_task(
     socket: &Path,
     deadline: Duration,
@@ -187,12 +198,14 @@ fn run_task(
     }
 }
 
+#[cfg(unix)]
 fn remaining(started: Instant, deadline: Duration) -> Option<Duration> {
     deadline
         .checked_sub(started.elapsed())
         .filter(|left| !left.is_zero())
 }
 
+#[cfg(unix)]
 fn handshake(stream: &mut UnixStream, budget: Duration) -> Result<(), ()> {
     limit(stream, budget).map_err(|_| ())?;
     write_assistant_request(
@@ -212,11 +225,13 @@ fn handshake(stream: &mut UnixStream, budget: Duration) -> Result<(), ()> {
     }
 }
 
+#[cfg(unix)]
 fn limit(stream: &UnixStream, budget: Duration) -> std::io::Result<()> {
     stream.set_read_timeout(Some(budget))?;
     stream.set_write_timeout(Some(budget))
 }
 
+#[cfg(unix)]
 fn translate_batch(
     stream: &mut UnixStream,
     budget: Duration,
@@ -241,7 +256,7 @@ fn translate_batch(
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
     use blueice_ipc::assistant::read_assistant_request;
@@ -681,4 +696,19 @@ mod tests {
         worker.join().unwrap();
         let _ = std::fs::remove_file(&socket);
     }
+}
+
+#[cfg(not(unix))]
+pub fn translate_html(_config: &AssistantConfig, _html: &str) -> Option<Vec<String>> {
+    None
+}
+
+#[cfg(not(unix))]
+fn run_task(
+    _socket: &Path,
+    _deadline: Duration,
+    request: AssistantRequest,
+) -> Result<String, String> {
+    request.validate()?;
+    Err("the assistant transport is unavailable on this platform".into())
 }

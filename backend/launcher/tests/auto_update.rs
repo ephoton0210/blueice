@@ -2,6 +2,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+#![cfg(unix)]
+
 //! End-to-end proof of `phase-8-live-core-hotswap/PLAN.md`'s automatic update
 //! detection through the real compiled launcher (`--auto-update-secs`): a newer
 //! `blueice-core` appearing beside the launcher replaces the running one

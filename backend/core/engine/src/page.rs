@@ -2128,6 +2128,7 @@ mod tests {
         doc.children(root).find_map(|c| find_by_tag(doc, c, tag))
     }
 
+    #[cfg(unix)]
     fn find_by_attribute(doc: &Document, root: NodeId, name: &str, value: &str) -> Option<NodeId> {
         if element_attribute(doc, root, name) == Some(value) {
             return Some(root);
@@ -2136,6 +2137,7 @@ mod tests {
             .find_map(|child| find_by_attribute(doc, child, name, value))
     }
 
+    #[cfg(unix)]
     #[test]
     fn about_settings_shows_and_applies_the_running_gatekeepers_additive_policy() {
         use blueice_ai_gatekeeper::GatekeeperService;
@@ -3005,11 +3007,15 @@ mod tests {
 
     // ---- about:downloads ------------------------------------------------
 
+    #[cfg(unix)]
     use crate::downloads_page::test_support::{fake_downloads, Scratch};
+    #[cfg(unix)]
     use crate::downloads_page::DownloadsSource;
+    #[cfg(unix)]
     use blueice_ipc::downloads::{TransferInfo, TransferState};
     use std::sync::Arc;
 
+    #[cfg(unix)]
     fn transfer(id: u64, name: &str, state: TransferState) -> TransferInfo {
         TransferInfo {
             id,
@@ -3022,12 +3028,14 @@ mod tests {
         }
     }
 
+    #[cfg(unix)]
     fn page_reading(socket: std::path::PathBuf) -> Page {
         let mut page = Page::new(400.0, 300.0);
         page.set_downloads_source(Some(Arc::new(DownloadsSource::without_spawner(socket))));
         page
     }
 
+    #[cfg(unix)]
     #[test]
     fn navigating_to_about_downloads_renders_the_live_list_without_a_network_fetch() {
         let dir = Scratch::new("page-live");
@@ -3056,6 +3064,7 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
     #[test]
     fn about_downloads_says_the_service_is_not_running_when_there_is_no_source_or_it_is_unreachable(
     ) {
@@ -3081,6 +3090,7 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
     #[test]
     fn about_downloads_honors_a_lang_parameter() {
         let dir = Scratch::new("page-lang");

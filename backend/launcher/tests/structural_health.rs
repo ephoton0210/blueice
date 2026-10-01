@@ -2,6 +2,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+#![cfg(unix)]
+
 //! End-to-end proof of `phase-8-live-core-hotswap/PLAN.md`'s structural health
 //! bar through the real compiled launcher: v2 must render something comparable
 //! to what v1 showed for each replayed tab. A web server that returns a full

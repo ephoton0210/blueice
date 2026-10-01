@@ -9,8 +9,13 @@
 //! ([`policy`]), persistence across restarts ([`store`]), the Unix-socket
 //! protocol server ([`server`]), and the command line ([`cli`]).
 
+#[cfg(unix)]
 pub mod cli;
+#[cfg(unix)]
 pub mod manager;
+#[cfg(unix)]
 pub mod policy;
+#[cfg(unix)]
 pub mod server;
+#[cfg(unix)]
 pub mod store;

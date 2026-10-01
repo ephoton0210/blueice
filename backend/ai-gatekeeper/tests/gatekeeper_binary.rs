@@ -2,6 +2,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+#![cfg(unix)]
+
 //! Exercises the real `blueice-ai-gatekeeper` binary's private socket
 //! override and extension-action request path. The unit rules tests
 //! cover classification; this test proves a separately spawned process

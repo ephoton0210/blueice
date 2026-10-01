@@ -951,9 +951,12 @@ impl<S: Read + Write> DownloadsClient<S> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(unix)]
     use std::os::unix::net::UnixStream;
+    #[cfg(unix)]
     use std::thread;
 
+    #[cfg(unix)]
     fn sample_info(id: u64) -> TransferInfo {
         TransferInfo {
             id,
@@ -996,6 +999,7 @@ mod tests {
         }
     }
 
+    #[cfg(unix)]
     fn every_request() -> Vec<DownloadsRequest> {
         vec![
             DownloadsRequest::Hello {
@@ -1095,6 +1099,7 @@ mod tests {
         }
     }
 
+    #[cfg(unix)]
     fn every_reply() -> Vec<DownloadsReply> {
         let mut blocked = sample_info(2);
         blocked.state = TransferState::Blocked;
@@ -1121,6 +1126,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn every_request_round_trips_and_keeps_its_request_id() {
         for (i, req) in every_request().into_iter().enumerate() {
             for request_id in [None, Some(i as u64 + 1)] {
@@ -1174,6 +1180,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn every_reply_round_trips_including_a_fully_populated_transfer() {
         for (i, reply) in every_reply().into_iter().enumerate() {
             for request_id in [None, Some(i as u64 + 1)] {
@@ -1407,11 +1414,13 @@ mod tests {
 
     // ---- DownloadsClient, against a fake server on a real socket pair ----
 
+    #[cfg(unix)]
     fn serve<F: FnOnce(UnixStream) + Send + 'static>(f: F) -> (UnixStream, thread::JoinHandle<()>) {
         let (client, server) = UnixStream::pair().unwrap();
         (client, thread::spawn(move || f(server)))
     }
 
+    #[cfg(unix)]
     fn answer_hello(server: &mut UnixStream) {
         let (id, req) = read_downloads_request(server).unwrap();
         assert_eq!(
@@ -1431,6 +1440,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn connect_performs_the_hello_handshake() {
         let (stream, server) = serve(|mut s| answer_hello(&mut s));
         DownloadsClient::connect(stream).unwrap();
@@ -1438,6 +1448,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn connect_surfaces_a_rejected_handshake_as_a_remote_error() {
         let (stream, server) = serve(|mut s| {
             let (id, _) = read_downloads_request(&mut s).unwrap();
@@ -1462,6 +1473,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn connect_rejects_a_peer_speaking_a_different_protocol_version() {
         let (stream, server) = serve(|mut s| {
             let (id, _) = read_downloads_request(&mut s).unwrap();
@@ -1482,6 +1494,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn each_call_gets_the_reply_addressed_to_it() {
         let (stream, server) = serve(|mut s| {
             answer_hello(&mut s);
@@ -1528,6 +1541,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn credential_client_calls_send_the_secret_only_in_the_request() {
         let (stream, server) = serve(|mut s| {
             answer_hello(&mut s);
@@ -1623,6 +1637,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn pause_resume_cancel_return_the_updated_transfer_and_remove_returns_unit() {
         let (stream, server) = serve(|mut s| {
             answer_hello(&mut s);
@@ -1656,6 +1671,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn a_remote_error_reply_becomes_a_typed_client_error() {
         let (stream, server) = serve(|mut s| {
             answer_hello(&mut s);
@@ -1682,6 +1698,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn a_reply_of_the_wrong_shape_is_reported_not_misinterpreted() {
         let (stream, server) = serve(|mut s| {
             answer_hello(&mut s);
@@ -1694,6 +1711,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn pushed_updates_that_interleave_with_a_reply_are_kept_not_lost() {
         let (stream, server) = serve(|mut s| {
             answer_hello(&mut s);
@@ -1725,6 +1743,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn subscribe_then_next_update_delivers_pushes_in_order() {
         let (stream, server) = serve(|mut s| {
             answer_hello(&mut s);
@@ -1750,6 +1769,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn a_stalled_update_buffer_is_bounded() {
         let (stream, server) = serve(|mut s| {
             answer_hello(&mut s);
@@ -1773,6 +1793,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn next_update_returns_a_buffered_push_before_touching_the_stream() {
         let (stream, server) = serve(|mut s| {
             answer_hello(&mut s);
@@ -1794,6 +1815,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn next_update_skips_replies_that_are_not_updates() {
         let (stream, server) = serve(|mut s| {
             answer_hello(&mut s);
@@ -1832,6 +1854,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn a_server_that_hangs_up_is_an_io_error() {
         let (stream, server) = serve(|mut s| {
             answer_hello(&mut s);
@@ -1860,6 +1883,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn a_reply_of_the_wrong_shape_is_reported_for_every_call_that_expects_a_particular_one() {
         // A server answering `Ok` to a `List`, and a `Transfers` to a `Remove` and a
         // `Subscribe`, is not something to guess a meaning for.

@@ -2,6 +2,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+#![cfg(unix)]
+
 //! Exercises the compiled Phase 6 runner through a real launcher-owned core,
 //! gatekeeper, stdio MCP server, and independent frame observer. The local
 //! Chat Completions peer is scripted so this test is repeatable; it is not the

@@ -2,6 +2,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+#![cfg(unix)]
+
 //! End-to-end proof of `phase-7-local-ai/PLAN.md`'s step R2 through the real
 //! compiled `blueice-launcher`: it owns the assistant's public socket, starts
 //! the real `blueice-ai-assistant` only when translation first needs it,

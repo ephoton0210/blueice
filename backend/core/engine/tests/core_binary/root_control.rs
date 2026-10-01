@@ -79,22 +79,6 @@ fn real_subprocess_pauses_and_resumes_a_non_entry_root_safe_point_without_debugg
 
     let mut frontend = connect_with_retry(&socket_path, Duration::from_secs(5)).unwrap();
     blueice_ipc::client_handshake(&mut frontend).unwrap();
-    blueice_ipc::write_client_message(
-        &mut frontend,
-        &blueice_ipc::ClientMessage::Navigate {
-            url: format!("http://{address}"),
-        },
-    )
-    .unwrap();
-    assert!(matches!(
-        blueice_ipc::read_server_message(&mut frontend).unwrap(),
-        blueice_ipc::ServerMessage::Navigated { .. }
-    ));
-    assert!(matches!(
-        blueice_ipc::read_server_message(&mut frontend).unwrap(),
-        blueice_ipc::ServerMessage::FrameReady { generation: 1, .. }
-    ));
-
     let mut debugger = connect_with_retry(&debugger_socket_path, Duration::from_secs(5)).unwrap();
     assert_eq!(
         debugger_request(
@@ -114,6 +98,32 @@ fn real_subprocess_pauses_and_resumes_a_non_entry_root_safe_point_without_debugg
                 blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::empty(),
         }
     );
+    // Reserve the next document explicitly; discovery must not race the
+    // session's ordinary idle execution turn on a loaded test host.
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            &blueice_ipc::debugger::DebuggerRequest::HoldNextDocument { tab_id: 1 },
+            PAGE_SECRET,
+        ),
+        blueice_ipc::debugger::DebuggerReply::NextDocumentHoldAcquired { tab_id: 1 }
+    );
+    blueice_ipc::write_client_message(
+        &mut frontend,
+        &blueice_ipc::ClientMessage::Navigate {
+            url: format!("http://{address}"),
+        },
+    )
+    .unwrap();
+    assert!(matches!(
+        blueice_ipc::read_server_message(&mut frontend).unwrap(),
+        blueice_ipc::ServerMessage::Navigated { .. }
+    ));
+    assert!(matches!(
+        blueice_ipc::read_server_message(&mut frontend).unwrap(),
+        blueice_ipc::ServerMessage::FrameReady { generation: 1, .. }
+    ));
+
     let realm = match debugger_request(
         &mut debugger,
         &blueice_ipc::debugger::DebuggerRequest::ListPageRealms,
@@ -323,21 +333,25 @@ fn real_subprocess_pauses_and_resumes_a_non_entry_root_safe_point_without_debugg
     );
     // `GetExecutionState` holds a transition for its reply, then an idle
     // session tick resumes the retained BlueJS frame without a debugger lease.
-    thread::sleep(Duration::from_millis(100));
-    assert_eq!(
-        debugger_request(
-            &mut debugger,
-            &blueice_ipc::debugger::DebuggerRequest::GetExecutionState { program },
-            PAGE_SECRET,
-        ),
-        blueice_ipc::debugger::DebuggerReply::ExecutionState {
-            program,
-            state: blueice_ipc::debugger::DebuggerExecutionState::Completed,
-        }
+    wait_for_debugger_state(
+        &mut debugger,
+        program,
+        blueice_ipc::debugger::DebuggerExecutionState::Completed,
+        PAGE_SECRET,
     );
 
     // A replacement realm must make every old target stale before it can
     // affect the pending module declaration in the successor document.
+    // Reserve the next document explicitly; discovery must not race the
+    // session's ordinary idle execution turn on a loaded test host.
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            &blueice_ipc::debugger::DebuggerRequest::HoldNextDocument { tab_id: 1 },
+            PAGE_SECRET,
+        ),
+        blueice_ipc::debugger::DebuggerReply::NextDocumentHoldAcquired { tab_id: 1 }
+    );
     blueice_ipc::write_client_message(
         &mut frontend,
         &blueice_ipc::ClientMessage::Navigate {

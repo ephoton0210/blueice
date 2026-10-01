@@ -349,6 +349,11 @@ mod tests {
 
     fn loaded() -> AssistantSettings {
         use blueice_assistant_settings::{CandleSettings, LoopbackSettings};
+        let models = if cfg!(windows) {
+            "C:/models"
+        } else {
+            "/models"
+        };
         AssistantSettings {
             backend: BackendKind::Both,
             loopback: Some(LoopbackSettings {
@@ -357,8 +362,8 @@ mod tests {
                 model: "local".into(),
             }),
             candle: Some(CandleSettings {
-                model_path: "/models/qwen3.gguf".into(),
-                tokenizer_path: "/models/tokenizer.json".into(),
+                model_path: format!("{models}/qwen3.gguf"),
+                tokenizer_path: format!("{models}/tokenizer.json"),
                 context: 4096,
             }),
             max_resident_mb: Some(2048),
@@ -492,8 +497,16 @@ mod tests {
         for expected in [
             "Backend: Both at once (double the resources)",
             "Loopback model: llamacpp · http://127.0.0.1:8080/v1/ · local",
-            "Candle model: /models/qwen3.gguf",
-            "Candle tokenizer: /models/tokenizer.json",
+            if cfg!(windows) {
+                "Candle model: C:/models/qwen3.gguf"
+            } else {
+                "Candle model: /models/qwen3.gguf"
+            },
+            if cfg!(windows) {
+                "Candle tokenizer: C:/models/tokenizer.json"
+            } else {
+                "Candle tokenizer: /models/tokenizer.json"
+            },
             "Candle context (tokens): 4096",
             "Idle timeout (seconds): 600",
             "Memory ceiling (MiB): 2048",

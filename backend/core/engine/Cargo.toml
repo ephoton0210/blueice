@@ -21,7 +21,10 @@ url = "2"
 blueice-bluets = { path = "../../bluets" }
 blueice-bluets-bluejs = { path = "../../bluets-bluejs" }
 blueice-bluejs = { path = "../../bluejs" }
-ureq = "3"
+# Keep the workspace HTTP client free of transparent decompression. Cargo
+# unifies features with blueice-net, whose ranged downloads must inspect the
+# original Content-Encoding and representation byte offsets.
+ureq = { version = "3", default-features = false, features = ["rustls"] }
 getrandom = "0.3"
 
 [dev-dependencies]

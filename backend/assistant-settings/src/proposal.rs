@@ -285,9 +285,10 @@ pub fn diff_lines(current: &AssistantSettings, proposed: &AssistantSettings) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{CandleSettings, LoopbackSettings, DEFAULT_CANDLE_CONTEXT};
+    use crate::{absolute_test_path, CandleSettings, LoopbackSettings, DEFAULT_CANDLE_CONTEXT};
 
     fn candle(dir: &str) -> CandleSettings {
+        let dir = absolute_test_path(dir);
         CandleSettings {
             model_path: format!("{dir}/qwen3.gguf"),
             tokenizer_path: format!("{dir}/tokenizer.json"),
@@ -309,29 +310,33 @@ mod tests {
     /// out of the allowed directory, and the machine has 16 GiB.
     fn with_env<R>(f: impl FnOnce(&Environment<'_>) -> R) -> R {
         let exists = |p: &Path| {
-            matches!(
-                p.to_str().unwrap(),
-                "/models/qwen/qwen3.gguf"
-                    | "/models/qwen/tokenizer.json"
-                    | "/models/qwen/escape.gguf"
-                    | "/models/other/qwen3.gguf"
-                    | "/models/other/tokenizer.json"
-                    | "/store/models/new.gguf"
-                    | "/store/models/new.json"
-                    | "/etc/passwd.gguf"
-            )
+            [
+                "/models/qwen/qwen3.gguf",
+                "/models/qwen/tokenizer.json",
+                "/models/qwen/escape.gguf",
+                "/models/other/qwen3.gguf",
+                "/models/other/tokenizer.json",
+                "/store/models/new.gguf",
+                "/store/models/new.json",
+                "/etc/passwd.gguf",
+            ]
+            .iter()
+            .any(|file| p == Path::new(&absolute_test_path(file)))
         };
         let canon = |p: &Path| -> Option<PathBuf> {
-            Some(match p.to_str().unwrap() {
-                "/models/qwen/escape.gguf" => PathBuf::from("/etc/passwd.gguf"),
-                other => PathBuf::from(other),
-            })
+            Some(
+                if p == Path::new(&absolute_test_path("/models/qwen/escape.gguf")) {
+                    PathBuf::from(absolute_test_path("/etc/passwd.gguf"))
+                } else {
+                    p.to_path_buf()
+                },
+            )
         };
         f(&Environment {
             is_regular_file: &exists,
             canonicalize: &canon,
             physical_memory_mb: 16 * 1024,
-            models_dir: PathBuf::from("/store/models"),
+            models_dir: PathBuf::from(absolute_test_path("/store/models")),
         })
     }
 
@@ -406,8 +411,8 @@ mod tests {
         for (model, tokenizer, expected) in cases {
             let proposed = with(|s| {
                 let c = s.candle.as_mut().unwrap();
-                c.model_path = model.into();
-                c.tokenizer_path = tokenizer.into();
+                c.model_path = absolute_test_path(model);
+                c.tokenizer_path = absolute_test_path(tokenizer);
             });
             let violations = verdict(&proposed).unwrap_err();
             assert!(
@@ -423,15 +428,15 @@ mod tests {
         // current model lives.
         let store = with(|s| {
             let c = s.candle.as_mut().unwrap();
-            c.model_path = "/store/models/new.gguf".into();
-            c.tokenizer_path = "/store/models/new.json".into();
+            c.model_path = absolute_test_path("/store/models/new.gguf");
+            c.tokenizer_path = absolute_test_path("/store/models/new.json");
         });
         assert_eq!(verdict(&store), Ok(()));
         // A different directory the person never configured is not.
         let elsewhere = with(|s| {
             let c = s.candle.as_mut().unwrap();
-            c.model_path = "/models/other/qwen3.gguf".into();
-            c.tokenizer_path = "/models/other/tokenizer.json".into();
+            c.model_path = absolute_test_path("/models/other/qwen3.gguf");
+            c.tokenizer_path = absolute_test_path("/models/other/tokenizer.json");
         });
         assert!(verdict(&elsewhere).is_err());
     }
@@ -448,8 +453,8 @@ mod tests {
         let ok = AssistantSettings {
             backend: BackendKind::Candle,
             candle: Some(CandleSettings {
-                model_path: "/store/models/new.gguf".into(),
-                tokenizer_path: "/store/models/new.json".into(),
+                model_path: absolute_test_path("/store/models/new.gguf"),
+                tokenizer_path: absolute_test_path("/store/models/new.json"),
                 context: 4096,
             }),
             ..AssistantSettings::default()
@@ -538,8 +543,8 @@ mod tests {
     impl CandleSettings {
         /// Points the paths at the fake world's BlueIce models directory files.
         fn tap_paths(mut self) -> Self {
-            self.model_path = "/store/models/new.gguf".into();
-            self.tokenizer_path = "/store/models/new.json".into();
+            self.model_path = absolute_test_path("/store/models/new.gguf");
+            self.tokenizer_path = absolute_test_path("/store/models/new.json");
             self
         }
     }
@@ -549,7 +554,7 @@ mod tests {
         let bad = with(|s| {
             s.max_resident_mb = None; // removed
             s.nice = 0; // too high a priority
-            s.candle.as_mut().unwrap().model_path = "/models/qwen/missing.gguf".into();
+            s.candle.as_mut().unwrap().model_path = absolute_test_path("/models/qwen/missing.gguf");
         });
         let violations = verdict(&bad).unwrap_err();
         assert!(violations.contains(&Violation::CeilingRemoved));

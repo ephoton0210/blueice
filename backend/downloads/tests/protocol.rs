@@ -2,6 +2,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+#![cfg(unix)]
+
 //! The downloads process through its wire protocol, in-process: a real
 //! `TransferManager` behind a real Unix-socket server, driven by the
 //! shared `DownloadsClient`, against `blueice-net`'s local HTTP test

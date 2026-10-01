@@ -2,6 +2,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+#![cfg(unix)]
+
 //! End-to-end proof of `phase-7-local-ai/PLAN.md`'s step R9 through the real
 //! compiled launcher: an agent's settings proposal is screened by the rule-base,
 //! stays pending, and takes effect only when approved over the private pipe of
@@ -275,7 +277,6 @@ impl Stack {
         place(&built, "blueice-launcher");
         for sibling in [
             "blueice-core",
-            "bluejs",
             "blueice-ai-gatekeeper",
             "blueice-ai-assistant",
         ] {

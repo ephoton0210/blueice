@@ -48,8 +48,13 @@
 //! deliberately retain the bearer [`blueice_ipc::extension::ExtensionRequest::Hello`]
 //! form for protocol development; a derived identity alone is not credentials.
 
+#[cfg(unix)]
+mod durable_storage;
+#[cfg(not(unix))]
+#[path = "durable_storage_unsupported.rs"]
 mod durable_storage;
 mod manifest;
+#[cfg(unix)]
 mod runtime;
 
 pub use durable_storage::default_durable_storage_root;
@@ -57,6 +62,7 @@ pub use manifest::{
     load_installed_extension, registry_for_installed_extension, ExtensionManifest,
     InstalledExtension, ManifestCapabilities, ManifestError, MANIFEST_API_VERSION,
 };
+#[cfg(unix)]
 pub use runtime::{
     execute_installed_extension, execute_installed_extension_for_invocation, RuntimeInvocation,
 };
@@ -65,12 +71,12 @@ use blueice_ipc::extension::{
     read_extension_request, write_extension_reply, ExtensionReply, ExtensionRequest,
     ExtensionRuntimeEvent, NetworkResponseInfo, NetworkTraceInfo, UnsupportedCapabilityVersion,
 };
-use blueice_ipc::gatekeeper::{
-    default_gatekeeper_socket_path, read_gatekeeper_reply, write_gatekeeper_request,
-    GatekeeperReply, GatekeeperRequest,
-};
+use blueice_ipc::gatekeeper::{default_gatekeeper_socket_path, GatekeeperReply};
+#[cfg(unix)]
+use blueice_ipc::gatekeeper::{read_gatekeeper_reply, write_gatekeeper_request, GatekeeperRequest};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io::{self, Read, Write};
+#[cfg(unix)]
 use std::os::unix::net::UnixStream;
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -352,6 +358,7 @@ impl CapabilityVersionWindow {
 const PLACEHOLDER_DOM_READ_VALUE: &str =
     "<blueice-extension-host: no real Page is wired into this minimal slice>";
 
+#[cfg(unix)]
 const GATEKEEPER_CHECK_TIMEOUT: Duration = Duration::from_secs(10);
 /// A native one-shot decision must not remain usable indefinitely if the
 /// authenticated host stalls before running its queued invocation.
@@ -778,13 +785,12 @@ fn grant_changed_reason(capability: &str) -> String {
 }
 
 /// A lease bearer must be unpredictable to the extension before the trusted
-/// gesture delivers it. The core's host authentication uses the same Unix
-/// kernel entropy source; entropy failure rejects arming rather than issuing
+/// gesture delivers it. Use the operating system's cryptographic entropy
+/// source; entropy failure rejects arming rather than issuing
 /// a predictable fallback token.
 fn new_ephemeral_ticket() -> Result<String, String> {
     let mut random = [0_u8; 32];
-    std::fs::File::open("/dev/urandom")
-        .and_then(|mut source| source.read_exact(&mut random))
+    getrandom::fill(&mut random)
         .map_err(|error| format!("could not obtain ephemeral lease entropy: {error}"))?;
     const HEX: &[u8; 16] = b"0123456789abcdef";
     let mut ticket = String::with_capacity(random.len() * 2);
@@ -1019,6 +1025,7 @@ fn write_network_registration_reply<S: Write>(
     }
 }
 
+#[cfg(unix)]
 fn check_extension_action(
     gatekeeper_socket: &Path,
     extension_id: &str,
@@ -8077,4 +8084,14 @@ mod tests {
             handle.join().unwrap().unwrap();
         }
     }
+}
+
+#[cfg(not(unix))]
+fn check_extension_action(
+    _socket: &Path,
+    _id: &str,
+    _capability: &str,
+    _detail: String,
+) -> Result<GatekeeperReply, String> {
+    Err("the gatekeeper transport is unavailable on this platform".into())
 }

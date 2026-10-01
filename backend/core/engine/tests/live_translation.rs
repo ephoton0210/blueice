@@ -2,6 +2,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+#![cfg(unix)]
+
 //! End-to-end proof of `phase-7-local-ai/PLAN.md`'s live-translation step T4
 //! through the real public interface: the compiled `blueice-core` subprocess,
 //! a real HTTP server, a gatekeeper that records exactly what it was asked to

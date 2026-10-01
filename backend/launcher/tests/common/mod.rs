@@ -71,9 +71,10 @@ impl Rig {
         let built = PathBuf::from(env!("CARGO_BIN_EXE_blueice-launcher"));
         let built_dir = built.parent().unwrap();
         place(&built, &dir.join("blueice-launcher"));
-        for sibling in ["bluejs", "blueice-ai-gatekeeper"] {
-            place(&built_dir.join(sibling), &dir.join(sibling));
-        }
+        place(
+            &built_dir.join("blueice-ai-gatekeeper"),
+            &dir.join("blueice-ai-gatekeeper"),
+        );
         place(
             &built_dir.join("blueice-core"),
             &dir.join("blueice-core-real"),

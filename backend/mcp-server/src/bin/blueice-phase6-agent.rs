@@ -1364,9 +1364,37 @@ mod tests {
             let address = listener.local_addr().unwrap();
             let server = thread::spawn(move || {
                 let (mut stream, _) = listener.accept().unwrap();
-                let mut request = [0; 4096];
-                let count = stream.read(&mut request).unwrap();
-                let request = String::from_utf8_lossy(&request[..count]);
+                // TCP can split headers and body across reads. Drain the
+                // complete POST before replying so closing the mock server
+                // cannot reset a client whose request is still in flight.
+                let request = {
+                    use std::io::BufRead;
+                    let mut reader = std::io::BufReader::new(&mut stream);
+                    let mut headers = String::new();
+                    loop {
+                        let mut line = String::new();
+                        assert!(reader.read_line(&mut line).unwrap() > 0);
+                        headers.push_str(&line);
+                        if line == "\r\n" {
+                            break;
+                        }
+                    }
+                    let length = headers
+                        .lines()
+                        .find_map(|line| {
+                            line.to_ascii_lowercase()
+                                .strip_prefix("content-length:")
+                                .map(|value| value.trim().parse::<usize>().unwrap())
+                        })
+                        .expect("the JSON request has a known body length");
+                    let mut body = vec![0; length];
+                    reader.read_exact(&mut body).unwrap();
+                    assert_eq!(
+                        serde_json::from_slice::<Value>(&body).unwrap(),
+                        json!({ "model": "tiny-local", "messages": [] })
+                    );
+                    headers
+                };
                 assert!(request.starts_with("POST /v1/chat/completions HTTP/1.1"));
                 assert!(!request.to_ascii_lowercase().contains("authorization:"));
                 let body =

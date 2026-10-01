@@ -211,6 +211,7 @@ pub fn default_assistant_socket_path() -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(unix)]
     use std::os::unix::net::UnixStream;
 
     fn translate(texts: Vec<String>) -> AssistantRequest {
@@ -222,6 +223,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn requests_and_replies_round_trip_over_a_real_socket() {
         let (mut a, mut b) = UnixStream::pair().unwrap();
         for request in [
@@ -269,6 +271,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn a_malformed_frame_is_an_io_error_not_a_panic() {
         let (mut a, mut b) = UnixStream::pair().unwrap();
         crate::write_framed(&mut a, &"not a request").unwrap();

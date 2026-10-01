@@ -2,6 +2,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+#![cfg(unix)]
+
 //! End-to-end proof of `phase-8-live-core-hotswap/PLAN.md`'s bounded cutover
 //! retry through the real compiled launcher. The launcher finds `core` beside
 //! its own executable, so each test builds a private directory holding a

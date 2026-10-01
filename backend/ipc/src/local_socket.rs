@@ -8,20 +8,28 @@
 //! private to the real Unix user.  `std::process::id` is deliberately not a
 //! fallback identity: processes must independently derive the same path.
 
+#[cfg(unix)]
 use std::ffi::OsString;
+#[cfg(unix)]
 use std::fs;
+#[cfg(unix)]
 use std::io;
+#[cfg(unix)]
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
-use std::path::{Path, PathBuf};
+#[cfg(unix)]
+use std::path::Path;
+use std::path::PathBuf;
 
 /// The actual Unix user id, including on platforms without Linux's
 /// `/proc/self/status` (notably macOS).
+#[cfg(unix)]
 pub fn current_uid() -> u32 {
     // SAFETY: `getuid` has no preconditions and only reads the calling
     // process's credential.
     unsafe { libc::getuid() }
 }
 
+#[cfg(unix)]
 fn socket_dir_from(runtime_dir: Option<OsString>, temp_dir: PathBuf, uid: u32) -> PathBuf {
     match runtime_dir.filter(|dir| !dir.is_empty()) {
         Some(dir) => PathBuf::from(dir).join("blueice"),
@@ -30,6 +38,7 @@ fn socket_dir_from(runtime_dir: Option<OsString>, temp_dir: PathBuf, uid: u32) -
 }
 
 /// The default directory containing all local BlueIce sockets.
+#[cfg(unix)]
 pub fn default_socket_dir() -> PathBuf {
     socket_dir_from(
         std::env::var_os("XDG_RUNTIME_DIR"),
@@ -42,6 +51,7 @@ pub fn default_socket_dir() -> PathBuf {
 /// owned by this user and restricts it to that user.  This prevents another
 /// local user from pre-creating a predictable fallback directory and hosting
 /// a counterfeit gatekeeper or downloads socket there.
+#[cfg(unix)]
 pub fn ensure_private_dir(dir: &Path) -> io::Result<()> {
     fs::create_dir_all(dir)?;
     let metadata = fs::symlink_metadata(dir)?;
@@ -68,6 +78,7 @@ pub fn ensure_private_dir(dir: &Path) -> io::Result<()> {
 
 /// The socket-specific spelling retained for call sites that establish a
 /// local IPC listener.
+#[cfg(unix)]
 pub fn ensure_private_socket_dir(dir: &Path) -> io::Result<()> {
     ensure_private_dir(dir)
 }
@@ -75,6 +86,7 @@ pub fn ensure_private_socket_dir(dir: &Path) -> io::Result<()> {
 /// Binds a Unix socket while a restrictive umask is in effect, then pins its
 /// mode to `0600`.  The umask closes the interval between `bind` and
 /// `set_permissions` in which another local user could otherwise connect.
+#[cfg(unix)]
 pub fn bind_private_listener(path: &Path) -> io::Result<std::os::unix::net::UnixListener> {
     let old_umask = unsafe { libc::umask(0o077) };
     let listener = std::os::unix::net::UnixListener::bind(path);
@@ -84,7 +96,7 @@ pub fn bind_private_listener(path: &Path) -> io::Result<std::os::unix::net::Unix
     Ok(listener)
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
     use std::sync::atomic::{AtomicU64, Ordering};
@@ -133,4 +145,12 @@ mod tests {
         drop(listener);
         let _ = fs::remove_dir_all(root);
     }
+}
+
+#[cfg(not(unix))]
+pub fn default_socket_dir() -> PathBuf {
+    std::env::var_os("LOCALAPPDATA")
+        .map(PathBuf::from)
+        .unwrap_or_else(std::env::temp_dir)
+        .join("blueice")
 }

@@ -322,6 +322,15 @@ fn write_private(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
 }
 
 #[cfg(test)]
+fn absolute_test_path(path: &str) -> String {
+    if cfg!(windows) {
+        format!("C:{path}")
+    } else {
+        path.to_string()
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use std::thread;
@@ -336,8 +345,8 @@ mod tests {
 
     fn candle() -> CandleSettings {
         CandleSettings {
-            model_path: "/models/qwen3.gguf".into(),
-            tokenizer_path: "/models/tokenizer.json".into(),
+            model_path: absolute_test_path("/models/qwen3.gguf"),
+            tokenizer_path: absolute_test_path("/models/tokenizer.json"),
             context: DEFAULT_CANDLE_CONTEXT,
         }
     }
@@ -525,9 +534,9 @@ mod tests {
                 "--backend",
                 "candle",
                 "--candle-model",
-                "/models/qwen3.gguf",
+                &absolute_test_path("/models/qwen3.gguf"),
                 "--candle-tokenizer",
-                "/models/tokenizer.json",
+                &absolute_test_path("/models/tokenizer.json"),
                 "--candle-context",
                 "4096",
             ]

@@ -8,12 +8,9 @@ license.workspace = true
 blueice-ipc = { path = "../ipc" }
 httpdate = "1"
 keyring = { version = "3", features = ["apple-native", "sync-secret-service", "windows-native"] }
-libc = "0.2"
 percent-encoding = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-ssh2 = "0.9"
-suppaftp = { version = "12", features = ["native-tls"] }
 # A ranged downloader must observe encoded bytes and headers verbatim.  In
 # particular, ureq's default `gzip` feature transparently decodes any
 # Content-Encoding response even when the request says `Accept-Encoding:
@@ -22,5 +19,10 @@ ureq = { version = "3", default-features = false, features = ["rustls"] }
 url = "2"
 zeroize = "1"
 
-[dev-dependencies]
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+ssh2 = "0.9"
+suppaftp = { version = "12", features = ["native-tls"] }
+
+[target.'cfg(unix)'.dev-dependencies]
 openssl = "0.10"

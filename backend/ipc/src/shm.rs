@@ -130,16 +130,30 @@ mod tests {
             frame_source_id_for_path("/tmp/blueice-frames-cutover-1/frame-1-1.rgba"),
             frame_source_id(second)
         );
-        use std::os::unix::ffi::OsStrExt;
-        let non_utf8 = Path::new(std::ffi::OsStr::from_bytes(b"/tmp/frames-\xff"));
-        let wire_path = non_utf8
-            .join("frame-1-1.rgba")
-            .to_string_lossy()
-            .into_owned();
-        assert_eq!(
-            frame_source_id(non_utf8),
-            frame_source_id_for_path(&wire_path)
-        );
+        #[cfg(unix)]
+        let non_unicode = {
+            use std::os::unix::ffi::OsStrExt;
+            PathBuf::from(std::ffi::OsStr::from_bytes(b"/tmp/frames-\xff"))
+        };
+        #[cfg(windows)]
+        let non_unicode = {
+            use std::os::windows::ffi::OsStringExt;
+            // An unpaired UTF-16 surrogate exercises Windows' lossy path encoding.
+            PathBuf::from(std::ffi::OsString::from_wide(&[
+                0x0058, 0x003a, 0x005c, 0xd800,
+            ]))
+        };
+        #[cfg(any(unix, windows))]
+        {
+            let wire_path = non_unicode
+                .join("frame-1-1.rgba")
+                .to_string_lossy()
+                .into_owned();
+            assert_eq!(
+                frame_source_id(&non_unicode),
+                frame_source_id_for_path(&wire_path)
+            );
+        }
     }
 
     #[test]

@@ -114,10 +114,13 @@ fn end_of_connection(error: io::Error) -> io::Result<()> {
 mod tests {
     use super::tasks::tests::Scripted;
     use super::*;
+    #[cfg(unix)]
     use blueice_ipc::assistant::{read_assistant_reply, write_assistant_request};
+    #[cfg(unix)]
     use std::os::unix::net::UnixStream;
 
     /// Runs the service on one end of a socket pair and returns the client end.
+    #[cfg(unix)]
     fn connect(
         replies: Vec<Result<String, String>>,
     ) -> (UnixStream, std::thread::JoinHandle<io::Result<()>>) {
@@ -128,6 +131,7 @@ mod tests {
         (client, worker)
     }
 
+    #[cfg(unix)]
     fn hello(client: &mut UnixStream) {
         write_assistant_request(
             client,
@@ -145,6 +149,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn all_three_tasks_are_served_on_one_connection() {
         let (mut client, worker) = connect(vec![
             Ok(r#"["你好"]"#.into()),
@@ -204,6 +209,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn a_backend_failure_is_a_failed_reply_and_the_connection_keeps_serving() {
         let (mut client, worker) = connect(vec![Err("model down".into()), Ok("ok".into())]);
         hello(&mut client);
@@ -232,6 +238,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn invalid_requests_fail_before_the_backend_is_consulted() {
         // The scripted backend has no replies: consulting it would panic.
         let (mut client, worker) = connect(vec![]);
@@ -254,6 +261,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn a_second_hello_is_refused_without_ending_the_connection() {
         let (mut client, worker) = connect(vec![]);
         hello(&mut client);
@@ -273,6 +281,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn a_missing_or_mismatched_hello_is_refused_and_disconnected() {
         for first in [
             AssistantRequest::Hello {
@@ -295,6 +304,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn a_peer_that_disconnects_before_hello_is_not_an_error() {
         let (client, worker) = connect(vec![]);
         drop(client);
@@ -302,6 +312,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn a_garbled_frame_is_an_io_error() {
         let (mut client, worker) = connect(vec![]);
         client.write_all(&3u32.to_le_bytes()).unwrap();

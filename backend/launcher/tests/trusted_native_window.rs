@@ -2,6 +2,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+#![cfg(unix)]
+
 //! Explicit graphical-session smoke test. Unlike the ordinary headless
 //! launcher suite, this starts the exact sibling `blueice-frontend` window.
 //! The launcher refuses to become ready unless that child has completed a
@@ -704,7 +706,6 @@ fn manual_native_grant_and_revoke_retire_published_toolbar() {
         "blueice-extension-host",
         "blueice-core",
         "blueice-ai-gatekeeper",
-        "bluejs",
     ] {
         assert!(
             launcher_bin.with_file_name(sibling).exists(),
@@ -865,7 +866,6 @@ fn manual_native_one_shot_dom_read_reaches_installed_wasm() {
         "blueice-extension-host",
         "blueice-core",
         "blueice-ai-gatekeeper",
-        "bluejs",
     ] {
         assert!(
             launcher_bin.with_file_name(sibling).exists(),

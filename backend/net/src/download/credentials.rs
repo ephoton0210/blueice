@@ -9,6 +9,7 @@
 //! hostname verification.
 
 use keyring::Entry;
+#[cfg(unix)]
 use zeroize::Zeroizing;
 
 const SFTP_SERVICE_PREFIX: &str = "org.blueice.downloads.sftp";
@@ -213,6 +214,7 @@ pub fn delete_sftp_password(reference: &SftpCredentialRef) -> Result<(), Credent
 
 /// Reads the password only when an authenticated transfer needs it. The
 /// returned string is zeroized on drop; callers must not format or log it.
+#[cfg(unix)]
 pub(crate) fn load_sftp_password(
     reference: &SftpCredentialRef,
 ) -> Result<Option<Zeroizing<String>>, CredentialError> {
@@ -253,6 +255,7 @@ pub fn delete_sftp_private_key_passphrase(
 
 /// Reads a private-key passphrase only after the SFTP server's host key has
 /// passed verification. The returned value zeroizes itself on drop.
+#[cfg(unix)]
 pub(crate) fn load_sftp_private_key_passphrase(
     reference: &SftpPrivateKeyPassphraseRef,
 ) -> Result<Option<Zeroizing<String>>, CredentialError> {
@@ -290,6 +293,7 @@ pub fn delete_ftps_password(reference: &FtpsCredentialRef) -> Result<(), Credent
 
 /// Reads an explicit-FTPS password only after the TLS connection has been
 /// established and verified. The returned value zeroizes itself on drop.
+#[cfg(unix)]
 pub(crate) fn load_ftps_password(
     reference: &FtpsCredentialRef,
 ) -> Result<Option<Zeroizing<String>>, CredentialError> {

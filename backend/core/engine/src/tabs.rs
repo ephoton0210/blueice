@@ -446,7 +446,7 @@ impl TabManager {
             .retain(|_, (generation, _)| current == Some(*generation));
     }
 
-    #[cfg(test)]
+    #[cfg(all(test, unix))]
     pub(crate) fn extension_navigation_rule_owner_count(&self) -> usize {
         self.extension_navigation_block_rules.len()
     }
@@ -781,9 +781,13 @@ impl TabManager {
             HistoryDirection::Forward => tab.forward.pop(),
         }
         .expect("a checked history entry still exists");
-        let HistoryEntry::Snapshot(next) = target else {
+        let HistoryEntry::Snapshot(mut next) = target else {
             unreachable!("the checked history entry is a snapshot");
         };
+        // Generations belong to the tab's publication/realm lifetime, not to
+        // the saved page. Restoring older counters would make the frontend
+        // discard the frame and could reuse a previous document identity.
+        next.continue_tab_generations_from(&tab.page);
         let current = std::mem::replace(&mut tab.page, *next);
         tab.document_epoch = tab
             .document_epoch
@@ -1966,6 +1970,33 @@ mod tests {
             }
             None => panic!("expected a history entry"),
         }
+    }
+
+    #[test]
+    fn snapshot_history_preserves_tab_frame_and_document_generations() {
+        let mut tabs =
+            TabManager::new_with_history_snapshot_mode(300.0, 200.0, HistorySnapshotMode::Snapshot);
+        let tab = tabs.default_tab();
+        let quiet = tabs.open_tab();
+        assert!(tabs.navigate_to_built_in(tab, "about:credits"));
+        assert_eq!(tabs.get_mut(tab).unwrap().advance_frame_generation(), 1);
+        assert!(tabs.navigate_to_built_in(tab, "about:credits"));
+        assert_eq!(tabs.get_mut(tab).unwrap().advance_frame_generation(), 2);
+        let mut document = tabs.get(tab).unwrap().document_generation();
+
+        for (direction, expected_frame) in [
+            (HistoryDirection::Back, 3),
+            (HistoryDirection::Forward, 4),
+            (HistoryDirection::Back, 5),
+        ] {
+            assert!(tabs.restore_history_snapshot(tab, direction));
+            let page = tabs.get_mut(tab).unwrap();
+            assert_eq!(page.document_generation(), document + 1);
+            document = page.document_generation();
+            assert_eq!(page.advance_frame_generation(), expected_frame);
+        }
+        assert_eq!(tabs.get(quiet).unwrap().frame_generation(), 0);
+        assert_eq!(tabs.get(quiet).unwrap().document_generation(), 0);
     }
 
     #[test]

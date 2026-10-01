@@ -29,7 +29,7 @@ use std::time::Instant;
 
 fn temp_frame_dir(label: &str) -> std::path::PathBuf {
     std::env::temp_dir().join(format!(
-        "blueice-session-test-{label}-{}",
+        "blueice-session-unit-test-{label}-{}",
         std::process::id()
     ))
 }
@@ -53,7 +53,10 @@ fn client_pair() -> (UnixStream, UnixStream) {
 fn unique_gatekeeper_socket_path(_label: &str) -> PathBuf {
     static COUNTER: AtomicU64 = AtomicU64::new(0);
     let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-    std::env::temp_dir().join(format!("bl-gk-{}-{n}.sock", std::process::id()))
+    // The feature tests have their own counter in the same test process.
+    // Keep this namespace distinct so their clearing listener cannot answer
+    // a test that deliberately points at an unreachable gatekeeper.
+    std::env::temp_dir().join(format!("bl-unit-gk-{}-{n}.sock", std::process::id()))
 }
 
 /// Spins up a background listener that behaves exactly like `ai-

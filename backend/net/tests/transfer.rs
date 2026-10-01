@@ -2,6 +2,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+#![cfg(unix)]
+
 //! The transfer engine through its public API, against the local test
 //! server: segmentation and dynamic re-splitting, retries and failure
 //! classification, pause/resume/cancel, resume validation, atomic

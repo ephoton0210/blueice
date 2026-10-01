@@ -2,6 +2,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+#![cfg(unix)]
+
 //! The gatekeeper review through its public API: what it sends, what it
 //! takes as clearance, and -- the point of the design -- that every way
 //! the gatekeeper can fail to say "yes" produces no token at all

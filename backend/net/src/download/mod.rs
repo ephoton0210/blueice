@@ -42,6 +42,7 @@ pub fn bounded_transfer_text(value: impl AsRef<str>) -> String {
     format!("{}{}", &value[..end], SUFFIX)
 }
 
+#[cfg(unix)]
 pub(crate) fn ensure_transfer_text_limit(field: &str, value: &str) -> Result<(), DownloadError> {
     if value.len() > MAX_TRANSFER_TEXT_BYTES {
         return Err(DownloadError::Protocol(format!(
@@ -52,21 +53,31 @@ pub(crate) fn ensure_transfer_text_limit(field: &str, value: &str) -> Result<(),
     Ok(())
 }
 
+#[cfg(unix)]
 pub mod backend;
+#[cfg(unix)]
 pub mod clearance;
 pub mod credentials;
 pub mod file_name;
+#[cfg(unix)]
 mod ftp;
+#[cfg(unix)]
 mod http;
+#[cfg(unix)]
 pub mod plan;
+#[cfg(unix)]
 pub mod probe;
 pub mod progress;
+#[cfg(unix)]
 pub(crate) mod secure_fs;
+#[cfg(unix)]
 mod sftp;
+#[cfg(unix)]
 pub mod sidecar;
+#[cfg(unix)]
 pub mod transfer;
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 pub(crate) mod testutil;
 
 /// The tunables of one transfer. The defaults are this design's own

@@ -9,15 +9,19 @@
 
 use crate::downloads_page::escape_html;
 use blueice_ipc::gatekeeper::{
-    default_gatekeeper_socket_path, read_gatekeeper_settings_reply,
-    write_gatekeeper_settings_request, GatekeeperSettings, GatekeeperSettingsChange,
+    default_gatekeeper_socket_path, GatekeeperSettings, GatekeeperSettingsChange,
     GatekeeperSettingsReply, GatekeeperSettingsRequest,
 };
+#[cfg(unix)]
+use blueice_ipc::gatekeeper::{read_gatekeeper_settings_reply, write_gatekeeper_settings_request};
+#[cfg(unix)]
 use std::net::Shutdown;
+#[cfg(unix)]
 use std::os::unix::net::UnixStream;
 #[cfg(test)]
 use std::path::Path;
 use std::path::PathBuf;
+#[cfg(unix)]
 use std::time::Duration;
 
 pub const GATEKEEPER_SETTINGS_URL: &str = "about:settings";
@@ -26,6 +30,7 @@ pub fn is_gatekeeper_settings_url(url: &str) -> bool {
     url == GATEKEEPER_SETTINGS_URL || url.starts_with("about:settings?")
 }
 
+#[cfg(unix)]
 const SETTINGS_TIMEOUT: Duration = Duration::from_millis(300);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -48,6 +53,17 @@ pub struct GatekeeperSettingsSource {
 }
 
 impl GatekeeperSettingsSource {
+    #[cfg(not(unix))]
+    fn exchange(
+        &self,
+        _request: GatekeeperSettingsRequest,
+    ) -> Result<GatekeeperSettingsReply, String> {
+        Err(format!(
+            "the gatekeeper settings transport is unavailable on this platform ({})",
+            self.socket.display()
+        ))
+    }
+
     pub fn new() -> Self {
         Self::at(default_gatekeeper_socket_path())
     }
@@ -70,6 +86,7 @@ impl GatekeeperSettingsSource {
         }
     }
 
+    #[cfg(unix)]
     fn exchange(
         &self,
         request: GatekeeperSettingsRequest,
@@ -658,6 +675,7 @@ mod tests {
         assert!(!html.contains("data-gatekeeper-action"));
     }
 
+    #[cfg(unix)]
     #[test]
     fn source_reads_and_updates_the_private_gatekeeper_service() {
         use blueice_ai_gatekeeper::GatekeeperService;

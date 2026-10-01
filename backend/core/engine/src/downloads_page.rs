@@ -22,18 +22,27 @@
 //! attacker-influenced text, and this page is rendered as HTML by the
 //! engine itself.
 
+#[cfg(unix)]
+use blueice_ipc::downloads::DownloadsClient;
 use blueice_ipc::downloads::{
-    default_downloads_socket_path, format_bytes, format_duration, format_speed, DownloadsClient,
-    SegmentInfo, SingleStreamReason, TransferInfo, TransferMode, TransferState,
+    default_downloads_socket_path, format_bytes, format_duration, format_speed, SegmentInfo,
+    SingleStreamReason, TransferInfo, TransferMode, TransferState,
 };
 use std::io;
+#[cfg(unix)]
 use std::net::Shutdown;
+#[cfg(unix)]
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
+#[cfg(unix)]
 use std::process::{Command, Stdio};
+#[cfg(unix)]
 use std::sync::mpsc;
+#[cfg(unix)]
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
+#[cfg(unix)]
+use std::time::Instant;
 
 /// The well-known URL `Page` recognizes as a request for the downloads
 /// page. An optional `?lang=<locale>` picks a locale, exactly like
@@ -319,6 +328,7 @@ pub type Spawner = Box<dyn Fn() -> io::Result<()> + Send + Sync>;
 /// binary sits one level deeper, in `deps/`, so step back out of that),
 /// listening on `socket`, detached: the process is shared with every other
 /// client, and a helper thread reaps it when it exits.
+#[cfg(unix)]
 fn spawn_sibling_downloads_process(socket: &Path) -> io::Result<()> {
     let exe = std::env::current_exe()?;
     let dir = exe.parent().unwrap_or_else(|| Path::new("."));
@@ -351,6 +361,18 @@ pub struct DownloadsSource {
 }
 
 impl DownloadsSource {
+    #[cfg(not(unix))]
+    pub fn at(socket: PathBuf) -> Self {
+        Self::without_spawner(socket)
+    }
+
+    #[cfg(not(unix))]
+    fn fetch_within(&self, _spawn: bool, _limit: Duration) -> Result<Vec<TransferInfo>, String> {
+        // Do not invoke a supplied spawner when no supported transport exists.
+        let _ = &self.spawner;
+        Err("the downloads transport is unavailable on this platform".into())
+    }
+
     /// The production source: the well-known socket, starting the sibling
     /// `blueice-downloads` binary when a page opens and nothing is listening.
     pub fn new() -> Self {
@@ -359,6 +381,7 @@ impl DownloadsSource {
 
     /// Like [`Self::new`] for a downloads process on `socket` -- which is
     /// also where a process started on the page's behalf will listen.
+    #[cfg(unix)]
     pub fn at(socket: PathBuf) -> Self {
         let for_spawn = socket.clone();
         DownloadsSource::with_spawner(
@@ -411,6 +434,7 @@ impl DownloadsSource {
         self.fetch_within(false, self.timeout)
     }
 
+    #[cfg(unix)]
     fn fetch_within(&self, spawn: bool, limit: Duration) -> Result<Vec<TransferInfo>, String> {
         let deadline = Instant::now() + limit;
         let stream = match UnixStream::connect(&self.socket) {
@@ -490,7 +514,7 @@ impl Default for DownloadsSource {
 
 /// A fake downloads process on a real Unix socket, shared by this module's
 /// own tests and by `Page`'s and the session's.
-#[cfg(test)]
+#[cfg(all(test, unix))]
 pub(crate) mod test_support {
     use blueice_ipc::downloads::{
         read_downloads_request, write_downloads_reply, DownloadsReply, DownloadsRequest,
@@ -600,12 +624,19 @@ pub(crate) mod test_support {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(unix)]
     use super::test_support::{fake_downloads, Scratch};
     use super::*;
-    use blueice_ipc::downloads::{BlockedInfo, SegmentState, DOWNLOADS_PROTOCOL_VERSION};
+    #[cfg(unix)]
+    use blueice_ipc::downloads::DOWNLOADS_PROTOCOL_VERSION;
+    use blueice_ipc::downloads::{BlockedInfo, SegmentState};
+    #[cfg(unix)]
     use std::sync::atomic::{AtomicUsize, Ordering};
+    #[cfg(unix)]
     use std::sync::Arc;
+    #[cfg(unix)]
     use std::thread;
+    #[cfg(unix)]
     use std::time::Instant;
 
     const MIB: u64 = 1024 * 1024;
@@ -1052,6 +1083,7 @@ mod tests {
 
     // ---- DownloadsSource: the live list, from a fake downloads process -------
 
+    #[cfg(unix)]
     #[test]
     fn a_running_downloads_service_is_read_for_its_list() {
         let dir = Scratch::new("read");
@@ -1069,6 +1101,7 @@ mod tests {
         assert_eq!(got.iter().map(|t| t.id).collect::<Vec<_>>(), vec![1, 2]);
     }
 
+    #[cfg(unix)]
     #[test]
     fn a_missing_service_is_an_error_and_is_not_started_by_the_quick_read() {
         let dir = Scratch::new("missing");
@@ -1090,6 +1123,7 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
     #[test]
     fn opening_the_page_starts_the_service_when_it_is_not_running() {
         let dir = Scratch::new("spawn");
@@ -1119,6 +1153,7 @@ mod tests {
         assert_eq!(started.load(Ordering::SeqCst), 1);
     }
 
+    #[cfg(unix)]
     #[test]
     fn a_spawn_that_fails_or_never_yields_a_socket_is_an_error_not_a_hang() {
         let dir = Scratch::new("nospawn");
@@ -1145,6 +1180,7 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
     #[test]
     fn a_service_that_never_answers_is_given_up_on_at_the_timeout() {
         let dir = Scratch::new("stall");
@@ -1164,6 +1200,7 @@ mod tests {
         assert!(error.contains("did not answer"), "{error}");
     }
 
+    #[cfg(unix)]
     #[test]
     fn a_service_speaking_another_protocol_version_is_an_error() {
         let dir = Scratch::new("version");

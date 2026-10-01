@@ -21,7 +21,7 @@
 //! compile-time effect: skipping the gate becomes a compile error, not
 //! a runtime convention a differently-written caller could omit.
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 use crate::tabs::ExtensionNavigationBlockRule;
 use crate::tabs::{
     extension_navigation_rules_block_url, extension_navigation_rules_redirect_url,
@@ -29,14 +29,17 @@ use crate::tabs::{
 };
 use crate::TabId;
 use blueice_ipc::extension::NetworkRedirectInfo;
-use blueice_ipc::gatekeeper::{
-    read_gatekeeper_reply, write_gatekeeper_request, GatekeeperReply, GatekeeperRequest,
-};
-#[cfg(test)]
+use blueice_ipc::gatekeeper::GatekeeperRequest;
+#[cfg(unix)]
+use blueice_ipc::gatekeeper::{read_gatekeeper_reply, write_gatekeeper_request, GatekeeperReply};
+#[cfg(all(test, unix))]
 use std::collections::HashSet;
+#[cfg(unix)]
 use std::io;
+#[cfg(unix)]
 use std::os::unix::net::UnixStream;
 use std::path::Path;
+#[cfg(unix)]
 use std::time::Duration;
 
 /// Proof that both gatekeeper stages cleared for `url` on `tab_id`.
@@ -89,8 +92,12 @@ pub(crate) enum NavOutcome {
 }
 
 enum StageOutcome {
+    #[cfg_attr(not(unix), allow(dead_code))]
     Cleared,
-    Rejected { reason: String, category: String },
+    Rejected {
+        reason: String,
+        category: String,
+    },
 }
 
 /// Match the established HTTP client's redirect budget while keeping every
@@ -106,6 +113,7 @@ const MAX_NAVIGATION_REDIRECTS: usize = 10;
 /// `Rejected` -- an unreachable/down gatekeeper must never be
 /// mistaken for "safe," per the plan's already-settled failure-mode
 /// decision.
+#[cfg(unix)]
 fn check_stage(gatekeeper_socket: &Path, request: &GatekeeperRequest) -> StageOutcome {
     let attempt = (|| -> io::Result<GatekeeperReply> {
         let mut stream = UnixStream::connect(gatekeeper_socket)?;
@@ -131,7 +139,7 @@ fn check_stage(gatekeeper_socket: &Path, request: &GatekeeperRequest) -> StageOu
 /// [`NavOutcome`]. Meant to run entirely on a background thread -- never
 /// touches any `Page`/`TabManager` state itself, only produces a value the
 /// caller applies back on the main thread once it arrives.
-#[cfg(test)]
+#[cfg(all(test, unix))]
 pub(crate) fn check_and_fetch(tab_id: TabId, url: String, gatekeeper_socket: &Path) -> NavOutcome {
     check_and_fetch_with_navigation_rules(
         tab_id,
@@ -249,7 +257,7 @@ pub(crate) fn check_and_fetch_with_navigation_rules(
     unreachable!("the bounded redirect loop always returns or commits a page")
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
     use blueice_ipc::gatekeeper::{read_gatekeeper_request, write_gatekeeper_reply};
@@ -779,5 +787,39 @@ mod tests {
             NavOutcome::FetchFailed { .. } => {}
             _ => panic!("expected FetchFailed, not GatekeeperBlocked, for an ordinary connection failure after a cleared URL stage"),
         }
+    }
+}
+
+#[cfg(not(unix))]
+fn check_stage(_socket: &Path, _request: &GatekeeperRequest) -> StageOutcome {
+    StageOutcome::Rejected {
+        reason: "the gatekeeper transport is unavailable on this platform".into(),
+        category: "gatekeeper-unavailable".into(),
+    }
+}
+
+#[cfg(all(test, not(unix)))]
+mod platform_tests {
+    use super::*;
+
+    #[test]
+    fn unavailable_gatekeeper_blocks_navigation_before_any_network_connection() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let url = format!("http://{}/page", listener.local_addr().unwrap());
+        let outcome = check_and_fetch_with_navigation_rules(
+            TabId::from_u64(1),
+            url.clone(),
+            Path::new("unavailable.sock"),
+            ExtensionNavigationRuleSnapshot::default(),
+        );
+        assert!(matches!(
+            outcome,
+            NavOutcome::GatekeeperBlocked { category, url: blocked, .. }
+                if category == "gatekeeper-unavailable" && blocked == url
+        ));
+        assert!(
+            matches!(listener.accept(), Err(error) if error.kind() == std::io::ErrorKind::WouldBlock)
+        );
     }
 }
