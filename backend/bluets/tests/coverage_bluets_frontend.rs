@@ -4133,7 +4133,6 @@ fn unsupported_and_misplaced_syntax_is_diagnosed_not_passed_through() {
             "const decorated = () => { @sealed class A {} };",
             "decorators and TSX/JSX are not in the initial BlueTS matrix",
         ),
-        ("namespace N {}", "a namespace is not emitted yet"),
         (
             "const x?: number = 1;",
             "optional variables are not valid TypeScript declarations",

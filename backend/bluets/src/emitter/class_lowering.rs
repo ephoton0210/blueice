@@ -60,7 +60,7 @@ pub(super) fn lower_class_members(
     };
     let mut needed: BTreeSet<Helper> = BTreeSet::new();
     let mut first_private_class: Option<usize> = None;
-    for declaration in &module.declarations {
+    for (declaration, nested) in super::runtime_declarations(&module.declarations) {
         let Declaration::Class(class) = declaration else {
             continue;
         };
@@ -75,6 +75,15 @@ pub(super) fn lower_class_members(
         } else {
             PrivateNames::collect(module, class)?
         };
+        if private.is_some() && nested {
+            // The helpers and state would have to be placed in the namespace's
+            // own function, once per scope.
+            return Err(Diagnostic::error(
+                DiagnosticCode::UnsupportedSyntax,
+                class.name_span.clone(),
+                "a private name in a class inside a namespace is not lowered for this target yet",
+            ));
+        }
         if let Some(private) = &private {
             refuse_helper_name_collisions(module)?;
             private.rewrite_accesses(module, edits, &mut needed)?;

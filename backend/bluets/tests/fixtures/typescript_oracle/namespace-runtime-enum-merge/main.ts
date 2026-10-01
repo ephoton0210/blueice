@@ -2,10 +2,11 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-declare namespace Lib {
-    const version: number;
-    function describe(n: number): string;
-    interface Options { verbose: boolean }
+namespace M {
+    export enum E { A, B }
 }
-const o: Lib.Options = { verbose: true };
-console.log(o.verbose);
+namespace M {
+    export enum E { C = 5 }
+    export const v: E = E.C;
+}
+console.log(M.E.A, M.E.B, M.E.C, M.v, M.E[5]);

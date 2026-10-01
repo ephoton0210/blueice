@@ -16,6 +16,7 @@ pub use private_lowering::CLASS_HELPER_V1_VERSION;
 mod class_lowering;
 mod classes;
 mod enums;
+mod namespaces;
 mod private_lowering;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -245,17 +246,6 @@ fn emit_javascript(
     exported_enums: &BTreeMap<String, BTreeMap<String, crate::checker::ExportedEnum>>,
     options: &CompilerOptions,
 ) -> Result<(EmittedJavaScript, Option<EmittedStrictModule>), Diagnostic> {
-    if let Some(Declaration::Namespace(namespace)) = module
-        .declarations
-        .iter()
-        .find(|declaration| matches!(declaration, Declaration::Namespace(_)))
-    {
-        return Err(Diagnostic::error(
-            DiagnosticCode::UnsupportedSyntax,
-            namespace.span.clone(),
-            "a namespace is not emitted yet",
-        ));
-    }
     let mut edits = module.edits.clone();
     for declaration in &module.declarations {
         let Declaration::Import(import) = declaration else {
@@ -284,6 +274,7 @@ fn emit_javascript(
     edits.extend(classes::overload_signature_erasures(module));
     class_lowering::lower_class_members(module, options, &mut edits)?;
     enums::lower_enums(module, project, exported_enums, options, &mut edits)?;
+    namespaces::lower_namespaces(module, options, &mut edits)?;
     let plan = strict_boundaries::plan_emission(module, options)?;
     let mut strict_runtime = None;
     if let Some((strict_edits, record)) = plan {
@@ -295,6 +286,26 @@ fn emit_javascript(
         strict_boundaries::locate_emitted_calls(module, &emitted.javascript, record)?;
     }
     Ok((emitted, strict_runtime))
+}
+
+/// Every declaration of a module in source order, descending into namespace
+/// bodies, each with whether it is inside one.
+fn runtime_declarations(declarations: &[Declaration]) -> Vec<(&Declaration, bool)> {
+    fn visit<'a>(
+        declarations: &'a [Declaration],
+        nested: bool,
+        into: &mut Vec<(&'a Declaration, bool)>,
+    ) {
+        for declaration in declarations {
+            into.push((declaration, nested));
+            if let Declaration::Namespace(namespace) = declaration {
+                visit(&namespace.body, true, into);
+            }
+        }
+    }
+    let mut all = Vec::new();
+    visit(declarations, false, &mut all);
+    all
 }
 
 fn javascript_specifier(specifier: &str) -> String {

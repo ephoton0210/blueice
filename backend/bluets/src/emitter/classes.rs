@@ -21,7 +21,7 @@ use crate::parser::{
 /// no body has no JavaScript form.
 pub(super) fn overload_signature_erasures(module: &Module) -> Vec<TextEdit> {
     let mut edits = Vec::new();
-    for declaration in &module.declarations {
+    for (declaration, _) in super::runtime_declarations(&module.declarations) {
         let Declaration::Class(class) = declaration else {
             continue;
         };

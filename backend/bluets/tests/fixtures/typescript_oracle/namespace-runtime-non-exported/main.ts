@@ -2,10 +2,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-declare namespace Lib {
-    const version: number;
-    function describe(n: number): string;
-    interface Options { verbose: boolean }
+namespace H {
+    let hidden: number = 0;
+    export function next(): number { hidden = hidden + 1; return hidden; }
 }
-const o: Lib.Options = { verbose: true };
-console.log(o.verbose);
+console.log(H.next(), H.next(), Object.keys(H));

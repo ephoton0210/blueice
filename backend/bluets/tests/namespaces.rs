@@ -212,8 +212,7 @@ use blueice_bluets::{
 
 const ENTRY: &str = "memory:///main.ts";
 
-/// The diagnostics of checking `source`, without the temporary refusal to emit
-/// a namespace.
+/// The diagnostics of compiling `source`.
 fn check(source: &str) -> Vec<Diagnostic> {
     compile(
         ENTRY,
@@ -221,9 +220,6 @@ fn check(source: &str) -> Vec<Diagnostic> {
         CompilerOptions::default(),
     )
     .diagnostics
-    .into_iter()
-    .filter(|diagnostic| diagnostic.message != "a namespace is not emitted yet")
-    .collect()
 }
 
 #[track_caller]
@@ -391,19 +387,171 @@ fn an_ambient_variable_cannot_have_an_initializer_but_a_literal_const_may() {
 
 #[test]
 fn an_ambient_namespace_exports_every_member_and_has_no_emit() {
+    assert_accepted(
+        "declare namespace Lib { const version: number; function describe(n: number): string; } \
+         const s: string = Lib.describe(Lib.version);",
+    );
+}
+
+fn emit(source: &str) -> String {
+    emit_with(source, CompilerOptions::default())
+}
+
+fn emit_with(source: &str, options: CompilerOptions) -> String {
     let compiled = compile(
         ENTRY,
-        &MapLoader::from([ModuleSource::new(
+        &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+        options,
+    );
+    assert!(
+        compiled.diagnostics.is_empty(),
+        "{:?}",
+        compiled.diagnostics
+    );
+    compiled.output.unwrap().artifacts[ENTRY].javascript.clone()
+}
+
+#[test]
+fn a_namespace_is_a_function_over_an_object_that_blocks_merge_into() {
+    let output = emit(
+        "namespace N {\n  export const a: number = 1;\n  export function f(): number { return a; }\n}\n\
+         namespace N {\n  export const b: number = N.a + 1;\n}\n",
+    );
+    assert_eq!(
+        output,
+        "var N; (function (N) {\n  N.a= 1;\n  function f(){ return N.a; } N.f = f;\n})(N || (N = {}));\n\
+         (function (N) {\n  N.b= N.a + 1;\n})(N || (N = {}));\n"
+    );
+}
+
+#[test]
+fn an_exported_namespace_exports_its_variable_and_a_merge_declares_nothing_twice() {
+    assert!(emit("export namespace N { export const a: number = 1; }")
+        .starts_with("export var N; (function (N) {"));
+    let merged =
+        emit("function g(): number { return 1; } namespace g { export const m: number = 2; }");
+    assert!(!merged.contains("var g"), "{merged}");
+    assert!(
+        merged.contains("(function (g) { g.m= 2; })(g || (g = {}))"),
+        "{merged}"
+    );
+}
+
+#[test]
+fn a_nested_namespace_is_let_in_its_parent_and_assigned_to_it_when_exported() {
+    let output = emit(
+        "namespace O {\n  export namespace I { export const z: number = 1; }\n  namespace P { export const q: number = 2; }\n}",
+    );
+    assert!(
+        output.contains("let I; (function (I) { I.z= 1; })(I = O.I || (O.I = {}));"),
+        "{output}"
+    );
+    assert!(
+        output.contains("let P; (function (P) { P.q= 2; })(P || (P = {}));"),
+        "{output}"
+    );
+}
+
+#[test]
+fn a_dotted_namespace_nests_one_function_per_name() {
+    let output = emit("namespace A.B.C { export const k: number = 7; }");
+    assert_eq!(
+        output,
+        "var A; (function (A) { var B; (function (B) { var C; (function (C) { C.k= 7; })(C = B.C || (B.C = {})); })(B = A.B || (A.B = {})); })(A || (A = {}));"
+    );
+}
+
+#[test]
+fn a_namespace_with_nothing_at_run_time_is_removed_and_keeps_its_lines() {
+    let source = "namespace T {\n  export interface I { q: number }\n  export type U = string;\n}\nconst x: number = 1;\n";
+    let output = emit(source);
+    assert!(!output.contains('T'), "{output}");
+    assert_eq!(output.matches('\n').count(), source.matches('\n').count());
+    let ambient = "declare namespace Lib {\n  const v: number;\n}\nconst y: number = 2;\n";
+    let output = emit(ambient);
+    assert!(!output.contains("Lib"), "{output}");
+    assert_eq!(output.matches('\n').count(), ambient.matches('\n').count());
+}
+
+#[test]
+fn emission_keeps_every_source_line_in_place() {
+    let source = "namespace N {\n  export let a: number = 1;\n  export enum E {\n    X,\n    Y\n  }\n  export class C {\n    v: number = a;\n  }\n}\nconsole.log(N.a);\n";
+    let output = emit(source);
+    assert_eq!(output.matches('\n').count(), source.matches('\n').count());
+    // The statement after the namespace is still on its last line.
+    assert!(output.trim_end().ends_with("console.log(N.a);"));
+}
+
+#[test]
+fn exported_variables_are_read_through_the_object_in_every_expression_form() {
+    let output = emit(
+        "namespace R {\n export let c: number = 0;\n export function f(): string { return `${c}`; }\n \
+         export function o(): { c: number } { return { c }; }\n export class K { c: number = 1; r(): number { return this.c + c; } }\n \
+         export const k: number = { c: 5 }.c;\n}",
+    );
+    assert!(output.contains("`${R.c}`"), "{output}");
+    assert!(output.contains("return { c: R.c }"), "{output}");
+    assert!(output.contains("this.c + R.c"), "{output}");
+    // A class member and an object key named like the variable are not references.
+    assert!(output.contains("c = 1;"), "{output}");
+    assert!(output.contains("{ c: 5 }.c"), "{output}");
+}
+
+#[test]
+fn a_reference_to_a_member_another_block_exported_goes_through_the_object() {
+    let output = emit(
+        "namespace A.B { export const x: number = 1; } namespace A { export const z: number = B.x; }",
+    );
+    assert!(output.contains("A.z= A.B.x"), "{output}");
+}
+
+#[test]
+fn what_could_shadow_an_exported_variable_is_refused() {
+    for source in [
+        "namespace N { export const a: number = 1; export function f(a: number): number { return a; } }",
+        "namespace N { export const a: number = 1; export function f(): number { const a: number = 2; return a; } }",
+        "namespace N { export let a: number = 1, b: number = 2; }",
+        "namespace N { export const a: number = 1; export const g = (a: number): number => a; }",
+    ] {
+        let compiled = compile(
             ENTRY,
-            "declare namespace Lib { const version: number; function describe(n: number): string; } \
-             const s: string = Lib.describe(Lib.version);",
-        )]),
+            &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+            CompilerOptions::default(),
+        );
+        assert!(
+            compiled
+                .diagnostics
+                .iter()
+                .any(|d| d.code == DiagnosticCode::UnsupportedSyntax),
+            "`{source}` should be refused: {:?}",
+            compiled.diagnostics
+        );
+        assert!(compiled.output.is_none(), "{source}");
+    }
+}
+
+#[test]
+fn a_private_name_in_a_namespace_class_is_refused_below_es2022_only() {
+    let source =
+        "namespace N { export class C { #p: number = 1; get(): number { return this.#p; } } }";
+    let _ = source;
+    let source =
+        "namespace N { export class C { #p: number = 1; read(): number { return this.#p; } } }";
+    let low = compile(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+        CompilerOptions {
+            target: blueice_bluets::EcmaTarget::Es2020,
+            ..CompilerOptions::default()
+        },
+    );
+    assert!(low.diagnostics.iter().any(|d| d
+        .message
+        .contains("a private name in a class inside a namespace")));
+    let native = compile(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(ENTRY, source)]),
         CompilerOptions::default(),
     );
-    let errors: Vec<_> = compiled
-        .diagnostics
-        .iter()
-        .filter(|diagnostic| diagnostic.message != "a namespace is not emitted yet")
-        .collect();
-    assert!(errors.is_empty(), "{errors:?}");
+    assert!(native.output.is_some(), "{:?}", native.diagnostics);
 }

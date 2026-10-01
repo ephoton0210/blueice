@@ -145,7 +145,12 @@ pub(super) fn lower_enums(
             String::new()
         } else {
             let first = declared_names.insert(declaration.name.as_str());
-            enum_statement(module, declaration, evaluation, first, edits)
+            let placement = EnumPlacement {
+                keyword: "var",
+                export_modifier: declaration.exported,
+                namespace: None,
+            };
+            enum_statement(module, declaration, evaluation, first, &placement, edits)
         };
         let lines = module.source[declaration.span.start..declaration.span.end]
             .matches('\n')
@@ -260,7 +265,7 @@ fn scan_uses(
 }
 
 /// The byte ranges of the `${ .. }` substitutions in a template literal's text.
-fn template_substitutions(text: &str) -> Vec<(usize, usize)> {
+pub(super) fn template_substitutions(text: &str) -> Vec<(usize, usize)> {
     let bytes = text.as_bytes();
     let mut ranges = Vec::new();
     let mut index = 0;
@@ -299,19 +304,35 @@ fn is_identifier_name(name: &str) -> bool {
 
 /// The statements for one declaration. `first` is false for the second and later
 /// declarations of a merged enum, which reuse the variable.
-fn enum_statement(
+/// Where an enum's variable lives and what its function is called with.
+pub(super) struct EnumPlacement<'a> {
+    /// `var` in a module, `let` inside a namespace.
+    pub(super) keyword: &'a str,
+    pub(super) export_modifier: bool,
+    /// The namespace parameter an exported member is stored on, and whether
+    /// this enum is exported from it.
+    pub(super) namespace: Option<(&'a str, bool)>,
+}
+
+pub(super) fn enum_statement(
     module: &Module,
     declaration: &EnumDeclaration,
     evaluation: &crate::enum_eval::EvaluatedEnum,
     first: bool,
+    placement: &EnumPlacement<'_>,
     edits: &[TextEdit],
 ) -> String {
     let name = &declaration.name;
     let mut parts: Vec<String> = Vec::new();
     if first {
         parts.push(format!(
-            "{}var {name};",
-            if declaration.exported { "export " } else { "" }
+            "{}{} {name};",
+            if placement.export_modifier {
+                "export "
+            } else {
+                ""
+            },
+            placement.keyword
         ));
     }
     parts.push(format!("(function ({name}) {{"));
@@ -333,13 +354,17 @@ fn enum_statement(
             }
         });
     }
-    parts.push(format!("}})({name} || ({name} = {{}}));"));
+    let argument = match placement.namespace {
+        Some((parent, true)) => format!("{name} = {parent}.{name} || ({parent}.{name} = {{}})"),
+        _ => format!("{name} || ({name} = {{}})"),
+    };
+    parts.push(format!("}})({argument});"));
     parts.join("\n")
 }
 
 /// `text` with its line breaks replaced by spaces, then as many line breaks
 /// as the original declaration had put back at the end of its parts.
-fn spread_lines(text: String, lines: usize) -> String {
+pub(super) fn spread_lines(text: String, lines: usize) -> String {
     if text.is_empty() {
         return text;
     }

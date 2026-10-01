@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: J.3.5.3.** H and I are complete. The requested class, enum,
+**Current leaf: J.3.5.4.** H and I are complete. The requested class, enum,
 decorator, namespace, JSX, CommonJS, and package-resolution expansion has
 passed J.1/J.2 planning; implementation and pinned-`tsc` parity remain open.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
@@ -2486,10 +2486,28 @@ done to the page-runs-and-debugs goal at the top of this file.
       an exported `const` is not diagnosed (nor is any `const` reassignment), a
       local that shares a namespace's name would be read as the namespace, and a
       namespace declared before the enum it merges into is a redeclaration.
-    - [ ] **J.3.5.3** Emit namespaces: the `var N; (function (N) { .. })(N ||
-      (N = {}))` form with exported variables rewritten to `N.x`, nested and
-      merged blocks, erasure of type-only namespaces, line preservation,
-      Node parity with pinned tsc.
+    - [x] **J.3.5.3** Emit namespaces. A namespace becomes `var N;
+      (function (N) { .. })(N || (N = {}))` (`export var N` when exported, `let`
+      inside another namespace, nothing when it merges into a function, class
+      or enum declared before it, one function per segment of a dotted name,
+      `N = P.N || (P.N = {})` for an exported inner one). Only the header and
+      the closing brace are replaced, so the body keeps its lines: `export
+      const x` becomes `N.x`, an exported function or class loses `export` and
+      is followed by `N.f = f;`, an enum is rebuilt in place, and every
+      reference to an exported variable, and to an exported member that another
+      block of the namespace declared, is rewritten to `N.x` (shorthand
+      properties, template substitutions and compound assignments included;
+      object keys, class members and `.x` properties are not references).
+      A namespace with nothing at run time and an ambient one are removed.
+      Classes and overload signatures inside a body are lowered and erased like
+      top-level ones. 65 fixtures agree with pinned tsc on accept/reject and the
+      accepted ones print the same under Node for ES2022 and ES2020 (the
+      `namespace_oracle` test). Refused rather than miscompiled: a parameter,
+      local, catch binding or pattern that shadows an exported variable it could
+      see, an exported variable with several declarators, and a private name in
+      a namespace's class when the target lowers private names (the helpers would
+      need a place in each namespace's function). Nested const enums are kept as
+      objects; they are not inlined.
     - [ ] **J.3.5.4** Declaration output, cross-module namespaces and ambient
       namespaces in `.d.ts` modules.
     - [ ] **J.3.5.5** Direct bridge lowering with oracle parity; class and

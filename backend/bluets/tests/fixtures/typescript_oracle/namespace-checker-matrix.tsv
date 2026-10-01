@@ -48,6 +48,17 @@ namespace-nested/main.ts	accept
 namespace-outer-access/main.ts	accept
 namespace-overloads/main.ts	accept
 namespace-record-member/main.ts	accept
+namespace-runtime-async/main.ts	accept
+namespace-runtime-closure/main.ts	accept
+namespace-runtime-enum-merge/main.ts	accept
+namespace-runtime-function-merge-static/main.ts	accept
+namespace-runtime-inner-reference/main.ts	accept
+namespace-runtime-merge-dotted/main.ts	accept
+namespace-runtime-non-exported/main.ts	accept
+namespace-runtime-object-shape/main.ts	accept
+namespace-runtime-order/main.ts	accept
+namespace-runtime-references/main.ts	accept
+namespace-runtime-var-no-initializer/main.ts	accept
 namespace-shadow-outer/main.ts	accept
 namespace-type-only/main.ts	accept
 namespace-type-uses-hidden-sibling/main.ts	accept

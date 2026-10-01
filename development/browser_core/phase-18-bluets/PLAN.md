@@ -3060,3 +3060,33 @@ emission is unchanged. Merging stops where the member is not a namespace
 member, so a class merged with a namespace still reads its static member
 `K.s` as three tokens. The checker then finds `N.a.b` in its maps with no
 change to its expression handling.
+
+### J.3.5.3 Emitting namespaces
+
+Emission copies source text and applies recorded edits, so a namespace is
+rewritten in place. The header (`export namespace A.B {`) is replaced by the
+opening of one function per segment and the closing brace by the matching
+closings, each keeping the line breaks it replaced; the body's own text does not
+move. Inside, an exported variable's `export const x` is replaced up to the name
+by `N.x`, which turns the declaration into an assignment; an exported function or
+class loses `export` and is followed, on the same line, by `N.f = f;`, which is
+where TypeScript puts it; an enum is rebuilt by the enum emitter with the
+namespace's parameter as its home; and an inner namespace recurses with the
+current parameter as its parent.
+
+TypeScript reads an exported variable through the object, so a reference to it
+inside the body must change. The emitter finds references in the lexed tokens of
+the body, skipping text that is erased, replaced or an inner namespace's, a
+property after `.`, an object key, a class member's name and a label, expanding a
+shorthand property, and descending into template substitutions. An exported
+function, class, enum or namespace that another block declared is a reference
+too, since it is not a local of this block; one the block declares is local and
+left alone.
+
+That is only sound if nothing shadows the name. The emitter therefore collects
+what the body binds locally, from the parsed structure (parameters, locals,
+catch bindings, nested function expressions, class members) and from the tokens
+(declarations in loops, blocks and patterns), and refuses a body in which such a
+binding has the name of an exported variable it could see. An exported variable
+with several declarators in one statement is refused as well, because the
+statement would assign only the first through the object.

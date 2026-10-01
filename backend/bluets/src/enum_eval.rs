@@ -45,10 +45,16 @@ pub struct EvaluatedEnum {
 /// Evaluates every enum declaration of `module`, in source order, so a later
 /// declaration of the same enum sees the earlier one's members.
 pub fn evaluate_enums(module: &Module) -> Vec<EvaluatedEnum> {
+    evaluate_enums_in(&module.declarations)
+}
+
+/// Evaluates the enum declarations among `declarations`, as the body of a
+/// namespace or a module's own list.
+pub fn evaluate_enums_in(declarations: &[Declaration]) -> Vec<EvaluatedEnum> {
     // Each enum's members so far, by name.
     let mut known: BTreeMap<String, Vec<EvaluatedMember>> = BTreeMap::new();
     let mut result = Vec::new();
-    for declaration in &module.declarations {
+    for declaration in declarations {
         let Declaration::Enum(enum_declaration) = declaration else {
             continue;
         };
