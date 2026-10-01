@@ -23,6 +23,10 @@ impl<'a> ModuleChecker<'a> {
         mut scope: BTreeMap<String, Type>,
     ) {
         let previous_async = self.async_context.replace(function.async_function);
+        let generator_context = function
+            .generator
+            .then(|| self.generator_context_for(function));
+        let previous_generator = std::mem::replace(&mut self.generator_context, generator_context);
         let previous_annotated = self.annotated_names.clone();
         let previous_parameters = self.type_parameters.clone();
         let previous_spreads = self.allowed_tuple_spread_parameters.clone();
@@ -147,6 +151,10 @@ impl<'a> ModuleChecker<'a> {
                     None
                 }
             },
+            (Some(_), false) if function.generator => self
+                .generator_context
+                .as_ref()
+                .and_then(|context| context.return_type.clone()),
             (return_type, _) => return_type.clone(),
         };
         let allows_implicit_undefined = if let Some(return_type) = &body_return_type {
@@ -184,6 +192,7 @@ impl<'a> ModuleChecker<'a> {
         self.type_parameters = previous_parameters;
         self.allowed_tuple_spread_parameters = previous_spreads;
         self.async_context = previous_async;
+        self.generator_context = previous_generator;
         self.annotated_names = previous_annotated;
     }
 

@@ -3156,3 +3156,25 @@ same spelling removed so a shadowing local is not judged by the outer type), and
 `name = value` and `array[i] = value` are read against its declared type. An
 unannotated variable is never checked: its type is only what the checker
 inferred, which an assignment legitimately widens in TypeScript's flow analysis.
+
+### J.3.7.7.4 Generator functions
+
+A generator's checking context has three types: what it may yield, what it may
+return and what `yield` evaluates to (what a caller passes to `next`). They come
+from the return annotation, which must be `Generator<T, R, N>`, `Iterator`,
+`IterableIterator` or `Iterable`; the library types are parsed from a small
+declaration text of their own (so `default` type arguments, method signatures and
+the `IteratorResult` union need no special model), bound after a module's own
+declarations so a local or host `Generator` wins. `yield` is not in the set of
+tokens that start an expression statement in a function body, so it was added; the
+checker then reads each `yield` in a statement's tokens that is outside a nested
+function, requires it to start an expression, takes its operand to the end of the
+statement and reads it against the yield type (or, for `yield*`, takes the items of
+the operand's iterable type). A `return` in a generator is checked against its return
+type through the same path an async function's `Promise<T>` takes, so a generator
+whose return type is not `void`, `undefined` or `any` must return on every path.
+
+The emitter changes nothing: the annotations are erased by the ordinary edits and
+`function*`, `yield` and `yield*` are in the copied text, which ES2020 and ES2022
+run. The bridge's expression parser handles `yield` at assignment precedence, and
+its function lowering sets BlueJS's `generator` flag.

@@ -9,6 +9,8 @@ use super::*;
 mod classes;
 mod enums;
 mod functions;
+mod generators;
+pub(in crate::checker::module) use generators::GeneratorContext;
 mod namespaces;
 pub(in crate::checker::module) use functions::promise_value_type;
 pub(crate) use namespaces::{NamespaceExport, NamespaceMembers};
@@ -56,6 +58,7 @@ impl<'a> ModuleChecker<'a> {
             isolated_modules: policy.isolated_modules,
             checked_nested_functions: BTreeSet::new(),
             async_context: None,
+            generator_context: None,
             constructor_readonly_fields: None,
             access_class: None,
             enum_members: BTreeMap::new(),
@@ -88,6 +91,7 @@ impl<'a> ModuleChecker<'a> {
         self.bind_declarations();
         self.bind_ambient_declarations();
         self.bind_builtin_promise();
+        self.bind_builtin_iteration_types();
         self.validate_function_overloads();
         self.validate_default_exports();
         self.validate_value_exports();
@@ -999,6 +1003,7 @@ impl<'a> ModuleChecker<'a> {
             return;
         }
         self.check_namespace_value_use(tokens, span);
+        self.check_yield_expressions(tokens, scope, span);
         let before_arrows = self.diagnostics.len();
         self.check_nested_functions_in(tokens, scope);
         self.dedupe_diagnostics_since(before_arrows);

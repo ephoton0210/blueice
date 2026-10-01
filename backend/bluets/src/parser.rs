@@ -53,6 +53,8 @@ pub struct NestedFunction {
     pub kind: NestedFunctionKind,
     /// Declared `async`: its span starts at the `async` token.
     pub async_function: bool,
+    /// A generator function or method.
+    pub generator: bool,
     /// The name a function expression binds inside its own body.
     pub name: Option<String>,
     /// Erased type parameters (`<T>` on an arrow or function).
@@ -640,6 +642,8 @@ pub struct FunctionDeclaration {
     /// `async` changes the runtime result to a Promise and cannot satisfy a
     /// primitive-string emitted boundary after type erasure.
     pub async_function: bool,
+    /// `function*`: the body may `yield`, and the result is a generator.
+    pub generator: bool,
     /// Original `{` byte position for emitted boundary insertion. Signature
     /// declarations have no body opening brace.
     pub body_open: Option<usize>,

@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: J.3.7.7.4.** H and I are complete. The requested class, enum,
+**Current leaf: J.4.1.** J.3 is complete. H and I are complete. The requested class, enum,
 decorator, namespace, JSX, CommonJS, and package-resolution expansion has
 passed J.1/J.2 planning; implementation and pinned-`tsc` parity remain open.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
@@ -873,7 +873,7 @@ done to the page-runs-and-debugs goal at the top of this file.
     PLAN.md; compare against the pinned TypeScript 5.9.3 compiler.
   - [x] **J.2.2** Retain the rule that a future proposal without all five
     design records stays out of the implementation backlog.
-- [ ] **J.3** Implement runtime-bearing TypeScript declarations using the
+- [x] **J.3** Implement runtime-bearing TypeScript declarations using the
   shared BlueTS/BlueTSC front end and direct BlueJS lowering.
   - [x] **J.3.1** Add class declarations, constructors, methods,
     inheritance, and `super` through checker, BlueTSC emit, direct page
@@ -2605,7 +2605,7 @@ done to the page-runs-and-debugs goal at the top of this file.
     TypeScript oracle tests still pass. A ternary whose alternate is
     `(a) : b => c` is refused as a possible return annotation. Full workspace
     tests, Clippy, rustfmt and whitespace checks pass.
-  - [ ] **J.3.7** Structure, erase and check function forms nested in
+  - [x] **J.3.7** Structure, erase and check function forms nested in
     expressions. They were kept only as tokens, so no return, parameter or
     scope check ran on them, and (before J.3.7.0) their annotations could reach
     the emitted JavaScript.
@@ -2680,7 +2680,7 @@ done to the page-runs-and-debugs goal at the top of this file.
       TypeScript 5.9.3 `--noEmit` cases agree on acceptance and
       TS1196/TS2322/TS2366 lines, and a Node run gives identical output for
       BlueTSC and `tsc`.
-    - [ ] **J.3.7.7** The nested-function forms still refused. Each is
+    - [x] **J.3.7.7** The nested-function forms still refused. Each is
       fail-closed today (refused, never emitted with its annotations) and needs
       its own model:
       - [x] **J.3.7.7.1** Type parameters on arrows, function expressions and
@@ -2757,8 +2757,29 @@ done to the page-runs-and-debugs goal at the top of this file.
           and `await` as an operator, and a module graph that awaits at its top
           level runs to the value Node computes; a top-level `await` in a script
           is refused before lowering. Async methods and arrows stay refused.
-      - [ ] **J.3.7.7.4** Generator functions, which need `Generator` and
-        `yield`.
+      - [x] **J.3.7.7.4** Generator functions, which need `Generator` and
+        `yield`. `function*` is parsed (and `async function*` refused) on named
+        declarations, function expressions, declarations nested in a body and
+        object-literal methods (`*name() {}`); a class generator method stays
+        refused. `Generator<T, R, N>`, `Iterator`, `IterableIterator`,
+        `Iterable` and `IteratorResult` are parsed from declarations of their
+        own unless a local or host declaration defines the name, so
+        `next()` and `.value` are typed. A generator's return annotation must be
+        one of those (the yield type is `T`, the return type `R`, what `yield`
+        evaluates to `N`); each `yield` operand is read against `T`, a `yield*`
+        operand must be iterable (an array, tuple, string or generator) and its
+        items fit `T`, a `return` is read against `R`, and a `yield` outside a
+        generator is an error. A `yield` must start an expression (a statement,
+        an assignment or declaration's right side, a `return`); one inside a
+        larger expression is refused. An unannotated generator is not checked.
+        Emission keeps `function*` and `yield` (the ES targets run them) and
+        erases the annotations. The direct bridge lowers `generator` and
+        `yield`, `yield*` and a bare `yield`, and three programs run by it
+        produce the values Node computes for them (yield, `next(value)`,
+        delegation with a result). Eight pinned TypeScript 5.9.3 `--noEmit`
+        cases agree on acceptance and TS2322/TS2488 lines, and a Node run of
+        a program using every form gives identical output for BlueTSC and
+        `tsc`. A generator is never a strict runtime boundary.
 - [ ] **J.4** Implement the module and package ecosystem without widening
   page or MCP authority through type declarations.
   - [ ] **J.4.1** Add TypeScript 5.9.3 module-mode selection and CommonJS

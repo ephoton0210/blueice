@@ -1648,3 +1648,37 @@ fn a_top_level_await_in_a_script_is_refused_before_lowering() {
     );
     assert!(matches!(result, Err(BridgeError::BlueTs(_))));
 }
+
+#[test]
+fn direct_page_generators_yield_receive_and_delegate_like_node() {
+    // Node runs the same generators to 3210, 1115 and 151.
+    let counting = "function* count(n: number): Generator<number, number> { \
+        let i = 0; while (i < n) { yield i; i++; } return n; } \
+        const it = count(3); \
+        const a: number = it.next().value; const b: number = it.next().value; \
+        const c: number = it.next().value; const d: number = it.next().value; \
+        a + b * 10 + c * 100 + d * 1000;";
+    assert_eq!(
+        run_direct_page_script(counting),
+        bluejs::Value::Number(3210.0)
+    );
+    let echoing = "function* echo(): Generator<number, number, number> { \
+        const x: number = yield 1; const y: number = yield x + 1; return x + y; } \
+        const e = echo(); e.next(); \
+        const p: number = e.next(10).value; const q: number = e.next(5).value; \
+        p * 100 + q;";
+    assert_eq!(
+        run_direct_page_script(echoing),
+        bluejs::Value::Number(1115.0)
+    );
+    let delegating = "function* inner(): Generator<number, number> { yield 1; return 5; } \
+        function* outer(): Generator<number, number> { const r: number = yield* inner(); yield r; return 0; } \
+        const o = outer(); \
+        const first: number = o.next().value; const second: number = o.next().value; \
+        const done = o.next().done; \
+        first * 100 + second * 10 + (done ? 1 : 0);";
+    assert_eq!(
+        run_direct_page_script(delegating),
+        bluejs::Value::Number(151.0)
+    );
+}

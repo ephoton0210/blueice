@@ -54,6 +54,30 @@ impl<'a> ExpressionLowerer<'a> {
     }
 
     pub(super) fn parse_assignment(&mut self) -> Result<bluejs::Expr, BridgeError> {
+        // `yield`, `yield* iterable` and `yield value` bind looser than assignment.
+        if self
+            .tokens
+            .get(self.index)
+            .is_some_and(|token| token.text == "yield")
+        {
+            self.index += 1;
+            let delegate = self
+                .tokens
+                .get(self.index)
+                .is_some_and(|token| token.text == "*");
+            if delegate {
+                self.index += 1;
+            }
+            let has_operand = self.tokens.get(self.index).is_some_and(|token| {
+                !matches!(token.text.as_str(), ")" | "]" | "}" | "," | ";" | ":")
+            });
+            let value = if has_operand {
+                Some(Box::new(self.parse_assignment()?))
+            } else {
+                None
+            };
+            return Ok(bluejs::Expr::Yield { value, delegate });
+        }
         let target = self.parse_conditional()?;
         let op = self
             .tokens

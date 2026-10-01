@@ -5771,7 +5771,7 @@ fn function_annotations_that_survive_erasure_are_refused_before_output() {
     // it must be refused instead.
     for source in [
         "export const h = <T>({ x: { y } }) => y;",
-        "export const o = { *m(a: number) { yield a; } };",
+        "export class C { *m(a: number) { yield a; } }",
     ] {
         let result = compile(
             ENTRY,
@@ -6022,9 +6022,9 @@ fn function_expressions_are_parsed_erased_and_checked() {
         recursive.diagnostics
     );
 
-    // Generators stay refused.
+    // A generator expression is structured and erased like any function expression.
     let generator = "export const h = function* (a: number) { yield a; };";
-    assert!(compile_source(generator).output.is_none(), "{generator}");
+    assert!(compile_source(generator).output.is_some(), "{generator}");
 }
 
 #[test]
@@ -6196,9 +6196,9 @@ fn nested_function_declarations_are_parsed_erased_hoisted_and_checked() {
     );
     assert!(scoped.diagnostics.is_empty(), "{:#?}", scoped.diagnostics);
 
-    // Generators stay refused.
+    // A nested generator declaration is structured and erased like any other.
     let generator = "export function outer() { function* g(a: number) { yield a; } return g; }";
-    assert!(compile_source(generator).output.is_none(), "{generator}");
+    assert!(compile_source(generator).output.is_some(), "{generator}");
 }
 
 #[test]
@@ -6429,12 +6429,9 @@ fn async_functions_and_await_are_typed_against_promise() {
 
     // Await inside a nested non-async function is not valid, and must not reach
     // the output. (Top-level await in a module is valid since J.3.7.7.3.3.)
-    for source in [
-        "export async function f(): Promise<number> { const g = (): number => await f(); return g(); }",
-    ] {
-        let refused = compile_source(source);
-        assert!(refused.output.is_none(), "{source}");
-    }
+    let source = "export async function f(): Promise<number> { const g = (): number => await f(); return g(); }";
+    let refused = compile_source(source);
+    assert!(refused.output.is_none(), "{source}");
 
     // A host that declares its own Promise keeps it.
     let hosted = compile(
@@ -6919,4 +6916,81 @@ fn top_level_await_is_allowed_in_a_module_and_nowhere_else() {
         .diagnostics
         .iter()
         .any(|d| d.code == DiagnosticCode::TypeMismatch));
+}
+
+#[test]
+fn generator_functions_are_checked_erased_and_emitted_as_written() {
+    let compile_source = |source: &str| {
+        compile(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+            CompilerOptions::default(),
+        )
+    };
+    let accepted = compile_source(include_str!(
+        "fixtures/typescript_oracle/generator-valid/main.ts"
+    ));
+    assert!(
+        accepted.diagnostics.is_empty(),
+        "{:#?}",
+        accepted.diagnostics
+    );
+    // The annotations go, `function*` and `yield` stay.
+    let output = compile_source(
+        "function* g(n: number): Generator<number, string, boolean> { const s: boolean = yield n; return 'x'; }\nexport const a = g(1);",
+    )
+    .output
+    .expect("compiles");
+    let javascript = &output.artifacts[ENTRY].javascript;
+    assert!(javascript.contains("function* g(n)"), "{javascript}");
+    assert!(javascript.contains("const s= yield n;"), "{javascript}");
+    assert!(!javascript.contains("Generator"), "{javascript}");
+    for (source, code, message) in [
+        (
+            include_str!("fixtures/typescript_oracle/generator-yield-type-error/main.ts"),
+            DiagnosticCode::TypeMismatch,
+            "not assignable to the generator's yield type",
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/generator-not-iterable-error/main.ts"),
+            DiagnosticCode::TypeMismatch,
+            "is not iterable",
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/generator-annotation-error/main.ts"),
+            DiagnosticCode::TypeMismatch,
+            "must be `Generator`",
+        ),
+        (
+            "export function f(): number { yield 1; return 1; }",
+            DiagnosticCode::TypeMismatch,
+            "only valid inside a generator function",
+        ),
+        (
+            "export function* g(): Generator<number> { const a = 1 + (yield 1); return; }",
+            DiagnosticCode::UnsupportedSyntax,
+            "inside a larger expression",
+        ),
+        (
+            "export async function* g(): Generator<number> { yield 1; }",
+            DiagnosticCode::UnsupportedSyntax,
+            "async generator",
+        ),
+        (
+            "export class C { *g(): Generator<number> { yield 1; } }",
+            DiagnosticCode::UnsupportedSyntax,
+            "annotations on functions nested in expressions",
+        ),
+    ] {
+        let rejected = compile_source(source);
+        assert!(
+            rejected
+                .diagnostics
+                .iter()
+                .any(|d| d.code == code && d.message.contains(message)),
+            "{source}: {message}: {:#?}",
+            rejected.diagnostics
+        );
+        assert!(rejected.output.is_none(), "{source}");
+    }
 }

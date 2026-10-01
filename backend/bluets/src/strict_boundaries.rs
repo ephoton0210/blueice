@@ -188,6 +188,7 @@ fn supported_function(function: &FunctionDeclaration) -> bool {
         || function.declared
         || function.overload
         || function.async_function
+        || function.generator
         || !function.type_parameters.is_empty()
         || function.parameters.is_empty()
         || function.parameters.len() > 16

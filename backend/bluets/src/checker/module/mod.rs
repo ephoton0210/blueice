@@ -41,6 +41,8 @@ pub(super) struct ModuleChecker<'a> {
     checked_nested_functions: BTreeSet<usize>,
     /// Whether the function being checked is `async`; `None` at module level.
     async_context: Option<bool>,
+    /// What the generator being checked may yield, return and receive.
+    generator_context: Option<binding::GeneratorContext>,
     /// The readonly fields the running class constructor's own body may still
     /// assign through `this`; `None` outside a constructor and inside any
     /// function nested in one.

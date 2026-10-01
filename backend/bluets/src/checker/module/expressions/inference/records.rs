@@ -137,7 +137,7 @@ impl<'a> ModuleChecker<'a> {
         let (name, value, setter) = match nested.kind {
             NestedFunctionKind::Method => (
                 // `async name(..)` starts at the `async` token.
-                tokens[index + usize::from(nested.async_function)]
+                tokens[index + usize::from(nested.async_function || nested.generator)]
                     .text
                     .clone(),
                 Type::Function {

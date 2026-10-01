@@ -374,6 +374,7 @@ fn lower_function(
         &function.parameters,
         &function.body,
         function.async_function,
+        function.generator,
     )?))
 }
 
@@ -440,6 +441,7 @@ fn lower_class(
                     &accessor.parameters,
                     &accessor.body,
                     false,
+                    false,
                 )?,
                 getter: accessor.getter,
                 is_static: accessor.is_static,
@@ -493,7 +495,7 @@ fn lower_class(
             continue;
         };
         let mut function =
-            lower_function_value(module, Some(name.clone()), parameters, body, false)?;
+            lower_function_value(module, Some(name.clone()), parameters, body, false, false)?;
         if let Some(constructor) = &member.constructor {
             insert_constructor_prologue(
                 module,
@@ -806,6 +808,7 @@ fn lower_function_value(
     parameters: &[Parameter],
     body_items: &[FunctionBodyItem],
     is_async: bool,
+    generator: bool,
 ) -> Result<bluejs::Function, BridgeError> {
     let mut params = Vec::with_capacity(parameters.len());
     for (index, parameter) in parameters.iter().enumerate() {
@@ -838,7 +841,7 @@ fn lower_function_value(
         name,
         params,
         body,
-        generator: false,
+        generator,
         is_async,
         // This function is synthesized from BlueTSC's own lowered AST, not
         // parsed from BlueJS-tokenized source text, so it has no

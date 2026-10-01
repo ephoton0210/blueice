@@ -69,17 +69,22 @@ impl Parser {
         if !self.tokens[start_index].is("function") {
             return None;
         }
-        let name_token = self.tokens.get(start_index + 1)?;
+        let generator = self.tokens.get(start_index + 1)?.is("*");
+        if generator && async_function {
+            return None;
+        }
+        let name_at = start_index + 1 + usize::from(generator);
+        let name_token = self.tokens.get(name_at)?;
         if name_token.kind != TokenKind::Identifier {
             return None;
         }
         let name = name_token.text.clone();
         let limit = self.tokens.len() - 1;
-        let generic = self.tokens.get(start_index + 2)?.is("<");
+        let generic = self.tokens.get(name_at + 1)?.is("<");
         let open = if generic {
-            matching_angle_bracket(&self.tokens, start_index + 2, limit)? + 1
+            matching_angle_bracket(&self.tokens, name_at + 1, limit)? + 1
         } else {
-            start_index + 2
+            name_at + 1
         };
         if !self.tokens.get(open)?.is("(") {
             return None;
@@ -90,7 +95,7 @@ impl Parser {
         }
         let type_parameters = if generic {
             let saved = self.index;
-            self.index = start_index + 2;
+            self.index = name_at + 1;
             let parsed = self.parse_erased_type_parameters();
             self.index = saved;
             parsed?
@@ -117,6 +122,7 @@ impl Parser {
         Some(FunctionBodyItem::Function(Box::new(FunctionDeclaration {
             name,
             async_function,
+            generator,
             body_open: None,
             type_parameters,
             parameters,
@@ -150,7 +156,14 @@ impl Parser {
         }
         let is_name =
             |token: &Token| matches!(token.kind, TokenKind::Identifier | TokenKind::Keyword);
-        if !is_name(&self.tokens[index]) {
+        // `*name(..) { .. }`: a generator method.
+        let generator_method = self.tokens[index].is("*")
+            && self.tokens.get(index + 1).is_some_and(is_name)
+            && self
+                .tokens
+                .get(index + 2)
+                .is_some_and(|token| token.is("("));
+        if !generator_method && !is_name(&self.tokens[index]) {
             return None;
         }
         // `async name(..)` starts at `async`; a method named `async` has `(`
@@ -162,7 +175,7 @@ impl Parser {
                 .get(index + 2)
                 .is_some_and(|token| token.is("("));
         let next = self.tokens.get(index + 1)?;
-        let (kind, name, open) = if async_method {
+        let (kind, name, open) = if generator_method || async_method {
             (NestedFunctionKind::Method, None, index + 2)
         } else if next.is("(") {
             (NestedFunctionKind::Method, None, index + 1)
@@ -214,6 +227,7 @@ impl Parser {
             NestedFunction {
                 kind,
                 async_function: async_method,
+                generator: generator_method,
                 name,
                 type_parameters: Vec::new(),
                 parameters,
@@ -314,7 +328,14 @@ impl Parser {
         if !starts_operand {
             return None;
         }
-        let mut cursor = index + 1;
+        let generator = self
+            .tokens
+            .get(index + 1)
+            .is_some_and(|token| token.is("*"));
+        if generator && async_function {
+            return None;
+        }
+        let mut cursor = index + 1 + usize::from(generator);
         let name = if self.tokens.get(cursor).is_some_and(|token| {
             token.kind == TokenKind::Identifier
                 && self
@@ -366,6 +387,7 @@ impl Parser {
             NestedFunction {
                 kind: NestedFunctionKind::Function,
                 async_function,
+                generator,
                 name,
                 type_parameters,
                 parameters,
@@ -530,6 +552,7 @@ impl Parser {
             NestedFunction {
                 kind: NestedFunctionKind::Arrow,
                 async_function: async_arrow,
+                generator: false,
                 name: None,
                 type_parameters,
                 parameters,

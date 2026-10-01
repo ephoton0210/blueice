@@ -26,6 +26,20 @@ impl<'a> ModuleChecker<'a> {
         if let Some(function) = self.nested_function_type(strip_outer_parentheses(tokens), scope) {
             return function;
         }
+        // `yield x` is what the caller passes to `next`; `yield* g` is `g`'s result.
+        if tokens.first().is_some_and(|token| token.is("yield")) {
+            if let Some(context) = &self.generator_context {
+                if tokens.get(1).is_some_and(|token| token.is("*")) {
+                    return match self.infer_expression(&tokens[2..], scope) {
+                        Type::Named { name, arguments } if name == "Generator" => {
+                            arguments.get(1).cloned().unwrap_or(Type::Any)
+                        }
+                        _ => Type::Any,
+                    };
+                }
+                return context.next_type.clone();
+            }
+        }
         // `await` of a `Promise<T>` is the `T`; of anything else, the operand.
         if tokens.len() > 1 && tokens[0].is("await") {
             let operand = self.infer_expression(&tokens[1..], scope);

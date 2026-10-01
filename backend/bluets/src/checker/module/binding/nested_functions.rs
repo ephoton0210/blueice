@@ -149,6 +149,7 @@ impl ModuleChecker<'_> {
         let function = FunctionDeclaration {
             name: "<arrow>".to_string(),
             async_function: arrow.async_function,
+            generator: arrow.generator,
             body_open: None,
             type_parameters: arrow.type_parameters.clone(),
             parameters: arrow.parameters.clone(),

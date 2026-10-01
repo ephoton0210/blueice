@@ -68,6 +68,15 @@ const CASES: &[OracleCase] = &[
         expected_diagnostics: &[],
     },
     OracleCase {
+        name: "generator-runtime",
+        modules: &[(
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/generator-runtime/main.ts"),
+        )],
+        expected_stdout: Some("0 1 -1 true\n5 1 99 inner\n30 2\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
         name: "async-function-runtime",
         modules: &[(
             "memory:///main.ts",
@@ -4184,6 +4193,56 @@ fn pinned_top_level_await_matches_typescript_without_emit() {
             "type-error",
             include_str!("fixtures/typescript_oracle/toplevel-await-type-error/main.ts"),
             &[(5, "TS2322")],
+        ),
+    ];
+    assert_pinned_no_emit_cases(&tsc, &cases);
+}
+
+#[test]
+#[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
+fn pinned_generator_functions_match_typescript_without_emit() {
+    let tsc = pinned_bluetsc_oracle();
+    assert_pinned_version(&tsc);
+    let cases: [NoEmitCase; 8] = [
+        (
+            "valid",
+            include_str!("fixtures/typescript_oracle/generator-valid/main.ts"),
+            &[],
+        ),
+        (
+            "yield-type-error",
+            include_str!("fixtures/typescript_oracle/generator-yield-type-error/main.ts"),
+            &[(4, "TS2322")],
+        ),
+        (
+            "return-type-error",
+            include_str!("fixtures/typescript_oracle/generator-return-type-error/main.ts"),
+            &[(4, "TS2322")],
+        ),
+        (
+            "annotation-error",
+            include_str!("fixtures/typescript_oracle/generator-annotation-error/main.ts"),
+            &[(4, "TS2322")],
+        ),
+        (
+            "next-type-error",
+            include_str!("fixtures/typescript_oracle/generator-next-type-error/main.ts"),
+            &[(4, "TS2322")],
+        ),
+        (
+            "delegate-error",
+            include_str!("fixtures/typescript_oracle/generator-delegate-error/main.ts"),
+            &[(4, "TS2322")],
+        ),
+        (
+            "delegate-type-error",
+            include_str!("fixtures/typescript_oracle/generator-delegate-type-error/main.ts"),
+            &[(5, "TS2322")],
+        ),
+        (
+            "not-iterable-error",
+            include_str!("fixtures/typescript_oracle/generator-not-iterable-error/main.ts"),
+            &[(4, "TS2488")],
         ),
     ];
     assert_pinned_no_emit_cases(&tsc, &cases);

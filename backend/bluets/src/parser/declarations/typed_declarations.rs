@@ -198,6 +198,14 @@ impl Parser {
         declared: bool,
         async_start: bool,
     ) {
+        // `function* name`: a generator.
+        let generator = self.consume("*");
+        if generator && async_start {
+            self.unsupported(
+                self.previous().span(&self.id),
+                "an async generator is not supported yet",
+            );
+        }
         let name = self.require_identifier("expected a function name");
         let type_parameter_start = self.current().start;
         let type_parameters = self.parse_type_parameters();
@@ -252,6 +260,7 @@ impl Parser {
             .push(Declaration::Function(FunctionDeclaration {
                 name,
                 async_function: async_start,
+                generator,
                 body_open,
                 type_parameters,
                 parameters,
