@@ -939,3 +939,40 @@ fn a_direct_module_graph_exports_and_imports_enums_like_node() {
         bluejs::Value::Number(27.0)
     );
 }
+
+#[test]
+fn a_direct_module_graph_exports_and_imports_namespaces_like_node() {
+    let graph = compile_direct_module_graph(
+        GRAPH_ENTRY,
+        &MapLoader::from([
+            ModuleSource::new(
+                GRAPH_ENTRY,
+                "import { Geo } from './dep.ts'; \
+                 export const answer: number = Geo.area(3) + Geo.Deep.depth + Geo.counter; answer;",
+            ),
+            ModuleSource::new(
+                "graph/dep.ts",
+                "export namespace Geo { export let counter: number = 1; \
+                 export function area(n: number): number { counter += 1; return n * 2; } \
+                 export namespace Deep { export const depth: number = counter + 3; } }",
+            ),
+        ]),
+        CompilerOptions::default(),
+    )
+    .unwrap();
+    let bluejs::BlueJsProgramV1::Module(dependency) = &graph.modules["graph/dep.ts"].program else {
+        panic!("the dependency must lower to a BlueJS module AST");
+    };
+    assert!(dependency.exports.iter().any(|entry| matches!(
+        entry,
+        bluejs::ExportEntry::Local { export_name, .. } if export_name == "Geo"
+    )));
+    // Node runs the same program: area(3) is 6, Deep.depth was 1 + 3 = 4 when it ran,
+    // and counter is 2 afterwards: 6 + 4 + 2 = 12.
+    assert_eq!(
+        bluejs::Vm::default()
+            .execute_module_graph(&graph.entry, &graph.bytecode_map())
+            .unwrap(),
+        bluejs::Value::Number(12.0)
+    );
+}

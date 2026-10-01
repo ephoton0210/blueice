@@ -121,10 +121,16 @@ impl<'a> ModuleChecker<'a> {
                     );
                 }
                 Declaration::Interface(interface) => {
-                    if !self
-                        .types
-                        .get(&interface.name)
-                        .is_some_and(|definition| definition.kind == TypeDefinitionKind::Class)
+                    // An interface named like a class of this scope merges into
+                    // the class's type instead of defining one of its own.
+                    let merges_into_class = self.module.declarations.iter().any(|other| {
+                        matches!(other, Declaration::Class(class) if class.name == interface.name)
+                    });
+                    if !merges_into_class
+                        && !self
+                            .types
+                            .get(&interface.name)
+                            .is_some_and(|definition| definition.kind == TypeDefinitionKind::Class)
                     {
                         self.insert_type(
                             &interface.name,
@@ -195,20 +201,6 @@ impl<'a> ModuleChecker<'a> {
                 }
                 Declaration::Class(class) => {
                     self.bind_class(class);
-                    // TypeScript merges a class with an interface of the same
-                    // name; BlueTS does not model the merge, so it refuses the
-                    // pair rather than typing only the class.
-                    if self.module.declarations.iter().any(|other| {
-                        matches!(other, Declaration::Interface(interface)
-                            if interface.name == class.name)
-                    }) {
-                        self.diagnostics.push(Diagnostic::error(
-                            DiagnosticCode::UnsupportedSyntax,
-                            class.span.clone(),
-                            "a class and an interface with the same name merge their \
-                             declarations, which is not supported yet",
-                        ));
-                    }
                     // Only a class whose every member has a structured form
                     // (constructors and methods) is admitted, so emitted
                     // JavaScript never carries unerased TypeScript.

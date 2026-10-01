@@ -768,3 +768,62 @@ fn an_importer_is_rechecked_when_the_namespace_it_imports_changes() {
         "the importer must see the new type of the member"
     );
 }
+
+#[test]
+fn an_interface_merges_into_the_class_of_the_same_name_in_either_order() {
+    assert_accepted(
+        "interface Box { extra: string } class Box { v: number = 1; } \
+         const b: Box = new Box(); const s: string = b.extra; const n: number = b.v;",
+    );
+    assert_accepted(
+        "class Box { v: number = 1; } interface Box { area(): number } \
+         const b: Box = new Box(); const n: number = b.area();",
+    );
+    assert_rejected(
+        "interface Box { v: string } class Box { v: number = 1; }",
+        DiagnosticCode::TypeMismatch,
+        "subsequent declarations of property `v` must have the same type",
+    );
+    assert_rejected(
+        "interface Box { extra: string } class Box { v: number = 1; } \
+         const b: Box = new Box(); const n: number = b.nope;",
+        DiagnosticCode::TypeMismatch,
+        "property `nope` does not exist",
+    );
+}
+
+#[test]
+fn a_merged_interface_is_erased_and_a_generic_or_inheriting_one_is_refused() {
+    let output = emit("interface Box { extra: string }\nclass Box { v: number = 1; }\n");
+    assert!(!output.contains("interface"), "{output}");
+    assert!(output.contains("class Box"), "{output}");
+    let compiled = compile(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(
+            ENTRY,
+            "interface Named { name: string } interface Box extends Named { x: number } class Box { v: number = 1; }",
+        )]),
+        CompilerOptions::default(),
+    );
+    assert!(compiled
+        .diagnostics
+        .iter()
+        .any(|d| d.code == DiagnosticCode::UnsupportedSyntax));
+}
+
+#[test]
+fn a_merged_interface_inside_a_namespace_and_across_modules_merges_too() {
+    assert_accepted(
+        "namespace N { export interface B { extra: string } export class B { v: number = 3; } } \
+         const b: N.B = new N.B(); const s: string = b.extra;",
+    );
+    let compiled = compile_two(
+        "import { Box } from './lib.ts'; const b: Box = new Box(); const s: string = b.extra;",
+        "export interface Box { extra: string } export class Box { v: number = 4; }",
+    );
+    assert!(
+        compiled.diagnostics.is_empty(),
+        "{:?}",
+        compiled.diagnostics
+    );
+}

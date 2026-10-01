@@ -650,8 +650,26 @@ impl<'a> ExpressionLowerer<'a> {
                 "only identifier constructors are in the v1 direct bridge subset",
             ));
         }
-        let callee = bluejs::Expr::Identifier(callee.text.clone());
+        let mut callee = bluejs::Expr::Identifier(callee.text.clone());
         self.index += 1;
+        // A namespace member, `new N.C()`.
+        while self
+            .tokens
+            .get(self.index)
+            .is_some_and(|dot| dot.text == ".")
+            && self
+                .tokens
+                .get(self.index + 1)
+                .is_some_and(|name| name.kind == TokenKind::Identifier)
+        {
+            let name = self.tokens[self.index + 1].text.clone();
+            callee = bluejs::Expr::Member {
+                object: Box::new(callee),
+                property: Box::new(bluejs::Expr::Identifier(name)),
+                computed: false,
+            };
+            self.index += 2;
+        }
         let Some(opening) = self.tokens.get(self.index) else {
             return Err(unsupported(
                 self.token_span(keyword),

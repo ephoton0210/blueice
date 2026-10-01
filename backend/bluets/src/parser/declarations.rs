@@ -312,6 +312,47 @@ impl Parser {
                 }
             }
         }
+        self.merge_class_interfaces();
+    }
+
+    /// An interface with the name of a class in the same declaration list
+    /// merges into the class's instance type.
+    fn merge_class_interfaces(&mut self) {
+        let mut merged: Vec<(usize, Vec<TypeField>)> = Vec::new();
+        let mut refused: Vec<(SourceSpan, &'static str)> = Vec::new();
+        for (index, declaration) in self.declarations.iter().enumerate() {
+            let Declaration::Class(class) = declaration else {
+                continue;
+            };
+            let mut fields = Vec::new();
+            for other in &self.declarations {
+                let Declaration::Interface(interface) = other else {
+                    continue;
+                };
+                if interface.name != class.name {
+                    continue;
+                }
+                if !interface.type_parameters.is_empty() || !interface.heritage.is_empty() {
+                    refused.push((
+                        interface.span.clone(),
+                        "an interface with type parameters or an `extends` clause merged with a class is not supported yet",
+                    ));
+                    continue;
+                }
+                fields.extend(interface.fields.iter().cloned());
+            }
+            if !fields.is_empty() {
+                merged.push((index, fields));
+            }
+        }
+        for (span, message) in refused {
+            self.unsupported(span, message);
+        }
+        for (index, fields) in merged {
+            if let Declaration::Class(class) = &mut self.declarations[index] {
+                class.merged_interface_fields = fields;
+            }
+        }
     }
 
     pub(super) fn parse_raw(&mut self, start: usize) {

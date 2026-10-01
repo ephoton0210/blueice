@@ -50,6 +50,28 @@ impl ModuleChecker<'_> {
                     .filter_map(|member| member.field.as_ref()),
             )
             .collect();
+        // A field an interface of the same name declares again must keep its type.
+        for merged in &class.merged_interface_fields {
+            let declared = fields
+                .iter()
+                .find(|field| !field.is_static && field.name == merged.name)
+                .and_then(|field| class_field_type(field));
+            if let Some(declared) = declared {
+                if declared != merged.value
+                    && declared != Type::Unknown
+                    && merged.value != Type::Unknown
+                {
+                    self.type_error(
+                        &merged.span,
+                        format!(
+                            "subsequent declarations of property `{}` must have the same type",
+                            merged.name
+                        ),
+                        DiagnosticCode::TypeMismatch,
+                    );
+                }
+            }
+        }
         if fields.is_empty() {
             return;
         }

@@ -1391,6 +1391,15 @@ fn class_method_fields(class: &ClassDeclaration, is_static: bool) -> Vec<TypeFie
             });
         }
     }
+    // Fields an interface of the same name adds to the instance type; one the
+    // class also declares is the class's.
+    if !is_static {
+        for merged in &class.merged_interface_fields {
+            if !fields.iter().any(|field| field.name == merged.name) {
+                fields.push(merged.clone());
+            }
+        }
+    }
     fields
 }
 

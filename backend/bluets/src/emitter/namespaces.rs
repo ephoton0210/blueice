@@ -36,194 +36,11 @@ use super::{Module, TextEdit};
 use crate::compiler::CompilerOptions;
 use crate::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
 use crate::enum_eval::evaluate_enums_in;
-use crate::parser::{
-    BindingPattern, Declaration, FunctionBodyItem, FunctionDeclaration, FunctionElseBranch,
-    NamespaceDeclaration, NestedFunctionBody, Parameter,
+use crate::namespace_analysis::{
+    has_runtime_values, in_object_literal, join, BodyInput, NamespaceExports,
 };
+use crate::parser::{Declaration, NamespaceDeclaration};
 use crate::{Token, TokenKind};
-
-fn join(prefix: &str, name: &str) -> String {
-    if prefix.is_empty() {
-        name.to_string()
-    } else {
-        format!("{prefix}.{name}")
-    }
-}
-
-/// Whether a body declares anything that exists at run time.
-fn has_runtime_values(body: &[Declaration]) -> bool {
-    body.iter().any(|declaration| match declaration {
-        Declaration::Variable(variable) => !variable.declared,
-        Declaration::Function(function) => !function.declared && !function.overload,
-        Declaration::Class(_) | Declaration::Raw(_) => true,
-        Declaration::Enum(declaration) => !declaration.declared,
-        Declaration::Namespace(inner) => !inner.declared && has_runtime_values(&inner.body),
-        _ => false,
-    })
-}
-
-/// What each namespace exports at run time, over every block of it.
-#[derive(Default)]
-struct Exports {
-    /// Exported variables: always read through the namespace object.
-    variables: BTreeSet<String>,
-    /// Exported functions, classes, enums and namespaces with the block that
-    /// declared each. They are local names inside their own block and read
-    /// through the namespace object everywhere else.
-    declarations: Vec<(String, usize)>,
-}
-
-fn collect_exports(path: &str, declarations: &[Declaration], into: &mut BTreeMap<String, Exports>) {
-    for declaration in declarations {
-        let Declaration::Namespace(namespace) = declaration else {
-            continue;
-        };
-        let own = join(path, &namespace.name);
-        let exports = into.entry(own.clone()).or_default();
-        let block = namespace.span.start;
-        for inner in &namespace.body {
-            match inner {
-                Declaration::Variable(variable) if variable.exported && !variable.declared => {
-                    exports.variables.insert(variable.name.clone());
-                }
-                Declaration::Function(function)
-                    if function.exported && !function.declared && !function.overload =>
-                {
-                    exports.declarations.push((function.name.clone(), block));
-                }
-                Declaration::Class(class) if class.exported => {
-                    exports.declarations.push((class.name.clone(), block));
-                }
-                Declaration::Enum(item) if item.exported && !item.declared => {
-                    exports.declarations.push((item.name.clone(), block));
-                }
-                Declaration::Namespace(item)
-                    if item.exported && !item.declared && has_runtime_values(&item.body) =>
-                {
-                    exports.declarations.push((item.name.clone(), block));
-                }
-                _ => {}
-            }
-        }
-        collect_exports(&own, &namespace.body, into);
-    }
-}
-
-fn pattern_names(pattern: &BindingPattern, into: &mut BTreeSet<String>) {
-    match pattern {
-        BindingPattern::Object(bindings) => {
-            for binding in bindings {
-                into.insert(binding.name.clone());
-            }
-        }
-        BindingPattern::Array(elements) => {
-            for element in elements.iter().flatten() {
-                into.insert(element.name.clone());
-            }
-        }
-    }
-}
-
-fn parameter_names(parameters: &[Parameter], into: &mut BTreeSet<String>) {
-    for parameter in parameters {
-        into.insert(parameter.name.clone());
-        if let Some(pattern) = &parameter.pattern {
-            pattern_names(pattern, into);
-        }
-    }
-}
-
-fn item_bindings(items: &[FunctionBodyItem], into: &mut BTreeSet<String>) {
-    for item in items {
-        match item {
-            FunctionBodyItem::Variable(variable) => {
-                into.insert(variable.name.clone());
-            }
-            FunctionBodyItem::If(statement) => {
-                let mut current = Some(statement);
-                while let Some(statement) = current {
-                    item_bindings(&statement.consequent, into);
-                    current = match &statement.alternate {
-                        Some(FunctionElseBranch::Braced(items)) => {
-                            item_bindings(items, into);
-                            None
-                        }
-                        Some(FunctionElseBranch::ElseIf(next)) => Some(next),
-                        None => None,
-                    };
-                }
-            }
-            FunctionBodyItem::While(statement) => item_bindings(&statement.body, into),
-            FunctionBodyItem::Try(statement) => {
-                item_bindings(&statement.block, into);
-                if let Some(handler) = &statement.handler {
-                    into.insert(handler.binding.clone());
-                    item_bindings(&handler.body, into);
-                }
-                if let Some(finalizer) = &statement.finalizer {
-                    item_bindings(finalizer, into);
-                }
-            }
-            FunctionBodyItem::Function(function) => function_bindings(function, into),
-            _ => {}
-        }
-    }
-}
-
-fn function_bindings(function: &FunctionDeclaration, into: &mut BTreeSet<String>) {
-    into.insert(function.name.clone());
-    parameter_names(&function.parameters, into);
-    for local in &function.locals {
-        into.insert(local.name.clone());
-    }
-    item_bindings(&function.body, into);
-}
-
-/// The names a body's functions, methods and expressions bind locally.
-fn local_bindings(
-    module: &Module,
-    body: &[Declaration],
-    range: (usize, usize),
-) -> BTreeSet<String> {
-    let mut names = BTreeSet::new();
-    for declaration in body {
-        match declaration {
-            Declaration::Function(function) => function_bindings(function, &mut names),
-            Declaration::Class(class) => {
-                for member in &class.members {
-                    if let Some(constructor) = &member.constructor {
-                        parameter_names(&constructor.parameters, &mut names);
-                        item_bindings(constructor.body.as_deref().unwrap_or(&[]), &mut names);
-                    }
-                    if let Some(method) = &member.method {
-                        parameter_names(&method.parameters, &mut names);
-                        item_bindings(method.body.as_deref().unwrap_or(&[]), &mut names);
-                    }
-                    if let Some(accessor) = &member.accessor {
-                        parameter_names(&accessor.parameters, &mut names);
-                        item_bindings(&accessor.body, &mut names);
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-    for nested in module.nested_functions.values() {
-        if nested.span.start >= range.0 && nested.span.end <= range.1 {
-            if let Some(name) = &nested.name {
-                names.insert(name.clone());
-            }
-            parameter_names(&nested.parameters, &mut names);
-            if let NestedFunctionBody::Block { items, locals, .. } = &nested.body {
-                for local in locals {
-                    names.insert(local.name.clone());
-                }
-                item_bindings(items, &mut names);
-            }
-        }
-    }
-    names
-}
 
 /// Where a namespace's variable is declared, and what its function receives.
 enum Scope {
@@ -234,7 +51,7 @@ enum Scope {
 struct Walk<'a> {
     module: &'a Module,
     tokens: &'a [Token],
-    exports: &'a BTreeMap<String, Exports>,
+    exports: &'a NamespaceExports,
     edits: &'a mut Vec<TextEdit>,
     inline_const_enums: bool,
     preserve_const_enums: bool,
@@ -255,8 +72,7 @@ pub(super) fn lower_namespaces(
     let Ok(tokens) = crate::lex(&module.id, &module.source) else {
         return Ok(());
     };
-    let mut exports = BTreeMap::new();
-    collect_exports("", &module.declarations, &mut exports);
+    let exports = NamespaceExports::of(module);
     let exported_by_name: BTreeSet<&str> = module
         .declarations
         .iter()
@@ -415,53 +231,19 @@ impl Walk<'_> {
             join(&path, &segment.name)
         });
         let range = (innermost.header_span.end, innermost.closing_span.start);
-        let innermost_block = innermost.span.start;
         let body = &innermost.body;
 
-        // References to an exported variable go through the namespace object.
-        let mut references = outer.clone();
-        for declaration in body {
-            let name = match declaration {
-                Declaration::Variable(item) => Some(&item.name),
-                Declaration::Function(item) => Some(&item.name),
-                Declaration::Class(item) => Some(&item.name),
-                Declaration::Enum(item) => Some(&item.name),
-                Declaration::Namespace(item) => Some(&item.name),
-                _ => None,
-            };
-            if let Some(name) = name {
-                references.remove(name);
-            }
-        }
-        if let Some(exports) = self.exports.get(&own_path) {
-            for variable in &exports.variables {
-                references.insert(variable.clone(), param.clone());
-            }
-            // A member another block declared is not a local of this one.
-            for (name, block) in &exports.declarations {
-                let local = body.iter().any(|declaration| match declaration {
-                    Declaration::Function(item) => item.name == *name,
-                    Declaration::Class(item) => item.name == *name,
-                    Declaration::Enum(item) => item.name == *name,
-                    Declaration::Namespace(item) => item.name == *name,
-                    Declaration::Variable(item) => item.name == *name,
-                    _ => false,
-                });
-                if *block != innermost_block && !local {
-                    references.insert(name.clone(), param.clone());
-                }
-            }
-        }
-        let nested_spans: Vec<(usize, usize)> = body
-            .iter()
-            .filter_map(|declaration| match declaration {
-                Declaration::Namespace(inner) => Some((inner.span.start, inner.span.end)),
-                Declaration::Enum(inner) => Some((inner.span.start, inner.span.end)),
-                _ => None,
-            })
-            .collect();
-        self.refuse_shadowing(body, range, &nested_spans, &references, namespace)?;
-
+        let references = self.exports.references(
+            self.module,
+            self.tokens,
+            &BodyInput {
+                own_path: &own_path,
+                param: &param,
+                namespace,
+                innermost,
+                outer,
+            },
+        )?;
         let evaluations = evaluate_enums_in(body);
         let mut evaluations = evaluations.iter();
         let mut declared_here: BTreeSet<String> = BTreeSet::new();
@@ -594,98 +376,6 @@ impl Walk<'_> {
         self.edit(span.end, span.end, format!(" {param}.{name} = {name};"));
     }
 
-    /// Refuses a body in which a local could shadow an exported variable that
-    /// the body's text refers to.
-    fn refuse_shadowing(
-        &self,
-        body: &[Declaration],
-        range: (usize, usize),
-        nested: &[(usize, usize)],
-        references: &BTreeMap<String, String>,
-        namespace: &NamespaceDeclaration,
-    ) -> Result<(), Diagnostic> {
-        if references.is_empty() {
-            return Ok(());
-        }
-        let structural = local_bindings(self.module, body, range);
-        // Declarations in text the structure does not cover: `for (const x ..)`,
-        // blocks, catch clauses and patterns, counted per name.
-        let start = self.token_at(range.0);
-        let end = self.token_at(range.1);
-        let tokens = &self.tokens[start..end];
-        let mut counted: BTreeMap<&str, usize> = BTreeMap::new();
-        for (index, token) in tokens.iter().enumerate() {
-            if nested
-                .iter()
-                .any(|(from, to)| *from <= token.start && token.start < *to)
-            {
-                continue;
-            }
-            if token.kind == TokenKind::Keyword || token.kind == TokenKind::Identifier {
-                if matches!(
-                    token.text.as_str(),
-                    "const" | "let" | "var" | "function" | "class"
-                ) {
-                    match tokens.get(index + 1) {
-                        Some(next) if next.is("{") || next.is("[") => {
-                            let mut depth = 0usize;
-                            for inner in &tokens[index + 1..] {
-                                match inner.text.as_str() {
-                                    "{" | "[" => depth += 1,
-                                    "}" | "]" => {
-                                        depth = depth.saturating_sub(1);
-                                        if depth == 0 {
-                                            break;
-                                        }
-                                    }
-                                    _ if inner.kind == TokenKind::Identifier => {
-                                        *counted.entry(inner.text.as_str()).or_default() += 1;
-                                    }
-                                    _ => {}
-                                }
-                            }
-                        }
-                        Some(next) if next.kind == TokenKind::Identifier => {
-                            *counted.entry(next.text.as_str()).or_default() += 1;
-                        }
-                        _ => {}
-                    }
-                }
-                if token.is("catch") {
-                    if let (Some(open), Some(name)) = (tokens.get(index + 1), tokens.get(index + 2))
-                    {
-                        if open.is("(") {
-                            *counted.entry(name.text.as_str()).or_default() += 1;
-                        }
-                    }
-                }
-            }
-        }
-        // An exported variable of this body is declared once, by its own
-        // declaration; any further binding of the name is a shadow.
-        let own: BTreeSet<&str> = body
-            .iter()
-            .filter_map(|declaration| match declaration {
-                Declaration::Variable(item) if item.exported => Some(item.name.as_str()),
-                _ => None,
-            })
-            .collect();
-        for name in references.keys() {
-            let allowed = usize::from(own.contains(name.as_str()));
-            let found = counted.get(name.as_str()).copied().unwrap_or(0);
-            if structural.contains(name) || found > allowed {
-                return Err(unsupported(
-                    namespace.name_span.clone(),
-                    format!(
-                        "a local named `{name}` shadows an exported variable of the namespace \
-                         it is used in, which is not supported yet"
-                    ),
-                ));
-            }
-        }
-        Ok(())
-    }
-
     /// Rewrites each reference to an exported variable in `range`, outside the
     /// text that is erased or replaced, to a property of its namespace.
     fn rewrite_references(
@@ -744,65 +434,6 @@ fn class_member_names(module: &Module, body: &[Declaration]) -> BTreeSet<usize> 
         }
     }
     offsets
-}
-
-/// Whether the `{` before `index` (found by walking back to the nearest
-/// unmatched opener) begins an object literal rather than a block.
-fn in_object_literal(tokens: &[Token], index: usize) -> bool {
-    let mut depth = 0usize;
-    let mut cursor = index;
-    while cursor > 0 {
-        cursor -= 1;
-        match tokens[cursor].text.as_str() {
-            ")" | "]" | "}" => depth += 1,
-            "(" | "[" => {
-                if depth == 0 {
-                    return false;
-                }
-                depth -= 1;
-            }
-            "{" => {
-                if depth > 0 {
-                    depth -= 1;
-                    continue;
-                }
-                let before = cursor
-                    .checked_sub(1)
-                    .map(|before| tokens[before].text.as_str());
-                return matches!(
-                    before,
-                    Some(
-                        "=" | "("
-                            | ","
-                            | ":"
-                            | "["
-                            | "return"
-                            | "?"
-                            | "||"
-                            | "&&"
-                            | "??"
-                            | "..."
-                            | "+"
-                            | "-"
-                            | "!"
-                            | "typeof"
-                            | "void"
-                            | "await"
-                            | "yield"
-                            | "in"
-                            | "of"
-                            | "+="
-                            | "-="
-                            | "||="
-                            | "&&="
-                            | "??="
-                    )
-                );
-            }
-            _ => {}
-        }
-    }
-    false
 }
 
 fn scan(

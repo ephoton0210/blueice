@@ -1555,3 +1555,74 @@ fn direct_page_const_enums_read_their_object_and_ambient_enums_are_erased() {
         K.B + K.A;";
     assert_eq!(run_direct_page_script(source), bluejs::Value::Number(5.0));
 }
+
+#[test]
+fn direct_page_namespaces_merge_export_and_read_exported_variables_like_node() {
+    // Node runs the JavaScript TypeScript emits for this program to
+    // 9 + 3 + 1 + 10 + 101 = 124.
+    let source = "namespace N { \
+        export const a: number = 1; export let b: number = a + 1; const hidden: number = 5; \
+        export function f(): number { return a + b + hidden; } \
+        export class C { v: number = b; } export enum E { X, Y } \
+        export namespace Inner { export const z: number = a * 10; } \
+        b++; } \
+        const f: number = N.f(); const v: number = new N.C().v; \
+        namespace N { export const extra: number = N.a + 100; } \
+        f + v + N.E.Y + N.Inner.z + N.extra;";
+    assert_eq!(run_direct_page_script(source), bluejs::Value::Number(124.0));
+}
+
+#[test]
+fn direct_page_namespace_variables_are_properties_seen_through_closures_and_shorthand() {
+    // R.inc() twice, then R.pair().c is 2 and R.c is 2; 2 * 10 + 2 = 22.
+    let source = "namespace R { export let c: number = 0; \
+        export function inc(): number { c += 1; return c; } \
+        export function pair(): { c: number } { return { c }; } } \
+        R.inc(); R.inc(); R.pair().c * 10 + R.c;";
+    assert_eq!(run_direct_page_script(source), bluejs::Value::Number(22.0));
+}
+
+#[test]
+fn direct_page_namespaces_merge_into_a_function_and_a_class_without_a_second_variable() {
+    // g() is 1, g.meta is 5, K.s is 2, K.t is 3: 1 + 5 + 2 + 3 = 11.
+    let source =
+        "function g(): number { return 1; } namespace g { export const meta: number = 5; } \
+        class K { static s: number = 2; } namespace K { export const t: number = 3; } \
+        g() + g.meta + K.s + K.t;";
+    assert_eq!(run_direct_page_script(source), bluejs::Value::Number(11.0));
+}
+
+#[test]
+fn direct_page_dotted_and_reopened_namespaces_nest_and_reach_earlier_blocks() {
+    // A.B.x is 1, A.B.y is 2, A.z is 3: 1 + 2 + 3 = 6.
+    let source = "namespace A.B { export const x: number = 1; } \
+        namespace A.B { export const y: number = x + 1; } \
+        namespace A { export const z: number = B.x + B.y; } \
+        A.B.x + A.B.y + A.z;";
+    assert_eq!(run_direct_page_script(source), bluejs::Value::Number(6.0));
+}
+
+#[test]
+fn direct_routes_refuse_what_a_namespace_lowering_cannot_do_safely() {
+    for source in [
+        // A parameter that shadows an exported variable.
+        "namespace N { export const a: number = 1; export function f(a: number): number { return a; } }",
+        // An exported namespace needs the module bridge.
+        "export namespace N { export const a: number = 1; }",
+        // A template literal that reads an exported variable.
+        "namespace N { export let a: number = 1; export function f(): string { return `${a}`; } }",
+    ] {
+        assert!(
+            matches!(
+                compile_direct_script(
+                    ENTRY,
+                    &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+                    CompilerOptions::default()
+                ),
+                // Either BlueTSC itself refuses it, or the bridge does.
+                Err(BridgeError::UnsupportedRuntimeTarget { .. } | BridgeError::BlueTs(_))
+            ),
+            "{source}"
+        );
+    }
+}

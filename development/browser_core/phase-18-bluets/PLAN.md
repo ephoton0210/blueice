@@ -3113,3 +3113,26 @@ The references have to be single tokens in the importer too, and the parse of a
 module happens before its imports' namespaces are known, so a module that imports
 a namespace is parsed again once its dependencies have been parsed, with the
 names each one exports.
+
+### J.3.5.5 Namespaces in the direct bridge, and class-interface merging
+
+The bridge lowers from the declaration's own tokens, so a namespace body is
+lowered after its declarations have been rewritten: the same analysis the emitter
+uses names the identifiers that must be read through the namespace object, and
+`rewrite_declaration` writes each as `N . x` in every token vector the lowerer will
+see (variable initializers, function and method bodies, field initializers,
+statements, enum member values), in the same positions the emitter's text scan
+would. The rewrite also writes a qualified name BlueTS merged into one token back
+out as names and dots, since the lowerer parses ordinary expression syntax. The
+namespace itself becomes the statements TypeScript's emit would run, built as
+BlueJS AST: a variable declaration, and a call of a function over the namespace
+object; the safe-point map attaches the closures nested under that statement to
+the statement's own span.
+
+An interface with the name of a class in one declaration list adds its fields to
+the class's instance type: the parser records them on the class
+(`merged_interface_fields`) so every consumer of the instance type, including the
+inherited surface a derived class sees and an exporting module's class surface,
+agrees, and the checker does not define a separate type for the interface. A field
+the class declares itself must have the interface's type. The interface is erased
+as ever and printed beside the class in a declaration file.

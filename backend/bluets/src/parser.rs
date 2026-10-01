@@ -201,6 +201,9 @@ pub struct ClassDeclaration {
     /// A missing implementation remains visible for the class checker.
     pub method_groups: Vec<ClassMethodGroup>,
     pub body_span: SourceSpan,
+    /// The fields of an interface of the same name that merges into this class.
+    /// They are part of the instance type and nothing at run time.
+    pub merged_interface_fields: Vec<TypeField>,
     pub exported: bool,
     pub span: SourceSpan,
 }

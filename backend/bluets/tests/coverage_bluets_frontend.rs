@@ -415,23 +415,20 @@ fn class_type_and_constructor_value_bind_separately_at_original_spans() {
         "class Reader {} interface Reader {}",
     ] {
         let compilation = compile_with_helper(source);
-        // TypeScript merges the two declarations, which BlueTS does not model
-        // yet, so it refuses the pair rather than typing only the class.
-        assert!(compilation.output.is_none());
+        // TypeScript merges the two declarations; BlueTS merges the interface's
+        // fields into the class's instance type, so the pair is accepted and the
+        // merge is not an illegal name collision.
+        assert!(
+            compilation.output.is_some(),
+            "{:#?}",
+            compilation.diagnostics
+        );
         assert!(
             compilation
                 .diagnostics
                 .iter()
                 .all(|diagnostic| { diagnostic.code != DiagnosticCode::DuplicateDeclaration }),
             "class/interface merging is not an illegal name collision: {:#?}",
-            compilation.diagnostics
-        );
-        assert!(
-            compilation.diagnostics.iter().any(|diagnostic| {
-                diagnostic.code == DiagnosticCode::UnsupportedSyntax
-                    && diagnostic.message.contains("merge")
-            }),
-            "{:#?}",
             compilation.diagnostics
         );
     }

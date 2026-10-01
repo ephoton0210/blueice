@@ -4,3 +4,4 @@ class-accessor-auto-accessor/main.ts
 class-accessor-getter-unannotated/main.ts
 class-accessor-unrelated-types/main.ts
 class-private-name-auto-accessor/main.ts
+class-interface-merge-heritage/main.ts

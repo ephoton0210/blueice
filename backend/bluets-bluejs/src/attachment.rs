@@ -398,14 +398,23 @@ pub(super) fn build_safe_point_map(
     let root = code_units.first().ok_or_else(|| {
         BridgeError::ProvenanceAttachment("the installed program has no root code unit".to_string())
     })?;
+    // The code-unit inventory is a pre-order walk of the closure tree. A direct
+    // child owns its whole subtree: a namespace's function, for one, holds the
+    // closures of every function and class written inside it.
+    fn subtree_size(unit: &bluejs::Bytecode) -> usize {
+        1 + unit.child_code_units().map(subtree_size).sum::<usize>()
+    }
     let children = bytecode.child_code_units().collect::<Vec<_>>();
-    if children
-        .iter()
-        .any(|child| child.child_code_units().next().is_some())
-        || code_units.len() != children.len() + 1
-    {
+    let mut subtrees: Vec<(usize, usize)> = Vec::with_capacity(children.len());
+    let mut next_ordinal = 1usize;
+    for child in &children {
+        let size = subtree_size(child);
+        subtrees.push((next_ordinal, size));
+        next_ordinal += size;
+    }
+    if code_units.len() != next_ordinal {
         return Err(BridgeError::ProvenanceAttachment(
-            "direct lowering produced an unsupported nested closure shape".to_string(),
+            "direct lowering produced a closure inventory that does not match its tree".to_string(),
         ));
     }
     let mut entries = Vec::new();
@@ -449,44 +458,15 @@ pub(super) fn build_safe_point_map(
                 .map(|offset| entry_at(root.id(), offset)),
         );
         if let Some(child_index) = child_index {
-            let child_ordinal = usize::try_from(*child_index)
+            let (first, size) = usize::try_from(*child_index)
                 .ok()
-                .and_then(|index| index.checked_add(1))
+                .and_then(|index| subtrees.get(index).copied())
                 .ok_or_else(|| {
                     BridgeError::ProvenanceAttachment(
-                        "function child index exceeds the host address space".to_string(),
+                        "function declaration has no installed child code unit".to_string(),
                     )
                 })?;
-            let child = code_units.get(child_ordinal).ok_or_else(|| {
-                BridgeError::ProvenanceAttachment(
-                    "function declaration has no installed child code unit".to_string(),
-                )
-            })?;
-            entries.extend(
-                child
-                    .instruction_offsets()
-                    .iter()
-                    .copied()
-                    .map(|offset| entry_at(child.id(), offset)),
-            );
-        }
-        // A class declaration owns the closures of its constructor and
-        // methods; each maps to the whole original class.
-        if let Some((first, last)) = owned_children {
-            for child_index in *first..*last {
-                let child_ordinal = usize::try_from(child_index)
-                    .ok()
-                    .and_then(|index| index.checked_add(1))
-                    .ok_or_else(|| {
-                        BridgeError::ProvenanceAttachment(
-                            "class child index exceeds the host address space".to_string(),
-                        )
-                    })?;
-                let child = code_units.get(child_ordinal).ok_or_else(|| {
-                    BridgeError::ProvenanceAttachment(
-                        "a class member has no installed child code unit".to_string(),
-                    )
-                })?;
+            for child in &code_units[first..first + size] {
                 entries.extend(
                     child
                         .instruction_offsets()
@@ -494,6 +474,29 @@ pub(super) fn build_safe_point_map(
                         .copied()
                         .map(|offset| entry_at(child.id(), offset)),
                 );
+            }
+        }
+        // A class declaration owns the closures of its constructor and
+        // methods; each maps to the whole original class.
+        if let Some((first, last)) = owned_children {
+            for child_index in *first..*last {
+                let (ordinal, size) = usize::try_from(child_index)
+                    .ok()
+                    .and_then(|index| subtrees.get(index).copied())
+                    .ok_or_else(|| {
+                        BridgeError::ProvenanceAttachment(
+                            "a class member has no installed child code unit".to_string(),
+                        )
+                    })?;
+                for child in &code_units[ordinal..ordinal + size] {
+                    entries.extend(
+                        child
+                            .instruction_offsets()
+                            .iter()
+                            .copied()
+                            .map(|offset| entry_at(child.id(), offset)),
+                    );
+                }
             }
         }
     }

@@ -140,6 +140,14 @@ class-instance-this-self-return-error/main.ts	reject
 class-instance-this-valid/main.ts	accept
 class-instance-this-wrong-side-call/main.ts	reject
 class-instance-this-wrong-side-read/main.ts	reject
+class-interface-merge-error-member/main.ts	reject
+class-interface-merge-error-type/main.ts	reject
+class-interface-merge-heritage/main.ts	accept
+class-interface-merge-imported/valid.ts	accept
+class-interface-merge-methods/main.ts	accept
+class-interface-merge-namespace/main.ts	accept
+class-interface-merge-reverse/main.ts	accept
+class-interface-merge-valid/main.ts	accept
 class-local-called-without-new/main.ts	reject
 class-local-instance-method/main.ts	accept
 class-local-instance-wrong-side-call/main.ts	reject

@@ -124,6 +124,7 @@ impl Parser {
             body,
             members,
             method_groups,
+            merged_interface_fields: Vec::new(),
             body_span,
             exported,
             span,

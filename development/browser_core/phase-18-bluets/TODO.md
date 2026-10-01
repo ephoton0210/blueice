@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: J.3.5.5.** H and I are complete. The requested class, enum,
+**Current leaf: J.3.6.2.** H and I are complete. The requested class, enum,
 decorator, namespace, JSX, CommonJS, and package-resolution expansion has
 passed J.1/J.2 planning; implementation and pinned-`tsc` parity remain open.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
@@ -2456,7 +2456,7 @@ done to the page-runs-and-debugs goal at the top of this file.
       ambient `const enum`, whose uses would need inlining, is refused. The
       numbers the tests expect were computed by running the same program under
       Node; the emit-path parity with pinned tsc stays covered by `enum_oracle`.
-  - [ ] **J.3.5** Implement runtime namespaces/modules and declaration merging,
+  - [x] **J.3.5** Implement runtime namespaces/modules and declaration merging,
     including initialization order, export visibility, nested maps, direct
     execution, and oracle parity.
     - [x] **J.3.5.1** Parse `[export] [declare] namespace|module A.B { .. }`:
@@ -2533,8 +2533,30 @@ done to the page-runs-and-debugs goal at the top of this file.
       module is bound like any other and can be exported by name; a class
       inside an ambient namespace is still refused, as a `declare class` is
       everywhere.
-    - [ ] **J.3.5.5** Direct bridge lowering with oracle parity; class and
-      interface declaration merging.
+    - [x] **J.3.5.5** Direct bridge lowering with oracle parity; class and
+      interface declaration merging. The bridge lowers a namespace to the same
+      shape the emitter prints, as BlueJS AST: `var N;` and a call of
+      `function (N) { .. }` on `N || (N = {})` (`let` and `N = P.N || (P.N =
+      {})` inside another namespace, one function per segment of a dotted name),
+      exported variables as assignments to `N.x`, exported functions and classes
+      followed by `N.f = f`, enums rebuilt in the namespace's function, and every
+      read of an exported variable (and of a member another block exported)
+      rewritten to a property read from the declaration's own tokens, with the
+      same analysis, now shared with the emitter (`namespace_analysis`), and the
+      same refusals (a local that shadows an exported variable, an exported
+      namespace in a script, a template literal that reads an exported
+      variable). Merged qualified names are written out again for the lowerer,
+      `new N.C()` and `extends N.Base` are member reads, and the debug safe-point
+      map now covers every closure under a root statement, not only its direct
+      children, which a namespace's function needs. Seven programs run by the
+      bridge complete with the value `tsc`'s JavaScript completes with under
+      Node (`namespace_parity`); module-graph exports and imports of namespaces
+      run too. An interface with the name of a class in the same scope now merges
+      into the class's instance type (either order, inside a namespace, across
+      modules; a changed type of a redeclared property is an error), is erased
+      from the output and printed beside the class in a declaration file; one
+      with type parameters or an `extends` clause is still refused. 8 fixtures
+      agree with pinned tsc.
   - [ ] **J.3.6** Extend tuple-literal context to the remaining positions,
     each against pinned TypeScript. Where context is missing, a valid tuple
     literal infers a widened array and is rejected.

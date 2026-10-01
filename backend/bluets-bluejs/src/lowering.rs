@@ -4,7 +4,11 @@
 
 use super::expression::ExpressionLowerer;
 use super::*;
-use blueice_bluets::evaluate_enums;
+use blueice_bluets::{
+    evaluate_enums, evaluate_enums_in, has_runtime_values, rewrite_declaration, BodyInput,
+    NamespaceExports,
+};
+use std::collections::{BTreeMap, BTreeSet};
 
 pub(super) fn lower_script(
     module: &Module,
@@ -13,7 +17,18 @@ pub(super) fn lower_script(
     let mut body = Vec::new();
     let mut provenance = Vec::new();
     let mut evaluations = evaluate_enums(module).into_iter();
-    for declaration in &module.declarations {
+    let tokens = lex_module(module)?;
+    let namespaces = NamespaceLowering {
+        module,
+        tokens: &tokens,
+        exports: NamespaceExports::of(module),
+        define_class_fields,
+    };
+    // The names a namespace may merge into, declared so far at run time.
+    let mut declared: BTreeSet<String> = BTreeSet::new();
+    for original in &module.declarations {
+        let declaration =
+            &rewrite_declaration(original, &BTreeMap::new()).map_err(from_diagnostic)?;
         match declaration {
             Declaration::TypeAlias(_) | Declaration::Interface(_) | Declaration::TypeExport(_) => {}
             Declaration::Variable(variable) if !variable.declared && !variable.exported => {
@@ -58,6 +73,7 @@ pub(super) fn lower_script(
                     && !function.overload =>
             {
                 body.push(lower_function(module, function)?);
+                declared.insert(function.name.clone());
                 provenance.push((function.span.clone(), LoweringProvenanceKind::LoweredSyntax));
             }
             Declaration::Function(function) => {
@@ -67,6 +83,7 @@ pub(super) fn lower_script(
                 ));
             }
             Declaration::Class(class) if !class.exported => {
+                declared.insert(class.name.clone());
                 body.push(lower_class(module, class, define_class_fields)?);
                 provenance.push((class.span.clone(), LoweringProvenanceKind::LoweredSyntax));
             }
@@ -76,11 +93,26 @@ pub(super) fn lower_script(
                     "an exported class requires the module bridge",
                 ));
             }
-            Declaration::Namespace(namespace) => {
+            Declaration::Namespace(namespace) if namespace.exported => {
                 return Err(unsupported(
                     namespace.span.clone(),
-                    "a namespace has no direct lowering yet",
+                    "an exported namespace requires the module bridge",
                 ));
+            }
+            Declaration::Namespace(namespace) => {
+                for statement in namespaces.namespace(
+                    namespace,
+                    &NamespaceScope::Module,
+                    &mut declared,
+                    "",
+                    &BTreeMap::new(),
+                )? {
+                    body.push(statement);
+                    provenance.push((
+                        namespace.span.clone(),
+                        LoweringProvenanceKind::LoweredSyntax,
+                    ));
+                }
             }
             Declaration::Enum(declaration) => {
                 if declaration.exported {
@@ -90,6 +122,7 @@ pub(super) fn lower_script(
                     ));
                 }
                 if let Some(statement) = lower_enum(module, declaration, &mut evaluations)? {
+                    declared.insert(declaration.name.clone());
                     body.push(statement);
                     provenance.push((
                         declaration.span.clone(),
@@ -113,7 +146,17 @@ pub(super) fn lower_module(
     let mut requests = Vec::new();
     let mut provenance = Vec::new();
     let mut evaluations = evaluate_enums(module).into_iter();
-    for declaration in &module.declarations {
+    let tokens = lex_module(module)?;
+    let namespaces = NamespaceLowering {
+        module,
+        tokens: &tokens,
+        exports: NamespaceExports::of(module),
+        define_class_fields,
+    };
+    let mut declared: BTreeSet<String> = BTreeSet::new();
+    for original in &module.declarations {
+        let declaration =
+            &rewrite_declaration(original, &BTreeMap::new()).map_err(from_diagnostic)?;
         match declaration {
             Declaration::TypeAlias(_) | Declaration::Interface(_) | Declaration::TypeExport(_) => {}
             Declaration::Variable(variable) if !variable.declared => {
@@ -128,6 +171,7 @@ pub(super) fn lower_module(
             }
             Declaration::Function(function) if !function.declared && !function.overload => {
                 body.push(lower_function(module, function)?);
+                declared.insert(function.name.clone());
                 provenance.push((function.span.clone(), LoweringProvenanceKind::LoweredSyntax));
                 if function.default_export {
                     exports.push(bluejs::ExportEntry::Local {
@@ -215,6 +259,7 @@ pub(super) fn lower_module(
                 ));
             }
             Declaration::Class(class) => {
+                declared.insert(class.name.clone());
                 body.push(lower_class(module, class, define_class_fields)?);
                 provenance.push((class.span.clone(), LoweringProvenanceKind::LoweredSyntax));
                 if class.exported {
@@ -225,13 +270,36 @@ pub(super) fn lower_module(
                 }
             }
             Declaration::Namespace(namespace) => {
-                return Err(unsupported(
-                    namespace.span.clone(),
-                    "a namespace has no direct lowering yet",
-                ));
+                let statements = namespaces.namespace(
+                    namespace,
+                    &NamespaceScope::Module,
+                    &mut declared,
+                    "",
+                    &BTreeMap::new(),
+                )?;
+                if !statements.is_empty()
+                    && namespace.exported
+                    && !exports.iter().any(|entry| {
+                        matches!(entry, bluejs::ExportEntry::Local { export_name, .. }
+                            if *export_name == namespace.name)
+                    })
+                {
+                    exports.push(bluejs::ExportEntry::Local {
+                        export_name: namespace.name.clone(),
+                        local_name: namespace.name.clone(),
+                    });
+                }
+                for statement in statements {
+                    body.push(statement);
+                    provenance.push((
+                        namespace.span.clone(),
+                        LoweringProvenanceKind::LoweredSyntax,
+                    ));
+                }
             }
             Declaration::Enum(declaration) => {
                 if let Some(statement) = lower_enum(module, declaration, &mut evaluations)? {
+                    declared.insert(declaration.name.clone());
                     body.push(statement);
                     provenance.push((
                         declaration.span.clone(),
@@ -451,10 +519,19 @@ fn lower_class(
     }
     Ok(bluejs::Stmt::ClassDecl(bluejs::Class {
         name: Some(class.name.clone()),
-        extends: class
-            .extends_name
-            .as_ref()
-            .map(|base| Box::new(bluejs::Expr::Identifier(base.clone()))),
+        extends: class.extends_name.as_ref().map(|base| {
+            // A qualified name, `N.Base`, is a member read.
+            let mut names = base.split('.');
+            let mut expression = bluejs::Expr::Identifier(names.next().unwrap_or(base).to_string());
+            for name in names {
+                expression = bluejs::Expr::Member {
+                    object: Box::new(expression),
+                    property: Box::new(bluejs::Expr::Identifier(name.to_string())),
+                    computed: false,
+                };
+            }
+            Box::new(expression)
+        }),
         elements,
         decorators: Vec::new(),
         // Synthesized from BlueTSC's own lowered AST: no `[[SourceText]]`.
@@ -474,6 +551,26 @@ fn lower_enum(
     declaration: &blueice_bluets::EnumDeclaration,
     evaluations: &mut std::vec::IntoIter<blueice_bluets::EvaluatedEnum>,
 ) -> Result<Option<bluejs::Stmt>, BridgeError> {
+    let Some(function) = lower_enum_function(module, declaration, evaluations)? else {
+        return Ok(None);
+    };
+    let name = declaration.name.clone();
+    let call = iife(function, plain_argument(&name));
+    Ok(Some(bluejs::Stmt::VarDecl(
+        bluejs::DeclKind::Var,
+        vec![bluejs::VarDeclarator {
+            pattern: bluejs::Pattern::Identifier(name),
+            init: Some(call),
+        }],
+    )))
+}
+
+/// The function an enum declaration builds its object in.
+fn lower_enum_function(
+    module: &Module,
+    declaration: &blueice_bluets::EnumDeclaration,
+    evaluations: &mut std::vec::IntoIter<blueice_bluets::EvaluatedEnum>,
+) -> Result<Option<bluejs::Function>, BridgeError> {
     let evaluation = evaluations
         .next()
         .expect("every enum declaration was evaluated");
@@ -494,18 +591,13 @@ fn lower_enum(
         property: Box::new(string(member)),
         computed: true,
     };
-    let assign = |target: bluejs::Expr, value: bluejs::Expr| bluejs::Expr::Assign {
-        op: bluejs::AssignOp::Assign,
-        target: Box::new(target),
-        value: Box::new(value),
-    };
     let mut statements = Vec::new();
     for (member, evaluated) in declaration.members.iter().zip(&evaluation.members) {
         let statement = match &evaluated.value {
             Some(blueice_bluets::EnumValue::Number(number)) => {
                 // E[E["A"] = 0] = "A"
-                let forward = assign(member_key(&member.name), bluejs::Expr::Number(*number));
-                assign(
+                let forward = assign_expr(member_key(&member.name), bluejs::Expr::Number(*number));
+                assign_expr(
                     bluejs::Expr::Member {
                         object: Box::new(object()),
                         property: Box::new(forward),
@@ -515,7 +607,7 @@ fn lower_enum(
                 )
             }
             Some(blueice_bluets::EnumValue::Text(text)) => {
-                assign(member_key(&member.name), string(text))
+                assign_expr(member_key(&member.name), string(text))
             }
             None => {
                 let value = member
@@ -524,8 +616,8 @@ fn lower_enum(
                     .map(|tokens| ExpressionLowerer::new(&module.id, tokens).parse())
                     .transpose()?
                     .unwrap_or(bluejs::Expr::Identifier("undefined".to_string()));
-                let forward = assign(member_key(&member.name), value);
-                assign(
+                let forward = assign_expr(member_key(&member.name), value);
+                assign_expr(
                     bluejs::Expr::Member {
                         object: Box::new(object()),
                         property: Box::new(forward),
@@ -538,34 +630,79 @@ fn lower_enum(
         statements.push(bluejs::Stmt::Expr(statement));
     }
     statements.push(bluejs::Stmt::Return(Some(object())));
-    let function = bluejs::Function {
+    Ok(Some(function_over(&name, statements)))
+}
+
+fn assign_expr(target: bluejs::Expr, value: bluejs::Expr) -> bluejs::Expr {
+    bluejs::Expr::Assign {
+        op: bluejs::AssignOp::Assign,
+        target: Box::new(target),
+        value: Box::new(value),
+    }
+}
+
+fn identifier_expr(name: &str) -> bluejs::Expr {
+    bluejs::Expr::Identifier(name.to_string())
+}
+
+fn property_expr(object: &str, property: &str) -> bluejs::Expr {
+    bluejs::Expr::Member {
+        object: Box::new(identifier_expr(object)),
+        property: Box::new(identifier_expr(property)),
+        computed: false,
+    }
+}
+
+/// `function (name) { .. }`, the function a namespace or enum body runs in.
+fn function_over(name: &str, body: Vec<bluejs::Stmt>) -> bluejs::Function {
+    bluejs::Function {
         name: None,
         params: vec![bluejs::Param {
-            pattern: bluejs::Pattern::Identifier(name.clone()),
+            pattern: bluejs::Pattern::Identifier(name.to_string()),
             default: None,
             rest: false,
         }],
-        body: statements,
+        body,
         generator: false,
         is_async: false,
         source_text: Default::default(),
-    };
-    let argument = bluejs::Expr::Logical {
-        op: bluejs::LogicalOp::Or,
-        left: Box::new(object()),
-        right: Box::new(bluejs::Expr::Object(Vec::new())),
-    };
-    let call = bluejs::Expr::Call {
-        callee: Box::new(bluejs::Expr::Function(function)),
+    }
+}
+
+fn iife(function: bluejs::Function, argument: bluejs::Expr) -> bluejs::Expr {
+    bluejs::Expr::Call {
+        callee: Box::new(bluejs::Expr::Parenthesized(Box::new(
+            bluejs::Expr::Function(function),
+        ))),
         args: vec![bluejs::Argument::Normal(argument)],
-    };
-    Ok(Some(bluejs::Stmt::VarDecl(
-        bluejs::DeclKind::Var,
-        vec![bluejs::VarDeclarator {
-            pattern: bluejs::Pattern::Identifier(name),
-            init: Some(call),
-        }],
-    )))
+    }
+}
+
+/// `name || (name = {})`
+fn plain_argument(name: &str) -> bluejs::Expr {
+    bluejs::Expr::Logical {
+        op: bluejs::LogicalOp::Or,
+        left: Box::new(identifier_expr(name)),
+        right: Box::new(bluejs::Expr::Parenthesized(Box::new(assign_expr(
+            identifier_expr(name),
+            bluejs::Expr::Object(Vec::new()),
+        )))),
+    }
+}
+
+/// `name = parent.name || (parent.name = {})`
+fn member_argument(parent: &str, name: &str) -> bluejs::Expr {
+    assign_expr(
+        identifier_expr(name),
+        bluejs::Expr::Logical {
+            op: bluejs::LogicalOp::Or,
+            left: Box::new(property_expr(parent, name)),
+            right: Box::new(bluejs::Expr::Parenthesized(Box::new(assign_expr(
+                property_expr(parent, name),
+                bluejs::Expr::Object(Vec::new()),
+            )))),
+        },
+    )
 }
 
 /// `this.name = value;`
@@ -946,4 +1083,224 @@ fn lower_variable(
             init,
         }],
     ))
+}
+
+fn lex_module(module: &Module) -> Result<Vec<Token>, BridgeError> {
+    blueice_bluets::lex(&module.id, &module.source).map_err(BridgeError::BlueTs)
+}
+
+fn from_diagnostic(diagnostic: blueice_bluets::Diagnostic) -> BridgeError {
+    unsupported(diagnostic.span, diagnostic.message)
+}
+
+/// Where a namespace is declared.
+enum NamespaceScope {
+    Module,
+    Namespace { parent: String },
+}
+
+/// Lowers namespaces the way TypeScript emits them: a function over the
+/// namespace object, called with the object or a new one, in which an exported
+/// variable is a property and every reference to it a property read.
+struct NamespaceLowering<'a> {
+    module: &'a Module,
+    tokens: &'a [Token],
+    exports: NamespaceExports,
+    define_class_fields: bool,
+}
+
+impl NamespaceLowering<'_> {
+    /// The statements for one namespace declaration, none when it has nothing at
+    /// run time or is ambient.
+    fn namespace(
+        &self,
+        namespace: &blueice_bluets::NamespaceDeclaration,
+        scope: &NamespaceScope,
+        declared: &mut BTreeSet<String>,
+        parent_path: &str,
+        outer: &BTreeMap<String, String>,
+    ) -> Result<Vec<bluejs::Stmt>, BridgeError> {
+        if namespace.declared || !has_runtime_values(&namespace.body) {
+            return Ok(Vec::new());
+        }
+        let mut chain = vec![namespace];
+        while let [Declaration::Namespace(inner)] = chain[chain.len() - 1].body.as_slice() {
+            if !inner.implicit {
+                break;
+            }
+            chain.push(inner);
+        }
+        let innermost = chain[chain.len() - 1];
+        let first = declared.insert(namespace.name.clone());
+        let param = innermost.name.clone();
+        let own_path = chain.iter().fold(parent_path.to_string(), |path, segment| {
+            if path.is_empty() {
+                segment.name.clone()
+            } else {
+                format!("{path}.{}", segment.name)
+            }
+        });
+        let references = self
+            .exports
+            .references(
+                self.module,
+                self.tokens,
+                &BodyInput {
+                    own_path: &own_path,
+                    param: &param,
+                    namespace,
+                    innermost,
+                    outer,
+                },
+            )
+            .map_err(from_diagnostic)?;
+        let mut statements = self.body(&innermost.body, &param, &own_path, &references)?;
+        // Wrap the body in one function per segment, innermost first.
+        for index in (0..chain.len()).rev() {
+            let name = &chain[index].name;
+            let argument = if index == 0 {
+                match scope {
+                    NamespaceScope::Namespace { parent } if namespace.exported => {
+                        member_argument(parent, name)
+                    }
+                    _ => plain_argument(name),
+                }
+            } else {
+                member_argument(&chain[index - 1].name, name)
+            };
+            let call = bluejs::Stmt::Expr(iife(function_over(name, statements), argument));
+            if index == 0 {
+                statements = Vec::new();
+                if first {
+                    let keyword = match scope {
+                        NamespaceScope::Module => bluejs::DeclKind::Var,
+                        NamespaceScope::Namespace { .. } => bluejs::DeclKind::Let,
+                    };
+                    statements.push(bluejs::Stmt::VarDecl(
+                        keyword,
+                        vec![bluejs::VarDeclarator {
+                            pattern: bluejs::Pattern::Identifier(name.clone()),
+                            init: None,
+                        }],
+                    ));
+                }
+                statements.push(call);
+            } else {
+                statements = vec![
+                    bluejs::Stmt::VarDecl(
+                        bluejs::DeclKind::Var,
+                        vec![bluejs::VarDeclarator {
+                            pattern: bluejs::Pattern::Identifier(name.clone()),
+                            init: None,
+                        }],
+                    ),
+                    call,
+                ];
+            }
+        }
+        Ok(statements)
+    }
+
+    fn body(
+        &self,
+        body: &[Declaration],
+        param: &str,
+        own_path: &str,
+        references: &BTreeMap<String, String>,
+    ) -> Result<Vec<bluejs::Stmt>, BridgeError> {
+        let module = self.module;
+        let evaluations = evaluate_enums_in(body);
+        let mut evaluations = evaluations.into_iter();
+        let mut statements = Vec::new();
+        let mut declared_here: BTreeSet<String> = BTreeSet::new();
+        let export = |name: &str| {
+            bluejs::Stmt::Expr(assign_expr(
+                property_expr(param, name),
+                identifier_expr(name),
+            ))
+        };
+        for declaration in body {
+            let rewritten =
+                rewrite_declaration(declaration, references).map_err(from_diagnostic)?;
+            match &rewritten {
+                Declaration::Variable(variable) if !variable.declared => {
+                    if variable.exported {
+                        if !variable.initializer.is_empty() {
+                            let value = ExpressionLowerer::new(&module.id, &variable.initializer)
+                                .parse()?;
+                            statements.push(bluejs::Stmt::Expr(assign_expr(
+                                property_expr(param, &variable.name),
+                                value,
+                            )));
+                        }
+                    } else {
+                        statements.push(lower_variable(module, variable)?);
+                    }
+                }
+                Declaration::Function(function) if !function.declared && !function.overload => {
+                    statements.push(lower_function(module, function)?);
+                    declared_here.insert(function.name.clone());
+                    if function.exported {
+                        statements.push(export(&function.name));
+                    }
+                }
+                Declaration::Class(class) => {
+                    statements.push(lower_class(module, class, self.define_class_fields)?);
+                    declared_here.insert(class.name.clone());
+                    if class.exported {
+                        statements.push(export(&class.name));
+                    }
+                }
+                Declaration::Enum(declaration) => {
+                    if let Some(function) =
+                        lower_enum_function(module, declaration, &mut evaluations)?
+                    {
+                        let name = &declaration.name;
+                        if declared_here.insert(name.clone()) {
+                            statements.push(bluejs::Stmt::VarDecl(
+                                bluejs::DeclKind::Let,
+                                vec![bluejs::VarDeclarator {
+                                    pattern: bluejs::Pattern::Identifier(name.clone()),
+                                    init: None,
+                                }],
+                            ));
+                        }
+                        let argument = if declaration.exported {
+                            member_argument(param, name)
+                        } else {
+                            plain_argument(name)
+                        };
+                        statements.push(bluejs::Stmt::Expr(iife(function, argument)));
+                    } else {
+                        // An ambient enum has no run-time form.
+                    }
+                }
+                Declaration::Namespace(inner) => {
+                    statements.extend(self.namespace(
+                        inner,
+                        &NamespaceScope::Namespace {
+                            parent: param.to_string(),
+                        },
+                        &mut declared_here,
+                        own_path,
+                        references,
+                    )?);
+                }
+                Declaration::Raw(raw) => {
+                    statements.push(bluejs::Stmt::Expr(
+                        ExpressionLowerer::new(&module.id, &raw.tokens).parse()?,
+                    ));
+                }
+                Declaration::TypeAlias(_) | Declaration::Interface(_) => {}
+                Declaration::Variable(_) | Declaration::Function(_) => {}
+                other => {
+                    return Err(unsupported(
+                        other.span().clone(),
+                        "this declaration cannot appear in a namespace body lowered directly",
+                    ));
+                }
+            }
+        }
+        Ok(statements)
+    }
 }
