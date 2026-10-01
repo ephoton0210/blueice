@@ -10,6 +10,63 @@ mod arrays;
 mod records;
 
 impl<'a> ModuleChecker<'a> {
+    /// The type of a top-level chain of `+`/`-` or of `*`/`/`/`%`, folded from the
+    /// left, or `None` when `tokens` is not such a chain.
+    #[inline(never)]
+    fn infer_operator_chain(
+        &self,
+        tokens: &[Token],
+        scope: &BTreeMap<String, Type>,
+    ) -> Option<Type> {
+        let generic_call =
+            |start: usize| self.module.generic_call_type_arguments.contains_key(&start);
+        for operators in [&["+", "-"][..], &["*", "/", "%"][..]] {
+            let Some((mut rest, operator, last)) =
+                top_level_binary_parts(tokens, operators, generic_call)
+            else {
+                continue;
+            };
+            let mut chain = vec![(operator, last)];
+            while let Some((left, operator, operand)) =
+                top_level_binary_parts(rest, operators, generic_call)
+            {
+                chain.push((operator, operand));
+                rest = left;
+            }
+            let mut result = self.infer_expression(rest, scope);
+            for (operator, operand) in chain.into_iter().rev() {
+                let operand = self.infer_expression(operand, scope);
+                result = if operators.contains(&"+") {
+                    infer_additive_expression(operator, result, operand)
+                } else {
+                    infer_numeric_binary_expression(result, operand)
+                };
+            }
+            return Some(result);
+        }
+        None
+    }
+
+    /// `yield x` is what the caller passes to `next`; `yield* g` is `g`'s result.
+    /// Kept out of `infer_expression` so that function's stack frame, which every
+    /// level of a long expression pays for, stays small.
+    #[inline(never)]
+    fn infer_yield(&self, tokens: &[Token], scope: &BTreeMap<String, Type>) -> Option<Type> {
+        if !tokens.first().is_some_and(|token| token.is("yield")) {
+            return None;
+        }
+        let context = self.generator_context.as_ref()?;
+        if tokens.get(1).is_some_and(|token| token.is("*")) {
+            return Some(match self.infer_expression(&tokens[2..], scope) {
+                Type::Named { name, arguments } if name == "Generator" => {
+                    arguments.get(1).cloned().unwrap_or(Type::Any)
+                }
+                _ => Type::Any,
+            });
+        }
+        Some(context.next_type.clone())
+    }
+
     pub(in crate::checker::module) fn infer_expression(
         &self,
         tokens: &[Token],
@@ -26,19 +83,8 @@ impl<'a> ModuleChecker<'a> {
         if let Some(function) = self.nested_function_type(strip_outer_parentheses(tokens), scope) {
             return function;
         }
-        // `yield x` is what the caller passes to `next`; `yield* g` is `g`'s result.
-        if tokens.first().is_some_and(|token| token.is("yield")) {
-            if let Some(context) = &self.generator_context {
-                if tokens.get(1).is_some_and(|token| token.is("*")) {
-                    return match self.infer_expression(&tokens[2..], scope) {
-                        Type::Named { name, arguments } if name == "Generator" => {
-                            arguments.get(1).cloned().unwrap_or(Type::Any)
-                        }
-                        _ => Type::Any,
-                    };
-                }
-                return context.next_type.clone();
-            }
+        if let Some(result) = self.infer_yield(tokens, scope) {
+            return result;
         }
         // `await` of a `Promise<T>` is the `T`; of anything else, the operand.
         if tokens.len() > 1 && tokens[0].is("await") {
@@ -267,24 +313,11 @@ impl<'a> ModuleChecker<'a> {
                 self.infer_expression(right, scope),
             );
         }
-        if let Some((left, operator, right)) =
-            top_level_binary_parts(tokens, &["+", "-"], |start| {
-                self.module.generic_call_type_arguments.contains_key(&start)
-            })
-        {
-            return infer_additive_expression(
-                operator,
-                self.infer_expression(left, scope),
-                self.infer_expression(right, scope),
-            );
-        }
-        if let Some((left, _, right)) = top_level_binary_parts(tokens, &["*", "/", "%"], |start| {
-            self.module.generic_call_type_arguments.contains_key(&start)
-        }) {
-            return infer_numeric_binary_expression(
-                self.infer_expression(left, scope),
-                self.infer_expression(right, scope),
-            );
+        // A long chain `a + b + c + ..` is folded left to right here rather than
+        // by recursing on its left side, which would be as deep as the chain is
+        // long (and, at every level, in this function's large stack frame).
+        if let Some(result) = self.infer_operator_chain(tokens, scope) {
+            return result;
         }
         if let Some((left, _, right)) = top_level_binary_parts(tokens, &["**"], |start| {
             self.module.generic_call_type_arguments.contains_key(&start)

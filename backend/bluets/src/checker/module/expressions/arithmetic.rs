@@ -83,31 +83,33 @@ impl<'a> ModuleChecker<'a> {
             );
             return;
         }
-        if let Some((left, operator, right)) =
-            top_level_binary_parts(tokens, &["+", "-"], generic_call)
-        {
-            self.check_arithmetic_operators(left, scope, span);
-            self.check_arithmetic_operators(right, scope, span);
-            self.check_known_arithmetic_operands(
-                operator,
-                &self.infer_expression(left, scope),
-                &self.infer_expression(right, scope),
-                span,
-            );
-            return;
-        }
-        if let Some((left, operator, right)) =
-            top_level_binary_parts(tokens, &["*", "/", "%"], generic_call)
-        {
-            self.check_arithmetic_operators(left, scope, span);
-            self.check_arithmetic_operators(right, scope, span);
-            self.check_known_arithmetic_operands(
-                operator,
-                &self.infer_expression(left, scope),
-                &self.infer_expression(right, scope),
-                span,
-            );
-            return;
+        // A chain `a + b + c + ..` is checked left to right, not by recursing on
+        // its left side, which would be as deep as the chain is long.
+        for operators in [&["+", "-"][..], &["*", "/", "%"][..]] {
+            if let Some((mut rest, operator, last)) =
+                top_level_binary_parts(tokens, operators, generic_call)
+            {
+                let mut chain = vec![(operator, last)];
+                while let Some((left, operator, operand)) =
+                    top_level_binary_parts(rest, operators, generic_call)
+                {
+                    chain.push((operator, operand));
+                    rest = left;
+                }
+                self.check_arithmetic_operators(rest, scope, span);
+                let mut result = self.infer_expression(rest, scope);
+                for (operator, operand) in chain.into_iter().rev() {
+                    self.check_arithmetic_operators(operand, scope, span);
+                    let operand_type = self.infer_expression(operand, scope);
+                    self.check_known_arithmetic_operands(operator, &result, &operand_type, span);
+                    result = if operators.contains(&"+") {
+                        infer_additive_expression(operator, result, operand_type)
+                    } else {
+                        infer_numeric_binary_expression(result, operand_type)
+                    };
+                }
+                return;
+            }
         }
         if let Some((left, operator, right)) = top_level_binary_parts(tokens, &["**"], generic_call)
         {

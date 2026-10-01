@@ -6994,3 +6994,85 @@ fn generator_functions_are_checked_erased_and_emitted_as_written() {
         assert!(rejected.output.is_none(), "{source}");
     }
 }
+
+#[test]
+fn a_long_operator_chain_is_checked_in_constant_stack() {
+    // A chain `a + a + ..` was checked by recursing on its left side, once to
+    // infer and once to check at every level, so a few hundred terms overflowed
+    // a small thread stack. Folding it from the left needs no depth.
+    let chain = |operator: &str, terms: usize| {
+        std::iter::repeat_n("first", terms)
+            .collect::<Vec<_>>()
+            .join(&format!(" {operator} "))
+    };
+    let additive = format!(
+        "let first: number = 1; let slow: number = {}; let last: number = slow + 1;",
+        chain("+", 1500)
+    );
+    let multiplicative = format!(
+        "let first: number = 1; let slow: number = {}; let last: number = slow * 2;",
+        chain("*", 1500)
+    );
+    let mixed = format!(
+        "let first: number = 1; let slow: number = {} - first; let last: number = slow + 1;",
+        chain("*", 600)
+    );
+    let handle = std::thread::Builder::new()
+        .stack_size(256 * 1024)
+        .spawn(move || {
+            for source in [additive, multiplicative, mixed] {
+                let compiled = compile(
+                    ENTRY,
+                    &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+                    CompilerOptions::default(),
+                );
+                assert!(
+                    compiled.diagnostics.is_empty(),
+                    "{:#?}",
+                    compiled.diagnostics
+                );
+            }
+        })
+        .unwrap();
+    handle
+        .join()
+        .expect("a long chain must not overflow the stack");
+
+    // The chain is still checked term by term, left to right.
+    for (source, message) in [
+        (
+            "let n: number = 1; let s: string = 'a'; let bad: number = n + n + s;",
+            "not assignable",
+        ),
+        (
+            "let n: number = 1; let s: string = 'a'; let bad: number = n * n - s;",
+            "cannot be applied",
+        ),
+        (
+            "let n: number = 1; let s: string = 'a'; let ok: string = s + n + n;",
+            "",
+        ),
+    ] {
+        let result = compile(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+            CompilerOptions::default(),
+        );
+        if message.is_empty() {
+            assert!(
+                result.diagnostics.is_empty(),
+                "{source}: {:#?}",
+                result.diagnostics
+            );
+        } else {
+            assert!(
+                result
+                    .diagnostics
+                    .iter()
+                    .any(|diagnostic| diagnostic.message.contains(message)),
+                "{source}: {:#?}",
+                result.diagnostics
+            );
+        }
+    }
+}
