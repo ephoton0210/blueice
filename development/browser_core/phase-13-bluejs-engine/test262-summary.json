@@ -1,8 +1,8 @@
 {
-  "adapter_sha256": "01bde81372a2e20a126cb823bedfdae89f326b64055844a2461a2532c2d45183",
+  "adapter_sha256": "a6ba0d705c44eaa92113a9f5d5b6ac074399f6a491c427d80b3861faf36cca5a",
   "complete_inventory": true,
   "discovered_js": 53876,
-  "elapsed_seconds": 239.079,
+  "elapsed_seconds": 210.817,
   "exclude": "",
   "features": {
     "AggregateError": {
@@ -179,7 +179,8 @@
       "pass": 58
     },
     "Proxy": {
-      "pass": 933
+      "fail": 3,
+      "pass": 930
     },
     "Reflect": {
       "pass": 933
@@ -613,7 +614,8 @@
     },
     "built-ins": {
       "excluded": 4,
-      "pass": 47319
+      "fail": 5,
+      "pass": 47314
     },
     "harness": {
       "pass": 232
@@ -639,13 +641,14 @@
     "native overrides for sta.js and assert.js (propertyHelper.js and isConstructor.js run their upstream source), the two declared DateTimeFormat-part deepEqual fixtures, generated RegExp property helpers, and eight exhaustive legacy URI fixtures; raw tests receive no harness",
     "each mode has a bounded interpreter instruction budget; tail-call, TypedArray-harness, the two Temporal calendar matrices, and the six finite Iterator.zip/zipKeyed basic matrices receive their recorded budgets"
   ],
-  "regex_worker_sha256": "d1222aade82c742bf98d631cc932740c596a48ba6d8668a539295f8b757e6473",
+  "regex_worker_sha256": "2784307ef4a60bed00a3080dedc5edc82aed56863974a31bbe44c6696f42b84e",
   "results": {
     "excluded": 4,
-    "pass": 102921,
+    "fail": 5,
+    "pass": 102916,
     "stale_corpus": 1
   },
-  "runner_sha256": "d56c75f03b0422f20fea1dcd8a10be3ea81905f4a79d7fead0abb1ca6986d0ba",
+  "runner_sha256": "fe9356675cbc3cea1092dc4b94206be7098df1b0cf976d0e40a215c1ca5af5bc",
   "scheduled_modes": 102926,
   "sm_typed_array_harness_instruction_budget": 100000000,
   "sm_typed_array_harness_timeout_seconds": 60,
