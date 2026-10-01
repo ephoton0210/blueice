@@ -67,6 +67,7 @@ impl<'a> ModuleChecker<'a> {
             namespace_path: String::new(),
             namespaces: BTreeMap::new(),
             type_only_namespaces: BTreeSet::new(),
+            annotated_names: BTreeSet::new(),
             diagnostics: Vec::new(),
             symbols: Vec::new(),
             types: BTreeMap::new(),
@@ -146,6 +147,9 @@ impl<'a> ModuleChecker<'a> {
                     }
                 }
                 Declaration::Variable(variable) => {
+                    if variable.annotation.is_some() {
+                        self.annotated_names.insert(variable.name.clone());
+                    }
                     let value_type = variable.annotation.clone().unwrap_or(Type::Unknown);
                     self.insert_value(
                         &variable.name,
@@ -1065,6 +1069,7 @@ impl<'a> ModuleChecker<'a> {
         self.check_member_calls_in_expression(tokens, scope, span);
         self.check_direct_property_access(tokens, scope, span);
         self.check_member_assignment(tokens, scope, span);
+        self.check_variable_assignment(tokens, scope, span);
         self.check_restricted_member_access(tokens, scope, span);
         self.check_enum_index_uses(tokens, scope, span);
         self.check_const_enum_uses(tokens, scope, span);

@@ -3136,3 +3136,23 @@ inherited surface a derived class sees and an exporting module's class surface,
 agrees, and the checker does not define a separate type for the interface. A field
 the class declares itself must have the interface's type. The interface is erased
 as ever and printed beside the class in a declaration file.
+
+### J.3.6.2 and J.3.6.3 Literal context in properties and assignments
+
+One function reads an expression where a type is expected: it expands named
+types, then reads a bracketed literal against a tuple (each element against the
+element at its position), a braced literal against a record (each property
+against the field of the same name), a bracketed literal against an array (each
+element against the item type) and anything against a union by trying its
+members in turn. Everything that already asked for context (a variable
+initializer, a call argument, a return, a member assignment) now gets all of
+these for free, and call arguments try the context for a braced literal as they
+did for a bracketed one.
+
+Assigning to a variable had no check at all. A variable declared with an
+annotation is remembered (a top-level one when it is bound, a parameter or local
+while its function is checked, restored after, with an unannotated name of the
+same spelling removed so a shadowing local is not judged by the outer type), and
+`name = value` and `array[i] = value` are read against its declared type. An
+unannotated variable is never checked: its type is only what the checker
+inferred, which an assignment legitimately widens in TypeScript's flow analysis.

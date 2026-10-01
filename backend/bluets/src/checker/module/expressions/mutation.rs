@@ -173,6 +173,91 @@ impl<'a> ModuleChecker<'a> {
         }
     }
 
+    /// `name = value` for a variable declared with a type, and `array[i] = value`,
+    /// read against the declared type, so a bracketed or braced literal on the
+    /// right takes its shape from the target as it does in an initializer.
+    pub(in crate::checker::module) fn check_variable_assignment(
+        &mut self,
+        tokens: &[Token],
+        scope: &BTreeMap<String, Type>,
+        span: &SourceSpan,
+    ) {
+        let tokens = strip_outer_parentheses(tokens);
+        let Some((target, operator, value)) = top_level_binary_parts(tokens, &["="], |_| false)
+        else {
+            return;
+        };
+        if !operator.is("=") || value.is_empty() {
+            return;
+        }
+        let (expected, what) = match target {
+            [name] if name.kind == TokenKind::Identifier => {
+                if !self.annotated_names.contains(&name.text) {
+                    return;
+                }
+                let Some(expected) = scope.get(&name.text) else {
+                    return;
+                };
+                (expected.clone(), format!("variable `{}`", name.text))
+            }
+            _ => {
+                let Some((receiver, None)) = member_access_target(target) else {
+                    return;
+                };
+                let Some(open) = target.iter().rposition(|token| token.is("[")) else {
+                    return;
+                };
+                let index = &target[open + 1..target.len() - 1];
+                let owner = self.infer_expression(receiver, scope);
+                let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
+                let mut visited = HashSet::new();
+                let mut owner = owner;
+                while let Some(expanded) = instantiate_named(
+                    &owner,
+                    &self.types,
+                    &mut visited,
+                    &mut budget,
+                    "element assignment",
+                ) {
+                    owner = expanded;
+                }
+                match (&owner, index) {
+                    (Type::Array(item), _) => ((**item).clone(), "an array element".to_string()),
+                    (Type::Tuple(elements), [literal])
+                        if literal.kind == TokenKind::Number
+                            && elements
+                                .iter()
+                                .all(|element| !element.rest && !element.optional) =>
+                    {
+                        let Some(position) = literal.text.parse::<usize>().ok() else {
+                            return;
+                        };
+                        let Some(element) = elements.get(position) else {
+                            return;
+                        };
+                        (element.annotation.clone(), "a tuple element".to_string())
+                    }
+                    _ => return,
+                }
+            }
+        };
+        if matches!(expected, Type::Unknown | Type::Any) {
+            return;
+        }
+        let actual = self.infer_in_context(value, scope, &expected);
+        if !self.is_assignable_bounded(&actual, &expected, span) {
+            self.type_error(
+                span,
+                format!(
+                    "assignment has type `{}`, which is not assignable to {what} of type `{}`",
+                    type_label(&actual),
+                    type_label(&expected)
+                ),
+                DiagnosticCode::TypeMismatch,
+            );
+        }
+    }
+
     fn check_nested_readonly_mutations(
         &mut self,
         tokens: &[Token],

@@ -4029,6 +4029,114 @@ fn pinned_tuple_literal_arguments_match_typescript_without_emit() {
 
 #[test]
 #[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
+fn pinned_tuple_literal_properties_match_typescript_without_emit() {
+    let tsc = pinned_bluetsc_oracle();
+    assert_pinned_version(&tsc);
+    let cases: [NoEmitCase; 9] = [
+        (
+            "valid",
+            include_str!("fixtures/typescript_oracle/tuple-literal-property-valid/main.ts"),
+            &[],
+        ),
+        (
+            "type-error",
+            include_str!("fixtures/typescript_oracle/tuple-literal-property-type-error/main.ts"),
+            &[(4, "TS2322")],
+        ),
+        (
+            "short-error",
+            include_str!("fixtures/typescript_oracle/tuple-literal-property-short-error/main.ts"),
+            &[(4, "TS2322")],
+        ),
+        (
+            "long-error",
+            include_str!("fixtures/typescript_oracle/tuple-literal-property-long-error/main.ts"),
+            &[(4, "TS2322")],
+        ),
+        (
+            "nested-error",
+            include_str!("fixtures/typescript_oracle/tuple-literal-property-nested-error/main.ts"),
+            &[(4, "TS2322")],
+        ),
+        (
+            "argument-error",
+            include_str!(
+                "fixtures/typescript_oracle/tuple-literal-property-argument-error/main.ts"
+            ),
+            &[(5, "TS2322")],
+        ),
+        (
+            "array-error",
+            include_str!("fixtures/typescript_oracle/tuple-literal-property-array-error/main.ts"),
+            &[(4, "TS2322")],
+        ),
+        (
+            "return-error",
+            include_str!("fixtures/typescript_oracle/tuple-literal-property-return-error/main.ts"),
+            &[(4, "TS2322")],
+        ),
+        (
+            "missing-error",
+            include_str!("fixtures/typescript_oracle/tuple-literal-property-missing-error/main.ts"),
+            &[(4, "TS2741")],
+        ),
+    ];
+    assert_pinned_no_emit_cases(&tsc, &cases);
+}
+
+#[test]
+#[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
+fn pinned_tuple_literal_assignments_match_typescript_without_emit() {
+    let tsc = pinned_bluetsc_oracle();
+    assert_pinned_version(&tsc);
+    let cases: [NoEmitCase; 7] = [
+        (
+            "valid",
+            include_str!("fixtures/typescript_oracle/tuple-literal-assignment-valid/main.ts"),
+            &[],
+        ),
+        (
+            "type-error",
+            include_str!("fixtures/typescript_oracle/tuple-literal-assignment-type-error/main.ts"),
+            &[(5, "TS2322")],
+        ),
+        (
+            "short-error",
+            include_str!("fixtures/typescript_oracle/tuple-literal-assignment-short-error/main.ts"),
+            &[(5, "TS2322")],
+        ),
+        (
+            "record-error",
+            include_str!(
+                "fixtures/typescript_oracle/tuple-literal-assignment-record-error/main.ts"
+            ),
+            &[(5, "TS2322")],
+        ),
+        (
+            "member-error",
+            include_str!(
+                "fixtures/typescript_oracle/tuple-literal-assignment-member-error/main.ts"
+            ),
+            &[(5, "TS2322")],
+        ),
+        (
+            "element-error",
+            include_str!(
+                "fixtures/typescript_oracle/tuple-literal-assignment-element-error/main.ts"
+            ),
+            &[(5, "TS2322")],
+        ),
+        (
+            "union-error",
+            include_str!("fixtures/typescript_oracle/tuple-literal-assignment-union-error/main.ts"),
+            &[(5, "TS2322")],
+        ),
+    ];
+    assert_pinned_no_emit_cases(&tsc, &cases);
+}
+
+#[test]
+#[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
 fn pinned_typed_arrow_functions_match_typescript_without_emit() {
     let tsc = pinned_bluetsc_oracle();
     assert_pinned_version(&tsc);

@@ -65,6 +65,9 @@ pub(super) struct ModuleChecker<'a> {
     /// Local names of namespaces imported with `import type`, which have no
     /// value to read.
     type_only_namespaces: BTreeSet<String>,
+    /// The variables in scope that were declared with a type annotation, whose
+    /// type an assignment is checked against.
+    annotated_names: BTreeSet<String>,
     pub(super) diagnostics: Vec<Diagnostic>,
     pub(super) symbols: Vec<Symbol>,
     types: BTreeMap<String, TypeDefinition>,

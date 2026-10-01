@@ -5647,6 +5647,124 @@ fn call_arguments_use_the_parameter_tuple_as_literal_context() {
 }
 
 #[test]
+fn object_and_array_literals_take_their_shape_from_the_record_or_array_context() {
+    let compile_source = |source: &str| {
+        compile(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+            CompilerOptions::default(),
+        )
+    };
+    let accepted = compile_source(include_str!(
+        "fixtures/typescript_oracle/tuple-literal-property-valid/main.ts"
+    ));
+    assert!(
+        accepted.diagnostics.is_empty(),
+        "{:#?}",
+        accepted.diagnostics
+    );
+    assert!(accepted.output.is_some());
+    for (source, code) in [
+        (
+            include_str!("fixtures/typescript_oracle/tuple-literal-property-type-error/main.ts"),
+            DiagnosticCode::TypeMismatch,
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/tuple-literal-property-short-error/main.ts"),
+            DiagnosticCode::TypeMismatch,
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/tuple-literal-property-long-error/main.ts"),
+            DiagnosticCode::TypeMismatch,
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/tuple-literal-property-nested-error/main.ts"),
+            DiagnosticCode::TypeMismatch,
+        ),
+        (
+            include_str!(
+                "fixtures/typescript_oracle/tuple-literal-property-argument-error/main.ts"
+            ),
+            DiagnosticCode::TypeMismatch,
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/tuple-literal-property-array-error/main.ts"),
+            DiagnosticCode::TypeMismatch,
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/tuple-literal-property-return-error/main.ts"),
+            DiagnosticCode::ReturnTypeMismatch,
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/tuple-literal-property-missing-error/main.ts"),
+            DiagnosticCode::TypeMismatch,
+        ),
+    ] {
+        let rejected = compile_source(source);
+        assert!(rejected.output.is_none());
+        assert!(
+            rejected
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == code && diagnostic.span.module == ENTRY),
+            "{source}: {:#?}",
+            rejected.diagnostics
+        );
+    }
+}
+
+#[test]
+fn an_assignment_to_a_typed_variable_or_element_is_read_against_its_type() {
+    let compile_source = |source: &str| {
+        compile(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+            CompilerOptions::default(),
+        )
+    };
+    let accepted = compile_source(include_str!(
+        "fixtures/typescript_oracle/tuple-literal-assignment-valid/main.ts"
+    ));
+    assert!(
+        accepted.diagnostics.is_empty(),
+        "{:#?}",
+        accepted.diagnostics
+    );
+    for source in [
+        include_str!("fixtures/typescript_oracle/tuple-literal-assignment-type-error/main.ts"),
+        include_str!("fixtures/typescript_oracle/tuple-literal-assignment-short-error/main.ts"),
+        include_str!("fixtures/typescript_oracle/tuple-literal-assignment-record-error/main.ts"),
+        include_str!("fixtures/typescript_oracle/tuple-literal-assignment-member-error/main.ts"),
+        include_str!("fixtures/typescript_oracle/tuple-literal-assignment-element-error/main.ts"),
+        include_str!("fixtures/typescript_oracle/tuple-literal-assignment-union-error/main.ts"),
+    ] {
+        let rejected = compile_source(source);
+        assert!(rejected.output.is_none());
+        assert!(
+            rejected.diagnostics.iter().any(|diagnostic| {
+                diagnostic.code == DiagnosticCode::TypeMismatch && diagnostic.span.module == ENTRY
+            }),
+            "{source}: {:#?}",
+            rejected.diagnostics
+        );
+    }
+    // Only a variable declared with a type is checked, and a local that shadows
+    // it is judged by its own declaration.
+    for source in [
+        "let n = 1; n = 'a'; export const a = n;",
+        "let p: [number, string] = [1, 'a']; function f(p) { p = [1]; return p; } export const a = f(p);",
+        "let p: [number, string] = [1, 'a']; function f() { let p = 0; p = 5; return p; } export const a = f();",
+    ] {
+        let result = compile_source(source);
+        assert!(
+            result.diagnostics.is_empty(),
+            "{source}: {:#?}",
+            result.diagnostics
+        );
+    }
+}
+
+#[test]
 fn function_annotations_that_survive_erasure_are_refused_before_output() {
     // Every form below is valid TypeScript whose annotation the parser does
     // not structurally erase. Emitting it would produce invalid JavaScript, so

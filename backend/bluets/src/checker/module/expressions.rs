@@ -351,7 +351,9 @@ impl<'a> ModuleChecker<'a> {
                 }
             }
             let contextual = (positions_known
-                && argument.first().is_some_and(|token| token.is("[")))
+                && argument
+                    .first()
+                    .is_some_and(|token| token.is("[") || token.is("{")))
             .then(|| self.contextual_argument_type(argument, scope, actuals.len(), signatures))
             .flatten();
             match contextual {

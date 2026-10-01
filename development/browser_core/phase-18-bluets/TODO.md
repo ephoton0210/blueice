@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: J.3.6.2.** H and I are complete. The requested class, enum,
+**Current leaf: J.3.7.7.3.3.** H and I are complete. The requested class, enum,
 decorator, namespace, JSX, CommonJS, and package-resolution expansion has
 passed J.1/J.2 planning; implementation and pinned-`tsc` parity remain open.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
@@ -2557,7 +2557,7 @@ done to the page-runs-and-debugs goal at the top of this file.
       from the output and printed beside the class in a declaration file; one
       with type parameters or an `extends` clause is still refused. 8 fixtures
       agree with pinned tsc.
-  - [ ] **J.3.6** Extend tuple-literal context to the remaining positions,
+  - [x] **J.3.6** Extend tuple-literal context to the remaining positions,
     each against pinned TypeScript. Where context is missing, a valid tuple
     literal infers a widened array and is rejected.
     - [x] **J.3.6.1** Call arguments (`take([1, "a"])`) for function, overload,
@@ -2569,9 +2569,27 @@ done to the page-runs-and-debugs goal at the top of this file.
       TypeScript 5.9.3 `--noEmit` cases agree on acceptance and
       TS2322/TS2345/TS2769 lines. BlueTS and bridge crate tests and
       workspace Clippy pass; the full workspace suite was not repeated.
-    - [ ] **J.3.6.2** Object-literal properties (`{ p: [1, "a"] }`) against a
-      record type, including nested records and tuples.
-    - [ ] **J.3.6.3** Assignments (`p = [1, "a"]`) against the target type.
+    - [x] **J.3.6.2** Object-literal properties (`{ p: [1, "a"] }`) against a
+      record type, including nested records and tuples. An object literal read
+      where a record type is expected reads each `name: value` property against
+      the property of that name, a bracketed literal where an array type is
+      expected reads each element against the element type (an array of
+      tuples), and a union is tried member by member, the first the literal fits
+      being used; call arguments, variable initializers, returns and member
+      assignments all go through this one context function. A property with no
+      counterpart in the context keeps plain inference, so context only turns a
+      rejection into an acceptance. Nine pinned TypeScript 5.9.3 `--noEmit`
+      cases agree on acceptance and TS2322/TS2741 lines.
+    - [x] **J.3.6.3** Assignments (`p = [1, "a"]`) against the target type.
+      Assignment to a variable was not type-checked at all (only to a member
+      was), so `p = [1, 2]` passed. A variable declared with an annotation (a
+      top-level one, or a parameter or local of the function being checked) now
+      has its assignments read against that type, and so does `array[i] = v`
+      for an array or a fixed tuple with a literal index; a variable without an
+      annotation, a rest parameter and a name a local shadows are not checked,
+      since their type is only inferred. Seven pinned TypeScript 5.9.3 cases
+      (variable, record, member, element and union targets) agree on acceptance
+      and TS2322 lines.
   - [x] **J.3.7.0** Refuse TypeScript function annotations that survive
     erasure, so none can reach emitted JavaScript. Found while scoping J.3.7:
     an arrow with a return type, a function expression, an object method,

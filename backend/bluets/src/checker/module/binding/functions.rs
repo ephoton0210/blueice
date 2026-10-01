@@ -23,6 +23,7 @@ impl<'a> ModuleChecker<'a> {
         mut scope: BTreeMap<String, Type>,
     ) {
         let previous_async = self.async_context.replace(function.async_function);
+        let previous_annotated = self.annotated_names.clone();
         let previous_parameters = self.type_parameters.clone();
         let previous_spreads = self.allowed_tuple_spread_parameters.clone();
         self.allowed_tuple_spread_parameters = function
@@ -104,11 +105,21 @@ impl<'a> ModuleChecker<'a> {
                     self.bind_pattern(pattern, &parameter_type, &parameter.span, &mut scope)
                 }
                 None => {
+                    if parameter.annotation.is_some() && !parameter.rest {
+                        self.annotated_names.insert(parameter.name.clone());
+                    } else {
+                        self.annotated_names.remove(&parameter.name);
+                    }
                     scope.insert(parameter.name.clone(), parameter_type);
                 }
             }
         }
         for local in &function.locals {
+            if local.annotation.is_some() {
+                self.annotated_names.insert(local.name.clone());
+            } else {
+                self.annotated_names.remove(&local.name);
+            }
             self.check_variable_in_scope(local, &scope);
             let inferred = local
                 .annotation
@@ -173,6 +184,7 @@ impl<'a> ModuleChecker<'a> {
         self.type_parameters = previous_parameters;
         self.allowed_tuple_spread_parameters = previous_spreads;
         self.async_context = previous_async;
+        self.annotated_names = previous_annotated;
     }
 
     /// Binds the names of a destructured parameter, typing each from the value

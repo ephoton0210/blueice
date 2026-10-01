@@ -32,12 +32,103 @@ impl<'a> ModuleChecker<'a> {
         ) {
             contextual = expanded;
         }
-        if let Type::Tuple(elements) = &contextual {
-            if let Some(literal) = self.infer_contextual_tuple_literal(tokens, scope, elements) {
-                return literal;
+        match &contextual {
+            Type::Tuple(elements) => {
+                if let Some(literal) = self.infer_contextual_tuple_literal(tokens, scope, elements)
+                {
+                    return literal;
+                }
             }
+            Type::Record(fields)
+                if tokens.first().is_some_and(|token| token.is("{"))
+                    && tokens.last().is_some_and(|token| token.is("}")) =>
+            {
+                return self.infer_record_in_context(tokens, scope, Some(fields));
+            }
+            Type::Array(item) => {
+                if let Some(literal) = self.infer_contextual_array_literal(tokens, scope, item) {
+                    return literal;
+                }
+            }
+            Type::Union(options) => {
+                // The first member of the union the literal fits, read against it.
+                for option in options {
+                    let candidate = self.infer_in_context(tokens, scope, option);
+                    let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
+                    if is_assignable(
+                        &candidate,
+                        option,
+                        &self.types,
+                        &mut HashSet::new(),
+                        &mut budget,
+                    ) {
+                        return candidate;
+                    }
+                }
+            }
+            _ => {}
         }
         self.infer_expression(tokens, scope)
+    }
+
+    /// The comma-separated pieces of a bracketed literal, or `None` when the
+    /// tokens are not one.
+    fn literal_elements(tokens: &[Token]) -> Option<Vec<&[Token]>> {
+        if tokens.first().is_none_or(|token| !token.is("["))
+            || tokens.last().is_none_or(|token| !token.is("]"))
+        {
+            return None;
+        }
+        let mut pieces: Vec<&[Token]> = Vec::new();
+        let mut start = 1usize;
+        let mut depth = 0usize;
+        for index in 1..tokens.len() {
+            match tokens[index].text.as_str() {
+                "[" | "(" | "{" => depth += 1,
+                "]" | ")" | "}" if depth > 0 => depth -= 1,
+                "," if depth == 0 => {
+                    pieces.push(&tokens[start..index]);
+                    start = index + 1;
+                }
+                _ => {}
+            }
+        }
+        if start + 1 < tokens.len() {
+            pieces.push(&tokens[start..tokens.len() - 1]);
+        }
+        Some(pieces)
+    }
+
+    /// A bracketed literal against an array context: each element is read
+    /// against the element type, so `[[1, "a"]]` is an array of tuples where the
+    /// context says so. `None` for an empty literal, a spread, or anything that
+    /// is not a plain literal.
+    fn infer_contextual_array_literal(
+        &self,
+        tokens: &[Token],
+        scope: &BTreeMap<String, Type>,
+        item: &Type,
+    ) -> Option<Type> {
+        let pieces = Self::literal_elements(tokens)?;
+        if pieces.is_empty()
+            || pieces
+                .iter()
+                .any(|piece| piece.is_empty() || piece.first().is_some_and(|token| token.is("...")))
+        {
+            return None;
+        }
+        let mut types: Vec<Type> = Vec::new();
+        for piece in pieces {
+            let element = self.infer_in_context(piece, scope, item);
+            if !types.contains(&element) {
+                types.push(element);
+            }
+        }
+        Some(Type::Array(Box::new(if types.len() == 1 {
+            types.remove(0)
+        } else {
+            Type::Union(types)
+        })))
     }
 
     /// A bracketed literal as a tuple: each element is inferred against the

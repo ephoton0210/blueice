@@ -9,6 +9,18 @@ use crate::parser::NestedFunctionKind;
 
 impl<'a> ModuleChecker<'a> {
     pub(super) fn infer_record(&self, tokens: &[Token], scope: &BTreeMap<String, Type>) -> Type {
+        self.infer_record_in_context(tokens, scope, None)
+    }
+
+    /// An object literal whose property values are read against the property
+    /// types of `expected`, where it has one of that name, so a bracketed literal
+    /// there can be a tuple and a nested literal a record.
+    pub(in crate::checker::module) fn infer_record_in_context(
+        &self,
+        tokens: &[Token],
+        scope: &BTreeMap<String, Type>,
+        expected: Option<&[TypeField]>,
+    ) -> Type {
         let mut fields = Vec::new();
         let mut index = 1usize;
         while index < tokens.len() && !tokens[index].is("}") {
@@ -73,8 +85,15 @@ impl<'a> ModuleChecker<'a> {
                 let Some(value_end) = record_member_end(tokens, value_start) else {
                     return Type::Unknown;
                 };
+                let value_tokens = &tokens[value_start..value_end];
+                let context = expected
+                    .and_then(|fields| fields.iter().find(|field| field.name == name))
+                    .map(|field| &field.value);
                 (
-                    self.infer_expression(&tokens[value_start..value_end], scope),
+                    match context {
+                        Some(context) => self.infer_in_context(value_tokens, scope, context),
+                        None => self.infer_expression(value_tokens, scope),
+                    },
                     value_end,
                 )
             } else if tokens
