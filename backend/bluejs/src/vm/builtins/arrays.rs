@@ -108,6 +108,11 @@ impl Vm {
         let live = "the receiver and its prototypes are live";
         let length = primitive::number(&self.heap.get(object, "length").expect(live))
             .expect("an Array's length is a Number");
+        // Push stores every argument before setting the final length. The
+        // per-element length updates would throw too early on overflow.
+        if length + count as f64 > f64::from(u32::MAX) {
+            return Ok(false);
+        }
         let mut current = self.heap.prototype(object).expect(live);
         while let Some(prototype) = current {
             if self.heap.proxy(prototype).expect(live).is_some()
@@ -139,9 +144,9 @@ impl Vm {
     }
 
     /// `Array.prototype.push` for a receiver whose `length` is not a plain
-    /// Number (an array-like, a proxy, a TypedArray): ToLength(Get(O,
-    /// "length")), one strict Set per argument, then a strict Set of the new
-    /// `length`. Genuine arrays never get here.
+    /// Number (an array-like, a proxy, a TypedArray), or an array whose stores
+    /// cannot take the direct path: ToLength(Get(O, "length")), one strict Set
+    /// per argument, then a strict Set of the new `length`.
     pub(in super::super) fn array_push_generic(
         &mut self,
         object: ObjectId,

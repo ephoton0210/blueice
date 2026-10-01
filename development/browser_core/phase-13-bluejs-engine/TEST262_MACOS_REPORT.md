@@ -2,26 +2,26 @@
 
 ## Current complete inventory (2026-10-01)
 
-The pinned, unfiltered Test262 snapshot was rerun on macOS 26.6.2 (build 25G83, Apple silicon) with Rust/Cargo 1.98.0 and Python 3.14.6, using source commit `741500476`. The BlueJS, ECMA-402, runner, and Cargo sources had no uncommitted changes. The verified corpus revision is `72faf8ec1445c55149615e8b35187830783aba1a` and includes main, proposals, and staging. The existing reference checkout lacked the runner's verification marker and manifest, so the same pinned archive was fetched and verified in `/tmp/blueice-test262-72faf8ec-20261001`. The complete command was `/tmp/bluejs-conformance-venv/bin/python backend/bluejs/test262/run.py --corpus /tmp/blueice-test262-72faf8ec-20261001 --jobs 8 --output target/test262-macos-20261001 --progress-interval 60`, after `cargo build -p blueice-bluejs --bins --offline`; it completed in 210.817 seconds. The runner verified the pinned corpus marker, manifest, and every file before execution. `analyze.py` reconciled all 53,582 files and 102,926 modes against `results.jsonl` and `summary.json`.
+The pinned, unfiltered Test262 snapshot was rerun on macOS 26.6.2 (build 25G83, Apple silicon) with Rust/Cargo 1.98.0 and Python 3.14.6, using source commit `3d7be209c` plus the local Array.push and revoked-Proxy crash corrections. The exact production changes and source hashes are retained in [source.patch](../../../target/test262-macos-20261001-crash-fix/source.patch) and [source-state.json](../../../target/test262-macos-20261001-crash-fix/source-state.json). The verified corpus revision is `72faf8ec1445c55149615e8b35187830783aba1a` and includes main, proposals, and staging. The verified archive in `/tmp/blueice-test262-72faf8ec-20261001` was reused. The complete command was `/tmp/bluejs-conformance-venv/bin/python backend/bluejs/test262/run.py --corpus /tmp/blueice-test262-72faf8ec-20261001 --jobs 8 --output target/test262-macos-20261001-crash-fix --progress-interval 60`, after `cargo build -p blueice-bluejs --bins --offline`; it completed in 193.718 seconds. The runner verified the pinned corpus marker, manifest, and every file before execution. `analyze.py` reconciled all 53,582 files and 102,926 modes against `results.jsonl` and `summary.json`.
 
-Adapter SHA-256: `a6ba0d705c44eaa92113a9f5d5b6ac074399f6a491c427d80b3861faf36cca5a`. RegExp worker SHA-256: `2784307ef4a60bed00a3080dedc5edc82aed56863974a31bbe44c6696f42b84e`. Runner SHA-256: `fe9356675cbc3cea1092dc4b94206be7098df1b0cf976d0e40a215c1ca5af5bc`. The [checked-in summary](test262-summary.json) contains the complete feature and top-level group counts; the full per-mode evidence is in `target/test262-macos-20261001/results.jsonl`, with the reconciled analysis in `target/test262-macos-20261001-analysis/` and five independent crash reproductions in `target/test262-macos-20261001/crash-diagnostics.json`.
+Adapter SHA-256: `24a861ec8f6c94544e62a674948694bc9669b4171d191e9166472bd2fa629745`. RegExp worker SHA-256: `33e70af589f5fab57df07cdec41020444f4b0f066fc1781cca52f51fdce0ed01`. Runner SHA-256: `fe9356675cbc3cea1092dc4b94206be7098df1b0cf976d0e40a215c1ca5af5bc`. The [checked-in summary](test262-summary.json) contains the complete feature and top-level group counts; the full per-mode evidence is in `target/test262-macos-20261001-crash-fix/results.jsonl`, with the reconciled analysis in `target/test262-macos-20261001-crash-fix-analysis/`. [outcome-diff.json](../../../target/test262-macos-20261001-crash-fix/outcome-diff.json) verifies that exactly the five former crash modes changed from `fail` to `pass`; all other 102,921 modes retain their statuses, expected outcomes, actual kinds and phases, and source hashes. The original independent crash reproductions remain in `target/test262-macos-20261001/crash-diagnostics.json`.
 
-**Dispatched, applicable modes: 102,916 / 102,921 pass (99.995%).** The raw scheduled inventory is **102,916 / 102,926 pass (99.990%)**. There are **5 `fail`, 0 `unsupported`, 0 `timeout`, and 0 `harness_error`** outcomes. Four modes are `excluded` by this host's declared `[[CanBlock]] = true` capability and one pinned fixture is classified `stale_corpus`; these five modes were not dispatched or counted as passes. The runner exits 1 whenever any scheduled mode is not `pass`, so its exit code is 1 for this complete, reconciled run. Compared with the 2026-09-29 report, five previously passing modes now crash: two Array.push modes and three revoked-Proxy `in` modes. Each crash reproduced independently with adapter exit code 101. This is a Test262 progress measurement, not proof of complete ECMAScript conformance. The exact non-pass modes and reasons are listed below.
+**Dispatched, applicable modes: 102,921 / 102,921 pass (100.000%).** The raw scheduled inventory is **102,921 / 102,926 pass (99.995%)**. There are **0 `fail`, 0 `unsupported`, 0 `timeout`, and 0 `harness_error`** outcomes. Four modes are `excluded` by this host's declared `[[CanBlock]] = true` capability and one pinned fixture is classified `stale_corpus`; these five modes were not dispatched or counted as passes. The runner exits 1 whenever any scheduled mode is not `pass`, so its exit code is 1 for this complete, reconciled run. All five crashes identified in the earlier 2026-10-01 run are corrected. The remaining non-pass modes and reasons are listed below.
 
 Test262 has no official ‘Core’ classification. This report defines ECMA-262 Core as `language/` plus `built-ins/`, complete ECMA-262 Test262 scope as Core plus `annexB/` and `staging/`, and ECMA-402 as `intl402/`. `harness/` appears only in the full inventory total. All tables below are derived from this one unfiltered run; pass rates use every scheduled mode in each row as the denominator.
 
 | Scope | Scheduled | Pass | Fail | Unsupported | Excluded | Stale corpus | Timeout | Harness error | Raw pass rate |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| ECMA-262 Core (`language/` + `built-ins/`) | 91,820 | 91,811 | 5 | 0 | 4 | 0 | 0 | 0 | 99.990% |
-| Complete ECMA-262 Test262 scope (Core + `annexB/` + `staging/`) | 95,980 | 95,970 | 5 | 0 | 4 | 1 | 0 | 0 | 99.990% |
+| ECMA-262 Core (`language/` + `built-ins/`) | 91,820 | 91,816 | 0 | 0 | 4 | 0 | 0 | 0 | 99.996% |
+| Complete ECMA-262 Test262 scope (Core + `annexB/` + `staging/`) | 95,980 | 95,975 | 0 | 0 | 4 | 1 | 0 | 0 | 99.995% |
 | ECMA-402 (`intl402/`) | 6,714 | 6,714 | 0 | 0 | 0 | 0 | 0 | 0 | 100.000% |
 | Test262 harness support (`harness/`) | 232 | 232 | 0 | 0 | 0 | 0 | 0 | 0 | 100.000% |
-| **All Test262 runner modes** | 102,926 | 102,916 | 5 | 0 | 4 | 1 | 0 | 0 | 99.990% |
+| **All Test262 runner modes** | 102,926 | 102,921 | 0 | 0 | 4 | 1 | 0 | 0 | 99.995% |
 
 | Top-level Test262 group | Scheduled | Pass | Fail | Unsupported | Excluded | Stale corpus | Timeout | Harness error | Raw pass rate |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | `language/` | 44,497 | 44,497 | 0 | 0 | 0 | 0 | 0 | 0 | 100.000% |
-| `built-ins/` | 47,323 | 47,314 | 5 | 0 | 4 | 0 | 0 | 0 | 99.981% |
+| `built-ins/` | 47,323 | 47,319 | 0 | 0 | 4 | 0 | 0 | 0 | 99.992% |
 | `annexB/` | 1,377 | 1,376 | 0 | 0 | 0 | 1 | 0 | 0 | 99.927% |
 | `staging/` | 2,783 | 2,783 | 0 | 0 | 0 | 0 | 0 | 0 | 100.000% |
 | `intl402/` | 6,714 | 6,714 | 0 | 0 | 0 | 0 | 0 | 0 | 100.000% |
@@ -31,12 +31,19 @@ Test262 has no official ‘Core’ classification. This report defines ECMA-262 
 
 | Path | Modes | Status | Reason |
 | --- | ---: | --- | --- |
-| `built-ins/Array/prototype/push/S15.4.4.7_A3.js` | 2 | `fail` | Adapter panic at `vm/builtins/arguments.rs:464`: the array-length write raises `RangeError("invalid array length")`, but an `expect` treats it as impossible instead of propagating a catchable JavaScript exception. |
-| `built-ins/Proxy/has/null-handler.js` | 2 | `fail` | Adapter panic at `vm/operations.rs:504`: a revoked Proxy produces `RevokedProxy`, but an `expect` on the right operand of `in` aborts instead of propagating the required JavaScript TypeError. |
-| `built-ins/Proxy/has/null-handler-using-with.js` | 1 | `fail` | The same revoked-Proxy `in` panic at `vm/operations.rs:504`; the fixture requests sloppy mode only. |
 | `annexB/language/function-code/block-decl-func-skip-arguments.js` | 1 | `stale_corpus` | The runner classifies the pinned fixture as contradicting the current Annex B `FunctionDeclarationInstantiation` behavior; the upstream correction is tracked in Test262 issue #5113 / PR #5112. |
 | `built-ins/Atomics/wait/cannot-suspend-throws.js` | 2 | `excluded` | Fixture requires `CanBlockIsFalse`; this host declares `[[CanBlock]] = true`. |
 | `built-ins/Atomics/wait/bigint/cannot-suspend-throws.js` | 2 | `excluded` | Fixture requires `CanBlockIsFalse`; this host declares `[[CanBlock]] = true`. |
+
+### Corrected crash regressions (2026-10-01)
+
+| Path | Modes | Current status | Correction |
+| --- | ---: | --- | --- |
+| `built-ins/Array/prototype/push/S15.4.4.7_A3.js` | 2 | `pass` | Length overflow propagates a catchable RangeError. Overflowing push uses the generic algorithm, preserving all argument writes before the final length Set. |
+| `built-ins/Proxy/has/null-handler.js` | 2 | `pass` | The revoked Proxy error propagates as a catchable TypeError from `in`. |
+| `built-ins/Proxy/has/null-handler-using-with.js` | 1 | `pass` | The same TypeError propagation protects `with` environment lookups. |
+
+Three new public-interface Rust regression tests reproduced the original panics before the corrections. All 119 tests across `arrays`, `conformance_edges`, `array_generic_methods`, `array_mutator_edges`, `proxy_trap_gc_rooting`, and `object_to_string_proxy` now pass. The regressions cover strict/sloppy execution, empty push at the maximum length, all writes before overflowing push throws (also with a one-object nursery), revocation during property-key coercion, and sloppy `with` lookup. `cargo clippy -p blueice-bluejs --all-targets --offline -- -D warnings` passes. Formatting checks pass for all changed Rust files. `cargo fmt --all -- --check` still reports existing formatting differences elsewhere in the workspace.
 
 ## Selected results (same complete run)
 
@@ -44,7 +51,7 @@ These are subsets of the complete JSONL, grouped by exact path prefix. `built-in
 
 | Selection | Scheduled | Pass | Fail | Unsupported | Excluded | Stale corpus | Timeout | Harness error | Raw pass rate |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| `built-ins/Array/` | 6,117 | 6,115 | 2 | 0 | 0 | 0 | 0 | 0 | 99.967% |
+| `built-ins/Array/` | 6,117 | 6,117 | 0 | 0 | 0 | 0 | 0 | 0 | 100.000% |
 | `built-ins/TypedArray/` + `built-ins/TypedArrayConstructors/` | 4,322 | 4,322 | 0 | 0 | 0 | 0 | 0 | 0 | 100.000% |
 | `built-ins/ArrayBuffer/` | 442 | 442 | 0 | 0 | 0 | 0 | 0 | 0 | 100.000% |
 | `built-ins/SharedArrayBuffer/` | 208 | 208 | 0 | 0 | 0 | 0 | 0 | 0 | 100.000% |
@@ -103,7 +110,7 @@ These are subsets of the complete JSONL, grouped by exact path prefix. `built-in
 
 ## Historical complete inventory (2026-09-21)
 
-The earlier macOS 26.6.2 run at `eaeb5c1` recorded 99,899 pass, 3,025 fail, and 2 timeout out of 102,926 modes (97.059%). Its three-platform comparison belongs to that earlier source revision. The current 2026-10-01 inventory above replaces it as the macOS Test262 status. The complete 2026-09-25 run at `e9c15268` had the same 102,921 pass, 1 stale-corpus, and 4 excluded outcomes. Exact path/mode/status/source-hash comparisons found zero changes across all 102,926 modes between that run and the first 2026-09-28 run, between the first and preceding final 2026-09-28 runs, between that final and complete73, between complete73 and complete74, between complete74 and complete75, and between complete75 and complete76. The 2026-09-29 rerun at `dee6e8718` also matched the 2026-09-28 batch5 run in every status, expected outcome, actual kind, actual phase, and source hash, recording 102,921 pass, 1 stale-corpus, and 4 excluded outcomes. The 2026-10-01 rerun records the five failures listed above.
+The earlier macOS 26.6.2 run at `eaeb5c1` recorded 99,899 pass, 3,025 fail, and 2 timeout out of 102,926 modes (97.059%). Its three-platform comparison belongs to that earlier source revision. The current 2026-10-01 inventory above replaces it as the macOS Test262 status. The complete 2026-09-25 run at `e9c15268` had the same 102,921 pass, 1 stale-corpus, and 4 excluded outcomes. Exact path/mode/status/source-hash comparisons found zero changes across all 102,926 modes between that run and the first 2026-09-28 run, between the first and preceding final 2026-09-28 runs, between that final and complete73, between complete73 and complete74, between complete74 and complete75, and between complete75 and complete76. The 2026-09-29 rerun at `dee6e8718` also matched the 2026-09-28 batch5 run in every status, expected outcome, actual kind, actual phase, and source hash, recording 102,921 pass, 1 stale-corpus, and 4 excluded outcomes. The pre-fix 2026-10-01 rerun at `741500476` recorded five crash failures; the current crash-fix rerun restores those five modes to pass.
 
 ## Historical verification on this platform (2026-09-21 source revision)
 
@@ -128,7 +135,7 @@ Line coverage is a different measure from a Test262 pass rate and the two must n
 
 This is a separate BlueJS coverage measurement at source commit `741500476` on Darwin 26.6.2 (`arm64`), rustc 1.98.0 (88d9e12ae 2026-08-18), `cargo-llvm-cov 0.9.1`, and Homebrew LLVM 22.1.8 via `LLVM_COV`/`LLVM_PROFDATA`. The complete default BlueJS Rust suite recorded **3,736 passed, 0 failed, 4 ignored**. The opt-in Node oracle was not included, and workspace coverage was not remeasured at this revision.
 
-The full pinned Test262 inventory was then run with the instrumented adapter: 102,916 `pass`, 5 `fail`, 4 `excluded`, 1 `stale_corpus`, 0 `unsupported`, 0 `timeout`, 0 `harness_error`, out of 102,926 scheduled modes, in 221.129 seconds. All 102,926 per-mode statuses, expected outcomes, source hashes, and actual outcome kinds and phases match the ordinary run above. Its exit code is 1 because the non-pass outcomes remain visible. This coverage measurement is separate from the ordinary Test262 pass rate and historical verification above.
+The full pinned Test262 inventory was then run with the instrumented adapter: 102,916 `pass`, 5 `fail`, 4 `excluded`, 1 `stale_corpus`, 0 `unsupported`, 0 `timeout`, 0 `harness_error`, out of 102,926 scheduled modes, in 221.129 seconds. All 102,926 per-mode statuses, expected outcomes, source hashes, and actual outcome kinds and phases match the pre-fix ordinary run at `741500476`, retained in `target/test262-macos-20261001/`. This coverage measurement predates the crash corrections. Its exit code is 1 because the non-pass outcomes remain visible. This coverage measurement is separate from the ordinary Test262 pass rate and historical verification above.
 
 The measurement cleared prior LLVM execution profiles, reused instrumented Cargo build artifacts, and released raw profiles and incremental compilation caches afterward. The final LLVM export uses only the 327 executables actually run by this suite and the instrumented inventory, identified from the Cargo transcript and adapter/RegExp-worker paths in [objects.json](../../../target/test262-macos-20261001-coverage/objects.json). Executables that were not part of this run are excluded. The final scope is `backend/bluejs/src/`, with test source files excluded as in the earlier table. This also removes the inlined Rust standard-library source that Rust 1.98 adds to Cargo's default export. The two newly listed debugger test files were audited as test sources, and LLVM text's `P`/`E` counter suffixes are accepted when computing the source-location union. Per-file LLVM counters are preserved; scoped totals are their sums.
 
@@ -343,8 +350,8 @@ python3.14 -m venv /tmp/bluejs-conformance-venv
 /tmp/bluejs-conformance-venv/bin/pip install -r backend/bluejs/test262/requirements.txt
 cargo build -p blueice-bluejs --bins --offline
 /tmp/bluejs-conformance-venv/bin/python -m unittest discover -s backend/bluejs/test262 -v
-/tmp/bluejs-conformance-venv/bin/python backend/bluejs/test262/run.py --corpus /tmp/blueice-test262-72faf8ec-20261001 --jobs 8 --output target/test262-macos-20261001 --progress-interval 60
-/tmp/bluejs-conformance-venv/bin/python backend/bluejs/test262/analyze.py --run target/test262-macos-20261001 --corpus /tmp/blueice-test262-72faf8ec-20261001 --output target/test262-macos-20261001-analysis
+/tmp/bluejs-conformance-venv/bin/python backend/bluejs/test262/run.py --corpus /tmp/blueice-test262-72faf8ec-20261001 --jobs 8 --output target/test262-macos-20261001-crash-fix --progress-interval 60
+/tmp/bluejs-conformance-venv/bin/python backend/bluejs/test262/analyze.py --run target/test262-macos-20261001-crash-fix --corpus /tmp/blueice-test262-72faf8ec-20261001 --output target/test262-macos-20261001-crash-fix-analysis
 ```
 
-The runner validates the pinned corpus marker, manifest hash, and every corpus file before execution. It returns 1 for this run because the 5 `fail`, 1 `stale_corpus`, and 4 `excluded` modes remain non-pass statuses; inspect `summary.json` and use `analyze.py` to reconcile all records. Keep the host otherwise idle during this inventory because ordinary cases have a two-second wall deadline.
+The runner validates the pinned corpus marker, manifest hash, and every corpus file before execution. It returns 1 for this run because the 1 `stale_corpus` and 4 `excluded` modes remain non-pass statuses; inspect `summary.json` and use `analyze.py` to reconcile all records. Keep the host otherwise idle during this inventory because ordinary cases have a two-second wall deadline.

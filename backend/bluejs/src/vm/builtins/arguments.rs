@@ -458,10 +458,8 @@ impl Vm {
             if kind == 0 {
                 self.with_roots(|heap| heap.set(id, (length as u32).to_string(), value.clone()))?;
             }
-            // Replacing an array's Number length with another Number needs no
-            // new room, and the array is a fresh, extensible one.
-            self.with_roots(|heap| heap.set(id, "length", Value::Number(length + 1.0)))
-                .expect("a fresh array's length accepts the next Number");
+            // Even an extensible array rejects a length greater than 2^32-1.
+            self.with_roots(|heap| heap.set(id, "length", Value::Number(length + 1.0)))?;
         }
         Ok(())
     }

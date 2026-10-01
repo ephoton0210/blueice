@@ -498,12 +498,7 @@ impl Vm {
             ));
         };
         let key = self.coerce_property_key(key)?;
-        if self
-            .heap
-            .proxy(*object)
-            .expect("the right operand of `in` is a live object")
-            .is_some()
-        {
+        if self.heap.proxy(*object)?.is_some() {
             return self.proxy_has(*object, &key);
         }
         self.has_property(*object, &key)

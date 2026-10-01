@@ -625,6 +625,28 @@ fn proxy_has_trap_controls_with_environment_lookup() {
 }
 
 #[test]
+fn revoked_proxy_in_throws_a_catchable_type_error() {
+    for directive in ["", "'use strict';"] {
+        for body in [
+            "let p=Proxy.revocable({},{});p.revoke();let caught=false;try{'attr' in p.proxy}catch(e){caught=e instanceof TypeError}caught",
+            // ToPropertyKey runs before HasProperty, and may itself revoke
+            // the receiver. Its side effect must survive the TypeError.
+            "let p=Proxy.revocable({},{});let calls=0;let key={[Symbol.toPrimitive](){calls++;p.revoke();return 'attr'}};let caught=false;try{key in p.proxy}catch(e){caught=e instanceof TypeError}caught&&calls===1",
+        ] {
+            assert_eq!(evaluate(&format!("{directive}{body}")), Value::Bool(true));
+        }
+    }
+}
+
+#[test]
+fn revoked_proxy_with_lookup_throws_a_catchable_type_error() {
+    assert_eq!(
+        evaluate("let p=Proxy.revocable({},{});p.revoke();let caught=false;try{with(p.proxy){attr}}catch(e){caught=e instanceof TypeError}caught"),
+        Value::Bool(true)
+    );
+}
+
+#[test]
 fn abstract_equality_and_in_follow_coercion_and_prototype_rules() {
     for source in [
         "null==undefined && undefined==null && null!=0",

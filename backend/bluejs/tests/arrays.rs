@@ -758,6 +758,30 @@ fn array_push_on_a_non_array_receiver_follows_the_generic_algorithm() {
 }
 
 #[test]
+fn array_push_length_overflow_is_catchable_and_preserves_written_elements() {
+    for directive in ["", "'use strict';"] {
+        for body in [
+            // No arguments can leave the maximum valid array length unchanged.
+            "let a=[];a.length=4294967295;a.push()===4294967295&&a.length===4294967295",
+            // The non-index property is stored before the final length Set fails.
+            "let a=[];a.length=4294967295;let caught=false;try{a.push('x')}catch(e){caught=e instanceof RangeError}caught&&a[4294967295]==='x'&&a.length===4294967295",
+            // All arguments must be stored before that final Set, including
+            // properties beyond the largest array index.
+            "let a=[];a.length=4294967294;let caught=false;try{a.push('x','y','z')}catch(e){caught=e instanceof RangeError}caught&&a[4294967294]==='x'&&a[4294967295]==='y'&&a[4294967296]==='z'&&a.length===4294967295",
+        ] {
+            let source = format!("{directive}{body}");
+            for nursery in [VmConfig::default().heap.nursery_capacity, 1] {
+                assert_eq!(
+                    evaluate_with_nursery(&source, nursery),
+                    Ok(Value::Bool(true)),
+                    "{source}, nursery={nursery}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn array_push_on_a_typed_array_throws_a_type_error_instead_of_crashing() {
     assert_all_true(&[
         // `length` is a getter-only accessor on %TypedArray%.prototype, so the
