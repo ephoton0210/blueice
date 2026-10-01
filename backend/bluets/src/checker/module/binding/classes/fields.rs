@@ -140,7 +140,10 @@ impl ModuleChecker<'_> {
                     declared: false,
                     span: field.span.clone(),
                 };
+                // A field initializer runs in no function: `await` is not valid in it.
+                let previous_async = self.async_context.replace(false);
                 self.check_variable_in_scope(&variable, &scope);
+                self.async_context = previous_async;
             }
         }
         self.check_definite_assignment(class, &fields);

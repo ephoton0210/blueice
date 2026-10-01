@@ -1626,3 +1626,25 @@ fn direct_routes_refuse_what_a_namespace_lowering_cannot_do_safely() {
         );
     }
 }
+
+#[test]
+fn direct_page_async_functions_are_async_and_return_promises() {
+    // An async function returns a promise, so `typeof` its result is "object";
+    // it was once lowered as a plain function, whose result is the number.
+    let source = "async function f(): Promise<number> { return 1; } \
+        const p = f(); const t: string = typeof p; t === 'object' ? 1 : 0;";
+    assert_eq!(run_direct_page_script(source), bluejs::Value::Number(1.0));
+}
+
+#[test]
+fn a_top_level_await_in_a_script_is_refused_before_lowering() {
+    let result = compile_direct_script(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(
+            ENTRY,
+            "async function f(): Promise<number> { return 1; } const a: number = await f();",
+        )]),
+        CompilerOptions::default(),
+    );
+    assert!(matches!(result, Err(BridgeError::BlueTs(_))));
+}

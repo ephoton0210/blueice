@@ -59,6 +59,15 @@ const CASES: &[OracleCase] = &[
         expected_diagnostics: &[],
     },
     OracleCase {
+        name: "toplevel-await-runtime",
+        modules: &[(
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/toplevel-await-runtime/main.ts"),
+        )],
+        expected_stdout: Some("start\n2 3 4 11\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
         name: "async-function-runtime",
         modules: &[(
             "memory:///main.ts",
@@ -4129,6 +4138,51 @@ fn pinned_tuple_literal_assignments_match_typescript_without_emit() {
         (
             "union-error",
             include_str!("fixtures/typescript_oracle/tuple-literal-assignment-union-error/main.ts"),
+            &[(5, "TS2322")],
+        ),
+    ];
+    assert_pinned_no_emit_cases(&tsc, &cases);
+}
+
+#[test]
+#[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
+fn pinned_top_level_await_matches_typescript_without_emit() {
+    let tsc = pinned_bluetsc_oracle();
+    assert_pinned_version(&tsc);
+    let cases: [NoEmitCase; 7] = [
+        (
+            "valid",
+            include_str!("fixtures/typescript_oracle/toplevel-await-valid/main.ts"),
+            &[],
+        ),
+        (
+            "script-error",
+            include_str!("fixtures/typescript_oracle/toplevel-await-script-error/main.ts"),
+            &[(5, "TS1375")],
+        ),
+        (
+            "function-error",
+            include_str!("fixtures/typescript_oracle/toplevel-await-function-error/main.ts"),
+            &[(5, "TS1308")],
+        ),
+        (
+            "arrow-error",
+            include_str!("fixtures/typescript_oracle/toplevel-await-arrow-error/main.ts"),
+            &[(5, "TS1308")],
+        ),
+        (
+            "namespace-error",
+            include_str!("fixtures/typescript_oracle/toplevel-await-namespace-error/main.ts"),
+            &[(5, "TS1308")],
+        ),
+        (
+            "field-error",
+            include_str!("fixtures/typescript_oracle/toplevel-await-field-error/main.ts"),
+            &[(5, "TS1308")],
+        ),
+        (
+            "type-error",
+            include_str!("fixtures/typescript_oracle/toplevel-await-type-error/main.ts"),
             &[(5, "TS2322")],
         ),
     ];

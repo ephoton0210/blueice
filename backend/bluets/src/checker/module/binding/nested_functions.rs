@@ -78,10 +78,15 @@ impl ModuleChecker<'_> {
         };
         let at = SourceSpan::new(&span.module, token.start, token.end);
         match self.async_context {
-            None => self.type_error(
+            // The top level of a module may await; the top level of a script may
+            // not, nor may a namespace's body, which is a function that is not async.
+            None if self.namespace_path.is_empty() && self.module_has_module_syntax() => {}
+            None if self.namespace_path.is_empty() => self.type_error(
                 &at,
-                "top-level `await` is not supported yet".to_string(),
-                DiagnosticCode::UnsupportedSyntax,
+                "`await` at the top level of a file requires a module: add an import or an \
+                 export (`export {}`)"
+                    .to_string(),
+                DiagnosticCode::TypeMismatch,
             ),
             _ => self.type_error(
                 &at,
@@ -89,6 +94,28 @@ impl ModuleChecker<'_> {
                 DiagnosticCode::TypeMismatch,
             ),
         }
+    }
+
+    /// Whether the module has an `import` or `export`, which is what makes a file
+    /// a module and lets its top level await.
+    fn module_has_module_syntax(&self) -> bool {
+        self.module
+            .declarations
+            .iter()
+            .any(|declaration| match declaration {
+                Declaration::Import(_)
+                | Declaration::TypeExport(_)
+                | Declaration::DefaultExport(_)
+                | Declaration::ValueExport(_) => true,
+                Declaration::Variable(item) => item.exported,
+                Declaration::Function(item) => item.exported,
+                Declaration::Class(item) => item.exported,
+                Declaration::Enum(item) => item.exported,
+                Declaration::Interface(item) => item.exported,
+                Declaration::TypeAlias(item) => item.exported,
+                Declaration::Namespace(item) => item.exported,
+                Declaration::Raw(_) => false,
+            })
     }
 
     fn check_nested_function(&mut self, arrow: &NestedFunction, scope: &BTreeMap<String, Type>) {

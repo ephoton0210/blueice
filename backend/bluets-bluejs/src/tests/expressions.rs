@@ -976,3 +976,25 @@ fn a_direct_module_graph_exports_and_imports_namespaces_like_node() {
         bluejs::Value::Number(12.0)
     );
 }
+
+#[test]
+fn a_direct_module_graph_awaits_at_the_top_level_and_in_async_functions_like_node() {
+    // Node runs the same module: a is 2, later(2) is load(2) + 1 = 5, and 2 + 5 is 7.
+    let graph = compile_direct_module_graph(
+        GRAPH_ENTRY,
+        &MapLoader::from([ModuleSource::new(
+            GRAPH_ENTRY,
+            "async function load(n: number): Promise<number> { return n * 2; } \
+             async function later(n: number): Promise<number> { const m: number = await load(n); return m + 1; } \
+             export const a: number = await load(1); const b: number = await later(a); a + b;",
+        )]),
+        CompilerOptions::default(),
+    )
+    .unwrap();
+    assert_eq!(
+        bluejs::Vm::default()
+            .execute_module_graph(&graph.entry, &graph.bytecode_map())
+            .unwrap(),
+        bluejs::Value::Number(7.0)
+    );
+}

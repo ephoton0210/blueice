@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: J.3.7.7.3.3.** H and I are complete. The requested class, enum,
+**Current leaf: J.3.7.7.4.** H and I are complete. The requested class, enum,
 decorator, namespace, JSX, CommonJS, and package-resolution expansion has
 passed J.1/J.2 planning; implementation and pinned-`tsc` parity remain open.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
@@ -2713,7 +2713,7 @@ done to the page-runs-and-debugs goal at the top of this file.
         agree on acceptance and TS2322/TS2339 lines, and a Node run gives
         identical output for BlueTSC and `tsc`. Class methods bind pattern
         names untyped.
-      - [ ] **J.3.7.7.3** `async` functions and `await`, which need a
+      - [x] **J.3.7.7.3** `async` functions and `await`, which need a
         `Promise` type.
         - [x] **J.3.7.7.3.1** A built-in generic `Promise<T>`, named `async`
           functions and `await`. `Promise<T>` is added to a module's types
@@ -2742,7 +2742,21 @@ done to the page-runs-and-debugs goal at the top of this file.
           known hole. Seven pinned TypeScript 5.9.3 `--noEmit` cases agree on
           acceptance and TS2322/TS2345/TS1064/TS1308 lines, and a Node run
           mixing all five forms gives identical output for BlueTSC and `tsc`.
-        - [ ] **J.3.7.7.3.3** Top-level `await` in a module.
+        - [x] **J.3.7.7.3.3** Top-level `await` in a module. The top level
+          of a file with an `import` or `export` (even `export {}`) may await,
+          and the expression has the type inside its promise; in a file with
+          none it is an error (TS1375), and in a function that is not async,
+          an arrow, a namespace body or a class field initializer it is the
+          existing TS1308 error. Emission needs nothing for the ES targets
+          (`await` stays in an ES module). Seven pinned TypeScript 5.9.3
+          `--noEmit` cases agree on acceptance and TS1375/TS1308/TS2322 lines,
+          and a Node run of a module that awaits at its top level, in a loop
+          and in a block gives identical output for BlueTSC and `tsc`. The
+          direct bridge now lowers an `async` function as async (it was lowered
+          as a plain function, so it returned its value rather than a promise)
+          and `await` as an operator, and a module graph that awaits at its top
+          level runs to the value Node computes; a top-level `await` in a script
+          is refused before lowering. Async methods and arrows stay refused.
       - [ ] **J.3.7.7.4** Generator functions, which need `Generator` and
         `yield`.
 - [ ] **J.4** Implement the module and package ecosystem without widening

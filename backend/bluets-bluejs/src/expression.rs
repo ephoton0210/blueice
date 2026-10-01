@@ -409,12 +409,22 @@ impl<'a> ExpressionLowerer<'a> {
         self.tokens.get(self.index).is_some_and(|token| {
             matches!(
                 token.text.as_str(),
-                "!" | "+" | "-" | "~" | "typeof" | "void" | "delete"
+                "!" | "+" | "-" | "~" | "typeof" | "void" | "delete" | "await"
             )
         })
     }
 
     pub(super) fn parse_unary(&mut self) -> Result<bluejs::Expr, BridgeError> {
+        // `await operand`: valid in an async function and at a module's top level,
+        // which BlueTS has already established before the bridge sees the token.
+        if self
+            .tokens
+            .get(self.index)
+            .is_some_and(|token| token.text == "await")
+        {
+            self.index += 1;
+            return Ok(bluejs::Expr::Await(Box::new(self.parse_unary()?)));
+        }
         let op = self
             .tokens
             .get(self.index)

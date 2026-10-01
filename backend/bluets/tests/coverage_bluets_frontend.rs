@@ -6427,10 +6427,9 @@ fn async_functions_and_await_are_typed_against_promise() {
         );
     }
 
-    // Top-level await and await inside a nested non-async function are not
-    // valid in a classic function body, and must not reach the output.
+    // Await inside a nested non-async function is not valid, and must not reach
+    // the output. (Top-level await in a module is valid since J.3.7.7.3.3.)
     for source in [
-        "async function f(): Promise<number> { return 1; } export const g = await f();",
         "export async function f(): Promise<number> { const g = (): number => await f(); return g(); }",
     ] {
         let refused = compile_source(source);
@@ -6863,4 +6862,61 @@ fn compiled_output_is_deterministic_and_tracks_the_source() {
     };
     assert_eq!(fingerprint(&first), fingerprint(&again));
     assert_ne!(fingerprint(&first), fingerprint(&changed));
+}
+
+#[test]
+fn top_level_await_is_allowed_in_a_module_and_nowhere_else() {
+    let compile_source = |source: &str| {
+        compile(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+            CompilerOptions::default(),
+        )
+    };
+    let load = "async function load(n: number): Promise<number> { return n; } ";
+    let accepted = compile_source(include_str!(
+        "fixtures/typescript_oracle/toplevel-await-valid/main.ts"
+    ));
+    assert!(
+        accepted.diagnostics.is_empty(),
+        "{:#?}",
+        accepted.diagnostics
+    );
+    assert!(accepted.output.is_some());
+    // A file with no import or export is a script.
+    let script = compile_source(include_str!(
+        "fixtures/typescript_oracle/toplevel-await-script-error/main.ts"
+    ));
+    assert!(script.diagnostics.iter().any(|d| {
+        d.code == DiagnosticCode::TypeMismatch && d.message.contains("requires a module")
+    }));
+    // `export {}` is enough to make it a module.
+    let marked = compile_source(&format!(
+        "{load}export {{}}; const a: number = await load(1);"
+    ));
+    assert!(marked.diagnostics.is_empty(), "{:#?}", marked.diagnostics);
+    for name in ["function", "arrow", "namespace", "field"] {
+        let source = std::fs::read_to_string(format!(
+            "{}/tests/fixtures/typescript_oracle/toplevel-await-{name}-error/main.ts",
+            env!("CARGO_MANIFEST_DIR")
+        ))
+        .unwrap();
+        let rejected = compile_source(&source);
+        assert!(
+            rejected.diagnostics.iter().any(|d| {
+                d.code == DiagnosticCode::TypeMismatch
+                    && d.message.contains("only valid inside an async function")
+            }),
+            "{name}: {:#?}",
+            rejected.diagnostics
+        );
+    }
+    // Its value is the type inside the promise.
+    let mismatch = compile_source(include_str!(
+        "fixtures/typescript_oracle/toplevel-await-type-error/main.ts"
+    ));
+    assert!(mismatch
+        .diagnostics
+        .iter()
+        .any(|d| d.code == DiagnosticCode::TypeMismatch));
 }
