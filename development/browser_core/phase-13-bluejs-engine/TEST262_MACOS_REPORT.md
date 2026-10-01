@@ -336,6 +336,115 @@ Each measured cell shows LLVM JSON's raw covered / instrumented counts and the c
 
 Raw LLVM lines, functions, and regions are all complete in **95 of 162** instrumented files; **67** remain incomplete.
 
+## Remaining coverage gaps ranked by difficulty (2026-10-01)
+
+### Analysis baseline and ranking method
+
+This section reviews the **67 files** marked `☐` in the table above, using the complete Rust + Test262 LLVM measurement at source commit `741500476` and its [source-location union](../../../target/test262-macos-20261001-coverage/source-union.json). Coverage was not remeasured after the crash corrections. Of these 67 files, only `vm/builtins/arrays.rs` changed between that measurement and review commit `9ac8accc2`; its counters and gap locations especially require a new measurement after further changes.
+
+Raw gaps total **1,392 lines, 135 function counters and 3,496 regions**. Combining identical source locations across binaries leaves **1,101 lines, 135 function locations and 3,323 regions** uncovered. The difference reflects aggregation, not coverage gained by new tests. The original table continues to determine completion from raw counters.
+
+The ranking is an engineering estimate based on uncovered line/region text, enclosing helpers, upstream validation, and the fixtures, resource settings and state control needed to exercise valid behavior. Within each level, files are ordered by estimated investigation and meaningful-test effort. Coverage percentages do not determine this order. The ranking does not establish elapsed effort or whether every remaining defensive path can reach 100% through valid inputs.
+
+- **Four files have complete source-location unions**: `native.rs`, `vm/builtins/array_change_by_copy.rs`, `vm/temporal/dates/construction.rs` and `vm/temporal/dates/now_and_zone.rs`. Reconcile compiled-instance counters while retaining the raw differences.
+- **Fifteen files have raw region gaps only**; their lines and functions are complete. Several uncovered regions contain only `?`, identifying failure propagation from the helper check itself. Ordinary invalid callbacks may already be covered. A revoked callable Proxy retains its callable flag, so it cannot simply be assumed to trigger an `is_callable` heap error.
+- **Only three of 135 uncovered function locations fall directly on named `fn` declarations**: the page-frame `code_unit_ordinal()` getter, host-key `object()` getter and `delete_dynamic_eval_binding()`. Another 106 locations directly contain `ok_or_else`, `map_err`, `unwrap_or_else` or `unreachable!` error/fallback closures. Function counters include these closures.
+- **Some gaps are ruled out by earlier validation**: parse errors for the constant disposal-helper SOURCE, validated Number/JSON dispatch arms, repeated downstream Temporal brand checks, and success `.map(...)` closures on failed debugger results. Establish reachability and redundancy before choosing tests or equivalent refactoring. Preserve valid internal states and exception contracts when addressing these gaps.
+- **Inline unit tests inside source files remain in this measurement**: 11 union lines and 30 regions in `page_runtime.rs` belong to inline tests; one line and one region in `heap/object_storage.rs` belong to a test ending. Reconcile those separately from engine execution paths.
+
+`L/F/R` below denotes uncovered lines/functions/regions from this same baseline. Exact uncovered locations, function contexts and source text are retained in [gap-analysis.json](../../../target/test262-macos-20261001-coverage/gap-analysis.json), with ranking data in [gap-ranking.json](../../../target/test262-macos-20261001-coverage/gap-ranking.json). Source-region counters are separate from branch coverage.
+
+### Difficulty groups
+
+| Level | Work type | Files | Ranks |
+| --- | --- | ---: | --- |
+| D0 | Measurement reconciliation | 4 | 1–4 |
+| D1 | Local changes: easier | 10 | 5–14 |
+| D2 | Multiple helpers: moderate | 18 | 15–32 |
+| D3 | Host/resources: moderately difficult | 13 | 33–45 |
+| D4 | State/algorithms: difficult | 13 | 46–58 |
+| D5 | Frames/realms: most difficult | 9 | 59–67 |
+
+### Complete ranking of all 67 files
+
+| Rank | Level | File, relative to `backend/bluejs/src/` | Raw gaps L/F/R | Union gaps L/F/R | Observed gap and next action |
+| ---: | :---: | --- | ---: | ---: | --- |
+| 1 | D0 | [`native.rs`](../../../backend/bluejs/src/native.rs) | 0/0/15 | 0/0/0 | All three source-location unions are complete; reconcile enum/native instance counters across binaries. |
+| 2 | D0 | [`vm/builtins/array_change_by_copy.rs`](../../../backend/bluejs/src/vm/builtins/array_change_by_copy.rs) | 0/0/2 | 0/0/0 | The union is complete; reconcile the two raw change-by-copy region differences. |
+| 3 | D0 | [`vm/temporal/dates/construction.rs`](../../../backend/bluejs/src/vm/temporal/dates/construction.rs) | 0/0/2 | 0/0/0 | The union is complete; reconcile the two raw date-construction region differences. |
+| 4 | D0 | [`vm/temporal/dates/now_and_zone.rs`](../../../backend/bluejs/src/vm/temporal/dates/now_and_zone.rs) | 0/0/4 | 0/0/0 | The union is complete; reconcile the four raw Now/zone region differences. |
+| 5 | D1 | [`vm/intl/number_runtime.rs`](../../../backend/bluejs/src/vm/intl/number_runtime.rs) | 4/0/5 | 4/0/5 | All four uncovered lines contain only `?`; format and check source mappings, then audit the remaining brand-check error regions. |
+| 6 | D1 | [`heap/object_storage.rs`](../../../backend/bluejs/src/heap/object_storage.rs) | 1/0/9 | 1/0/3 | The union retains two descriptor-query `?` regions and an inline-test closing line; separate test/mapping gaps and audit namespace/arguments invariants. |
+| 7 | D1 | [`regex_worker.rs`](../../../backend/bluejs/src/regex_worker.rs) | 1/0/4 | 1/0/2 | `FindMemo::remember` retains an empty-order fallback `break`; audit cache/order consistency and assert normal eviction state. |
+| 8 | D1 | [`vm/builtins/numbers.rs`](../../../backend/bluejs/src/vm/builtins/numbers.rs) | 2/0/7 | 2/0/6 | Most gaps are ToString/LocaleString `unreachable!` arms after earlier returns and Number string-conversion `?` regions; audit local control flow. |
+| 9 | D1 | [`vm/test262/assertions.rs`](../../../backend/bluejs/src/vm/test262/assertions.rs) | 2/0/13 | 2/0/13 | Audit the filtered-name `unreachable!` arm and error-object allocation failures using existing harness-error and resource-limit fixtures. |
+| 10 | D1 | [`vm/builtins/resource_management.rs`](../../../backend/bluejs/src/vm/builtins/resource_management.rs) | 12/2/23 | 10/2/23 | Cover explicit dispose callbacks and method-less resources; audit error closures parsing/compiling the constant helper SOURCE. |
+| 11 | D1 | [`vm/builtins/uint8array.rs`](../../../backend/bluejs/src/vm/builtins/uint8array.rs) | 15/1/25 | 13/1/25 | Assert decoder progress for invalid Base64 input; audit earlier constructor checks and the `chunks(3)` invariant. |
+| 12 | D1 | [`vm/json.rs`](../../../backend/bluejs/src/vm/json.rs) | 13/0/43 | 13/0/43 | Cover rawJSON, property-list/gap conversion and serialization failures with focused input/resource limits; audit the validated-escape fallback. |
+| 13 | D1 | [`parser/statements.rs`](../../../backend/bluejs/src/parser/statements.rs) | 27/0/40 | 27/0/40 | Audit earlier rejection of await/yield labels, for heads and try/throw syntax; add escaped-identifier and parsing-context matrices. |
+| 14 | D1 | [`vm/test262_agents.rs`](../../../backend/bluejs/src/vm/test262_agents.rs) | 19/6/42 | 9/6/40 | Reuse bounded agent fixtures for broadcast types, receive callbacks/context and source parse/compile; audit UTF-8 conversion failures. |
+| 15 | D2 | [`vm/temporal/conversion/calendar_fields.rs`](../../../backend/bluejs/src/vm/temporal/conversion/calendar_fields.rs) | 8/2/10 | 4/2/10 | Two receiver-error closures in `temporal_with_calendar`; check whether native dispatch already enforces the brand. |
+| 16 | D2 | [`vm/temporal/conversion/zoned_conversion.rs`](../../../backend/bluejs/src/vm/temporal/conversion/zoned_conversion.rs) | 24/5/24 | 15/5/24 | Audit upstream plain/zoned receiver brands and Instant bounds; cover reachable conversion-error ordering. |
+| 17 | D2 | [`vm/temporal/instant.rs`](../../../backend/bluejs/src/vm/temporal/instant.rs) | 13/7/32 | 5/7/32 | Trace native dispatch and validated Instant bounds for receiver/range/zone error closures before adding branding cases. |
+| 18 | D2 | [`vm/temporal/plain_time.rs`](../../../backend/bluejs/src/vm/temporal/plain_time.rs) | 22/5/34 | 14/5/34 | Cover observable string/fractionalSecondDigits conversion errors; audit receiver checks and the unreachable Hour arm. |
+| 19 | D2 | [`vm/functions.rs`](../../../backend/bluejs/src/vm/functions.rs) | 0/0/7 | 0/0/6 | All six union gaps are bind/instanceof `?` regions; trace valid Rust host-handle error boundaries and callable metadata. |
+| 20 | D2 | [`vm/builtins/native_dispatch/date.rs`](../../../backend/bluejs/src/vm/builtins/native_dispatch/date.rs) | 0/0/2 | 0/0/2 | Two toJSON `is_callable(...)?` regions remain; audit failures of the heap check itself, alongside existing non-callable TypeErrors. |
+| 21 | D2 | [`vm/builtins/set_methods.rs`](../../../backend/bluejs/src/vm/builtins/set_methods.rs) | 0/0/2 | 0/0/2 | Audit whether valid JS objects can fail the callable checks for `get_set_record` has/keys. |
+| 22 | D2 | [`vm/builtins/collections.rs`](../../../backend/bluejs/src/vm/builtins/collections.rs) | 0/0/5 | 0/0/5 | All five regions are constructor/callback-check `?` expressions; audit Rust handle boundaries for Array.from/of and groupBy. |
+| 23 | D2 | [`vm/builtins/collection_iteration.rs`](../../../backend/bluejs/src/vm/builtins/collection_iteration.rs) | 0/0/4 | 0/0/4 | Pair first iterator-prototype initialization with bounded resource failures for root/unroot and callback checks. |
+| 24 | D2 | [`vm/builtins/arrays.rs`](../../../backend/bluejs/src/vm/builtins/arrays.rs) | 0/0/12 | 0/0/12 | All 12 baseline regions are `?`, mainly callable/species checks; audit valid-handle failures and remeasure the changed push path. |
+| 25 | D2 | [`vm/intl/number_options.rs`](../../../backend/bluejs/src/vm/intl/number_options.rs) | 0/0/1 | 0/0/1 | The sole gap is `intl_global()?` during NumberFormat creation; target first-initialization resource failures. |
+| 26 | D2 | [`vm/test262/cases.rs`](../../../backend/bluejs/src/vm/test262/cases.rs) | 0/0/3 | 0/0/3 | All three regions are callable-check `?` expressions; audit value validation at Test262 host-hook boundaries. |
+| 27 | D2 | [`vm/test262/harness.rs`](../../../backend/bluejs/src/vm/test262/harness.rs) | 1/0/1 | 0/0/1 | Union lines/functions are complete; audit resource failure and source mapping for the remaining IsHTMLDDA initialization `?`. |
+| 28 | D2 | [`compiler.rs`](../../../backend/bluejs/src/compiler.rs) | 0/0/3 | 0/0/3 | All three regions are root-binding metadata lookup `?` expressions; establish names/bindings consistency before selecting AST boundary tests. |
+| 29 | D2 | [`ast/retained_payload.rs`](../../../backend/bluejs/src/ast/retained_payload.rs) | 5/0/25 | 5/0/25 | Five lines account for class fields, private brands, extra initializers and decorated fields; assert these AST payloads and audit arithmetic overflow. |
+| 30 | D2 | [`vm/intrinsics.rs`](../../../backend/bluejs/src/vm/intrinsics.rs) | 0/0/5 | 0/0/5 | Five `?` regions concern first initialization, roots and delete/unroot; assert cleanup and VM reuse after bounded initialization failure. |
+| 31 | D2 | [`vm/builtins/general.rs`](../../../backend/bluejs/src/vm/builtins/general.rs) | 1/0/10 | 1/0/10 | Separate user-hook exceptions in callability/coercion/is_regexp from defenses against invalid internal ObjectIds. |
+| 32 | D2 | [`vm/errors.rs`](../../../backend/bluejs/src/vm/errors.rs) | 20/3/76 | 16/3/76 | Reuse error-realm fixtures for cross-realm has_property, global lookup and error data/stack; assert error provenance and primitive throws. |
+| 33 | D3 | [`vm/builtins/globals.rs`](../../../backend/bluejs/src/vm/builtins/globals.rs) | 9/0/19 | 8/0/19 | All 19 regions occur during lazy global creation; bound resources for uninitialized builtin families and assert cleanup. |
+| 34 | D3 | [`vm/intl.rs`](../../../backend/bluejs/src/vm/intl.rs) | 4/0/13 | 4/0/13 | Pair Intl namespace initialization failures with a reachability audit of validated Temporal default-component kinds. |
+| 35 | D3 | [`vm/temporal.rs`](../../../backend/bluejs/src/vm/temporal.rs) | 7/0/16 | 7/0/16 | Cover lazy Temporal initialization and cleanup; trace DurationAnchor date/calendar call paths. |
+| 36 | D3 | [`vm/builtins/promise_core.rs`](../../../backend/bluejs/src/vm/builtins/promise_core.rs) | 2/0/10 | 2/0/10 | Assert executor/thenable ordering, rejection values and VM reuse around capability checks and reaction allocation failures. |
+| 37 | D3 | [`vm/builtins/typed_arrays.rs`](../../../backend/bluejs/src/vm/builtins/typed_arrays.rs) | 6/1/68 | 4/1/68 | Combine detached/resized views with observable option side effects; audit upstream bounds checks for callbacks, slicing and ranges. |
+| 38 | D3 | [`vm/builtins/promises.rs`](../../../backend/bluejs/src/vm/builtins/promises.rs) | 12/0/70 | 9/0/69 | Control job ordering and GC/resource limits for Promise jobs, collection initialization and failed stores; assert queue state. |
+| 39 | D3 | [`vm/builtins/dynamic.rs`](../../../backend/bluejs/src/vm/builtins/dynamic.rs) | 18/0/64 | 17/0/64 | Pair descriptor/DynamicFunction hooks with failed definitions and validation order; audit unreachable dispatch arms. |
+| 40 | D3 | [`vm/properties.rs`](../../../backend/bluejs/src/vm/properties.rs) | 37/5/89 | 27/5/89 | Cover for-in mutation and prototype changes; separately audit compiler guarantees for private-element names, owners and forwarding metadata. |
+| 41 | D3 | [`vm/intl/list_duration.rs`](../../../backend/bluejs/src/vm/intl/list_duration.rs) | 25/8/66 | 15/8/66 | Separate reachable ListFormat/DurationFormat input failures from part/style values already validated by the ECMA-402 backend. |
+| 42 | D3 | [`vm/intl/date_time.rs`](../../../backend/bluejs/src/vm/intl/date_time.rs) | 46/3/62 | 41/3/62 | Assert legacy receiver, Temporal instant/range and part-result contracts across brands/calendars; target formatter output failures. |
+| 43 | D3 | [`vm/builtins/native_dispatch/dispatch.rs`](../../../backend/bluejs/src/vm/builtins/native_dispatch/dispatch.rs) | 26/2/107 | 19/2/88 | Start with reachable positive/negative BigInt-to-f64 overflow; then audit Date error mapping and central membrane/dispatch invariants. |
+| 44 | D3 | [`vm/host_objects.rs`](../../../backend/bluejs/src/vm/host_objects.rs) | 95/18/116 | 71/18/114 | Cover `.object()` first; build host registration/lifetime matrices for realm/family identity, click reentrancy and method/accessor/factory IDs. |
+| 45 | D3 | [`vm/debugger/inspection.rs`](../../../backend/bluejs/src/vm/debugger/inspection.rs) | 2/0/10 | 2/0/10 | Reuse pause fixtures for binding cell/slot fallback and preview/snapshot resource failures; assert valid handles and preview bounds. |
+| 46 | D4 | [`vm/builtins/array_from_async.rs`](../../../backend/bluejs/src/vm/builtins/array_from_async.rs) | 9/1/55 | 8/1/55 | Control await/job order around iterator-next throws, close/reject, done flags and state-promise invariants. |
+| 47 | D4 | [`vm/builtins/execution/setup.rs`](../../../backend/bluejs/src/vm/builtins/execution/setup.rs) | 2/0/13 | 1/0/13 | Assert cleanup and iterator state for async disposal, zip padding/metadata and helper allocation failures. |
+| 48 | D4 | [`vm/builtins/execution/runtime.rs`](../../../backend/bluejs/src/vm/builtins/execution/runtime.rs) | 34/1/136 | 30/1/136 | Build multi-iterator throw/return matrices for concat/zip/windows state machines and track roots during cleanup. |
+| 49 | D4 | [`vm/modules/namespace.rs`](../../../backend/bluejs/src/vm/modules/namespace.rs) | 21/3/35 | 15/3/35 | Use module graphs for missing records, ambiguous exports and namespace reuse; audit failures already ruled out by linking. |
+| 50 | D4 | [`vm/modules/deferred.rs`](../../../backend/bluejs/src/vm/modules/deferred.rs) | 10/1/33 | 7/1/33 | Control dependency graphs, suspended/evaluating/error state and record borrowing for source/defer imports and SCC execution. |
+| 51 | D4 | [`vm/modules.rs`](../../../backend/bluejs/src/vm/modules.rs) | 22/0/45 | 19/0/34 | Assert pause/throw/resume together with module records and terminal cleanup, where most debugger/await gaps occur. |
+| 52 | D4 | [`vm/builtins/object.rs`](../../../backend/bluejs/src/vm/builtins/object.rs) | 41/5/246 | 34/5/239 | Combine trap side effects, foreign descriptors, constructor realms and typed-array receiver Set; assert Proxy invariants and strict Set ordering. |
+| 53 | D4 | [`vm/regexp.rs`](../../../backend/bluejs/src/vm/regexp.rs) | 36/0/109 | 31/0/109 | Exercise worker/heap boundaries and root cleanup for initialization, matcher, exec/replace and compile failures; audit earlier branding checks. |
+| 54 | D4 | [`vm/temporal/conversion/from_value.rs`](../../../backend/bluejs/src/vm/temporal/conversion/from_value.rs) | 14/0/22 | 14/0/22 | Check whether specialized converters bypass the generic PlainTime/Instant string path; cover reachable offset/range boundaries. |
+| 55 | D4 | [`vm/temporal/duration_relative.rs`](../../../backend/bluejs/src/vm/temporal/duration_relative.rs) | 2/1/5 | 1/1/5 | Establish Duration bounds before testing plain-endpoint day-count conversion and overflow with valid relativeTo extremes. |
+| 56 | D4 | [`vm/temporal/plain_date_time_difference.rs`](../../../backend/bluejs/src/vm/temporal/plain_date_time_difference.rs) | 1/0/16 | 1/0/15 | Build calendar/unit/sign/rounding boundary matrices for nudge windows, checked arithmetic, epochs and day-sign adjustment. |
+| 57 | D4 | [`vm/temporal/zoned_difference.rs`](../../../backend/bluejs/src/vm/temporal/zoned_difference.rs) | 4/0/34 | 4/0/34 | Use small explicit zone fixtures for nudge/bubble/resolve and calendar steps across DST, offsets, direction and rounding. |
+| 58 | D4 | [`vm.rs`](../../../backend/bluejs/src/vm.rs) | 0/0/24 | 0/0/22 | Audit host registration, call entry/dispatch and string-limit propagation across API contracts, roots and ID capacity bounds. |
+| 59 | D5 | [`vm/builtins/binary_data.rs`](../../../backend/bluejs/src/vm/builtins/binary_data.rs) | 45/9/165 | 33/9/165 | Combine two realms with backing-store/GC lifetimes for foreign TypedArray.from/of and resized/detached DataView/Atomics paths. |
+| 60 | D5 | [`page_runtime.rs`](../../../backend/bluejs/src/page_runtime.rs) | 25/1/72 | 22/1/68 | Cover `code_unit_ordinal()` first; test nested/linked debugger completion and navigation/generation invalidation. Union gaps include 11 lines/30 inline-test regions. |
+| 61 | D5 | [`vm/builtins/execution/closures.rs`](../../../backend/bluejs/src/vm/builtins/execution/closures.rs) | 64/0/99 | 16/0/34 | Assert parent frames, suspended stacks and thrown-value rooting for nested debugger return/error/yield/await and iterator cleanup. |
+| 62 | D5 | [`vm/debugger.rs`](../../../backend/bluejs/src/vm/debugger.rs) | 124/8/146 | 116/8/146 | Cover nested/module stepping, abort/resume and invalid safe points; audit success `.map(unreachable!)` closures applied to failed results. |
+| 63 | D5 | [`vm/execution.rs`](../../../backend/bluejs/src/vm/execution.rs) | 103/6/246 | 90/6/237 | Combine with/direct eval, captured cells and strictness across frames for eval-var recreation, dynamic-binding deletion and return cleanup. |
+| 64 | D5 | [`vm/interpreter.rs`](../../../backend/bluejs/src/vm/interpreter.rs) | 82/3/203 | 59/3/186 | Trace valid compiler-generated private/class bytecode, completion handlers and suspension against stack/handler invariants. |
+| 65 | D5 | [`vm/builtins/generators.rs`](../../../backend/bluejs/src/vm/builtins/generators.rs) | 127/10/229 | 114/10/229 | Cover interacting sync/async delegation state machines, abrupt completion, finally, exit resumption and request queues. |
+| 66 | D5 | [`vm/shadow_realm.rs`](../../../backend/bluejs/src/vm/shadow_realm.rs) | 45/3/68 | 40/3/68 | Assert realm lifetimes, wrapped-callable ownership and importValue rejection across two VMs, GC roots and membrane identities. |
+| 67 | D5 | [`vm/test262/foreign.rs`](../../../backend/bluejs/src/vm/test262/foreign.rs) | 102/15/295 | 78/15/295 | Build bidirectional realm/type matrices for transport, buffer clone/transfer, reverse forwarding, property synchronization and foreign errors. |
+
+### Recommended execution order
+
+1. **Reconcile measurement details first**: review D0, standalone `?` line mappings and inline-test counters while retaining the current raw table. Identify actionable behavior gaps and measurement/reachability questions.
+2. **Start with observable, inexpensive gaps**: class/decorator AST accounting in `ast/retained_payload.rs`, the two public getters, Uint8Array decoder progress, parser contexts and agent argument errors. These offer local progress within files that may still have other incomplete paths.
+3. **Combine shared investigations**: audit D2 callable/constructor `?` regions against host-handle contracts; trace Temporal receiver checks through native dispatch; share bounded initialization-failure and VM-reuse fixtures for D3 lazy globals/intrinsics.
+4. **Build dedicated state fixtures before tackling complex paths**: iterator/async completion, module graphs, nested debugging and cross-realm buffers/membranes. Assert completion, roots and reuse after failures using deterministic resource settings.
+5. **Remeasure and reconcile the same scope**: focused tests can omit other binaries/source locations. Completion requires the complete Rust + Test262 suite with the same measurement configuration and separate raw/union evidence. This analysis does not predict new coverage percentages.
+
 ## Historical differences from the other platforms (2026-09-21)
 
 - **Ubuntu**: 2 of 102,926 modes differ (1 file): `staging/sm/Math/acosh-approx.js` (this platform: pass; Ubuntu: fail).
