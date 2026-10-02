@@ -128,7 +128,17 @@ impl<'a> ModuleChecker<'a> {
     /// Classic mode calls a factory (and, for a fragment, a fragment factory)
     /// that must be in scope; the automatic runtime and `preserve` need none.
     fn check_jsx_factory(&mut self, span: &SourceSpan, element: &JsxElement) {
-        if self.jsx_mode != Some(crate::compiler::JsxMode::React) {
+        // `jsx: react` is classic unless a pragma asks for the automatic runtime
+        // (and the automatic modes are classic only if a pragma says so).
+        let classic = match self.jsx_pragmas.runtime.as_deref() {
+            Some("classic") => true,
+            Some("automatic") => false,
+            _ => {
+                self.jsx_mode == Some(crate::compiler::JsxMode::React)
+                    && self.jsx_pragmas.import_source.is_none()
+            }
+        };
+        if !classic || self.jsx_mode.is_none() {
             return;
         }
         let (factory, option) = if element.is_fragment() {

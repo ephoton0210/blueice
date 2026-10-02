@@ -25,7 +25,7 @@ mod debug_info;
 mod diagnostic;
 mod emitter;
 mod enum_eval;
-mod jsx;
+pub mod jsx;
 mod namespace_analysis;
 pub mod package_resolution;
 mod parser;
@@ -71,6 +71,7 @@ pub use parser::{
     TypeAliasDeclaration, TypeExportDeclaration, TypeParameter, ValueExportBinding,
     ValueExportDeclaration, VariableDeclaration, VariableKind, Visibility,
 };
+pub use syntax::parse_jsx;
 pub use syntax::{lex, Token, TokenKind};
 
 /// The pinned BlueTS language matrix exposed in emitted fingerprints and

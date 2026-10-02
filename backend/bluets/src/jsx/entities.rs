@@ -6,7 +6,6 @@
 //! attributes (its `entities` table: the HTML 4 set), generated from the pinned
 //! compiler and sorted by name for a binary search.
 
-#[allow(dead_code)]
 pub(super) const ENTITIES: &[(&str, u32)] = &[
     ("AElig", 198),
     ("Aacute", 193),

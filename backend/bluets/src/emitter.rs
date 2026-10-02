@@ -19,6 +19,7 @@ mod class_lowering;
 mod classes;
 mod commonjs;
 mod enums;
+mod jsx;
 mod namespaces;
 mod private_lowering;
 
@@ -270,7 +271,10 @@ fn emit_javascript(
         if quote != last || !matches!(quote, '\'' | '\"') {
             continue;
         }
-        let emitted_specifier = javascript_specifier(&import.specifier);
+        let emitted_specifier = javascript_specifier(
+            &import.specifier,
+            options.jsx == Some(crate::compiler::JsxMode::Preserve),
+        );
         edits.push(TextEdit {
             start: import.specifier_span.start,
             end: import.specifier_span.end,
@@ -281,9 +285,12 @@ fn emit_javascript(
     class_lowering::lower_class_members(module, options, &mut edits)?;
     enums::lower_enums(module, project, exported_enums, options, &mut edits)?;
     namespaces::lower_namespaces(module, options, &mut edits)?;
-    if options.module_kind == crate::compiler::ModuleKind::CommonJs {
-        commonjs::lower_commonjs(module, options, &mut edits)?;
-    }
+    let references = if options.module_kind == crate::compiler::ModuleKind::CommonJs {
+        commonjs::lower_commonjs(module, options, &mut edits)?
+    } else {
+        BTreeMap::new()
+    };
+    jsx::lower_jsx(module, options, &references, &mut edits)?;
     let plan = strict_boundaries::plan_emission(module, options)?;
     let mut strict_runtime = None;
     if let Some((strict_edits, record)) = plan {
@@ -317,10 +324,14 @@ fn runtime_declarations(declarations: &[Declaration]) -> Vec<(&Declaration, bool
     all
 }
 
-fn javascript_specifier(specifier: &str) -> String {
+/// The specifier an emitted module is imported by: a TypeScript extension becomes
+/// the JavaScript one (`.tsx` stays `.jsx` when JSX is preserved).
+fn javascript_specifier(specifier: &str, preserve_jsx: bool) -> String {
+    if let Some(stem) = specifier.strip_suffix(".tsx") {
+        return format!("{stem}{}", if preserve_jsx { ".jsx" } else { ".js" });
+    }
     specifier
-        .strip_suffix(".tsx")
-        .or_else(|| specifier.strip_suffix(".ts"))
+        .strip_suffix(".ts")
         .map(|stem| format!("{stem}.js"))
         .unwrap_or_else(|| specifier.to_string())
 }

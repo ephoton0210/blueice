@@ -79,9 +79,9 @@ pub(super) fn lower_commonjs(
     module: &Module,
     options: &CompilerOptions,
     edits: &mut Vec<TextEdit>,
-) -> Result<(), Diagnostic> {
+) -> Result<BTreeMap<String, Replacement>, Diagnostic> {
     let Ok(tokens) = crate::lex(&module.id, &module.source) else {
-        return Ok(());
+        return Ok(BTreeMap::new());
     };
     let interop = options.es_module_interop;
     let token_at = |offset: usize| tokens.partition_point(|token| token.start < offset);
@@ -110,7 +110,10 @@ pub(super) fn lower_commonjs(
         match declaration {
             Declaration::Import(import) if import.type_only => {}
             Declaration::Import(import) if import.equals_require => {
-                let spec = javascript_specifier(&import.specifier);
+                let spec = javascript_specifier(
+                    &import.specifier,
+                    options.jsx == Some(crate::compiler::JsxMode::Preserve),
+                );
                 let local = &import.bindings[0].local;
                 push(
                     edits,
@@ -121,7 +124,10 @@ pub(super) fn lower_commonjs(
             }
             Declaration::Import(import) => {
                 es_syntax = true;
-                let spec = javascript_specifier(&import.specifier);
+                let spec = javascript_specifier(
+                    &import.specifier,
+                    options.jsx == Some(crate::compiler::JsxMode::Preserve),
+                );
                 let mut text = String::new();
                 if import.bindings.is_empty() {
                     text.push_str(&format!("require(\"{spec}\");"));
@@ -346,7 +352,7 @@ pub(super) fn lower_commonjs(
     }
 
     if references.is_empty() {
-        return Ok(());
+        return Ok(references);
     }
     // References are rewritten by their text, so nothing may bind them locally.
     let names: BTreeSet<String> = references.keys().cloned().collect();
@@ -397,7 +403,7 @@ pub(super) fn lower_commonjs(
         &mut pending,
     );
     edits.extend(pending);
-    Ok(())
+    Ok(references)
 }
 
 /// Removes `export` (and `default`) from the start of a declaration.

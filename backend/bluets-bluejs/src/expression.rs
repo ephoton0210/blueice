@@ -7,9 +7,9 @@
 use super::*;
 
 pub(super) struct ExpressionLowerer<'a> {
-    module: &'a str,
-    tokens: &'a [Token],
-    index: usize,
+    pub(super) module: &'a str,
+    pub(super) tokens: &'a [Token],
+    pub(super) index: usize,
 }
 
 impl<'a> ExpressionLowerer<'a> {
@@ -563,6 +563,7 @@ impl<'a> ExpressionLowerer<'a> {
                 .map_err(|_| unsupported(self.token_span(token), "unsupported numeric literal")),
             TokenKind::String => lower_string(self.module, token),
             TokenKind::Template => lower_template(self.module, token),
+            TokenKind::JsxElement => self.lower_jsx_element(token),
             TokenKind::Identifier => Ok(bluejs::Expr::Identifier(token.text.clone())),
             TokenKind::Keyword => match token.text.as_str() {
                 "true" => Ok(bluejs::Expr::Bool(true)),

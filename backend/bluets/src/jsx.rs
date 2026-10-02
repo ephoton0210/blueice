@@ -553,7 +553,6 @@ pub fn is_empty_expression(text: &str) -> bool {
 /// TypeScript's value of a run of JSX text: lines trimmed (the first line's
 /// leading and the last line's trailing space are kept), blank lines dropped,
 /// the rest joined by one space, entities decoded. `None` when nothing is left.
-#[allow(dead_code)] // used by the emitter (J.5.2)
 pub fn text_value(raw: &str) -> Option<String> {
     let mut accumulated: Option<String> = None;
     let mut first_non_whitespace: Option<usize> = Some(0);
@@ -586,7 +585,6 @@ pub fn text_value(raw: &str) -> Option<String> {
     accumulated
 }
 
-#[allow(dead_code)]
 fn is_single_line_whitespace(character: char) -> bool {
     matches!(
         character,
@@ -602,7 +600,6 @@ pub fn is_blank_with_newline(raw: &str) -> bool {
 }
 
 /// `&amp;`, `&#38;` and `&#x26;` decoded; an unknown name is left as written.
-#[allow(dead_code)]
 pub fn decode_entities(text: &str) -> String {
     let mut output = String::with_capacity(text.len());
     let mut rest = text;

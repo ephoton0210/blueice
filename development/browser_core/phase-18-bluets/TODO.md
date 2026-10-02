@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: J.5.2.** J.3 is complete. H and I are complete. The requested class, enum,
+**Current leaf: J.5.3.** J.3 is complete. H and I are complete. The requested class, enum,
 decorator, namespace, JSX, CommonJS, and package-resolution expansion has
 passed J.1/J.2 planning; implementation and pinned-`tsc` parity remain open.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
@@ -2798,7 +2798,7 @@ done to the page-runs-and-debugs goal at the top of this file.
 - [ ] **J.5** Implement TSX/JSX and both TypeScript 5.9.3 decorator modes.
   - [x] **J.5.1** Parse and check `.tsx` tags, attributes, spreads,
     children, fragments, and JSX declarations against pinned `tsc`.
-  - [ ] **J.5.2** Emit each configured JSX mode with factory/import-source
+  - [x] **J.5.2** Emit each configured JSX mode with factory/import-source
     options, source maps, and direct runtime with an authorized factory.
   - [ ] **J.5.3** Implement standard decorators with their checker, helper,
     evaluation/application order, class/field semantics, debugger maps,

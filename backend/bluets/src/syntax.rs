@@ -166,7 +166,7 @@ pub(crate) fn lex_expression(
 }
 
 /// Scans the JSX element at `start` of a `.tsx` module's source.
-pub(crate) fn parse_jsx(
+pub fn parse_jsx(
     module: &str,
     source: &str,
     start: usize,

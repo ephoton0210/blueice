@@ -580,8 +580,10 @@ pub fn compile_direct_script(
 ) -> Result<DirectScript, BridgeError> {
     refuse_commonjs(entry, &options)?;
     let define_class_fields = options.defines_class_fields();
+    let jsx_options = options.clone();
     let (module, debug_info) = checked_entry(entry, loader, options)?;
 
+    let _jsx = JsxScope::enter(JsxContext::of(&jsx_options, &module));
     let (body, provenance) = lower_script(&module, define_class_fields)?;
     let program = bluejs::BlueJsProgramV1::Script(bluejs::Program { body });
     let bytecode = program.compile().map_err(BridgeError::BlueJs)?;
@@ -612,7 +614,9 @@ pub fn compile_direct_module(
 ) -> Result<DirectModule, BridgeError> {
     refuse_commonjs(entry, &options)?;
     let define_class_fields = options.defines_class_fields();
+    let jsx_options = options.clone();
     let (module, debug_info) = checked_entry(entry, loader, options)?;
+    let _jsx = JsxScope::enter(JsxContext::of(&jsx_options, &module));
     let (module, provenance) = lower_module(None, &module, define_class_fields)?;
     let program = bluejs::BlueJsProgramV1::Module(module);
     let bytecode = program.compile().map_err(BridgeError::BlueJs)?;
@@ -643,6 +647,7 @@ pub fn compile_direct_module_graph(
 ) -> Result<DirectModuleGraph, BridgeError> {
     refuse_commonjs(entry, &options)?;
     let define_class_fields = options.defines_class_fields();
+    let jsx_options = options.clone();
     let compilation = compile(entry, loader, options);
     if compilation.has_errors() {
         return Err(BridgeError::BlueTs(compilation.diagnostics));
@@ -658,6 +663,7 @@ pub fn compile_direct_module_graph(
             .modules
             .get(&id)
             .expect("runtime-reachable module was selected from the project");
+        let _jsx = JsxScope::enter(JsxContext::of(&jsx_options, module));
         let (module, provenance) =
             lower_module(Some(&compilation.project), module, define_class_fields)?;
         let program = bluejs::BlueJsProgramV1::Module(module);
@@ -904,13 +910,14 @@ impl DirectModuleGraph {
 
 mod attachment;
 mod expression;
+mod jsx_direct;
 mod lowering;
 use attachment::{
     attach_direct_program, attach_existing_direct_program, build_safe_point_map, source_identity,
     DirectArtifactProgram,
 };
-#[cfg(test)]
 use expression::ExpressionLowerer;
+use jsx_direct::{JsxContext, JsxScope};
 use lowering::{lower_module, lower_script};
 
 #[cfg(test)]

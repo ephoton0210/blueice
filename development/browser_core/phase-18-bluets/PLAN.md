@@ -3390,3 +3390,65 @@ used; `JSX.ElementType`, `LibraryManagedAttributes`, `IntrinsicClassAttributes`,
 `defaultProps`, duplicate-attribute and `children`-specified-twice diagnostics,
 namespaced-attribute typing; a parameter named `type` in a function declaration does not
 parse (found while writing fixtures; unrelated to JSX).
+
+### J.5.2 JSX emit and direct execution
+
+`CompilerOptions` gained `jsx` (`preserve`, `react-native`, `react`, `react-jsx`,
+`react-jsxdev`), `jsx_factory`, `jsx_fragment_factory` and `jsx_import_source`: all in the
+project fingerprint, the `bluetsc` flags (`--jsx`, `--jsx-factory`,
+`--jsx-fragment-factory`, `--jsx-import-source`), the config (`jsx`, `jsxFactory`,
+`jsxFragmentFactory`, `jsxImportSource`) and the manifest. `@jsx`, `@jsxFrag`,
+`@jsxImportSource` and `@jsxRuntime` pragmas in a file's leading comments override them for
+that file, as in TypeScript.
+
+**Emit** (`emitter/jsx.rs`), TypeScript 5.9.3's JSX transform read from the pinned compiler:
+- *classic* (`react`): `factory(tag, props | null, ...children)`, the fragment factory as the
+  tag of a fragment, an intrinsic tag as a string and a value tag as an expression;
+- *automatic* (`react-jsx`, `react-jsxdev`): `jsx`/`jsxs`/`jsxDEV` imported from
+  `<jsxImportSource>/jsx-runtime` (or `/jsx-dev-runtime`), children in the props (one child
+  as is, several as an array and `jsxs`), `key` as the third argument, `createElement`
+  imported from the source itself when a `key` follows a non-literal spread, and for
+  `jsxDEV` the `void 0`, static-children flag, `{ fileName, lineNumber, columnNumber }` and
+  `this` arguments with a `_jsxFileName` constant;
+- *preserve* and *react-native* keep the JSX text (the output is `.jsx` for `preserve`, `.js`
+  for `react-native`, and imports of a `.tsx` module are written to match).
+Attribute names are bare when they match `[A-Z_]\w*` and quoted otherwise, string attributes
+keep their quote style and are entity-decoded, text children follow the whitespace and
+entity rules of `jsx::text_value`, `{...x}` is a spread, and an expression with a top-level
+comma is parenthesized.
+
+Only the JSX syntax is rewritten. Each embedded expression is left in place in the source
+(an `Item::Keep`) and the gaps between them are replaced by edits that keep their line
+breaks, so every emitted line is its source line, and every other pass (erased annotations,
+CommonJS name rewriting, namespaces) reaches the expressions through the flattened token
+group. The tag and the factory root are rewritten by the same reference map the CommonJS
+lowering uses (`react_1.default.createElement`, `(0, factory_1.default)(...)`). The runtime
+import is inserted after the directive prologue as an `import` in a module and as
+`const jsx_runtime_1 = require(..)` (with `(0, jsx_runtime_1.jsx)(..)` calls) in CommonJS. A
+module that already uses `_jsx`, `_jsxs`, `_jsxDEV`, `_Fragment`, `_createElement` or
+`_jsxFileName` is refused rather than risk a collision. A moved `key` is written out as text,
+not kept in place (it comes after the props in the output).
+
+**Parity.** `tests/jsx_oracle.rs` builds 11 programs with BlueTSC and the pinned `tsc` (classic
+and automatic, dev, ESM and CommonJS, the options and each pragma, an imported factory) and
+requires identical output under Node with a recording stand-in for the runtime; the programs
+cover text trimming, entities, spreads, `key` placement, fragments, member tags, namespaced
+and hyphenated attributes, nested elements in attributes and expressions, and the dev
+line/column positions.
+
+**Direct execution.** `compile_direct_*` lowers a classic-mode element to a BlueJS call of the
+program's own factory, built as AST from the same tree and rules (`jsx_direct.rs`); the
+factory is an ordinary identifier of the program (JSX syntax imports nothing and grants no
+host API), and a classic program whose factory is not in scope is refused at check time. The
+automatic runtime (it imports a runtime module the bridge does not link), `preserve` and a
+missing `jsx` option are refused naming the supported route. The same programs run under
+BlueJS and Node (via the pinned `tsc` output) and complete with the same value
+(`bluets-bluejs/tests/jsx_direct.rs`).
+
+Recorded gaps: source-map and debugger mappings for JSX are the coarse ones every edit
+gets (the replaced gap maps to its source span; no per-attribute mapping), so a breakpoint
+inside an element tag is not bound; a JSX element under `strict-runtime` follows that
+policy's existing refusal of everything but its one string-boundary shape; the direct bridge
+lowers embedded expressions with the existing expression subset (an arrow function inside a
+JSX expression is as limited as an arrow anywhere else there); namespace-exported names used
+as tags inside another namespace body are not rewritten.

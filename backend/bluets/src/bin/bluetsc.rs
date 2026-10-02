@@ -624,7 +624,13 @@ fn build_metadata(
     let entries = invocation
         .entries
         .iter()
-        .map(|entry| output_module_path(&invocation.root, entry))
+        .map(|entry| {
+            output_module_path(
+                &invocation.root,
+                entry,
+                invocation.options.jsx == Some(JsxMode::Preserve),
+            )
+        })
         .collect();
     let imports = invocation
         .imports
@@ -637,7 +643,10 @@ fn build_metadata(
             let emitted = if target.is_dir() {
                 format!("{}/", output_path(relative))
             } else {
-                output_path(&relative.with_extension("js"))
+                output_path(&relative.with_extension(output_extension(
+                    relative,
+                    invocation.options.jsx == Some(JsxMode::Preserve),
+                )))
             };
             (specifier.clone(), format!("./{emitted}"))
         })
@@ -691,12 +700,25 @@ fn build_metadata(
     }
 }
 
-fn output_module_path(root: &Path, module: &Path) -> String {
+fn output_module_path(root: &Path, module: &Path, preserve_jsx: bool) -> String {
     let relative = module
         .strip_prefix(root)
-        .expect("validated entry is beneath project root")
-        .with_extension("js");
-    output_path(&relative)
+        .expect("validated entry is beneath project root");
+    output_path(&relative.with_extension(output_extension(relative, preserve_jsx)))
+}
+
+/// What an emitted module is called: `.js`, or `.jsx` for a `.tsx` module whose
+/// JSX is preserved.
+fn output_extension(source: &Path, preserve_jsx: bool) -> &'static str {
+    if preserve_jsx
+        && source
+            .extension()
+            .is_some_and(|extension| extension == "tsx")
+    {
+        "jsx"
+    } else {
+        "js"
+    }
 }
 
 fn output_path(path: &Path) -> String {
@@ -1496,7 +1518,8 @@ fn publish_build(
         for (module_id, artifact) in artifacts {
             let module_path = Path::new(module_id);
             let relative = artifact_relative_path(root, module_path, module_id)?;
-            let output_relative = relative.with_extension("js");
+            let extension = output_extension(&relative, metadata.jsx == Some("preserve"));
+            let output_relative = relative.with_extension(extension);
             let js_path = stage.join(&output_relative);
             let js_parent = js_path
                 .parent()
@@ -1513,7 +1536,10 @@ fn publish_build(
             }
             fs::write(&js_path, javascript)?;
             if let Some(source_map) = &artifact.source_map {
-                fs::write(js_path.with_extension("js.map"), source_map.to_json())?;
+                fs::write(
+                    js_path.with_extension(format!("{extension}.map")),
+                    source_map.to_json(),
+                )?;
             }
             if let Some(declaration) = &artifact.declaration {
                 fs::write(js_path.with_extension("d.ts"), declaration)?;
