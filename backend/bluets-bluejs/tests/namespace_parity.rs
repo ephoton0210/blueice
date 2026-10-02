@@ -141,3 +141,40 @@ fn direct_execution_refuses_commonjs_naming_the_supported_route() {
         );
     }
 }
+
+#[test]
+fn direct_execution_links_no_remote_or_installed_package_declaration() {
+    use blueice_bluets::{CompilerOptions, ModuleLoader, ModuleSource};
+    struct Loader;
+    impl ModuleLoader for Loader {
+        fn load(&self, id: &str) -> Result<ModuleSource, String> {
+            match id {
+                "main.ts" => Ok(ModuleSource::new(
+                    id,
+                    "import { remote } from \"remote-lib\";\nexport const a = remote();\n",
+                )),
+                other => Ok(ModuleSource::new(
+                    other,
+                    "export declare function remote(): number;\n",
+                )),
+            }
+        }
+        fn resolve(&self, _from: &str, specifier: &str) -> Result<String, String> {
+            Ok(match specifier {
+                "remote-lib" => format!("@remote/{}.d.ts", "0".repeat(64)),
+                other => other.to_string(),
+            })
+        }
+    }
+    let error = blueice_bluets_bluejs::compile_direct_module_graph(
+        "main.ts",
+        &Loader,
+        CompilerOptions::default(),
+    )
+    .err()
+    .expect("a runtime import of a remote declaration is refused");
+    assert!(
+        format!("{error:?}").contains("links no installed packages"),
+        "{error:?}"
+    );
+}

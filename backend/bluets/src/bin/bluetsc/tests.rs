@@ -248,6 +248,7 @@ fn test_metadata() -> BuildMetadata {
         module: "esm",
         es_module_interop: false,
         package_resolution: None,
+        remote_declarations: Vec::new(),
         class_helper_version: "bluets-class-helper-v1",
         runtime_policy: "checked",
         runtime_helper: None,

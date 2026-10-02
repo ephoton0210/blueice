@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: J.4.4.** J.3 is complete. H and I are complete. The requested class, enum,
+**Current leaf: J.5.1.** J.3 is complete. H and I are complete. The requested class, enum,
 decorator, namespace, JSX, CommonJS, and package-resolution expansion has
 passed J.1/J.2 planning; implementation and pinned-`tsc` parity remain open.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
@@ -2780,7 +2780,7 @@ done to the page-runs-and-debugs goal at the top of this file.
         cases agree on acceptance and TS2322/TS2488 lines, and a Node run of
         a program using every form gives identical output for BlueTSC and
         `tsc`. A generator is never a strict runtime boundary.
-- [ ] **J.4** Implement the module and package ecosystem without widening
+- [x] **J.4** Implement the module and package ecosystem without widening
   page or MCP authority through type declarations.
   - [x] **J.4.1** Add TypeScript 5.9.3 module-mode selection and CommonJS
     checking/emit (`import = require`, `export =`, interop and cycles), plus
@@ -2792,7 +2792,7 @@ done to the page-runs-and-debugs goal at the top of this file.
   - [x] **J.4.3** Bind package resolution to canonical roots and exact
     graph/config fingerprints; test symlink, path escape, cache invalidation,
     and cross-platform behavior without implicit package installation.
-  - [ ] **J.4.4** Support explicitly authorized remote declaration sources
+  - [x] **J.4.4** Support explicitly authorized remote declaration sources
     with pinned content identity and bounded fetch/cache behavior; reject
     source-driven fetches and prove declarations grant no runtime host API.
 - [ ] **J.5** Implement TSX/JSX and both TypeScript 5.9.3 decorator modes.

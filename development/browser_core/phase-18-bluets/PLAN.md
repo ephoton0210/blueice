@@ -3295,3 +3295,43 @@ one spelling; `.d.mts`/`.d.cts`/`.mts`/`.cts` entries, `typesVersions`, the pack
 self-name import, `paths`/`baseUrl` and automatic `@types` inclusion are not resolved;
 real-world declaration files that use syntax BlueTS's declaration parser does not
 accept are refused at parse time, not skipped.
+
+### J.4.4 Remote declaration sources
+
+`remote_declarations.rs` and the `bluetsc` config `remoteDeclarations` (each
+`{ specifier, url, sha256 }`) plus `declarationCache` (default `.bluetsc/declarations`,
+inside the project root). The owner pins the SHA-256 of exactly the bytes allowed.
+
+**Nothing in a program fetches.** `check` and `build` never open a socket: they read
+only the content-addressed cache (`<sha256>.d.ts`), re-hash each entry on every read
+(a tampered file is `CorruptCache`, never trusted or replaced) and, when an entry is
+missing, say to run `bluetsc fetch-declarations`. That command is the only network
+step; it takes only `--config`, requests only the owner's listed URLs, and the
+`ureq` fetcher allows `https` only, follows no redirect, has a 30-second total
+timeout and stops reading one byte past the size limit. Source text cannot trigger a
+fetch: a source importing `https://...` is refused as a bare specifier by resolution,
+and a pinned declaration's `/// <reference>` lines and `import("https://..")` types are
+text, never requests (tested offline). The URL list is validated when the config is
+read (https, a host, no credentials, fragment, spaces or control characters; a bare
+specifier; a 64-hex pin; unique specifiers).
+
+**Bounds.** 1 MiB per source, 16 sources, 8 MiB of cache by default (`RemoteLimits`); a
+fetched body is checked against the size, the pin and UTF-8 before it is written, and is
+written to a temporary file and renamed, so a mismatched or partial download never
+appears in the cache.
+
+**Identity and authority.** The module id is `@remote/<sha256>.d.ts`, resolved only
+for an exact configured specifier; the pin is in the id, the manifest
+(`remoteDeclarations`) and, with the specifiers and URLs, in `resolver_fingerprint`, so a
+different pin is a different project fingerprint. A remote declaration cannot import
+anything (its resolutions are refused as not self-contained), is checked and used for
+types but not emitted or copied (`is_external_library_module`), and adds no ambient
+scope: a `declare function` in it does not become a callable global (checked with
+`require_declared_global_calls`), and the importing program keeps the plain specifier for
+whatever runtime the owner provides. The direct bridge refuses a runtime import of it
+(`links no installed packages`), so a page gets no host API from a declaration.
+
+Recorded gaps: an unknown identifier is still not diagnosed (a declared `const` that was
+not imported is not shown to be absent), the real network path is exercised only for its
+failure and validation behaviour (no HTTPS server in tests), and the cache has no
+eviction (a full cache is an error the owner resolves).

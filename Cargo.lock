@@ -170,6 +170,7 @@ dependencies = [
  "ring",
  "serde",
  "serde_json",
+ "ureq",
 ]
 
 [[package]]

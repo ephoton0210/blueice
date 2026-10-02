@@ -28,6 +28,7 @@ mod enum_eval;
 mod namespace_analysis;
 pub mod package_resolution;
 mod parser;
+pub mod remote_declarations;
 mod strict_boundaries;
 mod syntax;
 

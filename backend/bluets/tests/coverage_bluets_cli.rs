@@ -123,7 +123,7 @@ fn malformed_command_lines_fail_with_a_message_and_the_usage_text() {
         (&[], "a command is required"),
         (
             &["compile", "main.ts"],
-            "unknown command `compile`; expected `check` or `build`",
+            "unknown command `compile`; expected `check`, `build` or `fetch-declarations`",
         ),
         (
             &["check"],

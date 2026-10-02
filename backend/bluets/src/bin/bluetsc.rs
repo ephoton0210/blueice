@@ -8,6 +8,9 @@ use blueice_bluets::package_resolution::{
     ImportMode, ModuleResolution, OsPackageFs, PackageResolver, PackageResolverConfig,
     ResolveError, RESOLUTION_VERSION,
 };
+use blueice_bluets::remote_declarations::{
+    DeclarationCache, RemoteDeclarationSource, RemoteFetcher, RemoteLimits,
+};
 use blueice_bluets::{
     compile, BuildArtifact, CompilerLimits, CompilerOptions, EcmaTarget, ModuleKind, ModuleLoader,
     ModuleSource, RuntimePolicy, SourceSpan, StrictRuntimeBoundary,
@@ -30,6 +33,9 @@ const RUNTIME_HELPER_V1_SOURCE: &str = include_str!("../runtime_helper_v1.mjs");
 enum Command {
     Check,
     Build,
+    /// The one command that touches the network: it fetches the owner's pinned
+    /// remote declaration sources into the cache. `check` and `build` never do.
+    FetchDeclarations,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -57,6 +63,22 @@ struct Invocation {
     options: CompilerOptions,
     imports: BTreeMap<String, PathBuf>,
     packages: Option<PackageSettings>,
+    remote: Option<RemoteSettings>,
+}
+
+/// The owner's pinned remote declaration sources and where they are cached.
+#[derive(Debug, Clone)]
+struct RemoteSettings {
+    sources: Vec<RemoteDeclarationSource>,
+    cache_directory: PathBuf,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct RemoteDeclarationConfig {
+    specifier: String,
+    url: String,
+    sha256: String,
 }
 
 /// The owner's installed-package settings, from the config file only.
@@ -104,6 +126,10 @@ struct BlueTscConfig {
     #[serde(default)]
     custom_conditions: Vec<String>,
     #[serde(default)]
+    remote_declarations: Vec<RemoteDeclarationConfig>,
+    #[serde(default)]
+    declaration_cache: Option<String>,
+    #[serde(default)]
     strict_boundaries: Vec<StrictBoundaryConfig>,
 }
 
@@ -138,6 +164,9 @@ fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
+    if args.command == Command::FetchDeclarations {
+        return run_fetch_declarations(&invocation);
+    }
     if args.command == Command::Build && invocation.out_dir.is_none() {
         eprintln!("bluetsc: build requires --out-dir <directory> or config outDir");
         return ExitCode::FAILURE;
@@ -163,6 +192,24 @@ fn main() -> ExitCode {
             .packages
             .as_ref()
             .map(|settings| package_resolver(&invocation.root, settings)),
+        remote: match invocation.remote.as_ref() {
+            Some(settings) => {
+                let cache = DeclarationCache::new(
+                    settings.cache_directory.clone(),
+                    RemoteLimits::default(),
+                );
+                // Compilation reads only verified cache entries; a missing one
+                // names the explicit fetch step instead of fetching.
+                match cache.load_all(&settings.sources) {
+                    Ok(_) => Some((cache, settings.sources.clone())),
+                    Err(error) => {
+                        eprintln!("bluetsc: {error}");
+                        return ExitCode::FAILURE;
+                    }
+                }
+            }
+            None => None,
+        },
         import_mode: if invocation.options.module_kind == ModuleKind::CommonJs {
             ImportMode::Require
         } else {
@@ -224,10 +271,11 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     let command = match args.next().as_deref() {
         Some("check") => Command::Check,
         Some("build") => Command::Build,
+        Some("fetch-declarations") => Command::FetchDeclarations,
         Some("--help") | Some("-h") => return Err("help requested".to_string()),
         Some(other) => {
             return Err(format!(
-                "unknown command `{other}`; expected `check` or `build`"
+                "unknown command `{other}`; expected `check`, `build` or `fetch-declarations`"
             ))
         }
         None => return Err("a command is required".to_string()),
@@ -248,6 +296,9 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
             command,
             input: Input::Config(PathBuf::from(path)),
         });
+    }
+    if command == Command::FetchDeclarations {
+        return Err("fetch-declarations takes only --config <bluetsc.json>".to_string());
     }
     let entry = PathBuf::from(first);
     let mut project_root = None;
@@ -329,7 +380,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
 }
 
 fn usage() -> &'static str {
-    "Usage:\n  bluetsc check <entry.ts> [--project-root <directory>] [--target es2020|es2022] [--use-define-for-class-fields true|false] [--preserve-const-enums] [--isolated-modules] [--module esnext|commonjs] [--es-module-interop] [--runtime-policy transpile-only|checked|strict-runtime]\n  bluetsc build <entry.ts> --out-dir <directory> [--project-root <directory>] [--source-map] [--declaration] [--target es2020|es2022] [--use-define-for-class-fields true|false] [--preserve-const-enums] [--isolated-modules] [--module esnext|commonjs] [--es-module-interop] [--runtime-policy transpile-only|checked|strict-runtime]\n  bluetsc check --config <bluetsc.json>\n  bluetsc build --config <bluetsc.json>\n\nConfig fields: entries, projectRoot, outDir, sourceMap, declaration, target, useDefineForClassFields, preserveConstEnums, isolatedModules, module, esModuleInterop, runtimePolicy, imports, moduleResolution, packageRoots, customConditions, strictBoundaries."
+    "Usage:\n  bluetsc check <entry.ts> [--project-root <directory>] [--target es2020|es2022] [--use-define-for-class-fields true|false] [--preserve-const-enums] [--isolated-modules] [--module esnext|commonjs] [--es-module-interop] [--runtime-policy transpile-only|checked|strict-runtime]\n  bluetsc build <entry.ts> --out-dir <directory> [--project-root <directory>] [--source-map] [--declaration] [--target es2020|es2022] [--use-define-for-class-fields true|false] [--preserve-const-enums] [--isolated-modules] [--module esnext|commonjs] [--es-module-interop] [--runtime-policy transpile-only|checked|strict-runtime]\n  bluetsc fetch-declarations --config <bluetsc.json>\n  bluetsc check --config <bluetsc.json>\n  bluetsc build --config <bluetsc.json>\n\nConfig fields: entries, projectRoot, outDir, sourceMap, declaration, target, useDefineForClassFields, preserveConstEnums, isolatedModules, module, esModuleInterop, runtimePolicy, imports, moduleResolution, packageRoots, customConditions, remoteDeclarations, declarationCache, strictBoundaries."
 }
 
 #[derive(Debug)]
@@ -358,6 +409,8 @@ struct BuildMetadata {
     es_module_interop: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     package_resolution: Option<PackageResolutionManifest>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    remote_declarations: Vec<RemoteDeclarationManifest>,
     /// The version of the private-name helper text an artifact may embed.
     class_helper_version: &'static str,
     runtime_policy: &'static str,
@@ -374,6 +427,14 @@ struct BuildMetadata {
     imports: BTreeMap<String, String>,
     #[serde(skip)]
     has_configured_imports: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RemoteDeclarationManifest {
+    specifier: String,
+    url: String,
+    sha256: String,
 }
 
 /// The owner's installed-package settings and what resolution actually used.
@@ -565,6 +626,16 @@ fn build_metadata(
         module: invocation.options.module_kind.as_str(),
         es_module_interop: invocation.options.es_module_interop,
         package_resolution,
+        remote_declarations: invocation
+            .remote
+            .iter()
+            .flat_map(|settings| settings.sources.iter())
+            .map(|source| RemoteDeclarationManifest {
+                specifier: source.specifier.clone(),
+                url: source.url.clone(),
+                sha256: source.sha256.clone(),
+            })
+            .collect(),
         class_helper_version: blueice_bluets::CLASS_HELPER_V1_VERSION,
         runtime_policy: invocation.options.runtime_policy.as_str(),
         runtime_helper: (invocation.options.runtime_policy == RuntimePolicy::StrictRuntime)
@@ -644,6 +715,7 @@ fn resolve_explicit_invocation(
         options,
         imports: BTreeMap::new(),
         packages: None,
+        remote: None,
     })
 }
 
@@ -737,6 +809,11 @@ fn resolve_config_invocation(path: PathBuf) -> Result<Invocation, String> {
         &config.package_roots,
         config.custom_conditions,
     )?;
+    let remote = configured_remote(
+        &root,
+        config.remote_declarations,
+        config.declaration_cache.as_deref(),
+    )?;
     let strict_runtime_boundaries = config
         .strict_boundaries
         .into_iter()
@@ -754,11 +831,15 @@ fn resolve_config_invocation(path: PathBuf) -> Result<Invocation, String> {
         source_map: config.source_map,
         declaration: config.declaration,
         resolver_fingerprint: format!(
-            "{}{}",
+            "{}{}{}",
             import_map_fingerprint(&root, &imports),
             packages
                 .as_ref()
                 .map(|settings| format!("+{}", package_resolver(&root, settings).fingerprint()))
+                .unwrap_or_default(),
+            remote
+                .as_ref()
+                .map(|settings| remote_fingerprint(&settings.sources))
                 .unwrap_or_default()
         ),
         // The standalone CLI has no page-host profile authority. Only a host
@@ -776,7 +857,101 @@ fn resolve_config_invocation(path: PathBuf) -> Result<Invocation, String> {
         options,
         imports,
         packages,
+        remote,
     })
+}
+
+fn remote_fingerprint(sources: &[RemoteDeclarationSource]) -> String {
+    let mut text = String::new();
+    for source in sources {
+        text.push_str(&format!(
+            "{}\0{}\0{}\n",
+            source.specifier, source.url, source.sha256
+        ));
+    }
+    format!(
+        "+remote-{}",
+        &blueice_bluets::remote_declarations::sha256_hex(text.as_bytes())[..16]
+    )
+}
+
+fn configured_remote(
+    root: &Path,
+    configured: Vec<RemoteDeclarationConfig>,
+    cache: Option<&str>,
+) -> Result<Option<RemoteSettings>, String> {
+    if configured.is_empty() {
+        if cache.is_some() {
+            return Err("config declarationCache needs remoteDeclarations".to_string());
+        }
+        return Ok(None);
+    }
+    let sources: Vec<RemoteDeclarationSource> = configured
+        .into_iter()
+        .map(|source| RemoteDeclarationSource {
+            specifier: source.specifier,
+            url: source.url,
+            sha256: source.sha256,
+        })
+        .collect();
+    blueice_bluets::remote_declarations::validate_sources(&sources, &RemoteLimits::default())
+        .map_err(|error| error.to_string())?;
+    let relative = Path::new(cache.unwrap_or(".bluetsc/declarations"));
+    if relative.is_absolute()
+        || relative
+            .components()
+            .any(|component| matches!(component, std::path::Component::ParentDir))
+    {
+        return Err("config declarationCache must stay beneath the project root".to_string());
+    }
+    Ok(Some(RemoteSettings {
+        sources,
+        cache_directory: root.join(relative),
+    }))
+}
+
+/// The explicit network step. Only the owner's `https` URLs are ever requested:
+/// no redirects, a total timeout, and a read that stops one byte past the limit.
+struct UreqFetcher;
+
+impl RemoteFetcher for UreqFetcher {
+    fn fetch(&self, url: &str, max_bytes: usize) -> Result<Vec<u8>, String> {
+        let agent: ureq::Agent = ureq::Agent::config_builder()
+            .max_redirects(0)
+            .https_only(true)
+            .timeout_global(Some(std::time::Duration::from_secs(30)))
+            .build()
+            .into();
+        let mut response = agent.get(url).call().map_err(|error| error.to_string())?;
+        response
+            .body_mut()
+            .with_config()
+            .limit(max_bytes as u64 + 1)
+            .read_to_vec()
+            .map_err(|error| error.to_string())
+    }
+}
+
+fn run_fetch_declarations(invocation: &Invocation) -> ExitCode {
+    let Some(remote) = &invocation.remote else {
+        eprintln!("bluetsc: config has no remoteDeclarations to fetch");
+        return ExitCode::FAILURE;
+    };
+    let cache = DeclarationCache::new(remote.cache_directory.clone(), RemoteLimits::default());
+    match cache.fetch_missing(&remote.sources, &UreqFetcher) {
+        Ok(report) => {
+            println!(
+                "fetched {} declaration source(s), {} already cached",
+                report.fetched.len(),
+                report.already_cached.len()
+            );
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            eprintln!("bluetsc: {error}");
+            ExitCode::FAILURE
+        }
+    }
 }
 
 fn configured_packages(
@@ -1029,11 +1204,32 @@ struct FileLoader {
     extra_roots: Vec<PathBuf>,
     /// Present only when the owner configured a `moduleResolution`.
     packages: Option<PackageResolver<OsPackageFs>>,
+    /// The verified cache and the pinned sources whose specifiers resolve to it.
+    remote: Option<(DeclarationCache, Vec<RemoteDeclarationSource>)>,
     import_mode: ImportMode,
 }
 
 impl ModuleLoader for FileLoader {
     fn load(&self, module_id: &str) -> Result<ModuleSource, String> {
+        if let Some(pin) = module_id
+            .strip_prefix("@remote/")
+            .and_then(|rest| rest.strip_suffix(".d.ts"))
+        {
+            let (cache, sources) = self.remote.as_ref().ok_or_else(|| {
+                format!("module `{module_id}` is not an authorized remote declaration")
+            })?;
+            if !sources.iter().any(|source| source.sha256 == pin) {
+                return Err(format!(
+                    "module `{module_id}` is not an authorized remote declaration"
+                ));
+            }
+            // Re-verified against its pin on every read.
+            let text = cache
+                .read(pin)
+                .map_err(|error| error.to_string())?
+                .ok_or_else(|| format!("remote declaration {pin} is not cached"))?;
+            return Ok(ModuleSource::new(module_id, text));
+        }
         let path = self.source_path(module_id)?;
         if !matches!(
             path.extension().and_then(|extension| extension.to_str()),
@@ -1051,6 +1247,17 @@ impl ModuleLoader for FileLoader {
         let is_relative = matches!(specifier, "." | "..")
             || specifier.starts_with("./")
             || specifier.starts_with("../");
+        if from_module.starts_with("@remote/") {
+            return Err(format!(
+                "remote declaration `{from_module}` cannot import `{specifier}`: a remote \
+                 declaration must be self-contained"
+            ));
+        }
+        if let Some((_, sources)) = &self.remote {
+            if let Some(source) = sources.iter().find(|source| source.specifier == specifier) {
+                return Ok(format!("@remote/{}.d.ts", source.sha256));
+            }
+        }
         if let Some(packages) = &self.packages {
             let from_directory = self
                 .source_path(from_module)?
