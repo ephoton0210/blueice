@@ -1,5 +1,9 @@
 # macOS SwiftUI/AppKit first-slice validation
 
+Later page NSAccessibility implementation and validation are recorded in
+[`MACOS_ACCESSIBILITY_RESULTS.md`](MACOS_ACCESSIBILITY_RESULTS.md). The results
+below describe this earlier slice.
+
 This records the original private-pipe slice. The default app's later launcher
 and gatekeeper integration is recorded in
 [`MACOS_SERVICE_RESULTS.md`](MACOS_SERVICE_RESULTS.md).

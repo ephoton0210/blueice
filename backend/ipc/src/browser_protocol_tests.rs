@@ -6,6 +6,16 @@ use super::*;
 use std::io::Cursor;
 use std::net::{TcpListener, TcpStream};
 
+#[test]
+fn older_node_state_defaults_native_input_and_protected_capabilities() {
+    let state: NodeState = serde_json::from_str(
+        r#"{"checked":null,"disabled":false,"required":false,"selected":false,"hovered":false,"focused":false}"#,
+    )
+    .unwrap();
+    assert!(!state.native_text_input);
+    assert!(!state.protected);
+}
+
 /// Exercises framing across a real OS socket on every supported platform.
 /// TCP keeps this protocol-boundary seam available on Windows while the
 /// Unix-domain-socket services themselves remain Unix-only.

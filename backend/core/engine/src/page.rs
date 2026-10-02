@@ -468,6 +468,10 @@ impl Page {
     /// clears a previous text-input focus. Keeping this state in the core
     /// means the reference frontend never has to turn keyboard events into a
     /// guessed DOM node ID.
+    pub(crate) fn supports_native_text_input(&self, node: NodeId) -> bool {
+        dom_helpers::is_supported_text_input(&self.doc, node)
+    }
+
     pub(crate) fn focus_text_input_at(&mut self, target: Option<NodeId>) -> bool {
         let focused = target.and_then(|node| nearest_supported_text_input(&self.doc, node));
         if self.focused == focused {

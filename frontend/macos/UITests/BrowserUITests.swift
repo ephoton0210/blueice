@@ -168,6 +168,58 @@ final class BrowserUITests: XCTestCase {
         add(attachment)
     }
 
+    func testNativePageSemanticsTypingPrivacyAndTabIsolation() throws {
+        let fixture = try HTTPFixture()
+        defer { fixture.stop() }
+        launch()
+        enter(fixture.origin + "/accessibility")
+        let page = app.groups["page"]
+        let heading = page.descendants(matching: .any).matching(NSPredicate(format: "label == 'Accessibility fixture' OR value == 'Accessibility fixture'")).firstMatch
+        XCTAssertTrue(heading.waitForExistence(timeout: 15), app.debugDescription)
+        XCTAssertTrue(page.staticTexts["Readable page text"].exists)
+        XCTAssertTrue(page.links["Open destination"].exists)
+        XCTAssertTrue(page.images["Fixture logo"].exists)
+        XCTAssertTrue(page.checkBoxes["Remember"].exists)
+        XCTAssertFalse(page.textFields["Locked"].isEnabled)
+        XCTAssertFalse(page.descendants(matching: .any).matching(NSPredicate(format: "label == 'Hidden fixture heading'")).firstMatch.exists)
+        let secret = page.secureTextFields["Secret"]
+        XCTAssertTrue(secret.exists, app.debugDescription)
+        XCTAssertFalse(String(describing: secret.value).contains("private-fixture-secret"))
+        XCTAssertFalse(app.debugDescription.contains("private-fixture-secret"))
+        let name = page.textFields["Name"]
+        waitValue(name, "hello")
+        name.click()
+        name.typeText(" world")
+        waitValue(page.textFields["Name"], "hello world")
+        app.buttons["add-tab"].click()
+        waitValue(app.textFields["address"], "about:credits")
+        XCTAssertFalse(page.textFields["Name"].exists)
+        app.buttons["tab-1"].click()
+        waitValue(page.textFields["Name"], "hello world")
+        let attachment = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
+        attachment.name = "macos-page-accessibility"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
+    func testAccessibleLinkNavigationDropsOldDocumentElements() throws {
+        let fixture = try HTTPFixture()
+        defer { fixture.stop() }
+        launch()
+        enter(fixture.origin + "/accessibility")
+        let link = app.groups["page"].links["Open destination"]
+        XCTAssertTrue(link.waitForExistence(timeout: 15), app.debugDescription)
+        XCTAssertGreaterThan(link.frame.width, 0)
+        XCTAssertTrue(app.groups["page"].frame.intersects(link.frame))
+        link.click()
+        waitValue(app.textFields["address"], fixture.origin + "/destination")
+        let destination = app.groups["page"].descendants(matching: .any).matching(NSPredicate(format: "label == 'Destination reached' OR value == 'Destination reached'")).firstMatch
+        XCTAssertTrue(destination.waitForExistence(timeout: 15), app.debugDescription)
+        XCTAssertFalse(app.groups["page"].textFields["Name"].exists)
+        XCTAssertFalse(link.exists)
+        XCTAssertEqual(fixture.requests, ["/accessibility", "/destination"])
+    }
+
     func testMissingLauncherShowsFailureAndDisabledNavigation() {
         app.launchArguments = ["--launcher-exe", "/nonexistent/blueice-launcher"]
         app.launch()

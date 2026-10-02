@@ -312,6 +312,9 @@ fn compute_state(
         } else {
             None
         },
+        native_text_input: page.supports_native_text_input(node),
+        protected: tag == "input"
+            && attr(attributes, "type").is_some_and(|kind| kind.eq_ignore_ascii_case("password")),
         checked,
         disabled: has_attr(attributes, "disabled"),
         required: has_attr(attributes, "required"),
@@ -388,6 +391,24 @@ mod tests {
             .iter()
             .find(|n| n.name.as_deref() == Some(name))
             .unwrap_or_else(|| panic!("no node named {name:?} in {nodes:#?}"))
+    }
+
+    #[test]
+    fn native_input_capabilities_and_protected_values_come_from_core() {
+        let page = page_with(
+            r#"<input aria-label="Editable" value="hello">
+            <input aria-label="Disabled" disabled value="locked">
+            <input aria-label="Secret" type="PASSWORD" value="do not disclose">
+            <textarea aria-label="Multiline">readable</textarea>"#,
+        );
+        let snap = build(&page, 1, 1);
+        assert!(find(&snap.nodes, "Editable").state.native_text_input);
+        assert!(!find(&snap.nodes, "Disabled").state.native_text_input);
+        assert!(!find(&snap.nodes, "Multiline").state.native_text_input);
+        let secret = find(&snap.nodes, "Secret");
+        assert!(secret.state.protected);
+        assert!(!secret.state.native_text_input);
+        assert_eq!(secret.state.value, None);
     }
 
     #[test]

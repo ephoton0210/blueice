@@ -2,7 +2,7 @@
 
 [← Back to plan](../BROWSER_CORE_PLAN.md)
 
-**Status**: In progress — the Unix reference frontend, an initial Windows WinUI 3 shell and a macOS SwiftUI/AppKit shell with supervised navigation present the core's pixels and basic input. Complete browser-shell behavior and operating-system page accessibility remain open.
+**Status**: In progress — the Unix reference frontend, an initial Windows WinUI 3 shell and a macOS SwiftUI/AppKit shell with supervised navigation and an initial macOS page NSAccessibility bridge present the core's pixels, semantics and basic input. Complete browser-shell behavior and full operating-system page accessibility remain open.
 
 ## Windows first slice (2026-10-02)
 
@@ -74,6 +74,36 @@ and missing-launcher UI coverage. Results are recorded in
 
 This does not complete shared-launcher attachment, assistant/permission panels,
 IME/document editing or the page NSAccessibility bridge.
+
+## macOS page accessibility bridge (2026-10-02)
+
+The AppKit viewport now maps the core's existing `Representation` replies into
+virtual NSAccessibility elements. The adapter exposes names, semantic roles,
+hierarchy, values and disabled/required/selected/focused state, with document
+scroll and backing-pixel coordinates converted into screen rectangles. Core
+state supplies additive, backward-compatible `native_text_input` and
+`protected` flags so the shell can restrict editing and redact password values.
+
+Replies must match the live tab, frame-directory source, frame generation and
+committed URL. Tree validation bounds node count/depth and rejects invalid
+geometry, duplicate IDs, broken parent/child links and cycles. Bad semantic
+payloads disable the page bridge while pixel transport continues. Reload and
+navigation advance a per-tab document epoch; tab switches and document changes
+invalidate old native elements. During ordinary frame refresh, elements retain
+identity but actions wait for a matching representation.
+
+Native press/focus uses the ordinary core click pipeline; text commits use
+`InsertText`. The adapter does not use `ActOn::SetValue` to mutate the DOM.
+Checkboxes, sliders and selects currently expose read-only state. XCTest
+exercises native accessibility actions against a real owned service stack;
+XCUITest verifies OS-visible semantics, typing/privacy, reviewed link navigation
+and tab isolation. Results are recorded in
+[`MACOS_ACCESSIBILITY_RESULTS.md`](MACOS_ACCESSIBILITY_RESULTS.md).
+
+Interactive VoiceOver speech/navigation, full ARIA and accessible-name behavior,
+text ranges/selection, live regions, rotor search, IME and the remaining shell
+features remain open. The macOS bridge does not complete the cross-platform
+Phase 22 acceptance criteria.
 
 ## Objective
 

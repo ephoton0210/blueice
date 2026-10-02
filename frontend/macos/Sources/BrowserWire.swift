@@ -66,7 +66,7 @@ struct HistoryState: Decodable, Sendable {
 enum BrowserMessage: Decodable, Sendable {
     case hello(UInt32), tabs([BrowserTab]), opened(UInt64), closed(UInt64)
     case navigated(String), history(HistoryState), frame(FrameNotice)
-    case blocked(String), error(String), unknown
+    case blocked(String), error(String), representation(PageRepresentation), representationUnavailable, unknown
 
     init(from decoder: Decoder) throws {
         guard let object = try? decoder.container(keyedBy: MessageKey.self), let key = object.allKeys.first else {
@@ -86,6 +86,9 @@ enum BrowserMessage: Decodable, Sendable {
         case "Navigated": self = .navigated(try object.decode(Navigation.self, forKey: key).url)
         case "HistoryState": self = .history(try object.decode(HistoryState.self, forKey: key))
         case "FrameReady": self = .frame(try object.decode(FrameNotice.self, forKey: key))
+        case "Representation":
+            if let value = try? object.decode(PageRepresentation.self, forKey: key) { self = .representation(value) }
+            else { self = .representationUnavailable }
         case "GatekeeperBlocked": self = .blocked(try object.decode(Blocked.self, forKey: key).reason)
         case "Error": self = .error(try object.decode(Failure.self, forKey: key).message)
         default: self = .unknown

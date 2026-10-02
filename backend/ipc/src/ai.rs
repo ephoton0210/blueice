@@ -95,6 +95,13 @@ pub struct NodeState {
     /// core-owned state that the human frame renders.
     #[serde(default)]
     pub value: Option<String>,
+    /// Whether the current core supports ordinary focus/InsertText input on
+    /// this node. A semantic TextBox role alone does not promise editing.
+    #[serde(default)]
+    pub native_text_input: bool,
+    /// A password control; callers must not expose its value as ordinary text.
+    #[serde(default)]
+    pub protected: bool,
     pub checked: Option<bool>,
     pub disabled: bool,
     pub required: bool,

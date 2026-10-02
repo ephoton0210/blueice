@@ -21,6 +21,8 @@ struct PageViewport: NSViewRepresentable {
     func updateNSView(_ view: CorePageView, context: Context) {
         view.image = model.image
         view.setAccessibilityValue(model.image.map { "Rendered \($0.width) × \($0.height), frame \(model.generation)" } ?? "No rendered page")
+        view.accessibilityTree.update(model.representation, epoch: model.accessibilityEpoch,
+                                      imageSize: model.image.map { CGSize(width: $0.width, height: $0.height) } ?? .zero, tab: model.selected)
         view.needsDisplay = true
     }
 }
@@ -28,6 +30,11 @@ struct PageViewport: NSViewRepresentable {
 final class CorePageView: NSView, NSTextInputClient {
     weak var model: BrowserModel?
     var image: CGImage?
+    lazy var accessibilityTree = PageAccessibilityTree(view: self) { [weak self] snapshot, epoch, node, _ in
+        guard let self, self.model?.accessibilityAction(snapshot, epoch: epoch, node: node) == true else { return false }
+        self.window?.makeFirstResponder(self)
+        return true
+    }
     private var marked = NSAttributedString(string: "")
     override var isFlipped: Bool { true }
     override var acceptsFirstResponder: Bool { true }
@@ -45,6 +52,19 @@ final class CorePageView: NSView, NSTextInputClient {
     override func viewDidMoveToWindow() { super.viewDidMoveToWindow(); reportSize() }
     override func viewDidChangeBackingProperties() { super.viewDidChangeBackingProperties(); reportSize() }
     private func reportSize() { model?.viewportChanged(convertToBacking(bounds).size) }
+
+    override func becomeFirstResponder() -> Bool {
+        let accepted = super.becomeFirstResponder()
+        if accepted { NSAccessibility.post(element: accessibilityTree.focusedElement() ?? self, notification: .focusedUIElementChanged) }
+        return accepted
+    }
+
+    override func accessibilityHitTest(_ point: NSPoint) -> Any? {
+        accessibilityTree.hitTest(point) ?? self
+    }
+    override var accessibilityFocusedUIElement: Any? {
+        accessibilityTree.focusedElement() ?? self
+    }
 
     override func mouseDown(with event: NSEvent) {
         guard let image, bounds.width > 0, bounds.height > 0 else { return }

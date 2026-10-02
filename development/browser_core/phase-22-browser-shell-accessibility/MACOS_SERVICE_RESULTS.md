@@ -1,5 +1,9 @@
 # macOS supervised navigation validation
 
+Later page NSAccessibility implementation and validation are recorded in
+[`MACOS_ACCESSIBILITY_RESULTS.md`](MACOS_ACCESSIBILITY_RESULTS.md). The results
+below describe this earlier slice.
+
 Validated on 2026-10-02, Apple Silicon macOS 26.6.2, Xcode 27.0 (27A266a),
 Swift compiler 6.4 and Rust 1.96.0. This extends the
 [original private-pipe shell](MACOS_RESULTS.md) with the bundled production
