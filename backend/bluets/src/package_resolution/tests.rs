@@ -831,3 +831,143 @@ fn a_manifest_field_cannot_lead_out_of_its_package() {
     );
     assert!(!resolver.fingerprint().contains("/outside"));
 }
+
+#[test]
+fn every_error_has_a_message_naming_what_went_wrong() {
+    let errors = [
+        ResolveError::InvalidSpecifier("../x".to_string()),
+        ResolveError::NotFound {
+            specifier: "a".to_string(),
+            searched: vec![PathBuf::from("/p")],
+        },
+        ResolveError::OutsideRoots {
+            specifier: "a".to_string(),
+            path: PathBuf::from("/elsewhere"),
+        },
+        ResolveError::InvalidPackageJson {
+            path: PathBuf::from("/p/package.json"),
+            message: "bad".to_string(),
+        },
+        ResolveError::ExportsNotDefined {
+            package: "a".to_string(),
+            subpath: "./x".to_string(),
+        },
+        ResolveError::JavaScriptOnly {
+            specifier: "a".to_string(),
+            path: PathBuf::from("/p/index.js"),
+        },
+        ResolveError::ImportsNotDefined {
+            specifier: "#x".to_string(),
+        },
+    ];
+    let messages: Vec<String> = errors.iter().map(ToString::to_string).collect();
+    for (message, needle) in messages.iter().zip([
+        "not a valid",
+        "nothing is installed",
+        "outside the authorized",
+        "package.json",
+        "does not export",
+        "only to JavaScript",
+        "no package `imports`",
+    ]) {
+        assert!(message.contains(needle), "{message}");
+    }
+}
+
+#[test]
+fn resolved_packages_and_config_are_reported_and_fs_errors_surface() {
+    let fs = MemoryFs::with(&[
+        (
+            "/project/node_modules/a/package.json",
+            r#"{"version":"1.0.0","types":"a.d.ts"}"#,
+        ),
+        ("/project/node_modules/a/a.d.ts", ""),
+        (
+            "/project/node_modules/b/package.json",
+            r#"{"main":"index.js"}"#,
+        ),
+    ]);
+    let resolver = resolver(&fs, ModuleResolution::Node10);
+    resolver
+        .resolve(Path::new("/project/src"), "a", ImportMode::Import)
+        .unwrap();
+    assert_eq!(resolver.resolved_packages().len(), 1);
+    assert_eq!(resolver.config().resolution, ModuleResolution::Node10);
+    assert!(resolver.within_roots(Path::new("/project/x")));
+    assert!(!resolver.within_roots(Path::new("/other")));
+    // A package with a manifest and no files at all is simply not found.
+    assert!(matches!(
+        resolver.resolve(Path::new("/project/src"), "b", ImportMode::Import),
+        Err(ResolveError::NotFound { .. })
+    ));
+    // The real file system reports the same errors.
+    let os = PackageResolver::new(
+        OsPackageFs,
+        PackageResolverConfig {
+            roots: vec![std::env::temp_dir()],
+            resolution: ModuleResolution::Bundler,
+            custom_conditions: vec![],
+        },
+    );
+    assert!(os
+        .resolve(
+            &std::env::temp_dir(),
+            "definitely-not-installed-xyz",
+            ImportMode::Require
+        )
+        .is_err());
+    assert!(OsPackageFs
+        .read_to_string(Path::new("/definitely/not/here"))
+        .is_err());
+    assert!(!OsPackageFs.is_file(Path::new("/definitely/not/here")));
+    assert!(!OsPackageFs.is_dir(Path::new("/definitely/not/here")));
+    assert!(OsPackageFs
+        .canonicalize(Path::new("/definitely/not/here"))
+        .is_err());
+}
+
+#[test]
+fn exports_edge_shapes_are_resolved_or_refused_precisely() {
+    let fs = MemoryFs::with(&[
+        (
+            "/project/node_modules/mixed/package.json",
+            r#"{"exports":{".":"./i.d.ts","default":"./d.d.ts"}}"#,
+        ),
+        (
+            "/project/node_modules/arr/package.json",
+            r#"{"exports":["./nope.d.ts","./yes.d.ts"]}"#,
+        ),
+        ("/project/node_modules/arr/yes.d.ts", ""),
+        (
+            "/project/node_modules/bad/package.json",
+            r#"{"exports":{".":42}}"#,
+        ),
+        (
+            "/project/node_modules/nul/package.json",
+            r#"{"exports":null,"types":"t.d.ts"}"#,
+        ),
+        ("/project/node_modules/nul/t.d.ts", ""),
+        (
+            "/project/node_modules/pat/package.json",
+            r#"{"exports":{"./a/*":"./x/*.d.ts","./a/b/*":"./y/*.d.ts"}}"#,
+        ),
+        ("/project/node_modules/pat/y/c.d.ts", ""),
+    ]);
+    let at = |name: &str| resolve(&fs, ModuleResolution::Node16, name, ImportMode::Import);
+    assert!(matches!(
+        at("mixed"),
+        Err(ResolveError::InvalidPackageJson { .. })
+    ));
+    assert!(at("arr").is_ok());
+    assert!(matches!(
+        at("bad"),
+        Err(ResolveError::InvalidPackageJson { .. })
+    ));
+    // `exports: null` does not count as an exports map, so `types` is used.
+    assert!(at("nul").is_ok());
+    // The pattern with the longer prefix wins.
+    assert_eq!(
+        path_of(at("pat/a/b/c")),
+        "/project/node_modules/pat/y/c.d.ts"
+    );
+}

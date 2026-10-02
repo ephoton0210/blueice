@@ -235,3 +235,112 @@ fn decorators_on_unsupported_declarations_are_parse_errors() {
         assert!(build(&source, es2022()).is_err(), "{source}");
     }
 }
+
+#[test]
+fn commonjs_rewrites_imports_inside_moved_text() {
+    let compile_two = |main: &str, options: CompilerOptions| {
+        let compiled = compile(
+            "memory:///main.ts",
+            &MapLoader::from([
+                ModuleSource::new("memory:///main.ts", main),
+                ModuleSource::new(
+                    "memory:///dep.ts",
+                    "export const base: number = 1;\nexport function d(value: any, context: any): any { return undefined; }\n",
+                ),
+            ]),
+            options,
+        );
+        compiled
+            .output
+            .unwrap_or_else(|| panic!("{:#?}", compiled.diagnostics))
+            .artifacts["memory:///main.ts"]
+            .javascript
+            .clone()
+    };
+    let commonjs = |target| CompilerOptions {
+        module_kind: ModuleKind::CommonJs,
+        target,
+        ..CompilerOptions::default()
+    };
+    // A static initializer moved after the class (ES2020) and an imported decorator
+    // moved into the decorator array both go through `require`.
+    let moved = compile_two(
+        "import { base } from \"./dep.ts\";\nclass C { static s: number = base + 1; }\n",
+        commonjs(EcmaTarget::Es2020),
+    );
+    assert!(moved.contains("C.s = dep_1.base + 1"), "{moved}");
+    let decorated = compile_two(
+        "import { d } from \"./dep.ts\";\n@d class C { @d m(): void {} }\n",
+        commonjs(EcmaTarget::Es2022),
+    );
+    assert!(decorated.contains("dep_1.d"), "{decorated}");
+    assert!(!decorated.contains("[d]"), "{decorated}");
+}
+
+#[test]
+fn standard_decorators_on_every_member_form_lower_for_both_class_kinds() {
+    let source = format!(
+        "{DECL}class Base {{ constructor() {{}} }}\n\
+         @d class Full extends Base {{\n\
+           @d static accessor sa: number = 1;\n\
+           @d accessor a: number | undefined;\n\
+           @d static f: number = 2;\n\
+           @d static get sg(): number {{ return 1; }}\n\
+           @d static set sg(v: number) {{}}\n\
+           static other: number = 3;\n\
+           static {{ Full.other = 4; }}\n\
+           @d g: number = 5;\n\
+           constructor() {{ super(); }}\n\
+         }}\n\
+         class NoCtor extends Base {{ @d m(): void {{}} }}\n\
+         class Plain {{ @d f: number = 1; @d static sm(): void {{}} }}\n"
+    );
+    let javascript = build(&source, es2022()).unwrap();
+    assert!(
+        javascript.contains("static #sa_accessor_storage")
+            || javascript.contains("static #sa_accessor_storage"),
+        "{javascript}"
+    );
+    assert!(javascript.contains("_classSuper"), "{javascript}");
+    assert!(
+        javascript.contains("_staticExtraInitializers"),
+        "{javascript}"
+    );
+    assert!(
+        javascript.contains("constructor() { super(...arguments);"),
+        "{javascript}"
+    );
+    assert!(
+        javascript.contains("_instanceExtraInitializers"),
+        "{javascript}"
+    );
+}
+
+#[test]
+fn standard_decorator_refusals_cover_each_unlowered_shape() {
+    for (source, expected) in [
+        (
+            format!("{DECL}class A {{ @d constructor() {{}} }}\n"),
+            "not valid here",
+        ),
+        (
+            format!("{DECL}class A {{ @d m(): void;\n m(): void {{}} }}\n"),
+            "overload",
+        ),
+        (
+            format!("{DECL}class B0 {{}}\n@d class A extends B0 {{ constructor() {{ if (true) {{ super(); }} }} @d m(): void {{}} }}\n"),
+            "super(...)",
+        ),
+        (
+            "declare function mk(n: number): (v: any, c: any) => void;\n@mk(// c\n 1) class A {}\n".to_string(),
+            "line comment",
+        ),
+        (
+            format!("{DECL}class A {{ accessor a: number = 1; }}\nnamespace N {{ export class B {{ accessor b: number = 1; }} }}\n"),
+            "inside a namespace",
+        ),
+    ] {
+        let joined = build(&source, es2022()).unwrap_err().join("\n");
+        assert!(joined.contains(expected), "{source}: {joined}");
+    }
+}

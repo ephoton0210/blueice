@@ -183,3 +183,58 @@ fn a_factory_that_is_not_in_the_program_is_refused_not_bound_implicitly() {
         "{error:?}"
     );
 }
+
+#[test]
+fn direct_jsx_covers_fragments_spreads_member_tags_and_attribute_elements() {
+    let source = |body: &str| {
+        format!(
+            "/** @jsx h */\n/** @jsxFrag Fr */\n{NAMESPACE}function h(tag: any, props: any, ...c: any[]): any {{ return c.length + (props === null ? 0 : 100); }}\nconst Fr: any = 0;\nconst tools: any = {{ Item: 1 }};\nconst o: any = {{ a: 1 }};\nconst list: any = [1, 2, 3];\n{body}\n"
+        )
+    };
+    let run = |body: &str| {
+        let program = source(body);
+        let artifact = compile_direct_script(
+            "memory:///direct.tsx",
+            &MapLoader::from([ModuleSource::new("memory:///direct.tsx", program.as_str())]),
+            options(),
+        )
+        .unwrap_or_else(|error| panic!("{body}: {error:?}"));
+        match bluejs::Vm::default().execute(&artifact.bytecode).unwrap() {
+            bluejs::Value::Number(number) => number,
+            other => panic!("{other:?}"),
+        }
+    };
+    // Children count, plus 100 when props are not null.
+    assert_eq!(run("const a: any = <></>;\na;"), 0.0);
+    assert_eq!(run("const a: any = <div {...o} />;\na;"), 100.0);
+    assert_eq!(run("const a: any = <div>{...list}</div>;\na;"), 3.0);
+    assert_eq!(run("const a: any = <tools.Item />;\na;"), 0.0);
+    assert_eq!(run("const a: any = <div x=<span /> />;\na;"), 100.0);
+    assert_eq!(
+        run("const a: any = <div>{/* c */}text<span />  </div>;\na;"),
+        3.0
+    );
+}
+
+#[test]
+fn direct_jsx_refuses_a_malformed_element_and_a_react_native_mode() {
+    let program = source("const a: any = <div>;\na;");
+    assert!(compile_direct_script(
+        "memory:///direct.tsx",
+        &MapLoader::from([ModuleSource::new("memory:///direct.tsx", program.as_str())]),
+        options(),
+    )
+    .is_err());
+    let element = "const a: any = <div />;\na;";
+    let native = refusal(
+        CompilerOptions {
+            jsx: Some(JsxMode::ReactNative),
+            ..CompilerOptions::default()
+        },
+        element,
+    );
+    assert!(
+        native.contains("preserved JSX is not executable"),
+        "{native}"
+    );
+}

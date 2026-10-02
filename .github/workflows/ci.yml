@@ -239,8 +239,18 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   typescript-oracle:
-    name: BlueTSC TypeScript compatibility oracle
-    runs-on: ubuntu-latest
+    name: BlueTSC TypeScript compatibility oracles (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # The differential suites compare BlueTSC with the pinned compiler by
+        # running both outputs under Node, so they run wherever Node and the pinned
+        # `tsc` do. Windows is not in this list: those suites call `tsc` through
+        # `npm exec`, whose `tsc.cmd` shim the harness does not yet launch, and the
+        # symlink tests are Unix-only. `COMPATIBILITY_INVENTORY.md` records that as
+        # an open gap, so full parity is not advertised.
+        os: [ubuntu-24.04, macos-15]
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -248,11 +258,15 @@ jobs:
         with:
           node-version: 24
       - uses: Swatinem/rust-cache@v2
-      - name: Run the pinned TypeScript 5.9.3 BlueTSC compatibility matrix
+      - name: Run every pinned TypeScript 5.9.3 oracle of BlueTSC and its direct bridge
+        # Every `#[ignore]` test of the two crates is a differential suite against
+        # the pinned compiler (accepted/rejected matrices, emitted JavaScript run
+        # under Node, declarations, option combinations, direct-runtime parity), so
+        # none may be skipped: one that fails fails the job.
         run: >-
           npm exec --yes --package typescript@5.9.3 --
-          env BLUEICE_BLUETSC_ORACLE=tsc
-          cargo test -p blueice-bluets --test typescript_oracle -- --ignored
+          env BLUEICE_BLUETSC_ORACLE=tsc FORCE_COLOR=0
+          cargo test -p blueice-bluets -p blueice-bluets-bluejs --no-fail-fast -- --ignored
 
   # The single check branch protection requires. It depends on every other
   # job and fails unless all of them succeeded, so the build matrix above can

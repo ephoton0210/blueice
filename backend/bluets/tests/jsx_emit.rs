@@ -310,3 +310,103 @@ fn the_config_file_carries_the_jsx_options_into_the_manifest_and_the_fingerprint
     assert!(String::from_utf8_lossy(&bad.stderr).contains("unsupported jsx `vue`"));
     let _ = fs::remove_dir_all(&root);
 }
+
+#[test]
+fn spread_children_keys_and_element_attributes_follow_typescripts_call_shapes() {
+    let source = format!(
+        "{PRELUDE}declare const rest: any;\nconst items: any[] = [];\nexport const a = <div {{...rest}} key=\"after\" id=\"x\" />;\nexport const b = <div key={{1}}>{{...items}}</div>;\nexport const c = <div key=\"k\" id=\"i\">one{{1}}</div>;\nexport const d = <div x=<span /> />;\n"
+    );
+    let automatic = emit(&source, mode(JsxMode::ReactJsx));
+    // A key after a non-literal spread needs `createElement`.
+    assert!(automatic.contains("_createElement(\"div\""), "{automatic}");
+    assert!(
+        automatic.contains("import { createElement as _createElement"),
+        "{automatic}"
+    );
+    assert!(
+        automatic.contains("_jsxs(\"div\", { children: [...items] }")
+            || automatic.contains("_jsxs("),
+        "{automatic}"
+    );
+    let dev = emit(&source, mode(JsxMode::ReactJsxDev));
+    assert!(
+        dev.contains("void 0, true") || dev.contains("true, {"),
+        "{dev}"
+    );
+    let classic = emit(
+        &format!("/** @jsx h */\n{PRELUDE}declare function h(...a: any[]): any;\ndeclare const rest: any;\nconst items: any[] = [];\nexport const a = <div {{...rest}} id=\"x\">{{...items}}text</div>;\n"),
+        mode(JsxMode::React),
+    );
+    assert!(
+        classic.contains("h(\"div\", { ...rest, id: \"x\" }, ...items, \"text\")"),
+        "{classic}"
+    );
+}
+
+#[test]
+fn quotes_names_and_expressions_are_written_the_way_typescript_writes_them() {
+    let javascript = emit(
+        &format!(
+            "/** @jsx h */\n{PRELUDE}declare function h(...a: any[]): any;\nexport const a = <div data-x='a\"b' title=\"it's\" aria-hidden x:y=\"1\">{{(1, 2)}}&amp;\\n</div>;\n"
+        ),
+        mode(JsxMode::React),
+    );
+    assert!(
+        javascript.contains("\"data-x\": 'a\"b'") || javascript.contains("\"data-x\": 'a\\\"b'"),
+        "{javascript}"
+    );
+    assert!(javascript.contains("title: \"it's\""), "{javascript}");
+    assert!(javascript.contains("\"aria-hidden\": true"), "{javascript}");
+    assert!(javascript.contains("\"x:y\": \"1\""), "{javascript}");
+    assert!(javascript.contains("(1, 2)"), "{javascript}");
+}
+
+#[test]
+fn a_member_tag_and_an_imported_factory_go_through_the_commonjs_reference_map() {
+    let compiled = compile(
+        "memory:///main.tsx",
+        &MapLoader::from([
+            ModuleSource::new(
+                "memory:///main.tsx",
+                format!("/** @jsx make */\nimport make from \"./factory.ts\";\nimport * as ui from \"./factory.ts\";\n{PRELUDE}export const a = <ui.Item id=\"x\" />;\nexport const b = <div />;\n").as_str(),
+            ),
+            ModuleSource::new(
+                "memory:///factory.ts",
+                "export default function make(...a: any[]): any { return a; }\nexport const Item: any = 1;\n",
+            ),
+        ]),
+        CompilerOptions {
+            jsx: Some(JsxMode::React),
+            module_kind: ModuleKind::CommonJs,
+            es_module_interop: true,
+            ..CompilerOptions::default()
+        },
+    );
+    let output = compiled
+        .output
+        .unwrap_or_else(|| panic!("{:#?}", compiled.diagnostics));
+    let javascript = &output.artifacts["memory:///main.tsx"].javascript;
+    assert!(
+        javascript.contains("(0, factory_1.default)(ui.Item"),
+        "{javascript}"
+    );
+    assert!(
+        javascript.contains("(0, factory_1.default)(\"div\", null)"),
+        "{javascript}"
+    );
+}
+
+#[test]
+fn a_malformed_element_is_a_parse_error_not_emitted_text() {
+    for source in ["const a = <div>;\n", "const a = <div></span>;\n"] {
+        let compiled = compile(
+            "memory:///main.tsx",
+            &MapLoader::from([ModuleSource::new(
+                "memory:///main.tsx",
+                format!("{PRELUDE}{source}").as_str(),
+            )]),
+            mode(JsxMode::ReactJsx),
+        );
+        assert!(compiled.output.is_none(), "{source}");
+    }
+}

@@ -247,3 +247,112 @@ fn legacy_checking_resolves_the_decorator_call() {
         }
     }
 }
+
+#[test]
+fn metadata_serializes_every_type_kind_like_typescript() {
+    let source = format!(
+        "{DECL}class Dep {{}}\ninterface Shape {{ x: number }}\ntype Alias = string;\ntype Chain = Alias;\nenum Num {{ A, B }}\nenum Str {{ A = \"a\" }}\nclass M {{\n\
+         @d a!: 1;\n@d b!: \"s\";\n@d c!: true;\n@d d: void;\n@d e!: null;\n@d f: undefined;\n@d g: [number, string] = [1, \"\"];\n@d h: () => void = () => {{}};\n\
+         @d i: Shape = {{ x: 1 }};\n@d j: {{ a: number }} = {{ a: 1 }};\n@d k: Chain = \"\";\n@d l: Num = Num.A;\n@d m: Str = Str.A;\n@d n: number | string = 1;\n@d o: string | null = null;\n@d p: Dep | undefined;\n@d q: Promise<number> = Promise.resolve(1);\n@d s: any = 1;\n@d t: unknown;\n@d u: number | 1 = 1;\n}}\n"
+    );
+    let javascript = build(&source, metadata()).unwrap();
+    for (member, expected) in [
+        ("\"a\"", "Number"),
+        ("\"b\"", "String"),
+        ("\"c\"", "Boolean"),
+        ("\"d\"", "void 0"),
+        ("\"e\"", "void 0"),
+        ("\"f\"", "void 0"),
+        ("\"g\"", "Array"),
+        ("\"h\"", "Function"),
+        ("\"i\"", "Object"),
+        ("\"j\"", "Object"),
+        ("\"k\"", "String"),
+        ("\"l\"", "Number"),
+        ("\"m\"", "String"),
+        ("\"n\"", "Object"),
+        ("\"o\"", "String"),
+        ("\"p\"", "Dep"),
+        ("\"q\"", "Promise"),
+        ("\"s\"", "Object"),
+        ("\"t\"", "Object"),
+        ("\"u\"", "Number"),
+    ] {
+        let marker = format!("], M.prototype, {member}, void 0)");
+        let at = javascript
+            .find(&marker)
+            .unwrap_or_else(|| panic!("{member}: {javascript}"));
+        let statement = &javascript[javascript[..at].rfind("__bluetsDecorate").unwrap()..at];
+        assert!(
+            statement.contains(&format!("__bluetsMetadata(\"design:type\", {expected})")),
+            "{member} -> {expected}: {statement}"
+        );
+    }
+}
+
+#[test]
+fn accessor_pairs_describe_the_pair_and_need_an_annotation() {
+    let javascript = build(
+        &format!("{DECL}class A {{ @d get g(): number {{ return 1; }} set g(v: number) {{}} @d static set s(v: string) {{}} }}\n"),
+        metadata(),
+    )
+    .unwrap();
+    assert!(
+        javascript.contains("__bluetsMetadata(\"design:paramtypes\", [Number])"),
+        "{javascript}"
+    );
+    assert!(javascript.contains("A, \"s\", null"), "{javascript}");
+    let refused = build(
+        &format!("{DECL}class A {{ @d get g() {{ return 1; }} }}\n"),
+        metadata(),
+    );
+    assert!(refused.is_err());
+}
+
+#[test]
+fn unlowered_legacy_forms_are_refused_with_a_reason() {
+    for (source, expected) in [
+        (
+            format!("{DECL}class A {{ @d accessor a: number = 1; }}\n"),
+            "auto-accessors",
+        ),
+        (
+            format!("{DECL}class A {{ @d #p: number = 1; }}\n"),
+            "private names",
+        ),
+        (
+            format!("{DECL}namespace N {{ @d export class C {{}} }}\n"),
+            "inside a namespace",
+        ),
+        (
+            format!(
+                "{DECL}class A {{ @d get g(): number {{ return 1; }} @d set g(v: number) {{}} }}\n"
+            ),
+            "getter and the setter",
+        ),
+        (
+            "declare function mk(n: number): (v: any) => void;\n@mk(// comment\n1) class A {}\n"
+                .to_string(),
+            "line comment",
+        ),
+    ] {
+        let messages = build(&source, legacy());
+        let joined = messages.unwrap_err().join("\n");
+        assert!(joined.contains(expected), "{source}: {joined}");
+    }
+}
+
+#[test]
+fn legacy_decorators_on_static_and_constructor_forms() {
+    let javascript = build(
+        &format!("{DECL}class B0 {{}}\n@d class A extends B0 {{ constructor(@d private x: number) {{ super(); }} @d static m(@d a: number): void {{}} @d static f: number = 1; }}\n"),
+        legacy(),
+    )
+    .unwrap();
+    assert!(
+        javascript.contains("A = __bluetsDecorate([d, __bluetsParam(0, d)], A);"),
+        "{javascript}"
+    );
+    assert!(javascript.contains("A, \"m\", null"), "{javascript}");
+    assert!(javascript.contains("A, \"f\", void 0"), "{javascript}");
+}

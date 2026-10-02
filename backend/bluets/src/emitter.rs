@@ -286,6 +286,14 @@ fn emit_javascript(
         });
     }
     edits.extend(classes::overload_signature_erasures(module));
+    // CommonJS name rewriting goes first so that the lowerings below, which copy
+    // or move source text (a static initializer, a decorator expression), take
+    // the rewritten text with them.
+    let references = if options.module_kind == crate::compiler::ModuleKind::CommonJs {
+        commonjs::lower_commonjs(module, options, &mut edits)?
+    } else {
+        BTreeMap::new()
+    };
     class_lowering::lower_class_members(module, options, &mut edits)?;
     enums::lower_enums(module, project, exported_enums, options, &mut edits)?;
     namespaces::lower_namespaces(module, options, &mut edits)?;
@@ -294,11 +302,6 @@ fn emit_javascript(
     } else {
         decorators::lower_decorators(module, options, &mut edits)?;
     }
-    let references = if options.module_kind == crate::compiler::ModuleKind::CommonJs {
-        commonjs::lower_commonjs(module, options, &mut edits)?
-    } else {
-        BTreeMap::new()
-    };
     jsx::lower_jsx(module, options, &references, &mut edits)?;
     let plan = strict_boundaries::plan_emission(module, options)?;
     let mut strict_runtime = None;
@@ -407,7 +410,7 @@ fn expand_relocations(replacement: &str, source: &str, edits: &[TextEdit]) -> St
         let mut text = String::new();
         let mut cursor = start;
         for edit in edits.iter().filter(|edit| {
-            edit.start >= start && edit.end <= end && !(edit.start == start && edit.end == end)
+            edit.start >= start && edit.end <= end && !edit.replacement.contains('\u{0}')
         }) {
             if edit.start < cursor {
                 continue;
