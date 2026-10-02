@@ -394,6 +394,15 @@ fn lower_decorators(
     module: &Module,
     decorators: &[blueice_bluets::Decorator],
 ) -> Result<Vec<bluejs::Expr>, BridgeError> {
+    if let (true, Some(first)) = (
+        super::jsx_direct::experimental_decorators(),
+        decorators.first(),
+    ) {
+        return Err(unsupported(
+            first.span.clone(),
+            "BlueJS implements the standard decorators; `experimentalDecorators` programs run as `bluetsc build --experimental-decorators` output",
+        ));
+    }
     decorators
         .iter()
         .map(|decorator| ExpressionLowerer::new(&module.id, &decorator.tokens).parse())

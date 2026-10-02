@@ -172,6 +172,14 @@ pub struct CompilerOptions {
     /// CommonJS `export =` module is allowed and goes through a helper that gives
     /// it a `default` member. Only meaningful with `ModuleKind::CommonJs`.
     pub es_module_interop: bool,
+    /// TypeScript's `experimentalDecorators`: the legacy (pre-TC39) decorators,
+    /// with their own evaluation and application order, parameter decorators and
+    /// `__decorate` helper, instead of the standard ones.
+    pub experimental_decorators: bool,
+    /// TypeScript's `emitDecoratorMetadata`: `design:type`, `design:paramtypes` and
+    /// `design:returntype` metadata for decorated elements. Needs
+    /// `experimental_decorators`.
+    pub emit_decorator_metadata: bool,
     /// How `.tsx` JSX is emitted; `None` makes any JSX an error, as in
     /// TypeScript (TS17004).
     pub jsx: Option<JsxMode>,
@@ -228,6 +236,8 @@ impl Default for CompilerOptions {
             isolated_modules: false,
             module_kind: ModuleKind::Esm,
             es_module_interop: false,
+            experimental_decorators: false,
+            emit_decorator_metadata: false,
             jsx: None,
             jsx_factory: None,
             jsx_fragment_factory: None,
@@ -492,6 +502,7 @@ fn compile_with_cache(
             module_kind: options.module_kind,
             es_module_interop: options.es_module_interop,
             jsx: options.jsx,
+            experimental_decorators: options.experimental_decorators,
             jsx_factory: options.jsx_factory.clone(),
             jsx_fragment_factory: options.jsx_fragment_factory.clone(),
         },
@@ -963,6 +974,17 @@ pub(crate) fn fingerprint(project: &Project, options: &CompilerOptions) -> Strin
         "object-const-enums"
     });
     add(options.module_kind.as_str());
+    add(if options.experimental_decorators {
+        "legacy-decorators"
+    } else {
+        "standard-decorators"
+    });
+    add(if options.emit_decorator_metadata {
+        "decorator-metadata"
+    } else {
+        "no-decorator-metadata"
+    });
+    add(crate::emitter::LEGACY_DECORATOR_HELPER_V1_VERSION);
     add(options.jsx.map_or("jsx-none", JsxMode::as_str));
     add(options
         .jsx_factory

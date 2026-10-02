@@ -26,6 +26,8 @@ enum Target {
     Setter,
     Field,
     Accessor,
+    /// A legacy parameter decorator.
+    Parameter,
 }
 
 impl Target {
@@ -37,6 +39,7 @@ impl Target {
             Self::Setter => "setter",
             Self::Field => "field",
             Self::Accessor => "auto-accessor",
+            Self::Parameter => "parameter",
         }
     }
 }
@@ -54,6 +57,39 @@ enum Callee {
 impl<'a> ModuleChecker<'a> {
     pub(super) fn check_class_decorators(&mut self, class: &ClassDeclaration) {
         let scope = self.values.clone();
+        // Parameter decorators are legacy only; elsewhere they are not valid.
+        for shell in &class.members {
+            let parameters = shell
+                .constructor
+                .as_ref()
+                .map(|constructor| &constructor.parameters)
+                .or_else(|| shell.method.as_ref().map(|method| &method.parameters))
+                .or_else(|| shell.accessor.as_ref().map(|accessor| &accessor.parameters));
+            for (index, parameter) in parameters.into_iter().flatten().enumerate() {
+                for decorator in &parameter.decorators {
+                    if !self.experimental_decorators {
+                        self.type_error(
+                            &decorator.span,
+                            "decorators are not valid on parameters unless `experimentalDecorators` is enabled".to_string(),
+                            DiagnosticCode::InvalidDeclarationFile,
+                        );
+                    } else if shell
+                        .accessor
+                        .as_ref()
+                        .is_some_and(|accessor| accessor.getter)
+                    {
+                        self.type_error(
+                            &decorator.span,
+                            "decorators are not valid here".to_string(),
+                            DiagnosticCode::InvalidDeclarationFile,
+                        );
+                    } else {
+                        self.check_decorator(decorator, Target::Parameter, &scope);
+                    }
+                    let _ = index;
+                }
+            }
+        }
         for decorator in &class.decorators {
             self.check_decorator(decorator, Target::Class, &scope);
         }
@@ -141,19 +177,16 @@ impl<'a> ModuleChecker<'a> {
                 DiagnosticCode::TypeMismatch,
             ),
             Callee::Function { parameters, result } => {
+                if self.experimental_decorators {
+                    self.check_legacy_signature(decorator, target, &parameters, &result);
+                    return;
+                }
                 let required = parameters
                     .iter()
                     .filter(|parameter| {
                         !parameter.optional && !parameter.rest && parameter.default.is_none()
                     })
                     .count();
-                if parameters.is_empty() {
-                    self.type_error(
-                        &decorator.span,
-                        "this decorator accepts too few arguments to be used here; did you mean to call it first (`@name()`)?".to_string(),
-                        DiagnosticCode::TypeMismatch,
-                    );
-                }
                 if parameters.is_empty() {
                     self.type_error(
                         &decorator.span,
@@ -182,6 +215,69 @@ impl<'a> ModuleChecker<'a> {
                     );
                 }
             }
+        }
+    }
+
+    /// Legacy decorators are called with a fixed argument list: the class (1),
+    /// a member's prototype and key (2, plus the descriptor for a method or
+    /// accessor), or a parameter's prototype, key and index (3). TypeScript
+    /// resolves the call, so the decorator must accept exactly that many.
+    fn check_legacy_signature(
+        &mut self,
+        decorator: &Decorator,
+        target: Target,
+        parameters: &[Parameter],
+        result: &Type,
+    ) {
+        let (minimum, maximum) = match target {
+            Target::Class => (1, 1),
+            Target::Field => (2, 2),
+            Target::Method | Target::Getter | Target::Setter => (2, 3),
+            Target::Parameter => (3, 3),
+            Target::Accessor => (2, 3),
+        };
+        let required = parameters
+            .iter()
+            .filter(|parameter| {
+                !parameter.optional && !parameter.rest && parameter.default.is_none()
+            })
+            .count();
+        let rest = parameters.last().is_some_and(|parameter| parameter.rest);
+        if required > maximum || (!rest && parameters.len() < minimum) {
+            self.type_error(
+                &decorator.span,
+                format!(
+                    "unable to resolve the signature of this {} decorator when called as an expression (it must accept {} argument(s))",
+                    target.label(),
+                    if minimum == maximum { minimum.to_string() } else { format!("{minimum} or {maximum}") }
+                ),
+                DiagnosticCode::TypeMismatch,
+            );
+            return;
+        }
+        // A property or parameter decorator returns nothing; the others return
+        // nothing or a replacement of their own kind.
+        let bad = match (target, result) {
+            (
+                Target::Field | Target::Parameter,
+                Type::Void | Type::Any | Type::Unknown | Type::Undefined,
+            ) => None,
+            (Target::Field | Target::Parameter, other) => Some(other.clone()),
+            (_, Type::Number | Type::String | Type::Boolean | Type::Literal(_) | Type::Null) => {
+                Some(result.clone())
+            }
+            _ => None,
+        };
+        if let Some(bad) = bad {
+            self.type_error(
+                &decorator.span,
+                format!(
+                    "this decorator returns `{}`, which a {} decorator cannot return",
+                    type_label(&bad),
+                    target.label()
+                ),
+                DiagnosticCode::TypeMismatch,
+            );
         }
     }
 

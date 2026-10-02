@@ -25,6 +25,7 @@ impl Parser {
             let annotation = self.parse_type_until(&[",", ")"]);
             let end = self.previous().end;
             parameters.push(Parameter {
+                decorators: Vec::new(),
                 name,
                 pattern: None,
                 rest: false,
@@ -257,6 +258,7 @@ impl Parser {
                 let annotation = self.parse_type_until(&[",", ")"]);
                 let end = self.previous().end;
                 parameters.push(Parameter {
+                    decorators: Vec::new(),
                     name,
                     pattern: None,
                     rest: false,

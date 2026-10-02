@@ -133,3 +133,22 @@ fn a_decorated_class_runs_directly_without_a_helper() {
         other => panic!("{other:?}"),
     }
 }
+
+#[test]
+fn experimental_decorators_are_refused_naming_the_build_route() {
+    let program = "function mark(target: any, key: string): void {}\nclass F { @mark a: number = 1; }\nnew F().a;";
+    let error = compile_direct_script(
+        "memory:///direct.ts",
+        &MapLoader::from([ModuleSource::new("memory:///direct.ts", program)]),
+        CompilerOptions {
+            experimental_decorators: true,
+            ..CompilerOptions::default()
+        },
+    )
+    .err()
+    .expect("legacy decorators are refused");
+    assert!(
+        format!("{error:?}").contains("bluetsc build --experimental-decorators"),
+        "{error:?}"
+    );
+}

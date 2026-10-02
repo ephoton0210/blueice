@@ -59,6 +59,7 @@ impl<'a> ModuleChecker<'a> {
             module_kind: policy.module_kind,
             es_module_interop: policy.es_module_interop,
             jsx_mode: policy.jsx,
+            experimental_decorators: policy.experimental_decorators,
             jsx_factory: policy.jsx_factory.clone(),
             jsx_fragment_factory: policy.jsx_fragment_factory.clone(),
             jsx_pragmas: crate::jsx::Pragmas::of(&module.source),
@@ -246,6 +247,7 @@ impl<'a> ModuleChecker<'a> {
         }
         let span = SourceSpan::new("<builtin>", 0, 0);
         let parameter = |name: &str, annotation: Type| Parameter {
+            decorators: Vec::new(),
             name: name.to_string(),
             pattern: None,
             rest: false,

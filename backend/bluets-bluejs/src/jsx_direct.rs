@@ -26,6 +26,7 @@ pub(super) struct JsxContext {
     factory: String,
     fragment: String,
     automatic: bool,
+    experimental_decorators: bool,
 }
 
 impl JsxContext {
@@ -50,6 +51,7 @@ impl JsxContext {
                 .or_else(|| options.jsx_fragment_factory.clone())
                 .unwrap_or_else(|| "React.Fragment".to_string()),
             automatic,
+            experimental_decorators: options.experimental_decorators,
         }
     }
 }
@@ -71,6 +73,11 @@ impl Drop for JsxScope {
     fn drop(&mut self) {
         CONTEXT.with(|slot| *slot.borrow_mut() = self.0.take());
     }
+}
+
+/// Whether the module being lowered is compiled with `experimentalDecorators`.
+pub(super) fn experimental_decorators() -> bool {
+    current().is_some_and(|context| context.experimental_decorators)
 }
 
 fn current() -> Option<JsxContext> {

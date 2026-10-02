@@ -477,6 +477,7 @@ impl Parser {
             let span = self.tokens[index].span(&self.id);
             self.index = index + 1;
             vec![Parameter {
+                decorators: Vec::new(),
                 name,
                 pattern: None,
                 rest: false,

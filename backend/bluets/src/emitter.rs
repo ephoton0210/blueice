@@ -14,6 +14,7 @@ use crate::strict_boundaries;
 use std::collections::BTreeMap;
 
 pub use decorators::DECORATOR_HELPER_V1_VERSION;
+pub use legacy_decorators::LEGACY_DECORATOR_HELPER_V1_VERSION;
 pub use private_lowering::CLASS_HELPER_V1_VERSION;
 
 mod class_lowering;
@@ -22,6 +23,7 @@ mod commonjs;
 mod decorators;
 mod enums;
 mod jsx;
+mod legacy_decorators;
 mod namespaces;
 mod private_lowering;
 
@@ -287,7 +289,11 @@ fn emit_javascript(
     class_lowering::lower_class_members(module, options, &mut edits)?;
     enums::lower_enums(module, project, exported_enums, options, &mut edits)?;
     namespaces::lower_namespaces(module, options, &mut edits)?;
-    decorators::lower_decorators(module, options, &mut edits)?;
+    if options.experimental_decorators {
+        legacy_decorators::lower_legacy_decorators(module, options, &mut edits)?;
+    } else {
+        decorators::lower_decorators(module, options, &mut edits)?;
+    }
     let references = if options.module_kind == crate::compiler::ModuleKind::CommonJs {
         commonjs::lower_commonjs(module, options, &mut edits)?
     } else {

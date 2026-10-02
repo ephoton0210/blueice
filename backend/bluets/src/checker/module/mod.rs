@@ -29,6 +29,7 @@ pub(crate) struct CheckerPolicy {
     pub(crate) module_kind: crate::compiler::ModuleKind,
     pub(crate) es_module_interop: bool,
     pub(crate) jsx: Option<crate::compiler::JsxMode>,
+    pub(crate) experimental_decorators: bool,
     pub(crate) jsx_factory: Option<String>,
     pub(crate) jsx_fragment_factory: Option<String>,
 }
@@ -46,6 +47,7 @@ pub(super) struct ModuleChecker<'a> {
     module_kind: crate::compiler::ModuleKind,
     es_module_interop: bool,
     jsx_mode: Option<crate::compiler::JsxMode>,
+    experimental_decorators: bool,
     jsx_factory: Option<String>,
     jsx_fragment_factory: Option<String>,
     jsx_pragmas: crate::jsx::Pragmas,

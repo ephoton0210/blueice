@@ -698,6 +698,9 @@ pub struct FunctionDeclaration {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Parameter {
+    /// Legacy parameter decorators (`m(@d x: number)`), in source order. Each
+    /// decorator's token range indexes the module's token list.
+    pub decorators: Vec<Decorator>,
     /// The parameter's name, or for a destructured parameter the source text
     /// of its pattern (which is also how a declaration prints it).
     pub name: String,

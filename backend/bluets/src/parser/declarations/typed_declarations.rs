@@ -343,6 +343,15 @@ impl Parser {
             } else {
                 None
             };
+            // Legacy parameter decorators come first; the modifiers of a parameter
+            // property follow them.
+            let decorators = self.parse_decorators();
+            let property_modifiers = if self.parameter_property_mode && property_modifiers.is_none()
+            {
+                self.consume_parameter_property_modifiers()
+            } else {
+                property_modifiers
+            };
             let parameter_start = self.current().start;
             let rest = self.consume("...");
             let mut pattern = None;
@@ -433,6 +442,7 @@ impl Parser {
                 });
             }
             parameters.push(Parameter {
+                decorators,
                 name: parameter_name,
                 pattern,
                 rest,

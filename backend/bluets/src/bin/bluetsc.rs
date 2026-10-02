@@ -116,6 +116,10 @@ struct BlueTscConfig {
     #[serde(default)]
     module: Option<String>,
     #[serde(default)]
+    experimental_decorators: bool,
+    #[serde(default)]
+    emit_decorator_metadata: bool,
+    #[serde(default)]
     jsx: Option<String>,
     #[serde(default)]
     jsx_factory: Option<String>,
@@ -332,6 +336,8 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
             "--preserve-const-enums" => options.preserve_const_enums = true,
             "--isolated-modules" => options.isolated_modules = true,
             "--es-module-interop" => options.es_module_interop = true,
+            "--experimental-decorators" => options.experimental_decorators = true,
+            "--emit-decorator-metadata" => options.emit_decorator_metadata = true,
             "--jsx" => {
                 let name = value()?;
                 options.jsx = Some(JsxMode::parse(&name).ok_or_else(|| {
@@ -381,6 +387,9 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
             other => return Err(format!("unrecognized argument `{other}`")),
         }
     }
+    if options.emit_decorator_metadata && !options.experimental_decorators {
+        return Err("--emit-decorator-metadata requires --experimental-decorators".to_string());
+    }
     if command == Command::Build && out_dir.is_none() {
         return Err("build requires --out-dir <directory>".to_string());
     }
@@ -399,7 +408,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
 }
 
 fn usage() -> &'static str {
-    "Usage:\n  bluetsc check <entry.ts> [--project-root <directory>] [--target es2020|es2022] [--use-define-for-class-fields true|false] [--preserve-const-enums] [--isolated-modules] [--module esnext|commonjs] [--es-module-interop] [--jsx preserve|react-native|react|react-jsx|react-jsxdev] [--jsx-factory <name>] [--jsx-fragment-factory <name>] [--jsx-import-source <module>] [--runtime-policy transpile-only|checked|strict-runtime]\n  bluetsc build <entry.ts> --out-dir <directory> [--project-root <directory>] [--source-map] [--declaration] [--target es2020|es2022] [--use-define-for-class-fields true|false] [--preserve-const-enums] [--isolated-modules] [--module esnext|commonjs] [--es-module-interop] [--jsx preserve|react-native|react|react-jsx|react-jsxdev] [--jsx-factory <name>] [--jsx-fragment-factory <name>] [--jsx-import-source <module>] [--runtime-policy transpile-only|checked|strict-runtime]\n  bluetsc fetch-declarations --config <bluetsc.json>\n  bluetsc check --config <bluetsc.json>\n  bluetsc build --config <bluetsc.json>\n\nConfig fields: entries, projectRoot, outDir, sourceMap, declaration, target, useDefineForClassFields, preserveConstEnums, isolatedModules, module, esModuleInterop, jsx, jsxFactory, jsxFragmentFactory, jsxImportSource, runtimePolicy, imports, moduleResolution, packageRoots, customConditions, remoteDeclarations, declarationCache, strictBoundaries."
+    "Usage:\n  bluetsc check <entry.ts> [--project-root <directory>] [--target es2020|es2022] [--use-define-for-class-fields true|false] [--preserve-const-enums] [--isolated-modules] [--module esnext|commonjs] [--es-module-interop] [--experimental-decorators] [--emit-decorator-metadata] [--jsx preserve|react-native|react|react-jsx|react-jsxdev] [--jsx-factory <name>] [--jsx-fragment-factory <name>] [--jsx-import-source <module>] [--runtime-policy transpile-only|checked|strict-runtime]\n  bluetsc build <entry.ts> --out-dir <directory> [--project-root <directory>] [--source-map] [--declaration] [--target es2020|es2022] [--use-define-for-class-fields true|false] [--preserve-const-enums] [--isolated-modules] [--module esnext|commonjs] [--es-module-interop] [--experimental-decorators] [--emit-decorator-metadata] [--jsx preserve|react-native|react|react-jsx|react-jsxdev] [--jsx-factory <name>] [--jsx-fragment-factory <name>] [--jsx-import-source <module>] [--runtime-policy transpile-only|checked|strict-runtime]\n  bluetsc fetch-declarations --config <bluetsc.json>\n  bluetsc check --config <bluetsc.json>\n  bluetsc build --config <bluetsc.json>\n\nConfig fields: entries, projectRoot, outDir, sourceMap, declaration, target, useDefineForClassFields, preserveConstEnums, isolatedModules, module, esModuleInterop, experimentalDecorators, emitDecoratorMetadata, jsx, jsxFactory, jsxFragmentFactory, jsxImportSource, runtimePolicy, imports, moduleResolution, packageRoots, customConditions, remoteDeclarations, declarationCache, strictBoundaries."
 }
 
 #[derive(Debug)]
@@ -442,6 +451,9 @@ struct BuildMetadata {
     class_helper_version: &'static str,
     /// The version of the decorator helper text an artifact may embed.
     decorator_helper_version: &'static str,
+    legacy_decorator_helper_version: &'static str,
+    experimental_decorators: bool,
+    emit_decorator_metadata: bool,
     runtime_policy: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
     runtime_helper: Option<RuntimeHelperIdentity>,
@@ -680,6 +692,9 @@ fn build_metadata(
             .collect(),
         class_helper_version: blueice_bluets::CLASS_HELPER_V1_VERSION,
         decorator_helper_version: blueice_bluets::DECORATOR_HELPER_V1_VERSION,
+        legacy_decorator_helper_version: blueice_bluets::LEGACY_DECORATOR_HELPER_V1_VERSION,
+        experimental_decorators: invocation.options.experimental_decorators,
+        emit_decorator_metadata: invocation.options.emit_decorator_metadata,
         runtime_policy: invocation.options.runtime_policy.as_str(),
         runtime_helper: (invocation.options.runtime_policy == RuntimePolicy::StrictRuntime)
             .then(runtime_helper_v1_identity),
@@ -875,6 +890,9 @@ fn resolve_config_invocation(path: PathBuf) -> Result<Invocation, String> {
         .into_iter()
         .map(|boundary| configured_strict_boundary(&root, boundary))
         .collect::<Result<Vec<_>, _>>()?;
+    if config.emit_decorator_metadata && !config.experimental_decorators {
+        return Err("config emitDecoratorMetadata requires experimentalDecorators".to_string());
+    }
     let options_module_kind = parse_module_kind(config.module.as_deref())?;
     let options = CompilerOptions {
         target: parse_target(config.target.as_deref())?,
@@ -882,6 +900,8 @@ fn resolve_config_invocation(path: PathBuf) -> Result<Invocation, String> {
         preserve_const_enums: config.preserve_const_enums,
         isolated_modules: config.isolated_modules,
         es_module_interop: config.es_module_interop,
+        experimental_decorators: config.experimental_decorators,
+        emit_decorator_metadata: config.emit_decorator_metadata,
         jsx: config
             .jsx
             .as_deref()

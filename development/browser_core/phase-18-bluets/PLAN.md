@@ -3510,3 +3510,63 @@ computed or literal member names, a decorated class or auto-accessor in a namesp
 static member of a decorated class and a decorated class expression are refused; the
 decorator context and `Symbol.metadata` have no types; debugger mappings for the generated
 helper frames are the coarse ones every edit gets.
+
+### J.5.4 Legacy decorators and decorator metadata
+
+`experimental_decorators` (`--experimental-decorators`, config `experimentalDecorators`) selects
+TypeScript's legacy decorators and `emit_decorator_metadata` (`--emit-decorator-metadata`,
+`emitDecoratorMetadata`, which requires the former, as in `tsc`) adds metadata; both are in the
+fingerprint, the manifest and the options, and the helper text is versioned
+(`bluets-legacy-decorator-helper-v1`). This is a separate mode from J.5.3, with separate
+parsing of one new construct (parameter decorators `m(@d a: number)`, which are an error
+without the flag), a separate checker and a separate emitter (`emitter/legacy_decorators.rs`),
+and the standard helpers are never emitted in it.
+
+**Semantics (the pinned compiler's emit, not the proposal's).** Nothing is wrapped: the class
+is defined as written (a class with class or constructor-parameter decorators as
+`let C = class C { .. };`) and decorators are applied by calls after it: one
+`__decorate([..], C.prototype | C, "name", null | void 0)` per decorated element, every
+decorated instance member in source order, then every static member, then
+`C = __decorate([class decorators, __param(i, d) of the constructor], C)`. An element's list is its
+decorators, its `__param(i, d)` entries and, with metadata, `design:type`,
+`design:paramtypes` and `design:returntype`. Decorators run last to first through the helpers,
+which are the specified behavior of `Reflect.decorate` and its fallback; a method or
+accessor decorator may return a descriptor and a class decorator a replacement class.
+A getter/setter pair is decorated once (decorators on both are an error, `TS1207`) and its metadata
+describes the pair (the getter's type, the setter's parameters). Because the members are not
+rewritten, every field semantic and target the class lowering supports works unchanged,
+verified on ES2022 and ES2020.
+
+**Checking.** TypeScript resolves the decorator call, so the arity is checked against the
+arguments each target receives (probed: class 1, property 2, method or accessor 2 or 3,
+parameter 3; optional and rest parameters count), a property or parameter decorator must return
+nothing, and the other kinds may not return a primitive. Placement errors, a decorator on a
+constructor, an overload, an `accessor` member or a decorated private name, are errors.
+
+**Metadata** serializes the types BlueTS resolves, following `serializeTypeNode`: `number`,
+`string`, `boolean` and their literals, `Array` for arrays and tuples, `Function`,
+`Object` for interfaces, records, `any`, `unknown`, `object` and mixed unions, `void 0` for
+`void`/`undefined`/`null`/`never`, `null` and `undefined` dropped from a union, aliases followed,
+numeric and string enums, `Symbol`, `BigInt`, `Promise`, and a class declared in the module by
+name. A type it cannot resolve (an imported class, which TypeScript guards with a `typeof`
+check and a hoisted temporary) and a method without a return type annotation are refused rather
+than guessed.
+
+Evidence: a 19-fixture checker matrix recorded from the pinned compiler
+(`legacy-decorators-checker-matrix.tsv`) on which BlueTSC agrees for every entry, and
+`tests/legacy_decorators_oracle.rs`: 18 program/module/target combinations (order of
+evaluation and application for class, member and parameter decorators, replacement of the class,
+methods, accessors and fields, inheritance, exports, and 5 programs with metadata over a recording
+`Reflect.metadata`), each printed identically by BlueTSC and the pinned `tsc` output under Node
+for ES2022 and ES2020 and ES module and CommonJS output.
+
+**Direct execution.** BlueJS implements the standard decorators only, so a program compiled with
+`experimentalDecorators` that has decorators is refused by the direct bridge, naming
+`bluetsc build --experimental-decorators` as the route.
+
+Recorded gaps: metadata for an imported or unresolved class type, an unannotated method return
+type, `design:*` for decorated getters/setters whose pair has no annotations, and decorated
+classes inside namespaces or `export default @d class` are refused; return-type compatibility of
+a replacement (a method decorator's descriptor, a class decorator's class) with the decorated
+element is not checked beyond primitives; `emitDecoratorMetadata` types that need `typeof`
+guards are the only metadata form not byte-compatible with TypeScript.
