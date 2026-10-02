@@ -12,6 +12,30 @@ fn go_back_uses_the_same_navigation_completion_barrier_and_returns_restored_stat
         vec![
             Box::new(|msg, s| {
                 assert!(matches!(msg, ClientMessage::GoBack));
+                // A browser search reply can be broadcast while MCP waits
+                // for this tab's history completion. It must not satisfy that barrier.
+                reply_tab(
+                    s,
+                    7,
+                    &ServerMessage::FindState(blueice_ipc::find::FindState {
+                        tab_id: 7,
+                        frame_source: 19,
+                        document_generation: 1,
+                        revision: 1,
+                        query: "previous".into(),
+                        case_sensitive: false,
+                        match_count: 1,
+                        active_match: Some(1),
+                        wrapped: false,
+                        limited: false,
+                        rects: vec![blueice_ipc::Bounds {
+                            x: 0.0,
+                            y: 0.0,
+                            width: 60.0,
+                            height: 20.0,
+                        }],
+                    }),
+                );
                 reply(
                     s,
                     &ServerMessage::Navigated {

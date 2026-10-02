@@ -12,6 +12,8 @@ blueice-layout = { path = "../layout" }
 blueice-paint = { path = "../paint" }
 blueice-font = { path = "../font" }
 unicode-segmentation = "1.13.3"
+unicode-normalization = "0.1.25"
+regex = "1.13.1"
 blueice-raster = { path = "../raster" }
 blueice-net = { path = "../../net" }
 blueice-ipc = { path = "../../ipc" }

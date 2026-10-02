@@ -54,6 +54,80 @@ final class BrowserUITests: XCTestCase {
         if submit { address.typeKey(.return, modifierFlags: []) }
     }
 
+    func testFindKeyboardWrapScrollCaseAndClose() throws {
+        let fixture = try HTTPFixture()
+        defer { fixture.stop() }
+        launch(); enter(fixture.origin + "/find")
+        waitValue(app.textFields["address"], fixture.origin + "/find")
+        app.typeKey("f", modifierFlags: .command)
+        let query = app.searchFields["find-query"]
+        XCTAssertTrue(query.waitForExistence(timeout: 10))
+        query.typeText("frost")
+        waitFind("1 of 4")
+        app.typeKey("g", modifierFlags: [.command, .shift])
+        waitFind("4 of 4 · Wrapped")
+        let lower = app.groups["page"].descendants(matching: .any).matching(NSPredicate(format: "label == 'Lower frost' OR value == 'Lower frost'")).firstMatch
+        XCTAssertTrue(lower.waitForExistence(timeout: 10), "Find Previous must scroll to the last result")
+        XCTAssertTrue(lower.frame.intersects(app.groups["page"].frame))
+        let bitmap = try XCTUnwrap(NSBitmapImageRep(data: try XCTUnwrap(app.groups["page"].screenshot().image.tiffRepresentation)))
+        var orange = 0
+        for y in stride(from: 0, to: bitmap.pixelsHigh, by: 2) {
+            for x in stride(from: 0, to: bitmap.pixelsWide, by: 2) {
+                if let color = bitmap.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB), color.redComponent > 0.85,
+                   (0.35...0.75).contains(color.greenComponent), color.blueComponent < 0.3 { orange += 1 }
+            }
+        }
+        XCTAssertGreaterThan(orange, 10, "Current match must have visible core-rendered orange pixels")
+        let attachment = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
+        attachment.name = "macos-find-in-page"; attachment.lifetime = .keepAlways; add(attachment)
+        app.typeKey("g", modifierFlags: .command)
+        waitFind("1 of 4 · Wrapped")
+        app.checkBoxes["find-case"].click()
+        waitFind("1 of 3")
+        app.buttons["find-next"].click(); waitFind("2 of 3")
+        app.buttons["find-previous"].click(); waitFind("1 of 3")
+        query.click(); query.typeKey(.return, modifierFlags: []); waitFind("2 of 3")
+        query.typeKey(.return, modifierFlags: .shift); waitFind("1 of 3")
+        app.typeKey("f", modifierFlags: .command)
+        query.typeText("snow crystal")
+        waitValue(query, "snow crystal"); waitFind("1 of 1")
+        query.typeKey(.escape, modifierFlags: [])
+        XCTAssertFalse(query.exists)
+        XCTAssertEqual(fixture.requests.filter { $0 == "/find" }.count, 1)
+    }
+
+    func testFindUnicodePrivacyTabsAndNavigationInvalidation() throws {
+        let fixture = try HTTPFixture()
+        defer { fixture.stop() }
+        launch(); enter(fixture.origin + "/find")
+        waitValue(app.textFields["address"], fixture.origin + "/find")
+        app.typeKey("f", modifierFlags: .command)
+        let query = app.searchFields["find-query"]
+        XCTAssertTrue(query.waitForExistence(timeout: 10))
+        for (text, expected) in [("snow crystal", "1 of 1"), ("café", "1 of 2"), ("σ", "1 of 3"), ("[a.*]", "1 of 1"), ("private-find-secret", "No matches"), ("hidden-find-secret", "No matches")] {
+            query.click(); query.typeKey("a", modifierFlags: .command); query.typeText(text); waitFind(expected)
+        }
+        app.buttons["add-tab"].click()
+        waitValue(app.textFields["address"], "about:credits")
+        XCTAssertFalse(query.exists)
+        app.typeKey("f", modifierFlags: .command)
+        XCTAssertTrue(query.waitForExistence(timeout: 10)); query.typeText("missing-other-tab"); waitFind("No matches")
+        app.buttons["tab-1"].click()
+        waitValue(query, "hidden-find-secret"); waitFind("No matches")
+        app.buttons["find-close"].click()
+        XCTAssertFalse(query.exists)
+        app.buttons["settings"].click(); waitValue(app.textFields["address"], "about:settings")
+        app.typeKey("f", modifierFlags: .command)
+        XCTAssertTrue(query.waitForExistence(timeout: 10)); waitValue(query, "")
+    }
+
+    private func waitFind(_ summary: String) {
+        let result = app.staticTexts["find-results"]
+        XCTAssertTrue(result.waitForExistence(timeout: 10))
+        let expected = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@ OR value == %@", summary, summary), object: result)
+        XCTAssertEqual(XCTWaiter.wait(for: [expected], timeout: 15), .completed, app.debugDescription)
+    }
+
     func testVisibleCorePixelsAndNativeWindow() throws {
         launch()
         let page = app.groups["page"]
@@ -425,6 +499,10 @@ final class BrowserUITests: XCTestCase {
         waitValue(field, "worl")
         field.typeKey("a", modifierFlags: .command)
         field.typeKey("c", modifierFlags: .command)
+        let copied = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            NSPasteboard.general.string(forType: .string) == "worl"
+        }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [copied], timeout: 15), .completed, "Copy must complete after core selection acknowledgement")
         XCTAssertEqual(NSPasteboard.general.string(forType: .string), "worl")
         field.typeKey("x", modifierFlags: .command)
         waitValue(field, "")

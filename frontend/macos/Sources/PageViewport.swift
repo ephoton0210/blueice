@@ -45,12 +45,13 @@ struct PageViewport: NSViewRepresentable {
             view.pageFocusSerial = model.pageFocusSerial
             let serial = model.pageFocusSerial
             let addressSerial = model.addressFocusSerial
+            let findSerial = model.findFocusSerial
             // SwiftUI applies its TextField FocusState after the view update.
             // Move native focus after that transaction has relinquished it.
             Task { @MainActor [weak view, weak model] in
                 await Task.yield()
                 guard let view, let model, model.pageFocusSerial == serial,
-                      model.addressFocusSerial == addressSerial else { return }
+                      model.addressFocusSerial == addressSerial, model.findFocusSerial == findSerial else { return }
                 view.window?.makeFirstResponder(view)
             }
         }
@@ -390,19 +391,13 @@ final class CorePageView: NSView, NSTextInputClient {
 
     override func selectAll(_ sender: Any?) { model?.textInput(.selectAll) }
     @objc func copy(_ sender: Any?) {
-        guard model?.textInputBusy != true, let field = model?.textInputState?.focused, !field.protected,
-              field.selection.length > 0, let text = field.text else { return }
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString((text as NSString).substring(with: field.selection.nsRange), forType: .string)
+        model?.copySelection()
     }
     @objc func cut(_ sender: Any?) {
-        guard model?.textInputState?.focused?.writable == true, model?.textInputState?.focused?.protected == false,
-              model?.textInputBusy != true else { return }
-        copy(sender); model?.textInput(.replace("", nil))
+        model?.copySelection(cut: true)
     }
     @objc func paste(_ sender: Any?) {
-        guard let text = NSPasteboard.general.string(forType: .string), text.utf16.count <= 65_536 else { return }
-        model?.textInput(.replace(text, nil))
+        model?.pasteClipboard()
     }
 
     override func resignFirstResponder() -> Bool {

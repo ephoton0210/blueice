@@ -70,6 +70,14 @@ final class HTTPFixture: @unchecked Sendable {
                 }
                 let body: String
                 switch route {
+                case "/find": body = """
+                    <html><body><h1>Find fixture</h1><p>frost FROST frost</p>
+                    <p style="width:100px">snow <b>crystal</b> across lines</p><p>Café CAFÉ σ ς Σ [a.*]</p>
+                    <p hidden>hidden-find-secret</p><p style="display:none">display-find-secret</p>
+                    <input aria-label="Find public editor" value="public-editor" style="display:block;width:280px;height:32px">
+                    <input aria-label="Find secret" type="password" value="private-find-secret" style="display:block;width:280px;height:32px">
+                    <div style="height:1300px"></div><h2>Lower frost</h2></body></html>
+                    """
                 case "/forms": body = """
                     <html><body><h1>Form submission fixture</h1>
                     <form id="submission" action="/received?discarded=1">

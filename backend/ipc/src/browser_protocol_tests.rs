@@ -707,3 +707,53 @@ fn client_handshake_rejects_an_unexpected_reply_type() {
     assert!(client_handshake(&mut client).is_err());
     responder.join().unwrap();
 }
+
+#[test]
+fn find_commands_and_geometry_round_trip_without_a_text_snapshot() {
+    use crate::find::{FindAction, FindState};
+    for action in [
+        FindAction::Update {
+            query: "中文 Σ [a.*]".into(),
+            case_sensitive: false,
+        },
+        FindAction::Next { backwards: true },
+        FindAction::Close,
+    ] {
+        let command = ClientMessage::Find {
+            tab_id: 2,
+            frame_source: 19,
+            document_generation: 7,
+            action,
+        };
+        let mut bytes = Vec::new();
+        write_client_message_with_ids(&mut bytes, Some(2), Some(42), &command).unwrap();
+        assert_eq!(
+            read_client_message_with_ids(&mut Cursor::new(bytes)).unwrap(),
+            (Some(2), Some(42), command)
+        );
+    }
+    let state = ServerMessage::FindState(FindState {
+        tab_id: 2,
+        frame_source: 19,
+        document_generation: 7,
+        revision: 3,
+        query: "中文".into(),
+        case_sensitive: false,
+        match_count: 2,
+        active_match: Some(1),
+        wrapped: false,
+        limited: false,
+        rects: vec![Bounds {
+            x: 10.0,
+            y: 20.0,
+            width: 50.0,
+            height: 18.0,
+        }],
+    });
+    let mut bytes = Vec::new();
+    write_server_message_with_ids(&mut bytes, Some(2), Some(42), &state).unwrap();
+    assert_eq!(
+        read_server_message_with_ids(&mut Cursor::new(bytes)).unwrap(),
+        (Some(2), Some(42), state)
+    );
+}

@@ -362,6 +362,9 @@ pub(super) fn reply_success<S: Write>(
     let page = tabs
         .get_mut(tab_id)
         .expect("a navigation reply requires a live tab");
+    // Search UI is document-local. A history snapshot must not resurrect
+    // highlights after the frontend has dismissed the previous find panel.
+    page.clear_find();
     match kind {
         PendingKind::Navigate | PendingKind::History(_) | PendingKind::Reload => {
             reply_navigated(page, stream, reply_tab, request_id)?

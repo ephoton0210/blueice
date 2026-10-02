@@ -55,6 +55,14 @@ struct NativeEditingCommands: Commands {
                 .keyboardShortcut("l", modifiers: .command).disabled(!model.ready)
         }
         CommandGroup(after: .textEditing) {
+            Menu("Find") {
+                Button("Find in Page…") { model.showFind() }
+                    .keyboardShortcut("f", modifiers: .command).disabled(!model.ready || model.selected == nil)
+                Button("Find Next") { model.findNext() }
+                    .keyboardShortcut("g", modifiers: .command).disabled(!model.ready || model.selected == nil)
+                Button("Find Previous") { model.findNext(backwards: true) }
+                    .keyboardShortcut("g", modifiers: [.command, .shift]).disabled(!model.ready || model.selected == nil)
+            }
             Menu("Input Source") {
                 ForEach(menu.sources) { source in
                     Button { menu.choose(source.id) } label: {

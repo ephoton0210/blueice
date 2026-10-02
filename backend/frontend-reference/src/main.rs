@@ -1839,6 +1839,7 @@ mod unix {
                     | ServerMessage::NavigationStarted { .. }
                     | ServerMessage::FormResubmissionResolved { .. }
                     | ServerMessage::Unknown
+                    | ServerMessage::FindState(_)
                     | ServerMessage::TextInputState(_) => {}
                 },
                 UserEvent::Disconnected => {

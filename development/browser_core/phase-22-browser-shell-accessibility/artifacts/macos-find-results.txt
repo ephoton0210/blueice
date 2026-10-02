@@ -1,0 +1,38 @@
+BlueIce macOS find validation metadata
+{
+  "result": "/Users/ephoton/git/blueice-downloads/frontend/macos/.build/results-20261002-230030.xcresult",
+  "unit": 40,
+  "ui": 22,
+  "total": 63,
+  "passed": 62,
+  "skipped": 1,
+  "failed": 0,
+  "runtime_warnings": 15,
+  "view_update_warnings": 0,
+  "rust_unique": 1142,
+  "rust_groups": {
+    "core": 951,
+    "mcp": 191
+  },
+  "rust_ignored": 0,
+  "source_files": 21,
+  "source_sha256": "f4a4d7d5735997d8ea907a7c2d5fc13e39b993badaa11057e45ed7bf514485cb",
+  "full_suite_source_sha256": "916070dffa3ec3ab286dedd05e078f8f8708f08cc3c7cb3eee7339e8ca64f0ab",
+  "unchanged_runtime_inputs": 20,
+  "runtime_inputs_sha256": "61ed698b41b0a5133c24e5ce9dc39b6466b77a32b144533968da792ececaaea7",
+  "full_suite_ui_test_sha256": "2370e706621e3d3910b30f09141fe8b48c159a104a0223e27f8a9ca34a6730fd",
+  "supplementary_ui_test_sha256": "306ceea83ff2122ad7909bd04abecacf0655f867a4f4d6a830d25f158337f7ab",
+  "supplementary_ui_result": "/Users/ephoton/git/blueice-downloads/frontend/macos/.build/results-20261002-231353.xcresult",
+  "supplementary_ui_passed": 1,
+  "supplementary_ui_runtime_warnings": 1,
+  "supplementary_mcp_test_sha256": "0927fec129ad50d7f61b0901e41cbe5b4ec5079c2b240e50b2f24271b513ac71",
+  "base": "1bf78a3d9b56d1a36b4bfe713d83d5b283833dba",
+  "screenshot": "development/browser_core/phase-22-browser-shell-accessibility/artifacts/macos-find-in-page.png",
+  "screenshot_bytes": 480789,
+  "screenshot_sha256": "342548d8c759568e7774ad717d1b8e95562c3cdfca5b66be7d6d5a193dbdb11d",
+  "strict_signatures": "app + core + launcher + gatekeeper passed",
+  "owned_native_processes_after_suite": 0,
+  "workspace_all_targets": "passed",
+  "clippy_affected_packages": 4,
+  "screenshot_inspected": true
+}

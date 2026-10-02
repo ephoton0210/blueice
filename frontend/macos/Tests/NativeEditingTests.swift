@@ -60,6 +60,94 @@ final class NativeEditingTests: XCTestCase {
         return (model, view, fixture)
     }
 
+    func testClipboardCommandsWaitForCoreSelectionAndPreservePrivacy() async throws {
+        let (model, view, fixture) = try await start()
+        defer { fixture.stop(); Task { await model.stop() } }
+        let saved = NSPasteboard.general.pasteboardItems?.map { item -> NSPasteboardItem in
+            let copy = NSPasteboardItem()
+            for type in item.types { if let data = item.data(forType: type) { copy.setData(data, forType: type) } }
+            return copy
+        } ?? []
+        defer { NSPasteboard.general.clearContents(); NSPasteboard.general.writeObjects(saved) }
+        try await focus("Editor", model: model, view: view)
+        NSPasteboard.general.clearContents(); NSPasteboard.general.setString("clipboard-sentinel", forType: .string)
+        view.selectAll(nil)
+        XCTAssertTrue(model.textInputBusy, "Exercise Copy before selection acknowledgement")
+        view.copy(nil)
+        await wait { !model.textInputBusy && NSPasteboard.general.string(forType: .string) == "A😀B" }
+        guard NSPasteboard.general.string(forType: .string) == "A😀B" else { return }
+        view.selectAll(nil); view.cut(nil)
+        await wait { !model.textInputBusy && model.textInputState?.focused?.text == "" }
+        view.paste(nil)
+        await wait { !model.textInputBusy && model.textInputState?.focused?.text == "A😀B" }
+        // Paste reads only when its turn is reached, after the queued Copy.
+        NSPasteboard.general.clearContents(); NSPasteboard.general.setString("clipboard-sentinel", forType: .string)
+        view.selectAll(nil); view.copy(nil); view.insertText("new", replacementRange: NSRange(location: NSNotFound, length: 0)); view.paste(nil)
+        await wait { !model.textInputBusy && model.textInputState?.focused?.text == "newA😀B" }
+        try await focus("Secret", model: model, view: view)
+        NSPasteboard.general.clearContents(); NSPasteboard.general.setString("clipboard-sentinel", forType: .string)
+        view.selectAll(nil); view.copy(nil); view.cut(nil)
+        await wait { !model.textInputBusy }
+        XCTAssertEqual(NSPasteboard.general.string(forType: .string), "clipboard-sentinel")
+        XCTAssertEqual(model.textInputState?.focused?.text_length, 22)
+        try await focus("Readonly", model: model, view: view)
+        view.selectAll(nil); view.cut(nil)
+        await wait { !model.textInputBusy }
+        XCTAssertEqual(model.textInputState?.focused?.text, "locked")
+        XCTAssertEqual(NSPasteboard.general.string(forType: .string), "clipboard-sentinel")
+        view.copy(nil)
+        await wait { NSPasteboard.general.string(forType: .string) == "locked" }
+        model.action(.values("OpenTab", ["url": .null]))
+        await wait { model.selected == 2 && model.representation?.url == "about:credits" }
+        model.select(1)
+        await wait { model.representation?.url == fixture.origin + "/editing" }
+        try await focus("Editor", model: model, view: view)
+        NSPasteboard.general.clearContents(); NSPasteboard.general.setString("clipboard-sentinel", forType: .string)
+        view.selectAll(nil); view.copy(nil); model.select(2)
+        await wait { !model.textInputBusy }
+        XCTAssertEqual(NSPasteboard.general.string(forType: .string), "clipboard-sentinel", "A queued Copy cannot write after switching tabs")
+    }
+
+    func testFindThroughRealCorePreservesTabStateAndTracksLiveEdits() async throws {
+        let (model, view, fixture) = try await start(path: "/find")
+        defer { fixture.stop(); Task { await model.stop() } }
+        model.showFind(); model.setFindQuery("frost")
+        await wait { model.findResult?.matchCount == 4 }
+        XCTAssertEqual(model.findResult?.activeMatch, 1)
+        model.findNext(backwards: true)
+        await wait { model.findResult?.activeMatch == 4 && (model.representation?.scrollY ?? 0) > 800 }
+        XCTAssertTrue(model.findResult?.wrapped == true)
+        model.findNext()
+        await wait { model.findResult?.activeMatch == 1 && model.representation?.scrollY == 0 }
+        model.setFindCaseSensitive(true)
+        await wait { model.findResult?.matchCount == 3 }
+        model.setFindQuery("private-find-secret")
+        await wait { model.findResult?.matchCount == 0 }
+        model.setFindQuery("hidden-find-secret")
+        await wait { model.findResult?.matchCount == 0 }
+        model.setFindQuery("public-editor")
+        await wait { model.findResult?.matchCount == 1 }
+        try await focus("Find public editor", model: model, view: view)
+        view.selectAll(nil); view.insertText("updated-editor", replacementRange: NSRange(location: NSNotFound, length: 0))
+        await wait { !model.textInputBusy && model.findResult?.matchCount == 0 }
+        model.setFindQuery("updated-editor")
+        await wait { model.findResult?.matchCount == 1 }
+        model.action(.values("OpenTab", ["url": .null]))
+        await wait { model.selected == 2 && model.representation?.url == "about:credits" }
+        XCTAssertFalse(model.findVisible)
+        model.showFind(); model.setFindQuery("missing-second-tab")
+        await wait { model.findResult?.matchCount == 0 }
+        model.select(1)
+        await wait { model.findVisible && model.findQuery == "updated-editor" && model.findResult?.matchCount == 1 }
+        model.closeFind()
+        XCTAssertFalse(model.findVisible)
+        model.address = "about:credits"; model.navigateAddress()
+        await wait { model.representation?.url == "about:credits" }
+        model.showFind()
+        XCTAssertEqual(model.findQuery, "")
+        XCTAssertEqual(fixture.requests.filter { $0 == "/find" }.count, 1, "Finding and stepping never fetches")
+    }
+
     private func focus(_ label: String, model: BrowserModel, view: CorePageView) async throws {
         await wait { model.representation != nil && !model.textInputBusy }
         let snapshot = try XCTUnwrap(model.representation)

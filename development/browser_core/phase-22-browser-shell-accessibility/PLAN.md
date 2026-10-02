@@ -219,3 +219,9 @@ The macOS GET/POST and resubmission increment is recorded in
 [MACOS_FORM_SUBMISSION_RESULTS.md](MACOS_FORM_SUBMISSION_RESULTS.md). It delivers
 core-owned current-tab submissions and a native POST confirmation while the
 [macOS delivery plan](MACOS_DELIVERY_PLAN.md) retains the remaining browser scope.
+
+The macOS find increment adds core-owned text/geometry search, native
+NSSearchField focus and keyboard UI, lifecycle/privacy bounds and ordered
+clipboard commands. Its public, real-service and actual-window evidence is
+recorded in [MACOS_FIND_RESULTS.md](MACOS_FIND_RESULTS.md). The full macOS
+[delivery plan](MACOS_DELIVERY_PLAN.md) remains active.

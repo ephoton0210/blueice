@@ -42,6 +42,7 @@ pub mod compiler_output;
 pub mod debugger;
 pub mod downloads;
 pub mod extension;
+pub mod find;
 pub mod gatekeeper;
 pub mod input;
 pub mod local_socket;
@@ -118,6 +119,15 @@ pub enum ClientMessage {
     /// separate from `ListTabs`: history availability can change without a
     /// tab being opened, closed, or selected.
     GetHistoryState,
+    /// Find in rendered page text using the addressed tab's live document context.
+    Find {
+        /// Must match the resolved envelope tab; contexts cannot cross tabs.
+        tab_id: u64,
+        frame_source: u64,
+        document_generation: u64,
+        action: find::FindAction,
+    },
+    GetFindState,
     /// Turns live translation of pages fetched *after* this message on (a
     /// BCP 47 tag such as `zh-TW`) or off (`None`). The setting is core-wide;
     /// which assistant serves it is fixed by `blueice-core`'s startup flags, so
@@ -364,6 +374,7 @@ pub enum ServerMessage {
     },
     /// Native text state for one live document and render generation.
     TextInputState(input::TextInputState),
+    FindState(find::FindState),
     /// Navigation finished (or failed) -- `url` is the final URL after
     /// following any redirects.
     Navigated {

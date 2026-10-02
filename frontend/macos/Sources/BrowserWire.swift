@@ -26,6 +26,7 @@ enum JSONValue: Encodable, Sendable {
 enum BrowserCommand: Encodable, Sendable {
     case unit(String), values(String, [String: JSONValue])
     case textInput(TextInputContext, TextInputAction)
+    case find(UInt64, TextInputContext, FindAction)
     func encode(to encoder: Encoder) throws {
         switch self {
         case .unit(let name):
@@ -39,7 +40,56 @@ enum BrowserCommand: Encodable, Sendable {
             var value = root.nestedContainer(keyedBy: MessageKey.self, forKey: MessageKey("TextInput"))
             try value.encode(context, forKey: MessageKey("context"))
             try value.encode(action, forKey: MessageKey("action"))
+        case .find(let tab, let context, let action):
+            var root = encoder.container(keyedBy: MessageKey.self)
+            var value = root.nestedContainer(keyedBy: MessageKey.self, forKey: MessageKey("Find"))
+            try value.encode(tab, forKey: MessageKey("tab_id"))
+            try value.encode(context.frame_source, forKey: MessageKey("frame_source"))
+            try value.encode(context.document_generation, forKey: MessageKey("document_generation"))
+            try value.encode(action, forKey: MessageKey("action"))
         }
+    }
+}
+
+enum FindAction: Encodable, Sendable {
+    case update(String, Bool), next(Bool), close
+    func encode(to encoder: Encoder) throws {
+        switch self {
+        case .close:
+            var value = encoder.singleValueContainer(); try value.encode("Close")
+        case .update(let query, let sensitive):
+            var root = encoder.container(keyedBy: MessageKey.self)
+            var value = root.nestedContainer(keyedBy: MessageKey.self, forKey: MessageKey("Update"))
+            try value.encode(query, forKey: MessageKey("query")); try value.encode(sensitive, forKey: MessageKey("case_sensitive"))
+        case .next(let backwards):
+            var root = encoder.container(keyedBy: MessageKey.self)
+            var value = root.nestedContainer(keyedBy: MessageKey.self, forKey: MessageKey("Next"))
+            try value.encode(backwards, forKey: MessageKey("backwards"))
+        }
+    }
+}
+
+struct FindState: Decodable, Sendable {
+    let tabID: UInt64
+    let frameSource: UInt64
+    let documentGeneration: UInt64
+    let revision: UInt64
+    let query: String
+    let caseSensitive: Bool
+    let matchCount: UInt32
+    let activeMatch: UInt32?
+    let wrapped: Bool
+    let limited: Bool
+    let rects: [PageNode.Bounds]
+    enum CodingKeys: String, CodingKey {
+        case tabID = "tab_id", frameSource = "frame_source", documentGeneration = "document_generation"
+        case revision, query, caseSensitive = "case_sensitive", matchCount = "match_count", activeMatch = "active_match", wrapped, limited, rects
+    }
+    var valid: Bool {
+        tabID > 0 && query.utf8.count <= 1024 && matchCount <= 10000 && rects.count <= 1024
+            && ((matchCount == 0 && activeMatch == nil && rects.isEmpty)
+                || (matchCount > 0 && activeMatch.map { $0 > 0 && $0 <= matchCount } == true))
+            && rects.allSatisfy { [$0.x, $0.y, $0.width, $0.height].allSatisfy(\.isFinite) && $0.width > 0 && $0.height > 0 }
     }
 }
 
@@ -82,6 +132,7 @@ enum BrowserMessage: Decodable, Sendable {
     case blocked(String), error(String), representation(PageRepresentation), representationUnavailable, unknown
     case textInputState(TextInputState), textInputUnavailable
     case formResubmission(FormResubmission), formResubmissionResolved(UInt64)
+    case findState(FindState), findUnavailable
 
     init(from decoder: Decoder) throws {
         guard let object = try? decoder.container(keyedBy: MessageKey.self), let key = object.allKeys.first else {
@@ -114,6 +165,9 @@ enum BrowserMessage: Decodable, Sendable {
             if let value = try? object.decode(TextInputState.self, forKey: key), (try? value.validate()) != nil { self = .textInputState(value) }
             else { self = .textInputUnavailable }
         case "Error": self = .error(try object.decode(Failure.self, forKey: key).message)
+        case "FindState":
+            if let value = try? object.decode(FindState.self, forKey: key), value.valid { self = .findState(value) }
+            else { self = .findUnavailable }
         default: self = .unknown
         }
     }

@@ -71,6 +71,7 @@ pub struct Page {
     /// private state never enters accessibility or script IPC snapshots.
     native_form_defaults: HashMap<NodeId, native_forms::ControlDefault>,
     highlighted: Option<NodeId>,
+    find: find::FindSession,
     /// The most recent raster frame for this one tab. Another tab rendering
     /// must not invalidate this tab's frame/representation pairing.
     frame_generation: u64,
@@ -133,6 +134,7 @@ impl Page {
             post_expired: false,
             submission_pending: false,
             highlighted: None,
+            find: find::FindSession::default(),
             frame_generation: 0,
             downloads: None,
             gatekeeper_settings: None,
@@ -186,6 +188,7 @@ impl Page {
         self.native_focus_exit = None;
         self.native_focus_start = None;
         self.highlighted = None;
+        self.find = find::FindSession::default();
         self.restyle_and_relayout();
     }
 
@@ -210,6 +213,7 @@ impl Page {
         self.adjust_native_editor_scroll();
         let max_scroll = (self.fragment.height - self.viewport_height).max(0.0);
         self.scroll_y = self.scroll_y.min(max_scroll);
+        self.rebuild_find();
     }
 
     fn recascade(&mut self) {
@@ -1058,6 +1062,7 @@ impl Page {
         let mut frame = paint(&self.fragment, &self.styles);
         self.paint_native_editor(&mut frame);
         self.paint_native_focus(&mut frame);
+        self.paint_find(&mut frame);
         if let Some(id) = self.highlighted {
             if let Some(bounds) = find_fragment_bounds(&self.fragment, id, 0.0, 0.0) {
                 frame.commands.extend(highlight_border_commands(bounds));
@@ -1082,6 +1087,7 @@ impl Page {
 
 mod dom_helpers;
 mod dom_write;
+mod find;
 mod form_submission;
 mod native_editing;
 mod native_forms;

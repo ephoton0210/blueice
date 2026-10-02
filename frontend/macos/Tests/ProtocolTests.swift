@@ -43,6 +43,30 @@ final class ProtocolTests: XCTestCase {
         if case .navigated("about:credits") = envelope.message {} else { XCTFail("Expected navigation") }
     }
 
+    func testFindWireContextAndMalformedResults() throws {
+        let context = TextInputContext(version: 1, frame_source: 19, document_generation: 4, focus_generation: 3)
+        let packet = try BrowserWire.encode(.find(2, context, .update("冰晶", false)), tab: 2, request: 9)
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: packet.dropFirst(4)) as? [String: Any])
+        let message = try XCTUnwrap(json["message"] as? [String: Any])
+        let find = try XCTUnwrap(message["Find"] as? [String: Any])
+        XCTAssertEqual(find["tab_id"] as? Int, 2)
+        XCTAssertEqual(find["document_generation"] as? Int, 4)
+        XCTAssertNil(find["focus_generation"], "Find survives control focus changes")
+        func decode(_ count: Int, _ active: Int?, _ width: Double) throws -> BrowserMessage {
+            let state: [String: Any] = ["tab_id": 2, "frame_source": 19, "document_generation": 4, "revision": 1,
+                                        "query": "冰晶", "case_sensitive": false, "match_count": count,
+                                        "active_match": active as Any? ?? NSNull(), "wrapped": false, "limited": false,
+                                        "rects": [["x": 0, "y": 0, "width": width, "height": 20]]]
+            let data = try JSONSerialization.data(withJSONObject: ["tab_id": 2, "message": ["FindState": state]])
+            return try JSONDecoder().decode(IncomingEnvelope.self, from: data).message
+        }
+        if case .findState(let value) = try decode(2, 1, 30) { XCTAssertEqual(value.matchCount, 2) }
+        else { XCTFail("Expected bounded find result") }
+        for value in [try decode(2, 3, 30), try decode(10001, 1, 30), try decode(2, 1, -1), try decode(0, nil, 30)] {
+            if case .findUnavailable = value {} else { XCTFail("Invalid geometry or result count must fail soft") }
+        }
+    }
+
     func testCommandsMatchRustEnvelope() throws {
         let packet = try BrowserWire.encode(.values("Navigate", ["url": .string("about:credits")]), tab: 2, request: 8)
         let json = try XCTUnwrap(JSONSerialization.jsonObject(with: packet.dropFirst(4)) as? [String: Any])

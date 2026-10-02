@@ -241,6 +241,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::BlueJsScriptReports(_)
                 | ServerMessage::Hello { .. }
                 | ServerMessage::TextInputState(_)
+                | ServerMessage::FindState(_)
                 | ServerMessage::NavigationStarted { .. }
                 | ServerMessage::FormResubmissionResolved { .. }
                 | ServerMessage::FormResubmission { .. }
@@ -338,6 +339,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::BlueJsScriptReports(_)
                 | ServerMessage::Hello { .. }
                 | ServerMessage::TextInputState(_)
+                | ServerMessage::FindState(_)
                 | ServerMessage::NavigationStarted { .. }
                 | ServerMessage::FormResubmissionResolved { .. }
                 | ServerMessage::Unknown
@@ -590,6 +592,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::BlueJsScriptReports(_)
                 | ServerMessage::Hello { .. }
                 | ServerMessage::TextInputState(_)
+                | ServerMessage::FindState(_)
                 | ServerMessage::NavigationStarted { .. }
                 | ServerMessage::FormResubmissionResolved { .. }
                 | ServerMessage::FormResubmission { .. }
@@ -658,6 +661,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::BlueJsScriptReports(_)
                 | ServerMessage::Hello { .. }
                 | ServerMessage::TextInputState(_)
+                | ServerMessage::FindState(_)
                 | ServerMessage::NavigationStarted { .. }
                 | ServerMessage::FormResubmissionResolved { .. }
                 | ServerMessage::FormResubmission { .. }
@@ -773,6 +777,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::Representation(_)
                 | ServerMessage::Hello { .. }
                 | ServerMessage::TextInputState(_)
+                | ServerMessage::FindState(_)
                 | ServerMessage::NavigationStarted { .. }
                 | ServerMessage::FormResubmissionResolved { .. }
                 | ServerMessage::FormResubmission { .. }
@@ -838,6 +843,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::Representation(_)
                 | ServerMessage::Hello { .. }
                 | ServerMessage::TextInputState(_)
+                | ServerMessage::FindState(_)
                 | ServerMessage::NavigationStarted { .. }
                 | ServerMessage::FormResubmissionResolved { .. }
                 | ServerMessage::FormResubmission { .. }
@@ -902,6 +908,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::Representation(_)
                 | ServerMessage::Hello { .. }
                 | ServerMessage::TextInputState(_)
+                | ServerMessage::FindState(_)
                 | ServerMessage::NavigationStarted { .. }
                 | ServerMessage::FormResubmissionResolved { .. }
                 | ServerMessage::FormResubmission { .. }
@@ -978,6 +985,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::Representation(_)
                 | ServerMessage::Hello { .. }
                 | ServerMessage::TextInputState(_)
+                | ServerMessage::FindState(_)
                 | ServerMessage::NavigationStarted { .. }
                 | ServerMessage::FormResubmissionResolved { .. }
                 | ServerMessage::FormResubmission { .. }
@@ -1094,6 +1102,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::Representation(_)
                 | ServerMessage::Hello { .. }
                 | ServerMessage::TextInputState(_)
+                | ServerMessage::FindState(_)
                 | ServerMessage::NavigationStarted { .. }
                 | ServerMessage::FormResubmissionResolved { .. }
                 | ServerMessage::FormResubmission { .. }

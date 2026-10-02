@@ -13,7 +13,7 @@ pushed to the current tracked branch as authorized by the owner.
 | Owned service stack | Bundled launcher/core/gatekeeper, reviewed external navigation, fail-closed review, normal/forced cleanup | Committed `32fa07f6b` |
 | Page accessibility | Core semantic tree mapped into NSAccessibility, native actions, privacy, stale-element and tab isolation tests | Committed and pushed `41952a803` |
 | Native text editing | Core-owned UTF-16 selection, grapheme movement/deletion, IME composition/update/commit/cancel, caret/candidate geometry, text/password/textarea editing, clipboard policy and native UI tests | Foundation committed and pushed `8b80c3c53`; physical OS IME and remaining editing behavior pending, see [results](MACOS_NATIVE_EDITING_RESULTS.md) |
-| Keyboard and page interaction | Keyboard-only form completion, checkbox/radio/select/range controls, find-in-page, native context menus, drag/drop and file-selection policy tests | Keyboard increment committed and pushed `97794bb57`; native form reset committed and pushed `4c1c6e922`; GET/POST submission and resubmission confirmation validated in [results](MACOS_FORM_SUBMISSION_RESULTS.md); remaining interactions pending |
+| Keyboard and page interaction | Keyboard-only form completion, checkbox/radio/select/range controls, find-in-page, native context menus, drag/drop and file-selection policy tests | Keyboard increment committed and pushed `97794bb57`; native form reset committed and pushed `4c1c6e922`; GET/POST submission committed and pushed `1bf78a3d9`; find-in-page and ordered clipboard commands validated in [results](MACOS_FIND_RESULTS.md); remaining interactions pending |
 | Windows and tab organization | Multiple native windows, tab groups, profile/context lifecycle, retained history and state handoff using core tab identities | Pending |
 | Downloads and printing | Actual download manager/shelf, progress/cancel/open/reveal, print/PDF media output and native panel tests | Pending |
 | Trusted browser panels | Assistant results and human permission decisions using the private owner boundary, policy-denial and no-AI-grant tests | Pending |
@@ -69,7 +69,8 @@ This increment covers keyboard control completion and reviewed link activation.
 The later submission increment covers GET/POST and required-field checks.
 Complete validation, popup/typeahead and
 multiple-select interaction, DOM key/input/focus/composition events, full chrome
-Tab traversal, find, context menus, drag/drop and file-selection remain required.
+Tab traversal, context menus, drag/drop and file-selection remain required.
+The later find increment delivers page search.
 Multiple-select direction keys deliberately preserve existing selections until
 their own interaction model is implemented. Physical OS IME and screen-reader
 acceptance remain separate gates.
@@ -133,6 +134,41 @@ semantics, image submitters/coordinates, dirname, alternate form targets, dialog
 forms and real file selection remain required. Multiple-select submission is
 covered; native multiple-select interaction remains pending. Physical IME,
 VoiceOver and the other browser milestones retain their separate acceptance.
+
+## Native find increment
+
+The core indexes its current layout text runs, including public native values
+and button/select captions, and retains grapheme geometry in document space.
+Soft wrapping and inline font changes can split one match across rectangles;
+block boundaries do not create phrases. Queries are literal, canonically
+normalized and whitespace-normalized; default matching uses Unicode simple
+case folding with an explicit Match case option. Hidden, non-content,
+opacity-zero and protected input subtrees do not enter the index. Results carry
+only the user's query, count, position, lifecycle identity and active geometry.
+
+The SwiftUI search row embeds AppKit NSSearchField for reliable native focus,
+selection, Return/Shift-Return and Escape. The Edit > Find menu implements
+Command-F, Command-G and Shift-Command-G; arrow buttons and a close button have
+native accessibility labels. Core paint marks all matches and emphasizes the
+current one, then scrolls it into the viewport. Search state is per tab, rebases
+on layout/live edits, and clears on navigation, including retained history
+snapshots. Find commands check the tab, frame directory source and document
+identity. The query/index/geometry/match bounds disclose partial results rather
+than silently presenting a complete search.
+
+A complete native regression exposed rapid Select All followed by Copy being
+dropped while selection acknowledgement was pending. Copy/Cut/Paste now share
+the bounded, document/focus-fenced input queue. Paste reads at its turn, Copy/Cut
+wait for the confirmed selection, password text stays excluded, readonly Cut is
+inert, and queued clipboard commands are discarded after switching tabs.
+Real-service regression tests and the existing clipboard XCUITest retain the
+original content and privacy assertions.
+
+This completes the current layout's page-find UI increment. It does not add
+regex search, locale-tailored/full multi-character case folding, accent-insensitive
+matching, complete text shaping/bidi, overflow scrolling, iframe content, or
+searching text the current core does not paint. Context menus, drag/drop, file
+selection and the other browser milestones remain required.
 
 ## Completion audit
 

@@ -188,6 +188,19 @@ The original request body remains private and bounded; cancellation does not
 fetch or move the history cursor. See [submission results](../../development/browser_core/phase-22-browser-shell-accessibility/MACOS_FORM_SUBMISSION_RESULTS.md).
 Full DOM reset/submit/formdata events and complete HTML validation remain pending.
 
+Page find uses an AppKit search field in the SwiftUI row, available from
+Edit > Find or Command-F. Command-G/Shift-Command-G, Return/Shift-Return and the
+arrow buttons move between matches; Escape or Close dismisses the row.
+Match case is optional. The core searches its painted public text, highlights
+matches, scrolls the current result and updates counts after live edits/resize.
+Searches remain local to each tab and clear on navigation. Hidden/password and
+protected payment inputs are excluded; bounded partial results are labelled.
+See [find results](../../development/browser_core/phase-22-browser-shell-accessibility/MACOS_FIND_RESULTS.md).
+
+Copy/Cut/Paste now wait in the input queue for the core's confirmed selection.
+Rapid shortcuts retain their order; password Copy/Cut and readonly Cut remain
+inert, and pending clipboard operations cannot run after a tab switch.
+
 Frame refresh temporarily suspends semantic actions until the representation
 matches the current tab, source, generation and URL. Native element identities
 survive a refresh within one document; reload, navigation and tab changes
@@ -199,6 +212,6 @@ runner Accessibility permission on the recorded host. JavaScript
 keyboard/beforeinput/input/composition event dispatch, undo/redo, complete
 bidirectional shaping and caret blink remain open, as do full form event/validity behavior,
 select popup/typeahead/multiple-selection interaction, complete toolbar Tab
-traversal, find/context menus, groups, multiple windows, downloads/printing/permission
+traversal, context menus, groups, multiple windows, downloads/printing/permission
 panels and localization. Automated checks cover the recorded features; an
 interactive VoiceOver session remains unvalidated.

@@ -25,6 +25,26 @@ final class BrowserModel: ObservableObject {
     @Published private(set) var pageFocusSerial: UInt64 = 0
     @Published private(set) var addressFocusSerial: UInt64 = 0
     func requestAddressFocus() { addressFocusSerial &+= 1 }
+    @Published private(set) var findVisible = false
+    @Published private(set) var findQuery = ""
+    @Published private(set) var findCaseSensitive = false
+    @Published private(set) var findResult: FindState?
+    @Published private(set) var findFocusSerial: UInt64 = 0
+    private struct FindPanel {
+        var shown = false
+        var query = ""
+        var sensitive = false
+        var result: FindState?
+    }
+    private var findPanels: [UInt64: FindPanel] = [:]
+    private var findTask: Task<Void, Never>?
+    var findSummary: String {
+        if findQuery.isEmpty { return "Type to find in page" }
+        if findQuery.utf8.count > 1024 { return "Search is too long" }
+        guard let result = findResult else { return "Searching…" }
+        if result.matchCount == 0 { return result.limited ? "No matches in searched portion" : "No matches" }
+        return "\(result.activeMatch ?? 0) of \(result.matchCount)\(result.limited ? "+ · Partial results" : "")\(result.wrapped ? " · Wrapped" : "")"
+    }
     private struct InputRequest {
         let epoch: UInt64
         let serial: UInt64
@@ -36,7 +56,9 @@ final class BrowserModel: ObservableObject {
         let epoch: UInt64
         let serial: UInt64
         let action: TextInputAction
+        var clipboard: ClipboardAction? = nil
     }
+    private enum ClipboardAction { case copy, cut, paste }
     private var inputStates: [UInt64: TextInputState] = [:]
     private var inputSerials: [UInt64: UInt64] = [:]
     private var inputFocusPending: Set<UInt64> = []
@@ -108,6 +130,7 @@ final class BrowserModel: ObservableObject {
         case .tabs(let list):
             tabs = list
             let live = Set(list.map(\.id))
+            findPanels = findPanels.filter { live.contains($0.key) }
             resubmissions = resubmissions.filter { live.contains($0.key) }
             if selected.map({ !live.contains($0) }) == true { resubmission = nil; resubmissionPresented = false }
             frames = frames.filter { live.contains($0.key) }
@@ -128,6 +151,8 @@ final class BrowserModel: ObservableObject {
         case .navigationStarted:
             if tab == selected { status = "Loading…" }
         case .navigated(let url):
+            if let tab { findPanels.removeValue(forKey: tab) }
+            if tab == selected { findTask?.cancel(); findVisible = false; findQuery = ""; findResult = nil }
             if let tab { resubmissions.removeValue(forKey: tab) }
             if tab == selected { resubmission = nil; resubmissionPresented = false }
             if let tab {
@@ -152,6 +177,7 @@ final class BrowserModel: ObservableObject {
             if tab == selected { showFrame(pixels); representation = nil }
             requestRepresentation(tab)
             requestTextInput(tab)
+            if findPanels[tab]?.shown == true { action(.unit("GetFindState"), tab: tab) }
         case .representation(let snapshot):
             guard let tab, snapshot.tabID == tab, envelope.requestID != nil,
                   let requested = representationRequests.removeValue(forKey: tab),
@@ -187,6 +213,16 @@ final class BrowserModel: ObservableObject {
             }
         case .textInputState, .textInputUnavailable:
             applyTextInput(envelope)
+        case .findState(let state):
+            guard let tab, tab == state.tabID, let context = inputStates[tab]?.context,
+                  state.frameSource == context.frame_source, state.documentGeneration == context.document_generation,
+                  var panel = findPanels[tab], panel.shown, panel.query == state.query, panel.sensitive == state.caseSensitive,
+                  state.revision >= (panel.result?.revision ?? 0) else { return }
+            panel.result = state; findPanels[tab] = panel
+            if tab == selected { findResult = state }
+        case .findUnavailable:
+            if let tab { findPanels[tab]?.result = nil }
+            if tab == selected { findResult = nil; status = "Page find unavailable" }
         default: break
         }
     }
@@ -203,21 +239,84 @@ final class BrowserModel: ObservableObject {
         representation = selected.flatMap { representations[$0] }
         accessibilityEpoch = selected.flatMap { documentEpochs[$0] } ?? 0
         textInputState = selected.flatMap { inputStates[$0] }
+        let find = selected.flatMap { findPanels[$0] } ?? FindPanel()
+        findVisible = find.shown; findQuery = find.query; findCaseSensitive = find.sensitive; findResult = find.result
     }
 
     func select(_ tab: UInt64) {
+        findTask?.cancel()
         if let previous = selected, inputStates[previous]?.focused?.marked != nil {
             textInput(.finishComposition)
         }
         selected = tab
         resubmission = resubmissions[tab]; resubmissionPresented = resubmission != nil
         showSelected()
+        if findVisible { action(.unit("GetFindState"), tab: tab) }
         Task { await send(.unit("GetHistoryState"), tab: tab); await resize() }
     }
 
     func action(_ command: BrowserCommand, tab: UInt64? = nil) {
         let target = tab ?? selected
         Task { await send(command, tab: target) }
+    }
+
+    func showFind() {
+        guard ready, let selected else { return }
+        var panel = findPanels[selected] ?? FindPanel()
+        let wasShown = panel.shown
+        panel.shown = true; findPanels[selected] = panel
+        findVisible = true; findQuery = panel.query; findCaseSensitive = panel.sensitive
+        findFocusSerial &+= 1
+        if !wasShown { scheduleFind() }
+    }
+
+    func setFindQuery(_ query: String) {
+        guard let selected else { return }
+        findQuery = query; findResult = nil
+        findPanels[selected, default: FindPanel()].query = query
+        findPanels[selected]?.result = nil
+        scheduleFind()
+    }
+
+    func setFindCaseSensitive(_ sensitive: Bool) {
+        guard let selected else { return }
+        findCaseSensitive = sensitive; findResult = nil
+        findPanels[selected, default: FindPanel()].sensitive = sensitive
+        findPanels[selected]?.result = nil
+        scheduleFind()
+    }
+
+    private func scheduleFind() {
+        findTask?.cancel()
+        guard ready, let tab = selected, let panel = findPanels[tab], panel.shown, panel.query.utf8.count <= 1024 else { return }
+        let epoch = documentEpochs[tab, default: 0]
+        findTask = Task {
+            try? await Task.sleep(for: .milliseconds(120))
+            for _ in 0..<1500 {
+                guard !Task.isCancelled, selected == tab, documentEpochs[tab, default: 0] == epoch,
+                      findPanels[tab]?.shown == true else { return }
+                if let context = inputStates[tab]?.context {
+                    await send(.find(tab, context, .update(panel.query, panel.sensitive)), tab: tab)
+                    return
+                }
+                try? await Task.sleep(for: .milliseconds(10))
+            }
+        }
+    }
+
+    func findNext(backwards: Bool = false) {
+        guard ready, let tab = selected else { return }
+        if !findVisible { showFind(); return }
+        guard let context = inputStates[tab]?.context, findResult?.matchCount ?? 0 > 0 else { return }
+        action(.find(tab, context, .next(backwards)), tab: tab)
+    }
+
+    func closeFind() {
+        findTask?.cancel()
+        guard let tab = selected else { return }
+        findPanels[tab]?.shown = false; findPanels[tab]?.result = nil
+        findVisible = false; findResult = nil; pageFocusSerial &+= 1
+        if let context = inputStates[tab]?.context { action(.find(tab, context, .close), tab: tab) }
     }
 
     private func requestRepresentation(_ tab: UInt64) {
@@ -248,6 +347,16 @@ final class BrowserModel: ObservableObject {
         guard ready, let tab = selected, inputQueue.count < 128 else { return }
         inputQueue.append(InputEdit(tab: tab, epoch: documentEpochs[tab, default: 0],
                                     serial: inputSerials[tab, default: 0], action: action))
+        textInputBusy = true
+        drainTextInput()
+    }
+
+    func copySelection(cut: Bool = false) { enqueueClipboard(cut ? .cut : .copy) }
+    func pasteClipboard() { enqueueClipboard(.paste) }
+    private func enqueueClipboard(_ command: ClipboardAction) {
+        guard ready, let tab = selected, inputQueue.count < 128 else { return }
+        inputQueue.append(InputEdit(tab: tab, epoch: documentEpochs[tab, default: 0],
+                                    serial: inputSerials[tab, default: 0], action: .replace("", nil), clipboard: command))
         textInputBusy = true
         drainTextInput()
     }
@@ -287,6 +396,22 @@ final class BrowserModel: ObservableObject {
             guard inputRequests[edit.tab] == nil, let state = inputStates[edit.tab] else { requestTextInput(edit.tab); return }
             guard state.focused != nil || edit.action.isPageKey else { inputQueue.removeFirst(); continue }
             inputQueue.removeFirst()
+            var action = edit.action
+            if let clipboard = edit.clipboard {
+                guard selected == edit.tab, let field = state.focused else { continue }
+                switch clipboard {
+                case .copy, .cut:
+                    guard !field.protected, clipboard != .cut || field.writable,
+                          field.selection.length > 0, let text = field.text,
+                          NSMaxRange(field.selection.nsRange) <= text.utf16.count else { continue }
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString((text as NSString).substring(with: field.selection.nsRange), forType: .string)
+                    if clipboard == .copy { continue }
+                case .paste:
+                    guard let text = NSPasteboard.general.string(forType: .string), text.utf16.count <= 65_536 else { continue }
+                    action = .replace(text, nil)
+                }
+            }
             inputFlight = (edit, nil)
             inputTimeout?.cancel()
             inputTimeout = Task {
@@ -294,7 +419,7 @@ final class BrowserModel: ObservableObject {
                 if !Task.isCancelled { finishInputFlight(); inputQueue.removeAll(); status = "Text input did not respond" }
             }
             Task {
-                let request = await send(.textInput(state.context, edit.action), tab: edit.tab)
+                let request = await send(.textInput(state.context, action), tab: edit.tab)
                 inputFlight?.request = request
                 replayEarlyInputReplies()
             }
@@ -413,5 +538,5 @@ final class BrowserModel: ObservableObject {
         await send(.values("Resize", ["width": .unsigned(width), "height": .unsigned(height)]), tab: selected)
     }
 
-    func stop() async { resubmissions.removeAll(); resubmission = nil; resubmissionPresented = false; ready = false; representation = nil; representations.removeAll(); representationRequests.removeAll(); clearTextInput(); resizeTask?.cancel(); await session.stop() }
+    func stop() async { findTask?.cancel(); findPanels.removeAll(); findVisible = false; findResult = nil; resubmissions.removeAll(); resubmission = nil; resubmissionPresented = false; ready = false; representation = nil; representations.removeAll(); representationRequests.removeAll(); clearTextInput(); resizeTask?.cancel(); await session.stop() }
 }

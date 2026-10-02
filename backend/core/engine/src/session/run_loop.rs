@@ -509,6 +509,57 @@ pub(super) fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
                             send_frame(page, stream, frame_dir, generation, reply_tab, request_id)?;
                         }
                     }
+                    ClientMessage::Find {
+                        tab_id,
+                        frame_source,
+                        document_generation,
+                        action,
+                    } => {
+                        let source = blueice_ipc::shm::frame_source_id(frame_dir);
+                        let Some(page) = tabs.get_mut(target) else {
+                            write_unknown_tab_error(stream, request_id, target)?;
+                            continue;
+                        };
+                        if tab_id != target.as_u64()
+                            || frame_source != source
+                            || document_generation != page.document_generation()
+                        {
+                            write_error(
+                                stream,
+                                reply_tab,
+                                request_id,
+                                "Find context is stale".into(),
+                            )?;
+                            continue;
+                        }
+                        match page.find_action(action) {
+                            Ok(()) => {
+                                send_frame(
+                                    page, stream, frame_dir, generation, reply_tab, request_id,
+                                )?;
+                                let state = page.find_state(source, target.as_u64());
+                                blueice_ipc::write_server_message_with_ids(
+                                    stream,
+                                    reply_tab,
+                                    request_id,
+                                    &ServerMessage::FindState(state),
+                                )?;
+                            }
+                            Err(message) => write_error(stream, reply_tab, request_id, message)?,
+                        }
+                    }
+                    ClientMessage::GetFindState => match tabs.get(target) {
+                        Some(page) => blueice_ipc::write_server_message_with_ids(
+                            stream,
+                            reply_tab,
+                            request_id,
+                            &ServerMessage::FindState(page.find_state(
+                                blueice_ipc::shm::frame_source_id(frame_dir),
+                                target.as_u64(),
+                            )),
+                        )?,
+                        None => write_unknown_tab_error(stream, request_id, target)?,
+                    },
                     ClientMessage::GetTextInputState => match tabs.get(target) {
                         Some(page) => {
                             let mut state = page.native_text_input_state(
