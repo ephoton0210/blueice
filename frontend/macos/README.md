@@ -201,6 +201,16 @@ Copy/Cut/Paste now wait in the input queue for the core's confirmed selection.
 Rapid shortcuts retain their order; password Copy/Cut and readonly Cut remain
 inert, and pending clipboard operations cannot run after a tab switch.
 
+Right-click or Control-click opens an AppKit menu for the core's current hit
+target. Shift-F10 opens it on a focused editor. Links offer Open, Open in New
+Tab and Copy Link Address; editors offer Cut, Copy, Paste and Select All with
+password/readonly policy. Page Back, Forward, Reload and Find keep their
+ordinary behavior. Opening a menu does not activate a page link/button, and
+an existing editor selection survives right-click. Copy Link Address does not
+fetch; opening links retains mandatory review, including visible denial for a
+new-tab destination. Stale menu commands cannot act after a new frame/tab or
+document. See [context menu results](../../development/browser_core/phase-22-browser-shell-accessibility/MACOS_CONTEXT_MENU_RESULTS.md).
+
 Frame refresh temporarily suspends semantic actions until the representation
 matches the current tab, source, generation and URL. Native element identities
 survive a refresh within one document; reload, navigation and tab changes
@@ -212,6 +222,7 @@ runner Accessibility permission on the recorded host. JavaScript
 keyboard/beforeinput/input/composition event dispatch, undo/redo, complete
 bidirectional shaping and caret blink remain open, as do full form event/validity behavior,
 select popup/typeahead/multiple-selection interaction, complete toolbar Tab
-traversal, context menus, groups, multiple windows, downloads/printing/permission
+traversal, image/media context actions, page-text selection/copy, drag/drop,
+file selection, groups, multiple windows, downloads/printing/permission
 panels and localization. Automated checks cover the recorded features; an
 interactive VoiceOver session remains unvalidated.

@@ -97,6 +97,12 @@ pub(super) fn supports_native_input(doc: &Document, id: NodeId) -> bool {
     })
 }
 
+pub(super) fn supports_native_selection(doc: &Document, id: NodeId) -> bool {
+    control_info(doc, id).is_some_and(|info| {
+        control_value(doc, id, info).encode_utf16().count() <= MAX_EDIT_TEXT_UTF16
+    })
+}
+
 fn length(text: &str) -> u32 {
     text.encode_utf16().count() as u32
 }

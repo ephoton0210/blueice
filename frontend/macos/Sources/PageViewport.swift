@@ -37,6 +37,7 @@ struct PageViewport: NSViewRepresentable {
 
     func updateNSView(_ view: CorePageView, context: Context) {
         view.image = model.image
+        view.invalidateContextMenu()
         view.setAccessibilityValue(model.image.map { "Rendered \($0.width) × \($0.height), frame \(model.generation)" } ?? "No rendered page")
         view.accessibilityTree.update(model.representation, epoch: model.accessibilityEpoch,
                                       imageSize: model.image.map { CGSize(width: $0.width, height: $0.height) } ?? .zero, tab: model.selected)
@@ -99,6 +100,8 @@ final class CorePageView: NSView, NSTextInputClient {
     private var pendingContext: TextInputContext?
     private var pendingUnmark: TextInputContext?
     private var handledFocusExit: TextInputContext?
+    private var contextMenuTask: Task<Void, Never>?
+    private var activeContextMenu: (menu: NSMenu, context: PageMenuContext)?
     override var isFlipped: Bool { true }
     override var acceptsFirstResponder: Bool { true }
 
@@ -153,6 +156,7 @@ final class CorePageView: NSView, NSTextInputClient {
     }
 
     override func mouseDown(with event: NSEvent) {
+        if event.modifierFlags.contains(.control) { rightMouseDown(with: event); return }
         guard let image, bounds.width > 0, bounds.height > 0 else { return }
         window?.makeFirstResponder(self)
         tabTransition = nil; pendingKeys.removeAll()
@@ -161,6 +165,75 @@ final class CorePageView: NSView, NSTextInputClient {
         model?.focusPage(x: point.x * Double(image.width) / bounds.width,
                          y: point.y * Double(image.height) / bounds.height,
                          extend: event.modifierFlags.contains(.shift), clickCount: event.clickCount)
+    }
+
+    override func rightMouseDown(with event: NSEvent) {
+        presentContextMenu(at: convert(event.locationInWindow, from: nil))
+    }
+
+    private func presentContextMenu(at point: NSPoint) {
+        guard let image, bounds.contains(point), bounds.width > 0, bounds.height > 0 else { return }
+        contextMenuTask?.cancel()
+        let x = point.x * Double(image.width) / bounds.width
+        let y = point.y * Double(image.height) / bounds.height
+        contextMenuTask = Task { @MainActor [weak self] in
+            guard let self, let model = self.model, let window = self.window,
+                  let state = await model.requestContextMenu(x: x, y: y), !Task.isCancelled,
+                  self.window === window, window.isKeyWindow, model.contextMenuIsCurrent(state.context) else { return }
+            window.makeFirstResponder(self)
+            let menu = self.makeContextMenu(state)
+            self.activeContextMenu = (menu, state.context)
+            menu.popUp(positioning: nil, at: point, in: self)
+            self.activeContextMenu = nil
+        }
+    }
+
+    func invalidateContextMenu() {
+        if let activeContextMenu, model?.contextMenuIsCurrent(activeContextMenu.context) != true {
+            activeContextMenu.menu.cancelTracking()
+            self.activeContextMenu = nil
+        }
+    }
+
+    func makeContextMenu(_ state: PageContextMenu) -> NSMenu {
+        let menu = NSMenu(title: "Page context menu")
+        menu.autoenablesItems = false
+        func item(_ title: String, enabled: Bool = true, _ action: @escaping (BrowserModel) -> Void) {
+            let item = PageMenuItem(title: title) { [weak self] in
+                guard let model = self?.model, model.contextMenuIsCurrent(state.context) else { return }
+                action(model)
+            }
+            item.isEnabled = enabled
+            item.identifier = NSUserInterfaceItemIdentifier("page-menu-" + title)
+            menu.addItem(item)
+        }
+        if state.linkURL != nil {
+            item("Open Link") { model in Task { await model.performContextLink(state.context, action: .open) } }
+            item("Open Link in New Tab") { model in Task { await model.performContextLink(state.context, action: .newTab) } }
+            item("Copy Link Address") { model in Task { await model.performContextLink(state.context, action: .copy) } }
+            menu.addItem(.separator())
+        }
+        if let field = state.input?.focused {
+            let copy = !field.protected && field.selection.length > 0
+            item("Cut", enabled: copy && field.writable) { $0.copySelection(cut: true) }
+            item("Copy", enabled: copy) { $0.copySelection() }
+            // Read the clipboard only after this explicit native action.
+            item("Paste", enabled: field.writable) { $0.pasteClipboard() }
+            item("Select All", enabled: field.text_length > 0) { $0.textInput(.selectAll) }
+            menu.addItem(.separator())
+        }
+        item("Back", enabled: model?.history.back == true) { $0.action(.unit("GoBack"), tab: state.context.tabID) }
+        item("Forward", enabled: model?.history.forward == true) { $0.action(.unit("GoForward"), tab: state.context.tabID) }
+        item("Reload", enabled: model?.tabs.first(where: { $0.id == state.context.tabID })?.url != nil) { $0.reload() }
+        item("Find in Page…") { $0.showFind() }
+        return menu
+    }
+
+    override func accessibilityPerformShowMenu() -> Bool {
+        guard let state = model?.textInputState, let field = state.focused, let image else { return false }
+        let rect = state.viewRect(field.bounds, viewport: bounds.size, image: CGSize(width: image.width, height: image.height))
+        presentContextMenu(at: CGPoint(x: rect.midX, y: rect.midY))
+        return true
     }
 
     override func mouseDragged(with event: NSEvent) {
@@ -175,6 +248,8 @@ final class CorePageView: NSView, NSTextInputClient {
     }
 
     override func keyDown(with event: NSEvent) {
+        if event.keyCode == 109, event.modifierFlags.intersection([.command, .control, .option, .shift]) == .shift,
+           accessibilityPerformShowMenu() { return }
         if entryTabEvent === event { entryTabEvent = nil; return }
         entryTabEvent = nil
         if tabTransition != nil { if pendingKeys.count < 512 { pendingKeys.append(event) }; return }
@@ -405,4 +480,16 @@ final class CorePageView: NSView, NSTextInputClient {
         editingMenu?.focus(nil)
         return super.resignFirstResponder()
     }
+}
+
+@MainActor
+private final class PageMenuItem: NSMenuItem {
+    private let run: () -> Void
+    init(title: String, run: @escaping () -> Void) {
+        self.run = run
+        super.init(title: title, action: #selector(runMenuAction), keyEquivalent: "")
+        target = self
+    }
+    required init(coder: NSCoder) { fatalError("Page menu items are created by the core menu adapter") }
+    @objc private func runMenuAction() { run() }
 }

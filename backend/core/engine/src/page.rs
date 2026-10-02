@@ -1085,6 +1085,7 @@ impl Page {
     }
 }
 
+mod context_menu;
 mod dom_helpers;
 mod dom_write;
 mod find;

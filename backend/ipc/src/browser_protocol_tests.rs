@@ -757,3 +757,63 @@ fn find_commands_and_geometry_round_trip_without_a_text_snapshot() {
         (Some(2), Some(42), state)
     );
 }
+
+#[test]
+fn context_menu_commands_and_copy_metadata_round_trip() {
+    use crate::context_menu::{ContextMenuContext, ContextMenuLinkAction, ContextMenuState};
+    let context = ContextMenuContext {
+        tab_id: 2,
+        frame_source: 19,
+        document_generation: 4,
+        frame_generation: 7,
+        x: 10.0,
+        y: 20.0,
+    };
+    let commands = [
+        ClientMessage::GetContextMenu {
+            tab_id: 2,
+            frame_source: 19,
+            frame_generation: 7,
+            x: 10.0,
+            y: 20.0,
+        },
+        ClientMessage::ContextMenuLink {
+            context,
+            action: ContextMenuLinkAction::Copy,
+        },
+        ClientMessage::ContextMenuLink {
+            context,
+            action: ContextMenuLinkAction::Open,
+        },
+        ClientMessage::ContextMenuLink {
+            context,
+            action: ContextMenuLinkAction::OpenInNewTab,
+        },
+    ];
+    for command in commands {
+        let mut bytes = Vec::new();
+        write_client_message_with_ids(&mut bytes, Some(2), Some(42), &command).unwrap();
+        assert_eq!(
+            read_client_message_with_ids(&mut Cursor::new(bytes)).unwrap(),
+            (Some(2), Some(42), command)
+        );
+    }
+    for reply in [
+        ServerMessage::ContextMenu(ContextMenuState {
+            context,
+            link_url: Some("https://menu.test/next".into()),
+            input: None,
+        }),
+        ServerMessage::ContextMenuLink {
+            context,
+            url: "https://menu.test/next".into(),
+        },
+    ] {
+        let mut bytes = Vec::new();
+        write_server_message_with_ids(&mut bytes, Some(2), Some(42), &reply).unwrap();
+        assert_eq!(
+            read_server_message_with_ids(&mut Cursor::new(bytes)).unwrap(),
+            (Some(2), Some(42), reply)
+        );
+    }
+}

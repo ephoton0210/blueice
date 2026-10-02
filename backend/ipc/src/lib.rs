@@ -39,6 +39,7 @@ pub mod assistant;
 pub mod compiler;
 pub mod compiler_catalog;
 pub mod compiler_output;
+pub mod context_menu;
 pub mod debugger;
 pub mod downloads;
 pub mod extension;
@@ -128,6 +129,19 @@ pub enum ClientMessage {
         action: find::FindAction,
     },
     GetFindState,
+    /// Hit-test the live frame and focus a native editor without activating it.
+    GetContextMenu {
+        tab_id: u64,
+        frame_source: u64,
+        frame_generation: u64,
+        x: f64,
+        y: f64,
+    },
+    /// Revalidate the exact menu frame and rederive its link before acting.
+    ContextMenuLink {
+        context: context_menu::ContextMenuContext,
+        action: context_menu::ContextMenuLinkAction,
+    },
     /// Turns live translation of pages fetched *after* this message on (a
     /// BCP 47 tag such as `zh-TW`) or off (`None`). The setting is core-wide;
     /// which assistant serves it is fixed by `blueice-core`'s startup flags, so
@@ -375,6 +389,12 @@ pub enum ServerMessage {
     /// Native text state for one live document and render generation.
     TextInputState(input::TextInputState),
     FindState(find::FindState),
+    ContextMenu(context_menu::ContextMenuState),
+    /// A correlated copy reply. The core never accesses the OS clipboard.
+    ContextMenuLink {
+        context: context_menu::ContextMenuContext,
+        url: String,
+    },
     /// Navigation finished (or failed) -- `url` is the final URL after
     /// following any redirects.
     Navigated {

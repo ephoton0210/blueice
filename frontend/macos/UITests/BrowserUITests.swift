@@ -54,6 +54,108 @@ final class BrowserUITests: XCTestCase {
         if submit { address.typeKey(.return, modifierFlags: []) }
     }
 
+    private func saveClipboard() -> [NSPasteboardItem] {
+        NSPasteboard.general.pasteboardItems?.map { item in
+            let copy = NSPasteboardItem()
+            for type in item.types { if let data = item.data(forType: type) { copy.setData(data, forType: type) } }
+            return copy
+        } ?? []
+    }
+
+    private func chooseContext(_ title: String) {
+        let item = app.groups["page"].menuItems[title]
+        XCTAssertTrue(item.waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertTrue(item.isEnabled, title)
+        item.click()
+    }
+
+    func testContextLinkCopyNewTabHistoryAndPolicyDenial() throws {
+        let fixture = try HTTPFixture(); defer { fixture.stop() }
+        let saved = saveClipboard()
+        defer { NSPasteboard.general.clearContents(); NSPasteboard.general.writeObjects(saved) }
+        launch(); enter(fixture.origin + "/context-menu")
+        waitValue(app.textFields["address"], fixture.origin + "/context-menu")
+        let link = app.groups["page"].links["Destination link"]
+        XCTAssertTrue(link.waitForExistence(timeout: 15))
+        link.rightClick()
+        XCTAssertTrue(app.groups["page"].menuItems["Copy Link Address"].waitForExistence(timeout: 10))
+        let attachment = XCTAttachment(screenshot: app.screenshot())
+        attachment.name = "macos-context-menu"; attachment.lifetime = .keepAlways; add(attachment)
+        chooseContext("Copy Link Address")
+        let copied = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            NSPasteboard.general.string(forType: .string) == fixture.origin + "/destination"
+        }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [copied], timeout: 10), .completed)
+        XCTAssertEqual(fixture.requests, ["/context-menu"])
+        link.rightClick(); chooseContext("Open Link in New Tab")
+        waitValue(app.textFields["address"], fixture.origin + "/destination")
+        XCTAssertTrue(app.buttons["tab-2"].waitForExistence(timeout: 10))
+        XCTAssertEqual(fixture.requests, ["/context-menu", "/destination"])
+        app.buttons["tab-1"].click(); waitValue(app.textFields["address"], fixture.origin + "/context-menu")
+        link.rightClick(); chooseContext("Open Link")
+        waitValue(app.textFields["address"], fixture.origin + "/destination")
+        app.groups["page"].coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.8)).rightClick()
+        chooseContext("Back"); waitValue(app.textFields["address"], fixture.origin + "/context-menu")
+        let blocked = app.groups["page"].links["Blocked link"]
+        XCTAssertTrue(blocked.waitForExistence(timeout: 10))
+        blocked.rightClick(); chooseContext("Open Link in New Tab")
+        let newDenied = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value CONTAINS 'Navigation blocked' OR label CONTAINS 'Navigation blocked'"), object: app.staticTexts["status"])
+        XCTAssertEqual(XCTWaiter.wait(for: [newDenied], timeout: 15), .completed)
+        XCTAssertEqual(app.textFields["address"].value as? String, fixture.origin + "/context-menu")
+        XCTAssertFalse(app.buttons["tab-3"].exists, "A denied destination must not leave a phantom native tab")
+        blocked.rightClick(); chooseContext("Open Link")
+        let denied = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value CONTAINS 'Navigation blocked' OR label CONTAINS 'Navigation blocked'"), object: app.staticTexts["status"])
+        XCTAssertEqual(XCTWaiter.wait(for: [denied], timeout: 15), .completed)
+        XCTAssertEqual(app.textFields["address"].value as? String, fixture.origin + "/context-menu")
+        let finished = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in fixture.requests.count == 6 }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [finished], timeout: 10), .completed)
+        XCTAssertEqual(fixture.requests, ["/context-menu", "/destination", "/destination", "/context-menu", "/blocked", "/blocked"])
+    }
+
+    func testContextEditingReadonlyPasswordAndKeyboardMenu() throws {
+        let fixture = try HTTPFixture(); defer { fixture.stop() }
+        let saved = saveClipboard()
+        defer { NSPasteboard.general.clearContents(); NSPasteboard.general.writeObjects(saved) }
+        launch(); enter(fixture.origin + "/context-menu")
+        let page = app.groups["page"], field = page.textFields["Context editor"]
+        XCTAssertTrue(field.waitForExistence(timeout: 15))
+        field.rightClick(); chooseContext("Select All")
+        field.rightClick(); chooseContext("Cut"); waitValue(field, "")
+        XCTAssertEqual(NSPasteboard.general.string(forType: .string), "hello")
+        field.rightClick(); chooseContext("Paste"); waitValue(field, "hello")
+        field.typeKey(.F10, modifierFlags: .shift)
+        XCTAssertTrue(page.menuItems["Copy"].waitForExistence(timeout: 10), "Shift-F10 opens the focused editor's native menu")
+        app.typeKey(.escape, modifierFlags: [])
+        XCUIElement.perform(withKeyModifiers: .control) { field.click() }
+        XCTAssertTrue(page.menuItems["Select All"].waitForExistence(timeout: 10), "Control-click opens the native context menu")
+        app.typeKey(.escape, modifierFlags: [])
+        let readonly = page.textFields["Context readonly"]
+        readonly.rightClick(); chooseContext("Select All")
+        readonly.rightClick()
+        XCTAssertFalse(page.menuItems["Cut"].isEnabled)
+        XCTAssertFalse(page.menuItems["Paste"].isEnabled)
+        chooseContext("Copy")
+        let copied = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            NSPasteboard.general.string(forType: .string) == "read only"
+        }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [copied], timeout: 10), .completed)
+        let secret = page.secureTextFields["Context secret"]
+        secret.rightClick(); chooseContext("Select All")
+        secret.rightClick()
+        XCTAssertFalse(page.menuItems["Copy"].isEnabled)
+        XCTAssertFalse(page.menuItems["Cut"].isEnabled)
+        XCTAssertTrue(page.menuItems["Paste"].isEnabled)
+        XCTAssertFalse(app.debugDescription.contains("private-menu-secret"))
+        app.typeKey(.escape, modifierFlags: [])
+        XCTAssertEqual(NSPasteboard.general.string(forType: .string), "read only")
+        page.textFields["Context disabled"].rightClick()
+        XCTAssertTrue(page.menuItems["Find in Page…"].waitForExistence(timeout: 10))
+        XCTAssertFalse(page.menuItems["Paste"].exists)
+        chooseContext("Find in Page…")
+        XCTAssertTrue(app.searchFields["find-query"].waitForExistence(timeout: 10))
+        XCTAssertEqual(fixture.requests, ["/context-menu"])
+    }
+
     func testFindKeyboardWrapScrollCaseAndClose() throws {
         let fixture = try HTTPFixture()
         defer { fixture.stop() }

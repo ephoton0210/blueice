@@ -509,6 +509,115 @@ pub(super) fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
                             send_frame(page, stream, frame_dir, generation, reply_tab, request_id)?;
                         }
                     }
+                    ClientMessage::GetContextMenu {
+                        tab_id,
+                        frame_source,
+                        frame_generation,
+                        x,
+                        y,
+                    } => {
+                        let source = blueice_ipc::shm::frame_source_id(frame_dir);
+                        let Some(page) = tabs.get_mut(target) else {
+                            write_unknown_tab_error(stream, request_id, target)?;
+                            continue;
+                        };
+                        if tab_id != target.as_u64()
+                            || frame_source != source
+                            || frame_generation != page.frame_generation()
+                            || !page.validate_menu_point(x, y)
+                        {
+                            write_error(
+                                stream,
+                                reply_tab,
+                                request_id,
+                                "Context menu frame is stale or outside the viewport".into(),
+                            )?;
+                            continue;
+                        }
+                        if page.prepare_context_menu(x, y) {
+                            send_frame(page, stream, frame_dir, generation, reply_tab, request_id)?;
+                        }
+                        blueice_ipc::write_server_message_with_ids(
+                            stream,
+                            reply_tab,
+                            request_id,
+                            &ServerMessage::ContextMenu(page.context_menu_state(
+                                source,
+                                target.as_u64(),
+                                x,
+                                y,
+                            )),
+                        )?;
+                    }
+                    ClientMessage::ContextMenuLink { context, action } => {
+                        use blueice_ipc::context_menu::ContextMenuLinkAction;
+                        let Some(page) = tabs.get(target) else {
+                            write_unknown_tab_error(stream, request_id, target)?;
+                            continue;
+                        };
+                        if context.tab_id != target.as_u64()
+                            || context.frame_source != blueice_ipc::shm::frame_source_id(frame_dir)
+                            || context.document_generation != page.document_generation()
+                            || context.frame_generation != page.frame_generation()
+                            || !page.validate_menu_point(context.x, context.y)
+                        {
+                            write_error(
+                                stream,
+                                reply_tab,
+                                request_id,
+                                "Context menu is stale".into(),
+                            )?;
+                            continue;
+                        }
+                        let Some(url) = page.menu_link(context.x, context.y) else {
+                            write_error(
+                                stream,
+                                reply_tab,
+                                request_id,
+                                "Context menu has no supported link".into(),
+                            )?;
+                            continue;
+                        };
+                        match action {
+                            ContextMenuLinkAction::Copy => {
+                                blueice_ipc::write_server_message_with_ids(
+                                    stream,
+                                    reply_tab,
+                                    request_id,
+                                    &ServerMessage::ContextMenuLink { context, url },
+                                )?
+                            }
+                            ContextMenuLinkAction::Open => begin_gated_navigation(
+                                tabs,
+                                stream,
+                                frame_dir,
+                                generation,
+                                reply_tab,
+                                request_id,
+                                target,
+                                url,
+                                PendingKind::Navigate,
+                                &mut pending_nav_seq,
+                                &mut downloads_refresher,
+                                &completion_tx,
+                                gatekeeper_socket,
+                                extension_events,
+                            )?,
+                            ContextMenuLinkAction::OpenInNewTab => handle_open_tab(
+                                tabs,
+                                stream,
+                                frame_dir,
+                                generation,
+                                request_id,
+                                Some(url),
+                                &mut pending_nav_seq,
+                                &mut downloads_refresher,
+                                &completion_tx,
+                                gatekeeper_socket,
+                                extension_events,
+                            )?,
+                        }
+                    }
                     ClientMessage::Find {
                         tab_id,
                         frame_source,

@@ -12,6 +12,32 @@ fn go_back_uses_the_same_navigation_completion_barrier_and_returns_restored_stat
         vec![
             Box::new(|msg, s| {
                 assert!(matches!(msg, ClientMessage::GoBack));
+                let context = blueice_ipc::context_menu::ContextMenuContext {
+                    tab_id: 7,
+                    frame_source: 19,
+                    document_generation: 1,
+                    frame_generation: 3,
+                    x: 10.0,
+                    y: 20.0,
+                };
+                // Native menu broadcasts also cannot complete MCP navigation.
+                reply_tab(
+                    s,
+                    7,
+                    &ServerMessage::ContextMenu(blueice_ipc::context_menu::ContextMenuState {
+                        context,
+                        link_url: Some("https://example.com/link".into()),
+                        input: None,
+                    }),
+                );
+                reply_tab(
+                    s,
+                    7,
+                    &ServerMessage::ContextMenuLink {
+                        context,
+                        url: "https://example.com/link".into(),
+                    },
+                );
                 // A browser search reply can be broadcast while MCP waits
                 // for this tab's history completion. It must not satisfy that barrier.
                 reply_tab(

@@ -225,3 +225,10 @@ NSSearchField focus and keyboard UI, lifecycle/privacy bounds and ordered
 clipboard commands. Its public, real-service and actual-window evidence is
 recorded in [MACOS_FIND_RESULTS.md](MACOS_FIND_RESULTS.md). The full macOS
 [delivery plan](MACOS_DELIVERY_PLAN.md) remains active.
+
+The native context menu increment adds AppKit link/editor/page actions backed by
+core hit testing, exact lifecycle fencing, protected/readonly clipboard policy,
+reviewed new-tab navigation and correlated visible denial. Its Rust boundary,
+real-service and actual-window verification is recorded in
+[MACOS_CONTEXT_MENU_RESULTS.md](MACOS_CONTEXT_MENU_RESULTS.md). Image/media
+actions, page-text selection, drag/drop and the full delivery plan remain open.

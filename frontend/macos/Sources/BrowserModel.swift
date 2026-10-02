@@ -38,6 +38,9 @@ final class BrowserModel: ObservableObject {
     }
     private var findPanels: [UInt64: FindPanel] = [:]
     private var findTask: Task<Void, Never>?
+    private var menuOperation: UUID?
+    private var menuReplies: [IncomingEnvelope] = []
+    private var linkTabReplies: [UUID: [IncomingEnvelope]] = [:]
     var findSummary: String {
         if findQuery.isEmpty { return "Type to find in page" }
         if findQuery.utf8.count > 1024 { return "Search is too long" }
@@ -127,6 +130,13 @@ final class BrowserModel: ObservableObject {
     private func apply(_ envelope: IncomingEnvelope, pixels: FramePixels?) {
         let tab = envelope.tabID
         switch envelope.message {
+        case .opened, .blocked, .error:
+            for ticket in Array(linkTabReplies.keys) where (linkTabReplies[ticket]?.count ?? 16) < 16 {
+                linkTabReplies[ticket]?.append(envelope)
+            }
+        default: break
+        }
+        switch envelope.message {
         case .tabs(let list):
             tabs = list
             let live = Set(list.map(\.id))
@@ -143,9 +153,17 @@ final class BrowserModel: ObservableObject {
             inputQueue.removeAll { !live.contains($0.tab) }
             if selected == nil || !live.contains(selected!) { selected = list.first?.id }
             showSelected()
-        case .opened(let id):
+        case .opened(let id, let url):
+            if menuOperation != nil && menuReplies.count < 16 { menuReplies.append(envelope) }
             selected = id
-            Task { await send(.unit("ListTabs")); await navigate("about:credits", tab: id) }
+            if !tabs.contains(where: { $0.id == id }) { tabs.append(BrowserTab(id: id, url: url)) }
+            showSelected()
+            if url != nil { status = "Ready" }
+            Task {
+                await send(.unit("ListTabs"))
+                if url == nil { await navigate("about:credits", tab: id) }
+                await send(.unit("GetHistoryState"), tab: id)
+            }
         case .closed:
             Task { await send(.unit("ListTabs")) }
         case .navigationStarted:
@@ -203,8 +221,10 @@ final class BrowserModel: ObservableObject {
             if let tab, resubmissions[tab]?.confirmationID == id { resubmissions.removeValue(forKey: tab) }
             if resubmission?.confirmationID == id { resubmission = nil; resubmissionPresented = false }
         case .blocked(let reason):
+            if menuOperation != nil && menuReplies.count < 16 { menuReplies.append(envelope) }
             if tab == selected { status = "Navigation blocked: " + reason }
         case .error(let message):
+            if menuOperation != nil && menuReplies.count < 16 { menuReplies.append(envelope) }
             if tab == nil || tab == selected { status = message }
             if let request = envelope.requestID, request == inputFlight?.request {
                 applyTextInput(envelope)
@@ -223,6 +243,8 @@ final class BrowserModel: ObservableObject {
         case .findUnavailable:
             if let tab { findPanels[tab]?.result = nil }
             if tab == selected { findResult = nil; status = "Page find unavailable" }
+        case .contextMenu, .contextLink, .contextUnavailable:
+            if menuOperation != nil && menuReplies.count < 16 { menuReplies.append(envelope) }
         default: break
         }
     }
@@ -258,6 +280,85 @@ final class BrowserModel: ObservableObject {
     func action(_ command: BrowserCommand, tab: UInt64? = nil) {
         let target = tab ?? selected
         Task { await send(command, tab: target) }
+    }
+
+    func contextMenuIsCurrent(_ context: PageMenuContext) -> Bool {
+        ready && selected == context.tabID && tabs.contains(where: { $0.id == context.tabID })
+            && context.frameSource == PageRepresentation.frameSource(directory: session.frameDirectory.path)
+            && frames[context.tabID]?.generation == context.frameGeneration
+    }
+
+    func requestContextMenu(x: Double, y: Double) async -> PageContextMenu? {
+        guard ready, !textInputBusy, let tab = selected, let frame = frames[tab] else { return nil }
+        let operation = UUID(), epoch = documentEpochs[tab, default: 0]
+        menuOperation = operation; menuReplies.removeAll()
+        defer { if menuOperation == operation { menuOperation = nil; menuReplies.removeAll() } }
+        guard let request = await send(.values("GetContextMenu", ["tab_id": .unsigned(tab),
+            "frame_source": .unsigned(PageRepresentation.frameSource(directory: session.frameDirectory.path)),
+            "frame_generation": .unsigned(frame.generation), "x": .number(x), "y": .number(y)]), tab: tab) else { return nil }
+        let deadline = Date().addingTimeInterval(5)
+        while !Task.isCancelled, ready, menuOperation == operation, selected == tab, documentEpochs[tab, default: 0] == epoch, Date() < deadline {
+            if let reply = menuReplies.first(where: { $0.requestID == request && $0.tabID == tab }) {
+                guard case .contextMenu(let menu) = reply.message, contextMenuIsCurrent(menu.context) else { return nil }
+                if let input = menu.input {
+                    inputSerials[tab, default: 0] += 1
+                    inputRequests.removeValue(forKey: tab)
+                    inputStates[tab] = input; textInputState = input
+                }
+                return menu
+            }
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        return nil
+    }
+
+    func performContextLink(_ context: PageMenuContext, action: PageMenuLinkAction) async {
+        guard contextMenuIsCurrent(context) else { return }
+        if action == .open { await send(.contextMenuLink(context, action), tab: context.tabID); return }
+        if action == .newTab { await openContextLinkTab(context); return }
+        let operation = UUID()
+        menuOperation = operation; menuReplies.removeAll()
+        defer { if menuOperation == operation { menuOperation = nil; menuReplies.removeAll() } }
+        guard let request = await send(.contextMenuLink(context, action), tab: context.tabID) else { return }
+        let deadline = Date().addingTimeInterval(5)
+        while !Task.isCancelled, menuOperation == operation, contextMenuIsCurrent(context), Date() < deadline {
+            if let reply = menuReplies.first(where: { $0.requestID == request && $0.tabID == context.tabID }) {
+                guard case .contextLink(let link) = reply.message, link.context == context else { return }
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(link.url, forType: .string)
+                return
+            }
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+    }
+
+    private func openContextLinkTab(_ context: PageMenuContext) async {
+        guard linkTabReplies.count < 8 else { return }
+        let ticket = UUID()
+        linkTabReplies[ticket] = []
+        defer { linkTabReplies.removeValue(forKey: ticket) }
+        guard let request = await send(.contextMenuLink(context, .newTab), tab: context.tabID) else { return }
+        let deadline = Date().addingTimeInterval(30)
+        while !Task.isCancelled, ready, Date() < deadline {
+            if let reply = linkTabReplies[ticket]?.first(where: { $0.requestID == request }) {
+                let notice: String?
+                switch reply.message {
+                case .blocked(let reason): notice = "Navigation blocked: " + reason
+                case .error(let message): notice = message
+                default: notice = nil
+                }
+                // OpenTab's deferred result addresses the new tab. Preserve
+                // the source URL/history and visibly report its denied request.
+                if let notice {
+                    if contextMenuIsCurrent(context) { status = notice }
+                    if let tab = reply.tabID, tab != context.tabID, !tabs.contains(where: { $0.id == tab }) {
+                        await send(.unit("CloseTab"), tab: tab)
+                    }
+                }
+                return
+            }
+            try? await Task.sleep(for: .milliseconds(10))
+        }
     }
 
     func showFind() {

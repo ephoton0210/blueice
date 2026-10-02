@@ -13,7 +13,7 @@ pushed to the current tracked branch as authorized by the owner.
 | Owned service stack | Bundled launcher/core/gatekeeper, reviewed external navigation, fail-closed review, normal/forced cleanup | Committed `32fa07f6b` |
 | Page accessibility | Core semantic tree mapped into NSAccessibility, native actions, privacy, stale-element and tab isolation tests | Committed and pushed `41952a803` |
 | Native text editing | Core-owned UTF-16 selection, grapheme movement/deletion, IME composition/update/commit/cancel, caret/candidate geometry, text/password/textarea editing, clipboard policy and native UI tests | Foundation committed and pushed `8b80c3c53`; physical OS IME and remaining editing behavior pending, see [results](MACOS_NATIVE_EDITING_RESULTS.md) |
-| Keyboard and page interaction | Keyboard-only form completion, checkbox/radio/select/range controls, find-in-page, native context menus, drag/drop and file-selection policy tests | Keyboard increment committed and pushed `97794bb57`; native form reset committed and pushed `4c1c6e922`; GET/POST submission committed and pushed `1bf78a3d9`; find-in-page and ordered clipboard commands validated in [results](MACOS_FIND_RESULTS.md); remaining interactions pending |
+| Keyboard and page interaction | Keyboard-only form completion, checkbox/radio/select/range controls, find-in-page, native context menus, drag/drop and file-selection policy tests | Keyboard increment committed and pushed `97794bb57`; native form reset committed and pushed `4c1c6e922`; GET/POST submission committed and pushed `1bf78a3d9`; find/ordered clipboard committed and pushed `614489c59`; native link/editor/page context menus validated in [results](MACOS_CONTEXT_MENU_RESULTS.md); remaining interactions pending |
 | Windows and tab organization | Multiple native windows, tab groups, profile/context lifecycle, retained history and state handoff using core tab identities | Pending |
 | Downloads and printing | Actual download manager/shelf, progress/cancel/open/reveal, print/PDF media output and native panel tests | Pending |
 | Trusted browser panels | Assistant results and human permission decisions using the private owner boundary, policy-denial and no-AI-grant tests | Pending |
@@ -167,8 +167,39 @@ original content and privacy assertions.
 This completes the current layout's page-find UI increment. It does not add
 regex search, locale-tailored/full multi-character case folding, accent-insensitive
 matching, complete text shaping/bidi, overflow scrolling, iframe content, or
-searching text the current core does not paint. Context menus, drag/drop, file
-selection and the other browser milestones remain required.
+searching text the current core does not paint. The following increment delivers
+link/editor/page context menus; drag/drop, file selection and the other browser
+milestones remain required.
+
+## Native context menu increment
+
+AppKit owns the native popup and keyboard/menu navigation. Right-click,
+Control-click and Shift-F10 on a focused editor request a core hit test using
+the live tab/frame-directory/frame identity and viewport coordinates. A text
+editor gains native focus without executing a click default or changing its
+existing selection. Links, buttons and blank areas do not activate while a
+menu is opened. The reply includes the resolved public link and only the hit
+editor's validated native state, including redacted protected controls.
+
+Link Open and Open in New Tab revalidate the document/frame and rederive the
+target in core before ordinary URL/content review. Copy Link Address replies
+without fetching. Only the native user's correlated Copy action writes to the
+OS clipboard; the protocol does not access it. An already-loaded new tab retains
+its committed URL instead of navigating again to credits. A denied new-tab
+destination is reported on the source page, and its unpublished empty tab is
+closed. Independent pending new-tab replies survive opening another menu.
+
+Cut/Copy/Paste and Select All use the existing ordered input queue. Password
+Copy/Cut and readonly Cut/Paste are disabled; readonly selection and Copy work.
+The menu never inspects the clipboard just to decide whether Paste is enabled.
+Page Back/Forward/Reload and Find retain their existing gated and resubmission
+behavior. The native menu and its callbacks expire after frame/document/tab
+replacement, resize or scroll. The exact supported window operations and
+core/protocol/MCP evidence are recorded separately.
+
+Image/media actions, general page-text selection/copy, contextmenu DOM event
+dispatch, drag/drop, file selection, physical IME and the other full-browser
+milestones remain required; this increment does not complete those gates.
 
 ## Completion audit
 

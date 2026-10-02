@@ -242,6 +242,8 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::Hello { .. }
                 | ServerMessage::TextInputState(_)
                 | ServerMessage::FindState(_)
+                    | ServerMessage::ContextMenu(_)
+                    | ServerMessage::ContextMenuLink { .. }
                 | ServerMessage::NavigationStarted { .. }
                 | ServerMessage::FormResubmissionResolved { .. }
                 | ServerMessage::FormResubmission { .. }
@@ -340,6 +342,8 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::Hello { .. }
                 | ServerMessage::TextInputState(_)
                 | ServerMessage::FindState(_)
+                | ServerMessage::ContextMenu(_)
+                | ServerMessage::ContextMenuLink { .. }
                 | ServerMessage::NavigationStarted { .. }
                 | ServerMessage::FormResubmissionResolved { .. }
                 | ServerMessage::Unknown
@@ -593,6 +597,8 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::Hello { .. }
                 | ServerMessage::TextInputState(_)
                 | ServerMessage::FindState(_)
+                | ServerMessage::ContextMenu(_)
+                | ServerMessage::ContextMenuLink { .. }
                 | ServerMessage::NavigationStarted { .. }
                 | ServerMessage::FormResubmissionResolved { .. }
                 | ServerMessage::FormResubmission { .. }
@@ -662,6 +668,8 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::Hello { .. }
                 | ServerMessage::TextInputState(_)
                 | ServerMessage::FindState(_)
+                | ServerMessage::ContextMenu(_)
+                | ServerMessage::ContextMenuLink { .. }
                 | ServerMessage::NavigationStarted { .. }
                 | ServerMessage::FormResubmissionResolved { .. }
                 | ServerMessage::FormResubmission { .. }
@@ -778,6 +786,8 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::Hello { .. }
                 | ServerMessage::TextInputState(_)
                 | ServerMessage::FindState(_)
+                | ServerMessage::ContextMenu(_)
+                | ServerMessage::ContextMenuLink { .. }
                 | ServerMessage::NavigationStarted { .. }
                 | ServerMessage::FormResubmissionResolved { .. }
                 | ServerMessage::FormResubmission { .. }
@@ -844,6 +854,8 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::Hello { .. }
                 | ServerMessage::TextInputState(_)
                 | ServerMessage::FindState(_)
+                | ServerMessage::ContextMenu(_)
+                | ServerMessage::ContextMenuLink { .. }
                 | ServerMessage::NavigationStarted { .. }
                 | ServerMessage::FormResubmissionResolved { .. }
                 | ServerMessage::FormResubmission { .. }
@@ -909,6 +921,8 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::Hello { .. }
                 | ServerMessage::TextInputState(_)
                 | ServerMessage::FindState(_)
+                | ServerMessage::ContextMenu(_)
+                | ServerMessage::ContextMenuLink { .. }
                 | ServerMessage::NavigationStarted { .. }
                 | ServerMessage::FormResubmissionResolved { .. }
                 | ServerMessage::FormResubmission { .. }
@@ -986,6 +1000,8 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::Hello { .. }
                 | ServerMessage::TextInputState(_)
                 | ServerMessage::FindState(_)
+                | ServerMessage::ContextMenu(_)
+                | ServerMessage::ContextMenuLink { .. }
                 | ServerMessage::NavigationStarted { .. }
                 | ServerMessage::FormResubmissionResolved { .. }
                 | ServerMessage::FormResubmission { .. }
@@ -1103,6 +1119,8 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::Hello { .. }
                 | ServerMessage::TextInputState(_)
                 | ServerMessage::FindState(_)
+                | ServerMessage::ContextMenu(_)
+                | ServerMessage::ContextMenuLink { .. }
                 | ServerMessage::NavigationStarted { .. }
                 | ServerMessage::FormResubmissionResolved { .. }
                 | ServerMessage::FormResubmission { .. }

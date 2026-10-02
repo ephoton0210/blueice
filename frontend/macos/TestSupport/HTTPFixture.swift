@@ -70,6 +70,17 @@ final class HTTPFixture: @unchecked Sendable {
                 }
                 let body: String
                 switch route {
+                case "/context-menu": body = """
+                    <html><body><h1>Context menu fixture</h1>
+                    <a aria-label="Destination link" href="/destination" style="display:block;width:280px"><b>Destination link</b></a>
+                    <a aria-label="Blocked link" href="/blocked" style="display:block;width:280px">Blocked link</a>
+                    <input aria-label="Context editor" value="hello" style="display:block;width:280px;height:32px">
+                    <input aria-label="Context secret" type="password" value="private-menu-secret" style="display:block;width:280px;height:32px">
+                    <input aria-label="Context readonly" readonly value="read only" style="display:block;width:280px;height:32px">
+                    <input aria-label="Context disabled" disabled value="disabled" style="display:block;width:280px;height:32px">
+                    <button aria-label="Context inert button" style="display:block">Do not activate</button>
+                    <p>Ordinary page context</p></body></html>
+                    """
                 case "/find": body = """
                     <html><body><h1>Find fixture</h1><p>frost FROST frost</p>
                     <p style="width:100px">snow <b>crystal</b> across lines</p><p>Café CAFÉ σ ς Σ [a.*]</p>

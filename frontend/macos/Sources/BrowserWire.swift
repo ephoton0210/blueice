@@ -27,6 +27,7 @@ enum BrowserCommand: Encodable, Sendable {
     case unit(String), values(String, [String: JSONValue])
     case textInput(TextInputContext, TextInputAction)
     case find(UInt64, TextInputContext, FindAction)
+    case contextMenuLink(PageMenuContext, PageMenuLinkAction)
     func encode(to encoder: Encoder) throws {
         switch self {
         case .unit(let name):
@@ -47,8 +48,52 @@ enum BrowserCommand: Encodable, Sendable {
             try value.encode(context.frame_source, forKey: MessageKey("frame_source"))
             try value.encode(context.document_generation, forKey: MessageKey("document_generation"))
             try value.encode(action, forKey: MessageKey("action"))
+        case .contextMenuLink(let context, let action):
+            var root = encoder.container(keyedBy: MessageKey.self)
+            var value = root.nestedContainer(keyedBy: MessageKey.self, forKey: MessageKey("ContextMenuLink"))
+            try value.encode(context, forKey: MessageKey("context"))
+            try value.encode(action, forKey: MessageKey("action"))
         }
     }
+}
+
+enum PageMenuLinkAction: String, Encodable, Sendable { case copy = "Copy", open = "Open", newTab = "OpenInNewTab" }
+
+struct PageMenuContext: Codable, Equatable, Sendable {
+    let tabID: UInt64
+    let frameSource: UInt64
+    let documentGeneration: UInt64
+    let frameGeneration: UInt64
+    let x: Double
+    let y: Double
+    enum CodingKeys: String, CodingKey {
+        case tabID = "tab_id", frameSource = "frame_source", documentGeneration = "document_generation"
+        case frameGeneration = "frame_generation", x, y
+    }
+    var valid: Bool { tabID > 0 && x.isFinite && y.isFinite && (0..<4096).contains(x) && (0..<4096).contains(y) }
+}
+
+struct PageContextMenu: Decodable, Sendable {
+    let context: PageMenuContext
+    let linkURL: String?
+    let input: TextInputState?
+    enum CodingKeys: String, CodingKey { case context, linkURL = "link_url", input }
+    static func validLink(_ text: String) -> Bool {
+        text.utf8.count <= 8192 && URL(string: text)?.scheme.map { ["http", "https", "about"].contains($0) } == true
+    }
+    var valid: Bool {
+        guard context.valid, linkURL.map(Self.validLink) != false else { return false }
+        guard let input else { return true }
+        return (try? input.validate()) != nil && input.focused != nil && input.tab_id == context.tabID
+            && input.frame_source == context.frameSource && input.document_generation == context.documentGeneration
+            && input.frame_generation == context.frameGeneration
+    }
+}
+
+struct PageContextLink: Decodable, Sendable {
+    let context: PageMenuContext
+    let url: String
+    var valid: Bool { context.valid && PageContextMenu.validLink(url) }
 }
 
 enum FindAction: Encodable, Sendable {
@@ -127,12 +172,13 @@ struct FormResubmission: Decodable, Sendable {
 }
 
 enum BrowserMessage: Decodable, Sendable {
-    case hello(UInt32), tabs([BrowserTab]), opened(UInt64), closed(UInt64)
+    case hello(UInt32), tabs([BrowserTab]), opened(UInt64, String?), closed(UInt64)
     case navigationStarted, navigated(String), history(HistoryState), frame(FrameNotice)
     case blocked(String), error(String), representation(PageRepresentation), representationUnavailable, unknown
     case textInputState(TextInputState), textInputUnavailable
     case formResubmission(FormResubmission), formResubmissionResolved(UInt64)
     case findState(FindState), findUnavailable
+    case contextMenu(PageContextMenu), contextLink(PageContextLink), contextUnavailable
 
     init(from decoder: Decoder) throws {
         guard let object = try? decoder.container(keyedBy: MessageKey.self), let key = object.allKeys.first else {
@@ -151,7 +197,10 @@ enum BrowserMessage: Decodable, Sendable {
             self = .formResubmissionResolved(try object.decode(Resolution.self, forKey: key).confirmation_id)
         case "Hello": self = .hello(try object.decode(Hello.self, forKey: key).protocol_version)
         case "Tabs": self = .tabs(try object.decode([BrowserTab].self, forKey: key))
-        case "TabOpened": self = .opened(try object.decode(Tab.self, forKey: key).tab_id)
+        case "TabOpened":
+            struct Opened: Decodable { let tab_id: UInt64; let url: String? }
+            let value = try object.decode(Opened.self, forKey: key)
+            self = .opened(value.tab_id, value.url)
         case "TabClosed": self = .closed(try object.decode(Tab.self, forKey: key).tab_id)
         case "NavigationStarted": self = .navigationStarted
         case "Navigated": self = .navigated(try object.decode(Navigation.self, forKey: key).url)
@@ -168,6 +217,12 @@ enum BrowserMessage: Decodable, Sendable {
         case "FindState":
             if let value = try? object.decode(FindState.self, forKey: key), value.valid { self = .findState(value) }
             else { self = .findUnavailable }
+        case "ContextMenu":
+            if let value = try? object.decode(PageContextMenu.self, forKey: key), value.valid { self = .contextMenu(value) }
+            else { self = .contextUnavailable }
+        case "ContextMenuLink":
+            if let value = try? object.decode(PageContextLink.self, forKey: key), value.valid { self = .contextLink(value) }
+            else { self = .contextUnavailable }
         default: self = .unknown
         }
     }

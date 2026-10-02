@@ -41,6 +41,34 @@ final class NativeEditingTests: XCTestCase {
         }
     }
 
+    func testContextWireRejectsProtectedPayloadsAndPreservesOpenedURL() throws {
+        let context = PageMenuContext(tabID: 2, frameSource: 19, documentGeneration: 4, frameGeneration: 7, x: 2, y: 3)
+        let bytes = try BrowserWire.encode(.contextMenuLink(context, .newTab), tab: 2, request: 8)
+        let root = try XCTUnwrap(JSONSerialization.jsonObject(with: bytes.dropFirst(4)) as? [String: Any])
+        let command = try XCTUnwrap((root["message"] as? [String: Any])?["ContextMenuLink"] as? [String: Any])
+        XCTAssertEqual(command["action"] as? String, "OpenInNewTab")
+        XCTAssertEqual((command["context"] as? [String: Any])?["frame_generation"] as? Int, 7)
+        func decode(_ value: [String: Any]) throws -> BrowserMessage {
+            try JSONDecoder().decode(IncomingEnvelope.self, from: JSONSerialization.data(withJSONObject: ["message": value])).message
+        }
+        if case .opened(let id, let url) = try decode(["TabOpened": ["tab_id": 2, "url": "https://example.test/next"]]) {
+            XCTAssertEqual(id, 2); XCTAssertEqual(url, "https://example.test/next")
+        } else { XCTFail("Opened URL must survive the native wire") }
+        let bounds: [String: Int] = ["x": 2, "y": 3, "width": 100, "height": 20]
+        let field: [String: Any] = ["node_id": 5, "text": "secret", "text_length": 6, "protected": true,
+            "writable": true, "multiline": false, "selection": ["location": 0, "length": 0], "marked": NSNull(),
+            "bounds": bounds, "caret": bounds, "carets": [], "selection_rects": []]
+        let input: [String: Any] = ["version": 1, "frame_source": 19, "document_generation": 4, "focus_generation": 3,
+            "frame_generation": 7, "tab_id": 2, "scroll_y": 0, "focused": field]
+        let encodedContext = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(context)) as? [String: Any])
+        for value in [
+            ["ContextMenu": ["context": encodedContext, "input": input, "link_url": NSNull()]],
+            ["ContextMenuLink": ["context": encodedContext, "url": "javascript:alert(1)"]]
+        ] {
+            if case .contextUnavailable = try decode(value) {} else { XCTFail("Malformed context metadata must fail soft") }
+        }
+    }
+
     private func wait(_ predicate: () -> Bool, file: StaticString = #filePath, line: UInt = #line) async {
         let deadline = Date().addingTimeInterval(15)
         while !predicate() && Date() < deadline { try? await Task.sleep(for: .milliseconds(20)) }
@@ -58,6 +86,47 @@ final class NativeEditingTests: XCTestCase {
         model.address = fixture.origin + path; model.navigateAddress()
         await wait { model.representation?.url == fixture.origin + path && model.textInputState != nil }
         return (model, view, fixture)
+    }
+
+    func testContextMenuUsesCoreHitTargetsAndRejectsStaleMenus() async throws {
+        let (model, view, fixture) = try await start(path: "/context-menu")
+        defer { fixture.stop(); Task { await model.stop() } }
+        func menu(_ name: String) async throws -> PageContextMenu {
+            await wait { model.representation?.nodes.contains { $0.name == name } == true && !model.textInputBusy }
+            let snapshot = try XCTUnwrap(model.representation)
+            let node = try XCTUnwrap(snapshot.nodes.first { $0.name == name })
+            let result = await model.requestContextMenu(x: node.bounds.x + node.bounds.width / 2,
+                y: node.bounds.y + node.bounds.height / 2 - snapshot.scrollY)
+            return try XCTUnwrap(result)
+        }
+        let link = try await menu("Destination link")
+        XCTAssertEqual(link.linkURL, fixture.origin + "/destination")
+        XCTAssertNil(link.input)
+        XCTAssertEqual(fixture.requests, ["/context-menu"])
+        let field = try await menu("Context editor")
+        XCTAssertEqual(field.input?.focused?.text, "hello")
+        XCTAssertFalse(model.contextMenuIsCurrent(link.context), "Focus-generated pixels invalidate the old link menu")
+        model.textInput(.selectAll); await wait { !model.textInputBusy }
+        let selected = try await menu("Context editor")
+        XCTAssertEqual(selected.input?.focused?.selection.length, 5)
+        XCTAssertTrue(model.contextMenuIsCurrent(selected.context))
+        let menuItems = view.makeContextMenu(selected).items
+        XCTAssertTrue(try XCTUnwrap(menuItems.first { $0.title == "Copy" }).isEnabled)
+        let secret = try await menu("Context secret")
+        XCTAssertNil(secret.input?.focused?.text)
+        let secretItems = view.makeContextMenu(secret).items
+        XCTAssertFalse(try XCTUnwrap(secretItems.first { $0.title == "Copy" }).isEnabled)
+        XCTAssertFalse(try XCTUnwrap(secretItems.first { $0.title == "Cut" }).isEnabled)
+        XCTAssertTrue(try XCTUnwrap(secretItems.first { $0.title == "Paste" }).isEnabled)
+        let readonly = try await menu("Context readonly")
+        XCTAssertFalse(readonly.input?.focused?.writable ?? true)
+        let readonlyItems = view.makeContextMenu(readonly).items
+        XCTAssertFalse(try XCTUnwrap(readonlyItems.first { $0.title == "Paste" }).isEnabled)
+        let old = try await menu("Destination link")
+        model.action(.values("OpenTab", ["url": .null]))
+        await wait { model.tabs.count == 2 && model.selected != old.context.tabID }
+        XCTAssertFalse(model.contextMenuIsCurrent(old.context))
+        XCTAssertEqual(fixture.requests, ["/context-menu"])
     }
 
     func testClipboardCommandsWaitForCoreSelectionAndPreservePrivacy() async throws {
