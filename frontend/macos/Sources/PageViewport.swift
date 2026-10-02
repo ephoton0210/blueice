@@ -10,6 +10,15 @@ final class BrowserWindow: NSWindow {
     weak var pageInput: CorePageView?
     private(set) var dispatchingKey: NSEvent?
 
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        if event.modifierFlags.intersection([.command, .option, .control]) == .command,
+           event.charactersIgnoringModifiers == "=" {
+            pageInput?.model?.changeZoom(increase: true)
+            return true
+        }
+        return super.performKeyEquivalent(with: event)
+    }
+
     override func sendEvent(_ event: NSEvent) {
         if event.type == .keyDown, pageInput?.window === self,
            pageInput?.bufferWindowKey(event) == true { return }
@@ -40,7 +49,7 @@ struct PageViewport: NSViewRepresentable {
         view.invalidateContextMenu()
         view.setAccessibilityValue(model.image.map { "Rendered \($0.width) × \($0.height), frame \(model.generation)" } ?? "No rendered page")
         view.accessibilityTree.update(model.representation, epoch: model.accessibilityEpoch,
-                                      imageSize: model.image.map { CGSize(width: $0.width, height: $0.height) } ?? .zero, tab: model.selected)
+                                      imageSize: model.cssViewportSize ?? .zero, tab: model.selected)
         view.needsDisplay = true
         if view.pageFocusSerial != model.pageFocusSerial {
             view.pageFocusSerial = model.pageFocusSerial
@@ -132,7 +141,10 @@ final class CorePageView: NSView, NSTextInputClient {
         }
     }
     override func viewDidChangeBackingProperties() { super.viewDidChangeBackingProperties(); reportSize() }
-    private func reportSize() { model?.viewportChanged(convertToBacking(bounds).size) }
+    private func reportSize() {
+        guard bounds.width > 0, bounds.height > 0 else { return }
+        model?.viewportChanged(bounds.size, deviceScale: convertToBacking(bounds).width / bounds.width)
+    }
 
     override func becomeFirstResponder() -> Bool {
         let accepted = super.becomeFirstResponder()
@@ -157,13 +169,13 @@ final class CorePageView: NSView, NSTextInputClient {
 
     override func mouseDown(with event: NSEvent) {
         if event.modifierFlags.contains(.control) { rightMouseDown(with: event); return }
-        guard let image, bounds.width > 0, bounds.height > 0 else { return }
+        guard let size = model?.cssViewportSize, bounds.width > 0, bounds.height > 0 else { return }
         window?.makeFirstResponder(self)
         tabTransition = nil; pendingKeys.removeAll()
         let point = convert(event.locationInWindow, from: nil)
         pendingMarked = nil; pendingSelection = nil; pendingContext = nil
-        model?.focusPage(x: point.x * Double(image.width) / bounds.width,
-                         y: point.y * Double(image.height) / bounds.height,
+        model?.focusPage(x: point.x * size.width / bounds.width,
+                         y: point.y * size.height / bounds.height,
                          extend: event.modifierFlags.contains(.shift), clickCount: event.clickCount)
     }
 
@@ -172,10 +184,10 @@ final class CorePageView: NSView, NSTextInputClient {
     }
 
     private func presentContextMenu(at point: NSPoint) {
-        guard let image, bounds.contains(point), bounds.width > 0, bounds.height > 0 else { return }
+        guard let size = model?.cssViewportSize, bounds.contains(point), bounds.width > 0, bounds.height > 0 else { return }
         contextMenuTask?.cancel()
-        let x = point.x * Double(image.width) / bounds.width
-        let y = point.y * Double(image.height) / bounds.height
+        let x = point.x * size.width / bounds.width
+        let y = point.y * size.height / bounds.height
         contextMenuTask = Task { @MainActor [weak self] in
             guard let self, let model = self.model, let window = self.window,
                   let state = await model.requestContextMenu(x: x, y: y), !Task.isCancelled,
@@ -230,21 +242,22 @@ final class CorePageView: NSView, NSTextInputClient {
     }
 
     override func accessibilityPerformShowMenu() -> Bool {
-        guard let state = model?.textInputState, let field = state.focused, let image else { return false }
-        let rect = state.viewRect(field.bounds, viewport: bounds.size, image: CGSize(width: image.width, height: image.height))
+        guard let state = model?.textInputState, let field = state.focused, let size = model?.cssViewportSize else { return false }
+        let rect = state.viewRect(field.bounds, viewport: bounds.size, image: size)
         presentContextMenu(at: CGPoint(x: rect.midX, y: rect.midY))
         return true
     }
 
     override func mouseDragged(with event: NSEvent) {
-        guard let image, bounds.width > 0, bounds.height > 0 else { return }
+        guard let size = model?.cssViewportSize, bounds.width > 0, bounds.height > 0 else { return }
         let point = convert(event.locationInWindow, from: nil)
-        model?.textInput(.pointer(point.x * Double(image.width) / bounds.width,
-                                  point.y * Double(image.height) / bounds.height, true, 1))
+        model?.textInput(.pointer(point.x * size.width / bounds.width,
+                                  point.y * size.height / bounds.height, true, 1))
     }
 
     override func scrollWheel(with event: NSEvent) {
-        model?.action(.values("Scroll", ["delta_y": .number(-event.scrollingDeltaY * (event.hasPreciseScrollingDeltas ? 1 : 20))]))
+        let zoom = model?.displayState?.zoom ?? 1
+        model?.action(.values("Scroll", ["delta_y": .number(-event.scrollingDeltaY * (event.hasPreciseScrollingDeltas ? 1 : 20) / zoom)]))
     }
 
     override func keyDown(with event: NSEvent) {
@@ -438,9 +451,8 @@ final class CorePageView: NSView, NSTextInputClient {
         return NSAttributedString(string: value.substring(with: expanded))
     }
     func characterIndex(for point: NSPoint) -> Int {
-        guard let state = model?.textInputState, let field = state.focused, let window, let image else { return NSNotFound }
+        guard let state = model?.textInputState, let field = state.focused, let window, let size = model?.cssViewportSize else { return NSNotFound }
         let local = convert(window.convertPoint(fromScreen: point), from: nil)
-        let size = CGSize(width: image.width, height: image.height)
         guard state.viewRect(field.bounds, viewport: bounds.size, image: size).contains(local) else { return NSNotFound }
         return field.carets.min {
             func distance(_ caret: TextControlState.Caret) -> Double {
@@ -453,13 +465,13 @@ final class CorePageView: NSView, NSTextInputClient {
     func firstRect(forCharacterRange range: NSRange, actualRange: NSRangePointer?) -> NSRect {
         actualRange?.pointee = NSRange(location: NSNotFound, length: 0)
         refreshPendingContext()
-        guard let state = model?.textInputState, let field = state.focused, let window, let image,
+        guard let state = model?.textInputState, let field = state.focused, let window, let size = model?.cssViewportSize,
               range.location != NSNotFound, range.location >= 0 else { return .zero }
         let pending = pendingMarked.map { range.location >= $0.location && range.location <= NSMaxRange($0) } ?? false
         guard range.location <= Int(field.text_length) || pending else { return .zero }
         let caret = range.location <= Int(field.text_length) ? field.carets.last { Int($0.offset) <= range.location } : nil
         let rect = state.viewRect(caret?.bounds ?? field.caret, viewport: bounds.size,
-                                  image: CGSize(width: image.width, height: image.height))
+                                  image: size)
         actualRange?.pointee = NSRange(location: Int(caret?.offset ?? field.selection.location), length: 0)
         return window.convertToScreen(convert(rect, to: nil))
     }

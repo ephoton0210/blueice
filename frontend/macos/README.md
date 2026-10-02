@@ -136,6 +136,19 @@ An inherited lifetime pipe and the launcher's opt-in `--exit-on-stdin-eof`
 also request normal service shutdown if the GUI is killed. An abrupt GUI
 exit can leave an empty runtime parent; normal frontend shutdown removes it.
 
+The viewport sends native logical dimensions separately from backing density.
+At 100% zoom, a CSS pixel occupies one native point on both standard and Retina
+displays; the core rerasterizes glyphs at the target density. View > Page Zoom,
+Command-plus/equal, Command-minus and Command-zero control 25–500% per-tab page
+zoom. Navigation, reload and history retain the tab's zoom; new tabs start at
+100%. The status-bar percentage resets to actual size. Pointer, accessibility,
+find and IME geometry use the same CSS viewport. Control-Command-F toggles the
+native full-screen window. Pixel edges remain bounded to 4096; larger backing
+outputs reduce raster density while retaining logical layout. See
+[viewport results](../../development/browser_core/phase-22-browser-shell-accessibility/MACOS_VIEWPORT_RESULTS.md)
+for actual-window and fractional-dimension regression evidence. Physical
+multi-monitor handoff and older/Intel macOS runtime acceptance remain pending.
+
 The default app owns its launcher; attaching to an existing shared launcher,
 assistant and trusted permission panels remain separate work. The
 [macOS delivery plan](../../development/browser_core/phase-22-browser-shell-accessibility/MACOS_DELIVERY_PLAN.md)

@@ -27,6 +27,7 @@ final class BrowserAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
         window.title = "BlueIce"
         window.identifier = NSUserInterfaceItemIdentifier("browser-window")
         window.isReleasedWhenClosed = false
+        window.collectionBehavior = [.fullScreenPrimary]
         window.delegate = self
         window.contentView = NSHostingView(rootView: BrowserView(model: model).environmentObject(editingMenu))
         window.center()

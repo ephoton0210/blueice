@@ -7,6 +7,70 @@ use std::io::Cursor;
 use std::net::{TcpListener, TcpStream};
 
 #[test]
+fn display_viewport_and_zoom_round_trip_with_tab_and_request_identity() {
+    use crate::viewport::{DisplayViewport, ViewportState};
+    let viewport = DisplayViewport {
+        width: 333.5,
+        height: 101.25,
+        device_scale: 1.5,
+    };
+    viewport.validate().unwrap();
+    assert_eq!(viewport.pixel_size(), (501, 152));
+    for message in [
+        ClientMessage::SetViewport { viewport },
+        ClientMessage::SetPageZoom { zoom: 1.75 },
+        ClientMessage::GetViewportState,
+    ] {
+        let mut bytes = Vec::new();
+        write_client_message_with_ids(&mut bytes, Some(7), Some(41), &message).unwrap();
+        assert_eq!(
+            read_client_message_with_ids(&mut Cursor::new(bytes)).unwrap(),
+            (Some(7), Some(41), message)
+        );
+    }
+    let state = ServerMessage::ViewportState(ViewportState {
+        tab_id: 7,
+        frame_source: 19,
+        frame_generation: 42,
+        width: viewport.width,
+        height: viewport.height,
+        device_scale: viewport.device_scale,
+        zoom: 2.0,
+        css_width: viewport.width / 2.0,
+        css_height: viewport.height / 2.0,
+        pixel_width: 501,
+        pixel_height: 152,
+    });
+    let mut bytes = Vec::new();
+    write_server_message_with_ids(&mut bytes, Some(7), Some(41), &state).unwrap();
+    assert_eq!(
+        read_server_message_with_ids(&mut Cursor::new(bytes)).unwrap(),
+        (Some(7), Some(41), state)
+    );
+    for invalid in [
+        DisplayViewport {
+            width: f64::NAN,
+            ..viewport
+        },
+        DisplayViewport {
+            height: f64::INFINITY,
+            ..viewport
+        },
+        DisplayViewport {
+            device_scale: 0.0,
+            ..viewport
+        },
+        DisplayViewport {
+            width: 2048.00001,
+            device_scale: 2.0,
+            ..viewport
+        },
+    ] {
+        assert!(invalid.validate().is_err());
+    }
+}
+
+#[test]
 fn native_text_actions_round_trip_with_document_and_focus_fences() {
     use crate::input::{PageKey, TextInputAction, TextInputContext, TextMovement, TextRange};
     let range = TextRange {

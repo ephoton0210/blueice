@@ -343,6 +343,7 @@ pub struct TabManager {
     /// window's current size is, not a hardcoded default.
     viewport_width: f64,
     viewport_height: f64,
+    display_viewport: Option<blueice_ipc::viewport::DisplayViewport>,
     /// Handed to every tab (existing and future) so `about:downloads` works
     /// in any of them.
     downloads: Option<Arc<DownloadsSource>>,
@@ -416,6 +417,7 @@ impl TabManager {
             next_group_id: 1,
             viewport_width,
             viewport_height,
+            display_viewport: None,
             downloads: None,
             gatekeeper_settings: None,
             assistant_panel,
@@ -709,6 +711,9 @@ impl TabManager {
         let id = TabId(self.next_tab_id);
         self.next_tab_id += 1;
         let mut page = Page::new(self.viewport_width, self.viewport_height);
+        if let Some(display) = self.display_viewport {
+            page.configure_display(display);
+        }
         page.set_downloads_source(self.downloads.clone());
         page.set_gatekeeper_settings_source(self.gatekeeper_settings.clone());
         page.set_assistant_panel(Some(self.assistant_panel.clone()));
@@ -1090,6 +1095,12 @@ impl TabManager {
             .expect("a live tab always has a current page");
         let mut page =
             Page::new_continuing_from(self.viewport_width, self.viewport_height, next_node_id);
+        if let Some(display) = tab.page.display_viewport {
+            page.configure_display(display);
+        }
+        if tab.page.page_zoom != 1.0 {
+            page.set_page_zoom(tab.page.page_zoom);
+        }
         page.set_downloads_source(self.downloads.clone());
         page.set_gatekeeper_settings_source(self.gatekeeper_settings.clone());
         page.set_assistant_panel(Some(self.assistant_panel.clone()));
@@ -1172,6 +1183,14 @@ impl TabManager {
     /// a stale viewport. The caller owns frame publication and can tag the
     /// selected tab's response with its request id.
     pub fn resize_all(&mut self, width: f64, height: f64) {
+        if self.display_viewport.is_some() {
+            self.configure_viewport_all(blueice_ipc::viewport::DisplayViewport {
+                width,
+                height,
+                device_scale: 1.0,
+            });
+            return;
+        }
         self.set_window_size(width, height);
         for tab in self.tabs.values_mut() {
             tab.page.resize(width, height);
@@ -1182,6 +1201,32 @@ impl TabManager {
                 if let Some(page) = entry.snapshot_mut() {
                     page.resize(width, height);
                 }
+            }
+        }
+    }
+
+    pub(crate) fn configure_viewport_all(
+        &mut self,
+        display: blueice_ipc::viewport::DisplayViewport,
+    ) {
+        self.set_window_size(display.width, display.height);
+        self.display_viewport = Some(display);
+        for tab in self.tabs.values_mut() {
+            tab.page.configure_display(display);
+            for entry in tab.back.iter_mut().chain(tab.forward.iter_mut()) {
+                if let Some(page) = entry.snapshot_mut() {
+                    page.configure_display(display);
+                }
+            }
+        }
+    }
+
+    pub(crate) fn set_page_zoom(&mut self, id: TabId, zoom: f64) {
+        let tab = self.tabs.get_mut(&id).expect("validated zoom tab");
+        tab.page.set_page_zoom(zoom);
+        for entry in tab.back.iter_mut().chain(tab.forward.iter_mut()) {
+            if let Some(page) = entry.snapshot_mut() {
+                page.set_page_zoom(zoom);
             }
         }
     }

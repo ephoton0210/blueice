@@ -54,6 +54,56 @@ final class BrowserUITests: XCTestCase {
         if submit { address.typeKey(.return, modifierFlags: []) }
     }
 
+    func testRetinaCSSSizeZoomShortcutsAndPerTabRetention() throws {
+        let fixture = try HTTPFixture(); defer { fixture.stop() }
+        let saved = saveClipboard()
+        defer { NSPasteboard.general.clearContents(); NSPasteboard.general.writeObjects(saved) }
+        launch(); enter(fixture.origin + "/context-menu")
+        let field = app.groups["page"].textFields["Context editor"]
+        XCTAssertTrue(field.waitForExistence(timeout: 15))
+        waitValue(app.buttons["page-zoom"], "100%")
+        XCTAssertEqual(field.frame.width, 280, accuracy: 3, "CSS width must be in native points at 100%, independent of Retina density")
+        let page = app.groups["page"]
+        let bitmap = try XCTUnwrap(NSBitmapImageRep(data: try XCTUnwrap(page.screenshot().image.tiffRepresentation)))
+        XCTAssertGreaterThan(bitmap.pixelsWide, Int(page.frame.width), "This acceptance host must exercise high-density output")
+        let rendered = page.value as? String ?? ""
+        XCTAssertTrue(rendered.hasPrefix("Rendered \(bitmap.pixelsWide) ×"), rendered)
+        app.typeKey("=", modifierFlags: .command)
+        waitValue(app.buttons["page-zoom"], "110%")
+        XCTAssertEqual(field.frame.width, 308, accuracy: 3)
+        app.menuBars.menuBarItems["View"].click(); app.menuItems["Page Zoom"].hover(); app.menuItems["150%"].click()
+        waitValue(app.buttons["page-zoom"], "150%")
+        XCTAssertEqual(field.frame.width, 420, accuracy: 3)
+        field.click(); field.typeKey("a", modifierFlags: .command)
+        NSPasteboard.general.clearContents(); NSPasteboard.general.setString("Scaled 中文", forType: .string)
+        field.typeKey("v", modifierFlags: .command)
+        waitValue(field, "Scaled 中文")
+        field.rightClick(); chooseContext("Select All")
+        app.buttons["add-tab"].click(); waitValue(app.textFields["address"], "about:credits")
+        waitValue(app.buttons["page-zoom"], "100%")
+        app.buttons["tab-1"].click(); waitValue(app.buttons["page-zoom"], "150%")
+        waitValue(field, "Scaled 中文")
+        app.buttons["reload"].click(); waitValue(field, "hello"); waitValue(app.buttons["page-zoom"], "150%")
+        app.typeKey("-", modifierFlags: .command); waitValue(app.buttons["page-zoom"], "125%")
+        app.typeKey("0", modifierFlags: .command); waitValue(app.buttons["page-zoom"], "100%")
+        let attachment = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
+        attachment.name = "macos-retina-viewport"; attachment.lifetime = .keepAlways; add(attachment)
+        XCTAssertEqual(fixture.requests, ["/context-menu", "/context-menu"])
+    }
+
+    func testFullScreenUpdatesViewportAndRestoresNativeWindow() {
+        launch()
+        let window = app.windows["browser-window"], before = window.frame
+        app.typeKey("f", modifierFlags: [.command, .control])
+        let expanded = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in window.frame.width > before.width + 100 }, object: window)
+        XCTAssertEqual(XCTWaiter.wait(for: [expanded], timeout: 15), .completed)
+        XCTAssertTrue((app.groups["page"].value as? String ?? "").hasPrefix("Rendered"))
+        app.typeKey("f", modifierFlags: [.command, .control])
+        let restored = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in abs(window.frame.width - before.width) < 3 }, object: window)
+        XCTAssertEqual(XCTWaiter.wait(for: [restored], timeout: 15), .completed)
+        XCTAssertTrue(window.buttons[XCUIIdentifierCloseWindow].isHittable)
+    }
+
     private func saveClipboard() -> [NSPasteboardItem] {
         NSPasteboard.general.pasteboardItems?.map { item in
             let copy = NSPasteboardItem()

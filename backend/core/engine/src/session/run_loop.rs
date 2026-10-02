@@ -342,7 +342,93 @@ pub(super) fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
                             &assistant_tx,
                         )?;
                     }
+                    ClientMessage::SetViewport { viewport } => {
+                        if tabs.get(target).is_none() {
+                            write_unknown_tab_error(stream, request_id, target)?;
+                            continue;
+                        }
+                        if let Err(message) = viewport.validate() {
+                            write_error(stream, reply_tab, request_id, message)?;
+                            continue;
+                        }
+                        tabs.configure_viewport_all(viewport);
+                        let ids: Vec<_> = tabs.ids().collect();
+                        for id in ids {
+                            send_frame(
+                                tabs.get_mut(id).expect("live viewport tab"),
+                                stream,
+                                frame_dir,
+                                generation,
+                                Some(id.as_u64()),
+                                request_id,
+                            )?;
+                        }
+                    }
+                    ClientMessage::SetPageZoom { zoom } => {
+                        let Some(page) = tabs.get(target) else {
+                            write_unknown_tab_error(stream, request_id, target)?;
+                            continue;
+                        };
+                        if !zoom.is_finite()
+                            || !(blueice_ipc::viewport::MIN_PAGE_ZOOM
+                                ..=blueice_ipc::viewport::MAX_PAGE_ZOOM)
+                                .contains(&zoom)
+                        {
+                            write_error(
+                                stream,
+                                reply_tab,
+                                request_id,
+                                "Page zoom must be between 25% and 500%".into(),
+                            )?;
+                            continue;
+                        }
+                        // Legacy sessions may have larger initial dimensions.
+                        // Validate their display before opting into bounded raster.
+                        let state = page.viewport_state(0, target.as_u64());
+                        let display = blueice_ipc::viewport::DisplayViewport {
+                            width: state.width,
+                            height: state.height,
+                            device_scale: state.device_scale,
+                        };
+                        if let Err(message) = display.validate() {
+                            write_error(stream, reply_tab, request_id, message)?;
+                            continue;
+                        }
+                        tabs.set_page_zoom(target, zoom);
+                        send_frame(
+                            tabs.get_mut(target).expect("live zoom tab"),
+                            stream,
+                            frame_dir,
+                            generation,
+                            reply_tab,
+                            request_id,
+                        )?;
+                    }
+                    ClientMessage::GetViewportState => {
+                        let Some(page) = tabs.get(target) else {
+                            write_unknown_tab_error(stream, request_id, target)?;
+                            continue;
+                        };
+                        blueice_ipc::write_server_message_with_ids(
+                            stream,
+                            reply_tab,
+                            request_id,
+                            &ServerMessage::ViewportState(page.viewport_state(
+                                blueice_ipc::shm::frame_source_id(frame_dir),
+                                target.as_u64(),
+                            )),
+                        )?;
+                    }
                     ClientMessage::Resize { width, height } => {
+                        if !(1..=4096).contains(&width) || !(1..=4096).contains(&height) {
+                            write_error(
+                                stream,
+                                reply_tab,
+                                request_id,
+                                "Viewport dimensions must be between 1 and 4096".into(),
+                            )?;
+                            continue;
+                        }
                         if tabs.get(target).is_none() {
                             write_unknown_tab_error(stream, request_id, target)?;
                             continue;

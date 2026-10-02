@@ -93,6 +93,12 @@ struct BrowserView: View {
             HStack {
                 Text(model.status).lineLimit(2).accessibilityIdentifier("status")
                 Spacer()
+                Button("\(model.zoomPercent)%") { model.setZoom(1) }
+                    .accessibilityLabel("Page zoom")
+                    .accessibilityValue("\(model.zoomPercent)%")
+                    .accessibilityIdentifier("page-zoom")
+                    .help("Reset page zoom")
+                    .disabled(!model.ready || model.selected == nil)
             }
             .font(.caption).foregroundStyle(.secondary).padding(.horizontal, 12).padding(.vertical, 6)
         }

@@ -1017,7 +1017,18 @@ fn send_frame<S: Write>(
             height: pixmap.height,
             generation: frame_generation,
         },
-    )
+    )?;
+    if page.display_viewport.is_some() {
+        blueice_ipc::write_server_message_with_ids(
+            stream,
+            Some(tab_id),
+            request_id,
+            &ServerMessage::ViewportState(
+                page.viewport_state(shm::frame_source_id(frame_dir), tab_id),
+            ),
+        )?;
+    }
+    Ok(())
 }
 
 fn write_error<S: Write>(

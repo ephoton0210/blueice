@@ -17,6 +17,26 @@ final class BrowserModel: ObservableObject {
     @Published private(set) var ready = false
     @Published private(set) var image: CGImage?
     @Published private(set) var generation: UInt64 = 0
+    @Published private(set) var displayState: ViewportState?
+    private var displayStates: [UInt64: ViewportState] = [:]
+    private var desiredZooms: [UInt64: Double] = [:]
+    var cssViewportSize: CGSize? {
+        guard let state = displayState, state.frameGeneration == generation else { return nil }
+        return CGSize(width: state.cssWidth, height: state.cssHeight)
+    }
+    var zoomPercent: Int { Int(((displayState?.zoom ?? 1) * 100).rounded()) }
+    private let zoomSteps: [Double] = [0.25, 0.33, 0.5, 0.67, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4, 5]
+    func changeZoom(increase: Bool) {
+        guard ready, selected != nil else { return }
+        let current = selected.flatMap { desiredZooms[$0] } ?? displayState?.zoom ?? 1
+        let value = increase ? zoomSteps.first(where: { $0 > current + 0.001 }) : zoomSteps.last(where: { $0 < current - 0.001 })
+        if let value { setZoom(value) }
+    }
+    func setZoom(_ zoom: Double) {
+        guard ready, selected != nil, zoom.isFinite, (0.25...5).contains(zoom) else { return }
+        if let selected { desiredZooms[selected] = zoom }
+        action(.values("SetPageZoom", ["zoom": .number(zoom)]))
+    }
     @Published private(set) var history = HistoryState()
     @Published private(set) var representation: PageRepresentation?
     @Published private(set) var accessibilityEpoch: UInt64 = 0
@@ -78,6 +98,7 @@ final class BrowserModel: ObservableObject {
     private var frames: [UInt64: FramePixels] = [:]
     private var histories: [UInt64: HistoryState] = [:]
     private var viewport = CGSize(width: 1024, height: 640)
+    private var deviceScale = 1.0
     private var resizeTask: Task<Void, Never>?
 
     func start(launcher: URL? = nil) async {
@@ -122,6 +143,7 @@ final class BrowserModel: ObservableObject {
             else { try await session.start(executable: executable) }
             ready = true
             status = "Ready"
+            await resize(tab: 1)
             await send(.unit("ListTabs"))
             await send(.values("Navigate", ["url": .string("about:credits")]), tab: 1)
         } catch { status = error.localizedDescription; await session.stop() }
@@ -144,6 +166,8 @@ final class BrowserModel: ObservableObject {
             resubmissions = resubmissions.filter { live.contains($0.key) }
             if selected.map({ !live.contains($0) }) == true { resubmission = nil; resubmissionPresented = false }
             frames = frames.filter { live.contains($0.key) }
+            displayStates = displayStates.filter { live.contains($0.key) }
+            desiredZooms = desiredZooms.filter { live.contains($0.key) }
             histories = histories.filter { live.contains($0.key) }
             representations = representations.filter { live.contains($0.key) }
             documentEpochs = documentEpochs.filter { live.contains($0.key) }
@@ -191,6 +215,7 @@ final class BrowserModel: ObservableObject {
         case .frame:
             guard let tab, let pixels, pixels.generation > (frames[tab]?.generation ?? 0) else { return }
             frames[tab] = pixels
+            if tab == selected { displayState = nil }
             representations.removeValue(forKey: tab)
             if tab == selected { showFrame(pixels); representation = nil }
             requestRepresentation(tab)
@@ -245,6 +270,16 @@ final class BrowserModel: ObservableObject {
             if tab == selected { findResult = nil; status = "Page find unavailable" }
         case .contextMenu, .contextLink, .contextUnavailable:
             if menuOperation != nil && menuReplies.count < 16 { menuReplies.append(envelope) }
+        case .viewportState(let state):
+            guard let tab, state.tabID == tab, let frame = frames[tab], state.frameGeneration == frame.generation,
+                  state.pixelWidth == frame.width, state.pixelHeight == frame.height,
+                  state.frameSource == PageRepresentation.frameSource(directory: session.frameDirectory.path) else { return }
+            displayStates[tab] = state
+            if desiredZooms[tab] == state.zoom { desiredZooms.removeValue(forKey: tab) }
+            if tab == selected { displayState = state }
+        case .viewportUnavailable:
+            if let tab { displayStates.removeValue(forKey: tab) }
+            if tab == selected { displayState = nil; status = "Display geometry unavailable" }
         default: break
         }
     }
@@ -258,6 +293,7 @@ final class BrowserModel: ObservableObject {
         address = tabs.first { $0.id == selected }?.url ?? ""
         history = selected.flatMap { histories[$0] } ?? HistoryState()
         showFrame(selected.flatMap { frames[$0] })
+        displayState = selected.flatMap { displayStates[$0] }
         representation = selected.flatMap { representations[$0] }
         accessibilityEpoch = selected.flatMap { documentEpochs[$0] } ?? 0
         textInputState = selected.flatMap { inputStates[$0] }
@@ -433,9 +469,10 @@ final class BrowserModel: ObservableObject {
                                source: PageRepresentation.frameSource(directory: session.frameDirectory.path),
                                url: tabs.first(where: { $0.id == snapshot.tabID })?.url),
               !node.state.disabled, !node.occluded else { return false }
+        guard let cssSize = cssViewportSize else { return false }
         let visible = CGRect(x: node.bounds.x, y: node.bounds.y - snapshot.scrollY,
                              width: node.bounds.width, height: node.bounds.height)
-            .intersection(CGRect(x: 0, y: 0, width: frame.width, height: frame.height))
+            .intersection(CGRect(origin: .zero, size: cssSize))
         guard !visible.isEmpty else { return false }
         // Use the same hit-test/default-action pipeline as a physical page click.
         focusPage(x: visible.midX, y: visible.midY)
@@ -622,9 +659,11 @@ final class BrowserModel: ObservableObject {
         catch { status = error.localizedDescription; return nil }
     }
 
-    func viewportChanged(_ size: CGSize) {
-        guard size.width > 0, size.height > 0, viewport != size else { return }
+    func viewportChanged(_ size: CGSize, deviceScale: Double = 1) {
+        guard size.width > 0, size.height > 0, deviceScale.isFinite, deviceScale >= 1,
+              viewport != size || self.deviceScale != deviceScale else { return }
         viewport = size
+        self.deviceScale = min(4, deviceScale)
         resizeTask?.cancel()
         resizeTask = Task {
             try? await Task.sleep(for: .milliseconds(100))
@@ -632,11 +671,11 @@ final class BrowserModel: ObservableObject {
         }
     }
 
-    private func resize() async {
-        guard let selected else { return }
-        let width = UInt64(min(4096, max(1, viewport.width.rounded())))
-        let height = UInt64(min(4096, max(1, viewport.height.rounded())))
-        await send(.values("Resize", ["width": .unsigned(width), "height": .unsigned(height)]), tab: selected)
+    private func resize(tab: UInt64? = nil) async {
+        guard let target = tab ?? selected else { return }
+        let width = min(4096, max(1, viewport.width)), height = min(4096, max(1, viewport.height))
+        let density = min(deviceScale, 4096 / max(width, height))
+        await send(.viewport(width, height, density), tab: target)
     }
 
     func stop() async { findTask?.cancel(); findPanels.removeAll(); findVisible = false; findResult = nil; resubmissions.removeAll(); resubmission = nil; resubmissionPresented = false; ready = false; representation = nil; representations.removeAll(); representationRequests.removeAll(); clearTextInput(); resizeTask?.cancel(); await session.stop() }

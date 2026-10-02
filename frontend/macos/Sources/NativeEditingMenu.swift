@@ -53,6 +53,21 @@ struct NativeEditingCommands: Commands {
         CommandGroup(after: .toolbar) {
             Button("Open Location…") { model.requestAddressFocus() }
                 .keyboardShortcut("l", modifiers: .command).disabled(!model.ready)
+            Divider()
+            Button("Zoom In") { model.changeZoom(increase: true) }
+                .keyboardShortcut("+", modifiers: .command).disabled(!model.ready || model.selected == nil)
+            Button("Zoom Out") { model.changeZoom(increase: false) }
+                .keyboardShortcut("-", modifiers: .command).disabled(!model.ready || model.selected == nil)
+            Button("Actual Size") { model.setZoom(1) }
+                .keyboardShortcut("0", modifiers: .command).disabled(!model.ready || model.selected == nil)
+            Menu("Page Zoom") {
+                ForEach([25, 50, 75, 100, 125, 150, 200, 300, 400, 500], id: \.self) { percent in
+                    Button("\(percent)%") { model.setZoom(Double(percent) / 100) }
+                }
+            }.disabled(!model.ready || model.selected == nil)
+            Divider()
+            Button("Toggle Full Screen") { NSApp.keyWindow?.toggleFullScreen(nil) }
+                .keyboardShortcut("f", modifiers: [.command, .control])
         }
         CommandGroup(after: .textEditing) {
             Menu("Find") {

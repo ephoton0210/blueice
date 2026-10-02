@@ -52,6 +52,7 @@ pub mod page_host;
 pub mod permission_control;
 pub mod script;
 pub mod shm;
+pub mod viewport;
 
 pub use ai::{AiNode, AiSnapshot, Bounds, NameFrom, NodeAction, NodeState, Role};
 
@@ -177,6 +178,14 @@ pub enum ClientMessage {
         width: u32,
         height: u32,
     },
+    /// Opt in to separate CSS layout and native backing-pixel dimensions.
+    SetViewport {
+        viewport: viewport::DisplayViewport,
+    },
+    SetPageZoom {
+        zoom: f64,
+    },
+    GetViewportState,
     /// A click at a point in viewport coordinates (post-scroll, i.e.
     /// `(0,0)` is always the top-left of what's currently visible).
     Click {
@@ -390,6 +399,8 @@ pub enum ServerMessage {
     TextInputState(input::TextInputState),
     FindState(find::FindState),
     ContextMenu(context_menu::ContextMenuState),
+    /// Published with frames for clients that explicitly configured a viewport.
+    ViewportState(viewport::ViewportState),
     /// A correlated copy reply. The core never accesses the OS clipboard.
     ContextMenuLink {
         context: context_menu::ContextMenuContext,

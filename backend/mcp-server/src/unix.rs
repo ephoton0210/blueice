@@ -242,6 +242,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::Hello { .. }
                 | ServerMessage::TextInputState(_)
                 | ServerMessage::FindState(_)
+                    | ServerMessage::ViewportState(_)
                     | ServerMessage::ContextMenu(_)
                     | ServerMessage::ContextMenuLink { .. }
                 | ServerMessage::NavigationStarted { .. }
@@ -342,6 +343,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::Hello { .. }
                 | ServerMessage::TextInputState(_)
                 | ServerMessage::FindState(_)
+                | ServerMessage::ViewportState(_)
                 | ServerMessage::ContextMenu(_)
                 | ServerMessage::ContextMenuLink { .. }
                 | ServerMessage::NavigationStarted { .. }
@@ -597,6 +599,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::Hello { .. }
                 | ServerMessage::TextInputState(_)
                 | ServerMessage::FindState(_)
+                | ServerMessage::ViewportState(_)
                 | ServerMessage::ContextMenu(_)
                 | ServerMessage::ContextMenuLink { .. }
                 | ServerMessage::NavigationStarted { .. }
@@ -668,6 +671,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::Hello { .. }
                 | ServerMessage::TextInputState(_)
                 | ServerMessage::FindState(_)
+                | ServerMessage::ViewportState(_)
                 | ServerMessage::ContextMenu(_)
                 | ServerMessage::ContextMenuLink { .. }
                 | ServerMessage::NavigationStarted { .. }
@@ -786,6 +790,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::Hello { .. }
                 | ServerMessage::TextInputState(_)
                 | ServerMessage::FindState(_)
+                | ServerMessage::ViewportState(_)
                 | ServerMessage::ContextMenu(_)
                 | ServerMessage::ContextMenuLink { .. }
                 | ServerMessage::NavigationStarted { .. }
@@ -854,6 +859,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::Hello { .. }
                 | ServerMessage::TextInputState(_)
                 | ServerMessage::FindState(_)
+                | ServerMessage::ViewportState(_)
                 | ServerMessage::ContextMenu(_)
                 | ServerMessage::ContextMenuLink { .. }
                 | ServerMessage::NavigationStarted { .. }
@@ -921,6 +927,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::Hello { .. }
                 | ServerMessage::TextInputState(_)
                 | ServerMessage::FindState(_)
+                | ServerMessage::ViewportState(_)
                 | ServerMessage::ContextMenu(_)
                 | ServerMessage::ContextMenuLink { .. }
                 | ServerMessage::NavigationStarted { .. }
@@ -1000,6 +1007,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::Hello { .. }
                 | ServerMessage::TextInputState(_)
                 | ServerMessage::FindState(_)
+                | ServerMessage::ViewportState(_)
                 | ServerMessage::ContextMenu(_)
                 | ServerMessage::ContextMenuLink { .. }
                 | ServerMessage::NavigationStarted { .. }
@@ -1119,6 +1127,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::Hello { .. }
                 | ServerMessage::TextInputState(_)
                 | ServerMessage::FindState(_)
+                | ServerMessage::ViewportState(_)
                 | ServerMessage::ContextMenu(_)
                 | ServerMessage::ContextMenuLink { .. }
                 | ServerMessage::NavigationStarted { .. }

@@ -466,7 +466,7 @@ fn installed_extension_v9_writes_controls_and_reviewed_visible_text_after_gateke
             .iter()
             .find(|node| node.id == textarea_id)
             .and_then(|node| node.state.value.as_deref()),
-        Some("from extension v4 with detail")
+        Some("from extension v4\nwith detail")
     );
     assert_eq!(
         snapshot

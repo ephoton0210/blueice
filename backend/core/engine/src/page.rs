@@ -50,6 +50,8 @@ pub struct Page {
     ua: Vec<Rule>,
     viewport_width: f64,
     viewport_height: f64,
+    pub(crate) display_viewport: Option<blueice_ipc::viewport::DisplayViewport>,
+    pub(crate) page_zoom: f64,
     scroll_y: f64,
     url: Option<String>,
     network_response: Option<blueice_ipc::extension::NetworkResponseInfo>,
@@ -116,6 +118,8 @@ impl Page {
             ua: ua_stylesheet(),
             viewport_width,
             viewport_height,
+            display_viewport: None,
+            page_zoom: 1.0,
             scroll_y: 0.0,
             url: None,
             network_response: None,
@@ -463,9 +467,59 @@ impl Page {
     }
 
     pub fn resize(&mut self, width: f64, height: f64) {
-        self.viewport_width = width;
-        self.viewport_height = height;
+        if let Some(display) = &mut self.display_viewport {
+            display.width = width;
+            display.height = height;
+        }
+        self.viewport_width = width / self.page_zoom;
+        self.viewport_height = height / self.page_zoom;
         self.restyle_and_relayout();
+    }
+
+    pub(crate) fn configure_display(&mut self, display: blueice_ipc::viewport::DisplayViewport) {
+        self.display_viewport = Some(display);
+        self.resize(display.width, display.height);
+    }
+
+    pub(crate) fn set_page_zoom(&mut self, zoom: f64) {
+        let display = self
+            .display_viewport
+            .unwrap_or(blueice_ipc::viewport::DisplayViewport {
+                width: self.viewport_width,
+                height: self.viewport_height,
+                device_scale: 1.0,
+            });
+        self.page_zoom = zoom;
+        self.configure_display(display);
+        self.scroll_by(0.0);
+    }
+
+    pub(crate) fn viewport_state(
+        &self,
+        source: u64,
+        tab_id: u64,
+    ) -> blueice_ipc::viewport::ViewportState {
+        let display = self
+            .display_viewport
+            .unwrap_or(blueice_ipc::viewport::DisplayViewport {
+                width: self.viewport_width,
+                height: self.viewport_height,
+                device_scale: 1.0,
+            });
+        let (pixel_width, pixel_height) = display.pixel_size();
+        blueice_ipc::viewport::ViewportState {
+            tab_id,
+            frame_source: source,
+            frame_generation: self.frame_generation,
+            width: display.width,
+            height: display.height,
+            device_scale: display.device_scale,
+            zoom: self.page_zoom,
+            css_width: self.viewport_width,
+            css_height: self.viewport_height,
+            pixel_width,
+            pixel_height,
+        }
     }
 
     pub fn scroll_by(&mut self, delta_y: f64) {
@@ -940,6 +994,15 @@ impl Page {
     pub(crate) fn continue_tab_generations_from(&mut self, previous: &Page) {
         self.frame_generation = previous.frame_generation;
         self.document_generation = previous.document_generation.wrapping_add(1);
+        self.display_viewport = previous.display_viewport;
+        self.page_zoom = previous.page_zoom;
+        if self.viewport_width != previous.viewport_width
+            || self.viewport_height != previous.viewport_height
+        {
+            self.viewport_width = previous.viewport_width;
+            self.viewport_height = previous.viewport_height;
+            self.restyle_and_relayout();
+        }
     }
 
     /// The generation of this tab's most recently written frame, or zero
@@ -1071,10 +1134,21 @@ impl Page {
         frame
     }
 
-    /// Rasterizes the full page, then crops to the current viewport at
-    /// the current scroll offset -- see module docs for why this is
-    /// how "scrolling" works without real overflow-clipped layout.
+    /// Native display sessions rasterize a bounded viewport directly at their
+    /// backing-density/page-zoom transform. Legacy sessions rasterize the full
+    /// page and crop, retaining their original one-pixel-per-CSS-pixel output.
     pub fn render_visible(&self) -> Pixmap {
+        if let Some(display) = self.display_viewport {
+            let (pixel_width, pixel_height) = display.pixel_size();
+            return blueice_raster::rasterize_viewport(
+                &self.render(),
+                self.scroll_y,
+                pixel_width,
+                pixel_height,
+                display.device_scale * self.page_zoom,
+            )
+            .expect("validated display viewport has bounded physical dimensions");
+        }
         let full = rasterize(&self.render());
         crop(
             &full,

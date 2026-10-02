@@ -28,6 +28,7 @@ enum BrowserCommand: Encodable, Sendable {
     case textInput(TextInputContext, TextInputAction)
     case find(UInt64, TextInputContext, FindAction)
     case contextMenuLink(PageMenuContext, PageMenuLinkAction)
+    case viewport(Double, Double, Double)
     func encode(to encoder: Encoder) throws {
         switch self {
         case .unit(let name):
@@ -53,11 +54,43 @@ enum BrowserCommand: Encodable, Sendable {
             var value = root.nestedContainer(keyedBy: MessageKey.self, forKey: MessageKey("ContextMenuLink"))
             try value.encode(context, forKey: MessageKey("context"))
             try value.encode(action, forKey: MessageKey("action"))
+        case .viewport(let width, let height, let scale):
+            var root = encoder.container(keyedBy: MessageKey.self)
+            var message = root.nestedContainer(keyedBy: MessageKey.self, forKey: MessageKey("SetViewport"))
+            var value = message.nestedContainer(keyedBy: MessageKey.self, forKey: MessageKey("viewport"))
+            try value.encode(width, forKey: MessageKey("width")); try value.encode(height, forKey: MessageKey("height"))
+            try value.encode(scale, forKey: MessageKey("device_scale"))
         }
     }
 }
 
 enum PageMenuLinkAction: String, Encodable, Sendable { case copy = "Copy", open = "Open", newTab = "OpenInNewTab" }
+
+struct ViewportState: Decodable, Sendable {
+    let tabID: UInt64
+    let frameSource: UInt64
+    let frameGeneration: UInt64
+    let width: Double
+    let height: Double
+    let deviceScale: Double
+    let zoom: Double
+    let cssWidth: Double
+    let cssHeight: Double
+    let pixelWidth: Int
+    let pixelHeight: Int
+    enum CodingKeys: String, CodingKey {
+        case tabID = "tab_id", frameSource = "frame_source", frameGeneration = "frame_generation"
+        case width, height, deviceScale = "device_scale", zoom, cssWidth = "css_width", cssHeight = "css_height"
+        case pixelWidth = "pixel_width", pixelHeight = "pixel_height"
+    }
+    var valid: Bool {
+        tabID > 0 && [width, height, deviceScale, zoom, cssWidth, cssHeight].allSatisfy(\.isFinite)
+            && (1...4096).contains(width) && (1...4096).contains(height) && (1...4).contains(deviceScale)
+            && (0.25...5).contains(zoom) && abs(cssWidth * zoom - width) < 1e-6 && abs(cssHeight * zoom - height) < 1e-6
+            && (1...4096).contains(pixelWidth) && (1...4096).contains(pixelHeight)
+            && Double(pixelWidth) == ceil(width * deviceScale) && Double(pixelHeight) == ceil(height * deviceScale)
+    }
+}
 
 struct PageMenuContext: Codable, Equatable, Sendable {
     let tabID: UInt64
@@ -70,7 +103,7 @@ struct PageMenuContext: Codable, Equatable, Sendable {
         case tabID = "tab_id", frameSource = "frame_source", documentGeneration = "document_generation"
         case frameGeneration = "frame_generation", x, y
     }
-    var valid: Bool { tabID > 0 && x.isFinite && y.isFinite && (0..<4096).contains(x) && (0..<4096).contains(y) }
+    var valid: Bool { tabID > 0 && x.isFinite && y.isFinite && (0..<16384).contains(x) && (0..<16384).contains(y) }
 }
 
 struct PageContextMenu: Decodable, Sendable {
@@ -179,6 +212,7 @@ enum BrowserMessage: Decodable, Sendable {
     case formResubmission(FormResubmission), formResubmissionResolved(UInt64)
     case findState(FindState), findUnavailable
     case contextMenu(PageContextMenu), contextLink(PageContextLink), contextUnavailable
+    case viewportState(ViewportState), viewportUnavailable
 
     init(from decoder: Decoder) throws {
         guard let object = try? decoder.container(keyedBy: MessageKey.self), let key = object.allKeys.first else {
@@ -223,6 +257,9 @@ enum BrowserMessage: Decodable, Sendable {
         case "ContextMenuLink":
             if let value = try? object.decode(PageContextLink.self, forKey: key), value.valid { self = .contextLink(value) }
             else { self = .contextUnavailable }
+        case "ViewportState":
+            if let value = try? object.decode(ViewportState.self, forKey: key), value.valid { self = .viewportState(value) }
+            else { self = .viewportUnavailable }
         default: self = .unknown
         }
     }

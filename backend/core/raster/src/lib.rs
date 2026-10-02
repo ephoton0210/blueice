@@ -257,6 +257,76 @@ pub fn rasterize(frame: &Frame) -> Pixmap {
     pixmap
 }
 
+/// Rasterize a CSS viewport directly at the requested pixel density. Clipping
+/// and glyph rasterization happen after the transform; no full-page bitmap or
+/// enlarged low-resolution image is allocated. The caller supplies physical
+/// edges separately from the CSS transform, so zoom division/multiplication
+/// cannot change the advertised bitmap dimensions. Output is capped at 4096².
+pub fn rasterize_viewport(
+    frame: &Frame,
+    scroll_y: f64,
+    pixel_width: u32,
+    pixel_height: u32,
+    scale: f64,
+) -> std::io::Result<Pixmap> {
+    if ![scroll_y, scale].iter().all(|v| v.is_finite())
+        || scroll_y < 0.0
+        || scale <= 0.0
+        || !(1..=4096).contains(&pixel_width)
+        || !(1..=4096).contains(&pixel_height)
+    {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "Raster viewport exceeds finite pixel limits",
+        ));
+    }
+    let rect = |r: blueice_paint::Rect| blueice_paint::Rect {
+        x: r.x * scale,
+        y: (r.y - scroll_y) * scale,
+        width: r.width * scale,
+        height: r.height * scale,
+    };
+    let commands = frame
+        .commands
+        .iter()
+        .cloned()
+        .map(|command| match command {
+            PaintCommand::PushClip { rect: r } => PaintCommand::PushClip { rect: rect(r) },
+            PaintCommand::PopClip => PaintCommand::PopClip,
+            PaintCommand::Rect { rect: r, color } => PaintCommand::Rect {
+                rect: rect(r),
+                color,
+            },
+            PaintCommand::BorderEdge { rect: r, color } => PaintCommand::BorderEdge {
+                rect: rect(r),
+                color,
+            },
+            PaintCommand::Text {
+                x,
+                y,
+                text,
+                color,
+                font_size_px,
+                bold,
+                italic,
+            } => PaintCommand::Text {
+                x: x * scale,
+                y: (y - scroll_y) * scale,
+                text,
+                color,
+                font_size_px: font_size_px * scale,
+                bold,
+                italic,
+            },
+        })
+        .collect();
+    Ok(rasterize(&Frame {
+        width: f64::from(pixel_width),
+        height: f64::from(pixel_height),
+        commands,
+    }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

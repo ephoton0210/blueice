@@ -13,11 +13,11 @@ pushed to the current tracked branch as authorized by the owner.
 | Owned service stack | Bundled launcher/core/gatekeeper, reviewed external navigation, fail-closed review, normal/forced cleanup | Committed `32fa07f6b` |
 | Page accessibility | Core semantic tree mapped into NSAccessibility, native actions, privacy, stale-element and tab isolation tests | Committed and pushed `41952a803` |
 | Native text editing | Core-owned UTF-16 selection, grapheme movement/deletion, IME composition/update/commit/cancel, caret/candidate geometry, text/password/textarea editing, clipboard policy and native UI tests | Foundation committed and pushed `8b80c3c53`; physical OS IME and remaining editing behavior pending, see [results](MACOS_NATIVE_EDITING_RESULTS.md) |
-| Keyboard and page interaction | Keyboard-only form completion, checkbox/radio/select/range controls, find-in-page, native context menus, drag/drop and file-selection policy tests | Keyboard increment committed and pushed `97794bb57`; native form reset committed and pushed `4c1c6e922`; GET/POST submission committed and pushed `1bf78a3d9`; find/ordered clipboard committed and pushed `614489c59`; native link/editor/page context menus validated in [results](MACOS_CONTEXT_MENU_RESULTS.md); remaining interactions pending |
+| Keyboard and page interaction | Keyboard-only form completion, checkbox/radio/select/range controls, find-in-page, native context menus, drag/drop and file-selection policy tests | Keyboard increment committed and pushed `97794bb57`; native form reset committed and pushed `4c1c6e922`; GET/POST submission committed and pushed `1bf78a3d9`; find/ordered clipboard committed and pushed `614489c59`; native context menus committed and pushed `531b6b2df`; remaining interactions pending |
 | Windows and tab organization | Multiple native windows, tab groups, profile/context lifecycle, retained history and state handoff using core tab identities | Pending |
 | Downloads and printing | Actual download manager/shelf, progress/cancel/open/reveal, print/PDF media output and native panel tests | Pending |
 | Trusted browser panels | Assistant results and human permission decisions using the private owner boundary, policy-denial and no-AI-grant tests | Pending |
-| macOS display and system integration | DPI/multi-monitor, zoom, theme/high contrast/reduced motion, fullscreen, localization and native menu/shortcut tests | Pending |
+| macOS display and system integration | DPI/multi-monitor, zoom, theme/high contrast/reduced motion, fullscreen, localization and native menu/shortcut tests | Retina/CSS viewport, per-tab zoom and native fullscreen increment recorded in [results](MACOS_VIEWPORT_RESULTS.md); physical multi-monitor handoff and remaining system integration pending |
 | Full accessibility and final audit | Text ranges/live regions and supported rotor operations; actual screen-reader action; final integration, design/UI acceptance and documented remaining core limitations | Pending |
 
 ## Native editing contract
@@ -200,6 +200,34 @@ core/protocol/MCP evidence are recorded separately.
 Image/media actions, general page-text selection/copy, contextmenu DOM event
 dispatch, drag/drop, file selection, physical IME and the other full-browser
 milestones remain required; this increment does not complete those gates.
+
+## Native display and zoom increment
+
+Native logical window dimensions, raster backing density and per-tab page zoom
+are distinct core inputs. CSS viewport dimensions are logical size divided by
+zoom; physical bitmap edges are rounded from logical size times backing density.
+The rasterizer transforms document geometry and rerasterizes fonts directly into
+that bounded viewport, rather than allocating a tall full-page bitmap or scaling
+an existing low-density bitmap. Physical dimensions are supplied explicitly to
+the rasterizer to avoid a zoom-dependent floating-point rounding discrepancy.
+The native shell adapts raster density when a backing edge would exceed 4096.
+
+Frame-correlated viewport metadata supplies the CSS geometry used for pointer
+input, wheel deltas, accessibility clipping/actions, find and IME candidate
+positioning. The core owns zoom per tab, including navigation/reload and retained
+history; a new tab starts at 100%. Native View-menu presets, zoom shortcuts and a
+reset percentage control operate from 25% to 500%. Fullscreen uses NSWindow and
+updates the same viewport contract. Existing version-two clients retain their
+original frame stream until they opt into native display/zoom commands; MCP
+ignores display broadcasts while awaiting ordinary navigation completion.
+
+Real-core tests exercise synthetic backing-density changes, fractional edges,
+pixel caps, stale/closed-tab rejection and zoomed editing/find/menu geometry.
+Actual-window tests verify Retina CSS width, zoom shortcuts and menu presets,
+中文 clipboard editing, tab/reload retention and fullscreen entry/exit. These
+tests do not establish physical monitor handoff, older/Intel macOS runtime,
+physical IME or VoiceOver acceptance. Theme, high contrast, reduced motion,
+localization and remaining browser milestones are still required.
 
 ## Completion audit
 

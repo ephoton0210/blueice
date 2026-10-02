@@ -41,6 +41,59 @@ final class NativeEditingTests: XCTestCase {
         }
     }
 
+    func testRetinaViewportZoomPreservesCSSInputGeometryAndTabState() async throws {
+        let (model, view, fixture) = try await start(path: "/context-menu")
+        defer { fixture.stop(); Task { await model.stop() } }
+        await wait { model.displayState != nil }
+        model.viewportChanged(CGSize(width: 500, height: 300), deviceScale: 2)
+        await wait { model.displayState?.pixelWidth == 1000 && model.representation != nil }
+        XCTAssertEqual(model.cssViewportSize, CGSize(width: 500, height: 300))
+        let editor = try XCTUnwrap(model.representation?.nodes.first { $0.name == "Context editor" })
+        XCTAssertEqual(editor.bounds.width, 280)
+        model.setZoom(2)
+        await wait { model.zoomPercent == 200 && model.representation != nil }
+        XCTAssertEqual(model.displayState?.pixelWidth, 1000)
+        XCTAssertEqual(model.cssViewportSize, CGSize(width: 250, height: 150))
+        let updated = try XCTUnwrap(model.representation?.nodes.first { $0.name == "Context editor" })
+        let result = await model.requestContextMenu(x: updated.bounds.x + 10, y: updated.bounds.y + 10 - (model.representation?.scrollY ?? 0))
+        XCTAssertNotNil(result?.input)
+        await wait { model.textInputState?.focused != nil }
+        model.textInput(.selectAll); model.textInput(.replace("Zoom 中文", nil))
+        await wait { model.textInputState?.focused?.text == "Zoom 中文" && !model.textInputBusy }
+        let state = try XCTUnwrap(model.textInputState), field = try XCTUnwrap(state.focused)
+        let rect = state.viewRect(field.caret, viewport: view.bounds.size, image: try XCTUnwrap(model.cssViewportSize))
+        XCTAssertEqual(rect.width, field.caret.width * 2, accuracy: 0.01)
+        model.viewportChanged(CGSize(width: 500, height: 300), deviceScale: 1)
+        await wait { model.displayState?.pixelWidth == 500 && model.zoomPercent == 200 }
+        model.setZoom(1); await wait { model.zoomPercent == 100 }
+        model.changeZoom(increase: true); model.changeZoom(increase: true); model.changeZoom(increase: true)
+        await wait { model.zoomPercent == 150 }
+        let first = try XCTUnwrap(model.selected)
+        model.action(.values("OpenTab", ["url": .null]))
+        await wait { model.tabs.count == 2 && model.selected != first && model.displayState != nil }
+        XCTAssertEqual(model.zoomPercent, 100)
+        model.select(first); await wait { model.zoomPercent == 150 }
+        XCTAssertEqual(fixture.requests, ["/context-menu"])
+    }
+
+    func testViewportWireValidatesPixelAndCSSGeometry() throws {
+        let bytes = try BrowserWire.encode(.viewport(500, 300, 2), tab: 2, request: 7)
+        let root = try XCTUnwrap(JSONSerialization.jsonObject(with: bytes.dropFirst(4)) as? [String: Any])
+        let viewport = ((root["message"] as? [String: Any])?["SetViewport"] as? [String: Any])?["viewport"] as? [String: Double]
+        XCTAssertEqual(viewport?["device_scale"], 2)
+        func decode(_ mutate: (inout [String: Any]) -> Void = { _ in }) throws -> BrowserMessage {
+            var state: [String: Any] = ["tab_id": 2, "frame_source": 19, "frame_generation": 7, "width": 500,
+                "height": 300, "device_scale": 2, "zoom": 2, "css_width": 250, "css_height": 150,
+                "pixel_width": 1000, "pixel_height": 600]
+            mutate(&state)
+            return try JSONDecoder().decode(IncomingEnvelope.self, from: JSONSerialization.data(withJSONObject: ["message": ["ViewportState": state]])).message
+        }
+        if case .viewportState = try decode() {} else { XCTFail("Valid geometry must decode") }
+        for bad in [try decode { $0["pixel_width"] = 999 }, try decode { $0["css_width"] = 500 }, try decode { $0["zoom"] = 6 }] {
+            if case .viewportUnavailable = bad {} else { XCTFail("Invalid geometry must fail soft") }
+        }
+    }
+
     func testContextWireRejectsProtectedPayloadsAndPreservesOpenedURL() throws {
         let context = PageMenuContext(tabID: 2, frameSource: 19, documentGeneration: 4, frameGeneration: 7, x: 2, y: 3)
         let bytes = try BrowserWire.encode(.contextMenuLink(context, .newTab), tab: 2, request: 8)
