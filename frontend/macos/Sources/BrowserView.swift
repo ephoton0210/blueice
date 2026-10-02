@@ -41,6 +41,9 @@ struct BrowserView: View {
                 button("gearshape", "Settings", "settings") {
                     model.action(.values("Navigate", ["url": .string("about:settings")]))
                 }
+                if let workspace = model.windowManager {
+                    BrowserProfileMenu(model: model, workspace: workspace)
+                }
             }
             .disabled(!model.ready || model.selected == nil)
             .padding(12)
@@ -93,6 +96,9 @@ struct BrowserView: View {
             Text("Resending will repeat the previous form submission to \(URL(string: prompt.url)?.host ?? prompt.url).")
         }
         .sheet(item: $model.groupEditor) { editor in BrowserTabGroupEditor(model: model, editor: editor) }
+        .sheet(item: $model.profileEditor) { editor in
+            if let workspace = model.windowManager { BrowserProfileEditor(model: model, workspace: workspace, editor: editor) }
+        }
         .buttonStyle(.plain)
         .transaction { if appearance.resolved.reducedMotion { $0.animation = nil; $0.disablesAnimations = true } }
         .background(AppearanceWindow(settings: appearance).frame(width: 0, height: 0).accessibilityHidden(true))

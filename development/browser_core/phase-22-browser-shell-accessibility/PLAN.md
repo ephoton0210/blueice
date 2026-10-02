@@ -255,5 +255,14 @@ active editing/find/group menus follow it. Transfer retains committed values,
 selection, history, group membership, zoom and find state, while fencing stale
 source-window commands and ending composition. New tab membership precedes review,
 so denied pages remain visible and closable. The native and core regression record
-is [MACOS_WINDOW_RESULTS.md](MACOS_WINDOW_RESULTS.md). Profile/context lifecycle,
-session restoration, drag reordering and the other delivery milestones remain open.
+is [MACOS_WINDOW_RESULTS.md](MACOS_WINDOW_RESULTS.md). Session restoration, drag
+reordering and the other delivery milestones remain open.
+
+The subsequent native profile increment adds core context ownership, scoped
+window/group lifecycle and native create/rename/remove/open actions. Same-context
+transfer retains the page; cross-context transfer is rejected. Bounded preferences
+retain names and logical UUID keys across fresh runtime context IDs, without
+restoring pages or fetching URLs. MCP can read the same canonical registry through
+list_browser_contexts. Acceptance is recorded in
+[MACOS_CONTEXT_RESULTS.md](MACOS_CONTEXT_RESULTS.md). Durable tab restoration,
+storage partitioning and private browsing remain separate requirements.

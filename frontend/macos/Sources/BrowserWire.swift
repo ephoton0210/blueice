@@ -32,6 +32,7 @@ enum BrowserCommand: Encodable, Sendable {
     case displayPreferences(DisplayPreferences)
     case tabGroup(TabGroupAction)
     case window(WindowAction)
+    case browserContext(ContextAction)
     func encode(to encoder: Encoder) throws {
         switch self {
         case .unit(let name):
@@ -71,6 +72,9 @@ enum BrowserCommand: Encodable, Sendable {
         case .window(let action):
             var root = encoder.container(keyedBy: MessageKey.self)
             try root.encode(action, forKey: MessageKey("Window"))
+        case .browserContext(let action):
+            var root = encoder.container(keyedBy: MessageKey.self)
+            try root.encode(action, forKey: MessageKey("BrowserContext"))
         case .tabGroup(let action):
             let (name, fields) = action.payload
             try BrowserCommand.values(name, fields).encode(to: encoder)
@@ -279,6 +283,7 @@ enum BrowserMessage: Decodable, Sendable {
     case viewportState(ViewportState), viewportUnavailable
     case displayPreferences(DisplayPreferencesState), displayPreferencesUnavailable
     case windowState(BrowserWindowState), windowsUnavailable
+    case browserContexts(BrowserContextState), contextsUnavailable
     case groups([BrowserTabGroup]), groupChanged(BrowserTabGroup, created: Bool)
     case groupAssigned(UInt64, UInt64?), groupClosed(UInt64), groupsUnavailable
 
@@ -307,6 +312,9 @@ enum BrowserMessage: Decodable, Sendable {
         case "WindowState":
             if let state = try? object.decode(BrowserWindowState.self, forKey: key), state.valid { self = .windowState(state) }
             else { self = .windowsUnavailable }
+        case "BrowserContextState":
+            if let state = try? object.decode(BrowserContextState.self, forKey: key), state.valid { self = .browserContexts(state) }
+            else { self = .contextsUnavailable }
         case "TabGroups":
             if let groups = try? object.decode([BrowserTabGroup].self, forKey: key),
                groups.allSatisfy(\.valid), Set(groups.map(\.id)).count == groups.count { self = .groups(groups) }

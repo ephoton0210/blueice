@@ -5,6 +5,55 @@
 import XCTest
 
 final class ProtocolTests: XCTestCase {
+    func testContextRegistryRejectsDuplicateNamespacesAndEncodesScopedNativeCommands() throws {
+        let viewport = WindowViewport(width: 300, height: 200, deviceScale: 1, backingScale: nil)
+        for action in [ContextAction.list, .create("研究"), .rename(2, "Work"), .close(2), .command(2, .window(.createInContext(2, viewport)))] {
+            let data = try BrowserWire.encode(.browserContext(action), tab: 9, request: 7)
+            let root = try XCTUnwrap(JSONSerialization.jsonObject(with: data.dropFirst(4)) as? [String: Any])
+            XCTAssertNotNil((root["message"] as? [String: Any])?["BrowserContext"])
+            XCTAssertEqual(root["tab_id"] as? Int, 9)
+        }
+        func decode(_ contexts: [[String: Any]], event: Any = "Snapshot") throws -> BrowserMessage {
+            try JSONDecoder().decode(IncomingEnvelope.self, from: JSONSerialization.data(withJSONObject:
+                ["message": ["BrowserContextState": ["contexts": contexts, "event": event]]])).message
+        }
+        let first: [String: Any] = ["id": 1, "name": "Default", "windows": [1], "groups": []]
+        let group: [String: Any] = ["id": 3,"name": "Research","color": "#4477cc","collapsed": false]
+        let work: [String: Any] = ["id": 2, "name": "研究", "windows": [4], "groups": [group]]
+        if case .browserContexts(let state) = try decode([first,work]) { XCTAssertTrue(state.valid); XCTAssertEqual(state.contexts.last?.windows,[4]) }
+        else { XCTFail("Valid context ownership must decode") }
+        for invalid in [[first,first], [work], [first,["id": 2,"name": "DEFAULT","windows": [],"groups": []]],
+                        [first,["id": 2,"name": "Work","windows": [1],"groups": []]],
+                        [work,["id": 1,"name": "Default","windows": [1],"groups": [group]]]] {
+            if case .contextsUnavailable = try decode(invalid) {} else { XCTFail("Ambiguous context metadata must fail soft") }
+        }
+        if case .contextsUnavailable = try decode([first],event: ["Closed": ["context_id": 1]]) {} else { XCTFail("Default context cannot be removed") }
+    }
+
+    @MainActor
+    func testPersistentProfileKeysRoundTripAndMalformedCatalogIsNotOverwritten() throws {
+        let domain = "cc.blueice.context-tests." + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: domain)); defer { defaults.removePersistentDomain(forName: domain) }
+        let store = BrowserContextPreferences(defaults: defaults)
+        let key = UUID(); let profiles = store.profiles + [.init(id: key, name: "研究")]
+        try store.save(profiles)
+        let restored = BrowserContextPreferences(defaults: defaults)
+        XCTAssertNil(restored.error); XCTAssertEqual(restored.profiles, profiles)
+        let raw = try XCTUnwrap(defaults.data(forKey: "browser.contexts"))
+        let text = try XCTUnwrap(String(data: raw, encoding: .utf8))
+        XCTAssertFalse(text.contains("context_id")); XCTAssertFalse(text.contains("tab_id")); XCTAssertFalse(text.contains("window_id"))
+        XCTAssertThrowsError(try store.save(profiles + [.init(id: UUID(), name: "研究")]))
+        XCTAssertEqual(defaults.data(forKey: "browser.contexts"), raw)
+        for bad in [Data("{\"version\":99,\"profiles\":[]}".utf8), Data(repeating: 0, count: 16385)] {
+            defaults.set(bad, forKey: "browser.contexts")
+            let damaged = BrowserContextPreferences(defaults: defaults)
+            XCTAssertNotNil(damaged.error); XCTAssertThrowsError(try damaged.save(profiles))
+            XCTAssertEqual(defaults.data(forKey: "browser.contexts"), bad)
+        }
+        defaults.set("wrong type", forKey: "browser.contexts")
+        XCTAssertNotNil(BrowserContextPreferences(defaults: defaults).error)
+    }
+
     func testWindowRegistryRejectsAmbiguousOwnershipAndEncodesNativeActions() throws {
         let viewport = WindowViewport(width: 300, height: 200, deviceScale: 2, backingScale: 2)
         for action in [WindowAction.list, .create(viewport), .resize(2, viewport), .close(2), .move(2), .open(2, nil), .command(2, .unit("GetTextInputState"))] {

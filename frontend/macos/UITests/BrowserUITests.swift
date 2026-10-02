@@ -9,6 +9,56 @@ import XCTest
 
 @MainActor
 final class BrowserUITests: XCTestCase {
+    func testProfilesNativeCreateRenameScopedWindowsPersistenceAndRemoval() throws {
+        let fixture = try HTTPFixture(); defer { fixture.stop() }
+        launch()
+        let first = app.windows["browser-window"]
+        enter(fixture.origin + "/editing",in: first)
+        XCTAssertTrue(first.textFields["Editor"].waitForExistence(timeout: 15))
+        paste("Root 中文",into: first.textFields["Editor"]); waitValue(first.textFields["Editor"],"Root 中文")
+        app.menuBars.menuBarItems["Profiles"].click(); app.menuItems["New Profile…"].click()
+        XCTAssertTrue(first.textFields["profile-name"].waitForExistence(timeout: 10))
+        XCTAssertFalse(first.buttons["profile-save"].isEnabled)
+        paste("Default",into: first.textFields["profile-name"]); XCTAssertFalse(first.buttons["profile-save"].isEnabled)
+        paste("Work",into: first.textFields["profile-name"]); first.buttons["profile-save"].click()
+        let second = app.windows["browser-window-2"]
+        XCTAssertTrue(second.waitForExistence(timeout: 10)); waitValue(second.textFields["address"],"about:credits")
+        waitValue(second.descendants(matching: .any).matching(identifier: "profile-menu").firstMatch,"Work")
+        second.typeKey("n",modifierFlags: .command)
+        let third = app.windows["browser-window-3"]
+        XCTAssertTrue(third.waitForExistence(timeout: 10)); waitValue(third.textFields["address"],"about:credits")
+        waitValue(third.descendants(matching: .any).matching(identifier: "profile-menu").firstMatch,"Work")
+        app.menuBars.menuBarItems["Window"].click(); app.menuItems["Window 2"].click()
+        second.buttons[XCUIIdentifierCloseWindow].click()
+        XCTAssertTrue(third.exists && first.exists)
+        app.menuBars.menuBarItems["Window"].click(); app.menuItems["Window 3"].click()
+        chooseProfileAction("Rename…", profile: "Work")
+        XCTAssertTrue(third.textFields["profile-name"].waitForExistence(timeout: 10))
+        paste("工作",into: third.textFields["profile-name"]); third.buttons["profile-save"].click()
+        waitValue(third.descendants(matching: .any).matching(identifier: "profile-menu").firstMatch,"工作")
+        waitValue(first.textFields["Editor"],"Root 中文")
+        XCTAssertEqual(fixture.requests,["/editing"])
+        let attachment = XCTAttachment(screenshot: third.screenshot()); attachment.name = "macos-profile-contexts"; attachment.lifetime = .keepAlways; add(attachment)
+        activateWindow(1); first.buttons[XCUIIdentifierCloseWindow].click()
+        activateWindow(3); third.buttons[XCUIIdentifierCloseWindow].click()
+        XCTAssertTrue(app.wait(for: .notRunning,timeout: 15))
+        launch()
+        XCTAssertEqual(app.windows.matching(NSPredicate(format: "identifier BEGINSWITH 'browser-window'")).count,1)
+        chooseProfileAction("Open Window", profile: "工作")
+        let reopened = app.windows["browser-window-2"]
+        XCTAssertTrue(reopened.waitForExistence(timeout: 10)); waitValue(reopened.textFields["address"],"about:credits")
+        waitValue(reopened.descendants(matching: .any).matching(identifier: "profile-menu").firstMatch,"工作")
+        chooseProfileAction("Remove…", profile: "工作")
+        XCTAssertTrue(reopened.buttons["profile-remove"].waitForExistence(timeout: 10))
+        reopened.buttons["profile-cancel"].click(); XCTAssertTrue(reopened.exists)
+        chooseProfileAction("Remove…", profile: "工作")
+        XCTAssertTrue(reopened.buttons["profile-remove"].waitForExistence(timeout: 10)); reopened.buttons["profile-remove"].click()
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"),object: reopened)],timeout: 10),.completed)
+        XCTAssertTrue(app.windows["browser-window"].exists)
+        waitValue(app.windows["browser-window"].textFields["address"],"about:credits")
+        XCTAssertEqual(fixture.requests,["/editing"])
+    }
+
     private var app: XCUIApplication!
     private var originalInputSource: TISInputSource?
     private var preferenceDomain = ""
@@ -77,7 +127,7 @@ final class BrowserUITests: XCTestCase {
     private func chooseChromeContext(_ title: String) {
         let item = app.windows["browser-window"].menuItems[title]
         XCTAssertTrue(item.waitForExistence(timeout: 10), app.debugDescription)
-        XCTAssertTrue(item.isEnabled); item.click()
+        XCTAssertTrue(item.isEnabled, app.debugDescription); item.click()
     }
     private func moveTab(_ id: Int, to group: String) {
         app.buttons["tab-\(id)"].rightClick()
@@ -89,6 +139,14 @@ final class BrowserUITests: XCTestCase {
         app.menuBars.menuBarItems["Window"].click()
         let item = app.menuBars.menuItems["Window \(id)"]
         XCTAssertTrue(item.waitForExistence(timeout: 10)); item.click()
+    }
+    private func chooseProfileAction(_ title: String, profile: String) {
+        app.menuBars.menuBarItems["Profiles"].click()
+        let submenu = app.menuBars.menuItems[profile]
+        XCTAssertTrue(submenu.waitForExistence(timeout: 10)); submenu.hover()
+        let item = submenu.menuItems[title]
+        XCTAssertTrue(item.waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertTrue(item.isEnabled, app.debugDescription); item.click()
     }
     private func transferTab(_ tab: Int, from window: XCUIElement, to destination: String) {
         window.buttons["tab-\(tab)"].rightClick()

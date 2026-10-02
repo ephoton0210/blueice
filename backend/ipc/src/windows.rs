@@ -19,6 +19,10 @@ pub enum WindowAction {
     Create {
         viewport: DisplayViewport,
     },
+    CreateInContext {
+        context_id: u64,
+        viewport: DisplayViewport,
+    },
     Resize {
         window_id: u64,
         viewport: DisplayViewport,

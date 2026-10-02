@@ -9,10 +9,21 @@ import Combine
 final class BrowserModel: ObservableObject {
     let appearance: BrowserAppearance
     let windowID: UInt64
+    private(set) var contextID: UInt64 = 1
+    @Published private(set) var profileName = "Default"
+    @Published var profileEditor: ProfileEditor?
+    private var canonicalContextGroups: [BrowserTabGroup]?
     private weak var workspace: BrowserWorkspace?
     private let session: BrowserSession
     private var windowTabs: [UInt64]?
     var windowManager: BrowserWorkspace? { workspace }
+    func updateContext(_ context: BrowserContextSummary) {
+        contextID = context.id
+        if profileName != context.name { profileName = context.name }
+        canonicalContextGroups = context.groups
+        if groups != context.groups { groups = context.groups }
+        groupsAvailable = true
+    }
     @Published private(set) var displayPreferences: DisplayPreferences?
     private var preferenceStates: [UInt64: DisplayPreferencesState] = [:]
     private var preferenceObservation: AnyCancellable?
@@ -219,15 +230,19 @@ final class BrowserModel: ObservableObject {
         }
         switch envelope.message {
         case .groups(let list):
+            if let canonicalContextGroups { groups = canonicalContextGroups; groupsAvailable = true; return }
             groups = list; groupsAvailable = true
         case .groupChanged(let group, _):
+            if canonicalContextGroups != nil { return }
             if let index = groups.firstIndex(where: { $0.id == group.id }) { groups[index] = group }
             else { groups.append(group) }
         case .groupAssigned(let id, let group):
+            if canonicalContextGroups != nil { return }
             guard tab == id, let index = tabs.firstIndex(where: { $0.id == id }) else { return }
             tabs[index].groupID = group
             if let group, !groups.contains(where: { $0.id == group }) { action(.unit("ListTabGroups")) }
         case .groupClosed(let id):
+            if canonicalContextGroups != nil { return }
             groups.removeAll { $0.id == id }
             for index in tabs.indices where tabs[index].groupID == id { tabs[index].groupID = nil }
         case .groupsUnavailable:
@@ -235,7 +250,11 @@ final class BrowserModel: ObservableObject {
         case .tabs(let incoming):
             let list = windowTabs.map { ordered in
                 let byID = Dictionary(incoming.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-                return ordered.compactMap { byID[$0] }
+                let existing = Dictionary(tabs.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+                // A context-scoped list is broadcast to every native model.
+                // Only the window registry removes ownership; absent values
+                // in another context's reply must not clear a live page.
+                return ordered.compactMap { byID[$0] ?? existing[$0] }
             } ?? incoming
             if windowTabs != nil, list == tabs { return }
             let live = Set(list.map(\.id))

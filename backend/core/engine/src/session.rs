@@ -1084,6 +1084,7 @@ mod run_loop;
 use run_loop::*;
 mod extension_bridge;
 use extension_bridge::*;
+mod contexts;
 mod navigation;
 mod windows;
 use navigation::*;

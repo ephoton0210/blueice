@@ -358,6 +358,21 @@ impl BlueIceMcpServer {
     }
 
     #[tool(
+        description = "List core-owned browser contexts with their names, native window IDs and scoped tab groups. This is the same registry used by macOS Profiles; runtime IDs are lifecycle identities, not permission grants or durable profile keys."
+    )]
+    pub(super) async fn list_browser_contexts(&self) -> Result<CallToolResult, ErrorData> {
+        match blocking(self.core.clone(), |conn| conn.list_browser_contexts()).await? {
+            Ok(contexts) => {
+                let text = serde_json::to_string_pretty(&contexts).unwrap_or_else(|_| "[]".into());
+                Ok(CallToolResult::success(vec![Content::text(
+                    crate::wrap_untrusted_page_content(&text),
+                )]))
+            }
+            Err(message) => Ok(CallToolResult::error(vec![Content::text(message)])),
+        }
+    }
+
+    #[tool(
         description = "Create a named, colored tab group shared with the human frontend. color must be a CSS #RRGGBB value, for example #4f8cff."
     )]
     pub(super) async fn create_tab_group(

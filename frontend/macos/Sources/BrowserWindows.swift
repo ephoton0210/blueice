@@ -19,10 +19,12 @@ struct WindowViewport: Codable, Sendable, Equatable {
 
 enum WindowAction: Encodable, Sendable {
     case list, create(WindowViewport), resize(UInt64, WindowViewport), close(UInt64), move(UInt64), open(UInt64, String?)
+    case createInContext(UInt64, WindowViewport)
     indirect case command(UInt64, BrowserCommand)
-    private enum Keys: String, CodingKey { case create = "Create", resize = "Resize", command = "Command" }
+    private enum Keys: String, CodingKey { case create = "Create", createInContext = "CreateInContext", resize = "Resize", command = "Command" }
     private struct Scoped: Encodable { let window_id: UInt64; let message: BrowserCommand }
     private struct Display: Encodable { let window_id: UInt64?; let viewport: WindowViewport }
+    private struct ContextDisplay: Encodable { let context_id: UInt64; let viewport: WindowViewport }
     func encode(to encoder: Encoder) throws {
         switch self {
         case .command(let id, let message):
@@ -32,6 +34,9 @@ enum WindowAction: Encodable, Sendable {
         case .create(let viewport):
             var value = encoder.container(keyedBy: Keys.self)
             try value.encode(Display(window_id: nil, viewport: viewport), forKey: .create)
+        case .createInContext(let id, let viewport):
+            var value = encoder.container(keyedBy: Keys.self)
+            try value.encode(ContextDisplay(context_id: id, viewport: viewport), forKey: .createInContext)
         case .resize(let id, let viewport):
             var value = encoder.container(keyedBy: Keys.self)
             try value.encode(Display(window_id: id, viewport: viewport), forKey: .resize)

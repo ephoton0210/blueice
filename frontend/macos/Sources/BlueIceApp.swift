@@ -23,6 +23,7 @@ struct BrowserActiveCommands: Commands {
     var body: some Commands {
         NativeEditingCommands(menu: delegate.editingMenu, model: delegate.model)
         BrowserTabGroupCommands(model: delegate.model)
+        BrowserProfileCommands(model: delegate.model, workspace: delegate.workspace)
     }
 }
 
@@ -31,6 +32,7 @@ final class BrowserAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
     let workspace: BrowserWorkspace
     @Published private(set) var model: BrowserModel
     private var browserWindows: [UInt64: NSWindow] = [:]
+    private var cascadePoint = NSPoint.zero
     private var terminating = false
     let editingMenu = NativeEditingMenu()
     override init() {
@@ -51,6 +53,10 @@ final class BrowserAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
             }
         }
         workspace.onActivateWindow = { [weak self] id in self?.browserWindows[id]?.makeKeyAndOrderFront(nil) }
+        workspace.onContextsChanged = { [weak self] in
+            guard let self else { return }
+            for (id, window) in self.browserWindows { if let model = self.workspace.models[id] { window.title = self.title(model) } }
+        }
         openWindow(model)
         NSApp.activate(ignoringOtherApps: true)
         Task { await workspace.start() }
@@ -60,12 +66,13 @@ final class BrowserAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
         let initial = model.windowID == 1
         let window = BrowserWindow(contentRect: NSRect(x: 0, y: 0, width: initial ? 1120 : 900, height: initial ? 800 : 650),
             styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
-        window.title = initial ? "BlueIce" : "BlueIce · Window \(model.windowID)"
+        window.title = title(model)
         window.identifier = NSUserInterfaceItemIdentifier(initial ? "browser-window" : "browser-window-\(model.windowID)")
         window.isReleasedWhenClosed = false; window.collectionBehavior = [.fullScreenPrimary]; window.delegate = self
         window.contentView = NSHostingView(rootView: BrowserView(model: model).environmentObject(editingMenu))
         window.center()
-        if !initial { window.setFrameOrigin(NSPoint(x: window.frame.origin.x + 40, y: window.frame.origin.y - 40)) }
+        if initial { cascadePoint = NSPoint(x: window.frame.minX + 32, y: window.frame.maxY - 32) }
+        else { cascadePoint = window.cascadeTopLeft(from: cascadePoint) }
         browserWindows[model.windowID] = window
         window.makeKeyAndOrderFront(nil)
     }
@@ -74,6 +81,11 @@ final class BrowserAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
               let id = browserWindows.first(where: { $0.value === window })?.key,
               let active = workspace.models[id] else { return }
         if model !== active { model = active }
+        if workspace.activeWindowID != id { workspace.activeWindowID = id }
+    }
+    private func title(_ model: BrowserModel) -> String {
+        let profile = model.profileName == "Default" ? "BlueIce" : "BlueIce · \(model.profileName)"
+        return model.windowID == 1 ? profile : "\(profile) · Window \(model.windowID)"
     }
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         if browserWindows.count <= 1 { NSApp.terminate(nil); return false }

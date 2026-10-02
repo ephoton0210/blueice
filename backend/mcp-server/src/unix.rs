@@ -243,6 +243,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::TextInputState(_)
                 | ServerMessage::FindState(_)
                     | ServerMessage::WindowState(_)
+                    | ServerMessage::BrowserContextState(_)
                 | ServerMessage::ViewportState(_)
                     | ServerMessage::DisplayPreferencesState(_)
                     | ServerMessage::ContextMenu(_)
@@ -346,6 +347,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::TextInputState(_)
                 | ServerMessage::FindState(_)
                 | ServerMessage::WindowState(_)
+                | ServerMessage::BrowserContextState(_)
                 | ServerMessage::ViewportState(_)
                 | ServerMessage::DisplayPreferencesState(_)
                 | ServerMessage::ContextMenu(_)
@@ -604,6 +606,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::TextInputState(_)
                 | ServerMessage::FindState(_)
                 | ServerMessage::WindowState(_)
+                | ServerMessage::BrowserContextState(_)
                 | ServerMessage::ViewportState(_)
                 | ServerMessage::DisplayPreferencesState(_)
                 | ServerMessage::ContextMenu(_)
@@ -678,6 +681,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::TextInputState(_)
                 | ServerMessage::FindState(_)
                 | ServerMessage::WindowState(_)
+                | ServerMessage::BrowserContextState(_)
                 | ServerMessage::ViewportState(_)
                 | ServerMessage::DisplayPreferencesState(_)
                 | ServerMessage::ContextMenu(_)
@@ -799,6 +803,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::TextInputState(_)
                 | ServerMessage::FindState(_)
                 | ServerMessage::WindowState(_)
+                | ServerMessage::BrowserContextState(_)
                 | ServerMessage::ViewportState(_)
                 | ServerMessage::DisplayPreferencesState(_)
                 | ServerMessage::ContextMenu(_)
@@ -870,6 +875,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::TextInputState(_)
                 | ServerMessage::FindState(_)
                 | ServerMessage::WindowState(_)
+                | ServerMessage::BrowserContextState(_)
                 | ServerMessage::ViewportState(_)
                 | ServerMessage::DisplayPreferencesState(_)
                 | ServerMessage::ContextMenu(_)
@@ -940,6 +946,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::TextInputState(_)
                 | ServerMessage::FindState(_)
                 | ServerMessage::WindowState(_)
+                | ServerMessage::BrowserContextState(_)
                 | ServerMessage::ViewportState(_)
                 | ServerMessage::DisplayPreferencesState(_)
                 | ServerMessage::ContextMenu(_)
@@ -1022,6 +1029,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::TextInputState(_)
                 | ServerMessage::FindState(_)
                 | ServerMessage::WindowState(_)
+                | ServerMessage::BrowserContextState(_)
                 | ServerMessage::ViewportState(_)
                 | ServerMessage::DisplayPreferencesState(_)
                 | ServerMessage::ContextMenu(_)
@@ -1144,6 +1152,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::TextInputState(_)
                 | ServerMessage::FindState(_)
                 | ServerMessage::WindowState(_)
+                | ServerMessage::BrowserContextState(_)
                 | ServerMessage::ViewportState(_)
                 | ServerMessage::DisplayPreferencesState(_)
                 | ServerMessage::ContextMenu(_)
@@ -1164,6 +1173,52 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::AssistantResult { .. }
                 | ServerMessage::ExtensionToolbar { .. }
                 | ServerMessage::ExtensionPopup { .. } => {}
+            }
+        }
+    }
+
+    /// Observe the same core context/window/group ownership as native chrome.
+    /// Registry broadcasts cannot release this exact-request completion barrier.
+    pub fn list_browser_contexts(
+        &mut self,
+    ) -> io::Result<Result<Vec<blueice_ipc::browser_contexts::ContextSummary>, String>> {
+        let request = self.next_request_id();
+        blueice_ipc::write_client_message_with_id(
+            &mut self.stream,
+            Some(request),
+            &ClientMessage::BrowserContext(blueice_ipc::browser_contexts::ContextAction::List),
+        )?;
+        loop {
+            let (tab, reply, message) =
+                blueice_ipc::read_server_message_with_ids(&mut self.stream)?;
+            match message {
+                ServerMessage::FrameReady {
+                    shm_path,
+                    width,
+                    height,
+                    generation,
+                } => {
+                    self.record_frame(
+                        tab,
+                        FrameInfo {
+                            shm_path,
+                            width,
+                            height,
+                            generation,
+                        },
+                        reply == Some(request),
+                    );
+                }
+                ServerMessage::TabClosed { tab_id } => {
+                    self.last_frames.remove(&tab_id);
+                }
+                ServerMessage::BrowserContextState(state) if reply == Some(request) => {
+                    return Ok(Ok(state.contexts))
+                }
+                ServerMessage::Error { message } if reply == Some(request) => {
+                    return Ok(Err(message))
+                }
+                _ => {}
             }
         }
     }

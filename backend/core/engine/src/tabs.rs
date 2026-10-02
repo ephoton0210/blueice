@@ -28,6 +28,8 @@ use url::Url;
 
 mod windows;
 pub use windows::WindowId;
+mod contexts;
+pub use contexts::{BrowserContext, BrowserContextId, ClosedBrowserContext};
 
 /// A single extension connection cannot install an unbounded number of
 /// navigation rules. The small cap keeps this deliberately declarative slice
@@ -149,9 +151,13 @@ pub struct TabGroup {
     name: String,
     color: String,
     collapsed: bool,
+    context_id: BrowserContextId,
 }
 
 impl TabGroup {
+    pub fn context_id(&self) -> BrowserContextId {
+        self.context_id
+    }
     pub fn id(&self) -> GroupId {
         self.id
     }
@@ -344,6 +350,9 @@ pub struct TabManager {
     windows: BTreeMap<WindowId, windows::CoreWindow>,
     next_window_id: u64,
     native_windows: bool,
+    contexts: BTreeMap<BrowserContextId, BrowserContext>,
+    next_context_id: u64,
+    native_contexts: bool,
     display_preferences: Option<blueice_ipc::display::DisplayPreferences>,
     /// Handed to every tab (existing and future) so `about:downloads` works
     /// in any of them.
@@ -420,6 +429,7 @@ impl TabManager {
             windows: BTreeMap::from([(
                 WindowId::from_u64(1),
                 windows::CoreWindow {
+                    context_id: BrowserContextId::from_u64(1),
                     viewport: blueice_ipc::viewport::DisplayViewport {
                         width: viewport_width,
                         height: viewport_height,
@@ -432,6 +442,15 @@ impl TabManager {
             )]),
             next_window_id: 2,
             native_windows: false,
+            contexts: BTreeMap::from([(
+                BrowserContextId::from_u64(1),
+                BrowserContext {
+                    id: BrowserContextId::from_u64(1),
+                    name: "Default".into(),
+                },
+            )]),
+            next_context_id: 2,
+            native_contexts: false,
             display_preferences: None,
             downloads: None,
             gatekeeper_settings: None,
@@ -1261,19 +1280,8 @@ impl TabManager {
     /// wire-facing name/color form lives in `session.rs`; this domain object
     /// simply owns the resulting shared state.
     pub fn create_group(&mut self, name: String, color: String) -> GroupId {
-        let id = GroupId(self.next_group_id);
-        self.next_group_id += 1;
-        self.groups.insert(
-            id,
-            TabGroup {
-                id,
-                name,
-                color,
-                collapsed: false,
-            },
-        );
-        self.group_order.push(id);
-        id
+        self.create_group_in_context(BrowserContextId::from_u64(1), name, color)
+            .expect("default context remains live")
     }
 
     pub fn group(&self, id: GroupId) -> Option<&TabGroup> {
@@ -1292,10 +1300,8 @@ impl TabManager {
     /// tab from its group. Callers validate both IDs first, keeping this small
     /// domain API free of protocol-specific error wording.
     pub fn set_tab_group(&mut self, tab_id: TabId, group_id: Option<GroupId>) {
-        self.tabs
-            .get_mut(&tab_id)
-            .expect("caller validates tab before assigning a group")
-            .group_id = group_id;
+        self.assign_tab_group(tab_id, group_id)
+            .expect("caller validates tab, group and context before assignment");
     }
 
     pub fn rename_group(&mut self, id: GroupId, name: String) {

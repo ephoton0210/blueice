@@ -14,7 +14,7 @@ pushed to the current tracked branch as authorized by the owner.
 | Page accessibility | Core semantic tree mapped into NSAccessibility, native actions, privacy, stale-element and tab isolation tests | Committed and pushed `41952a803` |
 | Native text editing | Core-owned UTF-16 selection, grapheme movement/deletion, IME composition/update/commit/cancel, caret/candidate geometry, text/password/textarea editing, clipboard policy and native UI tests | Foundation committed and pushed `8b80c3c53`; physical OS IME and remaining editing behavior pending, see [results](MACOS_NATIVE_EDITING_RESULTS.md) |
 | Keyboard and page interaction | Keyboard-only form completion, checkbox/radio/select/range controls, find-in-page, native context menus, drag/drop and file-selection policy tests | Keyboard increment committed and pushed `97794bb57`; native form reset committed and pushed `4c1c6e922`; GET/POST submission committed and pushed `1bf78a3d9`; find/ordered clipboard committed and pushed `614489c59`; native context menus committed and pushed `531b6b2df`; remaining interactions pending |
-| Windows and tab organization | Multiple native windows, tab groups, profile/context lifecycle, retained history and state handoff using core tab identities | Native group increment committed and pushed `6e141967f`, see [tab group results](MACOS_TAB_GROUP_RESULTS.md); shared-core windows/tab transfer implemented, verification recorded in [window results](MACOS_WINDOW_RESULTS.md); profile/context handoff pending |
+| Windows and tab organization | Multiple native windows, tab groups, profile/context lifecycle, retained history and state handoff using core tab identities | Native groups committed and pushed `6e141967f`; shared-core windows/tab transfer committed and pushed `b318e0de8`; context lifecycle and persistent profile identities verified in this increment, see [context results](MACOS_CONTEXT_RESULTS.md); durable session restoration and full storage partitioning pending |
 | Downloads and printing | Actual download manager/shelf, progress/cancel/open/reveal, print/PDF media output and native panel tests | Pending |
 | Trusted browser panels | Assistant results and human permission decisions using the private owner boundary, policy-denial and no-AI-grant tests | Pending |
 | macOS display and system integration | DPI/multi-monitor, zoom, theme/high contrast/reduced motion, fullscreen, localization and native menu/shortcut tests | Retina/CSS viewport, per-tab zoom and native fullscreen committed and pushed `91f2dd78c`, see [viewport results](MACOS_VIEWPORT_RESULTS.md); persistent appearance/contrast/motion and CSS media committed and pushed `0609c8a81`, recorded in [display results](MACOS_DISPLAY_PREFERENCES_RESULTS.md); physical system/monitor transitions and localization pending |
@@ -290,8 +290,35 @@ the windows. Recovery refreshes history, pixels, semantics and editing state.
 Real-service and actual-window evidence is recorded in
 [window results](MACOS_WINDOW_RESULTS.md).
 
-Profile/context lifecycle, restart restoration, drag reorder and physical
-IME/screen-reader acceptance remain separate delivery requirements.
+The next increment supplies context lifecycle and persistent profile identities.
+Restart restoration of tabs, drag reorder and physical IME/screen-reader
+acceptance remain separate delivery requirements.
+
+## Native context and profile identity increment
+
+The core owns named contexts and their windows, tabs and groups. Native Profiles
+menus create, rename, open and remove profiles; new windows use the active
+profile. Removing a nondefault profile closes only its members. Same-context tab
+transfer retains the existing page; cross-context transfer/group assignment is
+rejected before mutation. Context and window IDs fence stale native callbacks
+but confer no controller lease or human permission. All contexts share one
+owned core and the mandatory navigation/content review.
+
+An additive BrowserContext registry precedes window snapshots and carries
+canonical group ownership. Context-scoped Lists cannot erase another window's
+tab values: only canonical window membership removes them. Malformed metadata
+preserves native windows and provides Retry. MCP list_browser_contexts reads the
+same registry and waits for its exact request; unsolicited snapshots do not
+complete it. Legacy tab/open wire shapes remain unchanged.
+
+Bounded preferences persist names and logical UUID keys independently of runtime
+IDs. Relaunch recreates empty named contexts with fresh runtime IDs and preserves
+their UUIDs; it does not restore pages or fetch remembered URLs. Invalid saved
+catalogs are retained and profile management is disabled. Full session/tab
+restoration remains Phase 16 work. Cookies, cache and authentication are not yet
+implemented in the network layer; this increment does not add private browsing
+or per-profile storage, assistant, extension, download or display preferences.
+Final acceptance is recorded in [context results](MACOS_CONTEXT_RESULTS.md).
 
 ## Completion audit
 

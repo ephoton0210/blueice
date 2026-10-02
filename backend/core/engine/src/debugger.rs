@@ -1100,7 +1100,7 @@ fn list_page_realms(tabs: &TabManager) -> DebuggerReply {
             let page = tabs.get(tab_id)?;
             let realm_generation = page.document_generation();
             (realm_generation != 0 && page.url().is_some()).then_some(DebuggerPageRealm {
-                browser_context_id: DEFAULT_BROWSER_CONTEXT_ID,
+                browser_context_id: tabs.tab_context(tab_id)?.as_u64(),
                 tab_id: tab_id.as_u64(),
                 realm_generation,
             })

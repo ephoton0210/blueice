@@ -7,6 +7,65 @@ import XCTest
 
 @MainActor
 final class NativeEditingTests: XCTestCase {
+    func testContextsKeepOneCoreSeparateGroupsAndRestorePersistentKeysWithFreshRuntimeIDs() async throws {
+        let domain = "cc.blueice.context-service-tests." + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: domain)); defer { defaults.removePersistentDomain(forName: domain) }
+        let fixture = try HTTPFixture(); defer { fixture.stop() }
+        let workspace = BrowserWorkspace(contextDefaults: defaults); defer { Task { await workspace.stop() } }
+        let launcher = Bundle(for: Self.self).bundleURL.deletingLastPathComponent().appendingPathComponent("BlueIce.app/Contents/MacOS/blueice-launcher")
+        await workspace.start(launcher: launcher)
+        let first = try XCTUnwrap(workspace.models[1]); let pid = try XCTUnwrap(workspace.processID)
+        first.address = fixture.origin + "/editing"; first.navigateAddress()
+        await wait { first.representation?.url == fixture.origin + "/editing" }
+        let original = try XCTUnwrap(first.selected)
+        let editor = try XCTUnwrap(first.representation?.nodes.first { $0.name == "Editor" })
+        first.focusPage(x: editor.bounds.x + 5, y: editor.bounds.y + 5)
+        await wait { first.textInputState?.focused != nil }
+        first.textInput(.selectAll); first.textInput(.replace("Root 中文", nil))
+        await wait { first.textInputState?.focused?.text == "Root 中文" && !first.textInputBusy }
+        let document = try XCTUnwrap(first.textInputState).document_generation
+        let rootGroup = await first.createTabGroup(name: "Root", color: "#4477cc", tab: original)
+        XCTAssertNotNil(rootGroup)
+        let temporaryResult = await workspace.createContext("Temporary"); let temporary = try XCTUnwrap(temporaryResult)
+        let contextResult = await workspace.createContext("Work"); let context = try XCTUnwrap(contextResult)
+        let persistentKey = try XCTUnwrap(workspace.contextPreferences.profiles.first { $0.name == "Work" }?.id)
+        let createdResult = await workspace.createWindow(contextID: context); let created = try XCTUnwrap(createdResult)
+        let work = try XCTUnwrap(workspace.models[created])
+        await wait { work.representation?.url == "about:credits" && work.groupsAvailable }
+        XCTAssertEqual(work.contextID, context); XCTAssertEqual(work.profileName,"Work"); XCTAssertTrue(work.groups.isEmpty)
+        first.apply(IncomingEnvelope(requestID: nil,tabID: nil,message: .tabs(work.tabs)),pixels: nil)
+        XCTAssertEqual(first.tabs.map(\.id),[original],"A foreign context's partial list cannot revoke canonical window membership")
+        let workGroup = await work.createTabGroup(name: "Research",color: "#cc4477",tab: work.selected)
+        XCTAssertNotNil(workGroup)
+        XCTAssertEqual(first.groups.map(\.id), [try XCTUnwrap(rootGroup)])
+        XCTAssertEqual(work.groups.map(\.id), [try XCTUnwrap(workGroup)])
+        let moved = await workspace.moveTab(original,to: created); XCTAssertFalse(moved)
+        let assigned = await first.setTabGroup(workGroup,tab: original); XCTAssertFalse(assigned)
+        XCTAssertEqual(first.tabs.first?.groupID,rootGroup); XCTAssertEqual(first.textInputState?.focused?.text,"Root 中文", "\(first.status); \(workspace.notice ?? "")")
+        XCTAssertEqual(first.textInputState?.document_generation,document); XCTAssertEqual(workspace.processID,pid)
+        let renamed = await workspace.renameContext(context,name: "工作"); XCTAssertTrue(renamed)
+        await wait { work.profileName == "工作" }
+        XCTAssertEqual(workspace.contextPreferences.profiles.first { $0.name == "工作" }?.id,persistentKey)
+        let removed = await workspace.closeContext(temporary); XCTAssertTrue(removed)
+        let malformed = Data("{\"message\":{\"BrowserContextState\":{\"contexts\":[],\"event\":\"Snapshot\"}}}".utf8)
+        workspace.session.received?(.success(try JSONDecoder().decode(IncomingEnvelope.self,from: malformed)))
+        await wait { !workspace.canManageContexts && !first.ready }
+        XCTAssertEqual(workspace.models.count,2)
+        await workspace.refreshContexts()
+        await wait { first.ready && first.textInputState?.focused?.text == "Root 中文" && work.ready }
+        XCTAssertEqual(first.textInputState?.document_generation,document); XCTAssertEqual(workspace.processID,pid)
+        let runtime = workspace.session.runtimeDirectory
+        await workspace.stop(); XCTAssertNotEqual(kill(pid,0),0); XCTAssertFalse(FileManager.default.fileExists(atPath: runtime.path))
+        let reopened = BrowserWorkspace(contextDefaults: defaults); defer { Task { await reopened.stop() } }
+        await reopened.start(launcher: launcher)
+        let restored = try XCTUnwrap(reopened.contexts.first { $0.name == "工作" })
+        XCTAssertNotEqual(restored.id,context); XCTAssertTrue(restored.windows.isEmpty)
+        XCTAssertEqual(reopened.windows.count,1,"Saved names must not allocate unseen profile pages")
+        XCTAssertEqual(reopened.contextPreferences.profiles.first { $0.name == "工作" }?.id,persistentKey)
+        XCTAssertEqual(fixture.requests,["/editing"])
+        await reopened.stop()
+    }
+
     func testUTF16WireReplacementCompositionAndMovement() throws {
         let context = TextInputContext(version: 1, frame_source: 19, document_generation: 4, focus_generation: 3)
         let action = TextInputAction.compose("中文", TextRange(NSRange(location: 2, length: 0)), TextRange(NSRange(location: 1, length: 2)))

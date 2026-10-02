@@ -11,6 +11,15 @@ final class BrowserWorkspace: ObservableObject {
     let session = BrowserSession()
     let appearance: BrowserAppearance
     @Published private(set) var windows: [BrowserWindowSummary] = []
+    @Published private(set) var contexts: [BrowserContextSummary] = []
+    @Published private(set) var canManageContexts = false
+    @Published var activeWindowID: UInt64 = 1
+    let contextPreferences: BrowserContextPreferences
+    private var contextKeys: [UInt64: UUID] = [1: BrowserContextPreferences.defaultKey]
+    private var restoringProfiles = true
+    private var pendingProfileKey: UUID?
+    private var contextRequests: Set<UInt64> = []
+    private var contextReplies: [IncomingEnvelope] = []
     @Published private(set) var canManageWindows = false
     @Published private(set) var busy = false
     @Published private(set) var notice: String?
@@ -18,6 +27,7 @@ final class BrowserWorkspace: ObservableObject {
     var onWindowCreated: ((BrowserModel) -> Void)?
     var onWindowClosed: ((UInt64) -> Void)?
     var onActivateWindow: ((UInt64) -> Void)?
+    var onContextsChanged: (() -> Void)?
     private var connected = false
     private var started = false
     private var stopping = false
@@ -29,8 +39,9 @@ final class BrowserWorkspace: ObservableObject {
     private var sentPreferences: DisplayPreferences?
     var processID: Int32? { session.processID }
 
-    init(appearance: BrowserAppearance? = nil) {
+    init(appearance: BrowserAppearance? = nil, contextDefaults: UserDefaults? = nil) {
         self.appearance = appearance ?? BrowserAppearance()
+        self.contextPreferences = BrowserContextPreferences(defaults: contextDefaults)
         models[1] = BrowserModel(appearance: self.appearance, workspace: self, windowID: 1)
         preferenceObservation = self.appearance.$resolved.removeDuplicates().sink { [weak self] _ in
             Task { @MainActor in self?.synchronizePreferences() }
@@ -62,6 +73,17 @@ final class BrowserWorkspace: ObservableObject {
             try await session.startForBrowser(launcher: launcher)
             connected = true
             for model in models.values { model.prepareManagedSession(true) }
+            guard await contextCommand(.list) != nil else { throw BrowserFailure.invalid(notice ?? "Browser context state unavailable") }
+            let saved = contextPreferences.profiles
+            if let first = saved.first, first.name != "Default" { _ = await contextCommand(.rename(1, first.name)) }
+            for profile in saved.dropFirst() {
+                pendingProfileKey = profile.id
+                guard await contextCommand(.create(profile.name)) != nil else { pendingProfileKey = nil; throw BrowserFailure.invalid(notice ?? "Cannot reopen a saved profile") }
+                pendingProfileKey = nil
+            }
+            restoringProfiles = false
+            canManageContexts = contextPreferences.error == nil
+            if let error = contextPreferences.error { notice = error }
             guard await command(.list) != nil else { throw BrowserFailure.invalid(notice ?? "Browser window state unavailable") }
             await models[1]?.openInitialPage()
         } catch {
@@ -73,7 +95,8 @@ final class BrowserWorkspace: ObservableObject {
     func send(_ command: BrowserCommand, tab: UInt64? = nil, owner: BrowserModel? = nil, willSend: (@Sendable (UInt64) -> Void)? = nil) async throws -> UInt64 {
         guard connected, !stopping else { throw BrowserFailure.invalid("Browser workspace is closed") }
         let window = owner?.windowID
-        let outbound = window.flatMap { id in tab.map { _ in BrowserCommand.window(.command(id, command)) } } ?? command
+        let scopedWindow = window.flatMap { id in tab.map { _ in BrowserCommand.window(.command(id, command)) } } ?? command
+        let outbound = owner.map { BrowserCommand.browserContext(.command($0.contextID, scopedWindow)) } ?? scopedWindow
         return try await session.send(outbound, tab: tab) { [weak self] request in
             if let window {
                 DispatchQueue.main.async { [weak self] in
@@ -87,6 +110,10 @@ final class BrowserWorkspace: ObservableObject {
     }
     private func receive(_ envelope: IncomingEnvelope, pixels: FramePixels?) {
         guard !stopping else { return }
+        if let request = envelope.requestID, contextRequests.remove(request) != nil {
+            if contextReplies.count < 64 { contextReplies.append(envelope) }
+            if case .error(let message) = envelope.message { notice = message; return }
+        }
         let owned = envelope.requestID.flatMap { requests.removeValue(forKey: $0) }
         if let owned {
             if owned.1, replies.count < 64 { replies.append(envelope) }
@@ -96,7 +123,28 @@ final class BrowserWorkspace: ObservableObject {
             }
         }
         switch envelope.message {
+        case .browserContexts(let state):
+            contexts = state.contexts; canManageContexts = !restoringProfiles && contextPreferences.error == nil
+            if case .created(let id) = state.event { contextKeys[id] = pendingProfileKey ?? UUID() }
+            for model in models.values {
+                if let context = contextForWindow(model.windowID) { model.updateContext(context) }
+            }
+            if !restoringProfiles { persistProfiles() }
+            onContextsChanged?()
+        case .contextsUnavailable:
+            canManageContexts = false; canManageWindows = false; notice = "Browser context state unavailable"
+            for model in models.values { model.workspaceFailed("Browser context state unavailable") }
+            return
         case .windowState(let state):
+            guard Set(state.windows.map(\.id)) == Set(contexts.flatMap(\.windows)), state.windows.allSatisfy({ window in
+                guard let context = contextForWindow(window.id) else { return false }
+                let groups = Set(context.groups.map(\.id))
+                return window.tabs.allSatisfy { $0.groupID.map(groups.contains) != false }
+            }) else {
+                canManageWindows = false; canManageContexts = false; notice = "Browser context ownership unavailable"
+                for model in models.values { model.workspaceFailed("Browser context ownership unavailable") }
+                return
+            }
             if case .moved(let tab, let from, let to) = state.event, from != to, let source = models[from], let destination = models[to] {
                 source.transferLocalTabState(tab, to: destination)
             }
@@ -110,6 +158,7 @@ final class BrowserWorkspace: ObservableObject {
                 let created = models[window.id] == nil
                 if created { models[window.id] = BrowserModel(appearance: appearance, workspace: self, windowID: window.id) }
                 guard let model = models[window.id] else { continue }
+                if let context = contextForWindow(window.id) { model.updateContext(context) }
                 model.prepareManagedSession(connected)
                 model.updateWindowTabs(window.tabs)
                 if created {
@@ -156,10 +205,11 @@ final class BrowserWorkspace: ObservableObject {
         guard canManageWindows, windows.contains(where: { $0.id == id }), viewport.valid else { return }
         _ = await command(.resize(id, viewport), wait: false)
     }
-    func createWindow(openTab: Bool = true, viewport: WindowViewport = WindowViewport(width: 900, height: 600, deviceScale: 1, backingScale: 1)) async -> UInt64? {
+    func createWindow(openTab: Bool = true, contextID: UInt64? = nil, viewport: WindowViewport = WindowViewport(width: 900, height: 600, deviceScale: 1, backingScale: 1)) async -> UInt64? {
         guard canManageWindows, !busy else { return nil }; busy = true; defer { busy = false }
         notice = nil
-        guard let state = await command(.create(viewport)), case .created(let id) = state.event else { return nil }
+        let context = contextID ?? contextForWindow(activeWindowID)?.id ?? 1
+        guard let state = await command(.createInContext(context, viewport)), case .created(let id) = state.event else { return nil }
         if openTab { _ = try? await send(.window(.open(id, "about:credits"))) }
         onActivateWindow?(id)
         return id
@@ -171,7 +221,8 @@ final class BrowserWorkspace: ObservableObject {
         onActivateWindow?(window); return true
     }
     func moveTabToNewWindow(_ tab: UInt64) async {
-        guard let id = await createWindow(openTab: false) else { return }
+        guard let source = windows.first(where: { $0.tabs.contains { $0.id == tab } }), let context = contextForWindow(source.id),
+              let id = await createWindow(openTab: false, contextID: context.id) else { return }
         _ = await moveTab(tab, to: id)
     }
     func closeWindow(_ id: UInt64) async -> Bool {
@@ -184,6 +235,51 @@ final class BrowserWorkspace: ObservableObject {
         return closed == id
     }
     func activateWindow(_ id: UInt64) { if windows.contains(where: { $0.id == id }) { onActivateWindow?(id) } }
+    func contextForWindow(_ id: UInt64) -> BrowserContextSummary? { contexts.first { $0.windows.contains(id) } }
+    private func persistProfiles() {
+        guard contextPreferences.error == nil else { return }
+        for context in contexts where contextKeys[context.id] == nil { contextKeys[context.id] = UUID() }
+        let profiles = contexts.map { BrowserContextPreferences.Profile(id: contextKeys[$0.id]!, name: $0.name) }
+        do {
+            if profiles != contextPreferences.profiles { try contextPreferences.save(profiles) }
+            contextKeys = contextKeys.filter { id, _ in contexts.contains { $0.id == id } }
+        } catch { notice = error.localizedDescription; canManageContexts = false }
+    }
+    private func contextCommand(_ action: ContextAction) async -> BrowserContextState? {
+        guard connected, !stopping else { return nil }
+        do {
+            let request = try await send(.browserContext(action)) { [weak self] id in
+                DispatchQueue.main.async { [weak self] in self?.contextRequests.insert(id) }
+            }
+            let deadline = Date().addingTimeInterval(5)
+            while connected, !stopping, !Task.isCancelled, Date() < deadline {
+                if let index = contextReplies.firstIndex(where: { $0.requestID == request && $0.tabID == nil }) {
+                    if case .browserContexts(let state) = contextReplies.remove(at: index).message { return state }
+                    return nil
+                }
+                try? await Task.sleep(for: .milliseconds(10))
+            }
+            notice = "The browser profile action did not complete"
+        } catch { notice = error.localizedDescription }
+        return nil
+    }
+    func createContext(_ name: String) async -> UInt64? {
+        guard canManageContexts, !busy else { return nil }; busy = true; defer { busy = false }
+        pendingProfileKey = UUID(); defer { pendingProfileKey = nil }
+        guard let state = await contextCommand(.create(name)), case .created(let id) = state.event else { return nil }
+        notice = nil; return id
+    }
+    func renameContext(_ id: UInt64, name: String) async -> Bool {
+        guard canManageContexts, !busy else { return false }; busy = true; defer { busy = false }
+        guard let state = await contextCommand(.rename(id, name)), case .renamed(let renamed) = state.event else { return false }
+        notice = nil; return renamed == id
+    }
+    func closeContext(_ id: UInt64) async -> Bool {
+        guard canManageContexts, !busy, id != 1 else { return false }; busy = true; defer { busy = false }
+        guard let state = await contextCommand(.close(id)), case .closed(let closed) = state.event else { return false }
+        notice = nil; return closed == id
+    }
+    func refreshContexts() async { if await contextCommand(.list) != nil { await refreshWindows() } }
     func synchronizePreferences() {
         guard connected, !stopping, preferenceTask == nil else { return }
         preferenceTask = Task {
@@ -198,6 +294,7 @@ final class BrowserWorkspace: ObservableObject {
     }
     func stop() async {
         guard !stopping else { return }; stopping = true; connected = false; canManageWindows = false
+        canManageContexts = false; contextRequests = []; contextReplies = []
         preferenceTask?.cancel(); replies = []; requests = [:]; requestOwners = [:]
         for model in models.values { await model.stop() }
         await session.stop()
@@ -226,7 +323,7 @@ struct TabWindowMenu: View {
     var body: some View {
         Menu("Move to Window") {
             Button("New Window") { Task { await workspace.moveTabToNewWindow(tab) } }
-            ForEach(workspace.windows.filter { $0.id != window }) { destination in
+            ForEach(workspace.windows.filter { $0.id != window && workspace.contextForWindow($0.id)?.id == workspace.contextForWindow(window)?.id }) { destination in
                 Button("Window \(destination.id)") { Task { await workspace.moveTab(tab, to: destination.id) } }
             }
         }.disabled(!workspace.canManageWindows || workspace.busy)

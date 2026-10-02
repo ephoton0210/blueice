@@ -82,6 +82,25 @@ pub(super) fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
         }
         match incoming {
             Ok((tab_id, request_id, msg)) => {
+                let (msg, context_scope) = if let ClientMessage::BrowserContext(
+                    blueice_ipc::browser_contexts::ContextAction::Command {
+                        context_id,
+                        message,
+                    },
+                ) = msg
+                {
+                    tabs.enable_native_contexts();
+                    let context = crate::BrowserContextId::from_u64(context_id);
+                    match contexts::scoped_command(tabs, context, tab_id, *message) {
+                        Ok(message) => (message, Some(context)),
+                        Err(message) => {
+                            write_error(stream, tab_id, request_id, message)?;
+                            continue;
+                        }
+                    }
+                } else {
+                    (msg, None)
+                };
                 // A tab can move while native callbacks are queued. Validate
                 // its original window before dispatching any page operation.
                 let msg =
@@ -94,7 +113,10 @@ pub(super) fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
                             .map(TabId::from_u64)
                             .unwrap_or_else(|| tabs.default_tab());
                         if tabs.tab_window(target) != Some(crate::WindowId::from_u64(window_id))
-                            || matches!(*message, ClientMessage::Window(_))
+                            || matches!(
+                                *message,
+                                ClientMessage::Window(_) | ClientMessage::BrowserContext(_)
+                            )
                         {
                             write_error(
                                 stream,
@@ -123,6 +145,9 @@ pub(super) fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
                 // by a request that left it implicit.
                 let reply_tab = Some(target.as_u64());
                 match msg {
+                    ClientMessage::BrowserContext(action) => {
+                        contexts::handle_context_action(tabs, stream, request_id, action)?
+                    }
                     ClientMessage::Hello { protocol_version } => {
                         reply_hello(stream, request_id, protocol_version)?
                     }
@@ -1236,6 +1261,10 @@ pub(super) fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
                     ClientMessage::ListTabs => {
                         let summaries: Vec<TabSummary> = tabs
                             .ids()
+                            .filter(|&id| {
+                                context_scope
+                                    .is_none_or(|context| tabs.tab_context(id) == Some(context))
+                            })
                             .map(|id| TabSummary {
                                 id: id.as_u64(),
                                 url: tabs.get(id).and_then(Page::url).map(str::to_string),
@@ -1263,7 +1292,21 @@ pub(super) fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
                                 continue;
                             }
                         };
-                        let id = tabs.create_group(name, color);
+                        let context =
+                            context_scope.unwrap_or_else(|| crate::BrowserContextId::from_u64(1));
+                        let id = match tabs.create_group_in_context(context, name, color) {
+                            Ok(id) => id,
+                            Err(message) => {
+                                write_error(stream, None, request_id, message)?;
+                                continue;
+                            }
+                        };
+                        contexts::write_context_state(
+                            tabs,
+                            stream,
+                            None,
+                            blueice_ipc::browser_contexts::ContextEvent::Snapshot,
+                        )?;
                         let summary = tab_group_summary(
                             tabs.group(id).expect("a just-created group is live"),
                         );
@@ -1290,7 +1333,16 @@ pub(super) fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
                                 continue;
                             }
                         }
-                        tabs.set_tab_group(target, group_id);
+                        if let Err(message) = tabs.assign_tab_group(target, group_id) {
+                            write_error(stream, reply_tab, request_id, message)?;
+                            continue;
+                        }
+                        windows::write_window_state(
+                            tabs,
+                            stream,
+                            None,
+                            blueice_ipc::windows::WindowEvent::Snapshot,
+                        )?;
                         blueice_ipc::write_server_message_with_ids(
                             stream,
                             reply_tab,
@@ -1320,6 +1372,12 @@ pub(super) fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
                             }
                         };
                         tabs.rename_group(id, name);
+                        contexts::write_context_state(
+                            tabs,
+                            stream,
+                            None,
+                            blueice_ipc::browser_contexts::ContextEvent::Snapshot,
+                        )?;
                         let summary =
                             tab_group_summary(tabs.group(id).expect("group remains live"));
                         blueice_ipc::write_server_message_with_id(
@@ -1347,6 +1405,12 @@ pub(super) fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
                             }
                         };
                         tabs.set_group_color(id, color);
+                        contexts::write_context_state(
+                            tabs,
+                            stream,
+                            None,
+                            blueice_ipc::browser_contexts::ContextEvent::Snapshot,
+                        )?;
                         let summary =
                             tab_group_summary(tabs.group(id).expect("group remains live"));
                         blueice_ipc::write_server_message_with_id(
@@ -1370,6 +1434,12 @@ pub(super) fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
                             continue;
                         }
                         tabs.set_group_collapsed(id, collapsed);
+                        contexts::write_context_state(
+                            tabs,
+                            stream,
+                            None,
+                            blueice_ipc::browser_contexts::ContextEvent::Snapshot,
+                        )?;
                         let summary =
                             tab_group_summary(tabs.group(id).expect("group remains live"));
                         blueice_ipc::write_server_message_with_id(
@@ -1394,9 +1464,21 @@ pub(super) fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
                             request_id,
                             &ServerMessage::TabGroupClosed { group_id },
                         )?;
+                        windows::write_window_state(
+                            tabs,
+                            stream,
+                            None,
+                            blueice_ipc::windows::WindowEvent::Snapshot,
+                        )?;
                     }
                     ClientMessage::ListTabGroups => {
-                        let groups = tabs.groups().map(tab_group_summary).collect();
+                        let groups = tabs
+                            .context_groups(
+                                context_scope
+                                    .unwrap_or_else(|| crate::BrowserContextId::from_u64(1)),
+                            )
+                            .map(tab_group_summary)
+                            .collect();
                         blueice_ipc::write_server_message_with_id(
                             stream,
                             request_id,

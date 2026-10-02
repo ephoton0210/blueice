@@ -19,6 +19,7 @@ impl WindowId {
 }
 
 pub(super) struct CoreWindow {
+    pub(super) context_id: BrowserContextId,
     pub(super) viewport: DisplayViewport,
     pub(super) native: bool,
     pub(super) tabs: Vec<TabId>,
@@ -41,6 +42,16 @@ impl TabManager {
         self.tabs.get(&id).map(|t| t.window_id)
     }
     pub fn create_window(&mut self, viewport: DisplayViewport) -> Result<WindowId, String> {
+        self.create_window_in_context(BrowserContextId::from_u64(1), viewport)
+    }
+    pub fn create_window_in_context(
+        &mut self,
+        context_id: BrowserContextId,
+        viewport: DisplayViewport,
+    ) -> Result<WindowId, String> {
+        if self.context(context_id).is_none() {
+            return Err("Unknown browser context".into());
+        }
         viewport.validate()?;
         if self.windows.len() >= 64 {
             return Err("Browser window limit reached".into());
@@ -53,6 +64,7 @@ impl TabManager {
         self.windows.insert(
             id,
             CoreWindow {
+                context_id,
                 viewport,
                 native: true,
                 tabs: Vec::new(),
@@ -112,6 +124,9 @@ impl TabManager {
             .window_viewport(destination)
             .ok_or("Unknown browser window")?;
         let source = self.tab_window(id).ok_or("Unknown tab")?;
+        if self.window_context(source) != self.window_context(destination) {
+            return Err("A tab cannot move to a different browser context".into());
+        }
         if source == destination {
             return Ok(());
         }

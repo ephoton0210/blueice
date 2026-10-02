@@ -31,7 +31,10 @@ use blueice_css::{cascade, ua_stylesheet, Origin};
 use blueice_paint::Frame;
 
 pub use page::Page;
-pub use tabs::{GroupId, HistorySnapshotMode, TabGroup, TabId, TabManager, WindowId};
+pub use tabs::{
+    BrowserContext, BrowserContextId, ClosedBrowserContext, GroupId, HistorySnapshotMode, TabGroup,
+    TabId, TabManager, WindowId,
+};
 
 /// One-shot render: parse `html`, cascade with `css` (an explicit
 /// stylesheet, e.g. from a test fixture) plus any `<style>` tags found

@@ -245,8 +245,8 @@ values and zoom. Empty groups remain editable. Invalid names/colors and closed
 editor targets cannot save. Core replies update the chrome, and group errors
 have their own notice without replacing navigation or policy messages.
 See [tab group results](../../development/browser_core/phase-22-browser-shell-accessibility/MACOS_TAB_GROUP_RESULTS.md).
-Groups currently live in the running core session; restart restoration,
-drag reordering and profile handoff remain pending.
+Groups currently live in the running core session and belong to one browser
+context; restart restoration and drag reordering remain pending.
 
 Native windows share one owned launcher/core/gatekeeper session. Command-N and
 File > New Window open a real AppKit window; Window menu entries activate it.
@@ -267,8 +267,26 @@ native focus generation and ends temporary composition, preserving committed
 text and selection. Window IDs are lifecycle checks and confer no permission.
 Malformed registry metadata disables management with a Retry notice while
 preserving native windows. Find queries and pending resubmission prompts move
-with their tab; profile isolation/restoration and drag reordering remain open.
+with their tab; session restoration and drag reordering remain open.
 See [multi-window results](../../development/browser_core/phase-22-browser-shell-accessibility/MACOS_WINDOW_RESULTS.md).
+
+Profiles in the toolbar and native Profiles menu create, rename and remove named
+core contexts or open a window in one. Command-N uses the active profile. Windows,
+tabs and groups belong to exactly one context; cross-context transfer and group
+assignment are rejected. Removing a profile closes only its windows and tabs;
+the default context cannot be removed. Same-context transfer retains the same
+page and edited state. Every profile uses the same owned core and mandatory
+navigation review. Context IDs are ownership/lifetime checks, not permissions.
+
+Profile names and logical UUID keys persist in a bounded preferences catalog;
+runtime IDs are recreated on relaunch. Additional saved profiles reopen empty
+and create a page only when a window is explicitly opened; the default window
+still starts on about:credits. Page/history restoration, storage
+partitioning and private browsing remain pending. Current networking has no
+cookies, cache or authentication; display/assistant/extension/download settings
+are not partitioned by this increment. Invalid saved catalogs are retained while
+profile management is disabled. The read-only MCP list_browser_contexts tool
+observes the same core context, window and group registry.
 
 Frame refresh temporarily suspends semantic actions until the representation
 matches the current tab, source, generation and URL. Native element identities

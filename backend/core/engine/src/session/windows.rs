@@ -12,6 +12,12 @@ pub(super) fn write_window_state<S: Write>(
     request: Option<u64>,
     event: WindowEvent,
 ) -> io::Result<()> {
+    contexts::write_context_state(
+        tabs,
+        stream,
+        None,
+        blueice_ipc::browser_contexts::ContextEvent::Snapshot,
+    )?;
     if !tabs.native_windows_enabled() {
         return Ok(());
     }
@@ -57,6 +63,19 @@ pub(super) fn handle_window_action<S: Write>(
                 vec![],
             )
         }),
+        WindowAction::CreateInContext {
+            context_id,
+            viewport,
+        } => tabs
+            .create_window_in_context(crate::BrowserContextId::from_u64(context_id), viewport)
+            .map(|id| {
+                (
+                    WindowEvent::Created {
+                        window_id: id.as_u64(),
+                    },
+                    vec![],
+                )
+            }),
         WindowAction::Resize {
             window_id,
             viewport,

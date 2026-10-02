@@ -41,7 +41,7 @@ final class BrowserAppearance: ObservableObject {
             }
         }
     }
-    private static func preferenceStore() -> UserDefaults {
+    static func preferenceStore() -> UserDefaults {
         let args = ProcessInfo.processInfo.arguments
         if let i = args.firstIndex(of: "--preferences-domain"), args.indices.contains(i + 1),
            !args[i + 1].isEmpty, args[i + 1].utf8.count <= 255, let store = UserDefaults(suiteName: args[i + 1]) { return store }

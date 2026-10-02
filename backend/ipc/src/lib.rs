@@ -36,6 +36,7 @@ pub const MAX_FRAME_BYTES: usize = 8 * 1024 * 1024;
 
 pub mod ai;
 pub mod assistant;
+pub mod browser_contexts;
 pub mod compiler;
 pub mod compiler_catalog;
 pub mod compiler_output;
@@ -190,6 +191,8 @@ pub enum ClientMessage {
     GetViewportState,
     /// Opt in to core-owned window membership and independent viewports.
     Window(windows::WindowAction),
+    /// Opt in to context ownership; scoped commands reject stale membership.
+    BrowserContext(browser_contexts::ContextAction),
     SetDisplayPreferences {
         preferences: display::DisplayPreferences,
     },
@@ -411,6 +414,7 @@ pub enum ServerMessage {
     ViewportState(viewport::ViewportState),
     /// Canonical native windows and ordered tab membership.
     WindowState(windows::WindowState),
+    BrowserContextState(browser_contexts::ContextState),
     DisplayPreferencesState(display::DisplayPreferencesState),
     /// A correlated copy reply. The core never accesses the OS clipboard.
     ContextMenuLink {
