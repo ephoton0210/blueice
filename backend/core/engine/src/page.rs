@@ -64,6 +64,9 @@ pub struct Page {
     native_focus_generation: u64,
     native_focus_exit: Option<blueice_ipc::input::FocusDirection>,
     native_focus_start: Option<NodeId>,
+    /// Core-owned defaults survive live native/extension value changes. This
+    /// private state never enters accessibility or script IPC snapshots.
+    native_form_defaults: HashMap<NodeId, native_forms::ControlDefault>,
     highlighted: Option<NodeId>,
     /// The most recent raster frame for this one tab. Another tab rendering
     /// must not invalidate this tab's frame/representation pairing.
@@ -122,6 +125,7 @@ impl Page {
             native_focus_generation: 0,
             native_focus_exit: None,
             native_focus_start: None,
+            native_form_defaults: HashMap::new(),
             highlighted: None,
             frame_generation: 0,
             downloads: None,
@@ -158,6 +162,7 @@ impl Page {
             .unwrap_or_default();
         self.network_response = None;
         self.network_trace = None;
+        self.native_form_defaults.clear();
         self.document_generation = self.document_generation.wrapping_add(1);
         self.script_nodes.clear();
         self.script_node_handles.clear();
@@ -199,6 +204,7 @@ impl Page {
     }
 
     fn recascade(&mut self) {
+        self.remember_native_form_defaults();
         let author = crate::stylesheet::extract_inline_stylesheets(&self.doc);
         self.styles = cascade(
             &self.doc,
@@ -828,6 +834,7 @@ impl Page {
             return Err("the child node is already attached".to_string());
         }
         self.doc.append_child(parent, child);
+        self.native_form_script_text_change(parent);
         // Newly created elements have no computed style until they join this
         // document. Recompute author/UA styles before layout and paint.
         self.recascade();
@@ -869,6 +876,7 @@ impl Page {
                 self.doc.append_child(node, text);
             }
         }
+        self.native_form_script_text_change(node);
         self.relayout();
         Ok(())
     }
@@ -1056,6 +1064,7 @@ impl Page {
 mod dom_helpers;
 mod dom_write;
 mod native_editing;
+mod native_forms;
 mod native_interaction;
 use dom_helpers::*;
 

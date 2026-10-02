@@ -363,6 +363,7 @@ fn paint_native_form(
     use blueice_layout::NativeForm;
     let opacity = style.opacity();
     let text = match form {
+        NativeForm::Button(label) => label.clone(),
         NativeForm::CheckBox(checked) => if *checked { "☑" } else { "☐" }.to_string(),
         NativeForm::Radio(checked) => if *checked { "◉" } else { "○" }.to_string(),
         NativeForm::Select(label) => format!("{label} ▾"),

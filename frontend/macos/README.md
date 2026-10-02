@@ -110,6 +110,9 @@ for the later native bridge checks. The
 distinguishes passed native checks from the pending physical input-method test.
 The [keyboard interaction validation record](../../development/browser_core/phase-22-browser-shell-accessibility/MACOS_KEYBOARD_RESULTS.md)
 records the later control defaults and native focus handoff.
+The [native form reset record](../../development/browser_core/phase-22-browser-shell-accessibility/MACOS_FORM_RESET_RESULTS.md)
+records real-service composition/context invalidation and actual-window
+keyboard/pointer reset, external form associations, tab isolation and reload.
 
 Apple documents the native adapters and test entry points in
 [NSViewRepresentable](https://developer.apple.com/documentation/swiftui/nsviewrepresentable)
@@ -170,6 +173,16 @@ events pinned to the current tab/document. It replays them to the acknowledged
 page control or native address editor; tab/document changes discard them.
 The owned window keeps later keys behind pending events during responder
 changes, preserving their order even after the address editor acquires focus.
+
+Native reset buttons restore their core-owned form defaults, including externally
+associated controls, while unrelated forms and tabs keep their values. Reset
+clears native composition and rejects old input contexts; it does not navigate.
+Input-button captions share the paint and accessibility label source. Native
+reset uses the existing cancellable click boundary.
+The shell also clears the previous native editing error after accepted input
+or a focus change, preserving navigation and gatekeeper denial messages.
+Full DOM reset-event
+dispatch, GET/POST submission and validation remain pending.
 
 Frame refresh temporarily suspends semantic actions until the representation
 matches the current tab, source, generation and URL. Native element identities

@@ -189,4 +189,52 @@ final class NativeEditingTests: XCTestCase {
         XCTAssertFalse(menu.sources.isEmpty, "System keyboard sources also remain available for the native address field")
         XCTAssertNil(menu.selected)
     }
+
+    func testNativeFormResetRestoresMarkedTextAndInvalidatesOldEditsWithRealServices() async throws {
+        let (model, view, fixture) = try await start(path: "/reset")
+        defer { fixture.stop(); Task { await model.stop() } }
+        try await focus("Readonly", model: model, view: view)
+        view.insertText("bad", replacementRange: NSRange(location: NSNotFound, length: 0))
+        await wait { model.status.contains("read-only") && !model.textInputBusy }
+        try await focus("Name", model: model, view: view)
+        view.selectAll(nil); view.insertText("edited", replacementRange: NSRange(location: NSNotFound, length: 0))
+        await wait { model.textInputState?.focused?.text == "edited" && !model.textInputBusy }
+        try await focus("Notes", model: model, view: view)
+        view.selectAll(nil)
+        view.setMarkedText("中文", selectedRange: NSRange(location: 2, length: 0), replacementRange: NSRange(location: NSNotFound, length: 0))
+        await wait { model.textInputState?.focused?.marked != nil && !model.textInputBusy }
+        for _ in 0..<6 { model.textInput(.key(.tab, false)) }
+        await wait { model.textInputState?.focused_node == model.representation?.nodes.first(where: { $0.name == "Reset form" })?.id && !model.textInputBusy }
+        let context = try XCTUnwrap(model.textInputState?.context)
+        let generation = model.generation
+        model.textInput(.key(.enter, false))
+        await wait { model.generation > generation && model.textInputState?.focus_generation != context.focus_generation && !model.textInputBusy }
+        XCTAssertEqual(model.textInputState?.document_generation, context.document_generation)
+        await wait { model.representation?.nodes.first(where: { $0.name == "Name" })?.state.value == "A😀B" }
+        XCTAssertEqual(model.representation?.nodes.first(where: { $0.name == "Notes" })?.state.value, "first\nsecond")
+        XCTAssertEqual(model.status, "Ready", "A successful reset must not report a previous native editing failure")
+        model.action(.textInput(context, .key(.tab, false)))
+        await wait { model.status.contains("Stale") }
+        try await focus("Notes", model: model, view: view)
+        view.refreshTextInput()
+        XCTAssertFalse(view.hasMarkedText())
+        XCTAssertEqual(model.textInputState?.focused?.text, "first\nsecond")
+        view.doCommand(by: NSSelectorFromString("cancelOperation:"))
+        await wait { !model.textInputBusy }
+        XCTAssertEqual(model.textInputState?.focused?.text, "first\nsecond")
+        XCTAssertEqual(fixture.requests, ["/reset"], "Reset is a local default action and must not fetch")
+        try await focus("Readonly", model: model, view: view)
+        view.insertText("bad", replacementRange: NSRange(location: NSNotFound, length: 0))
+        await wait { model.status.contains("read-only") && !model.textInputBusy }
+        model.address = fixture.origin + "/blocked"; model.navigateAddress()
+        await wait { model.status.contains("Navigation blocked") }
+        let snapshot = try XCTUnwrap(model.representation)
+        let reset = try XCTUnwrap(snapshot.nodes.first { $0.name == "Reset form" })
+        let beforeReset = model.generation
+        XCTAssertTrue(model.accessibilityAction(snapshot, epoch: model.accessibilityEpoch, node: reset))
+        await wait { model.generation > beforeReset && !model.textInputBusy }
+        XCTAssertTrue(model.status.contains("Navigation blocked"), "Input recovery must preserve the mandatory policy denial")
+        XCTAssertEqual(fixture.requests, ["/reset", "/blocked"])
+        await model.stop()
+    }
 }

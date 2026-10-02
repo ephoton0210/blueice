@@ -647,7 +647,18 @@ pub(super) fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
                                 )?;
                                 continue;
                             }
-                            if let Some(href) = href {
+                            let native_navigation = match tabs
+                                .get_mut(target)
+                                .expect("checked immediately above")
+                                .native_control_activation(node)
+                            {
+                                Ok(url) => url,
+                                Err(message) => {
+                                    write_error(stream, reply_tab, request_id, message)?;
+                                    continue;
+                                }
+                            };
+                            if let Some(href) = href.or(native_navigation) {
                                 begin_gated_navigation(
                                     tabs,
                                     stream,
@@ -666,7 +677,11 @@ pub(super) fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
                                 )?;
                                 continue;
                             }
-                            if prevented.is_some() {
+                            if prevented.is_some()
+                                || tabs
+                                    .get(target)
+                                    .is_some_and(|page| page.native_focusable(node))
+                            {
                                 let page = tabs
                                     .get_mut(target)
                                     .expect("a click listener cannot close a core-owned tab");

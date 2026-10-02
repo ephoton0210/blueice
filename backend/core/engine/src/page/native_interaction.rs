@@ -10,7 +10,7 @@ use blueice_ipc::input::{
     FocusDirection, PageKey, TextInputAction, TextInputContext, TextMovement,
 };
 
-fn tag(doc: &Document, id: NodeId) -> &str {
+pub(super) fn tag(doc: &Document, id: NodeId) -> &str {
     match doc.data(id) {
         NodeData::Element { tag_name, .. } => tag_name,
         _ => "",
@@ -21,7 +21,7 @@ fn has(doc: &Document, id: NodeId, name: &str) -> bool {
     element_attribute(doc, id, name).is_some()
 }
 
-fn input_type(doc: &Document, id: NodeId) -> String {
+pub(super) fn input_type(doc: &Document, id: NodeId) -> String {
     element_attribute(doc, id, "type")
         .unwrap_or("text")
         .to_ascii_lowercase()
@@ -47,7 +47,7 @@ fn inside(doc: &Document, id: NodeId, ancestor: NodeId) -> bool {
 
 /// The form attribute resolves against the first matching ID, including when
 /// that match is not a form. Unresolved explicit owners do not fall back.
-fn form_owner(doc: &Document, id: NodeId) -> Option<NodeId> {
+pub(super) fn form_owner(doc: &Document, id: NodeId) -> Option<NodeId> {
     if let Some(name) = element_attribute(doc, id, "form") {
         let owner = find_element_by_id(doc, doc.root(), name)?;
         return (tag(doc, owner) == "form").then_some(owner);
@@ -421,7 +421,7 @@ impl Page {
         Ok(false)
     }
 
-    fn native_options(&self, select: NodeId) -> Vec<NodeId> {
+    pub(super) fn native_options(&self, select: NodeId) -> Vec<NodeId> {
         let mut nodes = Vec::new();
         descendants(&self.doc, select, &mut nodes);
         nodes
@@ -538,7 +538,7 @@ impl Page {
         }
     }
 
-    fn native_set_boolean(&mut self, id: NodeId, name: &str, value: bool) {
+    pub(super) fn native_set_boolean(&mut self, id: NodeId, name: &str, value: bool) {
         let NodeData::Element { attributes, .. } = self.doc.data_mut(id) else {
             return;
         };
@@ -552,9 +552,19 @@ impl Page {
         &mut self,
         target: NodeId,
     ) -> Result<Option<String>, String> {
+        if !self.doc.contains(target) {
+            return Ok(None);
+        }
         let Some(id) = self.native_pointer_focus(Some(target)) else {
             return Ok(None);
         };
+        if matches!(tag(&self.doc, id), "input" | "button") && input_type(&self.doc, id) == "reset"
+        {
+            if let Some(form) = form_owner(&self.doc, id) {
+                self.reset_native_form(form);
+            }
+            return Ok(None);
+        }
         if tag(&self.doc, id) == "input" {
             match input_type(&self.doc, id).as_str() {
                 "checkbox" => {

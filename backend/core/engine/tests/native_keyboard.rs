@@ -187,6 +187,34 @@ impl Browser {
         });
     }
 
+    fn focus(&mut self, name: &str) {
+        let id = self
+            .snapshot()
+            .nodes
+            .iter()
+            .find(|node| node.name.as_deref() == Some(name))
+            .unwrap()
+            .id;
+        self.interaction(ClientMessage::ActOn {
+            id,
+            action: NodeAction::Focus,
+        });
+    }
+
+    fn set_value(&mut self, name: &str, value: &str) {
+        let id = self
+            .snapshot()
+            .nodes
+            .iter()
+            .find(|node| node.name.as_deref() == Some(name))
+            .unwrap()
+            .id;
+        self.interaction(ClientMessage::ActOn {
+            id,
+            action: NodeAction::SetValue(value.into()),
+        });
+    }
+
     fn snapshot(&mut self) -> AiSnapshot {
         blueice_ipc::write_client_message(&mut self.stream, &ClientMessage::GetRepresentation)
             .unwrap();
@@ -601,4 +629,315 @@ fn static_and_interactive_paint_share_native_form_control_pixels() {
         blueice_paint::dump_frame(&page.render()),
         blueice_paint::dump_frame(&blueice_engine::render(html, "", 500.0)),
     );
+}
+
+#[test]
+fn reset_restores_original_text_checkbox_radio_select_and_range_values() {
+    let mut browser = Browser::new(
+        r#"
+      <form><input aria-label='Text' value='start'><input aria-label='Check' type='checkbox' checked>
+      <input aria-label='Alpha' type='radio' name='group' checked><input aria-label='Beta' type='radio' name='group'>
+      <select aria-label='Region'><option value='a'>Alpha</option><option value='b'>Beta</option></select>
+      <input aria-label='Level' type='range' value='25'><button type='reset' aria-label='Reset'>Reset</button></form>"#,
+    );
+    browser.focus("Text");
+    browser
+        .input(
+            browser.context(),
+            TextInputAction::Replace {
+                text: "edited".into(),
+                replacement: Some(blueice_ipc::input::TextRange {
+                    location: 0,
+                    length: 5,
+                }),
+            },
+        )
+        .unwrap();
+    browser.focus("Check");
+    browser.key(PageKey::Space, false);
+    browser.focus("Alpha");
+    browser.key(PageKey::ArrowRight, false);
+    browser.focus("Region");
+    browser.key(PageKey::ArrowDown, false);
+    browser.focus("Level");
+    browser.key(PageKey::End, false);
+    browser.focus("Reset");
+    browser.key(PageKey::Enter, false);
+    let snapshot = browser.snapshot();
+    let state = |name: &str| {
+        &snapshot
+            .nodes
+            .iter()
+            .find(|node| node.name.as_deref() == Some(name))
+            .unwrap()
+            .state
+    };
+    assert_eq!(state("Text").value.as_deref(), Some("start"));
+    assert_eq!(state("Check").checked, Some(true));
+    assert_eq!(state("Alpha").checked, Some(true));
+    assert_eq!(state("Beta").checked, Some(false));
+    assert_eq!(state("Region").value.as_deref(), Some("a"));
+    assert_eq!(state("Level").value.as_deref(), Some("25"));
+    assert_eq!(snapshot.url.as_deref(), Some("https://example.test/form"));
+}
+
+#[test]
+fn reset_uses_explicit_form_owners_and_restores_disabled_and_readonly_values() {
+    let mut browser = Browser::new(
+        r#"
+        <form id='first'><input aria-label='Inside' value='one'>
+        <input form='second' aria-label='Reassigned' value='two'>
+        <input form='missing' aria-label='Orphan' value='orphan'>
+        <input aria-label='Readonly' readonly value='locked'>
+        <fieldset disabled><input aria-label='Disabled' value='disabled'></fieldset>
+        <button type='reset' aria-label='Reset first'>Reset first</button></form>
+        <form id='second'><input aria-label='Other' value='other'></form>
+        <textarea form='first' aria-label='External'>line one
+line two</textarea>
+        <button type='ReSeT' form='first' aria-label='Reset external'><span>Reset external</span></button>"#,
+    );
+    for name in [
+        "Inside",
+        "Reassigned",
+        "Orphan",
+        "Readonly",
+        "Disabled",
+        "Other",
+    ] {
+        browser.set_value(name, "changed");
+    }
+    browser.focus("External");
+    browser
+        .input(
+            browser.context(),
+            TextInputAction::Replace {
+                text: "changed notes".into(),
+                replacement: Some(blueice_ipc::input::TextRange {
+                    location: 0,
+                    length: 17,
+                }),
+            },
+        )
+        .unwrap();
+    browser.click("Reset external");
+    let snapshot = browser.snapshot();
+    for (name, value) in [
+        ("Inside", "one"),
+        ("Readonly", "locked"),
+        ("Disabled", "disabled"),
+        ("Reassigned", "changed"),
+        ("Orphan", "changed"),
+        ("Other", "changed"),
+        ("External", "line one\nline two"),
+    ] {
+        assert_eq!(
+            snapshot
+                .nodes
+                .iter()
+                .find(|n| n.name.as_deref() == Some(name))
+                .unwrap()
+                .state
+                .value
+                .as_deref(),
+            Some(value),
+            "{name}"
+        );
+    }
+    assert_eq!(browser.focused_name(), "Reset external");
+}
+
+#[test]
+fn reset_clears_marked_text_and_rejects_pre_reset_context_without_changing_document() {
+    let mut browser = Browser::new("<form><textarea aria-label='Notes'>original</textarea><button type='reset' aria-label='Reset'>Reset</button></form>");
+    browser.focus("Notes");
+    browser
+        .input(
+            browser.context(),
+            TextInputAction::Compose {
+                text: "中文".into(),
+                selection: blueice_ipc::input::TextRange {
+                    location: 2,
+                    length: 0,
+                },
+                replacement: Some(blueice_ipc::input::TextRange {
+                    location: 0,
+                    length: 8,
+                }),
+            },
+        )
+        .unwrap();
+    assert!(browser.state.focused.as_ref().unwrap().marked.is_some());
+    browser.focus("Reset");
+    let old = browser.context();
+    browser.key(PageKey::Enter, false);
+    assert_eq!(
+        browser.context().document_generation,
+        old.document_generation
+    );
+    assert_ne!(browser.context().focus_generation, old.focus_generation);
+    assert_eq!(browser.focused_name(), "Reset");
+    let pixels = browser.pixels.clone();
+    let error = browser
+        .input(
+            old,
+            TextInputAction::Key {
+                key: PageKey::Tab,
+                shift: false,
+            },
+        )
+        .unwrap_err();
+    assert!(error.contains("Stale"), "{error}");
+    assert_eq!(pixels, browser.pixels);
+    browser.focus("Notes");
+    assert_eq!(
+        browser.state.focused.as_ref().unwrap().text.as_deref(),
+        Some("original")
+    );
+    assert!(browser.state.focused.as_ref().unwrap().marked.is_none());
+    browser
+        .input(browser.context(), TextInputAction::CancelComposition)
+        .unwrap();
+    assert_eq!(
+        browser.state.focused.as_ref().unwrap().text.as_deref(),
+        Some("original")
+    );
+}
+
+#[test]
+fn prevented_reset_and_document_replacement_keep_click_listener_ordering() {
+    for (prevent, replacement) in [(true, None), (false, Some("<form><input aria-label='Text' value='replacement'><button type='reset' aria-label='New reset'>New reset</button></form>"))] {
+        let calls = Arc::new(AtomicU64::new(0));
+        let mut browser = Browser::with_executor("<form><input aria-label='Text' value='original'><button type='reset' aria-label='Reset'>Reset</button></form>",
+            Some(ClickExecutor { calls: calls.clone(), prevent, replacement }));
+        browser.set_value("Text", "changed");
+        browser.focus("Reset");
+        browser.key(PageKey::Space, false);
+        assert_eq!(calls.load(Ordering::Relaxed), 1);
+        let snapshot = browser.snapshot();
+        assert_eq!(snapshot.nodes.iter().find(|n| n.name.as_deref() == Some("Text")).unwrap().state.value.as_deref(), Some(if prevent { "changed" } else { "replacement" }));
+    }
+}
+
+#[test]
+fn disabled_or_unowned_reset_has_no_default_and_act_on_click_shares_native_reset() {
+    let mut browser = Browser::new("<form id='f'><input aria-label='Text' value='original'><button type='reset' disabled aria-label='Disabled reset'>Disabled reset</button></form><button type='reset' form='missing' aria-label='Unowned reset'>Unowned reset</button><button type='reset' form='f' aria-label='Reset'>Reset</button>");
+    browser.set_value("Text", "changed");
+    for name in ["Disabled reset", "Unowned reset"] {
+        browser.click(name);
+    }
+    assert_eq!(
+        browser
+            .snapshot()
+            .nodes
+            .iter()
+            .find(|n| n.name.as_deref() == Some("Text"))
+            .unwrap()
+            .state
+            .value
+            .as_deref(),
+        Some("changed")
+    );
+    let id = browser
+        .snapshot()
+        .nodes
+        .iter()
+        .find(|n| n.name.as_deref() == Some("Reset"))
+        .unwrap()
+        .id;
+    browser.interaction(ClientMessage::ActOn {
+        id,
+        action: NodeAction::Click,
+    });
+    assert_eq!(
+        browser
+            .snapshot()
+            .nodes
+            .iter()
+            .find(|n| n.name.as_deref() == Some("Text"))
+            .unwrap()
+            .state
+            .value
+            .as_deref(),
+        Some("original")
+    );
+}
+
+#[test]
+fn input_reset_exposes_and_paints_its_default_and_explicit_button_captions() {
+    use blueice_ipc::Role;
+    use blueice_paint::PaintCommand;
+    let html = "<form><input aria-label='Text' value='start'><input type='ReSeT'><input type='reset' value='Clear form'></form>";
+    let rendered = blueice_engine::render(html, "", 500.0);
+    for caption in ["Reset", "Clear form"] {
+        assert!(
+            rendered.commands.iter().any(
+                |command| matches!(command, PaintCommand::Text { text, .. } if text == caption)
+            ),
+            "Missing painted {caption}"
+        );
+    }
+    let mut browser = Browser::new(html);
+    for name in ["Reset", "Clear form"] {
+        let snapshot = browser.snapshot();
+        assert_eq!(
+            snapshot
+                .nodes
+                .iter()
+                .find(|n| n.name.as_deref() == Some(name))
+                .unwrap()
+                .role,
+            Role::Button
+        );
+        browser.set_value("Text", "changed");
+        browser.click(name);
+        assert_eq!(
+            browser
+                .snapshot()
+                .nodes
+                .iter()
+                .find(|n| n.name.as_deref() == Some("Text"))
+                .unwrap()
+                .state
+                .value
+                .as_deref(),
+            Some("start")
+        );
+    }
+}
+
+#[test]
+fn reset_keeps_original_and_edited_passwords_out_of_native_observation() {
+    let mut browser = Browser::new("<form><input type='password' aria-label='Secret' value='original-private'><button type='reset' aria-label='Reset'>Reset</button></form>");
+    browser.focus("Secret");
+    browser
+        .input(
+            browser.context(),
+            TextInputAction::Replace {
+                text: "edited-private-value".into(),
+                replacement: Some(blueice_ipc::input::TextRange {
+                    location: 0,
+                    length: 16,
+                }),
+            },
+        )
+        .unwrap();
+    assert_eq!(browser.state.focused.as_ref().unwrap().text_length, 20);
+    assert!(browser.state.focused.as_ref().unwrap().text.is_none());
+    browser.focus("Reset");
+    browser.key(PageKey::Enter, false);
+    browser.focus("Secret");
+    assert_eq!(browser.state.focused.as_ref().unwrap().text_length, 16);
+    assert!(browser.state.focused.as_ref().unwrap().text.is_none());
+    let snapshot = browser.snapshot();
+    assert!(snapshot
+        .nodes
+        .iter()
+        .find(|n| n.name.as_deref() == Some("Secret"))
+        .unwrap()
+        .state
+        .value
+        .is_none());
+    let observation = format!("{:?} {snapshot:?}", browser.state);
+    assert!(!observation.contains("original-private"));
+    assert!(!observation.contains("edited-private-value"));
 }

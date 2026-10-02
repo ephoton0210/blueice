@@ -155,12 +155,18 @@ fn infer_role(tag: &str, attributes: &[(String, String)]) -> Option<Role> {
     match tag {
         "a" if attr(attributes, "href").is_some() => Some(Role::Link),
         "button" => Some(Role::Button),
-        "input" => Some(match attr(attributes, "type") {
-            Some("checkbox") | Some("radio") => Role::CheckBox,
-            Some("range") => Role::Slider,
-            Some("submit") | Some("button") | Some("reset") => Role::Button,
-            _ => Role::TextBox,
-        }),
+        "input" => Some(
+            match attr(attributes, "type")
+                .unwrap_or("text")
+                .to_ascii_lowercase()
+                .as_str()
+            {
+                "checkbox" | "radio" => Role::CheckBox,
+                "range" => Role::Slider,
+                "submit" | "button" | "reset" => Role::Button,
+                _ => Role::TextBox,
+            },
+        ),
         "textarea" => Some(Role::TextBox),
         "select" => Some(Role::ComboBox),
         "option" => Some(Role::Option),
@@ -200,6 +206,19 @@ fn compute_name(
         };
     }
     if matches!(tag, "input" | "textarea" | "select") {
+        if let Some(label) = blueice_layout::input_button_label(doc, node) {
+            return (
+                Some(label),
+                Some(NameFrom::Attribute(
+                    if attr(attributes, "value").is_some() {
+                        "value"
+                    } else {
+                        "type"
+                    }
+                    .into(),
+                )),
+            );
+        }
         if let Some(id_attr) = attr(attributes, "id") {
             if let Some(label_text) = find_label_text_for(doc, id_attr, originals) {
                 return (Some(label_text), Some(NameFrom::Contents));

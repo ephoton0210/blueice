@@ -13,7 +13,7 @@ pushed to the current tracked branch as authorized by the owner.
 | Owned service stack | Bundled launcher/core/gatekeeper, reviewed external navigation, fail-closed review, normal/forced cleanup | Committed `32fa07f6b` |
 | Page accessibility | Core semantic tree mapped into NSAccessibility, native actions, privacy, stale-element and tab isolation tests | Committed and pushed `41952a803` |
 | Native text editing | Core-owned UTF-16 selection, grapheme movement/deletion, IME composition/update/commit/cancel, caret/candidate geometry, text/password/textarea editing, clipboard policy and native UI tests | Foundation committed and pushed `8b80c3c53`; physical OS IME and remaining editing behavior pending, see [results](MACOS_NATIVE_EDITING_RESULTS.md) |
-| Keyboard and page interaction | Keyboard-only form completion, checkbox/radio/select/range controls, find-in-page, native context menus, drag/drop and file-selection policy tests | Core control defaults and native Tab handoff validated, see [results](MACOS_KEYBOARD_RESULTS.md); form submission and remaining interactions pending |
+| Keyboard and page interaction | Keyboard-only form completion, checkbox/radio/select/range controls, find-in-page, native context menus, drag/drop and file-selection policy tests | Keyboard increment committed and pushed `97794bb57`; native form reset validated in [results](MACOS_FORM_RESET_RESULTS.md); form submission and remaining interactions pending |
 | Windows and tab organization | Multiple native windows, tab groups, profile/context lifecycle, retained history and state handoff using core tab identities | Pending |
 | Downloads and printing | Actual download manager/shelf, progress/cancel/open/reveal, print/PDF media output and native panel tests | Pending |
 | Trusted browser panels | Assistant results and human permission decisions using the private owner boundary, policy-denial and no-AI-grant tests | Pending |
@@ -66,12 +66,32 @@ replayed, preserving event order across responder changes. The keyboard activati
 cancellation and document replacement before applying defaults.
 
 This increment covers keyboard control completion and reviewed link activation,
-not full form submission. Submission/reset, validation, popup/typeahead and
+not full form submission. Submission, validation, popup/typeahead and
 multiple-select interaction, DOM key/input/focus/composition events, full chrome
 Tab traversal, find, context menus, drag/drop and file-selection remain required.
 Multiple-select direction keys deliberately preserve existing selections until
 their own interaction model is implemented. Physical OS IME and screen-reader
 acceptance remain separate gates.
+
+## Native form reset increment
+
+The core retains original control defaults separately from live native values.
+Reset buttons restore their current form owner's text/password/textarea,
+checkbox/radio, select and range state, including external associations and
+disabled/readonly fields. Unrelated forms and tabs retain their values. A reset
+retains control focus, invalidates old native input contexts, ends composition
+and republishes shared pixels and semantic values without fetching.
+Input reset/submit/button captions use the same core label for paint and
+semantics. Existing pre-default click cancellation and document replacement
+remain effective. Explicit page-script textarea textContent/appendChild changes
+update the retained default; extension/native live-value edits do not.
+The native shell clears a correlated editing error after a successful edit or
+focus change, while preserving navigation and mandatory policy-denial notices.
+
+This increment covers the native reset default. Full cancelable DOM reset-event
+dispatch, form methods and encodings, constraint validation, dirty value/default
+DOM property semantics and file-input state remain pending. The separate result
+record identifies exactly which real-service and actual-window cases passed.
 
 ## Completion audit
 

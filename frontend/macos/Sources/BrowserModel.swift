@@ -42,6 +42,7 @@ final class BrowserModel: ObservableObject {
     private var inputFlight: (edit: InputEdit, request: UInt64?)?
     private var earlyInputReplies: [IncomingEnvelope] = []
     private var inputTimeout: Task<Void, Never>?
+    private var nativeInputFailure: (tab: UInt64, epoch: UInt64, focus: UInt64?, message: String)?
     private var representations: [UInt64: PageRepresentation] = [:]
     private var documentEpochs: [UInt64: UInt64] = [:]
     private var representationRequests: [UInt64: (epoch: UInt64, generation: UInt64)] = [:]
@@ -163,8 +164,8 @@ final class BrowserModel: ObservableObject {
             if tab == selected { status = "Navigation blocked: " + reason }
         case .error(let message):
             if tab == nil || tab == selected { status = message }
-            if envelope.requestID == inputFlight?.request {
-                finishInputFlight(); inputQueue.removeAll { $0.tab == tab }; requestTextInput(tab)
+            if let request = envelope.requestID, request == inputFlight?.request {
+                applyTextInput(envelope)
             } else if inputFlight != nil && inputFlight?.request == nil {
                 if earlyInputReplies.count < 32 { earlyInputReplies.append(envelope) }
             }
@@ -310,7 +311,10 @@ final class BrowserModel: ObservableObject {
         let epoch = isEdit ? flight!.edit.epoch : query!.epoch
         let serial = isEdit ? flight!.edit.serial : query!.serial
         if isEdit { finishInputFlight() } else { inputRequests.removeValue(forKey: tab) }
-        if case .error = envelope.message {
+        if case .error(let message) = envelope.message {
+            if isEdit, tab == selected, epoch == documentEpochs[tab, default: 0], serial == inputSerials[tab, default: 0] {
+                nativeInputFailure = (tab, epoch, inputStates[tab]?.focus_generation, message)
+            }
             inputQueue.removeAll { $0.tab == tab }; requestTextInput(tab); drainTextInput(); return
         }
         if case .textInputState(let state) = envelope.message,
@@ -319,6 +323,14 @@ final class BrowserModel: ObservableObject {
            state.frame_source == PageRepresentation.frameSource(directory: session.frameDirectory.path) {
             inputStates[tab] = state
             if tab == selected { textInputState = state }
+            if let failure = nativeInputFailure, failure.tab == tab, failure.epoch == epoch,
+               isEdit || failure.focus.map({ $0 != state.focus_generation }) == true {
+                // Clear only the correlated editing notice after an accepted
+                // edit or focus change. Navigation/policy/service errors keep
+                // their own status, even if an input reply arrives afterward.
+                if tab == selected, status == failure.message { status = "Ready" }
+                nativeInputFailure = nil
+            }
         } else if case .textInputUnavailable = envelope.message,
                   epoch == documentEpochs[tab, default: 0], serial == inputSerials[tab, default: 0] {
             inputStates.removeValue(forKey: tab); inputQueue.removeAll { $0.tab == tab }
@@ -328,6 +340,7 @@ final class BrowserModel: ObservableObject {
     }
 
     private func clearTextInput() {
+        nativeInputFailure = nil
         inputTimeout?.cancel(); inputFlight = nil; inputQueue.removeAll(); inputStates.removeAll()
         inputRequests.removeAll(); inputFocusPending.removeAll(); earlyInputReplies.removeAll(); textInputState = nil; textInputBusy = false
     }

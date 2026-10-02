@@ -271,6 +271,102 @@ final class BrowserUITests: XCTestCase {
         XCTAssertEqual(fixture.requests, ["/keyboard", "/destination"])
     }
 
+    func testKeyboardOnlyFormResetRestoresAllControlsAndAssociatedValues() throws {
+        let fixture = try HTTPFixture()
+        defer { fixture.stop() }
+        launch(); enter(fixture.origin + "/reset")
+        let page = app.groups["page"]
+        XCTAssertTrue(page.textFields["Name"].waitForExistence(timeout: 15))
+        app.typeKey(.tab, modifierFlags: [])
+        app.typeKey("a", modifierFlags: .command); app.typeText("edited name")
+        waitValue(page.textFields["Name"], "edited name")
+        app.typeKey(.tab, modifierFlags: [])
+        app.typeKey("a", modifierFlags: .command); app.typeText("edited notes")
+        waitValue(page.textFields["Notes"], "edited notes")
+        app.typeKey(.tab, modifierFlags: []); app.typeKey(" ", modifierFlags: [])
+        waitChecked(page.checkBoxes["Remember"], false)
+        app.typeKey(.tab, modifierFlags: []); app.typeKey(.rightArrow, modifierFlags: [])
+        waitChecked(page.radioButtons["Express"], true)
+        app.typeKey(.tab, modifierFlags: []); app.typeKey(.downArrow, modifierFlags: [])
+        waitValue(page.comboBoxes["Region"], "b")
+        app.typeKey(.tab, modifierFlags: []); app.typeKey(.rightArrow, modifierFlags: [])
+        waitValue(page.sliders["Level"], "26")
+        app.typeKey(.tab, modifierFlags: []); app.typeText("bad")
+        waitValue(page.textFields["Readonly"], "locked")
+        XCTAssertFalse(page.buttons["Disabled reset"].isEnabled)
+        app.typeKey(.tab, modifierFlags: []); app.typeKey(.return, modifierFlags: [])
+        waitValue(page.textFields["Name"], "A😀B")
+        waitValue(page.textFields["Notes"], "first\nsecond")
+        waitChecked(page.checkBoxes["Remember"], true)
+        waitChecked(page.radioButtons["Standard"], true)
+        waitChecked(page.radioButtons["Express"], false)
+        waitValue(page.comboBoxes["Region"], "a")
+        waitValue(page.sliders["Level"], "25")
+        let recovered = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == 'Ready' OR label == 'Ready'"), object: app.staticTexts["status"])
+        XCTAssertEqual(XCTWaiter.wait(for: [recovered], timeout: 15), .completed, "Successful reset must clear the previous readonly editing error")
+        app.typeKey(.tab, modifierFlags: [])
+        app.typeKey("a", modifierFlags: .command); app.typeText("edited outside")
+        waitValue(page.textFields["External"], "edited outside")
+        app.typeKey(.tab, modifierFlags: []); app.typeKey(" ", modifierFlags: [])
+        waitValue(page.textFields["External"], "outside")
+        app.typeKey(.tab, modifierFlags: [])
+        app.typeKey("a", modifierFlags: .command); app.typeText("keep other")
+        waitValue(page.textFields["Other form"], "keep other")
+        app.typeKey(.tab, modifierFlags: .shift); app.typeKey(.return, modifierFlags: [])
+        waitValue(page.textFields["Other form"], "keep other")
+        waitValue(page.textFields["Name"], "A😀B")
+        XCTAssertEqual(app.textFields["address"].value as? String, fixture.origin + "/reset")
+        XCTAssertEqual(fixture.requests, ["/reset"])
+        let attachment = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
+        attachment.name = "macos-native-form-reset"; attachment.lifetime = .keepAlways; add(attachment)
+    }
+
+    private func waitChecked(_ element: XCUIElement, _ checked: Bool) {
+        let predicate = NSPredicate { _, _ in
+            if let number = element.value as? NSNumber { return number.boolValue == checked }
+            return (element.value as? String) == (checked ? "1" : "0")
+        }
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: predicate, object: element)], timeout: 15), .completed)
+    }
+
+    func testPointerResetKeepsOtherTabsAndReloadDefaultsIndependent() throws {
+        let fixture = try HTTPFixture()
+        defer { fixture.stop() }
+        launch(); enter(fixture.origin + "/reset")
+        let page = app.groups["page"]
+        func replace(_ label: String, _ value: String) {
+            let field = page.textFields[label]
+            XCTAssertTrue(field.waitForExistence(timeout: 15))
+            field.click(); field.typeKey("a", modifierFlags: .command); field.typeText(value)
+            waitValue(field, value)
+        }
+        replace("Name", "first tab")
+        replace("External", "first outside")
+        replace("Other form", "keep other")
+        app.buttons["add-tab"].click(); waitValue(app.textFields["address"], "about:credits")
+        enter(fixture.origin + "/reset")
+        replace("Name", "second tab")
+        page.buttons["Reset form"].click()
+        waitValue(page.textFields["Name"], "A😀B")
+        app.buttons["tab-1"].click()
+        waitValue(page.textFields["Name"], "first tab")
+        waitValue(page.textFields["External"], "first outside")
+        page.buttons["Disabled reset"].coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
+        waitValue(page.textFields["Name"], "first tab")
+        XCTAssertTrue(page.buttons["Reset external"].exists, app.debugDescription)
+        page.buttons["Reset external"].click()
+        waitValue(page.textFields["Name"], "A😀B")
+        waitValue(page.textFields["External"], "outside")
+        waitValue(page.textFields["Other form"], "keep other")
+        replace("Name", "third value")
+        app.buttons["reload"].click()
+        waitValue(page.textFields["Name"], "A😀B")
+        replace("Name", "fourth value")
+        page.buttons["Reset form"].click()
+        waitValue(page.textFields["Name"], "A😀B")
+        XCTAssertEqual(fixture.requests, ["/reset", "/reset", "/reset"])
+    }
+
     func testReverseTabAndPageBoundaryReturnToNativeAddressEditing() throws {
         let fixture = try HTTPFixture()
         defer { fixture.stop() }

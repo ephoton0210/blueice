@@ -15,6 +15,7 @@ use blueice_dom::NodeId;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum NativeForm {
+    Button(String),
     CheckBox(bool),
     Radio(bool),
     Select(String),

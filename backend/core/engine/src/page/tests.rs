@@ -964,6 +964,49 @@ fn script_appended_element_receives_author_style_before_rasterization() {
     assert_eq!(appended.get_pixel(0, 0), [255, 0, 0, 255]);
 }
 
+#[test]
+fn form_reset_tracks_explicit_page_script_textarea_default_changes() {
+    let mut page = Page::new(500.0, 300.0);
+    page.load_html_str("<form><textarea id='notes' aria-label='Notes'>original</textarea><button id='reset' type='reset'>Reset</button></form>", None);
+    let notes = page.script_get_element_by_id("notes").unwrap();
+    let handle = page.script_handle_for_node(notes);
+    page.script_set_text_content(handle, "script default".into())
+        .unwrap();
+    page.set_textarea_value(notes, "live edited value".into())
+        .unwrap();
+    let reset = page.script_get_element_by_id("reset").unwrap();
+    page.native_control_activation(reset).unwrap();
+    assert_eq!(
+        page.native_control_public_value(notes).as_deref(),
+        Some("script default")
+    );
+}
+
+#[test]
+fn form_reset_remembers_defaults_added_to_dynamically_attached_textareas() {
+    let mut page = Page::new(500.0, 300.0);
+    page.load_html_str(
+        "<form id='form'><button id='reset' type='reset'>Reset</button></form>",
+        None,
+    );
+    let form = page.script_get_element_by_id("form").unwrap();
+    let form = page.script_handle_for_node(form);
+    let notes = page.script_create_element("textarea".into()).unwrap();
+    let handle = page.script_handle_for_node(notes);
+    page.script_append_child(form, handle).unwrap();
+    let text = page.script_create_text_node("appended default".into());
+    let text = page.script_handle_for_node(text);
+    page.script_append_child(handle, text).unwrap();
+    page.set_textarea_value(notes, "live edited value".into())
+        .unwrap();
+    let reset = page.script_get_element_by_id("reset").unwrap();
+    page.native_control_activation(reset).unwrap();
+    assert_eq!(
+        page.native_control_public_value(notes).as_deref(),
+        Some("appended default")
+    );
+}
+
 fn all_text(frame: &Frame) -> String {
     frame
         .commands

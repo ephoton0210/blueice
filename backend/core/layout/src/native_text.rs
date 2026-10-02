@@ -9,6 +9,38 @@ use crate::{Fragment, FragmentKind};
 use blueice_dom::{Document, NodeData, NodeId};
 use unicode_segmentation::UnicodeSegmentation;
 
+/// The same input-button caption is used by layout/paint and the core
+/// semantic tree. An explicit empty value suppresses the default caption.
+pub fn input_button_label(doc: &Document, node: NodeId) -> Option<String> {
+    let NodeData::Element {
+        tag_name,
+        attributes,
+    } = doc.data(node)
+    else {
+        return None;
+    };
+    if tag_name != "input" {
+        return None;
+    }
+    let attribute = |name: &str| {
+        attributes
+            .iter()
+            .find(|(key, _)| key.eq_ignore_ascii_case(name))
+            .map(|(_, value)| value.as_str())
+    };
+    let default = match attribute("type")
+        .unwrap_or("text")
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "reset" => "Reset",
+        "submit" => "Submit",
+        "button" => "",
+        _ => return None,
+    };
+    Some(attribute("value").unwrap_or(default).into())
+}
+
 pub(super) fn form_control(doc: &Document, node: NodeId) -> Option<crate::NativeForm> {
     use crate::NativeForm;
     let NodeData::Element {
@@ -75,6 +107,9 @@ pub(super) fn form_control(doc: &Document, node: NodeId) -> Option<crate::Native
     }
     if tag_name != "input" {
         return None;
+    }
+    if let Some(label) = input_button_label(doc, node) {
+        return Some(NativeForm::Button(label));
     }
     match attribute("type")
         .unwrap_or("text")

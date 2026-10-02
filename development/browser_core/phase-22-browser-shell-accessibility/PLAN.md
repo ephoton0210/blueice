@@ -159,6 +159,19 @@ This is a control/focus increment. Form submission/reset and validation,
 select popup/typeahead/multiple interaction, DOM keyboard/input/focus events,
 complete chrome traversal and the remaining Phase 22 acceptance remain open.
 
+## macOS native form reset increment (2026-10-02)
+
+Core-owned original defaults now survive live native and extension edits.
+Keyboard, pointer and ordinary node activation reset the current form owner's
+controls, including external associations, and keep unrelated forms/tabs intact.
+Reset discards composition and invalidates old editing contexts while keeping
+the document identity. Shared core paint and semantics expose input-button
+captions. Page-script textarea markup changes update its retained default.
+See [`MACOS_FORM_RESET_RESULTS.md`](MACOS_FORM_RESET_RESULTS.md) for the measured
+native and public-boundary evidence. Full DOM reset-event dispatch, GET/POST
+submission, validation, dirty value/default properties and file selection remain
+required before full form acceptance.
+
 ## Objective
 
 Deliver a human browser experience that can use the same pages an AI can inspect: correct native input and text editing, tabs/windows/downloads/printing/permissions, system accessibility and display adaptation. The shell is a client of `core`; it does not own DOM, navigation policy, layout or a second page instance.
