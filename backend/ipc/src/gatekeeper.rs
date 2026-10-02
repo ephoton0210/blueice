@@ -36,6 +36,15 @@ pub enum GatekeeperRequest {
     /// The URL stage, sent before any network fetch: catches known-bad
     /// domains cheaply, before spending a fetch on them.
     CheckUrl { url: String },
+    /// Form review contains URLs, method and a protected-field flag. POST
+    /// field names/values and bodies are excluded; ordinary GET entries are
+    /// necessarily part of the reviewed navigation URL.
+    CheckFormSubmission {
+        document_url: String,
+        action_url: String,
+        method: String,
+        has_protected_fields: bool,
+    },
     /// The content stage, sent after fetch but before parse/cascade/
     /// layout -- the stage that actually addresses this phase's named
     /// primary threat (hidden/adversarial content aimed at an AI

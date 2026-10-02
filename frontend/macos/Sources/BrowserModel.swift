@@ -11,6 +11,9 @@ final class BrowserModel: ObservableObject {
     @Published private(set) var selected: UInt64?
     @Published var address = ""
     @Published private(set) var status = "Starting BlueIce…"
+    @Published private(set) var resubmission: FormResubmission?
+    @Published var resubmissionPresented = false
+    private var resubmissions: [UInt64: FormResubmission] = [:]
     @Published private(set) var ready = false
     @Published private(set) var image: CGImage?
     @Published private(set) var generation: UInt64 = 0
@@ -105,6 +108,8 @@ final class BrowserModel: ObservableObject {
         case .tabs(let list):
             tabs = list
             let live = Set(list.map(\.id))
+            resubmissions = resubmissions.filter { live.contains($0.key) }
+            if selected.map({ !live.contains($0) }) == true { resubmission = nil; resubmissionPresented = false }
             frames = frames.filter { live.contains($0.key) }
             histories = histories.filter { live.contains($0.key) }
             representations = representations.filter { live.contains($0.key) }
@@ -120,7 +125,11 @@ final class BrowserModel: ObservableObject {
             Task { await send(.unit("ListTabs")); await navigate("about:credits", tab: id) }
         case .closed:
             Task { await send(.unit("ListTabs")) }
+        case .navigationStarted:
+            if tab == selected { status = "Loading…" }
         case .navigated(let url):
+            if let tab { resubmissions.removeValue(forKey: tab) }
+            if tab == selected { resubmission = nil; resubmissionPresented = false }
             if let tab {
                 documentEpochs[tab, default: 0] += 1
                 representations.removeValue(forKey: tab)
@@ -160,6 +169,13 @@ final class BrowserModel: ObservableObject {
         case .representationUnavailable:
             if let tab { representationRequests.removeValue(forKey: tab); representations.removeValue(forKey: tab) }
             if tab == selected { representation = nil; status = "Page accessibility unavailable" }
+        case .formResubmission(let prompt):
+            guard let tab, tabs.contains(where: { $0.id == tab }) else { return }
+            resubmissions[tab] = prompt
+            if tab == selected { resubmission = prompt; resubmissionPresented = true; status = "Waiting for form resubmission confirmation" }
+        case .formResubmissionResolved(let id):
+            if let tab, resubmissions[tab]?.confirmationID == id { resubmissions.removeValue(forKey: tab) }
+            if resubmission?.confirmationID == id { resubmission = nil; resubmissionPresented = false }
         case .blocked(let reason):
             if tab == selected { status = "Navigation blocked: " + reason }
         case .error(let message):
@@ -194,6 +210,7 @@ final class BrowserModel: ObservableObject {
             textInput(.finishComposition)
         }
         selected = tab
+        resubmission = resubmissions[tab]; resubmissionPresented = resubmission != nil
         showSelected()
         Task { await send(.unit("GetHistoryState"), tab: tab); await resize() }
     }
@@ -354,8 +371,16 @@ final class BrowserModel: ObservableObject {
     }
 
     func reload() {
-        guard let selected, let url = tabs.first(where: { $0.id == selected })?.url else { return }
-        Task { await navigate(url, tab: selected) }
+        guard let selected, tabs.first(where: { $0.id == selected })?.url != nil else { return }
+        status = "Loading…"
+        action(.unit("Reload"), tab: selected)
+    }
+
+    func resolveResubmission(_ id: UInt64, accept: Bool) {
+        guard let selected, resubmissions[selected]?.confirmationID == id else { return }
+        resubmissions.removeValue(forKey: selected); resubmission = nil; resubmissionPresented = false
+        status = accept ? "Loading…" : "Ready"
+        action(.values("ConfirmFormResubmission", ["confirmation_id": .unsigned(id), "accept": .boolean(accept)]), tab: selected)
     }
 
     private func navigate(_ url: String, tab: UInt64) async {
@@ -388,5 +413,5 @@ final class BrowserModel: ObservableObject {
         await send(.values("Resize", ["width": .unsigned(width), "height": .unsigned(height)]), tab: selected)
     }
 
-    func stop() async { ready = false; representation = nil; representations.removeAll(); representationRequests.removeAll(); clearTextInput(); resizeTask?.cancel(); await session.stop() }
+    func stop() async { resubmissions.removeAll(); resubmission = nil; resubmissionPresented = false; ready = false; representation = nil; representations.removeAll(); representationRequests.removeAll(); clearTextInput(); resizeTask?.cancel(); await session.stop() }
 }

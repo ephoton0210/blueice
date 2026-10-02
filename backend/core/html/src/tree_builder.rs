@@ -40,7 +40,7 @@
 use crate::tokenizer::{ContentModel, Token, Tokenizer};
 use blueice_dom::{Document, NodeData, NodeId};
 
-const VOID_ELEMENTS: &[&str] = &["br", "hr", "img", "input", "link", "meta", "col"];
+const VOID_ELEMENTS: &[&str] = &["br", "hr", "img", "input", "link", "meta", "col", "base"];
 const RCDATA_ELEMENTS: &[&str] = &["textarea", "title"];
 const FORMATTING_ELEMENTS: &[&str] = &["a", "b", "i", "em", "strong", "u", "small", "code"];
 const HEADING_ELEMENTS: &[&str] = &["h1", "h2", "h3", "h4", "h5", "h6"];
@@ -1186,7 +1186,9 @@ impl TreeBuilder {
         match &token {
             Token::Doctype | Token::Comment => StepResult::Done,
             Token::StartTag { name, .. } if name == "html" => self.step_in_body(token),
-            Token::StartTag { name, attrs, .. } if matches!(name.as_str(), "meta" | "link") => {
+            Token::StartTag { name, attrs, .. }
+                if matches!(name.as_str(), "meta" | "link" | "base") =>
+            {
                 self.insert_element(name, attrs.clone());
                 StepResult::Done
             }
@@ -1238,7 +1240,7 @@ impl TreeBuilder {
             Token::StartTag { name, .. }
                 if matches!(
                     name.as_str(),
-                    "meta" | "link" | "title" | "style" | "script"
+                    "meta" | "link" | "base" | "title" | "style" | "script"
                 ) =>
             {
                 // Spec: these still belong in `<head>` even after `</head>`

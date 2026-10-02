@@ -198,14 +198,43 @@ pub(crate) enum HistoryDestination {
     Snapshot,
     /// Fetch this URL again. `None` is the initial blank document.
     Reload(Option<String>),
+    Post {
+        url: String,
+        navigation: Option<crate::navigation_request::BrowserNavigation>,
+    },
 }
 
 /// One item in a tab's history. A `Page` is only retained when snapshot mode
 /// was explicitly enabled; the default path stores just a URL and therefore
 /// cannot accidentally turn a history traversal into an offline cache.
 enum HistoryEntry {
-    Reload { url: Option<String> },
+    Reload {
+        url: Option<String>,
+        navigation: Option<crate::navigation_request::BrowserNavigation>,
+        was_post: bool,
+    },
     Snapshot(Box<Page>),
+}
+
+impl HistoryEntry {
+    fn post_request(&self) -> Option<&crate::navigation_request::BrowserNavigation> {
+        match self {
+            Self::Reload { navigation, .. } => navigation.as_ref(),
+            Self::Snapshot(page) => page
+                .last_navigation
+                .as_ref()
+                .filter(|nav| nav.request.method() == "POST"),
+        }
+    }
+    fn forget_post(&mut self) {
+        match self {
+            Self::Reload { navigation, .. } => *navigation = None,
+            Self::Snapshot(page) => {
+                page.last_navigation = None;
+                page.post_expired = true;
+            }
+        }
+    }
 }
 
 impl HistoryEntry {
@@ -213,6 +242,14 @@ impl HistoryEntry {
         match mode {
             HistorySnapshotMode::Reload => HistoryEntry::Reload {
                 url: page.url().map(str::to_string),
+                was_post: page.post_expired
+                    || page
+                        .last_navigation
+                        .as_ref()
+                        .is_some_and(|nav| nav.request.method() == "POST"),
+                navigation: page
+                    .last_navigation
+                    .filter(|nav| nav.request.method() == "POST"),
             },
             HistorySnapshotMode::Snapshot => HistoryEntry::Snapshot(Box::new(page)),
         }
@@ -244,6 +281,36 @@ struct Tab {
     back: Vec<HistoryEntry>,
     forward: Vec<HistoryEntry>,
     group_id: Option<GroupId>,
+}
+
+impl Tab {
+    fn bound_post_history(&mut self) {
+        let mut bytes = self
+            .page
+            .last_navigation
+            .as_ref()
+            .map_or(0, |nav| nav.request.body().len());
+        let mut count = usize::from(
+            self.page
+                .last_navigation
+                .as_ref()
+                .is_some_and(|nav| nav.request.method() == "POST"),
+        );
+        for entry in self
+            .back
+            .iter_mut()
+            .rev()
+            .chain(self.forward.iter_mut().rev())
+        {
+            if let Some(nav) = entry.post_request() {
+                bytes = bytes.saturating_add(nav.request.body().len());
+                count += 1;
+                if count > 8 || bytes > 8 * blueice_net::MAX_FORM_BODY_BYTES {
+                    entry.forget_post();
+                }
+            }
+        }
+    }
 }
 
 /// `core`'s collection of [`Page`]s. Always has a [`TabManager::
@@ -752,7 +819,15 @@ impl TabManager {
             HistoryDirection::Forward => tab.forward.last(),
         }?;
         match entry {
-            HistoryEntry::Reload { url } => Some(HistoryDestination::Reload(url.clone())),
+            HistoryEntry::Reload {
+                url,
+                navigation,
+                was_post: true,
+            } => Some(HistoryDestination::Post {
+                url: url.clone().unwrap_or_default(),
+                navigation: navigation.clone(),
+            }),
+            HistoryEntry::Reload { url, .. } => Some(HistoryDestination::Reload(url.clone())),
             HistoryEntry::Snapshot(_) => Some(HistoryDestination::Snapshot),
         }
     }
@@ -798,6 +873,7 @@ impl TabManager {
             HistoryDirection::Back => tab.forward.push(departure),
             HistoryDirection::Forward => tab.back.push(departure),
         }
+        tab.bound_post_history();
         true
     }
 
@@ -901,6 +977,53 @@ impl TabManager {
         self.replace_current_as_new_navigation(id, next);
     }
 
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn apply_fetched_reload(
+        &mut self,
+        id: TabId,
+        clearance: crate::gatekeeper_client::GatekeeperClearance,
+        url: &str,
+        html: &str,
+        translations: Option<&[String]>,
+        trace: blueice_ipc::extension::NetworkTraceInfo,
+    ) {
+        let mut next = self.new_history_page(id);
+        next.apply_fetched_translated(clearance, url, html, translations);
+        next.set_network_response(trace.response.clone());
+        next.set_network_trace(trace);
+        let tab = self.tabs.get_mut(&id).expect("validated tab");
+        next.continue_tab_generations_from(&tab.page);
+        tab.page = next;
+        tab.document_epoch = tab
+            .document_epoch
+            .checked_add(1)
+            .expect("document identity exhausted");
+    }
+
+    pub(crate) fn remember_navigation(
+        &mut self,
+        id: TabId,
+        navigation: crate::navigation_request::BrowserNavigation,
+    ) {
+        let tab = self.tabs.get_mut(&id).expect("committed tab");
+        tab.page.last_navigation = Some(navigation);
+        tab.bound_post_history();
+    }
+    pub(crate) fn reload_built_in(&mut self, id: TabId, url: &str) -> bool {
+        let mut next = self.new_history_page(id);
+        if !next.load_built_in(url) {
+            return false;
+        }
+        let tab = self.tabs.get_mut(&id).expect("live tab");
+        next.continue_tab_generations_from(&tab.page);
+        tab.page = next;
+        tab.document_epoch = tab
+            .document_epoch
+            .checked_add(1)
+            .expect("document identity exhausted");
+        true
+    }
+
     /// Rebuilds an addressed built-in history entry without creating a new
     /// branch. `false` means the entry isn't built in and must be gated and
     /// fetched like an ordinary URL.
@@ -991,6 +1114,7 @@ impl TabManager {
             .expect("document identity exhausted; core must fail closed");
         tab.back.push(HistoryEntry::from_page(previous, mode));
         tab.forward.clear();
+        tab.bound_post_history();
     }
 
     /// Replaces the live page with an already-loaded history destination. The
@@ -1024,6 +1148,7 @@ impl TabManager {
             HistoryDirection::Back => tab.forward.push(departure),
             HistoryDirection::Forward => tab.back.push(departure),
         }
+        tab.bound_post_history();
         true
     }
 

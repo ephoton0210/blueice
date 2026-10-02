@@ -41,6 +41,9 @@ use url::Url;
 static NEXT_SCRIPT_NODE_HANDLE: AtomicU64 = AtomicU64::new(1);
 
 pub struct Page {
+    pub(crate) submission_pending: bool,
+    pub(crate) post_expired: bool,
+    pub(crate) last_navigation: Option<crate::navigation_request::BrowserNavigation>,
     doc: Document,
     styles: HashMap<NodeId, ComputedStyle>,
     fragment: Fragment,
@@ -126,6 +129,9 @@ impl Page {
             native_focus_exit: None,
             native_focus_start: None,
             native_form_defaults: HashMap::new(),
+            last_navigation: None,
+            post_expired: false,
+            submission_pending: false,
             highlighted: None,
             frame_generation: 0,
             downloads: None,
@@ -163,6 +169,9 @@ impl Page {
         self.network_response = None;
         self.network_trace = None;
         self.native_form_defaults.clear();
+        self.last_navigation = None;
+        self.post_expired = false;
+        self.submission_pending = false;
         self.document_generation = self.document_generation.wrapping_add(1);
         self.script_nodes.clear();
         self.script_node_handles.clear();
@@ -1017,10 +1026,20 @@ impl Page {
         let kind = element_attribute(&self.doc, node, "type")
             .unwrap_or("text")
             .to_ascii_lowercase();
-        if matches!(
-            kind.as_str(),
-            "text" | "search" | "email" | "url" | "tel" | "range"
-        ) {
+        if kind == "range" {
+            return blueice_layout::input_range_values(&self.doc, node).map(|(_, _, value)| {
+                // Preserve a valid in-range source spelling, including exact
+                // integers beyond f64 precision. Only defaults/clamps replace it.
+                element_attribute(&self.doc, node, "value")
+                    .filter(|raw| {
+                        raw.parse::<f64>()
+                            .ok()
+                            .is_some_and(|parsed| parsed.is_finite() && parsed == value)
+                    })
+                    .map_or_else(|| value.to_string(), str::to_string)
+            });
+        }
+        if matches!(kind.as_str(), "text" | "search" | "email" | "url" | "tel") {
             element_attribute(&self.doc, node, "value").map(str::to_string)
         } else {
             None
@@ -1063,6 +1082,7 @@ impl Page {
 
 mod dom_helpers;
 mod dom_write;
+mod form_submission;
 mod native_editing;
 mod native_forms;
 mod native_interaction;

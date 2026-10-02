@@ -487,13 +487,16 @@ mod tests {
 
     impl PhysicalFixture {
         fn new() -> Self {
+            use std::sync::atomic::{AtomicU64, Ordering};
+            static NEXT_FIXTURE: AtomicU64 = AtomicU64::new(0);
             let directory = std::env::temp_dir().join(format!(
-                "blueice-catalog-roots-{}-{}",
+                "blueice-catalog-roots-{}-{}-{}",
                 std::process::id(),
                 std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap()
-                    .as_nanos()
+                    .as_nanos(),
+                NEXT_FIXTURE.fetch_add(1, Ordering::Relaxed)
             ));
             let directory = {
                 std::fs::create_dir(&directory).unwrap();

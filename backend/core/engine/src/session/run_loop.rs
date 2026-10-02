@@ -57,6 +57,7 @@ pub(super) fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
     let (completion_tx, completion_rx) = mpsc::channel::<Completion>();
     let (assistant_tx, assistant_rx) = mpsc::channel::<AssistantCompletion>();
     let mut pending_nav_seq: HashMap<TabId, u64> = HashMap::new();
+    let mut pending_resubmissions: HashMap<TabId, PendingResubmission> = HashMap::new();
     let (listing_tx, listing_rx) = mpsc::channel::<DownloadsListing>();
     let mut downloads_refresher = DownloadsRefresher::default();
     // Only the connection that published the native button can remove it.
@@ -65,6 +66,11 @@ pub(super) fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
 
     let mut requests = requests;
     loop {
+        pending_resubmissions.retain(|tab, pending| {
+            tabs.get(*tab)
+                .is_some_and(|page| page.document_generation() == pending.document)
+                && pending_nav_seq.get(tab) == Some(&pending.sequence)
+        });
         let incoming = blueice_ipc::read_client_message_with_ids(stream);
         if !matches!(&incoming, Err(error) if !is_timeout(error)) {
             prune_stale_extension_effects(
@@ -115,6 +121,105 @@ pub(super) fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
                             )?;
                         }
                     }
+                    ClientMessage::Reload => {
+                        let Some(page) = tabs.get(target) else {
+                            write_unknown_tab_error(stream, request_id, target)?;
+                            continue;
+                        };
+                        if page.post_expired {
+                            write_error(
+                                stream,
+                                reply_tab,
+                                request_id,
+                                "Form data has expired; submit the form again".into(),
+                            )?;
+                            continue;
+                        }
+                        let Some(url) = page.url().map(str::to_string) else {
+                            continue;
+                        };
+                        let navigation = page.last_navigation.clone().unwrap_or_else(|| url.into());
+                        if navigation.request.method() == "POST" {
+                            request_resubmission(
+                                tabs,
+                                stream,
+                                target,
+                                request_id,
+                                navigation,
+                                PendingKind::Reload,
+                                &mut pending_nav_seq,
+                                &mut pending_resubmissions,
+                            )?;
+                        } else {
+                            begin_gated_request(
+                                tabs,
+                                stream,
+                                frame_dir,
+                                generation,
+                                reply_tab,
+                                request_id,
+                                target,
+                                navigation,
+                                PendingKind::Reload,
+                                &mut pending_nav_seq,
+                                &mut downloads_refresher,
+                                &completion_tx,
+                                gatekeeper_socket,
+                                extension_events,
+                            )?;
+                        }
+                    }
+                    ClientMessage::ConfirmFormResubmission {
+                        confirmation_id,
+                        accept,
+                    } => {
+                        let valid = pending_resubmissions.get(&target).is_some_and(|pending| {
+                            pending.id == confirmation_id
+                                && pending_nav_seq.get(&target) == Some(&pending.sequence)
+                                && tabs.get(target).is_some_and(|page| {
+                                    page.document_generation() == pending.document
+                                })
+                        });
+                        if !valid {
+                            write_error(
+                                stream,
+                                reply_tab,
+                                request_id,
+                                "Form resubmission confirmation is stale".into(),
+                            )?;
+                            continue;
+                        }
+                        let pending = pending_resubmissions
+                            .remove(&target)
+                            .expect("validated confirmation");
+                        blueice_ipc::write_server_message_with_ids(
+                            stream,
+                            reply_tab,
+                            request_id,
+                            &ServerMessage::FormResubmissionResolved {
+                                confirmation_id,
+                                accepted: accept,
+                            },
+                        )?;
+                        if accept {
+                            begin_gated_request(
+                                tabs,
+                                stream,
+                                frame_dir,
+                                generation,
+                                reply_tab,
+                                request_id,
+                                target,
+                                pending.navigation,
+                                pending.kind,
+                                &mut pending_nav_seq,
+                                &mut downloads_refresher,
+                                &completion_tx,
+                                gatekeeper_socket,
+                                extension_events,
+                            )?;
+                        }
+                    }
                     history_message @ (ClientMessage::GoBack | ClientMessage::GoForward) => {
                         if tabs.get(target).is_none() {
                             write_unknown_tab_error(stream, request_id, target)?;
@@ -125,6 +230,30 @@ pub(super) fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
                         } else {
                             HistoryDirection::Forward
                         };
+                        if let Some(HistoryDestination::Post { navigation, .. }) =
+                            tabs.history_destination(target, direction)
+                        {
+                            if let Some(navigation) = navigation {
+                                request_resubmission(
+                                    tabs,
+                                    stream,
+                                    target,
+                                    request_id,
+                                    navigation,
+                                    PendingKind::History(direction),
+                                    &mut pending_nav_seq,
+                                    &mut pending_resubmissions,
+                                )?;
+                            } else {
+                                write_error(
+                                    stream,
+                                    reply_tab,
+                                    request_id,
+                                    "Form data has expired; submit the form again".into(),
+                                )?;
+                            }
+                            continue;
+                        }
                         begin_history_navigation(
                             tabs,
                             stream,
@@ -314,8 +443,10 @@ pub(super) fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
                             } else {
                                 None
                             };
-                            if let Some(href) = href.or(native_navigation) {
-                                begin_gated_navigation(
+                            if let Some(href) =
+                                href.map(BrowserNavigation::from).or(native_navigation)
+                            {
+                                begin_gated_request(
                                     tabs,
                                     stream,
                                     frame_dir,
@@ -432,6 +563,10 @@ pub(super) fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
                             .get_mut(target)
                             .expect("activation retains its tab owner");
                         let mut navigation = None;
+                        let implicit_form = activation
+                            .is_none()
+                            .then(|| page.native_implicit_form(&action))
+                            .flatten();
                         let result = if page.document_generation() != document || prevented {
                             Ok(true)
                         } else {
@@ -439,11 +574,17 @@ pub(super) fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
                                 .and_then(|changed| {
                                     if let Some(node) = activation {
                                         if page.apply_gatekeeper_settings_control(node).is_none() {
-                                            navigation =
-                                                href.or(page.native_control_activation(node)?);
+                                            navigation = href
+                                                .map(BrowserNavigation::from)
+                                                .or(page.native_control_activation(node)?);
                                         }
                                         Ok(true)
                                     } else {
+                                        if let Some(form) = implicit_form {
+                                            navigation = Some(
+                                                page.prepare_native_form_submission(form, None)?,
+                                            );
+                                        }
                                         Ok(changed)
                                     }
                                 })
@@ -464,7 +605,7 @@ pub(super) fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
                                     &ServerMessage::TextInputState(state),
                                 )?;
                                 if let Some(url) = navigation {
-                                    begin_gated_navigation(
+                                    begin_gated_request(
                                         tabs,
                                         stream,
                                         frame_dir,
@@ -658,8 +799,10 @@ pub(super) fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
                                     continue;
                                 }
                             };
-                            if let Some(href) = href.or(native_navigation) {
-                                begin_gated_navigation(
+                            if let Some(href) =
+                                href.map(BrowserNavigation::from).or(native_navigation)
+                            {
+                                begin_gated_request(
                                     tabs,
                                     stream,
                                     frame_dir,
@@ -714,6 +857,7 @@ pub(super) fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
                         extension_events,
                     )?,
                     ClientMessage::CloseTab => {
+                        pending_resubmissions.remove(&target);
                         if tabs.close_tab(target) {
                             blueice_ipc::write_server_message_with_ids(
                                 stream,

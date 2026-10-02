@@ -115,3 +115,32 @@ fn send_and_drain_reports_gatekeeper_blocked_as_an_error() {
     assert!(error.contains("policy"));
     assert!(error.contains("https://bad.example"));
 }
+
+#[test]
+fn post_history_returns_confirmation_notice_without_replaying_a_request() {
+    let (client, server) = UnixStream::pair().unwrap();
+    fake_core(
+        server,
+        vec![
+            Box::new(|msg, s| {
+                assert!(matches!(msg, ClientMessage::GoBack));
+                reply(
+                    s,
+                    &ServerMessage::FormResubmission {
+                        confirmation_id: 42,
+                        url: "https://example.test/posted".into(),
+                    },
+                );
+            }),
+            Box::new(|msg, s| {
+                assert!(matches!(msg, ClientMessage::GetRepresentation));
+                reply(s, &ServerMessage::Representation(sample_snapshot(4)));
+            }),
+        ],
+    );
+    let outcome = CoreConnection::new(client).go_back(Some(7)).unwrap();
+    assert!(outcome
+        .error
+        .unwrap()
+        .contains("confirmation in the browser"));
+}

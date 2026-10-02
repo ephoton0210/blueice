@@ -106,6 +106,13 @@ pub enum ClientMessage {
     GoBack,
     /// Restore the addressed tab's following session-history entry.
     GoForward,
+    /// Reload the current entry. A retained POST requires an explicit confirmation.
+    Reload,
+    /// Resolve one tab/document-bound POST resubmission prompt. No form data crosses IPC.
+    ConfirmFormResubmission {
+        confirmation_id: u64,
+        accept: bool,
+    },
     /// Requests whether the addressed tab can currently go backward and/or
     /// forward, replied to with [`ServerMessage::HistoryState`]. Kept
     /// separate from `ListTabs`: history availability can change without a
@@ -321,6 +328,20 @@ pub enum AssistantTaskKind {
 /// Sent by `core` to a client.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ServerMessage {
+    /// A form request has started; carries no POST body or field metadata.
+    NavigationStarted {
+        url: String,
+        method: String,
+    },
+    /// Metadata-only POST resubmission prompt; the core retains bounded request data.
+    FormResubmission {
+        confirmation_id: u64,
+        url: String,
+    },
+    FormResubmissionResolved {
+        confirmation_id: u64,
+        accepted: bool,
+    },
     /// Reply to [`ClientMessage::Hello`]: `protocol_version` is this
     /// `core`'s own, echoed so the client can also self-check
     /// compatibility, not just rely on not having received an

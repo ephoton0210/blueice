@@ -52,6 +52,7 @@
 
 use crate::downloads_page::{downloads_html, is_downloads_url, DownloadsView};
 use crate::gatekeeper_client::{self, NavOutcome};
+use crate::navigation_request::BrowserNavigation;
 #[cfg(unix)]
 use crate::script::javascript_child::{OutOfProcessJavaScriptPageExecutor, PageHostConnection};
 use crate::tabs::{extension_navigation_rules_block_url, HistoryDestination, HistoryDirection};

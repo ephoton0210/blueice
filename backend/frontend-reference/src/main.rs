@@ -1800,6 +1800,9 @@ mod unix {
                         self.extension_popup = popup;
                         self.request_redraw();
                     }
+                    ServerMessage::FormResubmission { url, .. } => {
+                        eprintln!("blueice-frontend: form resubmission for {url} requires a frontend with confirmation support");
+                    }
                     ServerMessage::Error { message } => {
                         eprintln!("blueice-frontend: core reported an error: {message}");
                     }
@@ -1833,6 +1836,8 @@ mod unix {
                     | ServerMessage::BlueTsScriptReports(_)
                     | ServerMessage::BlueJsScriptReports(_)
                     | ServerMessage::Hello { .. }
+                    | ServerMessage::NavigationStarted { .. }
+                    | ServerMessage::FormResubmissionResolved { .. }
                     | ServerMessage::Unknown
                     | ServerMessage::TextInputState(_) => {}
                 },

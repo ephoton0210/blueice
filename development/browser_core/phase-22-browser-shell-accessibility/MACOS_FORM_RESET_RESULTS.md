@@ -91,7 +91,7 @@ export CARGO_TARGET_AARCH64_APPLE_DARWIN_RUNNER="$PWD/frontend/macos/TestSupport
 "$HOME/.cargo/bin/rustup" run 1.96.0 cargo test -p blueice-layout -p blueice-paint -p blueice-raster --tests --locked --offline
 "$HOME/.cargo/bin/rustup" run 1.96.0 cargo test -p blueice-engine --test fixtures --test history_generations --test stdio_session --locked --offline
 # MCP integrations use the sibling signed BlueJS host and downloads service.
-"$HOME/.cargo/bin/rustup" run 1.96.0 cargo build -p blueice-bluejs --bin blueice-bluejs-host -p blueice-downloads --locked --offline
+"$HOME/.cargo/bin/rustup" run 1.96.0 cargo build -p blueice-launcher -p blueice-downloads --bins --locked --offline
 codesign --force --sign - "$CARGO_TARGET_DIR/debug/blueice-bluejs-host"
 codesign --force --sign - "$CARGO_TARGET_DIR/debug/blueice-downloads"
 "$HOME/.cargo/bin/rustup" run 1.96.0 cargo test -p blueice-mcp-server --tests --locked --offline

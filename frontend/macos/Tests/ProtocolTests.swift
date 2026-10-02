@@ -244,6 +244,18 @@ final class ProtocolTests: XCTestCase {
         XCTAssertEqual(kill(pid, 0), -1)
         XCTAssertFalse(FileManager.default.fileExists(atPath: session.runtimeDirectory.path))
     }
+    func testResubmissionProtocolHasMetadataAndTypedBooleanConsent() throws {
+        let payload = Data(#"{"tab_id":2,"message":{"FormResubmission":{"confirmation_id":42,"url":"https://example.test/submit"}}}"#.utf8)
+        let envelope = try JSONDecoder().decode(IncomingEnvelope.self, from: payload)
+        if case .formResubmission(let prompt) = envelope.message { XCTAssertEqual(prompt.confirmationID, 42); XCTAssertEqual(prompt.url, "https://example.test/submit") }
+        else { XCTFail("Expected bounded form prompt metadata") }
+        let packet = try BrowserWire.encode(.values("ConfirmFormResubmission", ["confirmation_id": .unsigned(42), "accept": .boolean(false)]), tab: 2, request: 8)
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: packet.dropFirst(4)) as? [String: Any])
+        let message = try XCTUnwrap(json["message"] as? [String: [String: Any]])
+        XCTAssertEqual(message["ConfirmFormResubmission"]?["accept"] as? Bool, false)
+        XCTAssertEqual(message["ConfirmFormResubmission"]?["confirmation_id"] as? Int, 42)
+    }
+
 }
 
 private final class SessionEvents: @unchecked Sendable {
@@ -292,4 +304,6 @@ private final class SessionEvents: @unchecked Sendable {
         while !predicate(snapshot) && Date() < deadline { try? await Task.sleep(for: .milliseconds(20)) }
         XCTAssertTrue(predicate(snapshot), "Timed out; errors: \(snapshot.errors)", file: file, line: line)
     }
+
+
 }

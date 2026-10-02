@@ -18,7 +18,7 @@ use blueice_ipc::gatekeeper::{
 
 /// Version carried in diagnostics and release notes for this compiled rule
 /// set. Keep it monotonic whenever a detection decision changes.
-pub const RULESET_VERSION: &str = "2026.09.24.7";
+pub const RULESET_VERSION: &str = "2026.10.02.1";
 
 const KNOWN_MALICIOUS_HOSTS: &[&str] = &["malware.test", "phishing.test"];
 const BIDI_OVERRIDE_CODEPOINTS: &[&str] = &["U+202A–U+202E", "U+2066–U+2069"];
@@ -75,6 +75,14 @@ fn signatures(values: &[&str]) -> Vec<String> {
 /// the enforcement process therefore disclose the same release-owned policy.
 pub fn baseline_rules() -> Vec<GatekeeperRuleInfo> {
     vec![
+        GatekeeperRuleInfo {
+            id: "protected-form-submission".into(), category: "unsafe-credential-form".into(),
+            description: "Protected form fields require same-origin HTTPS POST, including redirects that retain the body.".into(),
+            conditions: vec!["password, payment, credit card or one-time-code fields".into()],
+            match_logic: "Protected fields AND (method is not POST OR source/action is not HTTPS OR origins differ) rejects. Every form also rechecks the action URL.".into(),
+            workflow_steps: vec!["form-before-submission".into()], mandatory: true,
+        },
+
         GatekeeperRuleInfo {
             id: "known-malicious-domain".to_string(),
             category: "known-bad-domain".to_string(),
@@ -174,6 +182,12 @@ pub fn baseline_rules() -> Vec<GatekeeperRuleInfo> {
 pub fn mandatory_workflow() -> Vec<GatekeeperWorkflowStep> {
     vec![
         GatekeeperWorkflowStep {
+            id: "form-before-submission".into(), trigger: "Every form request and redirect target".into(),
+            description: "Review document/action URL, method and protected-field presence before a connection; never receive a POST body or POST field values.".into(),
+            failure_behavior: "Do not send the form request.".into(), review_order: Vec::new(), active_user_conditions: Vec::new(), mandatory: true,
+        },
+
+        GatekeeperWorkflowStep {
             id: "url-before-fetch".to_string(),
             trigger: "Every HTTP(S) navigation and redirect target".to_string(),
             description: "Review URL before opening a network connection; a failure or unavailable gatekeeper blocks the navigation.".to_string(),
@@ -248,7 +262,9 @@ pub fn settings(
                 }));
         };
         match step.id.as_str() {
-            "url-before-fetch" => add_conditions("host", &custom_blocked_hosts),
+            "url-before-fetch" | "form-before-submission" => {
+                add_conditions("host", &custom_blocked_hosts)
+            }
             "content-before-parse" => add_conditions("phrase", &custom_blocked_phrases),
             "download-before-bytes" => {
                 add_conditions("host", &custom_blocked_hosts);
@@ -260,7 +276,9 @@ pub fn settings(
             _ => {}
         }
         let custom_layer = match step.id.as_str() {
-            "url-before-fetch" if !custom_blocked_hosts.is_empty() => Some("user-blocked-hosts"),
+            "url-before-fetch" | "form-before-submission" if !custom_blocked_hosts.is_empty() => {
+                Some("user-blocked-hosts")
+            }
             "content-before-parse" if !custom_blocked_phrases.is_empty() => {
                 Some("user-blocked-html-phrases")
             }
@@ -312,6 +330,39 @@ pub fn review_with_custom_policy(
     custom_blocked_popup_phrases: &[String],
 ) -> GatekeeperReply {
     match request {
+        GatekeeperRequest::CheckFormSubmission {
+            document_url,
+            action_url,
+            method,
+            has_protected_fields,
+        } => {
+            let verdict = review_url(action_url, custom_blocked_hosts);
+            if !matches!(verdict, GatekeeperReply::Cleared) {
+                return verdict;
+            }
+            if !matches!(method.as_str(), "GET" | "POST") {
+                return GatekeeperReply::Rejected {
+                    reason: "unsupported form method".into(),
+                    category: "invalid-form-request".into(),
+                };
+            }
+            if *has_protected_fields {
+                let origin = |raw: &str| {
+                    url::Url::parse(raw)
+                        .ok()
+                        .filter(|url| url.scheme() == "https")
+                        .map(|url| url.origin())
+                };
+                let source = origin(document_url);
+                if method != "POST" || source.is_none() || source != origin(action_url) {
+                    return GatekeeperReply::Rejected {
+                        reason: "protected form fields require same-origin HTTPS POST".into(),
+                        category: "unsafe-credential-form".into(),
+                    };
+                }
+            }
+            GatekeeperReply::Cleared
+        }
         GatekeeperRequest::CheckUrl { url } => review_url(url, custom_blocked_hosts),
         GatekeeperRequest::CheckContent { url, html } => {
             review_content(url, html, custom_blocked_phrases)

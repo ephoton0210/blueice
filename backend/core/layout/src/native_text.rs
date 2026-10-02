@@ -41,6 +41,40 @@ pub fn input_button_label(doc: &Document, node: NodeId) -> Option<String> {
     Some(attribute("value").unwrap_or(default).into())
 }
 
+/// Finite, clamped range values shared by pixels, semantics and form submission.
+/// This exposes the existing control model; complete HTML step sanitization is
+/// a separate constraint-validation increment.
+pub fn input_range_values(doc: &Document, node: NodeId) -> Option<(f64, f64, f64)> {
+    let NodeData::Element {
+        tag_name,
+        attributes,
+    } = doc.data(node)
+    else {
+        return None;
+    };
+    let attribute = |name: &str| {
+        attributes
+            .iter()
+            .find(|(key, _)| key.eq_ignore_ascii_case(name))
+            .map(|(_, value)| value.as_str())
+    };
+    if tag_name != "input"
+        || !attribute("type").is_some_and(|kind| kind.eq_ignore_ascii_case("range"))
+    {
+        return None;
+    }
+    let number = |name, default| {
+        attribute(name)
+            .and_then(|value| value.parse::<f64>().ok())
+            .filter(|value| value.is_finite())
+            .unwrap_or(default)
+    };
+    let min = number("min", 0.0);
+    let max = number("max", 100.0).max(min);
+    let value = number("value", min / 2.0 + max / 2.0).clamp(min, max);
+    Some((min, max, value))
+}
+
 pub(super) fn form_control(doc: &Document, node: NodeId) -> Option<crate::NativeForm> {
     use crate::NativeForm;
     let NodeData::Element {
@@ -118,21 +152,11 @@ pub(super) fn form_control(doc: &Document, node: NodeId) -> Option<crate::Native
     {
         "checkbox" => Some(NativeForm::CheckBox(attribute("checked").is_some())),
         "radio" => Some(NativeForm::Radio(attribute("checked").is_some())),
-        "range" => {
-            let number = |name, default| {
-                attribute(name)
-                    .and_then(|value| value.parse::<f64>().ok())
-                    .filter(|value| value.is_finite())
-                    .unwrap_or(default)
-            };
-            let min = number("min", 0.0);
-            let max = number("max", 100.0).max(min);
-            Some(NativeForm::Range {
-                min,
-                max,
-                value: number("value", min / 2.0 + max / 2.0).clamp(min, max),
-            })
-        }
+        "range" => input_range_values(doc, node).map(|(min, max, value)| NativeForm::Range {
+            min,
+            max,
+            value,
+        }),
         _ => None,
     }
 }

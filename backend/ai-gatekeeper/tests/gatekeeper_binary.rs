@@ -304,3 +304,53 @@ fn real_gatekeeper_process_uses_local_model_only_after_mandatory_rules_clear() {
         GatekeeperSettingsReply::Settings(settings) if !settings.model_review_active)
     );
 }
+
+#[test]
+fn form_policy_is_disclosed_and_additive_host_settings_cannot_bypass_protected_fields() {
+    let gatekeeper = GatekeeperProcess::spawn();
+    let settings = gatekeeper.settings();
+    assert!(settings
+        .baseline_rules
+        .iter()
+        .any(|rule| rule.id == "protected-form-submission" && rule.mandatory));
+    assert!(settings
+        .workflow
+        .iter()
+        .any(|step| step.id == "form-before-submission"
+            && step.mandatory
+            && step.review_order == ["compiled-rule-base"]));
+    let ordinary = GatekeeperRequest::CheckFormSubmission {
+        document_url: "http://safe.example/form".into(),
+        action_url: "http://safe.example/submit".into(),
+        method: "POST".into(),
+        has_protected_fields: false,
+    };
+    assert_eq!(
+        gatekeeper.review(ordinary.clone()),
+        GatekeeperReply::Cleared
+    );
+    let GatekeeperSettingsReply::Settings(settings) =
+        gatekeeper.update(GatekeeperSettingsChange::AddBlockedHost {
+            host: "safe.example".into(),
+        })
+    else {
+        panic!("expected settings")
+    };
+    let step = settings
+        .workflow
+        .iter()
+        .find(|step| step.id == "form-before-submission")
+        .unwrap();
+    assert!(step.review_order.contains(&"user-blocked-hosts".into()));
+    assert!(step
+        .active_user_conditions
+        .iter()
+        .any(|condition| condition.kind == "host" && condition.value == "safe.example"));
+    assert!(matches!(
+        gatekeeper.review(ordinary),
+        GatekeeperReply::Rejected { .. }
+    ));
+    assert!(
+        matches!(gatekeeper.review(GatekeeperRequest::CheckFormSubmission { document_url: "https://other.example/form".into(), action_url: "https://another.example/submit".into(), method: "POST".into(), has_protected_fields: true }), GatekeeperReply::Rejected { category, .. } if category == "unsafe-credential-form")
+    );
+}

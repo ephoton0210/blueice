@@ -241,6 +241,9 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::BlueJsScriptReports(_)
                 | ServerMessage::Hello { .. }
                 | ServerMessage::TextInputState(_)
+                | ServerMessage::NavigationStarted { .. }
+                | ServerMessage::FormResubmissionResolved { .. }
+                | ServerMessage::FormResubmission { .. }
                 | ServerMessage::Unknown
                 // `mcp-server` doesn't call `OpenTab`/`CloseTab`/`ListTabs`
                 // itself in this slice, so these can only arrive here
@@ -290,6 +293,10 @@ impl<S: Read + Write> CoreConnection<S> {
                 continue;
             }
             match message {
+                ServerMessage::FormResubmission { .. } => {
+                    error = Some("Form resubmission requires confirmation in the browser".into());
+                    break;
+                }
                 ServerMessage::Navigated { .. } => navigated = true,
                 ServerMessage::Error { message } => {
                     error = Some(message);
@@ -331,6 +338,8 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::BlueJsScriptReports(_)
                 | ServerMessage::Hello { .. }
                 | ServerMessage::TextInputState(_)
+                | ServerMessage::NavigationStarted { .. }
+                | ServerMessage::FormResubmissionResolved { .. }
                 | ServerMessage::Unknown
                 | ServerMessage::TabOpened { .. }
                 | ServerMessage::TabClosed { .. }
@@ -581,6 +590,9 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::BlueJsScriptReports(_)
                 | ServerMessage::Hello { .. }
                 | ServerMessage::TextInputState(_)
+                | ServerMessage::NavigationStarted { .. }
+                | ServerMessage::FormResubmissionResolved { .. }
+                | ServerMessage::FormResubmission { .. }
                 | ServerMessage::Unknown
                 | ServerMessage::TabOpened { .. }
                 | ServerMessage::TabClosed { .. }
@@ -646,6 +658,9 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::BlueJsScriptReports(_)
                 | ServerMessage::Hello { .. }
                 | ServerMessage::TextInputState(_)
+                | ServerMessage::NavigationStarted { .. }
+                | ServerMessage::FormResubmissionResolved { .. }
+                | ServerMessage::FormResubmission { .. }
                 | ServerMessage::Unknown
                 | ServerMessage::TabOpened { .. }
                 | ServerMessage::TabClosed { .. }
@@ -758,6 +773,9 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::Representation(_)
                 | ServerMessage::Hello { .. }
                 | ServerMessage::TextInputState(_)
+                | ServerMessage::NavigationStarted { .. }
+                | ServerMessage::FormResubmissionResolved { .. }
+                | ServerMessage::FormResubmission { .. }
                 | ServerMessage::Unknown
                 | ServerMessage::TabClosed { .. }
                 | ServerMessage::Tabs(_)
@@ -820,6 +838,9 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::Representation(_)
                 | ServerMessage::Hello { .. }
                 | ServerMessage::TextInputState(_)
+                | ServerMessage::NavigationStarted { .. }
+                | ServerMessage::FormResubmissionResolved { .. }
+                | ServerMessage::FormResubmission { .. }
                 | ServerMessage::Unknown
                 | ServerMessage::TabOpened { .. }
                 | ServerMessage::Tabs(_)
@@ -881,6 +902,9 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::Representation(_)
                 | ServerMessage::Hello { .. }
                 | ServerMessage::TextInputState(_)
+                | ServerMessage::NavigationStarted { .. }
+                | ServerMessage::FormResubmissionResolved { .. }
+                | ServerMessage::FormResubmission { .. }
                 | ServerMessage::Unknown
                 | ServerMessage::TabOpened { .. }
                 | ServerMessage::TabClosed { .. }
@@ -954,6 +978,9 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::Representation(_)
                 | ServerMessage::Hello { .. }
                 | ServerMessage::TextInputState(_)
+                | ServerMessage::NavigationStarted { .. }
+                | ServerMessage::FormResubmissionResolved { .. }
+                | ServerMessage::FormResubmission { .. }
                 | ServerMessage::Unknown
                 | ServerMessage::TabOpened { .. }
                 | ServerMessage::TabClosed { .. }
@@ -1067,6 +1094,9 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::Representation(_)
                 | ServerMessage::Hello { .. }
                 | ServerMessage::TextInputState(_)
+                | ServerMessage::NavigationStarted { .. }
+                | ServerMessage::FormResubmissionResolved { .. }
+                | ServerMessage::FormResubmission { .. }
                 | ServerMessage::Unknown
                 | ServerMessage::TabOpened { .. }
                 | ServerMessage::TabClosed { .. }

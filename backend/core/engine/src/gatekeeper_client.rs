@@ -21,6 +21,7 @@
 //! compile-time effect: skipping the gate becomes a compile error, not
 //! a runtime convention a differently-written caller could omit.
 
+use crate::navigation_request::BrowserNavigation;
 #[cfg(all(test, unix))]
 use crate::tabs::ExtensionNavigationBlockRule;
 use crate::tabs::{
@@ -69,6 +70,7 @@ pub(crate) enum NavOutcome {
         content_type: Option<String>,
         request_url: String,
         redirects: Vec<NetworkRedirectInfo>,
+        navigation: BrowserNavigation,
     },
     /// Either gatekeeper stage rejected the navigation, or the
     /// gatekeeper itself was unreachable (fail-closed, see module
@@ -160,12 +162,39 @@ pub(crate) fn check_and_fetch_with_navigation_rules(
     gatekeeper_socket: &Path,
     navigation_rules: ExtensionNavigationRuleSnapshot,
 ) -> NavOutcome {
+    check_and_fetch_request(tab_id, url.into(), gatekeeper_socket, navigation_rules)
+}
+
+pub(crate) fn check_and_fetch_request(
+    tab_id: TabId,
+    mut navigation: BrowserNavigation,
+    gatekeeper_socket: &Path,
+    navigation_rules: ExtensionNavigationRuleSnapshot,
+) -> NavOutcome {
     let mut request_url = None;
-    let mut current_url = url;
     let mut redirects = Vec::new();
     for redirects_followed in 0..=MAX_NAVIGATION_REDIRECTS {
+        let current_url = navigation.request.url().to_string();
         if extension_navigation_rules_block_url(&navigation_rules, &current_url) {
             return NavOutcome::ExtensionRuleBlocked { url: current_url };
+        }
+        if let Some(form) = &navigation.form {
+            if let StageOutcome::Rejected { reason, category } = check_stage(
+                gatekeeper_socket,
+                &GatekeeperRequest::CheckFormSubmission {
+                    document_url: form.document_url.clone(),
+                    action_url: current_url.clone(),
+                    method: navigation.request.method().into(),
+                    has_protected_fields: form.has_protected_fields
+                        && navigation.request.method() == "POST",
+                },
+            ) {
+                return NavOutcome::GatekeeperBlocked {
+                    reason,
+                    category,
+                    url: current_url,
+                };
+            }
         }
         if let StageOutcome::Rejected { reason, category } = check_stage(
             gatekeeper_socket,
@@ -193,12 +222,12 @@ pub(crate) fn check_and_fetch_with_navigation_rules(
             // The extension cannot choose a different origin. The next loop
             // applies block rules and mandatory CheckUrl to the target before
             // any network connection; v2 observe records only actual GETs.
-            current_url = target_url;
+            navigation.request.retarget(target_url);
             continue;
         }
         request_url.get_or_insert_with(|| current_url.clone());
 
-        let fetched = match blueice_net::fetch_navigation_hop(&current_url) {
+        let fetched = match blueice_net::fetch_navigation_request_hop(&navigation.request) {
             Ok(fetched) => fetched,
             Err(e) => {
                 return NavOutcome::FetchFailed {
@@ -221,7 +250,7 @@ pub(crate) fn check_and_fetch_with_navigation_rules(
                     status,
                     target_url: location.clone(),
                 });
-                current_url = location;
+                navigation.request.follow_redirect(location, status);
                 continue;
             }
             blueice_net::FetchHop::Page(fetched) => fetched,
@@ -250,8 +279,9 @@ pub(crate) fn check_and_fetch_with_navigation_rules(
             html: fetched.body,
             status: fetched.status,
             content_type: fetched.content_type,
-            request_url: request_url.expect("a committed page has one actual GET request"),
+            request_url: request_url.expect("a committed page has an actual request"),
             redirects,
+            navigation,
         };
     }
     unreachable!("the bounded redirect loop always returns or commits a page")
@@ -735,6 +765,7 @@ mod tests {
                     continue;
                 };
                 let reply = match req {
+                    GatekeeperRequest::CheckFormSubmission { .. } => GatekeeperReply::Cleared,
                     GatekeeperRequest::CheckUrl { .. } => GatekeeperReply::Cleared,
                     GatekeeperRequest::CheckContent { .. } => GatekeeperReply::Rejected { reason: "hidden text".to_string(), category: "prompt-injection".to_string() },
                     GatekeeperRequest::CheckDownload { .. } => unreachable!("navigation never sends a download check; that stage belongs to the downloads process"),

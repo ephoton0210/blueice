@@ -150,3 +150,20 @@ fn empty_input_still_produces_a_full_implicit_skeleton() {
     assert!(find_by_tag(&doc, html, "head").is_some());
     assert!(find_by_tag(&doc, html, "body").is_some());
 }
+
+#[test]
+fn base_is_a_void_head_element_and_does_not_swallow_a_following_form() {
+    for html in [
+        "<base href='/directory/'><form><input name=q></form>",
+        "<head></head><base href='/directory/'><form><input name=q></form>",
+    ] {
+        let doc = parse(html);
+        let base = find_by_tag(&doc, doc.root(), "base").unwrap();
+        let head = find_by_tag(&doc, doc.root(), "head").unwrap();
+        let form = find_by_tag(&doc, doc.root(), "form").unwrap();
+        let body = find_by_tag(&doc, doc.root(), "body").unwrap();
+        assert_eq!(doc.parent(base), Some(head));
+        assert_eq!(doc.children(base).count(), 0);
+        assert_eq!(doc.parent(form), Some(body));
+    }
+}

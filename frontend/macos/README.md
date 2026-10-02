@@ -181,8 +181,12 @@ Input-button captions share the paint and accessibility label source. Native
 reset uses the existing cancellable click boundary.
 The shell also clears the previous native editing error after accepted input
 or a focus change, preserving navigation and gatekeeper denial messages.
-Full DOM reset-event
-dispatch, GET/POST submission and validation remain pending.
+GET/POST submissions now use core-owned successful controls, submitter overrides,
+UTF-8 form encodings, required checks and reviewed redirects. POST reload/history
+uses a SwiftUI Resend/Cancel alert with core-bound, single-use confirmations.
+The original request body remains private and bounded; cancellation does not
+fetch or move the history cursor. See [submission results](../../development/browser_core/phase-22-browser-shell-accessibility/MACOS_FORM_SUBMISSION_RESULTS.md).
+Full DOM reset/submit/formdata events and complete HTML validation remain pending.
 
 Frame refresh temporarily suspends semantic actions until the representation
 matches the current tab, source, generation and URL. Native element identities
@@ -193,7 +197,7 @@ Native editing geometry is currently available through `NSTextInputClient`,
 independently of those AX text APIs. Actual OS IME verification is pending
 runner Accessibility permission on the recorded host. JavaScript
 keyboard/beforeinput/input/composition event dispatch, undo/redo, complete
-bidirectional shaping and caret blink remain open, as do form submission/reset,
+bidirectional shaping and caret blink remain open, as do full form event/validity behavior,
 select popup/typeahead/multiple-selection interaction, complete toolbar Tab
 traversal, find/context menus, groups, multiple windows, downloads/printing/permission
 panels and localization. Automated checks cover the recorded features; an

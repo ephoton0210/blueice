@@ -10,13 +10,14 @@ enum BrowserFailure: Error, LocalizedError, Sendable {
 }
 
 enum JSONValue: Encodable, Sendable {
-    case string(String), unsigned(UInt64), number(Double), null
+    case string(String), unsigned(UInt64), number(Double), boolean(Bool), null
     func encode(to encoder: Encoder) throws {
         var value = encoder.singleValueContainer()
         switch self {
         case .string(let text): try value.encode(text)
         case .unsigned(let number): try value.encode(number)
         case .number(let number): try value.encode(number)
+        case .boolean(let boolean): try value.encode(boolean)
         case .null: try value.encodeNil()
         }
     }
@@ -69,11 +70,18 @@ struct HistoryState: Decodable, Sendable {
     enum CodingKeys: String, CodingKey { case back = "can_go_back", forward = "can_go_forward" }
 }
 
+struct FormResubmission: Decodable, Sendable {
+    let confirmationID: UInt64
+    let url: String
+    enum CodingKeys: String, CodingKey { case confirmationID = "confirmation_id", url }
+}
+
 enum BrowserMessage: Decodable, Sendable {
     case hello(UInt32), tabs([BrowserTab]), opened(UInt64), closed(UInt64)
-    case navigated(String), history(HistoryState), frame(FrameNotice)
+    case navigationStarted, navigated(String), history(HistoryState), frame(FrameNotice)
     case blocked(String), error(String), representation(PageRepresentation), representationUnavailable, unknown
     case textInputState(TextInputState), textInputUnavailable
+    case formResubmission(FormResubmission), formResubmissionResolved(UInt64)
 
     init(from decoder: Decoder) throws {
         guard let object = try? decoder.container(keyedBy: MessageKey.self), let key = object.allKeys.first else {
@@ -86,10 +94,15 @@ enum BrowserMessage: Decodable, Sendable {
         struct Blocked: Decodable { let reason: String }
         struct Failure: Decodable { let message: String }
         switch key.stringValue {
+        case "FormResubmission": self = .formResubmission(try object.decode(FormResubmission.self, forKey: key))
+        case "FormResubmissionResolved":
+            struct Resolution: Decodable { let confirmation_id: UInt64 }
+            self = .formResubmissionResolved(try object.decode(Resolution.self, forKey: key).confirmation_id)
         case "Hello": self = .hello(try object.decode(Hello.self, forKey: key).protocol_version)
         case "Tabs": self = .tabs(try object.decode([BrowserTab].self, forKey: key))
         case "TabOpened": self = .opened(try object.decode(Tab.self, forKey: key).tab_id)
         case "TabClosed": self = .closed(try object.decode(Tab.self, forKey: key).tab_id)
+        case "NavigationStarted": self = .navigationStarted
         case "Navigated": self = .navigated(try object.decode(Navigation.self, forKey: key).url)
         case "HistoryState": self = .history(try object.decode(HistoryState.self, forKey: key))
         case "FrameReady": self = .frame(try object.decode(FrameNotice.self, forKey: key))

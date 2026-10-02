@@ -554,4 +554,63 @@ final class BrowserUITests: XCTestCase {
         XCTAssertFalse(app.buttons["reload"].isEnabled)
         XCTAssertFalse(app.buttons["add-tab"].isEnabled)
     }
+
+    func testKeyboardGetSubmissionValidatesRequiredAndEncodesCurrentValues() throws {
+        let fixture = try HTTPFixture(); defer { fixture.stop() }
+        launch(); enter(fixture.origin + "/forms")
+        let page = app.groups["page"]
+        XCTAssertTrue(page.textFields["Query"].waitForExistence(timeout: 15))
+        app.typeKey(.tab, modifierFlags: [])
+        app.typeKey("a", modifierFlags: .command); app.typeKey(.delete, modifierFlags: [])
+        waitValue(page.textFields["Query"], "")
+        app.typeKey(.return, modifierFlags: [])
+        let required = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value CONTAINS 'required' OR label CONTAINS 'required'"), object: app.staticTexts["status"])
+        XCTAssertEqual(XCTWaiter.wait(for: [required], timeout: 15), .completed)
+        XCTAssertEqual(fixture.requests, ["/forms"])
+        app.typeText("ice & snow")
+        waitValue(page.textFields["Query"], "ice & snow")
+        app.typeKey(.return, modifierFlags: [])
+        let target = "/received?q=ice+%26+snow&accepted=on&region=a&notes=one%0D%0Atwo&level=50&mode=get"
+        waitValue(app.textFields["address"], fixture.origin + target)
+        XCTAssertEqual(fixture.requests, ["/forms", target])
+        XCTAssertEqual(fixture.records.last?.method, "GET")
+        XCTAssertTrue(fixture.records.last?.body.isEmpty == true)
+    }
+
+    func testPointerPostReloadAndHistoryRequireVisibleResubmissionConfirmation() throws {
+        let fixture = try HTTPFixture(); defer { fixture.stop() }
+        launch(); enter(fixture.origin + "/forms")
+        let page = app.groups["page"]
+        XCTAssertTrue(page.buttons["Send POST"].waitForExistence(timeout: 15))
+        waitValue(page.sliders["Level"], "50")
+        page.buttons["Send POST"].click()
+        waitValue(app.textFields["address"], fixture.origin + "/posted?kept=1")
+        let post = try XCTUnwrap(fixture.records.last)
+        XCTAssertEqual(post.method, "POST")
+        XCTAssertEqual(String(data: post.body, encoding: .utf8), "q=A+%26+%E5%86%B0&accepted=on&region=a&notes=one%0D%0Atwo&level=50&mode=post")
+        app.buttons["reload"].click()
+        XCTAssertTrue(app.windows["browser-window"].sheets.buttons["Cancel"].waitForExistence(timeout: 15))
+        XCTAssertEqual(fixture.requests.count, 2)
+        let attachment = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
+        attachment.name = "macos-form-resubmission"; attachment.lifetime = .keepAlways; add(attachment)
+        app.windows["browser-window"].sheets.buttons["Cancel"].click()
+        XCTAssertEqual(fixture.requests.count, 2)
+        app.typeKey("r", modifierFlags: .command)
+        XCTAssertTrue(app.windows["browser-window"].sheets.buttons["Resend"].waitForExistence(timeout: 15))
+        app.windows["browser-window"].sheets.buttons["Resend"].click()
+        let resent = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in fixture.requests.count == 3 }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [resent], timeout: 15), .completed)
+        XCTAssertEqual(fixture.records.last?.body, post.body)
+        app.buttons["back"].click(); waitValue(app.textFields["address"], fixture.origin + "/forms")
+        app.buttons["forward"].click()
+        XCTAssertTrue(app.windows["browser-window"].sheets.buttons["Cancel"].waitForExistence(timeout: 15))
+        app.windows["browser-window"].sheets.buttons["Cancel"].click()
+        XCTAssertEqual(app.textFields["address"].value as? String, fixture.origin + "/forms")
+        XCTAssertEqual(fixture.requests.count, 4)
+        app.buttons["forward"].click()
+        XCTAssertTrue(app.windows["browser-window"].sheets.buttons["Resend"].waitForExistence(timeout: 15)); app.windows["browser-window"].sheets.buttons["Resend"].click()
+        waitValue(app.textFields["address"], fixture.origin + "/posted?kept=1")
+        XCTAssertEqual(fixture.records.last?.body, post.body)
+    }
+
 }

@@ -237,4 +237,60 @@ final class NativeEditingTests: XCTestCase {
         XCTAssertEqual(fixture.requests, ["/reset", "/blocked"])
         await model.stop()
     }
+
+    func testNativeGetPostRedirectValidationAndResubmissionThroughRealServices() async throws {
+        let (model, view, fixture) = try await start(path: "/forms")
+        defer { fixture.stop(); Task { await model.stop() } }
+        func activate(_ name: String) async throws {
+            await wait { model.representation != nil && !model.textInputBusy }
+            let snapshot = try XCTUnwrap(model.representation)
+            let node = try XCTUnwrap(snapshot.nodes.first { $0.name == name })
+            XCTAssertTrue(model.accessibilityAction(snapshot, epoch: model.accessibilityEpoch, node: node))
+        }
+        try await focus("Query", model: model, view: view)
+        model.textInput(.select(TextRange(NSRange(location: 0, length: 5))))
+        await wait { !model.textInputBusy }
+        model.textInput(.replace("", nil))
+        await wait { model.textInputState?.focused?.text == "" && !model.textInputBusy }
+        try await activate("Send POST")
+        await wait { model.status.contains("required") }
+        XCTAssertEqual(fixture.requests, ["/forms"])
+        try await focus("Query", model: model, view: view)
+        view.insertText("A & 冰", replacementRange: NSRange(location: NSNotFound, length: 0))
+        await wait { model.textInputState?.focused?.text == "A & 冰" && !model.textInputBusy }
+        try await activate("Send POST")
+        await wait { model.representation?.url == fixture.origin + "/posted?kept=1" }
+        let post = try XCTUnwrap(fixture.records.last)
+        XCTAssertEqual(post.method, "POST")
+        XCTAssertEqual(String(data: post.body, encoding: .utf8), "q=A+%26+%E5%86%B0&accepted=on&region=a&notes=one%0D%0Atwo&level=50&mode=post")
+        model.reload(); await wait { model.resubmission != nil }
+        model.resolveResubmission(try XCTUnwrap(model.resubmission).confirmationID, accept: false)
+        await wait { model.status == "Ready" }
+        XCTAssertEqual(fixture.requests.count, 2)
+        model.reload(); await wait { model.resubmission != nil }
+        model.resolveResubmission(try XCTUnwrap(model.resubmission).confirmationID, accept: true)
+        await wait { fixture.requests.count == 3 && model.status == "Ready" }
+        XCTAssertEqual(fixture.records.last?.body, post.body)
+        model.action(.unit("GoBack")); await wait { model.representation?.url == fixture.origin + "/forms" }
+        try await activate("Send GET")
+        await wait { model.representation?.url?.contains("/received?q=") == true }
+        XCTAssertEqual(fixture.records.last?.method, "GET")
+        XCTAssertTrue(fixture.records.last?.body.isEmpty == true)
+        model.address = fixture.origin + "/forms"; model.navigateAddress()
+        await wait { model.representation?.url == fixture.origin + "/forms" }
+        try await activate("Send redirect")
+        await wait { model.representation?.url == fixture.origin + "/received" }
+        XCTAssertEqual(fixture.records.suffix(2).map(\.method), ["POST", "GET"])
+        model.reload(); await wait { fixture.requests.last == "/received" && model.status == "Ready" }
+        XCTAssertNil(model.resubmission)
+        model.address = fixture.origin + "/protected-form"; model.navigateAddress()
+        await wait { model.representation?.url == fixture.origin + "/protected-form" }
+        let before = fixture.requests.count
+        try await activate("Send protected")
+        await wait { model.status.contains("Navigation blocked") }
+        XCTAssertEqual(fixture.requests.count, before)
+        XCTAssertFalse(model.status.contains("private-fixture-secret"))
+        await model.stop()
+    }
+
 }

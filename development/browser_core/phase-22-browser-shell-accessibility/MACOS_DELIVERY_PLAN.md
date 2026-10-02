@@ -13,7 +13,7 @@ pushed to the current tracked branch as authorized by the owner.
 | Owned service stack | Bundled launcher/core/gatekeeper, reviewed external navigation, fail-closed review, normal/forced cleanup | Committed `32fa07f6b` |
 | Page accessibility | Core semantic tree mapped into NSAccessibility, native actions, privacy, stale-element and tab isolation tests | Committed and pushed `41952a803` |
 | Native text editing | Core-owned UTF-16 selection, grapheme movement/deletion, IME composition/update/commit/cancel, caret/candidate geometry, text/password/textarea editing, clipboard policy and native UI tests | Foundation committed and pushed `8b80c3c53`; physical OS IME and remaining editing behavior pending, see [results](MACOS_NATIVE_EDITING_RESULTS.md) |
-| Keyboard and page interaction | Keyboard-only form completion, checkbox/radio/select/range controls, find-in-page, native context menus, drag/drop and file-selection policy tests | Keyboard increment committed and pushed `97794bb57`; native form reset validated in [results](MACOS_FORM_RESET_RESULTS.md); form submission and remaining interactions pending |
+| Keyboard and page interaction | Keyboard-only form completion, checkbox/radio/select/range controls, find-in-page, native context menus, drag/drop and file-selection policy tests | Keyboard increment committed and pushed `97794bb57`; native form reset committed and pushed `4c1c6e922`; GET/POST submission and resubmission confirmation validated in [results](MACOS_FORM_SUBMISSION_RESULTS.md); remaining interactions pending |
 | Windows and tab organization | Multiple native windows, tab groups, profile/context lifecycle, retained history and state handoff using core tab identities | Pending |
 | Downloads and printing | Actual download manager/shelf, progress/cancel/open/reveal, print/PDF media output and native panel tests | Pending |
 | Trusted browser panels | Assistant results and human permission decisions using the private owner boundary, policy-denial and no-AI-grant tests | Pending |
@@ -65,8 +65,9 @@ address focus. The owned window also holds later keys until pending events have
 replayed, preserving event order across responder changes. The keyboard activation boundary honors existing click
 cancellation and document replacement before applying defaults.
 
-This increment covers keyboard control completion and reviewed link activation,
-not full form submission. Submission, validation, popup/typeahead and
+This increment covers keyboard control completion and reviewed link activation.
+The later submission increment covers GET/POST and required-field checks.
+Complete validation, popup/typeahead and
 multiple-select interaction, DOM key/input/focus/composition events, full chrome
 Tab traversal, find, context menus, drag/drop and file-selection remain required.
 Multiple-select direction keys deliberately preserve existing selections until
@@ -89,9 +90,49 @@ The native shell clears a correlated editing error after a successful edit or
 focus change, while preserving navigation and mandatory policy-denial notices.
 
 This increment covers the native reset default. Full cancelable DOM reset-event
-dispatch, form methods and encodings, constraint validation, dirty value/default
-DOM property semantics and file-input state remain pending. The separate result
+dispatch, complete constraint validation, dirty value/default
+DOM property semantics and file-input state remain pending.
+The later submission increment delivers GET/POST methods and encodings. The separate result
 record identifies exactly which real-service and actual-window cases passed.
+
+## Native form submission increment
+
+Current-tab GET/POST submissions are constructed by the core from successful
+controls in document order, including external form owners and the activated
+submitter's overrides. URL-encoded, text/plain and multipart UTF-8 encodings,
+CRLF normalization, required-field checks and novalidate, the document base URL,
+implicit Enter and disabled/readonly/select behavior have public boundary tests.
+An empty file control submits no file bytes; an HTML value never grants access
+to an OS path. Native loading status and duplicate activation prevention apply
+while a form navigation is pending. Default and clamped range values are shared
+by paint, semantics and submission, with valid original numeric spellings
+preserved to avoid losing exact large integers.
+
+Every HTTP hop retains the mandatory URL review; forms add a metadata review
+before the connection. Protected fields are excluded from GET and require
+same-origin HTTPS POST under the compiled product policy, including 307/308
+redirects that retain their body. POST bodies are absent from review/debug,
+accessibility, extension network trace and frontend resubmission messages.
+Ordinary GET entries remain part of the reviewed URL. The final response,
+including an HTTP error page, is content-reviewed before parsing.
+
+POST reload and default URL-history traversal require the native Resend/Cancel
+alert. Cancel leaves the page, cursor and request count unchanged; accepting a
+single-use, tab/document/navigation-bound confirmation repeats the gated request.
+Reload replaces the current entry. Private bodies are held in shared zeroizing
+buffers with a one-MiB request and eight-entry/eight-MiB retained-history limit
+per tab. Expired entries require a new form submission and never become GET.
+The reference frontend reports unsupported confirmation; MCP navigation returns
+a notice and does not automatically resend. These ordinary resubmission prompts
+are separate from the private human-permission boundary.
+
+The result record covers the bundled services and actual native-window tests.
+Full HTML validity (type/pattern/length/numeric constraints), validation bubble
+and invalid-field focus, DOM submit/formdata/reset events, dirty/default property
+semantics, image submitters/coordinates, dirname, alternate form targets, dialog
+forms and real file selection remain required. Multiple-select submission is
+covered; native multiple-select interaction remains pending. Physical IME,
+VoiceOver and the other browser milestones retain their separate acceptance.
 
 ## Completion audit
 

@@ -187,7 +187,7 @@ impl Page {
         true
     }
 
-    fn native_radios(&self, id: NodeId) -> Vec<NodeId> {
+    pub(super) fn native_radios(&self, id: NodeId) -> Vec<NodeId> {
         let name = element_attribute(&self.doc, id, "name").unwrap_or("");
         if name.is_empty() {
             return vec![id];
@@ -309,9 +309,10 @@ impl Page {
                     .find(|node| {
                         form_owner(&self.doc, *node) == Some(owner)
                             && (tag(&self.doc, *node) == "button"
-                                && element_attribute(&self.doc, *node, "type")
-                                    .unwrap_or("submit")
-                                    .eq_ignore_ascii_case("submit")
+                                && !matches!(
+                                    input_type(&self.doc, *node).as_str(),
+                                    "button" | "reset"
+                                )
                                 || tag(&self.doc, *node) == "input"
                                     && input_type(&self.doc, *node) == "submit")
                     })
@@ -492,11 +493,10 @@ impl Page {
                 .filter(|v| v.is_finite())
                 .unwrap_or(default)
         };
-        let min = number("min", 0.0);
-        let max = number("max", 100.0).max(min);
+        let (min, max, current) =
+            blueice_layout::input_range_values(&self.doc, id).ok_or("Invalid range control")?;
         let step = number("step", 1.0);
         let step = if step > 0.0 { step } else { 1.0 };
-        let current = number("value", min / 2.0 + max / 2.0).clamp(min, max);
         let target = match key {
             PageKey::ArrowRight | PageKey::ArrowUp => current + step,
             PageKey::ArrowLeft | PageKey::ArrowDown => current - step,
@@ -551,13 +551,24 @@ impl Page {
     pub(crate) fn native_control_activation(
         &mut self,
         target: NodeId,
-    ) -> Result<Option<String>, String> {
+    ) -> Result<Option<crate::navigation_request::BrowserNavigation>, String> {
         if !self.doc.contains(target) {
             return Ok(None);
         }
         let Some(id) = self.native_pointer_focus(Some(target)) else {
             return Ok(None);
         };
+        let input = input_type(&self.doc, id);
+        if (tag(&self.doc, id) == "button" && !matches!(input.as_str(), "button" | "reset"))
+            || (tag(&self.doc, id) == "input" && input == "submit")
+        {
+            if self.submission_pending {
+                return Ok(None);
+            }
+            return form_owner(&self.doc, id)
+                .map(|form| self.prepare_native_form_submission(form, Some(id)))
+                .transpose();
+        }
         if matches!(tag(&self.doc, id), "input" | "button") && input_type(&self.doc, id) == "reset"
         {
             if let Some(form) = form_owner(&self.doc, id) {

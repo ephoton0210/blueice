@@ -214,3 +214,8 @@ Acceptance requires CJK/RTL IME editing, keyboard-only form completion, selectio
 - A shell-owned parallel DOM or renderer.
 - Treating programmatic MCP input as a trusted human gesture.
 - Exposing OS credentials, clipboard, files, notifications or permissions by default.
+
+The macOS GET/POST and resubmission increment is recorded in
+[MACOS_FORM_SUBMISSION_RESULTS.md](MACOS_FORM_SUBMISSION_RESULTS.md). It delivers
+core-owned current-tab submissions and a native POST confirmation while the
+[macOS delivery plan](MACOS_DELIVERY_PLAN.md) retains the remaining browser scope.

@@ -160,6 +160,11 @@ fn client_message_round_trips_through_the_wire_format() {
         },
         ClientMessage::GoBack,
         ClientMessage::GoForward,
+        ClientMessage::Reload,
+        ClientMessage::ConfirmFormResubmission {
+            confirmation_id: 42,
+            accept: false,
+        },
         ClientMessage::Resize {
             width: 800,
             height: 600,
@@ -234,6 +239,18 @@ fn client_message_round_trips_through_the_wire_format() {
 #[test]
 fn server_message_round_trips_through_the_wire_format() {
     for msg in [
+        ServerMessage::NavigationStarted {
+            url: "https://example.test/submit".into(),
+            method: "POST".into(),
+        },
+        ServerMessage::FormResubmission {
+            confirmation_id: 42,
+            url: "https://example.test/submit".into(),
+        },
+        ServerMessage::FormResubmissionResolved {
+            confirmation_id: 42,
+            accepted: false,
+        },
         ServerMessage::Hello {
             protocol_version: PROTOCOL_VERSION,
         },

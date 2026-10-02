@@ -26,6 +26,8 @@ use std::fmt;
 use url::Url;
 
 pub mod download;
+mod navigation;
+pub use navigation::{FormEncoding, NavigationRequest, MAX_FORM_BODY_BYTES};
 
 #[derive(Debug)]
 pub enum FetchError {
@@ -161,15 +163,28 @@ pub fn fetch(url: &str) -> Result<FetchedPage, FetchError> {
 /// must itself be HTTP(S), but no request to it is made here. This preserves a
 /// review point between every connection a navigation may open.
 pub fn fetch_navigation_hop(url: &str) -> Result<FetchHop, FetchError> {
+    fetch_navigation_request_hop(&NavigationRequest::get(url))
+}
+
+/// Executes exactly one reviewed GET/POST hop. Automatic redirects stay off;
+/// core owns method rewriting, resubmission and per-target policy checks.
+pub fn fetch_navigation_request_hop(request: &NavigationRequest) -> Result<FetchHop, FetchError> {
+    let url = request.url();
     validate_url_scheme(url)?;
     let agent: ureq::Agent = ureq::config::Config::builder()
         .max_redirects(0)
+        .http_status_as_error(false)
         .build()
         .into();
-    let mut response = agent
-        .get(url)
-        .call()
-        .map_err(|error| FetchError::Request(error.to_string()))?;
+    let mut response = if let Some(content_type) = request.content_type() {
+        agent
+            .post(url)
+            .header("Content-Type", content_type)
+            .send(request.body())
+    } else {
+        agent.get(url).call()
+    }
+    .map_err(|error| FetchError::Request(error.to_string()))?;
     if matches!(response.status().as_u16(), 301 | 302 | 303 | 307 | 308) {
         let location = response
             .headers()

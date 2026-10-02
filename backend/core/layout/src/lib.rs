@@ -22,7 +22,7 @@ mod native_text;
 mod text;
 
 pub use fragment::{Constraints, Fragment, FragmentKind, NativeForm};
-pub use native_text::input_button_label;
+pub use native_text::{input_button_label, input_range_values};
 
 use blueice_css::ComputedStyle;
 use blueice_dom::{Document, NodeId};

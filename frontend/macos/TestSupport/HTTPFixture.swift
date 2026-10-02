@@ -11,6 +11,8 @@ final class HTTPFixture: @unchecked Sendable {
     private let listener: NWListener
     private let queue = DispatchQueue(label: "cc.blueice.tests.http", qos: .userInitiated)
     private let lock = NSLock()
+    struct Request: Sendable { let method: String; let path: String; let headers: String; let body: Data }
+    private var recorded: [Request] = []
     private var paths: [String] = []
     private var connections: [NWConnection] = []
     private(set) var origin = ""
@@ -40,17 +42,52 @@ final class HTTPFixture: @unchecked Sendable {
     }
 
     var requests: [String] { lock.withLock { paths } }
+    var records: [Request] { lock.withLock { recorded } }
 
     private func receive(_ connection: NWConnection, prefix: Data) {
         connection.receive(minimumIncompleteLength: 1, maximumLength: 4096) { [weak self] data, _, done, error in
             guard let self else { connection.cancel(); return }
             let request = prefix + (data ?? Data())
-            guard request.count <= 16384, error == nil else { connection.cancel(); return }
-            if let text = String(data: request, encoding: .utf8), text.contains("\r\n\r\n") {
-                let path = text.components(separatedBy: " ").dropFirst().first ?? "/"
-                self.lock.withLock { self.paths.append(path) }
+            guard error == nil, request.count <= 16384 + 1048576 else { connection.cancel(); return }
+            if let separator = request.range(of: Data("\r\n\r\n".utf8)) {
+                let headerEnd = separator.upperBound
+                guard headerEnd <= 16384, let text = String(data: request[..<headerEnd], encoding: .utf8) else { connection.cancel(); return }
+                let lines = text.components(separatedBy: "\r\n")
+                let lengths = lines.compactMap { line -> String? in
+                    guard let colon = line.firstIndex(of: ":"), line[..<colon].lowercased() == "content-length" else { return nil }
+                    return String(line[line.index(after: colon)...]).trimmingCharacters(in: .whitespaces)
+                }
+                guard lengths.count <= 1, let length = Int(lengths.first ?? "0"), (0...1048576).contains(length) else { connection.cancel(); return }
+                guard request.count >= headerEnd + length else {
+                    if !done { self.receive(connection, prefix: request) } else { connection.cancel() }; return
+                }
+                let fields = (lines.first ?? "").split(separator: " ")
+                guard fields.count == 3 else { connection.cancel(); return }
+                let path = String(fields[1]); let route = path.components(separatedBy: "?").first ?? path
+                self.lock.withLock {
+                    self.paths.append(path)
+                    self.recorded.append(Request(method: String(fields[0]), path: path, headers: text, body: request.subdata(in: headerEnd..<(headerEnd + length))))
+                }
                 let body: String
-                switch path {
+                switch route {
+                case "/forms": body = """
+                    <html><body><h1>Form submission fixture</h1>
+                    <form id="submission" action="/received?discarded=1">
+                    <input name="q" required aria-label="Query" value="A &amp; 冰" style="display:block;width:280px;height:32px">
+                    <input name="accepted" type="checkbox" checked aria-label="Accepted">
+                    <select name="region" aria-label="Region"><option value="a">Alpha</option><option value="b">Beta</option></select>
+                    <textarea name="notes" aria-label="Notes" style="display:block;width:280px;height:50px">one
+                    two</textarea>
+                    <input type="range" name="level" aria-label="Level" style="display:block">
+                    <button aria-label="Send GET" name="mode" value="get" style="display:block">Send GET</button>
+                    <button aria-label="Send POST" name="mode" value="post" formmethod="post" formaction="/posted?kept=1" style="display:block">Send POST</button>
+                    <button aria-label="Send redirect" formmethod="post" formaction="/redirect-303" style="display:block">Send redirect</button>
+                    </form></body></html>
+                    """
+                case "/protected-form": body = "<form method='post' action='/posted'><input type='password' name='password' value='private-fixture-secret'><button aria-label='Send protected'>Send protected</button></form>"
+                case "/received", "/posted": body = "<html><body><h1>Form received</h1></body></html>"
+                case "/redirect-303": body = ""
+
                 case "/reset": body = """
                     <html><body><h1>Native form reset fixture</h1>
                     <form id="profile">
@@ -113,9 +150,10 @@ final class HTTPFixture: @unchecked Sendable {
                 default: body = "<html><head><title>BlueIce HTTP fixture</title></head><body style='background-color:#207840;color:white'><h1>BlueIce external page</h1><p>Real HTTP content, reviewed by the gatekeeper.</p></body></html>"
                 }
                 let bytes = Data(body.utf8)
-                let headers = "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: \(bytes.count)\r\nConnection: close\r\n\r\n"
+                let response = route == "/redirect-303" ? "303 See Other\r\nLocation: /received" : "200 OK"
+                let headers = "HTTP/1.1 \(response)\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: \(bytes.count)\r\nConnection: close\r\n\r\n"
                 connection.send(content: Data(headers.utf8) + bytes, completion: .contentProcessed { _ in connection.cancel() })
-            } else if done { connection.cancel() }
+            } else if request.count > 16384 || done { connection.cancel() }
             else { self.receive(connection, prefix: request) }
         }
     }

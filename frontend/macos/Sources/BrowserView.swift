@@ -77,6 +77,12 @@ struct BrowserView: View {
             }
             .font(.caption).foregroundStyle(.secondary).padding(.horizontal, 12).padding(.vertical, 6)
         }
+        .alert("Resend form data?", isPresented: $model.resubmissionPresented, presenting: model.resubmission) { prompt in
+            Button("Resend") { model.resolveResubmission(prompt.confirmationID, accept: true) }
+            Button("Cancel", role: .cancel) { model.resolveResubmission(prompt.confirmationID, accept: false) }
+        } message: { prompt in
+            Text("Resending will repeat the previous form submission to \(URL(string: prompt.url)?.host ?? prompt.url).")
+        }
         .buttonStyle(.plain)
         .frame(minWidth: 720, minHeight: 480)
         .onChange(of: model.addressFocusSerial) { _, _ in addressFocused = true }

@@ -17,6 +17,9 @@ fn content_stage_rejection_blocks_navigation_and_leaves_the_page_unchanged() {
                 continue;
             };
             let reply = match req {
+                blueice_ipc::gatekeeper::GatekeeperRequest::CheckFormSubmission { .. } => {
+                    blueice_ipc::gatekeeper::GatekeeperReply::Cleared
+                }
                 blueice_ipc::gatekeeper::GatekeeperRequest::CheckUrl { .. }
                 | blueice_ipc::gatekeeper::GatekeeperRequest::CheckDownload { .. }
                 | blueice_ipc::gatekeeper::GatekeeperRequest::CheckExtensionAction { .. } => {

@@ -13,6 +13,7 @@ use super::*;
 pub(super) enum PendingKind {
     Navigate,
     OpenTab,
+    Reload,
     /// A URL-only Back/Forward traversal. The cursor advances only after its
     /// gated fetch succeeds, unlike a new navigation which creates a branch.
     History(HistoryDirection),
@@ -83,6 +84,12 @@ pub(super) fn begin_history_navigation<S: Write>(
     };
     let kind = PendingKind::History(direction);
     match destination {
+        HistoryDestination::Post { .. } => write_error(
+            stream,
+            reply_tab,
+            request_id,
+            "POST history requires resubmission confirmation".into(),
+        ),
         HistoryDestination::Snapshot => {
             // A snapshot restoration is a newer navigation for this tab. A
             // delayed fetch that predates it must never overwrite the restored
@@ -219,12 +226,54 @@ pub(super) fn begin_gated_navigation<S: Write>(
     gatekeeper_socket: &Path,
     extension_events: Option<&mpsc::SyncSender<ExtensionRuntimeEvent>>,
 ) -> io::Result<()> {
+    begin_gated_request(
+        tabs,
+        stream,
+        frame_dir,
+        generation,
+        reply_tab,
+        request_id,
+        tab_id,
+        url.into(),
+        kind,
+        pending_nav_seq,
+        downloads_refresher,
+        completion_tx,
+        gatekeeper_socket,
+        extension_events,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn begin_gated_request<S: Write>(
+    tabs: &mut TabManager,
+    stream: &mut S,
+    frame_dir: &Path,
+    generation: &mut u64,
+    reply_tab: Option<u64>,
+    request_id: Option<u64>,
+    tab_id: TabId,
+    navigation: BrowserNavigation,
+    kind: PendingKind,
+    pending_nav_seq: &mut HashMap<TabId, u64>,
+    downloads_refresher: &mut DownloadsRefresher,
+    completion_tx: &mpsc::Sender<Completion>,
+    gatekeeper_socket: &Path,
+    extension_events: Option<&mpsc::SyncSender<ExtensionRuntimeEvent>>,
+) -> io::Result<()> {
+    let url = navigation.request.url().to_string();
+    tabs.get_mut(tab_id).expect("live tab").submission_pending = false;
     // Every navigation supersedes an older in-flight fetch for this tab
     // before choosing its synchronous or asynchronous path, so a built-in
     // page or an invalid-URL response cancels a stale fetch just as an
     // http(s) navigation does.
     let this_seq = supersede_pending_navigation(pending_nav_seq, tab_id);
-    if tabs.navigate_to_built_in(tab_id, &url) {
+    let built_in = if matches!(kind, PendingKind::Reload) {
+        tabs.reload_built_in(tab_id, &url)
+    } else {
+        tabs.navigate_to_built_in(tab_id, &url)
+    };
+    if built_in {
         if is_downloads_url(&url) {
             downloads_refresher.begin_visit(tab_id);
         }
@@ -256,13 +305,26 @@ pub(super) fn begin_gated_navigation<S: Write>(
         );
     }
 
+    if navigation.form.is_some() {
+        tabs.get_mut(tab_id).expect("live tab").submission_pending = true;
+        blueice_ipc::write_server_message_with_ids(
+            stream,
+            reply_tab,
+            request_id,
+            &ServerMessage::NavigationStarted {
+                url: url.clone(),
+                method: navigation.request.method().into(),
+            },
+        )?;
+    }
+
     let tx = completion_tx.clone();
     let socket = gatekeeper_socket.to_path_buf();
     let translation = tabs.translation_config();
     thread::spawn(move || {
-        let outcome = gatekeeper_client::check_and_fetch_with_navigation_rules(
+        let outcome = gatekeeper_client::check_and_fetch_request(
             tab_id,
-            url,
+            navigation,
             &socket,
             navigation_rules,
         );
@@ -301,7 +363,7 @@ pub(super) fn reply_success<S: Write>(
         .get_mut(tab_id)
         .expect("a navigation reply requires a live tab");
     match kind {
-        PendingKind::Navigate | PendingKind::History(_) => {
+        PendingKind::Navigate | PendingKind::History(_) | PendingKind::Reload => {
             reply_navigated(page, stream, reply_tab, request_id)?
         }
         PendingKind::OpenTab => blueice_ipc::write_server_message_with_ids(
@@ -362,6 +424,7 @@ pub(super) fn apply_completion<S: Write>(
     if tabs.get(tab_id).is_none() {
         return Ok(false); // the tab closed while this navigation was pending
     }
+    tabs.get_mut(tab_id).expect("live tab").submission_pending = false;
     let reply_tab = Some(tab_id.as_u64());
     match outcome {
         NavOutcome::Cleared {
@@ -372,9 +435,10 @@ pub(super) fn apply_completion<S: Write>(
             content_type,
             request_url,
             redirects,
+            navigation,
         } => {
             let response = blueice_ipc::extension::NetworkResponseInfo {
-                method: "GET".to_string(),
+                method: navigation.request.method().to_string(),
                 final_url: final_url.clone(),
                 status,
                 content_type,
@@ -394,6 +458,17 @@ pub(super) fn apply_completion<S: Write>(
                     translations.as_deref(),
                     trace,
                 ),
+                PendingKind::Reload => {
+                    tabs.apply_fetched_reload(
+                        tab_id,
+                        clearance,
+                        &final_url,
+                        &html,
+                        translations.as_deref(),
+                        trace,
+                    );
+                    true
+                }
                 PendingKind::Navigate | PendingKind::OpenTab => {
                     tabs.apply_fetched_navigation(
                         tab_id,
@@ -413,6 +488,7 @@ pub(super) fn apply_completion<S: Write>(
                 // applying the response to an unrelated document.
                 return Ok(false);
             }
+            tabs.remember_navigation(tab_id, navigation);
             if is_downloads_url(&final_url) {
                 downloads_refresher.begin_visit(tab_id);
             }
@@ -512,5 +588,51 @@ pub(super) fn handle_open_tab<S: Write>(
         completion_tx,
         gatekeeper_socket,
         extension_events,
+    )
+}
+
+pub(super) struct PendingResubmission {
+    pub(super) id: u64,
+    pub(super) sequence: u64,
+    pub(super) document: u64,
+    pub(super) navigation: BrowserNavigation,
+    pub(super) kind: PendingKind,
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn request_resubmission<S: Write>(
+    tabs: &TabManager,
+    stream: &mut S,
+    tab: TabId,
+    request: Option<u64>,
+    navigation: BrowserNavigation,
+    kind: PendingKind,
+    sequences: &mut HashMap<TabId, u64>,
+    pending: &mut HashMap<TabId, PendingResubmission>,
+) -> io::Result<()> {
+    let mut bytes = [0; 8];
+    getrandom::fill(&mut bytes).map_err(|error| io::Error::other(error.to_string()))?;
+    let id = u64::from_le_bytes(bytes);
+    let url = navigation.request.url().to_string();
+    let sequence = supersede_pending_navigation(sequences, tab);
+    let document = tabs.get(tab).expect("live tab").document_generation();
+    pending.insert(
+        tab,
+        PendingResubmission {
+            id,
+            sequence,
+            document,
+            navigation,
+            kind,
+        },
+    );
+    blueice_ipc::write_server_message_with_ids(
+        stream,
+        Some(tab.as_u64()),
+        request,
+        &ServerMessage::FormResubmission {
+            confirmation_id: id,
+            url,
+        },
     )
 }

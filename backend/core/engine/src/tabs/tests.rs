@@ -639,6 +639,7 @@ fn traverse_built_in_history(tabs: &mut TabManager, tab: TabId, direction: Histo
         Some(HistoryDestination::Reload(Some(url))) => {
             assert!(tabs.navigate_history_to_built_in(tab, direction, &url))
         }
+        Some(HistoryDestination::Post { .. }) => panic!("expected a GET history entry"),
         None => panic!("expected a history entry"),
     }
 }
