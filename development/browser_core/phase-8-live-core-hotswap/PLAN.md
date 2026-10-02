@@ -149,3 +149,7 @@ Resolved via a research pass grounded in the *actual* current shape of `blueice-
 - [ ] Implement minimum-memory’s low-retention/streaming/safe-point-GC policy and direct timeout-tab hibernation; retain non-timed-out inactive tabs and enforce a timeout longer than extreme mode’s
 - [ ] Implement strict extreme-mode fleet containment first for Linux cgroup v2 and Windows Job Objects; expose an explicitly non-hard managed/accounted status where strict platform enforcement is unavailable
 - [ ] Add deterministic timeout/accounting/reclaim tests: minimum-mode timeout longer than extreme, direct timeout-tab hibernation in both modes, active-tab priority and demand-only inactive-tab reclaim in extreme; add safe platform integration tests without creating real OOM conditions in CI
+
+## Maintenance verification (2026-10-01)
+
+The existing implementation and shared process/IPC boundaries were reviewed and split into smaller modules without adding capabilities. See the [Phase 6–9 maintenance results](../phase-6-9-maintenance/RESULTS.md) for the module map, retained regression coverage and native Linux/Windows validation. This maintenance pass does not advance the feature checklist above.

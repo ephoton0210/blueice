@@ -130,7 +130,7 @@ later frame arrived. A real two-tab cutover test verifies both unsolicited
 handoff frames.
 
 **Compiled-stack orchestration check (2026-09-24).**
-`backend/mcp-server/tests/phase6_agent_binary.rs` starts a real supervised
+`backend/mcp-server/tests/scenario_agent_binary.rs` starts a real supervised
 gatekeeper, launcher broker, core, loopback demo site, compiled Phase 6 agent,
 and stdio MCP server. A second, independent launcher client receives the same
 highlighted `FrameReady` tab/generation recorded by the agent's snapshot and
@@ -206,3 +206,7 @@ Ollama or TGI server, nor the still-open human-observer evidence requirement.
 - [ ] Demonstrate human + agent observing the same page/state simultaneously
 - [x] Record results (what worked, what broke, what surprised) — [RESULTS.md](RESULTS.md) records the real-model task, evidence identities/hashes, provider-label correction, viewport change, and missing human-window capture
 - [x] Feed findings back into earlier phases' plans — Phase 5 records the live common-frame evidence boundary and now the frame-source follow-up; Phase 8 records the human-frontend viewport change, cutover generation reset, and why evidence must be compared after observer attachment. These notes do not substitute for the still-missing human-window screenshot.
+
+## Maintenance verification (2026-10-01)
+
+The existing implementation and shared process/IPC boundaries were reviewed and split into smaller modules without adding capabilities. See the [Phase 6–9 maintenance results](../phase-6-9-maintenance/RESULTS.md) for the module map, retained regression coverage and native Linux/Windows validation. This maintenance pass does not advance the feature checklist above.
