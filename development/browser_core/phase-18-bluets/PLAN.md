@@ -3226,3 +3226,72 @@ checker (also for ESM), so a declaration file prints `unknown` for a variable
 inferred from one; reassigning a local listed in `export { local as x }` is not
 tracked after the statement; `export default <expression>` and re-exports remain
 out of the matrix; an exported variable with several declarators is refused.
+
+### J.4.2 and J.4.3 Installed packages: resolution, canonical roots, fingerprints
+
+`package_resolution.rs` resolves a bare specifier the way TypeScript 5.9.3 does,
+over an injectable `PackageFs` (the real disk is `OsPackageFs`; the unit tests use an
+in-memory tree with symlinks). The owner's configuration is `moduleResolution`
+(`node10`, `node16`/`nodenext`, `bundler`), optional `packageRoots` and
+`customConditions` in `bluetsc.json` only; with no `moduleResolution` a bare
+specifier is refused exactly as before, and the single-entry flag mode has no way
+to turn the feature on.
+
+**Lookup.** For each ancestor of the importing file that is inside an authorized
+root, nearest first, `node_modules/<name>` and then `node_modules/@types/<mangled>`
+(`@scope/pkg` is `@types/scope__pkg`). `node10` reads `typings`, `types`, `main`,
+then `index`; a subpath is a file, then a directory with its own manifest fields,
+then `index`. `node16` and `bundler` use `exports` when the package has one and then
+use nothing else (no `main`, no loose files): conditions are `types`, `node` (node16
+only), `import` or `require` by the importing module system, and the owner's
+`customConditions`; the entry is the exact key or the longest-prefix `*` pattern;
+arrays and condition objects are an ordered list of candidate files, the first that
+exists winning, as TypeScript does, with `null` ending the list as a block; `#imports`
+resolve through the nearest manifest. A `.js`/`.jsx` target stands for its `.ts`,
+`.tsx` or `.d.ts`; a JavaScript-only package is the explicit `JavaScriptOnly` error.
+`exports` is read with an order-preserving JSON value, since a `serde_json::Value`
+sorts keys and would pick the wrong condition.
+
+**Roots and symlinks (J.4.3).** The roots are canonical directories (the project root
+plus the config's `packageRoots`). The search stops at them; a package directory is
+canonicalized before anything inside it is read; a manifest field that would climb out
+of its package is skipped without being probed; a found file is canonicalized and must
+be inside a root. A package, `node_modules` directory or file reached through a symlink
+that leaves the roots is `OutsideRoots`, an error rather than a reason to try a farther
+candidate, so a link cannot redirect a lookup to something the owner did not
+authorize, and a link that stays inside is followed to its real path (pnpm layouts).
+Nothing is installed or fetched: a missing package is `NotFound` and says so.
+
+**Module identity and emit.** A file under a root is the module id `<path from the
+project root>`; one under a `packageRoots` entry is `@external/<n>/<path>`, and one reached
+by a symlink to a directory without `node_modules` in its path is `@package/<path>`.
+`is_external_library_module` (a `node_modules` segment or either prefix) marks a
+module as an installed package's: it is checked and its types are used but, as with
+TypeScript's external-library files, it is neither emitted nor copied as a
+declaration, and the importing program keeps the package's own specifier, which the
+host that runs the output resolves. A value import of such a declaration module is
+allowed (a project or host-supplied `.d.ts` still refuses it as type-only). The direct
+bridge links no packages: a runtime import resolving to one is an explicit refusal
+naming the `bluetsc build` route.
+
+**Fingerprints and invalidation.** The resolver records every `package.json` it read
+(with its SHA-256), every candidate it probed and found absent, and each directory's
+canonical target. `fingerprint()` hashes that with the TypeScript resolution version, the
+strategy, conditions and roots; `revalidate()` re-checks each observation, so a nearer
+package appearing, a manifest edit, a repointed symlink, or a better-ranked file appearing
+makes it `false` and the host must discard what depended on it. The configuration part is
+in `resolver_fingerprint` (so in the project fingerprint) before compilation, and the
+manifest's `packageResolution` records the version, strategy, conditions, number of
+external roots, the resolved packages (name, version, whether from `@types`) and the
+full observation fingerprint after it. Tests: 30 in-memory resolver tests, 5 disk tests
+(real symlinks, escapes, traversal-shaped specifiers, invalidation), and 10 `bluetsc`
+tests, including a CommonJS project that imports an installed package and a
+`export =` module and runs under Node.
+
+Recorded gaps: the symlink tests are Unix-only (the code uses only `std::fs::canonicalize`
+and `Path::starts_with`, so Windows verbatim prefixes compare consistently, but it has
+not been run there); a case-insensitive file system relies on `canonicalize` returning
+one spelling; `.d.mts`/`.d.cts`/`.mts`/`.cts` entries, `typesVersions`, the package's
+self-name import, `paths`/`baseUrl` and automatic `@types` inclusion are not resolved;
+real-world declaration files that use syntax BlueTS's declaration parser does not
+accept are refused at parse time, not skipped.

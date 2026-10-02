@@ -738,6 +738,13 @@ fn runtime_module_ids(project: &Project, entry: &str) -> Result<BTreeSet<String>
                         "BlueTS did not retain a canonical target for this runtime import",
                     )
                 })?;
+            if blueice_bluets::is_external_library_module(target) {
+                return Err(unsupported(
+                    import.specifier_span.clone(),
+                    "the direct bridge links no installed packages: a runtime import of a package \
+                     needs the host-provided module loader of the `bluetsc build` route",
+                ));
+            }
             if !target.ends_with(".d.ts") {
                 pending.push(target.to_string());
             }

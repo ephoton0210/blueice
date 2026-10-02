@@ -26,6 +26,7 @@ mod diagnostic;
 mod emitter;
 mod enum_eval;
 mod namespace_analysis;
+pub mod package_resolution;
 mod parser;
 mod strict_boundaries;
 mod syntax;
@@ -36,9 +37,9 @@ pub use authorized_loader::{
 };
 pub use checker::{CheckedModule, CheckedProject, Symbol, SymbolKind, Type};
 pub use compiler::{
-    compile, CompilerLimits, CompilerOptions, EcmaTarget, IncrementalCompiler, IncrementalResult,
-    MapLoader, ModuleKind, ModuleLoader, ModuleSource, Project, RuntimePolicy,
-    StrictRuntimeBoundary,
+    compile, is_external_library_module, CompilerLimits, CompilerOptions, EcmaTarget,
+    IncrementalCompiler, IncrementalResult, MapLoader, ModuleKind, ModuleLoader, ModuleSource,
+    Project, RuntimePolicy, StrictRuntimeBoundary,
 };
 pub use contracts::{
     Contract, ContractError, ContractPlan, ContractValue, ValidationError, ValidationLimits,

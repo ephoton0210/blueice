@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: J.4.2.** J.3 is complete. H and I are complete. The requested class, enum,
+**Current leaf: J.4.4.** J.3 is complete. H and I are complete. The requested class, enum,
 decorator, namespace, JSX, CommonJS, and package-resolution expansion has
 passed J.1/J.2 planning; implementation and pinned-`tsc` parity remain open.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
@@ -2785,11 +2785,11 @@ done to the page-runs-and-debugs goal at the top of this file.
   - [x] **J.4.1** Add TypeScript 5.9.3 module-mode selection and CommonJS
     checking/emit (`import = require`, `export =`, interop and cycles), plus
     an explicit compatible runtime route for direct BlueTS execution.
-  - [ ] **J.4.2** Resolve arbitrary installed package names through the
+  - [x] **J.4.2** Resolve arbitrary installed package names through the
     configured, owner-authorized dependency tree, covering TypeScript's
     versioned Node and bundler strategies, `package.json` conditions,
     `@types`, and declaration selection.
-  - [ ] **J.4.3** Bind package resolution to canonical roots and exact
+  - [x] **J.4.3** Bind package resolution to canonical roots and exact
     graph/config fingerprints; test symlink, path escape, cache invalidation,
     and cross-platform behavior without implicit package installation.
   - [ ] **J.4.4** Support explicitly authorized remote declaration sources

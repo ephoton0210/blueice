@@ -247,6 +247,18 @@ pub(crate) fn is_declaration_module(module_id: &str) -> bool {
     module_id.ends_with(".d.ts")
 }
 
+/// Whether a module comes from an installed package: its path has a
+/// `node_modules` segment, it is a package file reached through a symlink to a
+/// directory without one (`@package/..`), or it is in an owner-authorized
+/// external package root (`@external/<n>/..`). Like TypeScript's external-library files it is checked
+/// and its types are used, but it is not emitted: the importing program keeps
+/// the package's own specifier for the runtime to resolve.
+pub fn is_external_library_module(module_id: &str) -> bool {
+    module_id.starts_with("@external/")
+        || module_id.starts_with("@package/")
+        || module_id.split('/').any(|part| part == "node_modules")
+}
+
 /// The source graph after parsing and host-controlled resolution.  It contains
 /// no JavaScript-runtime dependency and is reusable by check-only and build
 /// callers alike.

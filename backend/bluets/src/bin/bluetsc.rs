@@ -4,6 +4,10 @@
 
 //! The standalone BlueTSC command-line front end.
 
+use blueice_bluets::package_resolution::{
+    ImportMode, ModuleResolution, OsPackageFs, PackageResolver, PackageResolverConfig,
+    ResolveError, RESOLUTION_VERSION,
+};
 use blueice_bluets::{
     compile, BuildArtifact, CompilerLimits, CompilerOptions, EcmaTarget, ModuleKind, ModuleLoader,
     ModuleSource, RuntimePolicy, SourceSpan, StrictRuntimeBoundary,
@@ -52,6 +56,17 @@ struct Invocation {
     out_dir: Option<PathBuf>,
     options: CompilerOptions,
     imports: BTreeMap<String, PathBuf>,
+    packages: Option<PackageSettings>,
+}
+
+/// The owner's installed-package settings, from the config file only.
+#[derive(Debug, Clone)]
+struct PackageSettings {
+    resolution: ModuleResolution,
+    /// Canonical directories beyond the project root dependencies may be read
+    /// from.
+    extra_roots: Vec<PathBuf>,
+    custom_conditions: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -82,6 +97,12 @@ struct BlueTscConfig {
     runtime_policy: Option<String>,
     #[serde(default)]
     imports: BTreeMap<String, String>,
+    #[serde(default)]
+    module_resolution: Option<String>,
+    #[serde(default)]
+    package_roots: Vec<String>,
+    #[serde(default)]
+    custom_conditions: Vec<String>,
     #[serde(default)]
     strict_boundaries: Vec<StrictBoundaryConfig>,
 }
@@ -133,6 +154,20 @@ fn main() -> ExitCode {
     let loader = FileLoader {
         root: invocation.root.clone(),
         imports: invocation.imports.clone(),
+        extra_roots: invocation
+            .packages
+            .as_ref()
+            .map(|settings| settings.extra_roots.clone())
+            .unwrap_or_default(),
+        packages: invocation
+            .packages
+            .as_ref()
+            .map(|settings| package_resolver(&invocation.root, settings)),
+        import_mode: if invocation.options.module_kind == ModuleKind::CommonJs {
+            ImportMode::Require
+        } else {
+            ImportMode::Import
+        },
     };
     let summary = compile_entries(
         &invocation.root,
@@ -152,7 +187,11 @@ fn main() -> ExitCode {
         );
         return ExitCode::SUCCESS;
     }
-    let metadata = build_metadata(&invocation, &summary);
+    let metadata = build_metadata(
+        &invocation,
+        &summary,
+        package_manifest(&invocation, &loader),
+    );
     let out_dir = invocation
         .out_dir
         .as_deref()
@@ -290,7 +329,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
 }
 
 fn usage() -> &'static str {
-    "Usage:\n  bluetsc check <entry.ts> [--project-root <directory>] [--target es2020|es2022] [--use-define-for-class-fields true|false] [--preserve-const-enums] [--isolated-modules] [--module esnext|commonjs] [--es-module-interop] [--runtime-policy transpile-only|checked|strict-runtime]\n  bluetsc build <entry.ts> --out-dir <directory> [--project-root <directory>] [--source-map] [--declaration] [--target es2020|es2022] [--use-define-for-class-fields true|false] [--preserve-const-enums] [--isolated-modules] [--module esnext|commonjs] [--es-module-interop] [--runtime-policy transpile-only|checked|strict-runtime]\n  bluetsc check --config <bluetsc.json>\n  bluetsc build --config <bluetsc.json>\n\nConfig fields: entries, projectRoot, outDir, sourceMap, declaration, target, useDefineForClassFields, preserveConstEnums, isolatedModules, module, esModuleInterop, runtimePolicy, imports, strictBoundaries."
+    "Usage:\n  bluetsc check <entry.ts> [--project-root <directory>] [--target es2020|es2022] [--use-define-for-class-fields true|false] [--preserve-const-enums] [--isolated-modules] [--module esnext|commonjs] [--es-module-interop] [--runtime-policy transpile-only|checked|strict-runtime]\n  bluetsc build <entry.ts> --out-dir <directory> [--project-root <directory>] [--source-map] [--declaration] [--target es2020|es2022] [--use-define-for-class-fields true|false] [--preserve-const-enums] [--isolated-modules] [--module esnext|commonjs] [--es-module-interop] [--runtime-policy transpile-only|checked|strict-runtime]\n  bluetsc check --config <bluetsc.json>\n  bluetsc build --config <bluetsc.json>\n\nConfig fields: entries, projectRoot, outDir, sourceMap, declaration, target, useDefineForClassFields, preserveConstEnums, isolatedModules, module, esModuleInterop, runtimePolicy, imports, moduleResolution, packageRoots, customConditions, strictBoundaries."
 }
 
 #[derive(Debug)]
@@ -317,6 +356,8 @@ struct BuildMetadata {
     inline_const_enums: bool,
     module: &'static str,
     es_module_interop: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    package_resolution: Option<PackageResolutionManifest>,
     /// The version of the private-name helper text an artifact may embed.
     class_helper_version: &'static str,
     runtime_policy: &'static str,
@@ -333,6 +374,29 @@ struct BuildMetadata {
     imports: BTreeMap<String, String>,
     #[serde(skip)]
     has_configured_imports: bool,
+}
+
+/// The owner's installed-package settings and what resolution actually used.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PackageResolutionManifest {
+    version: &'static str,
+    module_resolution: &'static str,
+    custom_conditions: Vec<String>,
+    /// How many extra authorized package roots beyond the project root.
+    external_roots: usize,
+    /// Configuration plus every file the resolution depended on.
+    fingerprint: String,
+    packages: Vec<ResolvedPackageManifest>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ResolvedPackageManifest {
+    name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    version: Option<String>,
+    types_package: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -464,7 +528,11 @@ fn compile_entries(
     }
 }
 
-fn build_metadata(invocation: &Invocation, summary: &CompileSummary) -> BuildMetadata {
+fn build_metadata(
+    invocation: &Invocation,
+    summary: &CompileSummary,
+    package_resolution: Option<PackageResolutionManifest>,
+) -> BuildMetadata {
     let entries = invocation
         .entries
         .iter()
@@ -496,6 +564,7 @@ fn build_metadata(invocation: &Invocation, summary: &CompileSummary) -> BuildMet
         inline_const_enums: invocation.options.inlines_const_enums(),
         module: invocation.options.module_kind.as_str(),
         es_module_interop: invocation.options.es_module_interop,
+        package_resolution,
         class_helper_version: blueice_bluets::CLASS_HELPER_V1_VERSION,
         runtime_policy: invocation.options.runtime_policy.as_str(),
         runtime_helper: (invocation.options.runtime_policy == RuntimePolicy::StrictRuntime)
@@ -574,6 +643,7 @@ fn resolve_explicit_invocation(
         out_dir,
         options,
         imports: BTreeMap::new(),
+        packages: None,
     })
 }
 
@@ -660,22 +730,37 @@ fn resolve_config_invocation(path: PathBuf) -> Result<Invocation, String> {
         }
         imports.insert(specifier, target);
     }
+    let packages = configured_packages(
+        config_directory,
+        &root,
+        config.module_resolution.as_deref(),
+        &config.package_roots,
+        config.custom_conditions,
+    )?;
     let strict_runtime_boundaries = config
         .strict_boundaries
         .into_iter()
         .map(|boundary| configured_strict_boundary(&root, boundary))
         .collect::<Result<Vec<_>, _>>()?;
+    let options_module_kind = parse_module_kind(config.module.as_deref())?;
     let options = CompilerOptions {
         target: parse_target(config.target.as_deref())?,
         use_define_for_class_fields: config.use_define_for_class_fields,
         preserve_const_enums: config.preserve_const_enums,
         isolated_modules: config.isolated_modules,
         es_module_interop: config.es_module_interop,
-        module_kind: parse_module_kind(config.module.as_deref())?,
+        module_kind: options_module_kind,
         runtime_policy: parse_runtime_policy(config.runtime_policy.as_deref())?,
         source_map: config.source_map,
         declaration: config.declaration,
-        resolver_fingerprint: import_map_fingerprint(&root, &imports),
+        resolver_fingerprint: format!(
+            "{}{}",
+            import_map_fingerprint(&root, &imports),
+            packages
+                .as_ref()
+                .map(|settings| format!("+{}", package_resolver(&root, settings).fingerprint()))
+                .unwrap_or_default()
+        ),
         // The standalone CLI has no page-host profile authority. Only a host
         // that verified a generated `lib.blueice.d.ts` may add ambient
         // declarations through the library API.
@@ -690,7 +775,57 @@ fn resolve_config_invocation(path: PathBuf) -> Result<Invocation, String> {
         out_dir,
         options,
         imports,
+        packages,
     })
+}
+
+fn configured_packages(
+    config_directory: &Path,
+    root: &Path,
+    module_resolution: Option<&str>,
+    package_roots: &[String],
+    custom_conditions: Vec<String>,
+) -> Result<Option<PackageSettings>, String> {
+    let Some(name) = module_resolution else {
+        if !package_roots.is_empty() || !custom_conditions.is_empty() {
+            return Err(
+                "config packageRoots and customConditions need a moduleResolution".to_string(),
+            );
+        }
+        return Ok(None);
+    };
+    let resolution = ModuleResolution::parse(name).ok_or_else(|| {
+        format!("unsupported moduleResolution `{name}`; expected node10, node16 or bundler")
+    })?;
+    let mut extra_roots = Vec::new();
+    for configured in package_roots {
+        let path = absolute_existing_path(&config_directory.join(configured))
+            .map_err(|error| format!("cannot access packageRoot `{configured}`: {error}"))?;
+        if !path.is_dir() {
+            return Err(format!("packageRoot `{configured}` is not a directory"));
+        }
+        if path != root && !extra_roots.contains(&path) {
+            extra_roots.push(path);
+        }
+    }
+    Ok(Some(PackageSettings {
+        resolution,
+        extra_roots,
+        custom_conditions,
+    }))
+}
+
+fn package_resolver(root: &Path, settings: &PackageSettings) -> PackageResolver<OsPackageFs> {
+    let mut roots = vec![root.to_path_buf()];
+    roots.extend(settings.extra_roots.iter().cloned());
+    PackageResolver::new(
+        OsPackageFs,
+        PackageResolverConfig {
+            roots,
+            resolution: settings.resolution,
+            custom_conditions: settings.custom_conditions.clone(),
+        },
+    )
 }
 
 fn configured_strict_boundary(
@@ -840,6 +975,32 @@ fn fingerprint_entries(fingerprints: &[String]) -> String {
     format!("bts-project-{hash:016x}")
 }
 
+fn package_manifest(
+    invocation: &Invocation,
+    loader: &FileLoader,
+) -> Option<PackageResolutionManifest> {
+    let settings = invocation.packages.as_ref()?;
+    let resolver = loader.packages.as_ref()?;
+    let mut packages: Vec<ResolvedPackageManifest> = resolver
+        .resolved_packages()
+        .into_iter()
+        .map(|package| ResolvedPackageManifest {
+            name: package.name,
+            version: package.version,
+            types_package: package.from_types_package,
+        })
+        .collect();
+    packages.sort_by(|left, right| (&left.name, &left.version).cmp(&(&right.name, &right.version)));
+    Some(PackageResolutionManifest {
+        version: RESOLUTION_VERSION,
+        module_resolution: settings.resolution.as_str(),
+        custom_conditions: settings.custom_conditions.clone(),
+        external_roots: settings.extra_roots.len(),
+        fingerprint: resolver.fingerprint(),
+        packages,
+    })
+}
+
 fn import_map_fingerprint(root: &Path, imports: &BTreeMap<String, PathBuf>) -> String {
     let mut hash = 0xcbf29ce484222325u64;
     for (specifier, target) in imports {
@@ -863,6 +1024,12 @@ fn import_map_fingerprint(root: &Path, imports: &BTreeMap<String, PathBuf>) -> S
 struct FileLoader {
     root: PathBuf,
     imports: BTreeMap<String, PathBuf>,
+    /// Authorized package roots beyond `root`; a file under one has the module
+    /// id `@external/<index>/<path inside it>`.
+    extra_roots: Vec<PathBuf>,
+    /// Present only when the owner configured a `moduleResolution`.
+    packages: Option<PackageResolver<OsPackageFs>>,
+    import_mode: ImportMode,
 }
 
 impl ModuleLoader for FileLoader {
@@ -881,10 +1048,48 @@ impl ModuleLoader for FileLoader {
     }
 
     fn resolve(&self, from_module: &str, specifier: &str) -> Result<String, String> {
-        let candidate = if matches!(specifier, "." | "..")
+        let is_relative = matches!(specifier, "." | "..")
             || specifier.starts_with("./")
-            || specifier.starts_with("../")
-        {
+            || specifier.starts_with("../");
+        if let Some(packages) = &self.packages {
+            let from_directory = self
+                .source_path(from_module)?
+                .parent()
+                .map(Path::to_path_buf)
+                .ok_or_else(|| format!("module `{from_module}` has no directory"))?;
+            let has_source_extension = specifier.ends_with(".ts") || specifier.ends_with(".tsx");
+            // A relative import without a TypeScript extension is probed the way
+            // TypeScript does (`./x` -> `./x.ts`, `./x.d.ts`, `./x/index.ts`).
+            if is_relative && !has_source_extension {
+                let found = packages
+                    .resolve_relative(&from_directory, specifier)
+                    .map_err(|error| {
+                        format!("cannot resolve `{specifier}` from `{from_module}`: {error}")
+                    })?;
+                // A package's own files stay marked as package files.
+                return if blueice_bluets::is_external_library_module(from_module) {
+                    self.package_module_id(&found.path)
+                } else {
+                    self.module_id(&found.path)
+                };
+            }
+            if !is_relative
+                && !self.imports.contains_key(specifier)
+                && !self.matches_import_prefix(specifier)
+            {
+                return match packages.resolve(&from_directory, specifier, self.import_mode) {
+                    Ok(found) => self.package_module_id(&found.path),
+                    Err(
+                        error @ (ResolveError::NotFound { .. }
+                        | ResolveError::JavaScriptOnly { .. }),
+                    ) => Err(format!(
+                        "cannot resolve `{specifier}` from `{from_module}`: {error}"
+                    )),
+                    Err(error) => Err(format!("`{specifier}` from `{from_module}`: {error}")),
+                };
+            }
+        }
+        let candidate = if is_relative {
             self.root.join(
                 Path::new(from_module)
                     .parent()
@@ -907,6 +1112,25 @@ impl ModuleLoader for FileLoader {
 }
 
 impl FileLoader {
+    /// The module id of a file found by package resolution: ordinary, except
+    /// that a package reached through a symlink to a directory with no
+    /// `node_modules` in its path is still marked as an installed package.
+    /// A relative import from inside a package stays in its marking.
+    fn package_module_id(&self, path: &Path) -> Result<String, String> {
+        let id = self.module_id(path)?;
+        Ok(if blueice_bluets::is_external_library_module(&id) {
+            id
+        } else {
+            format!("@package/{id}")
+        })
+    }
+
+    fn matches_import_prefix(&self, specifier: &str) -> bool {
+        self.imports
+            .keys()
+            .any(|prefix| prefix.ends_with('/') && specifier.starts_with(prefix.as_str()))
+    }
+
     fn source_path(&self, module_id: &str) -> Result<PathBuf, String> {
         let module_path = Path::new(module_id);
         if module_path.is_absolute()
@@ -918,9 +1142,27 @@ impl FileLoader {
                 "module `{module_id}` escapes the declared project root"
             ));
         }
-        let path = fs::canonicalize(self.root.join(module_path))
+        let module_id = module_id.strip_prefix("@package/").unwrap_or(module_id);
+        let module_path = Path::new(module_id);
+        let (base, relative) = match module_id
+            .strip_prefix("@external/")
+            .and_then(|rest| rest.split_once('/'))
+        {
+            Some((index, relative)) => {
+                let base = index
+                    .parse::<usize>()
+                    .ok()
+                    .and_then(|index| self.extra_roots.get(index))
+                    .ok_or_else(|| {
+                        format!("module `{module_id}` names no authorized package root")
+                    })?;
+                (base, Path::new(relative))
+            }
+            None => (&self.root, module_path),
+        };
+        let path = fs::canonicalize(base.join(relative))
             .map_err(|error| format!("cannot read module `{module_id}`: {error}"))?;
-        if !path.starts_with(&self.root) {
+        if !path.starts_with(base) {
             return Err(format!(
                 "module `{module_id}` escapes the declared project root"
             ));
@@ -929,12 +1171,18 @@ impl FileLoader {
     }
 
     fn module_id(&self, path: &Path) -> Result<String, String> {
-        path.strip_prefix(&self.root).map(output_path).map_err(|_| {
-            format!(
-                "module {} escapes the declared project root",
-                path.display()
-            )
-        })
+        if let Ok(relative) = path.strip_prefix(&self.root) {
+            return Ok(output_path(relative));
+        }
+        for (index, root) in self.extra_roots.iter().enumerate() {
+            if let Ok(relative) = path.strip_prefix(root) {
+                return Ok(format!("@external/{index}/{}", output_path(relative)));
+            }
+        }
+        Err(format!(
+            "module {} escapes the declared project root",
+            path.display()
+        ))
     }
 
     fn resolve_import_map(&self, specifier: &str) -> Result<PathBuf, String> {

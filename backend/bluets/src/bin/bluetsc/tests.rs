@@ -208,6 +208,7 @@ fn configured_strict_boundary_is_confined_and_keeps_exact_source_span() {
             module_count: 1,
             has_errors: false,
         },
+        None,
     );
     let serialized = serde_json::to_value(metadata).unwrap();
     assert_eq!(
@@ -246,6 +247,7 @@ fn test_metadata() -> BuildMetadata {
         inline_const_enums: true,
         module: "esm",
         es_module_interop: false,
+        package_resolution: None,
         class_helper_version: "bluets-class-helper-v1",
         runtime_policy: "checked",
         runtime_helper: None,

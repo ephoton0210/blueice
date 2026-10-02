@@ -5,7 +5,9 @@
 //! ESM, declaration, and source-map emission from the shared checked graph.
 
 use crate::checker::CheckedProject;
-use crate::compiler::{fingerprint, is_declaration_module, CompilerOptions, Project};
+use crate::compiler::{
+    fingerprint, is_declaration_module, is_external_library_module, CompilerOptions, Project,
+};
 use crate::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
 use crate::parser::{Declaration, Module, TextEdit, Type, TypeParameter};
 use crate::strict_boundaries;
@@ -106,7 +108,7 @@ pub(crate) fn emit(
     let artifacts = checked
         .modules
         .iter()
-        .filter(|(id, _)| !is_declaration_module(id))
+        .filter(|(id, _)| !is_declaration_module(id) && !is_external_library_module(id))
         .map(|(id, checked_module)| {
             let (emitted, strict_runtime) =
                 emit_javascript(&checked_module.module, project, &exported_enums, options)?;
@@ -145,7 +147,9 @@ pub(crate) fn emit(
                 .modules
                 .iter()
                 .filter(|(id, _)| {
-                    is_declaration_module(id) && !project.is_ambient_declaration_module(id)
+                    is_declaration_module(id)
+                        && !is_external_library_module(id)
+                        && !project.is_ambient_declaration_module(id)
                 })
                 .map(|(id, checked_module)| (id.clone(), checked_module.module.source.clone()))
                 .collect()

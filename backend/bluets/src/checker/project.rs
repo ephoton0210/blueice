@@ -15,7 +15,15 @@ pub(super) fn declaration_module_diagnostics(project: &Project) -> Vec<Diagnosti
                     && project
                         .resolutions
                         .get(&(module_id.clone(), import.specifier.clone()))
-                        .is_some_and(|resolved| is_declaration_module(resolved))
+                        // An installed package's declarations describe code the
+                        // package provides at run time, which the host that runs
+                        // the output resolves by the package's own specifier. A
+                        // project or host-supplied declaration has no run-time
+                        // counterpart, so a value import of one stays refused.
+                        .is_some_and(|resolved| {
+                            is_declaration_module(resolved)
+                                && !crate::compiler::is_external_library_module(resolved)
+                        })
                 {
                     diagnostics.push(Diagnostic::error(
                         DiagnosticCode::InvalidDeclarationFile,
