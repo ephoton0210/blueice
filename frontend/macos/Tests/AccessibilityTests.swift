@@ -143,7 +143,7 @@ final class AccessibilityTests: XCTestCase {
         let secret = try XCTUnwrap(model.representation?.nodes.first { $0.name == "Secret" })
         XCTAssertNil(secret.state.value)
         XCTAssertTrue(secret.state.protected)
-        XCTAssertFalse(secret.state.nativeTextInput)
+        XCTAssertTrue(secret.state.nativeTextInput)
         let previous = try XCTUnwrap(model.representation)
         let previousEpoch = model.accessibilityEpoch
         model.reload()
@@ -166,7 +166,7 @@ final class AccessibilityTests: XCTestCase {
         XCTAssertTrue(predicate(), "Timed out waiting for real core accessibility state", file: file, line: line)
     }
 
-    func testProtectedTextboxNeverExposesValueOrEditing() throws {
+    func testProtectedTextboxAllowsOrdinaryFocusWithoutValueDisclosureOrDirectValueWrites() throws {
         let snapshot = try representation { json in
             var nodes = json["nodes"] as! [[String: Any]]
             nodes[1]["role"] = "TextBox"
@@ -175,12 +175,14 @@ final class AccessibilityTests: XCTestCase {
             nodes[1]["state"] = state; json["nodes"] = nodes
         }
         let view = NSView(frame: CGRect(x: 0, y: 0, width: 500, height: 300))
-        let tree = PageAccessibilityTree(view: view) { _, _, _, _ in XCTFail("Protected field cannot edit"); return true }
+        var focusActions = 0
+        let tree = PageAccessibilityTree(view: view) { _, _, _, _ in focusActions += 1; return true }
         tree.update(snapshot, epoch: 1, imageSize: CGSize(width: 1000, height: 600))
         let field = try XCTUnwrap(tree.elements[2])
         XCTAssertEqual(field.accessibilitySubrole(), .secureTextField)
         XCTAssertNil(field.accessibilityValue())
-        XCTAssertFalse(field.accessibilityPerformPress())
+        XCTAssertTrue(field.accessibilityPerformPress())
+        XCTAssertEqual(focusActions, 1)
         XCTAssertFalse(field.isAccessibilitySelectorAllowed(#selector(field.setAccessibilityValue(_:))))
     }
 

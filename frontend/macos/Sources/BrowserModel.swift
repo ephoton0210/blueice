@@ -17,6 +17,28 @@ final class BrowserModel: ObservableObject {
     @Published private(set) var history = HistoryState()
     @Published private(set) var representation: PageRepresentation?
     @Published private(set) var accessibilityEpoch: UInt64 = 0
+    @Published private(set) var textInputState: TextInputState?
+    @Published private(set) var textInputBusy = false
+    private struct InputRequest {
+        let epoch: UInt64
+        let serial: UInt64
+        let generation: UInt64
+        var request: UInt64?
+    }
+    private struct InputEdit {
+        let tab: UInt64
+        let epoch: UInt64
+        let serial: UInt64
+        let action: TextInputAction
+    }
+    private var inputStates: [UInt64: TextInputState] = [:]
+    private var inputSerials: [UInt64: UInt64] = [:]
+    private var inputFocusPending: Set<UInt64> = []
+    private var inputRequests: [UInt64: InputRequest] = [:]
+    private var inputQueue: [InputEdit] = []
+    private var inputFlight: (edit: InputEdit, request: UInt64?)?
+    private var earlyInputReplies: [IncomingEnvelope] = []
+    private var inputTimeout: Task<Void, Never>?
     private var representations: [UInt64: PageRepresentation] = [:]
     private var documentEpochs: [UInt64: UInt64] = [:]
     private var representationRequests: [UInt64: (epoch: UInt64, generation: UInt64)] = [:]
@@ -58,7 +80,7 @@ final class BrowserModel: ObservableObject {
                 let message = error.localizedDescription
                 Task { @MainActor [weak self] in
                     guard let self else { return }
-                    self.status = message; self.ready = false; self.representation = nil
+                    self.status = message; self.ready = false; self.representation = nil; self.clearTextInput()
                     await self.session.stop()
                 }
             }
@@ -84,6 +106,9 @@ final class BrowserModel: ObservableObject {
             representations = representations.filter { live.contains($0.key) }
             documentEpochs = documentEpochs.filter { live.contains($0.key) }
             representationRequests = representationRequests.filter { live.contains($0.key) }
+            inputStates = inputStates.filter { live.contains($0.key) }
+            inputRequests = inputRequests.filter { live.contains($0.key) }
+            inputQueue.removeAll { !live.contains($0.tab) }
             if selected == nil || !live.contains(selected!) { selected = list.first?.id }
             showSelected()
         case .opened(let id):
@@ -95,6 +120,10 @@ final class BrowserModel: ObservableObject {
             if let tab {
                 documentEpochs[tab, default: 0] += 1
                 representations.removeValue(forKey: tab)
+                inputStates.removeValue(forKey: tab)
+                inputSerials[tab, default: 0] += 1
+                inputQueue.removeAll { $0.tab == tab }
+                if tab == selected { textInputState = nil }
                 if tab == selected { representation = nil; accessibilityEpoch = documentEpochs[tab] ?? 0 }
             }
             if let id = tab, let index = tabs.firstIndex(where: { $0.id == id }) { tabs[index].url = url }
@@ -109,6 +138,7 @@ final class BrowserModel: ObservableObject {
             representations.removeValue(forKey: tab)
             if tab == selected { showFrame(pixels); representation = nil }
             requestRepresentation(tab)
+            requestTextInput(tab)
         case .representation(let snapshot):
             guard let tab, snapshot.tabID == tab, envelope.requestID != nil,
                   let requested = representationRequests.removeValue(forKey: tab),
@@ -130,6 +160,13 @@ final class BrowserModel: ObservableObject {
             if tab == selected { status = "Navigation blocked: " + reason }
         case .error(let message):
             if tab == nil || tab == selected { status = message }
+            if envelope.requestID == inputFlight?.request {
+                finishInputFlight(); inputQueue.removeAll { $0.tab == tab }; requestTextInput(tab)
+            } else if inputFlight != nil && inputFlight?.request == nil {
+                if earlyInputReplies.count < 32 { earlyInputReplies.append(envelope) }
+            }
+        case .textInputState, .textInputUnavailable:
+            applyTextInput(envelope)
         default: break
         }
     }
@@ -145,9 +182,13 @@ final class BrowserModel: ObservableObject {
         showFrame(selected.flatMap { frames[$0] })
         representation = selected.flatMap { representations[$0] }
         accessibilityEpoch = selected.flatMap { documentEpochs[$0] } ?? 0
+        textInputState = selected.flatMap { inputStates[$0] }
     }
 
     func select(_ tab: UInt64) {
+        if let previous = selected, inputStates[previous]?.focused?.marked != nil {
+            textInput(.finishComposition)
+        }
         selected = tab
         showSelected()
         Task { await send(.unit("GetHistoryState"), tab: tab); await resize() }
@@ -176,8 +217,116 @@ final class BrowserModel: ObservableObject {
             .intersection(CGRect(x: 0, y: 0, width: frame.width, height: frame.height))
         guard !visible.isEmpty else { return false }
         // Use the same hit-test/default-action pipeline as a physical page click.
-        action(.values("Click", ["x": .number(visible.midX), "y": .number(visible.midY)]), tab: snapshot.tabID)
+        focusPage(x: visible.midX, y: visible.midY)
         return true
+    }
+
+    // Serialize edits through acknowledgements. An IME can issue several
+    // callbacks in one event; none may use a different document or focus.
+    func textInput(_ action: TextInputAction) {
+        guard ready, let tab = selected, inputQueue.count < 128 else { return }
+        inputQueue.append(InputEdit(tab: tab, epoch: documentEpochs[tab, default: 0],
+                                    serial: inputSerials[tab, default: 0], action: action))
+        textInputBusy = true
+        drainTextInput()
+    }
+
+    func focusPage(x: Double, y: Double, extend: Bool = false, clickCount: Int = 1) {
+        guard ready, let tab = selected else { return }
+        inputSerials[tab, default: 0] += 1
+        inputFocusPending.insert(tab)
+        inputStates.removeValue(forKey: tab); textInputState = nil
+        inputQueue.removeAll { $0.tab == tab }
+        textInput(.pointer(x, y, extend, UInt8(min(3, max(1, clickCount)))))
+        Task {
+            await send(.values("Click", ["x": .number(x), "y": .number(y)]), tab: tab)
+            inputFocusPending.remove(tab)
+            requestTextInput(tab)
+        }
+    }
+
+    private func requestTextInput(_ tab: UInt64?) {
+        guard let tab, ready, inputRequests[tab] == nil, inputFlight == nil,
+              !inputFocusPending.contains(tab),
+              let frame = frames[tab], tabs.contains(where: { $0.id == tab }) else { return }
+        inputRequests[tab] = InputRequest(epoch: documentEpochs[tab, default: 0],
+                                         serial: inputSerials[tab, default: 0], generation: frame.generation)
+        Task {
+            let request = await send(.unit("GetTextInputState"), tab: tab)
+            inputRequests[tab]?.request = request
+            replayEarlyInputReplies()
+        }
+    }
+
+    private func drainTextInput() {
+        guard ready, inputFlight == nil else { return }
+        while let edit = inputQueue.first {
+            guard edit.epoch == documentEpochs[edit.tab, default: 0], edit.serial == inputSerials[edit.tab, default: 0],
+                  tabs.contains(where: { $0.id == edit.tab }) else { inputQueue.removeFirst(); continue }
+            guard inputRequests[edit.tab] == nil, let state = inputStates[edit.tab] else { requestTextInput(edit.tab); return }
+            guard state.focused != nil else { inputQueue.removeFirst(); continue }
+            inputQueue.removeFirst()
+            inputFlight = (edit, nil)
+            inputTimeout?.cancel()
+            inputTimeout = Task {
+                try? await Task.sleep(for: .seconds(15))
+                if !Task.isCancelled { finishInputFlight(); inputQueue.removeAll(); status = "Text input did not respond" }
+            }
+            Task {
+                let request = await send(.textInput(state.context, edit.action), tab: edit.tab)
+                inputFlight?.request = request
+                replayEarlyInputReplies()
+            }
+            return
+        }
+        textInputBusy = false
+    }
+
+    private func finishInputFlight() {
+        inputFlight = nil; inputTimeout?.cancel(); inputTimeout = nil
+        textInputBusy = !inputQueue.isEmpty
+    }
+
+    private func replayEarlyInputReplies() {
+        let replies = earlyInputReplies; earlyInputReplies.removeAll()
+        for reply in replies { applyTextInput(reply) }
+    }
+
+    private func applyTextInput(_ envelope: IncomingEnvelope) {
+        guard let tab = envelope.tabID, let request = envelope.requestID else { return }
+        let query = inputRequests[tab]
+        let flight = inputFlight
+        let isEdit = flight?.request == request && flight?.edit.tab == tab
+        let isQuery = query?.request == request
+        guard isEdit || isQuery else {
+            if flight?.request == nil && flight != nil || query != nil && query?.request == nil {
+                if earlyInputReplies.count < 32 { earlyInputReplies.append(envelope) }
+            }
+            return
+        }
+        let epoch = isEdit ? flight!.edit.epoch : query!.epoch
+        let serial = isEdit ? flight!.edit.serial : query!.serial
+        if isEdit { finishInputFlight() } else { inputRequests.removeValue(forKey: tab) }
+        if case .error = envelope.message {
+            inputQueue.removeAll { $0.tab == tab }; requestTextInput(tab); drainTextInput(); return
+        }
+        if case .textInputState(let state) = envelope.message,
+           epoch == documentEpochs[tab, default: 0], serial == inputSerials[tab, default: 0],
+           state.tab_id == tab, state.frame_generation == frames[tab]?.generation,
+           state.frame_source == PageRepresentation.frameSource(directory: session.frameDirectory.path) {
+            inputStates[tab] = state
+            if tab == selected { textInputState = state }
+        } else if case .textInputUnavailable = envelope.message,
+                  epoch == documentEpochs[tab, default: 0], serial == inputSerials[tab, default: 0] {
+            inputStates.removeValue(forKey: tab); inputQueue.removeAll { $0.tab == tab }
+            if tab == selected { textInputState = nil; status = "Native text input unavailable" }
+        } else { requestTextInput(tab) }
+        drainTextInput()
+    }
+
+    private func clearTextInput() {
+        inputTimeout?.cancel(); inputFlight = nil; inputQueue.removeAll(); inputStates.removeAll()
+        inputRequests.removeAll(); inputFocusPending.removeAll(); earlyInputReplies.removeAll(); textInputState = nil; textInputBusy = false
     }
 
     func navigateAddress() {
@@ -198,10 +347,11 @@ final class BrowserModel: ObservableObject {
         await resize()
     }
 
-    private func send(_ command: BrowserCommand, tab: UInt64? = nil) async {
-        guard ready else { return }
-        do { try await session.send(command, tab: tab) }
-        catch { status = error.localizedDescription }
+    @discardableResult
+    private func send(_ command: BrowserCommand, tab: UInt64? = nil) async -> UInt64? {
+        guard ready else { return nil }
+        do { return try await session.send(command, tab: tab) }
+        catch { status = error.localizedDescription; return nil }
     }
 
     func viewportChanged(_ size: CGSize) {
@@ -221,5 +371,5 @@ final class BrowserModel: ObservableObject {
         await send(.values("Resize", ["width": .unsigned(width), "height": .unsigned(height)]), tab: selected)
     }
 
-    func stop() async { ready = false; representation = nil; representations.removeAll(); representationRequests.removeAll(); resizeTask?.cancel(); await session.stop() }
+    func stop() async { ready = false; representation = nil; representations.removeAll(); representationRequests.removeAll(); clearTextInput(); resizeTask?.cancel(); await session.stop() }
 }

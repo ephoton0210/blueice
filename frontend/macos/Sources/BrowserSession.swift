@@ -110,7 +110,7 @@ final class BrowserSession: @unchecked Sendable {
                             self.lock.withLock { self.connection = connected }
                         }
                         guard let transport = self.lock.withLock({ self.connection }) else { throw BrowserFailure.invalid("Browser connection is unavailable.") }
-                        try self.writer.sync { try self.write(.values("Hello", ["protocol_version": .unsigned(UInt64(BrowserWire.version))]), tab: nil) }
+                        _ = try self.writer.sync { try self.write(.values("Hello", ["protocol_version": .unsigned(UInt64(BrowserWire.version))]), tab: nil) }
                         func read() throws -> IncomingEnvelope {
                             try BrowserWire.read { try transport.input.read(upToCount: $0) ?? Data() }
                         }
@@ -138,24 +138,27 @@ final class BrowserSession: @unchecked Sendable {
         } catch { await stop(); throw error }
     }
 
-    func send(_ command: BrowserCommand, tab: UInt64? = nil) async throws {
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+    @discardableResult
+    func send(_ command: BrowserCommand, tab: UInt64? = nil) async throws -> UInt64 {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<UInt64, Error>) in
             writer.async {
                 do {
                     guard self.lock.withLock({ !self.stopping && self.handshaken && self.process?.isRunning == true }) else {
                         throw BrowserFailure.invalid("BlueIce browser services are not running.")
                     }
-                    try self.write(command, tab: tab)
-                    continuation.resume()
+                    let request = try self.write(command, tab: tab)
+                    continuation.resume(returning: request)
                 } catch { continuation.resume(throwing: error) }
             }
         }
     }
 
-    private func write(_ command: BrowserCommand, tab: UInt64?) throws {
+    @discardableResult
+    private func write(_ command: BrowserCommand, tab: UInt64?) throws -> UInt64 {
         guard let transport = lock.withLock({ connection }) else { throw BrowserFailure.invalid("Browser connection is unavailable.") }
         requestID += 1
         try transport.output.write(contentsOf: BrowserWire.encode(command, tab: tab, request: requestID))
+        return requestID
     }
 
     func stop() async {
@@ -163,7 +166,7 @@ final class BrowserSession: @unchecked Sendable {
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             lifecycle.async {
                 self.writer.sync {
-                    if self.lock.withLock({ self.handshaken }) { try? self.write(.unit("Shutdown"), tab: nil) }
+                    if self.lock.withLock({ self.handshaken }) { _ = try? self.write(.unit("Shutdown"), tab: nil) }
                 }
                 self.lock.withLock { self.connection?.interrupt() }
                 self.lock.withLock { try? self.ownerLiveness?.close(); self.ownerLiveness = nil }

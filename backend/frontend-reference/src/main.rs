@@ -1833,7 +1833,8 @@ mod unix {
                     | ServerMessage::BlueTsScriptReports(_)
                     | ServerMessage::BlueJsScriptReports(_)
                     | ServerMessage::Hello { .. }
-                    | ServerMessage::Unknown => {}
+                    | ServerMessage::Unknown
+                    | ServerMessage::TextInputState(_) => {}
                 },
                 UserEvent::Disconnected => {
                     eprintln!("blueice-frontend: core disconnected");

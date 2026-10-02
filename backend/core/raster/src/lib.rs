@@ -28,6 +28,45 @@ use blueice_font::font_for_char;
 use blueice_paint::{Color, Frame, PaintCommand};
 
 const ASSUMED_ASCENT_RATIO: f64 = 0.8;
+#[derive(Clone, Copy)]
+struct PixelClip {
+    left: i64,
+    top: i64,
+    right: i64,
+    bottom: i64,
+}
+
+impl PixelClip {
+    fn intersect(self, rect: blueice_paint::Rect) -> Self {
+        if ![rect.x, rect.y, rect.width, rect.height]
+            .iter()
+            .all(|value| value.is_finite())
+            || rect.width <= 0.0
+            || rect.height <= 0.0
+        {
+            return Self {
+                right: self.left,
+                bottom: self.top,
+                ..self
+            };
+        }
+        let left = self.left.max(rect.x.ceil() as i64);
+        let top = self.top.max(rect.y.ceil() as i64);
+        Self {
+            left,
+            top,
+            right: self
+                .right
+                .min((rect.x + rect.width).ceil() as i64)
+                .max(left),
+            bottom: self
+                .bottom
+                .min((rect.y + rect.height).ceil() as i64)
+                .max(top),
+        }
+    }
+}
+
 const BACKGROUND: [u8; 4] = [255, 255, 255, 255];
 
 struct TextRun<'a> {
@@ -75,8 +114,9 @@ impl Pixmap {
         ]
     }
 
-    fn set_pixel_blended(&mut self, x: i64, y: i64, r: u8, g: u8, b: u8, a: u8) {
-        if x < 0 || y < 0 || x >= self.width as i64 || y >= self.height as i64 || a == 0 {
+    fn set_pixel_blended(&mut self, x: i64, y: i64, color: [u8; 4], clip: PixelClip) {
+        let [r, g, b, a] = color;
+        if x < clip.left || y < clip.top || x >= clip.right || y >= clip.bottom || a == 0 {
             return;
         }
         let idx = ((y as u32 * self.width + x as u32) * 4) as usize;
@@ -92,20 +132,26 @@ impl Pixmap {
         }
     }
 
-    fn fill_rect(&mut self, x: f64, y: f64, w: f64, h: f64, color: Color) {
+    fn fill_rect(&mut self, x: f64, y: f64, w: f64, h: f64, color: Color, clip: PixelClip) {
         let Color::Rgba(r, g, b, a) = color else {
             return;
         };
-        let (x0, y0) = (x.round() as i64, y.round() as i64);
-        let (x1, y1) = ((x + w).round() as i64, (y + h).round() as i64);
+        let (x0, y0) = (
+            (x.round() as i64).max(clip.left),
+            (y.round() as i64).max(clip.top),
+        );
+        let (x1, y1) = (
+            ((x + w).round() as i64).min(clip.right),
+            ((y + h).round() as i64).min(clip.bottom),
+        );
         for py in y0..y1 {
             for px in x0..x1 {
-                self.set_pixel_blended(px, py, r, g, b, a);
+                self.set_pixel_blended(px, py, [r, g, b, a], clip);
             }
         }
     }
 
-    fn draw_text(&mut self, run: TextRun<'_>) {
+    fn draw_text(&mut self, run: TextRun<'_>, clip: PixelClip) {
         let Color::Rgba(r, g, b, a) = run.color else {
             return;
         };
@@ -128,7 +174,12 @@ impl Pixmap {
                     }
                     let px = (bitmap_left + col as f64).round() as i64;
                     let py = (bitmap_top + row as f64).round() as i64;
-                    self.set_pixel_blended(px, py, r, g, b, ((coverage * a as u32) / 255) as u8);
+                    self.set_pixel_blended(
+                        px,
+                        py,
+                        [r, g, b, ((coverage * a as u32) / 255) as u8],
+                        clip,
+                    );
                 }
             }
             pen_x += metrics.advance_width as f64;
@@ -157,13 +208,29 @@ impl Pixmap {
 /// `frame.width` x `frame.height` canvas.
 pub fn rasterize(frame: &Frame) -> Pixmap {
     let mut pixmap = Pixmap::blank(frame.width.ceil() as u32, frame.height.ceil() as u32);
+    let mut clip = PixelClip {
+        left: 0,
+        top: 0,
+        right: i64::from(pixmap.width),
+        bottom: i64::from(pixmap.height),
+    };
+    let mut clips = Vec::new();
     for command in &frame.commands {
         match command {
+            PaintCommand::PushClip { rect } => {
+                clips.push(clip);
+                clip = clip.intersect(*rect);
+            }
+            PaintCommand::PopClip => {
+                if let Some(previous) = clips.pop() {
+                    clip = previous;
+                }
+            }
             PaintCommand::Rect { rect, color } => {
-                pixmap.fill_rect(rect.x, rect.y, rect.width, rect.height, *color)
+                pixmap.fill_rect(rect.x, rect.y, rect.width, rect.height, *color, clip)
             }
             PaintCommand::BorderEdge { rect, color } => {
-                pixmap.fill_rect(rect.x, rect.y, rect.width, rect.height, *color)
+                pixmap.fill_rect(rect.x, rect.y, rect.width, rect.height, *color, clip)
             }
             PaintCommand::Text {
                 x,
@@ -173,15 +240,18 @@ pub fn rasterize(frame: &Frame) -> Pixmap {
                 font_size_px,
                 bold,
                 italic,
-            } => pixmap.draw_text(TextRun {
-                x: *x,
-                y: *y,
-                text,
-                color: *color,
-                font_size_px: *font_size_px,
-                bold: *bold,
-                italic: *italic,
-            }),
+            } => pixmap.draw_text(
+                TextRun {
+                    x: *x,
+                    y: *y,
+                    text,
+                    color: *color,
+                    font_size_px: *font_size_px,
+                    bold: *bold,
+                    italic: *italic,
+                },
+                clip,
+            ),
         }
     }
     pixmap

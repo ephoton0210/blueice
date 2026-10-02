@@ -340,7 +340,7 @@ fn extension_v4_textarea_write_updates_the_addressed_control_and_pushes_a_frame(
             .iter()
             .find(|node| node.id == textarea_id.as_u64())
             .and_then(|node| node.state.value.as_deref()),
-        Some("from extension with detail")
+        Some("from extension\nwith detail")
     );
 
     let (reply_tx, reply_rx) = mpsc::channel();
@@ -379,7 +379,7 @@ fn extension_v4_textarea_write_updates_the_addressed_control_and_pushes_a_frame(
             .iter()
             .find(|node| node.id == textarea_id.as_u64())
             .and_then(|node| node.state.value.as_deref()),
-        Some("from extension with detail")
+        Some("from extension\nwith detail")
     );
 
     blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();

@@ -54,15 +54,26 @@ pub struct Rect {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum PaintCommand {
+    /// Nested document-space clipping, used by native control text.
+    PushClip {
+        rect: Rect,
+    },
+    PopClip,
     /// A solid-filled rectangle (a box's `background-color`).
-    Rect { rect: Rect, color: Color },
+    Rect {
+        rect: Rect,
+        color: Color,
+    },
     /// One border edge, drawn as a filled strip along that side of the
     /// box -- e.g. the top edge is `height: border-top-width` tall and
     /// spans the box's full `width`. No radii, no dashed/dotted pattern
     /// rendering (a `dashed`/`dotted` style still paints as solid for
     /// MVP; only `none`/`hidden` are distinguished, by not painting the
     /// edge at all).
-    BorderEdge { rect: Rect, color: Color },
+    BorderEdge {
+        rect: Rect,
+        color: Color,
+    },
     /// A run of text with no internal structure -- one command per
     /// `blueice_layout` text fragment, at that fragment's own position.
     /// `bold`/`italic` are booleans, not the full CSS value space
@@ -125,6 +136,8 @@ pub fn dump_frame(frame: &Frame) -> String {
     let mut out = String::new();
     for command in &frame.commands {
         match command {
+            PaintCommand::PushClip { rect } => out.push_str(&format!("clip {}\n", fmt_rect(*rect))),
+            PaintCommand::PopClip => out.push_str("endclip\n"),
             PaintCommand::Rect { rect, color } => {
                 out.push_str(&format!("rect {} {}\n", fmt_rect(*rect), fmt_color(*color)))
             }
@@ -249,7 +262,7 @@ fn paint_fragment(
     let y = offset_y + fragment.y;
 
     match &fragment.kind {
-        FragmentKind::Block => {
+        FragmentKind::Block | FragmentKind::NativeControl { .. } => {
             if let Some(style) = fragment.node.and_then(|n| styles.get(&n)) {
                 let opacity = style.opacity();
                 let rect = Rect {
@@ -284,7 +297,7 @@ fn paint_fragment(
             }
         }
         FragmentKind::Line => {}
-        FragmentKind::Text(text) => {
+        FragmentKind::Text(text) | FragmentKind::NativeText { text, .. } => {
             if let Some(style) = fragment.node.and_then(|n| styles.get(&n)) {
                 let bold = style.is_bold();
                 let italic = style.is_italic();
@@ -302,8 +315,30 @@ fn paint_fragment(
         }
     }
 
+    let clip = if let FragmentKind::NativeControl {
+        content_x,
+        content_y,
+        content_width,
+        content_height,
+    } = fragment.kind
+    {
+        Some(Rect {
+            x: x + content_x,
+            y: y + content_y,
+            width: content_width,
+            height: content_height,
+        })
+    } else {
+        None
+    };
+    if let Some(rect) = clip {
+        out.push(PaintCommand::PushClip { rect });
+    }
     for child in &fragment.children {
         paint_fragment(child, x, y, styles, out);
+    }
+    if clip.is_some() {
+        out.push(PaintCommand::PopClip);
     }
 }
 

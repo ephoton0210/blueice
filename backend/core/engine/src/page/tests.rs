@@ -626,7 +626,7 @@ fn extension_textarea_write_only_changes_live_enabled_native_textareas() {
             .iter()
             .find(|node| node.id == textarea.as_u64())
             .and_then(|node| node.state.value.as_deref()),
-        Some("after with detail")
+        Some("after\nwith detail")
     );
     assert!(page
         .set_textarea_value(disabled, "must not write".to_string())

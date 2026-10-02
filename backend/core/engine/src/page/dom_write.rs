@@ -41,10 +41,10 @@ impl Page {
     /// supplied by a frontend or extension, so this remains a keyboard path
     /// rather than a general DOM mutation capability.
     pub(crate) fn insert_focused_text(&mut self, text: &str) -> bool {
-        let Some(id) = self
-            .focused
-            .filter(|id| is_supported_text_input(&self.doc, *id))
-        else {
+        let Some(id) = self.focused.filter(|id| {
+            is_supported_text_input(&self.doc, *id)
+                && native_editing::supports_native_input(&self.doc, *id)
+        }) else {
             return false;
         };
         if text.is_empty() {
@@ -61,10 +61,10 @@ impl Page {
 
     /// Removes one Unicode scalar from the focused supported input.
     pub(crate) fn delete_focused_text_backward(&mut self) -> bool {
-        let Some(id) = self
-            .focused
-            .filter(|id| is_supported_text_input(&self.doc, *id))
-        else {
+        let Some(id) = self.focused.filter(|id| {
+            is_supported_text_input(&self.doc, *id)
+                && native_editing::supports_native_input(&self.doc, *id)
+        }) else {
             return false;
         };
         let mut value = element_attribute(&self.doc, id, "value")

@@ -19,11 +19,26 @@ pub enum FragmentKind {
     /// standing in for a not-yet-implemented algorithm like flex --
     /// see `phase-2-mvp-scope/PLAN.md`).
     Block,
+    /// Native control content box, resolved during layout so scrolling and
+    /// painting preserve percentage padding and keep text off the border.
+    NativeControl {
+        content_x: f64,
+        content_y: f64,
+        content_width: f64,
+        content_height: f64,
+    },
     /// An anonymous line box wrapping one line's worth of inline
     /// content -- has no DOM node of its own.
     Line,
     /// A run of text within a line, in a single style context.
     Text(String),
+    /// A native control run with exact UTF-16 source offsets. The displayed
+    /// string is masked for protected controls and retains spaces/line breaks.
+    NativeText {
+        text: String,
+        source_start: u32,
+        source_end: u32,
+    },
 }
 
 /// One box in the output tree. `x`/`y` are relative to the parent

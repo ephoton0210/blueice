@@ -370,7 +370,7 @@ button, input, select, textarea {
  * value written through the AI action path is observable in the same frame as
  * the rest of the page. This is a narrow text-input default, not an attempt
  * to reproduce platform-native form controls. */
-input {
+input, textarea {
   box-sizing: border-box;
   width: 20em;
   height: 2em;
@@ -378,6 +378,7 @@ input {
   border: 1px solid #767676;
   background-color: #ffffff;
 }
+textarea { height: 6em; }
 head, title, style, script, link, meta, colgroup {
   display: none;
 }

@@ -379,6 +379,7 @@ pub(super) fn nearest_link_href(doc: &Document, mut node: NodeId) -> Option<Stri
     }
 }
 
+#[cfg(test)]
 pub(super) fn nearest_supported_text_input(doc: &Document, mut node: NodeId) -> Option<NodeId> {
     loop {
         if is_supported_text_input(doc, node) {

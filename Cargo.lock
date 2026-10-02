@@ -341,6 +341,7 @@ dependencies = [
  "blueice-css",
  "blueice-dom",
  "blueice-extension-host",
+ "blueice-font",
  "blueice-html",
  "blueice-i18n",
  "blueice-ipc",
@@ -352,6 +353,7 @@ dependencies = [
  "blueice-testing",
  "getrandom 0.3.4",
  "serde_json",
+ "unicode-segmentation",
  "ureq",
  "url",
 ]
@@ -444,6 +446,7 @@ dependencies = [
  "blueice-font",
  "blueice-html",
  "blueice-testing",
+ "unicode-segmentation",
 ]
 
 [[package]]

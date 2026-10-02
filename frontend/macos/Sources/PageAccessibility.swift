@@ -98,7 +98,7 @@ final class PageAccessibilityTree {
               !element.node.occluded else { return false }
         switch (action, element.node.role) {
         case (.press, .link), (.press, .button): return true
-        case (.press, .textBox), (.focus, .textBox): return element.node.state.nativeTextInput && !element.node.state.protected
+        case (.press, .textBox), (.focus, .textBox): return element.node.state.nativeTextInput
         default: return false
         }
     }

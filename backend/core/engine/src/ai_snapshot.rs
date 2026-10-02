@@ -302,16 +302,7 @@ fn compute_state(
         && matches!(attr(attributes, "type"), Some("checkbox") | Some("radio")))
     .then(|| has_attr(attributes, "checked"));
     NodeState {
-        value: if tag == "input"
-            && attr(attributes, "type").is_none_or(|input_type| {
-                input_type.eq_ignore_ascii_case("text") || input_type.eq_ignore_ascii_case("range")
-            }) {
-            attr(attributes, "value").map(str::to_string)
-        } else if tag == "textarea" {
-            Some(text_content(page.doc(), node, None))
-        } else {
-            None
-        },
+        value: page.native_control_public_value(node),
         native_text_input: page.supports_native_text_input(node),
         protected: tag == "input"
             && attr(attributes, "type").is_some_and(|kind| kind.eq_ignore_ascii_case("password")),
@@ -404,10 +395,10 @@ mod tests {
         let snap = build(&page, 1, 1);
         assert!(find(&snap.nodes, "Editable").state.native_text_input);
         assert!(!find(&snap.nodes, "Disabled").state.native_text_input);
-        assert!(!find(&snap.nodes, "Multiline").state.native_text_input);
+        assert!(find(&snap.nodes, "Multiline").state.native_text_input);
         let secret = find(&snap.nodes, "Secret");
         assert!(secret.state.protected);
-        assert!(!secret.state.native_text_input);
+        assert!(secret.state.native_text_input);
         assert_eq!(secret.state.value, None);
     }
 

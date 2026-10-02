@@ -60,6 +60,8 @@ pub struct Page {
     script_node_handles: HashMap<NodeId, u64>,
     hovered: Option<NodeId>,
     focused: Option<NodeId>,
+    native_editor: Option<native_editing::EditorSession>,
+    native_focus_generation: u64,
     highlighted: Option<NodeId>,
     /// The most recent raster frame for this one tab. Another tab rendering
     /// must not invalidate this tab's frame/representation pairing.
@@ -114,6 +116,8 @@ impl Page {
             script_node_handles: HashMap::new(),
             hovered: None,
             focused: None,
+            native_editor: None,
+            native_focus_generation: 0,
             highlighted: None,
             frame_generation: 0,
             downloads: None,
@@ -160,6 +164,7 @@ impl Page {
         // the *previous* page.
         self.hovered = None;
         self.focused = None;
+        self.native_editor = None;
         self.highlighted = None;
         self.restyle_and_relayout();
     }
@@ -182,6 +187,7 @@ impl Page {
                 available_width: self.viewport_width,
             },
         );
+        self.adjust_native_editor_scroll();
         let max_scroll = (self.fragment.height - self.viewport_height).max(0.0);
         self.scroll_y = self.scroll_y.min(max_scroll);
     }
@@ -469,9 +475,10 @@ impl Page {
     /// means the reference frontend never has to turn keyboard events into a
     /// guessed DOM node ID.
     pub(crate) fn supports_native_text_input(&self, node: NodeId) -> bool {
-        dom_helpers::is_supported_text_input(&self.doc, node)
+        native_editing::supports_native_input(&self.doc, node)
     }
 
+    #[cfg(test)]
     pub(crate) fn focus_text_input_at(&mut self, target: Option<NodeId>) -> bool {
         let focused = target.and_then(|node| nearest_supported_text_input(&self.doc, node));
         if self.focused == focused {
@@ -972,6 +979,31 @@ impl Page {
         self.document_generation
     }
 
+    /// Native control values retain whitespace. Accessible names use a
+    /// different, collapsed text algorithm; protected values never cross it.
+    pub(crate) fn native_control_public_value(&self, node: NodeId) -> Option<String> {
+        let NodeData::Element { tag_name, .. } = self.doc.data(node) else {
+            return None;
+        };
+        if tag_name == "textarea" {
+            return Some(node_text_content(&self.doc, node));
+        }
+        if tag_name != "input" {
+            return None;
+        }
+        let kind = element_attribute(&self.doc, node, "type")
+            .unwrap_or("text")
+            .to_ascii_lowercase();
+        if matches!(
+            kind.as_str(),
+            "text" | "search" | "email" | "url" | "tel" | "range"
+        ) {
+            element_attribute(&self.doc, node, "value").map(str::to_string)
+        } else {
+            None
+        }
+    }
+
     pub fn viewport_size(&self) -> (f64, f64) {
         (self.viewport_width, self.viewport_height)
     }
@@ -982,6 +1014,7 @@ impl Page {
 
     pub fn render(&self) -> Frame {
         let mut frame = paint(&self.fragment, &self.styles);
+        self.paint_native_editor(&mut frame);
         if let Some(id) = self.highlighted {
             if let Some(bounds) = find_fragment_bounds(&self.fragment, id, 0.0, 0.0) {
                 frame.commands.extend(highlight_border_commands(bounds));
@@ -1006,6 +1039,7 @@ impl Page {
 
 mod dom_helpers;
 mod dom_write;
+mod native_editing;
 use dom_helpers::*;
 
 #[cfg(test)]

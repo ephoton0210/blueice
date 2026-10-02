@@ -1,8 +1,8 @@
 # BlueIce macOS frontend
 
 The macOS frontend uses SwiftUI for browser chrome and AppKit for the
-window lifecycle, core pixel viewport, pointer/scroll input, committed
-text input and the page NSAccessibility adapter. By default it launches the bundled `blueice-launcher`, which
+window lifecycle, core pixel viewport, pointer/scroll input, native text
+editing and the page NSAccessibility adapter. By default it launches the bundled `blueice-launcher`, which
 supervises the real core and gatekeeper. A private Unix socket carries the
 browser protocol; the Rust core owns pages, history, tab identities and rendering.
 HTTP(S) navigation follows the existing URL and content review policy.
@@ -77,6 +77,20 @@ checks ordinary input plus policy-reviewed link navigation. XCUITest reads the
 OS-visible page elements and verifies typing, privacy and tab isolation.
 The XCUITest runner's test-only network-server entitlement permits this
 loopback fixture inside Xcode's runner sandbox.
+Native editing tests exercise the real core's UTF-16 selection, CJK/RTL
+composition callbacks, replacement/cancellation, multiline caret and candidate
+geometry, password redaction, readonly rejection and stale-document fences.
+Native-window tests add keyboard selection/deletion and copy/cut/paste with
+multiline CJK/RTL and emoji grapheme deletion. They save and restore the test
+clipboard and keyboard input source.
+
+The separate system Zhuyin test sends physical key codes to the unique active
+BlueIce test process. This requires Accessibility permission for
+`.build/Build/Products/Debug/BrowserUITests-Runner.app` under System Settings →
+Privacy & Security → Accessibility, plus an enabled Traditional Zhuyin input
+source. It explicitly skips when either prerequisite is missing. Deterministic
+`NSTextInputClient` composition callbacks do not establish that an actual OS
+input method passed. The scripts do not change macOS privacy permissions.
 The backend command uses the signed native service bundle and a Cargo runner
 that locally signs test executables. Without the binary override, the Rust
 tests use isolated copies of the Cargo-built sibling services.
@@ -86,7 +100,9 @@ an attachment; `test.sh` exports the attachments beside the result bundle.
 Build products, result bundles, local Xcode state and screenshots are ignored
 by Git. See [the service integration validation record](../../development/browser_core/phase-22-browser-shell-accessibility/MACOS_SERVICE_RESULTS.md)
 for those measured results, and [the page accessibility validation record](../../development/browser_core/phase-22-browser-shell-accessibility/MACOS_ACCESSIBILITY_RESULTS.md)
-for the later native bridge checks.
+for the later native bridge checks. The
+[native editing validation record](../../development/browser_core/phase-22-browser-shell-accessibility/MACOS_NATIVE_EDITING_RESULTS.md)
+distinguishes passed native checks from the pending physical input-method test.
 
 Apple documents the native adapters and test entry points in
 [NSViewRepresentable](https://developer.apple.com/documentation/swiftui/nsviewrepresentable)
@@ -97,7 +113,7 @@ and [XCUIApplication](https://developer.apple.com/documentation/xcuiautomation/x
 The shell supports built-in pages (`about:credits`, `about:settings`), reviewed
 HTTP(S) navigation, native
 address editing, tab creation/selection/closing, back/forward/reload,
-viewport resize and basic page input. IPC uses the existing version-two
+viewport resize and core-owned page text editing. IPC uses the existing version-two
 length-prefixed browser envelopes with an 8 MiB limit. Frame files are
 mapped read-only within a fresh private runtime directory and validated before
 image creation. Newer per-tab generations supersede older frames. Shutdown
@@ -111,24 +127,39 @@ also request normal service shutdown if the GUI is killed. An abrupt GUI
 exit can leave an empty runtime parent; normal frontend shutdown removes it.
 
 The default app owns its launcher; attaching to an existing shared launcher,
-assistant and trusted permission panels remain separate work. Complete page IME composition,
-selection/caret geometry, clipboard policy, groups, multiple windows,
-downloads/printing/permission panels and localization remain Phase 22 delivery
-items. The page now exposes the core's semantic representation through virtual
+assistant and trusted permission panels remain separate work. The
+[macOS delivery plan](../../development/browser_core/phase-22-browser-shell-accessibility/MACOS_DELIVERY_PLAN.md)
+tracks the remaining milestones. The page exposes the core's semantic representation through virtual
 NSAccessibility elements: names, roles, hierarchy, values/state and screen
 bounds. Labels and text use the existing core name algorithm; this is not a
 complete HTML/ARIA implementation. On macOS 26 and newer, headings use the
 native heading role; older systems fall back to static text with a heading-level
 role description. Link/button activation and supported text-input focus use
 the ordinary core click pipeline. Checkbox/slider/select values are currently
-read-only through this adapter. Protected input values are redacted; the
-core's current native input path does not edit passwords or textareas.
+read-only through this adapter. Protected input values are redacted.
+
+The AppKit viewport implements `NSTextInputClient` over a versioned core editing
+state. Text/password inputs and textareas support UTF-16 selection, grapheme
+movement/deletion, marked-text update/commit/cancel, replacement ranges,
+document-derived caret/selection geometry and clipped control scrolling. The
+native Edit → Input Source menu selects the current responder's input context,
+including the address field. Copy/cut omit password contents; paste is an
+explicit user operation with a bounded payload. Readonly controls permit
+selection but reject writes, and disabled controls cannot become editors.
+Commands are fenced by frame source, document and focus generations and
+serialized through core acknowledgements. The shell retains only pending IME
+range metadata while waiting for the core; it has no parallel DOM or layout.
 
 Frame refresh temporarily suspends semantic actions until the representation
 matches the current tab, source, generation and URL. Native element identities
 survive a refresh within one document; reload, navigation and tab changes
-invalidate old elements. The bridge does not expose writable AXValue, text
-ranges, caret/selection geometry, live-region announcements or rotor search.
-AppKit accepts committed text, but complete document editing and IME remain
-open. Automated NSAccessibility/XCUITest checks have passed on the recorded
-host; an interactive VoiceOver speech/navigation session remains unvalidated.
+invalidate old elements. The accessibility bridge does not expose writable
+AXValue, accessibility text ranges, live-region announcements or rotor search.
+Native editing geometry is currently available through `NSTextInputClient`,
+independently of those AX text APIs. Actual OS IME verification is pending
+runner Accessibility permission on the recorded host. JavaScript
+keyboard/beforeinput/input/composition event dispatch, undo/redo, complete
+bidirectional shaping and caret blink remain open, as do keyboard-only forms,
+find/context menus, groups, multiple windows, downloads/printing/permission
+panels and localization. Automated checks cover the recorded features; an
+interactive VoiceOver session remains unvalidated.

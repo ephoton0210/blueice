@@ -240,6 +240,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::BlueTsScriptReports(_)
                 | ServerMessage::BlueJsScriptReports(_)
                 | ServerMessage::Hello { .. }
+                | ServerMessage::TextInputState(_)
                 | ServerMessage::Unknown
                 // `mcp-server` doesn't call `OpenTab`/`CloseTab`/`ListTabs`
                 // itself in this slice, so these can only arrive here
@@ -329,6 +330,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::BlueTsScriptReports(_)
                 | ServerMessage::BlueJsScriptReports(_)
                 | ServerMessage::Hello { .. }
+                | ServerMessage::TextInputState(_)
                 | ServerMessage::Unknown
                 | ServerMessage::TabOpened { .. }
                 | ServerMessage::TabClosed { .. }
@@ -578,6 +580,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::BlueTsScriptReports(_)
                 | ServerMessage::BlueJsScriptReports(_)
                 | ServerMessage::Hello { .. }
+                | ServerMessage::TextInputState(_)
                 | ServerMessage::Unknown
                 | ServerMessage::TabOpened { .. }
                 | ServerMessage::TabClosed { .. }
@@ -642,6 +645,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::BlueTsScriptReports(_)
                 | ServerMessage::BlueJsScriptReports(_)
                 | ServerMessage::Hello { .. }
+                | ServerMessage::TextInputState(_)
                 | ServerMessage::Unknown
                 | ServerMessage::TabOpened { .. }
                 | ServerMessage::TabClosed { .. }
@@ -753,6 +757,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::BlueJsScriptReports(_)
                 | ServerMessage::Representation(_)
                 | ServerMessage::Hello { .. }
+                | ServerMessage::TextInputState(_)
                 | ServerMessage::Unknown
                 | ServerMessage::TabClosed { .. }
                 | ServerMessage::Tabs(_)
@@ -814,6 +819,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::BlueJsScriptReports(_)
                 | ServerMessage::Representation(_)
                 | ServerMessage::Hello { .. }
+                | ServerMessage::TextInputState(_)
                 | ServerMessage::Unknown
                 | ServerMessage::TabOpened { .. }
                 | ServerMessage::Tabs(_)
@@ -874,6 +880,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::BlueJsScriptReports(_)
                 | ServerMessage::Representation(_)
                 | ServerMessage::Hello { .. }
+                | ServerMessage::TextInputState(_)
                 | ServerMessage::Unknown
                 | ServerMessage::TabOpened { .. }
                 | ServerMessage::TabClosed { .. }
@@ -946,6 +953,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::BlueJsScriptReports(_)
                 | ServerMessage::Representation(_)
                 | ServerMessage::Hello { .. }
+                | ServerMessage::TextInputState(_)
                 | ServerMessage::Unknown
                 | ServerMessage::TabOpened { .. }
                 | ServerMessage::TabClosed { .. }
@@ -1058,6 +1066,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::BlueJsScriptReports(_)
                 | ServerMessage::Representation(_)
                 | ServerMessage::Hello { .. }
+                | ServerMessage::TextInputState(_)
                 | ServerMessage::Unknown
                 | ServerMessage::TabOpened { .. }
                 | ServerMessage::TabClosed { .. }

@@ -284,7 +284,7 @@ pub(super) fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
                             focus_changed = tabs
                                 .get_mut(target)
                                 .expect("checked immediately above")
-                                .focus_text_input_at(node);
+                                .focus_native_editor_at(node);
                             if node.is_some_and(|node| {
                                 tabs.get_mut(target)
                                     .expect("checked immediately above")
@@ -363,6 +363,48 @@ pub(super) fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
                             send_frame(page, stream, frame_dir, generation, reply_tab, request_id)?;
                         }
                     }
+                    ClientMessage::GetTextInputState => match tabs.get(target) {
+                        Some(page) => {
+                            let mut state = page.native_text_input_state(
+                                blueice_ipc::shm::frame_source_id(frame_dir),
+                            );
+                            state.tab_id = target.as_u64();
+                            blueice_ipc::write_server_message_with_ids(
+                                stream,
+                                reply_tab,
+                                request_id,
+                                &ServerMessage::TextInputState(state),
+                            )?;
+                        }
+                        None => write_unknown_tab_error(stream, request_id, target)?,
+                    },
+                    ClientMessage::TextInput { context, action } => match tabs.get_mut(target) {
+                        Some(page) => match page.native_text_input(
+                            &context,
+                            blueice_ipc::shm::frame_source_id(frame_dir),
+                            action,
+                        ) {
+                            Ok(changed) => {
+                                if changed {
+                                    send_frame(
+                                        page, stream, frame_dir, generation, reply_tab, request_id,
+                                    )?;
+                                }
+                                let mut state = page.native_text_input_state(
+                                    blueice_ipc::shm::frame_source_id(frame_dir),
+                                );
+                                state.tab_id = target.as_u64();
+                                blueice_ipc::write_server_message_with_ids(
+                                    stream,
+                                    reply_tab,
+                                    request_id,
+                                    &ServerMessage::TextInputState(state),
+                                )?;
+                            }
+                            Err(message) => write_error(stream, reply_tab, request_id, message)?,
+                        },
+                        None => write_unknown_tab_error(stream, request_id, target)?,
+                    },
                     ClientMessage::Hover { x, y } => {
                         if let Some(page) = tabs.get_mut(target) {
                             page.hover_at(x, y);

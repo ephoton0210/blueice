@@ -18,6 +18,7 @@
 
 mod block;
 mod fragment;
+mod native_text;
 mod text;
 
 pub use fragment::{Constraints, Fragment, FragmentKind};

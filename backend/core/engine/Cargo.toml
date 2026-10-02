@@ -10,6 +10,8 @@ blueice-html = { path = "../html" }
 blueice-css = { path = "../css" }
 blueice-layout = { path = "../layout" }
 blueice-paint = { path = "../paint" }
+blueice-font = { path = "../font" }
+unicode-segmentation = "1.13.3"
 blueice-raster = { path = "../raster" }
 blueice-net = { path = "../../net" }
 blueice-ipc = { path = "../../ipc" }

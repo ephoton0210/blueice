@@ -43,6 +43,7 @@ pub mod debugger;
 pub mod downloads;
 pub mod extension;
 pub mod gatekeeper;
+pub mod input;
 pub mod local_socket;
 pub mod owner_bootstrap;
 pub mod page_host;
@@ -177,6 +178,14 @@ pub enum ClientMessage {
     /// Like [`Self::InsertText`], this is a no-op unless the page has a
     /// currently focused supported text input.
     DeleteBackward,
+    /// Inspect the current document's native selection/composition geometry.
+    /// Protected control contents are redacted.
+    GetTextInputState,
+    /// Versioned, document-fenced native editing of the core's focused control.
+    TextInput {
+        context: input::TextInputContext,
+        action: input::TextInputAction,
+    },
     /// Requests a fresh [`AiSnapshot`] of the current page, replied to
     /// with [`ServerMessage::Representation`].
     GetRepresentation,
@@ -332,6 +341,8 @@ pub enum ServerMessage {
         height: u32,
         generation: u64,
     },
+    /// Native text state for one live document and render generation.
+    TextInputState(input::TextInputState),
     /// Navigation finished (or failed) -- `url` is the final URL after
     /// following any redirects.
     Navigated {

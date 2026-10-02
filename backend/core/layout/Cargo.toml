@@ -9,6 +9,8 @@ blueice-dom = { path = "../dom" }
 blueice-css = { path = "../css" }
 blueice-font = { path = "../font" }
 
+unicode-segmentation = "1.13.3"
+
 [dev-dependencies]
 blueice-html = { path = "../html" }
 blueice-testing = { path = "../../testing" }

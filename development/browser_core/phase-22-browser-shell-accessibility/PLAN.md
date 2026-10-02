@@ -2,7 +2,7 @@
 
 [← Back to plan](../BROWSER_CORE_PLAN.md)
 
-**Status**: In progress — the Unix reference frontend, an initial Windows WinUI 3 shell and a macOS SwiftUI/AppKit shell with supervised navigation and an initial macOS page NSAccessibility bridge present the core's pixels, semantics and basic input. Complete browser-shell behavior and full operating-system page accessibility remain open.
+**Status**: In progress — the Unix reference frontend, an initial Windows WinUI 3 shell and a macOS SwiftUI/AppKit shell present the core's pixels. macOS includes supervised navigation, an initial page NSAccessibility bridge and core-owned native text editing. Actual OS IME verification, complete browser-shell behavior and full operating-system page accessibility remain open. The [macOS delivery milestones](MACOS_DELIVERY_PLAN.md) track scoped commits and remaining work.
 
 ## Windows first slice (2026-10-02)
 
@@ -104,6 +104,36 @@ Interactive VoiceOver speech/navigation, full ARIA and accessible-name behavior,
 text ranges/selection, live regions, rotor search, IME and the remaining shell
 features remain open. The macOS bridge does not complete the cross-platform
 Phase 22 acceptance criteria.
+
+## macOS native editing foundation (2026-10-02)
+
+The additive `blueice_ipc::input` protocol now carries core-owned UTF-16
+selection, replacement, marked-text update/commit/cancel, grapheme movement and
+deletion, and pointer selection. Commands identify the current frame source,
+document and focus generations. Stale commands cannot target another document
+or another focused field. Legacy committed-text commands remain available for
+existing platform clients.
+
+The core edits ordinary text/password inputs and textareas, preserves multiline
+whitespace, lays out masked password runs and emits caret/selection geometry.
+Paint/raster clipping confines content, marked underlines and selection/caret
+pixels to the resolved control content box. Password plaintext is absent from
+input-state replies and semantic values; readonly writes and disabled focus are
+rejected. Extension DOM-write capabilities remain independently restricted.
+
+AppKit implements `NSTextInputClient` from core state and serializes callbacks
+through acknowledgements. Native candidate positioning, selection and explicit
+copy/cut/paste use that state; the frontend retains only temporary IME range
+metadata while awaiting core replies. A native SwiftUI command menu selects the
+current responder's keyboard input source. Results and limitations are recorded
+in [`MACOS_NATIVE_EDITING_RESULTS.md`](MACOS_NATIVE_EDITING_RESULTS.md).
+
+The recorded run passes 33 XCTest and 14 native-window XCUITest cases, with one
+physical system-Zhuyin test explicitly skipped because the Runner lacks macOS
+Accessibility permission. Direct AppKit composition tests passed, but actual
+OS IME acceptance remains pending. JavaScript input/composition/key events,
+undo/redo, complete bidirectional shaping, keyboard-only forms and the remaining
+native-shell/accessibility milestones are still required.
 
 ## Objective
 

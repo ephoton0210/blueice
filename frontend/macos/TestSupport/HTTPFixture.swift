@@ -65,6 +65,16 @@ final class HTTPFixture: @unchecked Sendable {
                     <div style="height:1800px"><p>Scroll below for more content.</p></div><h2>Lower heading</h2>
                     </body></html>
                     """
+                case "/editing": body = """
+                    <html><body><h1>Native editing fixture</h1>
+                    <input aria-label="Editor" value="A😀B" style="display:block;width:300px;height:36px">
+                    <textarea aria-label="Notes" style="display:block;width:300px;height:120px">first
+                    second</textarea>
+                    <input aria-label="Secret" type="password" value="private-fixture-secret" style="display:block;width:300px;height:36px">
+                    <input aria-label="Readonly" readonly value="locked" style="display:block;width:300px;height:36px">
+                    <input aria-label="Disabled" disabled value="disabled" style="display:block;width:300px;height:36px">
+                    </body></html>
+                    """
                 case "/destination": body = "<html><body><h1>Destination reached</h1></body></html>"
                 default: body = "<html><head><title>BlueIce HTTP fixture</title></head><body style='background-color:#207840;color:white'><h1>BlueIce external page</h1><p>Real HTTP content, reviewed by the gatekeeper.</p></body></html>"
                 }

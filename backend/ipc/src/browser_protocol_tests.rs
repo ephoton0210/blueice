@@ -7,6 +7,120 @@ use std::io::Cursor;
 use std::net::{TcpListener, TcpStream};
 
 #[test]
+fn native_text_actions_round_trip_with_document_and_focus_fences() {
+    use crate::input::{TextInputAction, TextInputContext, TextMovement, TextRange};
+    let range = TextRange {
+        location: 1,
+        length: 2,
+    };
+    let context = TextInputContext {
+        version: 1,
+        frame_source: 19,
+        document_generation: 7,
+        focus_generation: 3,
+    };
+    let actions = [
+        TextInputAction::Replace {
+            text: "中文😀".into(),
+            replacement: Some(range),
+        },
+        TextInputAction::Compose {
+            text: "שלום".into(),
+            selection: TextRange {
+                location: 4,
+                length: 0,
+            },
+            replacement: None,
+        },
+        TextInputAction::FinishComposition,
+        TextInputAction::CancelComposition,
+        TextInputAction::Select { range },
+        TextInputAction::SelectAll,
+        TextInputAction::Move {
+            direction: TextMovement::WordBackward,
+            extend: true,
+        },
+        TextInputAction::Delete { forward: false },
+        TextInputAction::Pointer {
+            x: 12.5,
+            y: 30.0,
+            extend: false,
+            click_count: 2,
+        },
+    ];
+    for action in actions {
+        let expected = ClientMessage::TextInput { context, action };
+        let mut bytes = Vec::new();
+        write_client_message(&mut bytes, &expected).unwrap();
+        assert_eq!(
+            read_client_message(&mut Cursor::new(bytes)).unwrap(),
+            expected
+        );
+    }
+    let mut bytes = Vec::new();
+    write_client_message(&mut bytes, &ClientMessage::GetTextInputState).unwrap();
+    assert_eq!(
+        read_client_message(&mut Cursor::new(bytes)).unwrap(),
+        ClientMessage::GetTextInputState
+    );
+}
+
+#[test]
+fn native_ranges_check_overflow_and_password_state_stays_redacted_on_wire() {
+    use crate::input::{TextControlState, TextInputState, TextRange};
+    assert_eq!(
+        TextRange {
+            location: u32::MAX,
+            length: 1
+        }
+        .end(),
+        None
+    );
+    let bounds = Bounds {
+        x: 1.0,
+        y: 2.0,
+        width: 100.0,
+        height: 20.0,
+    };
+    let state = TextInputState {
+        version: 1,
+        frame_source: 19,
+        document_generation: 7,
+        focus_generation: 3,
+        frame_generation: 8,
+        tab_id: 2,
+        scroll_y: 0.0,
+        focused: Some(TextControlState {
+            node_id: 5,
+            text: None,
+            text_length: 9,
+            protected: true,
+            writable: true,
+            multiline: false,
+            selection: TextRange {
+                location: 9,
+                length: 0,
+            },
+            marked: None,
+            bounds,
+            caret: bounds,
+            carets: Vec::new(),
+            selection_rects: Vec::new(),
+        }),
+    };
+    let expected = ServerMessage::TextInputState(state);
+    let mut bytes = Vec::new();
+    write_server_message(&mut bytes, &expected).unwrap();
+    assert_eq!(
+        read_server_message(&mut Cursor::new(bytes.clone())).unwrap(),
+        expected
+    );
+    assert!(std::str::from_utf8(&bytes[4..])
+        .unwrap()
+        .contains("\"text\":null"));
+}
+
+#[test]
 fn older_node_state_defaults_native_input_and_protected_capabilities() {
     let state: NodeState = serde_json::from_str(
         r#"{"checked":null,"disabled":false,"required":false,"selected":false,"hovered":false,"focused":false}"#,

@@ -3,18 +3,26 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 import AppKit
+import Carbon
+import ApplicationServices
 import XCTest
 
 @MainActor
 final class BrowserUITests: XCTestCase {
     private var app: XCUIApplication!
+    private var originalInputSource: TISInputSource?
 
     override func setUpWithError() throws {
         continueAfterFailure = false
         app = XCUIApplication()
+        originalInputSource = TISCopyCurrentKeyboardInputSource().takeRetainedValue()
+        let filter = [kTISPropertyInputSourceID as String: "com.apple.keylayout.ABC"] as CFDictionary
+        let sources = TISCreateInputSourceList(filter, false).takeRetainedValue() as! [TISInputSource]
+        if let source = sources.first { XCTAssertEqual(TISSelectInputSource(source), noErr) }
     }
 
     override func tearDownWithError() throws {
+        defer { if let originalInputSource { XCTAssertEqual(TISSelectInputSource(originalInputSource), noErr) } }
         if app.state != .notRunning {
             if app.windows.firstMatch.exists { app.windows.firstMatch.buttons[XCUIIdentifierCloseWindow].click() }
             XCTAssertTrue(app.wait(for: .notRunning, timeout: 10), "Normal close must stop the owned services")
@@ -31,12 +39,16 @@ final class BrowserUITests: XCTestCase {
 
     private func waitValue(_ element: XCUIElement, _ value: String) {
         let predicate = NSPredicate(format: "value == %@", value)
-        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: predicate, object: element)], timeout: 15), .completed)
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: predicate, object: element)], timeout: 15), .completed,
+                       "Expected \(value), received \(String(describing: element.value))")
     }
 
     private func enter(_ text: String, submit: Bool = true) {
         let address = app.textFields["address"]
         address.click()
+        app.menuBars.menuBarItems["Edit"].click()
+        app.menuItems["Input Source"].hover()
+        app.menuItems["ABC"].click()
         address.typeKey("a", modifierFlags: .command)
         address.typeText(text)
         if submit { address.typeKey(.return, modifierFlags: []) }
@@ -218,6 +230,137 @@ final class BrowserUITests: XCTestCase {
         XCTAssertFalse(app.groups["page"].textFields["Name"].exists)
         XCTAssertFalse(link.exists)
         XCTAssertEqual(fixture.requests, ["/accessibility", "/destination"])
+    }
+
+    func testNativeSelectionReplacementDeletionAndMultilineClipboard() throws {
+        let fixture = try HTTPFixture()
+        defer { fixture.stop() }
+        // Preserve every existing pasteboard representation without logging it.
+        let saved = NSPasteboard.general.pasteboardItems?.map { item -> NSPasteboardItem in
+            let copy = NSPasteboardItem()
+            for type in item.types { if let data = item.data(forType: type) { copy.setData(data, forType: type) } }
+            return copy
+        } ?? []
+        defer { NSPasteboard.general.clearContents(); NSPasteboard.general.writeObjects(saved) }
+        launch()
+        enter(fixture.origin + "/editing")
+        let page = app.groups["page"]
+        let field = page.textFields["Editor"]
+        XCTAssertTrue(field.waitForExistence(timeout: 15), app.debugDescription)
+        field.click()
+        field.typeKey("a", modifierFlags: .command)
+        field.typeText("hello")
+        waitValue(field, "hello")
+        field.typeKey(.leftArrow, modifierFlags: [.shift, .command])
+        field.typeText("world")
+        waitValue(field, "world")
+        field.typeKey(.delete, modifierFlags: [])
+        waitValue(field, "worl")
+        field.typeKey("a", modifierFlags: .command)
+        field.typeKey("c", modifierFlags: .command)
+        XCTAssertEqual(NSPasteboard.general.string(forType: .string), "worl")
+        field.typeKey("x", modifierFlags: .command)
+        waitValue(field, "")
+        field.typeKey("v", modifierFlags: .command)
+        waitValue(field, "worl")
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString("中文\nשלום\n👩‍👩‍👧‍👦", forType: .string)
+        let notes = page.textFields["Notes"]
+        XCTAssertTrue(notes.exists, app.debugDescription)
+        notes.click()
+        notes.typeKey("a", modifierFlags: .command)
+        notes.typeKey("v", modifierFlags: .command)
+        waitValue(notes, "中文\nשלום\n👩‍👩‍👧‍👦")
+        notes.typeKey(.delete, modifierFlags: [])
+        waitValue(notes, "中文\nשלום\n")
+        let attachment = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
+        attachment.name = "macos-native-editing"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
+    func testNativeProtectedAndReadonlyFields() throws {
+        let fixture = try HTTPFixture()
+        defer { fixture.stop() }
+        launch()
+        enter(fixture.origin + "/editing")
+        let page = app.groups["page"]
+        let secret = page.secureTextFields["Secret"]
+        XCTAssertTrue(secret.waitForExistence(timeout: 15), app.debugDescription)
+        secret.click()
+        secret.typeKey("a", modifierFlags: .command)
+        secret.typeText("new-secret")
+        XCTAssertFalse(String(describing: secret.value).contains("new-secret"))
+        XCTAssertFalse(app.debugDescription.contains("private-fixture-secret"))
+        XCTAssertFalse(app.debugDescription.contains("new-secret"))
+        let readonly = page.textFields["Readonly"]
+        readonly.click()
+        readonly.typeKey("a", modifierFlags: .command)
+        readonly.typeText("bad")
+        waitValue(readonly, "locked")
+        XCTAssertFalse(page.textFields["Disabled"].isEnabled)
+    }
+
+    func testSystemZhuyinInputMethodCommitsAndCancelsComposition() throws {
+        guard AXIsProcessTrusted() else {
+            throw XCTSkip("Grant Accessibility to BrowserUITests-Runner.app to permit physical IME key events; XCUITest string keys cannot verify Zhuyin hardware mapping")
+        }
+        let fixture = try HTTPFixture()
+        defer { fixture.stop() }
+        launch()
+        enter(fixture.origin + "/editing")
+        let field = app.groups["page"].textFields["Editor"]
+        XCTAssertTrue(field.waitForExistence(timeout: 15))
+        field.click()
+        field.typeKey("a", modifierFlags: .command)
+        field.typeKey(.delete, modifierFlags: [])
+        waitValue(field, "")
+        let previous = TISCopyCurrentKeyboardInputSource().takeRetainedValue()
+        let filter = [kTISPropertyInputSourceID as String: "com.apple.inputmethod.TCIM.Zhuyin"] as CFDictionary
+        let sources = TISCreateInputSourceList(filter, false).takeRetainedValue() as! [TISInputSource]
+        guard let source = sources.first else { throw XCTSkip("An enabled system Zhuyin input source is required") }
+        defer { XCTAssertEqual(TISSelectInputSource(previous), noErr, "Restore the user's input source") }
+        XCTAssertEqual(TISSelectInputSource(source), noErr)
+        app.menuBars.menuBarItems["Edit"].click()
+        app.menuItems["Input Source"].hover()
+        // SwiftUI native command items expose their localized title through
+        // AX; the English app and Traditional Chinese runner differ here.
+        let englishSource = app.menuItems["Zhuyin – Traditional"]
+        let sourceItem = englishSource.waitForExistence(timeout: 3) ? englishSource : app.menuItems["繁體注音"]
+        XCTAssertTrue(sourceItem.waitForExistence(timeout: 5))
+        sourceItem.click()
+        field.click()
+        func physicalKey(_ code: CGKeyCode) throws {
+            let running = NSRunningApplication.runningApplications(withBundleIdentifier: "cc.blueice.BlueIce")
+            XCTAssertEqual(running.count, 1, "Physical events require one owned BlueIce test application")
+            let target = try XCTUnwrap(running.count == 1 ? running.first : nil)
+            XCTAssertTrue(target.isActive, "The owned test application must be frontmost")
+            let source = try XCTUnwrap(CGEventSource(stateID: .hidSystemState))
+            let down = try XCTUnwrap(CGEvent(keyboardEventSource: source, virtualKey: code, keyDown: true))
+            let up = try XCTUnwrap(CGEvent(keyboardEventSource: source, virtualKey: code, keyDown: false))
+            down.postToPid(target.processIdentifier); up.postToPid(target.processIdentifier)
+        }
+        // Standard Zhuyin physical keys: ㄋ, ㄧ, third tone → 你.
+        try physicalKey(1)
+        waitValue(field, "ㄋ")
+        let active = TISCopyCurrentKeyboardInputSource().takeRetainedValue()
+        let activeID = Unmanaged<CFString>.fromOpaque(TISGetInputSourceProperty(active, kTISPropertyInputSourceID)).takeUnretainedValue() as String
+        XCTAssertEqual(activeID, "com.apple.inputmethod.TCIM.Zhuyin", "XCUITest must keep the requested input source active")
+        try physicalKey(32)
+        waitValue(field, "ㄋㄧ")
+        try physicalKey(20)
+        waitValue(field, "你")
+        try physicalKey(36)
+        waitValue(field, "你")
+        try physicalKey(1)
+        waitValue(field, "你ㄋ")
+        try physicalKey(32)
+        try physicalKey(53)
+        waitValue(field, "你")
+        let attachment = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
+        attachment.name = "macos-system-zhuyin-input"
+        attachment.lifetime = .keepAlways
+        add(attachment)
     }
 
     func testMissingLauncherShowsFailureAndDisabledNavigation() {
