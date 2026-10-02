@@ -58,6 +58,24 @@ impl EcmaTarget {
     }
 }
 
+/// The module system emitted JavaScript uses (TypeScript's `module`): ECMAScript
+/// modules, or CommonJS (`require`, `exports`, `module.exports`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ModuleKind {
+    #[default]
+    Esm,
+    CommonJs,
+}
+
+impl ModuleKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Esm => "esm",
+            Self::CommonJs => "commonjs",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RuntimePolicy {
     TranspileOnly,
@@ -104,6 +122,12 @@ pub struct CompilerOptions {
     /// through its object, never inlined, and an ambient `const enum` cannot be
     /// used, since another module's values are not assumed to be known.
     pub isolated_modules: bool,
+    /// The module system of the emitted JavaScript.
+    pub module_kind: ModuleKind,
+    /// TypeScript's `esModuleInterop`: a default or namespace import of a
+    /// CommonJS `export =` module is allowed and goes through a helper that gives
+    /// it a `default` member. Only meaningful with `ModuleKind::CommonJs`.
+    pub es_module_interop: bool,
     pub runtime_policy: RuntimePolicy,
     pub source_map: bool,
     pub declaration: bool,
@@ -149,6 +173,8 @@ impl Default for CompilerOptions {
             use_define_for_class_fields: None,
             preserve_const_enums: false,
             isolated_modules: false,
+            module_kind: ModuleKind::Esm,
+            es_module_interop: false,
             runtime_policy: RuntimePolicy::Checked,
             source_map: false,
             declaration: false,
@@ -346,7 +372,12 @@ fn compile_with_cache(
     cached: Option<&CachedCompilation>,
 ) -> IncrementalResult {
     let previous_project = cached.map(|cached| &cached.compilation.project);
-    let mut builder = ProjectBuilder::new(loader, previous_project, options.limits.clone());
+    let mut builder = ProjectBuilder::new(
+        loader,
+        previous_project,
+        options.limits.clone(),
+        options.module_kind == ModuleKind::CommonJs,
+    );
     builder.visit(entry, 0);
     for declaration in &options.ambient_declaration_modules {
         builder.visit_ambient_declaration(declaration);
@@ -388,6 +419,8 @@ fn compile_with_cache(
             require_declared_global_calls: options.require_declared_global_calls,
             define_class_fields: options.defines_class_fields(),
             isolated_modules: options.isolated_modules,
+            module_kind: options.module_kind,
+            es_module_interop: options.es_module_interop,
         },
         previous_checked,
         &rechecked_modules,
@@ -497,6 +530,7 @@ fn affected_modules(
 }
 
 struct ProjectBuilder<'a> {
+    allow_cycles: bool,
     loader: &'a dyn ModuleLoader,
     previous: Option<&'a Project>,
     project: Project,
@@ -519,8 +553,10 @@ impl<'a> ProjectBuilder<'a> {
         loader: &'a dyn ModuleLoader,
         previous: Option<&'a Project>,
         limits: CompilerLimits,
+        allow_cycles: bool,
     ) -> Self {
         Self {
+            allow_cycles,
             loader,
             previous,
             project: Project::empty(""),
@@ -539,6 +575,10 @@ impl<'a> ProjectBuilder<'a> {
         }
         match self.state.get(module_id) {
             Some(VisitState::Done) => return,
+            // CommonJS runs a cycle (`require` returns the partial exports of a
+            // module still loading), so a cycle is a valid graph there; an
+            // ECMAScript module graph keeps refusing it.
+            Some(VisitState::Visiting) if self.allow_cycles => return,
             Some(VisitState::Visiting) => {
                 self.diagnostics.push(Diagnostic::error(
                     DiagnosticCode::CircularModuleDependency,
@@ -847,6 +887,12 @@ pub(crate) fn fingerprint(project: &Project, options: &CompilerOptions) -> Strin
         "inline-const-enums"
     } else {
         "object-const-enums"
+    });
+    add(options.module_kind.as_str());
+    add(if options.es_module_interop {
+        "es-module-interop"
+    } else {
+        "no-es-module-interop"
     });
     add(options.runtime_policy.as_str());
     add(&options.resolver_fingerprint);

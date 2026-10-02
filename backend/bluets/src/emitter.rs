@@ -15,6 +15,7 @@ pub use private_lowering::CLASS_HELPER_V1_VERSION;
 
 mod class_lowering;
 mod classes;
+mod commonjs;
 mod enums;
 mod namespaces;
 mod private_lowering;
@@ -251,7 +252,8 @@ fn emit_javascript(
         let Declaration::Import(import) = declaration else {
             continue;
         };
-        if import.type_only {
+        // A CommonJS import is rewritten whole, with its specifier.
+        if import.type_only || options.module_kind == crate::compiler::ModuleKind::CommonJs {
             continue;
         }
         let raw = &module.source[import.specifier_span.start..import.specifier_span.end];
@@ -275,6 +277,9 @@ fn emit_javascript(
     class_lowering::lower_class_members(module, options, &mut edits)?;
     enums::lower_enums(module, project, exported_enums, options, &mut edits)?;
     namespaces::lower_namespaces(module, options, &mut edits)?;
+    if options.module_kind == crate::compiler::ModuleKind::CommonJs {
+        commonjs::lower_commonjs(module, options, &mut edits)?;
+    }
     let plan = strict_boundaries::plan_emission(module, options)?;
     let mut strict_runtime = None;
     if let Some((strict_edits, record)) = plan {
@@ -525,6 +530,9 @@ fn emit_declaration(module: &Module) -> Result<String, Diagnostic> {
                 output.push_str("export default ");
                 output.push_str(&export.name);
                 output.push_str(";\n");
+            }
+            Declaration::ValueExport(export) if export.export_assignment => {
+                output.push_str(&format!("export = {};\n", export.bindings[0].local));
             }
             Declaration::ValueExport(export) => {
                 output.push_str("export { ");

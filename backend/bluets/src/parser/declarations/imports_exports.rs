@@ -17,11 +17,46 @@ impl Parser {
                 .get(self.index + 1)
                 .is_some_and(|token| token.is("="))
         {
-            self.unsupported(
-                self.current().span(&self.id),
-                "`import =` is not in the initial BlueTS matrix",
-            );
-            self.skip_statement();
+            let local = self.current().text.clone();
+            self.bump();
+            self.bump();
+            let is_require = self.consume("require")
+                && self.consume("(")
+                && self.current().kind == TokenKind::String;
+            if !is_require {
+                self.unsupported(
+                    self.current().span(&self.id),
+                    "only `import name = require(\"module\")` is supported as an `import =` form",
+                );
+                self.skip_statement();
+                return;
+            }
+            let specifier = string_contents(self.current()).unwrap_or_default();
+            let specifier_span = self.current().span(&self.id);
+            self.bump();
+            self.expect(")");
+            self.consume(";");
+            let end = self.previous().end;
+            self.declarations
+                .push(Declaration::Import(ImportDeclaration {
+                    equals_require: true,
+                    type_only,
+                    specifier,
+                    specifier_span,
+                    bindings: vec![ImportBinding {
+                        imported: "export=".to_string(),
+                        local,
+                        type_only,
+                    }],
+                    span: SourceSpan::new(&self.id, start, end),
+                }));
+            if type_only {
+                self.edits.push(TextEdit {
+                    start,
+                    end,
+                    replacement: String::new(),
+                });
+            }
             return;
         }
         let mut bindings = Vec::new();
@@ -119,11 +154,46 @@ impl Parser {
         }
         self.declarations
             .push(Declaration::Import(ImportDeclaration {
+                equals_require: false,
                 type_only,
                 specifier,
                 specifier_span,
                 bindings,
                 span,
+            }));
+    }
+
+    /// `export = name;` with the cursor on the `=`.
+    pub(in crate::parser::implementation) fn parse_export_assignment(&mut self, start: usize) {
+        self.expect("=");
+        let name_span = self.current().span(&self.id);
+        let name = self.consume_identifier().filter(|_| {
+            // The whole statement is the name: `export = a.b` is a member access.
+            self.at_eof()
+                || !matches!(
+                    self.current().text.as_str(),
+                    "." | "?." | "[" | "(" | "<" | "!"
+                )
+        });
+        let Some(name) = name else {
+            self.unsupported(
+                name_span,
+                "only `export = name;` of a local declaration is supported",
+            );
+            self.skip_statement();
+            return;
+        };
+        self.consume(";");
+        let end = self.previous().end;
+        self.declarations
+            .push(Declaration::ValueExport(ValueExportDeclaration {
+                export_assignment: true,
+                bindings: vec![ValueExportBinding {
+                    local: name,
+                    exported: "export=".to_string(),
+                    span: name_span,
+                }],
+                span: SourceSpan::new(&self.id, start, end),
             }));
     }
 
@@ -239,6 +309,7 @@ impl Parser {
         let end = self.previous().end;
         self.declarations
             .push(Declaration::ValueExport(ValueExportDeclaration {
+                export_assignment: false,
                 bindings,
                 span: SourceSpan::new(&self.id, start, end),
             }));

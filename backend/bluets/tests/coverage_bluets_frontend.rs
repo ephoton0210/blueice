@@ -4075,8 +4075,8 @@ fn unsupported_and_misplaced_syntax_is_diagnosed_not_passed_through() {
             "anonymous default function exports are not in the initial BlueTS matrix",
         ),
         (
-            "export = foo;",
-            "`export =` is not in the initial BlueTS matrix",
+            "export = foo.bar;",
+            "only `export = name;` of a local declaration is supported",
         ),
         (
             "<div/>;",

@@ -5,7 +5,7 @@
 //! The standalone BlueTSC command-line front end.
 
 use blueice_bluets::{
-    compile, BuildArtifact, CompilerLimits, CompilerOptions, EcmaTarget, ModuleLoader,
+    compile, BuildArtifact, CompilerLimits, CompilerOptions, EcmaTarget, ModuleKind, ModuleLoader,
     ModuleSource, RuntimePolicy, SourceSpan, StrictRuntimeBoundary,
 };
 use ring::digest::{digest, SHA256};
@@ -74,6 +74,10 @@ struct BlueTscConfig {
     preserve_const_enums: bool,
     #[serde(default)]
     isolated_modules: bool,
+    #[serde(default)]
+    es_module_interop: bool,
+    #[serde(default)]
+    module: Option<String>,
     #[serde(default)]
     runtime_policy: Option<String>,
     #[serde(default)]
@@ -229,6 +233,18 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
             }
             "--preserve-const-enums" => options.preserve_const_enums = true,
             "--isolated-modules" => options.isolated_modules = true,
+            "--es-module-interop" => options.es_module_interop = true,
+            "--module" => {
+                options.module_kind = match value()?.as_str() {
+                    "esnext" | "es2022" | "es2020" => ModuleKind::Esm,
+                    "commonjs" => ModuleKind::CommonJs,
+                    other => {
+                        return Err(format!(
+                            "unsupported module `{other}`; expected esnext or commonjs"
+                        ))
+                    }
+                }
+            }
             "--use-define-for-class-fields" => {
                 options.use_define_for_class_fields = Some(match value()?.as_str() {
                     "true" => true,
@@ -274,7 +290,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
 }
 
 fn usage() -> &'static str {
-    "Usage:\n  bluetsc check <entry.ts> [--project-root <directory>] [--target es2020|es2022] [--use-define-for-class-fields true|false] [--preserve-const-enums] [--isolated-modules] [--runtime-policy transpile-only|checked|strict-runtime]\n  bluetsc build <entry.ts> --out-dir <directory> [--project-root <directory>] [--source-map] [--declaration] [--target es2020|es2022] [--use-define-for-class-fields true|false] [--preserve-const-enums] [--isolated-modules] [--runtime-policy transpile-only|checked|strict-runtime]\n  bluetsc check --config <bluetsc.json>\n  bluetsc build --config <bluetsc.json>\n\nConfig fields: entries, projectRoot, outDir, sourceMap, declaration, target, useDefineForClassFields, preserveConstEnums, isolatedModules, runtimePolicy, imports, strictBoundaries."
+    "Usage:\n  bluetsc check <entry.ts> [--project-root <directory>] [--target es2020|es2022] [--use-define-for-class-fields true|false] [--preserve-const-enums] [--isolated-modules] [--module esnext|commonjs] [--es-module-interop] [--runtime-policy transpile-only|checked|strict-runtime]\n  bluetsc build <entry.ts> --out-dir <directory> [--project-root <directory>] [--source-map] [--declaration] [--target es2020|es2022] [--use-define-for-class-fields true|false] [--preserve-const-enums] [--isolated-modules] [--module esnext|commonjs] [--es-module-interop] [--runtime-policy transpile-only|checked|strict-runtime]\n  bluetsc check --config <bluetsc.json>\n  bluetsc build --config <bluetsc.json>\n\nConfig fields: entries, projectRoot, outDir, sourceMap, declaration, target, useDefineForClassFields, preserveConstEnums, isolatedModules, module, esModuleInterop, runtimePolicy, imports, strictBoundaries."
 }
 
 #[derive(Debug)]
@@ -299,6 +315,8 @@ struct BuildMetadata {
     /// replaced by values.
     preserve_const_enums: bool,
     inline_const_enums: bool,
+    module: &'static str,
+    es_module_interop: bool,
     /// The version of the private-name helper text an artifact may embed.
     class_helper_version: &'static str,
     runtime_policy: &'static str,
@@ -476,6 +494,8 @@ fn build_metadata(invocation: &Invocation, summary: &CompileSummary) -> BuildMet
         use_define_for_class_fields: invocation.options.defines_class_fields(),
         preserve_const_enums: invocation.options.preserve_const_enums,
         inline_const_enums: invocation.options.inlines_const_enums(),
+        module: invocation.options.module_kind.as_str(),
+        es_module_interop: invocation.options.es_module_interop,
         class_helper_version: blueice_bluets::CLASS_HELPER_V1_VERSION,
         runtime_policy: invocation.options.runtime_policy.as_str(),
         runtime_helper: (invocation.options.runtime_policy == RuntimePolicy::StrictRuntime)
@@ -650,6 +670,8 @@ fn resolve_config_invocation(path: PathBuf) -> Result<Invocation, String> {
         use_define_for_class_fields: config.use_define_for_class_fields,
         preserve_const_enums: config.preserve_const_enums,
         isolated_modules: config.isolated_modules,
+        es_module_interop: config.es_module_interop,
+        module_kind: parse_module_kind(config.module.as_deref())?,
         runtime_policy: parse_runtime_policy(config.runtime_policy.as_deref())?,
         source_map: config.source_map,
         declaration: config.declaration,
@@ -707,6 +729,16 @@ fn configured_strict_boundary(
         max_string_bytes: boundary.max_string_bytes,
         helper_version: boundary.helper_version,
     })
+}
+
+fn parse_module_kind(value: Option<&str>) -> Result<ModuleKind, String> {
+    match value {
+        None | Some("esnext" | "es2022" | "es2020") => Ok(ModuleKind::Esm),
+        Some("commonjs") => Ok(ModuleKind::CommonJs),
+        Some(other) => Err(format!(
+            "unsupported module `{other}`; expected esnext or commonjs"
+        )),
+    }
 }
 
 fn parse_target(value: Option<&str>) -> Result<EcmaTarget, String> {

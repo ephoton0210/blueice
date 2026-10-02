@@ -145,10 +145,12 @@ pub(super) fn lower_enums(
             String::new()
         } else {
             let first = declared_names.insert(declaration.name.as_str());
+            let commonjs = options.module_kind == crate::compiler::ModuleKind::CommonJs;
             let placement = EnumPlacement {
                 keyword: "var",
-                export_modifier: declaration.exported,
+                export_modifier: declaration.exported && !commonjs,
                 namespace: None,
+                commonjs_export: declaration.exported && commonjs,
             };
             enum_statement(module, declaration, evaluation, first, &placement, edits)
         };
@@ -312,6 +314,8 @@ pub(super) struct EnumPlacement<'a> {
     /// The namespace parameter an exported member is stored on, and whether
     /// this enum is exported from it.
     pub(super) namespace: Option<(&'a str, bool)>,
+    /// CommonJS: an exported enum is stored on `exports` as it is built.
+    pub(super) commonjs_export: bool,
 }
 
 pub(super) fn enum_statement(
@@ -356,6 +360,7 @@ pub(super) fn enum_statement(
     }
     let argument = match placement.namespace {
         Some((parent, true)) => format!("{name} = {parent}.{name} || ({parent}.{name} = {{}})"),
+        _ if placement.commonjs_export => format!("{name} || (exports.{name} = {name} = {{}})"),
         _ => format!("{name} || ({name} = {{}})"),
     };
     parts.push(format!("}})({argument});"));

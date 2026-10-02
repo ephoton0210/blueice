@@ -744,3 +744,63 @@ fn unique_test_directory() -> PathBuf {
     fs::create_dir(&path).unwrap();
     path
 }
+
+#[test]
+fn builds_commonjs_output_runs_it_under_node_and_records_the_module_system() {
+    let temporary = std::env::temp_dir().join(format!("bluetsc-commonjs-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&temporary);
+    fs::create_dir_all(&temporary).unwrap();
+    fs::write(
+        temporary.join("main.ts"),
+        "import { two } from \"./lib.ts\";\nexport const answer = two() * 21;\nconsole.log(answer);\n",
+    )
+    .unwrap();
+    fs::write(
+        temporary.join("lib.ts"),
+        "export function two(): number { return 2; }\n",
+    )
+    .unwrap();
+    for (flags, module) in [
+        (&["--module", "commonjs"][..], "commonjs"),
+        (&[][..], "esm"),
+    ] {
+        let output = temporary.join(format!("out-{module}"));
+        let built = Command::new(env!("CARGO_BIN_EXE_bluetsc"))
+            .current_dir(&temporary)
+            .args(["build", "main.ts", "--out-dir", output.to_str().unwrap()])
+            .args(flags)
+            .output()
+            .unwrap();
+        assert!(
+            built.status.success(),
+            "{}",
+            String::from_utf8_lossy(&built.stderr)
+        );
+        let manifest: serde_json::Value =
+            serde_json::from_slice(&fs::read(output.join("bluetsc.manifest.json")).unwrap())
+                .unwrap();
+        assert_eq!(manifest["module"], module);
+        let javascript = fs::read_to_string(output.join("main.js")).unwrap();
+        assert_eq!(
+            javascript.contains("require("),
+            module == "commonjs",
+            "{javascript}"
+        );
+        if module == "commonjs" && Command::new("node").arg("--version").output().is_ok() {
+            fs::write(output.join("package.json"), r#"{"type":"commonjs"}"#).unwrap();
+            let executed = Command::new("node")
+                .arg(output.join("main.js"))
+                .output()
+                .unwrap();
+            assert_eq!(String::from_utf8_lossy(&executed.stdout).trim(), "42");
+        }
+    }
+    let rejected = Command::new(env!("CARGO_BIN_EXE_bluetsc"))
+        .current_dir(&temporary)
+        .args(["check", "main.ts", "--module", "amd"])
+        .output()
+        .unwrap();
+    assert!(!rejected.status.success());
+    assert!(String::from_utf8_lossy(&rejected.stderr).contains("unsupported module `amd`"));
+    fs::remove_dir_all(temporary).unwrap();
+}

@@ -552,13 +552,41 @@ fn rejects_tsx_modules_even_when_they_contain_no_tag_tokens() {
 }
 
 #[test]
-fn rejects_legacy_commonjs_module_assignment_forms_explicitly() {
-    for source in [
+fn parses_commonjs_module_assignment_forms() {
+    let module = parse_module(
+        "memory:///app.ts",
         "import Legacy = require('./legacy.ts');",
-        "export = Legacy;",
+    )
+    .unwrap();
+    let Declaration::Import(import) = &module.declarations[0] else {
+        panic!("expected an import");
+    };
+    assert!(import.equals_require);
+    assert_eq!(import.specifier, "./legacy.ts");
+    assert_eq!(import.bindings[0].local, "Legacy");
+
+    let module = parse_module("memory:///app.ts", "const Legacy = 1; export = Legacy;").unwrap();
+    let Declaration::ValueExport(export) = &module.declarations[1] else {
+        panic!("expected an export assignment");
+    };
+    assert!(export.export_assignment);
+    assert_eq!(export.bindings[0].local, "Legacy");
+}
+
+#[test]
+fn rejects_unsupported_import_equals_and_export_assignment_forms() {
+    for source in [
+        "import Alias = Some.Namespace;",
+        "import Alias = require(Foo);",
+        "export = a.b;",
+        "export = 1;",
     ] {
         let diagnostics = parse_module("memory:///app.ts", source).unwrap_err();
-        assert_eq!(diagnostics[0].code, DiagnosticCode::UnsupportedSyntax);
+        assert_eq!(
+            diagnostics[0].code,
+            DiagnosticCode::UnsupportedSyntax,
+            "{source}"
+        );
     }
 }
 

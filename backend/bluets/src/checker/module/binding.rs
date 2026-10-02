@@ -56,6 +56,8 @@ impl<'a> ModuleChecker<'a> {
             require_declared_global_calls: policy.require_declared_global_calls,
             define_class_fields: policy.define_class_fields,
             isolated_modules: policy.isolated_modules,
+            module_kind: policy.module_kind,
+            es_module_interop: policy.es_module_interop,
             checked_nested_functions: BTreeSet::new(),
             async_context: None,
             generator_context: None,
@@ -95,6 +97,7 @@ impl<'a> ModuleChecker<'a> {
         self.validate_function_overloads();
         self.validate_default_exports();
         self.validate_value_exports();
+        self.validate_module_system();
     }
 
     /// Binds what the module's (or a namespace body's) own declarations declare.
@@ -499,6 +502,63 @@ impl<'a> ModuleChecker<'a> {
         }
     }
 
+    /// `import x = require()` and `export =` belong to CommonJS, and an `export
+    /// =` module has no other exports.
+    fn validate_module_system(&mut self) {
+        use crate::compiler::ModuleKind;
+        let mut assignment: Option<&crate::parser::ValueExportDeclaration> = None;
+        for declaration in &self.module.declarations {
+            match declaration {
+                Declaration::Import(import)
+                    if import.equals_require && self.module_kind == ModuleKind::Esm =>
+                {
+                    self.diagnostics.push(Diagnostic::error(
+                        DiagnosticCode::UnsupportedSyntax,
+                        import.span.clone(),
+                        "`import x = require()` cannot be used when the module system is ECMAScript; use `--module commonjs`",
+                    ));
+                }
+                Declaration::ValueExport(export) if export.export_assignment => {
+                    if self.module_kind == ModuleKind::Esm {
+                        self.diagnostics.push(Diagnostic::error(
+                            DiagnosticCode::UnsupportedSyntax,
+                            export.span.clone(),
+                            "`export =` cannot be used when the module system is ECMAScript; use `--module commonjs`",
+                        ));
+                    }
+                    assignment = Some(export);
+                }
+                _ => {}
+            }
+        }
+        let Some(assignment) = assignment else {
+            return;
+        };
+        let has_other_exports =
+            self.module
+                .declarations
+                .iter()
+                .any(|declaration| match declaration {
+                    Declaration::ValueExport(export) => !export.export_assignment,
+                    Declaration::DefaultExport(_) | Declaration::TypeExport(_) => true,
+                    Declaration::Variable(item) => item.exported,
+                    Declaration::Function(item) => item.exported,
+                    Declaration::Class(item) => item.exported,
+                    Declaration::Enum(item) => item.exported,
+                    Declaration::Interface(item) => item.exported,
+                    Declaration::TypeAlias(item) => item.exported,
+                    Declaration::Namespace(item) => item.exported,
+                    _ => false,
+                });
+        if has_other_exports {
+            self.diagnostics.push(Diagnostic::error(
+                DiagnosticCode::TypeMismatch,
+                assignment.span.clone(),
+                "an export assignment cannot be used in a module with other exported elements",
+            ));
+        }
+    }
+
     pub(super) fn bind_import(&mut self, import: &crate::parser::ImportDeclaration) {
         let Some(resolved) = self
             .project
@@ -511,6 +571,36 @@ impl<'a> ModuleChecker<'a> {
         let exported_classes = self.exports.classes.get(resolved);
         let mut merged_namespaces: Vec<(String, NamespaceExport, bool)> = Vec::new();
         for binding in &import.bindings {
+            // A module that is `export =` has no `default`: its default import is
+            // its whole export, which TypeScript allows only with interop.
+            let remapped;
+            let binding = if binding.imported == "default"
+                && self
+                    .exports
+                    .exported_names
+                    .get(resolved)
+                    .is_some_and(|(names, _)| {
+                        names.contains("export=") && !names.contains("default")
+                    }) {
+                if !self.es_module_interop {
+                    self.diagnostics.push(Diagnostic::error(
+                        DiagnosticCode::TypeMismatch,
+                        import.span.clone(),
+                        format!(
+                            "module `{}` uses `export =` and can only be default-imported with `esModuleInterop`",
+                            import.specifier
+                        ),
+                    ));
+                    continue;
+                }
+                remapped = crate::parser::ImportBinding {
+                    imported: "export=".to_string(),
+                    ..binding.clone()
+                };
+                &remapped
+            } else {
+                binding
+            };
             if let Some(namespace) = self
                 .namespace_exports
                 .get(resolved)

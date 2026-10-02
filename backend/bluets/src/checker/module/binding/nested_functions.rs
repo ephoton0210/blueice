@@ -80,6 +80,15 @@ impl ModuleChecker<'_> {
         match self.async_context {
             // The top level of a module may await; the top level of a script may
             // not, nor may a namespace's body, which is a function that is not async.
+            None if self.namespace_path.is_empty()
+                && self.module_kind == crate::compiler::ModuleKind::CommonJs =>
+            {
+                self.type_error(
+                    &at,
+                    "top-level `await` is not allowed in a CommonJS module".to_string(),
+                    DiagnosticCode::TypeMismatch,
+                )
+            }
             None if self.namespace_path.is_empty() && self.module_has_module_syntax() => {}
             None if self.namespace_path.is_empty() => self.type_error(
                 &at,

@@ -24,6 +24,10 @@ pub(crate) struct CheckerPolicy {
     /// Modules are emitted one at a time, so an ambient `const enum` cannot be
     /// used.
     pub(crate) isolated_modules: bool,
+    /// The module system of the emitted JavaScript, and whether a default import
+    /// of an `export =` module is allowed (`esModuleInterop`).
+    pub(crate) module_kind: crate::compiler::ModuleKind,
+    pub(crate) es_module_interop: bool,
 }
 
 pub(super) struct ModuleChecker<'a> {
@@ -36,6 +40,8 @@ pub(super) struct ModuleChecker<'a> {
     require_declared_global_calls: bool,
     define_class_fields: bool,
     isolated_modules: bool,
+    module_kind: crate::compiler::ModuleKind,
+    es_module_interop: bool,
     /// Arrow functions already checked, by start offset, so an expression
     /// visited from several checks reports its body once.
     checked_nested_functions: BTreeSet<usize>,

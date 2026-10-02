@@ -55,6 +55,7 @@ struct Walk<'a> {
     edits: &'a mut Vec<TextEdit>,
     inline_const_enums: bool,
     preserve_const_enums: bool,
+    commonjs: bool,
 }
 
 pub(super) fn lower_namespaces(
@@ -90,6 +91,7 @@ pub(super) fn lower_namespaces(
         edits,
         inline_const_enums: options.inlines_const_enums(),
         preserve_const_enums: options.preserve_const_enums,
+        commonjs: options.module_kind == crate::compiler::ModuleKind::CommonJs,
     };
     // The names a module-level namespace may merge into.
     let mut declared: BTreeSet<String> = BTreeSet::new();
@@ -187,6 +189,9 @@ impl Walk<'_> {
                     Scope::Namespace { parent } if namespace.exported => {
                         format!("{name} = {parent}.{name} || ({parent}.{name} = {{}})")
                     }
+                    Scope::Module if namespace.exported && self.commonjs => {
+                        format!("{name} || (exports.{name} = {name} = {{}})")
+                    }
                     _ => format!("{name} || ({name} = {{}})"),
                 }
             } else {
@@ -197,7 +202,7 @@ impl Walk<'_> {
                 if first {
                     let keyword = match scope {
                         Scope::Module => {
-                            if namespace.exported {
+                            if namespace.exported && !self.commonjs {
                                 "export var"
                             } else {
                                 "var"
@@ -274,6 +279,7 @@ impl Walk<'_> {
                         let placement = EnumPlacement {
                             keyword: "let",
                             export_modifier: false,
+                            commonjs_export: false,
                             namespace: Some((&param, enum_declaration.exported)),
                         };
                         enum_statement(
@@ -395,12 +401,24 @@ impl Walk<'_> {
         let members = class_member_names(self.module, body);
         let start = self.token_at(range.0);
         let end = self.token_at(range.1);
+        let replacements: BTreeMap<String, Replacement> = references
+            .iter()
+            .map(|(name, parent)| {
+                (
+                    name.clone(),
+                    Replacement {
+                        text: format!("{parent}.{name}"),
+                        wrap_calls: false,
+                    },
+                )
+            })
+            .collect();
         let mut pending: Vec<TextEdit> = Vec::new();
         scan(
             self.module,
             &self.tokens[start..end],
             0,
-            references,
+            &replacements,
             &covered,
             &members,
             &mut pending,
@@ -410,7 +428,7 @@ impl Walk<'_> {
 }
 
 /// The offsets of the identifier tokens that name a class member.
-fn class_member_names(module: &Module, body: &[Declaration]) -> BTreeSet<usize> {
+pub(super) fn class_member_names(module: &Module, body: &[Declaration]) -> BTreeSet<usize> {
     let mut offsets = BTreeSet::new();
     let Ok(tokens) = crate::lex(&module.id, &module.source) else {
         return offsets;
@@ -436,11 +454,19 @@ fn class_member_names(module: &Module, body: &[Declaration]) -> BTreeSet<usize> 
     offsets
 }
 
-fn scan(
+/// What a reference to a name is written as instead.
+pub(super) struct Replacement {
+    pub(super) text: String,
+    /// A call `name(..)` becomes `(0, text)(..)`, as TypeScript writes a call
+    /// of an imported function so it does not bind `this` to the module.
+    pub(super) wrap_calls: bool,
+}
+
+pub(super) fn scan(
     module: &Module,
     tokens: &[Token],
     base: usize,
-    references: &BTreeMap<String, String>,
+    references: &BTreeMap<String, Replacement>,
     covered: &[(usize, usize)],
     members: &BTreeSet<usize>,
     edits: &mut Vec<TextEdit>,
@@ -469,7 +495,7 @@ fn scan(
             }
             continue;
         }
-        let Some(parent) = references
+        let Some(target) = references
             .get(&token.text)
             .filter(|_| token.kind == TokenKind::Identifier)
         else {
@@ -482,7 +508,11 @@ fn scan(
         if matches!(before, Some("." | "?.")) || members.contains(&start) {
             continue;
         }
-        let mut replacement = format!("{parent}.{}", token.text);
+        let mut replacement = if target.wrap_calls && after == Some("(") && before != Some("new") {
+            format!("(0, {})", target.text)
+        } else {
+            target.text.clone()
+        };
         if matches!(before, Some("{" | ",")) && in_object_literal(tokens, index) {
             match after {
                 Some(":" | "(") => continue,

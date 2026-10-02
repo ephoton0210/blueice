@@ -116,3 +116,28 @@ fn the_direct_bridge_runs_namespaces_to_the_value_typescript_and_node_compute() 
     }
     let _ = fs::remove_dir_all(&root);
 }
+
+#[test]
+fn direct_execution_refuses_commonjs_naming_the_supported_route() {
+    use blueice_bluets::{CompilerOptions, MapLoader, ModuleKind, ModuleSource};
+    let loader = MapLoader::from(vec![ModuleSource::new(
+        "memory:///main.ts",
+        "export const a = 1;\n",
+    )]);
+    let options = || CompilerOptions {
+        module_kind: ModuleKind::CommonJs,
+        ..CompilerOptions::default()
+    };
+    for result in [
+        blueice_bluets_bluejs::compile_direct_script("memory:///main.ts", &loader, options()).err(),
+        blueice_bluets_bluejs::compile_direct_module("memory:///main.ts", &loader, options()).err(),
+        blueice_bluets_bluejs::compile_direct_module_graph("memory:///main.ts", &loader, options())
+            .err(),
+    ] {
+        let message = format!("{:?}", result.expect("CommonJS is refused"));
+        assert!(
+            message.contains("host-provided CommonJS loader"),
+            "{message}"
+        );
+    }
+}

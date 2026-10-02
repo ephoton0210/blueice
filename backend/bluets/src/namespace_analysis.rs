@@ -312,7 +312,49 @@ fn refuse_shadowing(
     references: &BTreeMap<String, String>,
     namespace: &NamespaceDeclaration,
 ) -> Result<(), Diagnostic> {
-    if references.is_empty() {
+    let own: BTreeSet<&str> = body
+        .iter()
+        .filter_map(|declaration| match declaration {
+            Declaration::Variable(item) if item.exported => Some(item.name.as_str()),
+            _ => None,
+        })
+        .collect();
+    let names: BTreeSet<String> = references.keys().cloned().collect();
+    refuse_shadowing_of(
+        module,
+        all_tokens,
+        body,
+        range,
+        nested,
+        &names,
+        &own,
+        namespace.name_span.clone(),
+        &|name| {
+            format!(
+                "a local named `{name}` shadows an exported variable of the namespace \
+                 it is used in, which is not supported yet"
+            )
+        },
+    )
+}
+
+/// Refuses `body` when something in it could bind one of `names` locally (a
+/// parameter, a local declaration, a catch binding, a pattern), which would make
+/// rewriting references to the name by its text wrong. A name in `own` is
+/// declared once by its own declaration, which is not a shadow.
+#[allow(clippy::too_many_arguments)]
+pub fn refuse_shadowing_of(
+    module: &Module,
+    all_tokens: &[Token],
+    body: &[Declaration],
+    range: (usize, usize),
+    nested: &[(usize, usize)],
+    names: &BTreeSet<String>,
+    own: &BTreeSet<&str>,
+    span: SourceSpan,
+    message: &dyn Fn(&str) -> String,
+) -> Result<(), Diagnostic> {
+    if names.is_empty() {
         return Ok(());
     }
     let structural = local_bindings(module, body, range);
@@ -368,26 +410,11 @@ fn refuse_shadowing(
             }
         }
     }
-    // An exported variable of this body is declared once, by its own
-    // declaration; any further binding of the name is a shadow.
-    let own: BTreeSet<&str> = body
-        .iter()
-        .filter_map(|declaration| match declaration {
-            Declaration::Variable(item) if item.exported => Some(item.name.as_str()),
-            _ => None,
-        })
-        .collect();
-    for name in references.keys() {
+    for name in names {
         let allowed = usize::from(own.contains(name.as_str()));
         let found = counted.get(name.as_str()).copied().unwrap_or(0);
         if structural.contains(name) || found > allowed {
-            return Err(unsupported(
-                namespace.name_span.clone(),
-                format!(
-                    "a local named `{name}` shadows an exported variable of the namespace \
-                     it is used in, which is not supported yet"
-                ),
-            ));
+            return Err(unsupported(span, message(name)));
         }
     }
     Ok(())

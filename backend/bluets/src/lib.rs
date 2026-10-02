@@ -37,7 +37,8 @@ pub use authorized_loader::{
 pub use checker::{CheckedModule, CheckedProject, Symbol, SymbolKind, Type};
 pub use compiler::{
     compile, CompilerLimits, CompilerOptions, EcmaTarget, IncrementalCompiler, IncrementalResult,
-    MapLoader, ModuleLoader, ModuleSource, Project, RuntimePolicy, StrictRuntimeBoundary,
+    MapLoader, ModuleKind, ModuleLoader, ModuleSource, Project, RuntimePolicy,
+    StrictRuntimeBoundary,
 };
 pub use contracts::{
     Contract, ContractError, ContractPlan, ContractValue, ValidationError, ValidationLimits,
@@ -54,7 +55,8 @@ pub use emitter::{
 };
 pub use enum_eval::{evaluate_enums, evaluate_enums_in, EnumValue, EvaluatedEnum, EvaluatedMember};
 pub use namespace_analysis::{
-    has_runtime_values, nested_spans, rewrite_declaration, BodyInput, NamespaceExports,
+    has_runtime_values, nested_spans, refuse_shadowing_of, rewrite_declaration, BodyInput,
+    NamespaceExports,
 };
 pub use parser::{
     parse_module, ClassAccessor, ClassConstructor, ClassDeclaration, ClassField, ClassMemberKind,

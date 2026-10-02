@@ -3178,3 +3178,51 @@ The emitter changes nothing: the annotations are erased by the ordinary edits an
 `function*`, `yield` and `yield*` are in the copied text, which ES2020 and ES2022
 run. The bridge's expression parser handles `yield` at assignment precedence, and
 its function lowering sets BlueJS's `generator` flag.
+
+### J.4.1 Module system selection and CommonJS
+
+`CompilerOptions` gained `module_kind` (`Esm` by default, or `CommonJs`) and
+`es_module_interop`; both are in the project fingerprint, the `bluetsc` CLI
+(`--module esnext|commonjs`, `--es-module-interop`), its config file (`module`,
+`esModuleInterop`) and the build manifest (`module`, `esModuleInterop`), so an
+artifact is never reused under a different module system.
+
+**Syntax and checking.** `import x = require("m")` parses to an import with one
+`export=` binding (`equals_require`), and `export = name;` to a value export with
+the one binding `export=` (`export_assignment`); `export = a.b`, `import a = b.c`
+and a non-string `require` argument stay explicit refusals. In an ECMAScript module
+both are errors that name `--module commonjs`; in CommonJS an `export =` module
+cannot also have other exports, a default import of an `export =` module is an
+error without `esModuleInterop` (and binds the whole export with it), and
+top-level `await` is refused. A cycle between modules is a valid graph in CommonJS
+(`require` returns the partial exports of a module still loading) and keeps being
+refused for ECMAScript modules.
+
+**Emit.** `emitter/commonjs.rs` rewrites ES syntax to TypeScript's CommonJS shape
+by text edits that keep every line: `"use strict"` and the `__esModule` marker,
+the `exports.a = exports.b = void 0` key chain, `const m_1 = require("./m.js")`
+per import (a default import under interop goes through `__importDefault`, a
+namespace import through `__importStar`), `exports.f = f` for hoisted functions,
+`exports.C = C` after a class, `exports.E = E = {}` inside an enum or namespace
+IIFE, `exports.x = ..` for an exported variable, and `module.exports = x` for
+`export =`. A use of an imported name reads a member of its required module (a
+call as `(0, m_1.f)(..)`, so `this` is not the module) and a use of an exported
+variable reads `exports.x`, through the same reference scan namespaces use
+(`Replacement`); the shadow refusal is the shared `refuse_shadowing_of`. Declaration
+output prints `export = x;`. The pinned `tsc --module commonjs` and BlueTSC are run
+under Node on six programs (live bindings, cycles, `export =`/`import = require`,
+interop default and namespace imports, `this` of an imported call) and must print
+the same thing (`tests/commonjs_oracle.rs`, ignored test).
+
+**Direct runtime route.** The direct bridge executes ECMAScript scripts and modules
+only; with `module_kind: CommonJs` all three `compile_direct_*` functions refuse,
+naming the supported route: `--module commonjs` output run in a realm with a
+host-provided CommonJS loader. The page gets no `require`, `module` or `exports`
+from CommonJS syntax alone, since no loader is provisioned for it.
+
+Recorded gaps: a module imported by a bare or extensionless specifier (that is
+J.4.2); the type of a value imported from another module is still `unknown` in the
+checker (also for ESM), so a declaration file prints `unknown` for a variable
+inferred from one; reassigning a local listed in `export { local as x }` is not
+tracked after the statement; `export default <expression>` and re-exports remain
+out of the matrix; an exported variable with several declarators is refused.

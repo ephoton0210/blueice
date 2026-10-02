@@ -3,7 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use super::*;
-use blueice_bluets::{BuildArtifact, MapLoader, SourceMap};
+use blueice_bluets::{BuildArtifact, MapLoader, ModuleKind, SourceMap};
 use std::collections::BTreeMap;
 
 fn args(values: &[&str]) -> Result<Args, String> {
@@ -85,6 +85,30 @@ fn parses_the_const_enum_flags() {
     };
     assert!(options.preserve_const_enums && options.isolated_modules);
     assert!(!options.inlines_const_enums());
+}
+
+#[test]
+fn parses_the_module_system_flags() {
+    let Input::Entry { options, .. } = args(&["check", "main.ts"]).unwrap().input else {
+        panic!("expected explicit entry input");
+    };
+    assert_eq!(options.module_kind, ModuleKind::Esm);
+    assert!(!options.es_module_interop);
+    let Input::Entry { options, .. } = args(&[
+        "check",
+        "main.ts",
+        "--module",
+        "commonjs",
+        "--es-module-interop",
+    ])
+    .unwrap()
+    .input
+    else {
+        panic!("expected explicit entry input");
+    };
+    assert_eq!(options.module_kind, ModuleKind::CommonJs);
+    assert!(options.es_module_interop);
+    assert!(args(&["check", "main.ts", "--module", "amd"]).is_err());
 }
 
 #[test]
@@ -220,6 +244,8 @@ fn test_metadata() -> BuildMetadata {
         use_define_for_class_fields: true,
         preserve_const_enums: false,
         inline_const_enums: true,
+        module: "esm",
+        es_module_interop: false,
         class_helper_version: "bluets-class-helper-v1",
         runtime_policy: "checked",
         runtime_helper: None,

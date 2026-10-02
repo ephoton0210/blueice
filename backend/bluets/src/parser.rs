@@ -127,6 +127,8 @@ impl Declaration {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ImportDeclaration {
+    /// `import x = require("m")`: one binding of the module's `export =` value.
+    pub equals_require: bool,
     pub type_only: bool,
     pub specifier: String,
     pub specifier_span: SourceSpan,
@@ -165,6 +167,9 @@ pub struct DefaultExportDeclaration {
 /// emission.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ValueExportDeclaration {
+    /// `export = name;`: the module's whole export is that value, as the one
+    /// binding named `export=`.
+    pub export_assignment: bool,
     pub bindings: Vec<ValueExportBinding>,
     pub span: SourceSpan,
 }

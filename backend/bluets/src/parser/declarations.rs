@@ -153,11 +153,7 @@ impl Parser {
                 continue;
             }
             if exported && self.peek("=") {
-                self.unsupported(
-                    self.current().span(&self.id),
-                    "`export =` is not in the initial BlueTS matrix",
-                );
-                self.skip_statement();
+                self.parse_export_assignment(start);
                 continue;
             }
             if exported && self.peek("*") {

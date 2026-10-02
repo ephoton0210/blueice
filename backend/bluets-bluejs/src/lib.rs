@@ -578,6 +578,7 @@ pub fn compile_direct_script(
     loader: &dyn ModuleLoader,
     options: CompilerOptions,
 ) -> Result<DirectScript, BridgeError> {
+    refuse_commonjs(entry, &options)?;
     let define_class_fields = options.defines_class_fields();
     let (module, debug_info) = checked_entry(entry, loader, options)?;
 
@@ -609,6 +610,7 @@ pub fn compile_direct_module(
     loader: &dyn ModuleLoader,
     options: CompilerOptions,
 ) -> Result<DirectModule, BridgeError> {
+    refuse_commonjs(entry, &options)?;
     let define_class_fields = options.defines_class_fields();
     let (module, debug_info) = checked_entry(entry, loader, options)?;
     let (module, provenance) = lower_module(None, &module, define_class_fields)?;
@@ -639,6 +641,7 @@ pub fn compile_direct_module_graph(
     loader: &dyn ModuleLoader,
     options: CompilerOptions,
 ) -> Result<DirectModuleGraph, BridgeError> {
+    refuse_commonjs(entry, &options)?;
     let define_class_fields = options.defines_class_fields();
     let compilation = compile(entry, loader, options);
     if compilation.has_errors() {
@@ -741,6 +744,23 @@ fn runtime_module_ids(project: &Project, entry: &str) -> Result<BTreeSet<String>
         }
     }
     Ok(modules)
+}
+
+/// Direct execution builds BlueJS ECMAScript module/script ASTs; it has no
+/// `require`/`exports`/`module` loader, and a CommonJS text rewrite of ES syntax
+/// is exactly what the direct path exists to avoid. CommonJS projects therefore
+/// run as `bluetsc build --module commonjs` output in a realm that provides a
+/// CommonJS loader, which the host owns and authorizes; a page gets none from
+/// CommonJS syntax alone.
+fn refuse_commonjs(entry: &str, options: &CompilerOptions) -> Result<(), BridgeError> {
+    if options.module_kind == blueice_bluets::ModuleKind::CommonJs {
+        return Err(unsupported(
+            SourceSpan::new(entry, 0, 0),
+            "the direct bridge executes ECMAScript modules only; a CommonJS project is run as \
+             `--module commonjs` emitted output in a realm with a host-provided CommonJS loader",
+        ));
+    }
+    Ok(())
 }
 
 fn checked_entry(
