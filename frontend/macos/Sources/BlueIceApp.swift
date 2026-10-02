@@ -13,6 +13,7 @@ struct BlueIceApp: App {
             .commands {
                 NativeEditingCommands(menu: delegate.editingMenu, model: delegate.model)
                 BrowserAppearanceCommands(settings: delegate.model.appearance)
+                BrowserTabGroupCommands(model: delegate.model)
             }
     }
 }

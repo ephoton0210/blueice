@@ -31,6 +31,14 @@ final class BrowserModel: ObservableObject {
         }
     }
     @Published private(set) var tabs: [BrowserTab] = []
+    @Published private(set) var groups: [BrowserTabGroup] = []
+    @Published private(set) var groupsAvailable = false
+    @Published private(set) var groupBusy = false
+    @Published private(set) var groupError: String?
+    @Published var groupEditor: TabGroupEditor?
+    private var groupOperation: UUID?
+    private var groupReplies: [IncomingEnvelope] = []
+    private var groupRequests: [UInt64] = []
     @Published private(set) var selected: UInt64?
     @Published var address = ""
     @Published private(set) var status = "Starting BlueIce…"
@@ -185,12 +193,26 @@ final class BrowserModel: ObservableObject {
             let preferences = appearance.resolved
             if await send(.displayPreferences(preferences), tab: 1) != nil { lastSentPreferences = preferences }
             await send(.unit("ListTabs"))
+            await send(.unit("ListTabGroups"))
             await send(.values("Navigate", ["url": .string("about:credits")]), tab: 1)
         } catch { status = error.localizedDescription; await session.stop() }
     }
 
     private func apply(_ envelope: IncomingEnvelope, pixels: FramePixels?) {
         let tab = envelope.tabID
+        let groupRequest = envelope.requestID.map { groupRequests.contains($0) } ?? false
+        if groupRequest { groupRequests.removeAll { $0 == envelope.requestID } }
+        if groupOperation != nil, groupRequest, groupReplies.count < 128 {
+            switch envelope.message {
+            case .groupChanged, .groupAssigned, .groupClosed, .groupsUnavailable, .error:
+                groupReplies.append(envelope)
+            default: break
+            }
+        }
+        if groupRequest, case .error(let message) = envelope.message {
+            groupError = message
+            return
+        }
         switch envelope.message {
         case .opened, .blocked, .error:
             for ticket in Array(linkTabReplies.keys) where (linkTabReplies[ticket]?.count ?? 16) < 16 {
@@ -199,6 +221,20 @@ final class BrowserModel: ObservableObject {
         default: break
         }
         switch envelope.message {
+        case .groups(let list):
+            groups = list; groupsAvailable = true
+        case .groupChanged(let group, _):
+            if let index = groups.firstIndex(where: { $0.id == group.id }) { groups[index] = group }
+            else { groups.append(group) }
+        case .groupAssigned(let id, let group):
+            guard tab == id, let index = tabs.firstIndex(where: { $0.id == id }) else { return }
+            tabs[index].groupID = group
+            if let group, !groups.contains(where: { $0.id == group }) { action(.unit("ListTabGroups")) }
+        case .groupClosed(let id):
+            groups.removeAll { $0.id == id }
+            for index in tabs.indices where tabs[index].groupID == id { tabs[index].groupID = nil }
+        case .groupsUnavailable:
+            groups = []; groupsAvailable = false; groupError = "Tab groups unavailable"
         case .tabs(let list):
             tabs = list
             let live = Set(list.map(\.id))
@@ -369,6 +405,102 @@ final class BrowserModel: ObservableObject {
     func action(_ command: BrowserCommand, tab: UInt64? = nil) {
         let target = tab ?? selected
         Task { await send(command, tab: target) }
+    }
+
+    func beginTabGroupEditor(group: UInt64? = nil, tab: UInt64? = nil) {
+        guard ready, groupsAvailable, !groupBusy else { return }
+        groupError = nil
+        if let group, let current = groups.first(where: { $0.id == group }) {
+            groupEditor = TabGroupEditor(groupID: group, name: current.name, color: current.color, tabID: nil)
+        } else if group == nil {
+            groupEditor = TabGroupEditor(groupID: nil, name: "", color: "#4477cc", tabID: tab ?? selected)
+        }
+    }
+
+    private func beginGroupOperation() -> UUID? {
+        guard ready, groupsAvailable, !groupBusy else { return nil }
+        let token = UUID(); groupOperation = token; groupReplies = []; groupBusy = true; groupError = nil
+        return token
+    }
+    private func endGroupOperation(_ token: UUID) {
+        guard groupOperation == token else { return }
+        groupOperation = nil; groupReplies = []; groupBusy = false
+    }
+    private func groupReply(_ action: TabGroupAction, tab: UInt64? = nil, token: UUID) async -> BrowserMessage? {
+        guard let request = await sendTabGroupCommand(action, tab: tab) else { return nil }
+        let deadline = Date().addingTimeInterval(5)
+        while ready, !Task.isCancelled, groupOperation == token, Date() < deadline {
+            if let index = groupReplies.firstIndex(where: { $0.requestID == request && $0.tabID == tab }) {
+                let message = groupReplies.remove(at: index).message
+                if case .error(let message) = message { groupError = message; return nil }
+                if case .groupsUnavailable = message { groupError = "Tab groups unavailable"; return nil }
+                return message
+            }
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        if ready { groupError = "The tab group update did not complete" }
+        return nil
+    }
+    @discardableResult
+    func sendTabGroupCommand(_ action: TabGroupAction, tab: UInt64? = nil) async -> UInt64? {
+        guard ready else { return nil }
+        do {
+            return try await session.send(.tabGroup(action), tab: tab) { [weak self] request in
+                // Both registration and inbound messages use the serial main
+                // queue, so even an immediate core error has its own notice.
+                DispatchQueue.main.async { [weak self] in
+                    guard let self, self.ready else { return }
+                    self.groupRequests.append(request)
+                    if self.groupRequests.count > 128 { self.groupRequests.removeFirst() }
+                }
+            }
+        } catch { groupError = error.localizedDescription; return nil }
+    }
+    func dismissTabGroupError() { groupError = nil }
+    func createTabGroup(name: String, color: String, tab: UInt64?) async -> UInt64? {
+        guard let token = beginGroupOperation() else { return nil }; defer { endGroupOperation(token) }
+        guard BrowserTabGroup.validName(name), BrowserTabGroup.validColor(color.trimmingCharacters(in: .whitespacesAndNewlines)) else {
+            groupError = "Enter a name of up to 80 characters and a six-digit hex color"; return nil
+        }
+        if let tab, !tabs.contains(where: { $0.id == tab }) { groupError = "The tab was closed"; return nil }
+        guard case .groupChanged(let group, true) = await groupReply(.create(name, color), token: token) else { return nil }
+        if let tab {
+            if tabs.contains(where: { $0.id == tab }) {
+                guard case .groupAssigned(let replyTab, let id) = await groupReply(.assign(group.id), tab: tab, token: token),
+                      replyTab == tab, id == group.id else { return nil }
+            } else { groupError = "The group was created, but its tab was closed" }
+        }
+        return group.id
+    }
+    func updateTabGroup(_ id: UInt64, name: String, color: String) async -> Bool {
+        guard let token = beginGroupOperation() else { return false }; defer { endGroupOperation(token) }
+        guard groups.contains(where: { $0.id == id }) else { groupError = "The group no longer exists"; return false }
+        guard BrowserTabGroup.validName(name), BrowserTabGroup.validColor(color.trimmingCharacters(in: .whitespacesAndNewlines)) else {
+            groupError = "Enter a name of up to 80 characters and a six-digit hex color"; return false
+        }
+        guard case .groupChanged(let renamed, false) = await groupReply(.rename(id, name), token: token), renamed.id == id else { return false }
+        guard case .groupChanged(let recolored, false) = await groupReply(.color(id, color), token: token), recolored.id == id else { return false }
+        return true
+    }
+    func setTabGroup(_ group: UInt64?, tab: UInt64) async -> Bool {
+        guard let token = beginGroupOperation() else { return false }; defer { endGroupOperation(token) }
+        guard tabs.contains(where: { $0.id == tab }), group == nil || groups.contains(where: { $0.id == group }) else {
+            groupError = "The tab or group no longer exists"; return false
+        }
+        guard case .groupAssigned(let replyTab, let id) = await groupReply(.assign(group), tab: tab, token: token) else { return false }
+        return replyTab == tab && id == group
+    }
+    func setTabGroupCollapsed(_ id: UInt64, collapsed: Bool) async -> Bool {
+        guard let token = beginGroupOperation() else { return false }; defer { endGroupOperation(token) }
+        guard groups.contains(where: { $0.id == id }) else { groupError = "The group no longer exists"; return false }
+        guard case .groupChanged(let group, false) = await groupReply(.collapse(id, collapsed), token: token) else { return false }
+        return group.id == id && group.collapsed == collapsed
+    }
+    func removeTabGroup(_ id: UInt64) async -> Bool {
+        guard let token = beginGroupOperation() else { return false }; defer { endGroupOperation(token) }
+        guard groups.contains(where: { $0.id == id }) else { groupError = "The group no longer exists"; return false }
+        guard case .groupClosed(let removed) = await groupReply(.remove(id), token: token) else { return false }
+        return removed == id
     }
 
     func contextMenuIsCurrent(_ context: PageMenuContext) -> Bool {
@@ -731,5 +863,5 @@ final class BrowserModel: ObservableObject {
         await send(.viewport(width, height, density, backingScale: deviceScale), tab: target)
     }
 
-    func stop() async { zoomTask?.cancel(); zoomWrites.removeAll(); preferenceTask?.cancel(); lastSentPreferences = nil; preferenceStates.removeAll(); displayPreferences = nil; findTask?.cancel(); findPanels.removeAll(); findVisible = false; findResult = nil; resubmissions.removeAll(); resubmission = nil; resubmissionPresented = false; ready = false; representation = nil; representations.removeAll(); representationRequests.removeAll(); clearTextInput(); resizeTask?.cancel(); await session.stop() }
+    func stop() async { groupOperation = nil; groupReplies = []; groupRequests = []; groupBusy = false; groups = []; groupsAvailable = false; groupEditor = nil; zoomTask?.cancel(); zoomWrites.removeAll(); preferenceTask?.cancel(); lastSentPreferences = nil; preferenceStates.removeAll(); displayPreferences = nil; findTask?.cancel(); findPanels.removeAll(); findVisible = false; findResult = nil; resubmissions.removeAll(); resubmission = nil; resubmissionPresented = false; ready = false; representation = nil; representations.removeAll(); representationRequests.removeAll(); clearTextInput(); resizeTask?.cancel(); await session.stop() }
 }

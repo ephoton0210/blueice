@@ -13,37 +13,16 @@ struct BrowserView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 8) {
-                ScrollView(.horizontal) {
-                    HStack(spacing: 4) {
-                        ForEach(model.tabs) { tab in
-                            HStack(spacing: 4) {
-                                Button { model.select(tab.id) } label: {
-                                    Text(tab.url ?? "New tab").lineLimit(1).frame(maxWidth: 200)
-                                }
-                                .accessibilityIdentifier("tab-\(tab.id)")
-                                .accessibilityLabel(tab.url ?? "New tab")
-                                .accessibilityValue(model.selected == tab.id ? "Selected" : "")
-                                Button { model.action(.unit("CloseTab"), tab: tab.id) } label: {
-                                    Image(systemName: "xmark").font(.caption)
-                                }
-                                .accessibilityLabel("Close tab")
-                                .accessibilityIdentifier("close-tab-\(tab.id)")
-                            }
-                            .padding(6)
-                            .background(model.selected == tab.id ? Color.accentColor.opacity(0.15) : Color.clear)
-                            .clipShape(RoundedRectangle(cornerRadius: 6))
-                            .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(model.selected == tab.id && appearance.resolved.highContrast ? Color.primary : Color.clear, lineWidth: 2).allowsHitTesting(false).accessibilityHidden(true))
-                        }
-                    }
-                }
-                .accessibilityIdentifier("tab-strip")
-                button("plus", "New tab", "add-tab") { model.action(.values("OpenTab", ["url": .null])) }
-                    .keyboardShortcut("t", modifiers: .command)
-            }
-            .disabled(!model.ready)
-            .padding(.horizontal, 12).padding(.vertical, 8)
+            BrowserTabStrip(model: model)
             Divider()
+            if let error = model.groupError, model.groupEditor == nil {
+                HStack {
+                    Text(error).accessibilityIdentifier("tab-group-notice")
+                    Spacer()
+                    button("xmark", "Dismiss tab group notice", "dismiss-tab-group-notice") { model.dismissTabGroupError() }
+                }.font(.caption).padding(.horizontal, 12).padding(.vertical, 6)
+                Divider()
+            }
             HStack(spacing: 12) {
                 button("chevron.left", "Back", "back") { model.action(.unit("GoBack")) }
                     .disabled(!model.history.back)
@@ -112,6 +91,7 @@ struct BrowserView: View {
         } message: { prompt in
             Text("Resending will repeat the previous form submission to \(URL(string: prompt.url)?.host ?? prompt.url).")
         }
+        .sheet(item: $model.groupEditor) { editor in BrowserTabGroupEditor(model: model, editor: editor) }
         .buttonStyle(.plain)
         .transaction { if appearance.resolved.reducedMotion { $0.animation = nil; $0.disablesAnimations = true } }
         .background(AppearanceWindow(settings: appearance).frame(width: 0, height: 0).accessibilityHidden(true))

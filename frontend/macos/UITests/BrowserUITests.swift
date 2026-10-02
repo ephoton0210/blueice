@@ -60,6 +60,132 @@ final class BrowserUITests: XCTestCase {
         if submit { address.typeKey(.return, modifierFlags: []) }
     }
 
+    private func paste(_ text: String, into field: XCUIElement) {
+        field.click(); field.typeKey("a", modifierFlags: .command)
+        NSPasteboard.general.clearContents(); NSPasteboard.general.setString(text, forType: .string)
+        field.typeKey("v", modifierFlags: .command)
+        waitValue(field, text)
+    }
+    private func chooseChromeContext(_ title: String) {
+        let item = app.windows["browser-window"].menuItems[title]
+        XCTAssertTrue(item.waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertTrue(item.isEnabled); item.click()
+    }
+    private func moveTab(_ id: Int, to group: String) {
+        app.buttons["tab-\(id)"].rightClick()
+        XCTAssertTrue(app.windows["browser-window"].menuItems["Move to Group"].waitForExistence(timeout: 10), app.debugDescription)
+        app.windows["browser-window"].menuItems["Move to Group"].hover(); chooseChromeContext(group)
+    }
+
+    func testTabGroupsNativeEditorCollapseMoveRemovePreservePagesAndZoom() throws {
+        let fixture = try HTTPFixture(); defer { fixture.stop() }
+        let saved = saveClipboard()
+        defer { NSPasteboard.general.clearContents(); NSPasteboard.general.writeObjects(saved) }
+        launch(); enter(fixture.origin + "/context-menu")
+        let field = app.groups["page"].textFields["Context editor"]
+        XCTAssertTrue(field.waitForExistence(timeout: 15)); paste("Grouped 中文", into: field)
+        app.menuBars.menuBarItems["View"].click(); app.menuItems["Page Zoom"].hover(); app.menuItems["150%"].click()
+        waitValue(app.buttons["page-zoom"], "150%")
+        app.buttons["new-tab-group"].click()
+        XCTAssertTrue(app.textFields["group-name"].waitForExistence(timeout: 10))
+        paste("  Research  ", into: app.textFields["group-name"])
+        app.buttons["group-color-red"].click(); waitValue(app.textFields["group-color"], "#cc3344")
+        app.buttons["group-save"].click()
+        let group = app.buttons["tab-group-1"]
+        XCTAssertTrue(group.waitForExistence(timeout: 10))
+        XCTAssertEqual(group.label, "Research"); waitValue(group, "Expanded, 1 tabs, contains selected tab")
+        XCTAssertGreaterThan(try colorCount(try XCTUnwrap(group.screenshot().image.tiffRepresentation), red: 204/255, green: 51/255, blue: 68/255), 5)
+        waitValue(field, "Grouped 中文"); waitValue(app.buttons["page-zoom"], "150%")
+        XCTAssertTrue(app.buttons["back"].isEnabled)
+        group.click(); waitValue(group, "Collapsed, 1 tabs, contains selected tab")
+        XCTAssertFalse(app.buttons["tab-1"].exists, "Collapsed members are hidden while their selected page remains live")
+        waitValue(field, "Grouped 中文")
+        app.buttons["add-tab"].click(); waitValue(app.textFields["address"], "about:credits")
+        waitValue(app.buttons["page-zoom"], "100%")
+        XCTAssertTrue(app.buttons["tab-2"].waitForExistence(timeout: 10))
+        moveTab(2, to: "Research"); waitValue(group, "Collapsed, 2 tabs, contains selected tab")
+        XCTAssertFalse(app.buttons["tab-2"].exists)
+        waitValue(app.textFields["address"], "about:credits")
+        group.click(); waitValue(group, "Expanded, 2 tabs, contains selected tab")
+        app.buttons["tab-1"].click(); waitValue(field, "Grouped 中文"); waitValue(app.buttons["page-zoom"], "150%")
+        group.rightClick(); chooseChromeContext("Edit Group…")
+        XCTAssertTrue(app.textFields["group-name"].waitForExistence(timeout: 10))
+        paste("Work", into: app.textFields["group-name"])
+        paste("#228844", into: app.textFields["group-color"])
+        app.buttons["group-save"].click()
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == 'Work'"), object: group)], timeout: 10), .completed)
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == true"), object: group)], timeout: 10), .completed)
+        XCTAssertGreaterThan(try colorCount(try XCTUnwrap(group.screenshot().image.tiffRepresentation), red: 34/255, green: 136/255, blue: 68/255), 5)
+        moveTab(2, to: "No Group"); waitValue(group, "Expanded, 1 tabs, contains selected tab")
+        moveTab(2, to: "Work"); waitValue(group, "Expanded, 2 tabs, contains selected tab")
+        let attachment = XCTAttachment(screenshot: app.windows["browser-window"].screenshot())
+        attachment.name = "macos-tab-groups"; attachment.lifetime = .keepAlways; add(attachment)
+        group.rightClick(); chooseChromeContext("Ungroup and Remove Group")
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: group)], timeout: 10), .completed)
+        XCTAssertTrue(app.buttons["tab-1"].exists); XCTAssertTrue(app.buttons["tab-2"].exists)
+        waitValue(field, "Grouped 中文"); waitValue(app.buttons["page-zoom"], "150%")
+        XCTAssertEqual(fixture.requests, ["/context-menu"], "Tab organization never fetches the page again")
+        app.buttons["back"].click(); waitValue(app.textFields["address"], "about:credits")
+        app.buttons["forward"].click(); waitValue(app.textFields["address"], fixture.origin + "/context-menu")
+        waitValue(field, "hello")
+        XCTAssertEqual(fixture.requests, ["/context-menu", "/context-menu"])
+    }
+
+    func testTabGroupKeyboardValidationCancelAndEmptyGroupLifecycle() throws {
+        let saved = saveClipboard()
+        defer { NSPasteboard.general.clearContents(); NSPasteboard.general.writeObjects(saved) }
+        launch(); app.typeKey("g", modifierFlags: [.command, .option])
+        let name = app.textFields["group-name"], save = app.buttons["group-save"]
+        XCTAssertTrue(name.waitForExistence(timeout: 10)); XCTAssertFalse(save.isEnabled)
+        paste(String(repeating: "e\u{301}", count: 41), into: name)
+        XCTAssertFalse(save.isEnabled, "Core names are limited to 80 Unicode scalars, including combining marks")
+        paste("Valid", into: name); paste("red", into: app.textFields["group-color"])
+        XCTAssertFalse(save.isEnabled)
+        paste("#4477CC", into: app.textFields["group-color"]); XCTAssertTrue(save.isEnabled)
+        app.buttons["group-cancel"].click(); XCTAssertFalse(app.buttons["tab-group-1"].exists)
+        app.buttons["tab-1"].rightClick(); chooseChromeContext("New Tab Group…")
+        XCTAssertTrue(name.waitForExistence(timeout: 10)); paste("Keep", into: name); save.click()
+        let group = app.buttons["tab-group-1"]
+        XCTAssertTrue(group.waitForExistence(timeout: 10)); waitValue(group, "Expanded, 1 tabs, contains selected tab")
+        app.buttons["close-tab-1"].click(); waitValue(group, "Expanded, 0 tabs")
+        XCTAssertTrue(app.staticTexts["empty-page"].exists)
+        group.rightClick(); chooseChromeContext("Edit Group…")
+        XCTAssertTrue(name.waitForExistence(timeout: 10)); paste("Empty", into: name); save.click()
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == 'Empty'"), object: group)], timeout: 10), .completed)
+        app.menuBars.menuBarItems["View"].click(); app.menuBars.menuItems["Tab Groups"].hover(); app.menuBars.menuItems["New Tab Group…"].click()
+        XCTAssertTrue(name.waitForExistence(timeout: 10)); paste("Second empty", into: name); save.click()
+        let second = app.buttons["tab-group-2"]
+        XCTAssertTrue(second.waitForExistence(timeout: 10)); waitValue(second, "Expanded, 0 tabs")
+        app.buttons["add-tab"].click(); waitValue(app.textFields["address"], "about:credits")
+        XCTAssertTrue(app.buttons["tab-2"].exists)
+        waitValue(group, "Expanded, 0 tabs"); waitValue(second, "Expanded, 0 tabs")
+        group.rightClick(); chooseChromeContext("Ungroup and Remove Group")
+        second.rightClick(); chooseChromeContext("Ungroup and Remove Group")
+        XCTAssertFalse(group.exists); XCTAssertFalse(second.exists)
+        XCTAssertTrue(app.buttons["tab-2"].exists)
+    }
+
+    func testTabGroupEditorRejectsGroupRemovedThroughNativeMenu() throws {
+        let saved = saveClipboard()
+        defer { NSPasteboard.general.clearContents(); NSPasteboard.general.writeObjects(saved) }
+        launch(); app.buttons["new-tab-group"].click()
+        let name = app.textFields["group-name"]
+        XCTAssertTrue(name.waitForExistence(timeout: 10)); paste("Stale", into: name)
+        app.buttons["group-save"].click()
+        let group = app.buttons["tab-group-1"]
+        XCTAssertTrue(group.waitForExistence(timeout: 10))
+        group.rightClick(); chooseChromeContext("Edit Group…")
+        XCTAssertTrue(name.waitForExistence(timeout: 10))
+        app.menuBars.menuBarItems["View"].click(); app.menuBars.menuItems["Tab Groups"].hover()
+        app.menuBars.menuItems["Stale"].hover(); app.menuBars.menuItems["Ungroup and Remove Group"].click()
+        XCTAssertTrue(app.staticTexts["group-target-closed"].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.buttons["group-save"].isEnabled)
+        XCTAssertEqual(name.value as? String, "Stale")
+        app.buttons["group-cancel"].click()
+        XCTAssertFalse(group.exists); XCTAssertTrue(app.buttons["tab-1"].exists)
+        waitValue(app.textFields["address"], "about:credits")
+    }
+
     func testRetinaCSSSizeZoomShortcutsAndPerTabRetention() throws {
         let fixture = try HTTPFixture(); defer { fixture.stop() }
         let saved = saveClipboard()

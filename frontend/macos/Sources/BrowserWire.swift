@@ -30,6 +30,7 @@ enum BrowserCommand: Encodable, Sendable {
     case contextMenuLink(PageMenuContext, PageMenuLinkAction)
     case viewport(Double, Double, Double, backingScale: Double? = nil)
     case displayPreferences(DisplayPreferences)
+    case tabGroup(TabGroupAction)
     func encode(to encoder: Encoder) throws {
         switch self {
         case .unit(let name):
@@ -66,6 +67,9 @@ enum BrowserCommand: Encodable, Sendable {
             var root = encoder.container(keyedBy: MessageKey.self)
             var value = root.nestedContainer(keyedBy: MessageKey.self, forKey: MessageKey("SetDisplayPreferences"))
             try value.encode(preferences, forKey: MessageKey("preferences"))
+        case .tabGroup(let action):
+            let (name, fields) = action.payload
+            try BrowserCommand.values(name, fields).encode(to: encoder)
         }
     }
 }
@@ -204,6 +208,40 @@ private struct MessageKey: CodingKey {
 struct BrowserTab: Decodable, Identifiable, Sendable {
     let id: UInt64
     var url: String?
+    var groupID: UInt64? = nil
+    enum CodingKeys: String, CodingKey { case id, url, groupID = "group_id" }
+}
+
+enum TabGroupAction: Sendable {
+    case create(String, String), assign(UInt64?), rename(UInt64, String)
+    case color(UInt64, String), collapse(UInt64, Bool), remove(UInt64)
+    var payload: (String, [String: JSONValue]) {
+        switch self {
+        case .create(let name, let color): return ("CreateTabGroup", ["name": .string(name), "color": .string(color)])
+        case .assign(let id): return ("SetTabGroup", ["group_id": id.map { .unsigned($0) } ?? .null])
+        case .rename(let id, let name): return ("RenameTabGroup", ["group_id": .unsigned(id), "name": .string(name)])
+        case .color(let id, let color): return ("SetTabGroupColor", ["group_id": .unsigned(id), "color": .string(color)])
+        case .collapse(let id, let value): return ("SetTabGroupCollapsed", ["group_id": .unsigned(id), "collapsed": .boolean(value)])
+        case .remove(let id): return ("CloseTabGroup", ["group_id": .unsigned(id)])
+        }
+    }
+}
+
+struct BrowserTabGroup: Decodable, Identifiable, Sendable, Equatable {
+    let id: UInt64
+    let name: String
+    let color: String
+    let collapsed: Bool
+    static func validName(_ name: String) -> Bool {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return !trimmed.isEmpty && trimmed.unicodeScalars.count <= 80
+    }
+    static func validColor(_ color: String) -> Bool {
+        color.utf8.count == 7 && color.hasPrefix("#") && color.utf8.dropFirst().allSatisfy {
+            (48...57).contains($0) || (65...70).contains($0) || (97...102).contains($0)
+        }
+    }
+    var valid: Bool { id > 0 && Self.validName(name) && Self.validColor(color) }
 }
 
 struct FrameNotice: Decodable, Sendable {
@@ -236,6 +274,8 @@ enum BrowserMessage: Decodable, Sendable {
     case contextMenu(PageContextMenu), contextLink(PageContextLink), contextUnavailable
     case viewportState(ViewportState), viewportUnavailable
     case displayPreferences(DisplayPreferencesState), displayPreferencesUnavailable
+    case groups([BrowserTabGroup]), groupChanged(BrowserTabGroup, created: Bool)
+    case groupAssigned(UInt64, UInt64?), groupClosed(UInt64), groupsUnavailable
 
     init(from decoder: Decoder) throws {
         guard let object = try? decoder.container(keyedBy: MessageKey.self), let key = object.allKeys.first else {
@@ -259,6 +299,34 @@ enum BrowserMessage: Decodable, Sendable {
             let value = try object.decode(Opened.self, forKey: key)
             self = .opened(value.tab_id, value.url)
         case "TabClosed": self = .closed(try object.decode(Tab.self, forKey: key).tab_id)
+        case "TabGroups":
+            if let groups = try? object.decode([BrowserTabGroup].self, forKey: key),
+               groups.allSatisfy(\.valid), Set(groups.map(\.id)).count == groups.count { self = .groups(groups) }
+            else { self = .groupsUnavailable }
+        case "TabGroupCreated", "TabGroupUpdated":
+            if let group = try? object.decode(BrowserTabGroup.self, forKey: key), group.valid {
+                self = .groupChanged(group, created: key.stringValue == "TabGroupCreated")
+            } else { self = .groupsUnavailable }
+        case "TabGroupAssigned":
+            struct Assignment: Decodable {
+                let tab_id: UInt64
+                let group_id: UInt64?
+                enum CodingKeys: String, CodingKey { case tab_id, group_id }
+                init(from decoder: Decoder) throws {
+                    let value = try decoder.container(keyedBy: CodingKeys.self)
+                    tab_id = try value.decode(UInt64.self, forKey: .tab_id)
+                    // Null explicitly ungroups a tab. A missing member must not
+                    // silently dissolve its current membership.
+                    group_id = try value.decode(UInt64?.self, forKey: .group_id)
+                }
+            }
+            if let value = try? object.decode(Assignment.self, forKey: key), value.tab_id > 0, value.group_id != 0 {
+                self = .groupAssigned(value.tab_id, value.group_id)
+            } else { self = .groupsUnavailable }
+        case "TabGroupClosed":
+            struct Closed: Decodable { let group_id: UInt64 }
+            if let value = try? object.decode(Closed.self, forKey: key), value.group_id > 0 { self = .groupClosed(value.group_id) }
+            else { self = .groupsUnavailable }
         case "NavigationStarted": self = .navigationStarted
         case "Navigated": self = .navigated(try object.decode(Navigation.self, forKey: key).url)
         case "HistoryState": self = .history(try object.decode(HistoryState.self, forKey: key))

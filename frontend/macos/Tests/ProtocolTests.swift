@@ -5,6 +5,62 @@
 import XCTest
 
 final class ProtocolTests: XCTestCase {
+    func testTabGroupWireRetainsCoreIDsAndRejectsMalformedMetadata() throws {
+        func message(_ value: [String: Any]) throws -> IncomingEnvelope {
+            try JSONDecoder().decode(IncomingEnvelope.self, from: JSONSerialization.data(withJSONObject:
+                ["request_id": 7, "tab_id": 2, "message": value]))
+        }
+        let group: [String: Any] = ["id": 9, "name": "研究", "color": "#4477cc", "collapsed": true]
+        for variant in ["TabGroupCreated", "TabGroupUpdated"] {
+            let envelope = try message([variant: group])
+            XCTAssertEqual(envelope.requestID, 7)
+            if case .groupChanged(let decoded, let created) = envelope.message {
+                XCTAssertEqual(decoded.id, 9); XCTAssertEqual(decoded.name, "研究")
+                XCTAssertEqual(decoded.color, "#4477cc"); XCTAssertTrue(decoded.collapsed)
+                XCTAssertEqual(created, variant == "TabGroupCreated")
+            } else { XCTFail("Core group state must reach native chrome") }
+        }
+        if case .groups(let groups) = try message(["TabGroups": [group]]).message { XCTAssertEqual(groups.count, 1) }
+        else { XCTFail("Group list must decode") }
+        for invalid in [
+            ["TabGroups": [group, group]],
+            ["TabGroupCreated": ["id": 0, "name": "Research", "color": "#4477cc", "collapsed": false]],
+            ["TabGroupUpdated": ["id": 9, "name": "", "color": "#4477cc", "collapsed": false]],
+            ["TabGroupUpdated": ["id": 9, "name": "Research", "color": "red", "collapsed": false]],
+            ["TabGroupUpdated": ["id": 9, "name": "Research", "color": "#4477cc", "collapsed": "yes"]],
+            ["TabGroupAssigned": ["tab_id": 2]],
+            ["TabGroupAssigned": ["tab_id": 0, "group_id": NSNull()]],
+            ["TabGroupAssigned": ["tab_id": 2, "group_id": 0]],
+            ["TabGroupClosed": ["group_id": 0]]
+        ] as [[String: Any]] {
+            if case .groupsUnavailable = try message(invalid).message {} else { XCTFail("Invalid group metadata must fail soft") }
+        }
+        if case .tabs(let tabs) = try message(["Tabs": [["id": 2, "url": "about:credits", "group_id": 9], ["id": 3, "url": NSNull()]]]).message {
+            XCTAssertEqual(tabs[0].groupID, 9); XCTAssertNil(tabs[1].groupID)
+        } else { XCTFail("Legacy ungrouped and core-grouped tabs must coexist") }
+        if case .groupAssigned(let tab, let id) = try message(["TabGroupAssigned": ["tab_id": 2, "group_id": 9]]).message {
+            XCTAssertEqual(tab, 2); XCTAssertEqual(id, 9)
+        } else { XCTFail("Assignment must retain its tab identity") }
+        if case .groupAssigned(let tab, nil) = try message(["TabGroupAssigned": ["tab_id": 2, "group_id": NSNull()]]).message {
+            XCTAssertEqual(tab, 2)
+        } else { XCTFail("Only explicit null removes membership") }
+        if case .groupClosed(let id) = try message(["TabGroupClosed": ["group_id": 9]]).message { XCTAssertEqual(id, 9) }
+        else { XCTFail("Group removal must decode independently of tab closure") }
+    }
+
+    func testNativeTabGroupCommandsEncodeExactTargetAndNullableMembership() throws {
+        for (action, name) in [(TabGroupAction.create("Research", "#4477cc"), "CreateTabGroup"),
+                               (.assign(nil), "SetTabGroup"), (.rename(9, "Work"), "RenameTabGroup"),
+                               (.color(9, "#cc3344"), "SetTabGroupColor"), (.collapse(9, true), "SetTabGroupCollapsed"),
+                               (.remove(9), "CloseTabGroup")] {
+            let bytes = try BrowserWire.encode(.tabGroup(action), tab: 2, request: 7)
+            let root = try XCTUnwrap(JSONSerialization.jsonObject(with: bytes.dropFirst(4)) as? [String: Any])
+            XCTAssertEqual(root["tab_id"] as? UInt64, 2); XCTAssertEqual(root["request_id"] as? UInt64, 7)
+            let payload = try XCTUnwrap((root["message"] as? [String: Any])?[name] as? [String: Any])
+            if name == "SetTabGroup" { XCTAssertTrue(payload["group_id"] is NSNull) }
+            if name == "SetTabGroupCollapsed" { XCTAssertEqual(payload["collapsed"] as? Bool, true) }
+        }
+    }
     func testFragmentedEnvelopePreservesRequestAndTabIdentity() throws {
         let packet = try BrowserWire.encode(.unit("ListTabs"), tab: 19, request: 7)
         var offset = 0

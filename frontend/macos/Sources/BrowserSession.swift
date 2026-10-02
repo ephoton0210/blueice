@@ -139,14 +139,14 @@ final class BrowserSession: @unchecked Sendable {
     }
 
     @discardableResult
-    func send(_ command: BrowserCommand, tab: UInt64? = nil) async throws -> UInt64 {
+    func send(_ command: BrowserCommand, tab: UInt64? = nil, willSend: (@Sendable (UInt64) -> Void)? = nil) async throws -> UInt64 {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<UInt64, Error>) in
             writer.async {
                 do {
                     guard self.lock.withLock({ !self.stopping && self.handshaken && self.process?.isRunning == true }) else {
                         throw BrowserFailure.invalid("BlueIce browser services are not running.")
                     }
-                    let request = try self.write(command, tab: tab)
+                    let request = try self.write(command, tab: tab, willSend: willSend)
                     continuation.resume(returning: request)
                 } catch { continuation.resume(throwing: error) }
             }
@@ -154,10 +154,14 @@ final class BrowserSession: @unchecked Sendable {
     }
 
     @discardableResult
-    private func write(_ command: BrowserCommand, tab: UInt64?) throws -> UInt64 {
+    private func write(_ command: BrowserCommand, tab: UInt64?, willSend: (@Sendable (UInt64) -> Void)? = nil) throws -> UInt64 {
         guard let transport = lock.withLock({ connection }) else { throw BrowserFailure.invalid("Browser connection is unavailable.") }
         requestID += 1
-        try transport.output.write(contentsOf: BrowserWire.encode(command, tab: tab, request: requestID))
+        let bytes = try BrowserWire.encode(command, tab: tab, request: requestID)
+        // Register reply ownership before the reader can receive a response.
+        // Resuming the send continuation alone does not establish that order.
+        willSend?(requestID)
+        try transport.output.write(contentsOf: bytes)
         return requestID
     }
 

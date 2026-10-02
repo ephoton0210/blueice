@@ -150,6 +150,83 @@ final class NativeEditingTests: XCTestCase {
         return (model, view, fixture)
     }
 
+    func testNativeTabGroupsPreserveCoreDocumentEditorHistoryAndZoom() async throws {
+        let (model, _, fixture) = try await start(path: "/editing")
+        defer { fixture.stop(); Task { await model.stop() } }
+        await wait { model.groupsAvailable && model.displayState != nil }
+        let tab = try XCTUnwrap(model.selected)
+        let editor = try XCTUnwrap(model.representation?.nodes.first { $0.name == "Editor" })
+        model.focusPage(x: editor.bounds.x + 10, y: editor.bounds.y + 10)
+        await wait { model.textInputState?.focused != nil }
+        model.textInput(.selectAll); model.textInput(.replace("Grouped 中文", nil))
+        await wait { model.textInputState?.focused?.text == "Grouped 中文" && !model.textInputBusy }
+        model.setZoom(1.5); await wait { model.zoomPercent == 150 }
+        let before = try XCTUnwrap(model.textInputState)
+        let created = await model.createTabGroup(name: "  研究  ", color: "#4477CC", tab: tab)
+        let id = try XCTUnwrap(created)
+        await wait { model.tabs.first { $0.id == tab }?.groupID == id }
+        XCTAssertEqual(model.groups.first?.name, "研究"); XCTAssertEqual(model.groups.first?.color, "#4477cc")
+        let updated = await model.updateTabGroup(id, name: "Work", color: "#cc3344")
+        XCTAssertTrue(updated)
+        let collapsed = await model.setTabGroupCollapsed(id, collapsed: true)
+        XCTAssertTrue(collapsed); XCTAssertTrue(model.groups.first?.collapsed == true)
+        XCTAssertEqual(model.selected, tab); XCTAssertEqual(model.zoomPercent, 150)
+        XCTAssertEqual(model.textInputState?.document_generation, before.document_generation)
+        XCTAssertEqual(model.textInputState?.focused?.text, "Grouped 中文")
+        XCTAssertTrue(model.history.back)
+        XCTAssertEqual(fixture.requests, ["/editing"], "Organizing tabs must not navigate or fetch")
+        model.action(.values("OpenTab", ["url": .null]))
+        await wait { model.tabs.count == 2 && model.selected != tab && model.representation != nil }
+        let second = try XCTUnwrap(model.selected)
+        XCTAssertNil(model.tabs.first { $0.id == second }?.groupID)
+        let assigned = await model.setTabGroup(id, tab: second)
+        XCTAssertTrue(assigned)
+        let removed = await model.removeTabGroup(id)
+        XCTAssertTrue(removed)
+        XCTAssertTrue(model.groups.isEmpty); XCTAssertTrue(model.tabs.allSatisfy { $0.groupID == nil })
+        XCTAssertEqual(Set(model.tabs.map(\.id)), [tab, second])
+        model.select(tab)
+        await wait { model.zoomPercent == 150 && model.textInputState?.focused?.text == "Grouped 中文" }
+        XCTAssertEqual(fixture.requests, ["/editing"])
+        let stale = await model.updateTabGroup(id, name: "Stale", color: "#4477cc")
+        XCTAssertFalse(stale); XCTAssertTrue(model.groups.isEmpty)
+    }
+
+    func testTabGroupValidationAndCoreErrorsPreserveNavigationDenial() async throws {
+        let (model, _, fixture) = try await start()
+        defer { fixture.stop(); Task { await model.stop() } }
+        await wait { model.groupsAvailable }
+        model.address = "http://malware.test/"; model.navigateAddress()
+        await wait { model.status.contains("Navigation blocked") }
+        let status = model.status, tab = try XCTUnwrap(model.selected)
+        let before = try XCTUnwrap(model.textInputState).document_generation
+        let overlong = String(repeating: "e\u{301}", count: 41)
+        XCTAssertEqual(overlong.count, 41); XCTAssertEqual(overlong.unicodeScalars.count, 82)
+        let invalid = await model.createTabGroup(name: overlong, color: "#4477cc", tab: tab)
+        XCTAssertNil(invalid); XCTAssertTrue(model.groups.isEmpty)
+        XCTAssertEqual(model.status, status)
+        // Exercise actual core error replies on both its global and tab-bound
+        // routes, including replies that precede the send continuation.
+        for action in [TabGroupAction.remove(999_999), .assign(999_999)] {
+            model.dismissTabGroupError()
+            let request = await model.sendTabGroupCommand(action, tab: {
+                if case .assign = action { return tab }
+                return nil
+            }())
+            XCTAssertNotNil(request)
+            await wait { model.groupError != nil }
+            XCTAssertEqual(model.status, status)
+            XCTAssertEqual(model.textInputState?.document_generation, before)
+            XCTAssertTrue(model.groups.isEmpty); XCTAssertNil(model.tabs.first?.groupID)
+        }
+        let created = await model.createTabGroup(name: String(repeating: "e\u{301}", count: 40), color: "#4477cc", tab: tab)
+        let id = try XCTUnwrap(created)
+        XCTAssertEqual(model.groups.first?.name.unicodeScalars.count, 80)
+        let removed = await model.removeTabGroup(id); XCTAssertTrue(removed)
+        XCTAssertEqual(model.status, status)
+        XCTAssertEqual(fixture.requests, ["/editing"])
+    }
+
     func testDisplayPreferencesUpdateSharedPixelsWithoutLosingEditedTextOrDocument() async throws {
         let domain = "cc.blueice.appearance.core." + UUID().uuidString
         let defaults = try XCTUnwrap(UserDefaults(suiteName: domain)); defer { defaults.removePersistentDomain(forName: domain) }

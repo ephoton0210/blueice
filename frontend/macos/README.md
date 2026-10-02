@@ -235,6 +235,19 @@ fetch; opening links retains mandatory review, including visible denial for a
 new-tab destination. Stale menu commands cannot act after a new frame/tab or
 document. See [context menu results](../../development/browser_core/phase-22-browser-shell-accessibility/MACOS_CONTEXT_MENU_RESULTS.md).
 
+Native tab groups use the core's existing shared group identities and membership.
+The tab strip and View > Tab Groups offer creation, naming, palette/hex colors,
+collapse/expand and ungroup/remove; Command-Option-G opens the native editor.
+Tab context menus create a group for that captured tab or move it to an existing
+group/No Group. Collapsing hides member buttons while the selected page stays
+live. Removing a group leaves all its tabs open, with their histories, edited
+values and zoom. Empty groups remain editable. Invalid names/colors and closed
+editor targets cannot save. Core replies update the chrome, and group errors
+have their own notice without replacing navigation or policy messages.
+See [tab group results](../../development/browser_core/phase-22-browser-shell-accessibility/MACOS_TAB_GROUP_RESULTS.md).
+Groups currently live in the running core session; restart restoration,
+drag reordering, multiple windows and profile handoff remain pending.
+
 Frame refresh temporarily suspends semantic actions until the representation
 matches the current tab, source, generation and URL. Native element identities
 survive a refresh within one document; reload, navigation and tab changes
@@ -247,6 +260,6 @@ keyboard/beforeinput/input/composition event dispatch, undo/redo, complete
 bidirectional shaping and caret blink remain open, as do full form event/validity behavior,
 select popup/typeahead/multiple-selection interaction, complete toolbar Tab
 traversal, image/media context actions, page-text selection/copy, drag/drop,
-file selection, groups, multiple windows, downloads/printing/permission
+file selection, multiple windows, downloads/printing/permission
 panels and localization. Automated checks cover the recorded features; an
 interactive VoiceOver session remains unvalidated.

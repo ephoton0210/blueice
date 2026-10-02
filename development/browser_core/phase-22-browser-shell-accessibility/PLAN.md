@@ -239,3 +239,10 @@ evaluation and sRGB output. Actual backing density remains available to CSS
 resolution even when raster density is capped. Native/core and actual-window
 evidence is recorded in [MACOS_DISPLAY_PREFERENCES_RESULTS.md](MACOS_DISPLAY_PREFERENCES_RESULTS.md).
 Physical system/monitor transitions and the full macOS delivery plan remain open.
+
+The macOS native tab-group increment connects the Phase 16 shared group state
+with SwiftUI sheets, native tab/group/View menus, collapse and nullable membership.
+Core IDs, pages, editor values, history and zoom remain intact when groups change
+or dissolve. Native validation/cancel, empty/stale groups and dedicated error
+notices are recorded in [MACOS_TAB_GROUP_RESULTS.md](MACOS_TAB_GROUP_RESULTS.md).
+Multiple-window viewports, profile lifecycle and the full delivery plan remain open.
