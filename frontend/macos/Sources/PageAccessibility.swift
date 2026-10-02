@@ -98,7 +98,8 @@ final class PageAccessibilityTree {
               !element.node.occluded else { return false }
         switch (action, element.node.role) {
         case (.press, .link), (.press, .button): return true
-        case (.press, .textBox), (.focus, .textBox): return element.node.state.nativeTextInput
+        case (.press, .textBox), (.focus, .textBox): return element.node.state.nativeTextInput || element.node.state.nativeFocusable
+        case (.press, .checkBox): return element.node.state.nativeFocusable
         default: return false
         }
     }
@@ -136,7 +137,7 @@ final class PageAccessibilityElement: NSAccessibilityElement {
         case .link: return .link
         case .button: return .button
         case .textBox: return .textField
-        case .checkBox: return .checkBox
+        case .checkBox: return node.state.radio ? .radioButton : .checkBox
         case .slider: return .slider
         case .comboBox: return .comboBox
         case .list: return .list
@@ -158,7 +159,7 @@ final class PageAccessibilityElement: NSAccessibilityElement {
     override func accessibilityValue() -> Any? {
         switch node.role {
         case .checkBox: return node.state.checked.map { NSNumber(value: $0) }
-        case .textBox, .slider: return node.state.protected ? nil : node.state.value
+        case .textBox, .slider, .comboBox: return node.state.protected ? nil : node.state.value
         case .heading, .paragraph: return node.name
         default: return nil
         }
@@ -166,7 +167,7 @@ final class PageAccessibilityElement: NSAccessibilityElement {
     override func accessibilityFrame() -> NSRect { tree?.frame(for: node) ?? .zero }
     override func isAccessibilityEnabled() -> Bool { tree?.contains(self) == true && !node.state.disabled }
     override func isAccessibilityRequired() -> Bool { node.state.required }
-    override func isAccessibilitySelected() -> Bool { node.state.selected }
+    override func isAccessibilitySelected() -> Bool { node.state.selected || node.state.radio && node.state.checked == true }
     override func isAccessibilityFocused() -> Bool { tree?.focusedElement() === self }
     override func setAccessibilityFocused(_ focused: Bool) {
         if focused { _ = tree?.act(self, .focus) }

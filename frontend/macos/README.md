@@ -83,6 +83,11 @@ geometry, password redaction, readonly rejection and stale-document fences.
 Native-window tests add keyboard selection/deletion and copy/cut/paste with
 multiline CJK/RTL and emoji grapheme deletion. They save and restore the test
 clipboard and keyboard input source.
+Keyboard tests issue consecutive Tab/Space/arrow callbacks without waiting for
+each acknowledgement, then inspect actual core values. Native-window tests
+complete text, checkbox, radio, single-select and decimal-range interactions,
+activate a reviewed link with Enter, and type immediately after Shift-Tab
+returns to the address field. Command-L focuses the native address editor.
 
 The separate system Zhuyin test sends physical key codes to the unique active
 BlueIce test process. This requires Accessibility permission for
@@ -103,6 +108,8 @@ for those measured results, and [the page accessibility validation record](../..
 for the later native bridge checks. The
 [native editing validation record](../../development/browser_core/phase-22-browser-shell-accessibility/MACOS_NATIVE_EDITING_RESULTS.md)
 distinguishes passed native checks from the pending physical input-method test.
+The [keyboard interaction validation record](../../development/browser_core/phase-22-browser-shell-accessibility/MACOS_KEYBOARD_RESULTS.md)
+records the later control defaults and native focus handoff.
 
 Apple documents the native adapters and test entry points in
 [NSViewRepresentable](https://developer.apple.com/documentation/swiftui/nsviewrepresentable)
@@ -134,9 +141,10 @@ NSAccessibility elements: names, roles, hierarchy, values/state and screen
 bounds. Labels and text use the existing core name algorithm; this is not a
 complete HTML/ARIA implementation. On macOS 26 and newer, headings use the
 native heading role; older systems fall back to static text with a heading-level
-role description. Link/button activation and supported text-input focus use
-the ordinary core click pipeline. Checkbox/slider/select values are currently
-read-only through this adapter. Protected input values are redacted.
+role description. Link/button activation, checkbox/radio press and supported
+text-input focus use the ordinary core click pipeline. Direct AXValue writes
+remain unavailable; slider/select changes use ordinary keyboard input.
+Protected input values are redacted.
 
 The AppKit viewport implements `NSTextInputClient` over a versioned core editing
 state. Text/password inputs and textareas support UTF-16 selection, grapheme
@@ -150,6 +158,19 @@ Commands are fenced by frame source, document and focus generations and
 serialized through core acknowledgements. The shell retains only pending IME
 range metadata while waiting for the core; it has no parallel DOM or layout.
 
+The core also owns sequential Tab/Shift-Tab order, positive and negative
+tabindex handling, disabled/hidden/inert exclusions, radio groups with form
+owners, checkbox Space, radio arrows, single-select arrows/Home/End and range
+step arithmetic. Native form pixels come from the shared layout/paint pipeline.
+Keyboard activation uses the existing cancellable click-listener boundary;
+document replacement and stale context suppress old defaults. This additive
+key intent is not yet a complete physical/logical DOM keyboard event stream.
+While Tab awaits core acknowledgement, AppKit retains a bounded set of native
+events pinned to the current tab/document. It replays them to the acknowledged
+page control or native address editor; tab/document changes discard them.
+The owned window keeps later keys behind pending events during responder
+changes, preserving their order even after the address editor acquires focus.
+
 Frame refresh temporarily suspends semantic actions until the representation
 matches the current tab, source, generation and URL. Native element identities
 survive a refresh within one document; reload, navigation and tab changes
@@ -159,7 +180,8 @@ Native editing geometry is currently available through `NSTextInputClient`,
 independently of those AX text APIs. Actual OS IME verification is pending
 runner Accessibility permission on the recorded host. JavaScript
 keyboard/beforeinput/input/composition event dispatch, undo/redo, complete
-bidirectional shaping and caret blink remain open, as do keyboard-only forms,
-find/context menus, groups, multiple windows, downloads/printing/permission
+bidirectional shaping and caret blink remain open, as do form submission/reset,
+select popup/typeahead/multiple-selection interaction, complete toolbar Tab
+traversal, find/context menus, groups, multiple windows, downloads/printing/permission
 panels and localization. Automated checks cover the recorded features; an
 interactive VoiceOver session remains unvalidated.

@@ -135,6 +135,30 @@ OS IME acceptance remains pending. JavaScript input/composition/key events,
 undo/redo, complete bidirectional shaping, keyboard-only forms and the remaining
 native-shell/accessibility milestones are still required.
 
+## macOS keyboard control increment (2026-10-02)
+
+The core-owned native input path now carries closed Tab/Enter/Space/arrow/Home/End
+intents. Core chooses sequential focus from the current document, skips
+disabled/hidden/inert/negative-tabindex controls and retains DOM starting
+position for programmatic negative focus. Disabled fieldsets preserve the first
+legend exception and do not disable ordinary links. Checkbox/radio defaults,
+form-owner radio grouping, single-select option changes and decimal range keys
+produce values and pixels through the shared core pipeline.
+
+Keyboard activation calls the existing pre-default click listener; stale
+contexts are rejected before event dispatch, and cancellation or document
+replacement suppresses the old default. Native AppKit buffers bounded events
+across Tab acknowledgement, then replays them to the newly focused page control
+or SwiftUI address field. Command-L focuses the address editor. Real-service
+XCTest and actual-window XCUITest cover rapid callbacks, controls, link
+navigation and immediate typing after reverse page exit. Public Rust IPC
+regressions also check label/pointer parity and shared static/interactive paint.
+Evidence is recorded in [`MACOS_KEYBOARD_RESULTS.md`](MACOS_KEYBOARD_RESULTS.md).
+
+This is a control/focus increment. Form submission/reset and validation,
+select popup/typeahead/multiple interaction, DOM keyboard/input/focus events,
+complete chrome traversal and the remaining Phase 22 acceptance remain open.
+
 ## Objective
 
 Deliver a human browser experience that can use the same pages an AI can inspect: correct native input and text editing, tabs/windows/downloads/printing/permissions, system accessibility and display adaptation. The shell is a client of `core`; it does not own DOM, navigation policy, layout or a second page instance.

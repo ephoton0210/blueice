@@ -32,7 +32,15 @@ enum TextMovement: String, Encodable, Sendable {
     case beginning = "Beginning", end = "End", lineBeginning = "LineBeginning", lineEnd = "LineEnd", up = "Up", down = "Down"
 }
 
+enum PageKey: String, Encodable, Sendable {
+    case tab = "Tab", enter = "Enter", space = "Space", left = "ArrowLeft", right = "ArrowRight"
+    case up = "ArrowUp", down = "ArrowDown", home = "Home", end = "End", escape = "Escape"
+}
+enum FocusDirection: String, Decodable, Sendable { case forward = "Forward", backward = "Backward" }
+
 enum TextInputAction: Encodable, Sendable {
+    case key(PageKey, Bool)
+    var isPageKey: Bool { if case .key = self { return true }; return false }
     case replace(String, TextRange?), compose(String, TextRange, TextRange?)
     case finishComposition, cancelComposition, select(TextRange), selectAll
     case move(TextMovement, Bool), delete(Bool), pointer(Double, Double, Bool, UInt8)
@@ -51,6 +59,8 @@ enum TextInputAction: Encodable, Sendable {
             return root.nestedContainer(keyedBy: Key.self, forKey: Key(name))
         }
         switch self {
+        case .key(let key, let shift):
+            var value = fields("Key"); try value.encode(key, forKey: Key("key")); try value.encode(shift, forKey: Key("shift"))
         case .finishComposition: try unit("FinishComposition")
         case .cancelComposition: try unit("CancelComposition")
         case .selectAll: try unit("SelectAll")
@@ -94,6 +104,8 @@ struct TextInputState: Decodable, Sendable {
     let frame_generation: UInt64
     let tab_id: UInt64
     let scroll_y: Double
+    let focused_node: UInt64?
+    let focus_exit: FocusDirection?
     let focused: TextControlState?
     var context: TextInputContext {
         TextInputContext(version: version, frame_source: frame_source,
@@ -106,7 +118,9 @@ struct TextInputState: Decodable, Sendable {
                 && value.width >= 0 && value.height >= 0
         }
         guard version == 1, scroll_y.isFinite, abs(scroll_y) <= 1e9 else { throw BrowserFailure.invalid("Invalid native text state.") }
+        guard focus_exit == nil || focused_node == nil && focused == nil else { throw BrowserFailure.invalid("Invalid native focus handoff.") }
         guard let field = focused else { return }
+        guard focused_node == nil || focused_node == field.node_id else { throw BrowserFailure.invalid("Mismatched native focus target.") }
         guard field.text_length <= 65_536, field.selection.valid(length: field.text_length),
               field.marked?.valid(length: field.text_length) != false, field.carets.count <= 1024,
               field.selection_rects.count <= 65_537, validBounds(field.bounds), validBounds(field.caret),

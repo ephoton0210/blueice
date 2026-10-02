@@ -14,6 +14,14 @@
 use blueice_dom::NodeId;
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum NativeForm {
+    CheckBox(bool),
+    Radio(bool),
+    Select(String),
+    Range { min: f64, max: f64, value: f64 },
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum FragmentKind {
     /// A block-level box (block flow, or a block-generating box
     /// standing in for a not-yet-implemented algorithm like flex --
@@ -26,6 +34,7 @@ pub enum FragmentKind {
         content_y: f64,
         content_width: f64,
         content_height: f64,
+        form: Option<NativeForm>,
     },
     /// An anonymous line box wrapping one line's worth of inline
     /// content -- has no DOM node of its own.

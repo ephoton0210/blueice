@@ -304,10 +304,13 @@ fn compute_state(
     NodeState {
         value: page.native_control_public_value(node),
         native_text_input: page.supports_native_text_input(node),
+        native_focusable: page.native_focusable(node),
+        radio: tag == "input"
+            && attr(attributes, "type").is_some_and(|kind| kind.eq_ignore_ascii_case("radio")),
         protected: tag == "input"
             && attr(attributes, "type").is_some_and(|kind| kind.eq_ignore_ascii_case("password")),
         checked,
-        disabled: has_attr(attributes, "disabled"),
+        disabled: has_attr(attributes, "disabled") || page.native_control_disabled(node),
         required: has_attr(attributes, "required"),
         selected: tag == "option" && has_attr(attributes, "selected"),
         hovered: page.hovered() == Some(node),

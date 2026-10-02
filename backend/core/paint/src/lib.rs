@@ -320,6 +320,7 @@ fn paint_fragment(
         content_y,
         content_width,
         content_height,
+        ..
     } = fragment.kind
     {
         Some(Rect {
@@ -334,12 +335,79 @@ fn paint_fragment(
     if let Some(rect) = clip {
         out.push(PaintCommand::PushClip { rect });
     }
-    for child in &fragment.children {
-        paint_fragment(child, x, y, styles, out);
+    let form = match &fragment.kind {
+        FragmentKind::NativeControl { form, .. } => form.as_ref(),
+        _ => None,
+    };
+    if form.is_none() {
+        for child in &fragment.children {
+            paint_fragment(child, x, y, styles, out);
+        }
+    }
+    if let (Some(form), Some(rect), Some(style)) =
+        (form, clip, fragment.node.and_then(|id| styles.get(&id)))
+    {
+        paint_native_form(form, rect, style, out);
     }
     if clip.is_some() {
         out.push(PaintCommand::PopClip);
     }
+}
+
+fn paint_native_form(
+    form: &blueice_layout::NativeForm,
+    rect: Rect,
+    style: &ComputedStyle,
+    out: &mut Vec<PaintCommand>,
+) {
+    use blueice_layout::NativeForm;
+    let opacity = style.opacity();
+    let text = match form {
+        NativeForm::CheckBox(checked) => if *checked { "☑" } else { "☐" }.to_string(),
+        NativeForm::Radio(checked) => if *checked { "◉" } else { "○" }.to_string(),
+        NativeForm::Select(label) => format!("{label} ▾"),
+        NativeForm::Range { min, max, value } => {
+            let fraction = if max > min {
+                (value - min) / (max - min)
+            } else {
+                0.0
+            };
+            let fraction = if fraction.is_finite() {
+                fraction.clamp(0.0, 1.0)
+            } else {
+                0.0
+            };
+            let y = rect.y + rect.height / 2.0;
+            out.push(PaintCommand::Rect {
+                rect: Rect {
+                    x: rect.x,
+                    y: y - 1.0,
+                    width: rect.width,
+                    height: 3.0,
+                },
+                color: apply_opacity(Color::Rgba(130, 130, 130, 255), opacity),
+            });
+            out.push(PaintCommand::Rect {
+                rect: Rect {
+                    x: rect.x + fraction * (rect.width - 6.0).max(0.0),
+                    y: y - 6.0,
+                    width: 6.0,
+                    height: 12.0,
+                },
+                color: apply_opacity(Color::Rgba(35, 100, 220, 255), opacity),
+            });
+            return;
+        }
+    };
+    out.push(PaintCommand::Text {
+        x: rect.x,
+        y: rect.y,
+        text,
+        color: apply_opacity(style.color, opacity),
+        font_size_px: style.font_size_px,
+        bold: style.is_bold(),
+        italic: style.is_italic(),
+    });
 }
 
 /// Builds the paint command list for `fragment` (as produced by

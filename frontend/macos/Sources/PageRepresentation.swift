@@ -44,10 +44,13 @@ struct PageNode: Decodable, Sendable {
         let selected: Bool
         let focused: Bool
         let nativeTextInput: Bool
+        let nativeFocusable: Bool
+        let radio: Bool
         let protected: Bool
         enum CodingKeys: String, CodingKey {
             case value, checked, disabled, required, selected, focused, protected
             case nativeTextInput = "native_text_input"
+            case nativeFocusable = "native_focusable", radio
         }
         init(from decoder: Decoder) throws {
             let value = try decoder.container(keyedBy: CodingKeys.self)
@@ -58,6 +61,8 @@ struct PageNode: Decodable, Sendable {
             selected = try value.decode(Bool.self, forKey: .selected)
             focused = try value.decode(Bool.self, forKey: .focused)
             nativeTextInput = try value.decodeIfPresent(Bool.self, forKey: .nativeTextInput) ?? false
+            nativeFocusable = try value.decodeIfPresent(Bool.self, forKey: .nativeFocusable) ?? false
+            radio = try value.decodeIfPresent(Bool.self, forKey: .radio) ?? false
             protected = try value.decodeIfPresent(Bool.self, forKey: .protected) ?? false
         }
     }

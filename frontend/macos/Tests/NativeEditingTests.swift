@@ -47,7 +47,7 @@ final class NativeEditingTests: XCTestCase {
         XCTAssertTrue(predicate(), "Timed out waiting for real core text state", file: file, line: line)
     }
 
-    private func start() async throws -> (BrowserModel, CorePageView, HTTPFixture) {
+    private func start(path: String = "/editing") async throws -> (BrowserModel, CorePageView, HTTPFixture) {
         let fixture = try HTTPFixture()
         let model = BrowserModel()
         let view = CorePageView(frame: CGRect(x: 0, y: 0, width: 500, height: 300))
@@ -55,8 +55,8 @@ final class NativeEditingTests: XCTestCase {
         let launcher = Bundle(for: Self.self).bundleURL.deletingLastPathComponent().appendingPathComponent("BlueIce.app/Contents/MacOS/blueice-launcher")
         await model.start(launcher: launcher)
         await wait { model.representation != nil }
-        model.address = fixture.origin + "/editing"; model.navigateAddress()
-        await wait { model.representation?.url == fixture.origin + "/editing" && model.textInputState != nil }
+        model.address = fixture.origin + path; model.navigateAddress()
+        await wait { model.representation?.url == fixture.origin + path && model.textInputState != nil }
         return (model, view, fixture)
     }
 
@@ -148,6 +148,31 @@ final class NativeEditingTests: XCTestCase {
         model.action(.textInput(old, .replace("stale", nil)))
         await wait { model.status.contains("Stale") }
         XCTAssertEqual(model.textInputState?.focused?.text, "A😀B")
+        await model.stop()
+    }
+
+    func testQueuedKeysResolveTextAndControlDefaultsAfterFocusAcknowledgements() async throws {
+        let (model, view, fixture) = try await start(path: "/keyboard")
+        defer { fixture.stop(); Task { await model.stop() } }
+        func key(_ code: UInt16, _ characters: String) throws {
+            view.keyDown(with: try XCTUnwrap(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [],
+                timestamp: 0, windowNumber: 0, context: nil, characters: characters,
+                charactersIgnoringModifiers: characters, isARepeat: false, keyCode: code)))
+        }
+        // Issue callbacks without awaiting a state refresh between Tab/Space.
+        try key(48, "\t"); try key(49, " ")
+        try key(48, "\t"); try key(48, "\t"); try key(49, " ")
+        try key(48, "\t"); try key(124, "")
+        try key(48, "\t"); try key(125, "")
+        try key(48, "\t"); try key(124, "")
+        await wait { model.textInputState?.focused_node == model.representation?.nodes.first(where: { $0.name == "Level" })?.id && !model.textInputBusy }
+        await wait { model.representation?.nodes.first(where: { $0.name == "Name" })?.state.value == " " }
+        let nodes = try XCTUnwrap(model.representation).nodes
+        XCTAssertEqual(nodes.first(where: { $0.name == "Readonly" })?.state.value, "locked")
+        XCTAssertEqual(nodes.first(where: { $0.name == "Remember" })?.state.checked, true)
+        XCTAssertEqual(nodes.first(where: { $0.name == "Express" })?.state.checked, true)
+        XCTAssertEqual(nodes.first(where: { $0.name == "Region" })?.state.value, "b")
+        XCTAssertEqual(nodes.first(where: { $0.name == "Level" })?.state.value, "0.5")
         await model.stop()
     }
 

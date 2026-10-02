@@ -299,7 +299,22 @@ pub(super) fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
                                 )?;
                                 continue;
                             }
-                            if let Some(href) = href {
+                            let native_navigation = if let Some(node) = node {
+                                match tabs
+                                    .get_mut(target)
+                                    .expect("checked above")
+                                    .native_control_activation(node)
+                                {
+                                    Ok(url) => url,
+                                    Err(message) => {
+                                        write_error(stream, reply_tab, request_id, message)?;
+                                        continue;
+                                    }
+                                }
+                            } else {
+                                None
+                            };
+                            if let Some(href) = href.or(native_navigation) {
                                 begin_gated_navigation(
                                     tabs,
                                     stream,
@@ -319,7 +334,7 @@ pub(super) fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
                                 continue;
                             }
                         }
-                        if prevented.is_some() || focus_changed {
+                        if prevented.is_some() || focus_changed || node.is_some() {
                             let page = tabs
                                 .get_mut(target)
                                 .expect("a click cannot close a core-owned tab");
@@ -378,21 +393,69 @@ pub(super) fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
                         }
                         None => write_unknown_tab_error(stream, request_id, target)?,
                     },
-                    ClientMessage::TextInput { context, action } => match tabs.get_mut(target) {
-                        Some(page) => match page.native_text_input(
-                            &context,
-                            blueice_ipc::shm::frame_source_id(frame_dir),
-                            action,
-                        ) {
+                    ClientMessage::TextInput { context, action } => {
+                        let source = blueice_ipc::shm::frame_source_id(frame_dir);
+                        let Some(page) = tabs.get(target) else {
+                            write_unknown_tab_error(stream, request_id, target)?;
+                            continue;
+                        };
+                        if let Err(message) = page.validate_native_input_context(&context, source) {
+                            write_error(stream, reply_tab, request_id, message)?;
+                            continue;
+                        }
+                        let activation = page.native_key_activation(&action);
+                        let document = page.document_generation();
+                        let href = activation.and_then(|node| page.native_activation_link(node));
+                        let prevented = if let Some(node) = activation {
+                            match dispatch_click_before_default(
+                                &mut page_script_runtime.javascript_executor,
+                                tabs,
+                                target,
+                                node,
+                                requests.script,
+                            ) {
+                                Ok(prevented) => prevented == Some(true),
+                                Err(_) => {
+                                    write_error(
+                                        stream,
+                                        reply_tab,
+                                        request_id,
+                                        "page activation listener unavailable".into(),
+                                    )?;
+                                    continue;
+                                }
+                            }
+                        } else {
+                            false
+                        };
+                        let page = tabs
+                            .get_mut(target)
+                            .expect("activation retains its tab owner");
+                        let mut navigation = None;
+                        let result = if page.document_generation() != document || prevented {
+                            Ok(true)
+                        } else {
+                            page.native_text_input(&context, source, action)
+                                .and_then(|changed| {
+                                    if let Some(node) = activation {
+                                        if page.apply_gatekeeper_settings_control(node).is_none() {
+                                            navigation =
+                                                href.or(page.native_control_activation(node)?);
+                                        }
+                                        Ok(true)
+                                    } else {
+                                        Ok(changed)
+                                    }
+                                })
+                        };
+                        match result {
                             Ok(changed) => {
                                 if changed {
                                     send_frame(
                                         page, stream, frame_dir, generation, reply_tab, request_id,
                                     )?;
                                 }
-                                let mut state = page.native_text_input_state(
-                                    blueice_ipc::shm::frame_source_id(frame_dir),
-                                );
+                                let mut state = page.native_text_input_state(source);
                                 state.tab_id = target.as_u64();
                                 blueice_ipc::write_server_message_with_ids(
                                     stream,
@@ -400,11 +463,28 @@ pub(super) fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
                                     request_id,
                                     &ServerMessage::TextInputState(state),
                                 )?;
+                                if let Some(url) = navigation {
+                                    begin_gated_navigation(
+                                        tabs,
+                                        stream,
+                                        frame_dir,
+                                        generation,
+                                        reply_tab,
+                                        request_id,
+                                        target,
+                                        url,
+                                        PendingKind::Navigate,
+                                        &mut pending_nav_seq,
+                                        &mut downloads_refresher,
+                                        &completion_tx,
+                                        gatekeeper_socket,
+                                        extension_events,
+                                    )?;
+                                }
                             }
                             Err(message) => write_error(stream, reply_tab, request_id, message)?,
-                        },
-                        None => write_unknown_tab_error(stream, request_id, target)?,
-                    },
+                        }
+                    }
                     ClientMessage::Hover { x, y } => {
                         if let Some(page) = tabs.get_mut(target) {
                             page.hover_at(x, y);

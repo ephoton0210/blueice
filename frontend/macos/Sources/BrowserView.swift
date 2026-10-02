@@ -6,6 +6,7 @@ import SwiftUI
 
 struct BrowserView: View {
     @ObservedObject var model: BrowserModel
+    @FocusState private var addressFocused: Bool
 
     var body: some View {
         VStack(spacing: 0) {
@@ -46,10 +47,11 @@ struct BrowserView: View {
                 button("arrow.clockwise", "Reload", "reload") { model.reload() }
                     .keyboardShortcut("r", modifiers: .command)
                 TextField("Search or enter address", text: $model.address)
+                    .focused($addressFocused)
                     .textFieldStyle(.roundedBorder)
                     .accessibilityLabel("Address")
                     .accessibilityIdentifier("address")
-                    .onSubmit { model.navigateAddress() }
+                    .onSubmit { addressFocused = false; model.navigateAddress() }
                 button("arrow.right", "Go", "go") { model.navigateAddress() }
                 button("gearshape", "Settings", "settings") {
                     model.action(.values("Navigate", ["url": .string("about:settings")]))
@@ -77,6 +79,7 @@ struct BrowserView: View {
         }
         .buttonStyle(.plain)
         .frame(minWidth: 720, minHeight: 480)
+        .onChange(of: model.addressFocusSerial) { _, _ in addressFocused = true }
     }
 
     private func button(_ symbol: String, _ label: String, _ identifier: String, action: @escaping () -> Void) -> some View {

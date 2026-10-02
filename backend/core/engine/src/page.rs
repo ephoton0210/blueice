@@ -62,6 +62,8 @@ pub struct Page {
     focused: Option<NodeId>,
     native_editor: Option<native_editing::EditorSession>,
     native_focus_generation: u64,
+    native_focus_exit: Option<blueice_ipc::input::FocusDirection>,
+    native_focus_start: Option<NodeId>,
     highlighted: Option<NodeId>,
     /// The most recent raster frame for this one tab. Another tab rendering
     /// must not invalidate this tab's frame/representation pairing.
@@ -118,6 +120,8 @@ impl Page {
             focused: None,
             native_editor: None,
             native_focus_generation: 0,
+            native_focus_exit: None,
+            native_focus_start: None,
             highlighted: None,
             frame_generation: 0,
             downloads: None,
@@ -165,6 +169,8 @@ impl Page {
         self.hovered = None;
         self.focused = None;
         self.native_editor = None;
+        self.native_focus_exit = None;
+        self.native_focus_start = None;
         self.highlighted = None;
         self.restyle_and_relayout();
     }
@@ -475,7 +481,7 @@ impl Page {
     /// means the reference frontend never has to turn keyboard events into a
     /// guessed DOM node ID.
     pub(crate) fn supports_native_text_input(&self, node: NodeId) -> bool {
-        native_editing::supports_native_input(&self.doc, node)
+        self.native_focusable(node) && native_editing::supports_native_input(&self.doc, node)
     }
 
     #[cfg(test)]
@@ -544,7 +550,13 @@ impl Page {
                 nearest_link_href(&self.doc, id).map(|href| self.resolve_link_href(href))
             }
             NodeAction::Focus => {
+                if self.focused != Some(id) {
+                    self.native_focus_generation = self.native_focus_generation.wrapping_add(1);
+                    self.native_editor = None;
+                    self.native_focus_exit = None;
+                }
                 self.focused = Some(id);
+                self.native_focus_start = Some(id);
                 None
             }
             NodeAction::SetValue(value) => {
@@ -988,6 +1000,9 @@ impl Page {
         if tag_name == "textarea" {
             return Some(node_text_content(&self.doc, node));
         }
+        if tag_name == "select" {
+            return self.native_select_value(node);
+        }
         if tag_name != "input" {
             return None;
         }
@@ -1015,6 +1030,7 @@ impl Page {
     pub fn render(&self) -> Frame {
         let mut frame = paint(&self.fragment, &self.styles);
         self.paint_native_editor(&mut frame);
+        self.paint_native_focus(&mut frame);
         if let Some(id) = self.highlighted {
             if let Some(bounds) = find_fragment_bounds(&self.fragment, id, 0.0, 0.0) {
                 frame.commands.extend(highlight_border_commands(bounds));
@@ -1040,6 +1056,7 @@ impl Page {
 mod dom_helpers;
 mod dom_write;
 mod native_editing;
+mod native_interaction;
 use dom_helpers::*;
 
 #[cfg(test)]

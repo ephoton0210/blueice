@@ -43,6 +43,7 @@ impl Page {
     pub(crate) fn insert_focused_text(&mut self, text: &str) -> bool {
         let Some(id) = self.focused.filter(|id| {
             is_supported_text_input(&self.doc, *id)
+                && !self.native_control_disabled(*id)
                 && native_editing::supports_native_input(&self.doc, *id)
         }) else {
             return false;
@@ -63,6 +64,7 @@ impl Page {
     pub(crate) fn delete_focused_text_backward(&mut self) -> bool {
         let Some(id) = self.focused.filter(|id| {
             is_supported_text_input(&self.doc, *id)
+                && !self.native_control_disabled(*id)
                 && native_editing::supports_native_input(&self.doc, *id)
         }) else {
             return false;

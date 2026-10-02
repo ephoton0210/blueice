@@ -65,6 +65,20 @@ final class HTTPFixture: @unchecked Sendable {
                     <div style="height:1800px"><p>Scroll below for more content.</p></div><h2>Lower heading</h2>
                     </body></html>
                     """
+                case "/keyboard": body = """
+                    <html><body><h1>Keyboard form fixture</h1>
+                    <input aria-label="Name" value="" style="display:block;width:280px;height:32px">
+                    <input aria-label="Readonly" readonly value="locked" style="display:block;width:280px;height:32px">
+                    <input aria-label="Disabled" disabled value="disabled"><div hidden><input aria-label="Hidden"></div>
+                    <div inert><input aria-label="Inert" value="inert"></div>
+                    <input aria-label="Remember" type="checkbox">
+                    <input aria-label="Standard" type="radio" name="delivery" checked>
+                    <input aria-label="Express" type="radio" name="delivery">
+                    <select aria-label="Region"><option value="a">Alpha</option><option disabled>Disabled choice</option><option value="b">Beta</option></select>
+                    <input aria-label="Level" type="range" min="0.1" max="0.9" step="0.2" value="0.3">
+                    <a href="/destination" style="display:block">Continue</a>
+                    </body></html>
+                    """
                 case "/editing": body = """
                     <html><body><h1>Native editing fixture</h1>
                     <input aria-label="Editor" value="A😀B" style="display:block;width:300px;height:36px">

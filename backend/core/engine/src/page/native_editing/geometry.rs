@@ -35,6 +35,7 @@ impl Geometry {
                     content_y,
                     content_width,
                     content_height,
+                    ..
                 } = fragment.kind
                 {
                     return Some(Bounds {

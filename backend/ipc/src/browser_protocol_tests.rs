@@ -8,7 +8,7 @@ use std::net::{TcpListener, TcpStream};
 
 #[test]
 fn native_text_actions_round_trip_with_document_and_focus_fences() {
-    use crate::input::{TextInputAction, TextInputContext, TextMovement, TextRange};
+    use crate::input::{PageKey, TextInputAction, TextInputContext, TextMovement, TextRange};
     let range = TextRange {
         location: 1,
         length: 2,
@@ -20,6 +20,10 @@ fn native_text_actions_round_trip_with_document_and_focus_fences() {
         focus_generation: 3,
     };
     let actions = [
+        TextInputAction::Key {
+            key: PageKey::Tab,
+            shift: true,
+        },
         TextInputAction::Replace {
             text: "中文😀".into(),
             replacement: Some(range),
@@ -90,6 +94,8 @@ fn native_ranges_check_overflow_and_password_state_stays_redacted_on_wire() {
         frame_generation: 8,
         tab_id: 2,
         scroll_y: 0.0,
+        focused_node: Some(5),
+        focus_exit: None,
         focused: Some(TextControlState {
             node_id: 5,
             text: None,
@@ -127,6 +133,8 @@ fn older_node_state_defaults_native_input_and_protected_capabilities() {
     )
     .unwrap();
     assert!(!state.native_text_input);
+    assert!(!state.native_focusable);
+    assert!(!state.radio);
     assert!(!state.protected);
 }
 

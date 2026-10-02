@@ -232,6 +232,77 @@ final class BrowserUITests: XCTestCase {
         XCTAssertEqual(fixture.requests, ["/accessibility", "/destination"])
     }
 
+    func testKeyboardOnlyNativeControlsAndLinkActivation() throws {
+        let fixture = try HTTPFixture()
+        defer { fixture.stop() }
+        launch()
+        enter(fixture.origin + "/keyboard")
+        let page = app.groups["page"]
+        XCTAssertTrue(page.textFields["Name"].waitForExistence(timeout: 15))
+        // After submitting the address, every page interaction is a key.
+        app.typeKey(.tab, modifierFlags: [])
+        app.typeText("Alice")
+        XCTAssertEqual(app.textFields["address"].value as? String, fixture.origin + "/keyboard", "Page typing must leave the address unchanged")
+        waitValue(page.textFields["Name"], "Alice")
+        app.typeKey(.tab, modifierFlags: [])
+        app.typeText("bad")
+        waitValue(page.textFields["Readonly"], "locked")
+        app.typeKey(.tab, modifierFlags: [])
+        app.typeKey(" ", modifierFlags: [])
+        let remembered = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == 1 OR value == '1'"), object: page.checkBoxes["Remember"])
+        XCTAssertEqual(XCTWaiter.wait(for: [remembered], timeout: 15), .completed)
+        app.typeKey(.tab, modifierFlags: [])
+        app.typeKey(.rightArrow, modifierFlags: [])
+        let express = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == 1 OR value == '1'"), object: page.radioButtons["Express"])
+        XCTAssertEqual(XCTWaiter.wait(for: [express], timeout: 15), .completed)
+        app.typeKey(.tab, modifierFlags: [])
+        app.typeKey(.downArrow, modifierFlags: [])
+        waitValue(page.comboBoxes["Region"], "b")
+        app.typeKey(.tab, modifierFlags: [])
+        app.typeKey(.rightArrow, modifierFlags: [])
+        waitValue(page.sliders["Level"], "0.5")
+        XCTAssertFalse(page.textFields["Disabled"].isEnabled)
+        XCTAssertFalse(page.textFields["Hidden"].exists)
+        let attachment = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
+        attachment.name = "macos-keyboard-controls"; attachment.lifetime = .keepAlways; add(attachment)
+        app.typeKey(.tab, modifierFlags: [])
+        app.typeKey(.return, modifierFlags: [])
+        waitValue(app.textFields["address"], fixture.origin + "/destination")
+        XCTAssertEqual(fixture.requests, ["/keyboard", "/destination"])
+    }
+
+    func testReverseTabAndPageBoundaryReturnToNativeAddressEditing() throws {
+        let fixture = try HTTPFixture()
+        defer { fixture.stop() }
+        launch()
+        let page = app.groups["page"]
+        for _ in 0..<3 {
+            enter(fixture.origin + "/keyboard")
+            XCTAssertTrue(page.textFields["Name"].waitForExistence(timeout: 15))
+            waitValue(page.textFields["Name"], "")
+            app.typeKey(.tab, modifierFlags: [])
+            app.typeText("A")
+            XCTAssertEqual(app.textFields["address"].value as? String, fixture.origin + "/keyboard", "Page typing must leave the address unchanged")
+            waitValue(page.textFields["Name"], "A")
+            app.typeKey(.tab, modifierFlags: [])
+            app.typeKey(.tab, modifierFlags: .shift)
+            app.typeText("B")
+            waitValue(page.textFields["Name"], "AB")
+            app.typeKey(.tab, modifierFlags: .shift)
+            app.typeText("chrome-probe")
+            let address = app.textFields["address"]
+            let chrome = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value CONTAINS 'chrome-probe'"), object: address)
+            XCTAssertEqual(XCTWaiter.wait(for: [chrome], timeout: 15), .completed,
+                           "Reverse Tab must reach native address editing; received \(String(describing: address.value))")
+        }
+        app.typeKey("l", modifierFlags: .command)
+        app.typeKey("a", modifierFlags: .command)
+        app.typeText(fixture.origin + "/destination")
+        app.typeKey(.return, modifierFlags: [])
+        waitValue(app.textFields["address"], fixture.origin + "/destination")
+        XCTAssertEqual(fixture.requests, ["/keyboard", "/keyboard", "/keyboard", "/destination"])
+    }
+
     func testNativeSelectionReplacementDeletionAndMultilineClipboard() throws {
         let fixture = try HTTPFixture()
         defer { fixture.stop() }

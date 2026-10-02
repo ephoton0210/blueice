@@ -48,7 +48,12 @@ final class NativeEditingMenu: ObservableObject {
 
 struct NativeEditingCommands: Commands {
     @ObservedObject var menu: NativeEditingMenu
+    @ObservedObject var model: BrowserModel
     var body: some Commands {
+        CommandGroup(after: .toolbar) {
+            Button("Open Location…") { model.requestAddressFocus() }
+                .keyboardShortcut("l", modifiers: .command).disabled(!model.ready)
+        }
         CommandGroup(after: .textEditing) {
             Menu("Input Source") {
                 ForEach(menu.sources) { source in

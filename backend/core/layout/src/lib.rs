@@ -21,7 +21,7 @@ mod fragment;
 mod native_text;
 mod text;
 
-pub use fragment::{Constraints, Fragment, FragmentKind};
+pub use fragment::{Constraints, Fragment, FragmentKind, NativeForm};
 
 use blueice_css::ComputedStyle;
 use blueice_dom::{Document, NodeId};

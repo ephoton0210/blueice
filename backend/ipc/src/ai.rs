@@ -99,6 +99,10 @@ pub struct NodeState {
     /// this node. A semantic TextBox role alone does not promise editing.
     #[serde(default)]
     pub native_text_input: bool,
+    #[serde(default)]
+    pub native_focusable: bool,
+    #[serde(default)]
+    pub radio: bool,
     /// A password control; callers must not expose its value as ordinary text.
     #[serde(default)]
     pub protected: bool,

@@ -1,0 +1,59 @@
+BlueIce macOS keyboard controls — 2026-10-02
+base=8b80c3c533a6ef1f0c116b21ef5b3e7e182c5a66
+source_count=28
+source_sha256=624100f2cbc37490358145eb61b5288d22895c87354a68027833fa781a6f618a
+native_result=frontend/macos/.build/results-20261002-193203.xcresult
+native_total=51
+native_passed=50
+native_failed=0
+native_skipped=1
+physical_zhuyin=skipped; Runner lacks Accessibility permission
+swiftui_view_update_state_warnings=0
+internal_runtime_warnings=9
+rust_unique_passed=1286
+rust_failed=0
+rust_ignored=0
+workspace_check=passed
+affected_clippy=passed
+rustfmt=passed
+strict_bundle_and_service_signatures=passed
+validation_image_and_result_gitignore=passed
+owned_native_app_service_processes_remaining=0
+screenshot=development/browser_core/phase-22-browser-shell-accessibility/artifacts/macos-keyboard-controls.png
+screenshot_bytes=502693
+screenshot_sha256=6691b961cd9281a370d276f872de0253191f721d2af6f3c98737132297c4d86a
+binary_sha256 BlueIce 9942f070c52cebdc8143d608c5537484f89fe6912210ff541b342d528fce4aa5
+binary_sha256 BlueIce.debug.dylib 6e45b20ce609fe83f2411ebf264bfc590d0342cdc4402635c35ea6446eb82a3d
+binary_sha256 blueice-core 0b188ac7cee4f93a64739d4bcff1d7933e41ea1d3941e8a11ab91920b2e18210
+binary_sha256 blueice-launcher af7b04ff6753ee88e7cb9500231daaaba7ab4459c5953b832edf4dab0f4649df
+binary_sha256 blueice-ai-gatekeeper 022471088f7fa271ff6e389fef97e4e42986caf5ea5852be1e571caf38ba3d93
+
+SOURCE PATHS
+backend/core/css/src/cascade.rs
+backend/core/engine/src/ai_snapshot.rs
+backend/core/engine/src/page.rs
+backend/core/engine/src/page/dom_write.rs
+backend/core/engine/src/page/native_editing.rs
+backend/core/engine/src/page/native_editing/geometry.rs
+backend/core/engine/src/page/native_interaction.rs
+backend/core/engine/src/session/run_loop.rs
+backend/core/engine/tests/native_keyboard.rs
+backend/core/layout/src/block.rs
+backend/core/layout/src/fragment.rs
+backend/core/layout/src/lib.rs
+backend/core/layout/src/native_text.rs
+backend/core/paint/src/lib.rs
+backend/ipc/src/ai.rs
+backend/ipc/src/browser_protocol_tests.rs
+backend/ipc/src/input.rs
+frontend/macos/Sources/BlueIceApp.swift
+frontend/macos/Sources/BrowserModel.swift
+frontend/macos/Sources/BrowserView.swift
+frontend/macos/Sources/NativeEditingMenu.swift
+frontend/macos/Sources/NativeTextInput.swift
+frontend/macos/Sources/PageAccessibility.swift
+frontend/macos/Sources/PageRepresentation.swift
+frontend/macos/Sources/PageViewport.swift
+frontend/macos/TestSupport/HTTPFixture.swift
+frontend/macos/Tests/NativeEditingTests.swift
+frontend/macos/UITests/BrowserUITests.swift

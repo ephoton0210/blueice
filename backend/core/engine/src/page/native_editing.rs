@@ -153,37 +153,16 @@ impl EditorSession {
 
 impl Page {
     pub(crate) fn focus_native_editor_at(&mut self, target: Option<NodeId>) -> bool {
-        let focused = target.and_then(|mut node| loop {
-            if control_info(&self.doc, node).is_some() {
-                break Some(node);
-            }
-            match self.doc.parent(node) {
-                Some(parent) => node = parent,
-                None => break None,
-            }
-        });
-        let focused = focused.filter(|id| {
-            control_info(&self.doc, *id).is_some_and(|info| {
-                control_value(&self.doc, *id, info).encode_utf16().count() <= MAX_EDIT_TEXT_UTF16
-            })
-        });
-        if self.focused == focused
-            && self.native_editor.as_ref().map(|editor| editor.node) == focused
-        {
-            return false;
-        }
-        self.focused = focused;
-        self.native_focus_generation = self.native_focus_generation.wrapping_add(1);
-        self.native_editor = focused.and_then(|id| {
-            control_info(&self.doc, id)
-                .map(|info| EditorSession::new(id, control_value(&self.doc, id, info)))
-        });
-        self.relayout();
-        true
+        let changed = self.native_focus_at(self.native_pointer_focus(target));
+        self.native_focus_start = target.and_then(|id| self.event_element_target(id));
+        changed
     }
 
     fn live_editor(&self) -> Option<(EditorSession, ControlInfo)> {
         let node = self.focused?;
+        if !self.native_focusable(node) {
+            return None;
+        }
         let info = control_info(&self.doc, node)?;
         let value = control_value(&self.doc, node, info);
         if value.encode_utf16().count() > MAX_EDIT_TEXT_UTF16 {
@@ -227,8 +206,25 @@ impl Page {
             frame_generation: self.frame_generation,
             tab_id: 0,
             scroll_y: self.scroll_y,
+            focused_node: self.focused.map(|id| id.as_u64()),
+            focus_exit: self.native_focus_exit,
             focused,
         }
+    }
+
+    pub(crate) fn validate_native_input_context(
+        &self,
+        context: &TextInputContext,
+        source: u64,
+    ) -> Result<(), String> {
+        if context.version != TEXT_INPUT_VERSION
+            || context.frame_source != source
+            || context.document_generation != self.document_generation
+            || context.focus_generation != self.native_focus_generation
+        {
+            return Err("Stale or unsupported native input context".into());
+        }
+        Ok(())
     }
 
     pub(crate) fn native_text_input(
@@ -237,18 +233,16 @@ impl Page {
         source: u64,
         action: TextInputAction,
     ) -> Result<bool, String> {
-        if context.version != TEXT_INPUT_VERSION
-            || context.frame_source != source
-            || context.document_generation != self.document_generation
-            || context.focus_generation != self.native_focus_generation
-        {
-            return Err("Stale or unsupported native input context".into());
+        self.validate_native_input_context(context, source)?;
+        if let TextInputAction::Key { key, shift } = action {
+            return self.native_page_key(key, shift, context, source);
         }
         let Some((mut editor, info)) = self.live_editor() else {
             return Ok(false);
         };
         let original = editor.observed.clone();
         match action {
+            TextInputAction::Key { .. } => unreachable!("page keys handled above"),
             TextInputAction::Replace { text, replacement } => {
                 if !info.writable {
                     return Err("Native text control is read-only".into());

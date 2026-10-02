@@ -193,7 +193,8 @@ pub(crate) fn layout_block(
         cursor_y += used_height;
     }
 
-    let is_native = native.is_some();
+    let form = crate::native_text::form_control(doc, node);
+    let is_native = native.is_some() || form.is_some();
     if let Some(value) = native {
         let line_height = style
             .and_then(|s| s.line_height.as_ref())
@@ -236,6 +237,7 @@ pub(crate) fn layout_block(
                 content_y: content_origin_y,
                 content_width,
                 content_height,
+                form,
             }
         } else {
             FragmentKind::Block

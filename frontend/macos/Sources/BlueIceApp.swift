@@ -10,19 +10,19 @@ struct BlueIceApp: App {
     @NSApplicationDelegateAdaptor(BrowserAppDelegate.self) private var delegate
     var body: some Scene {
         Settings { Text("Browser settings are available from the toolbar.").padding() }
-            .commands { NativeEditingCommands(menu: delegate.editingMenu) }
+            .commands { NativeEditingCommands(menu: delegate.editingMenu, model: delegate.model) }
     }
 }
 
 @MainActor
 final class BrowserAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
-    private let model = BrowserModel()
+    let model = BrowserModel()
     private var browserWindow: NSWindow?
     private var terminating = false
     let editingMenu = NativeEditingMenu()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1120, height: 800),
+        let window = BrowserWindow(contentRect: NSRect(x: 0, y: 0, width: 1120, height: 800),
                               styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
         window.title = "BlueIce"
         window.identifier = NSUserInterfaceItemIdentifier("browser-window")

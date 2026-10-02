@@ -47,8 +47,33 @@ pub enum TextMovement {
     Down,
 }
 
+/// Non-text page keys; committed characters and IME text use editing actions.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PageKey {
+    Tab,
+    Enter,
+    Space,
+    ArrowLeft,
+    ArrowRight,
+    ArrowUp,
+    ArrowDown,
+    Home,
+    End,
+    Escape,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum FocusDirection {
+    Forward,
+    Backward,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum TextInputAction {
+    Key {
+        key: PageKey,
+        shift: bool,
+    },
     /// A missing range replaces marked text, or otherwise the core selection.
     Replace {
         text: String,
@@ -115,5 +140,10 @@ pub struct TextInputState {
     pub frame_generation: u64,
     pub tab_id: u64,
     pub scroll_y: f64,
+    /// Includes non-text controls. A page boundary hands focus to native chrome.
+    #[serde(default)]
+    pub focused_node: Option<u64>,
+    #[serde(default)]
+    pub focus_exit: Option<FocusDirection>,
     pub focused: Option<TextControlState>,
 }

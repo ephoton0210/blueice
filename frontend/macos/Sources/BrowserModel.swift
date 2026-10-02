@@ -19,6 +19,9 @@ final class BrowserModel: ObservableObject {
     @Published private(set) var accessibilityEpoch: UInt64 = 0
     @Published private(set) var textInputState: TextInputState?
     @Published private(set) var textInputBusy = false
+    @Published private(set) var pageFocusSerial: UInt64 = 0
+    @Published private(set) var addressFocusSerial: UInt64 = 0
+    func requestAddressFocus() { addressFocusSerial &+= 1 }
     private struct InputRequest {
         let epoch: UInt64
         let serial: UInt64
@@ -264,7 +267,7 @@ final class BrowserModel: ObservableObject {
             guard edit.epoch == documentEpochs[edit.tab, default: 0], edit.serial == inputSerials[edit.tab, default: 0],
                   tabs.contains(where: { $0.id == edit.tab }) else { inputQueue.removeFirst(); continue }
             guard inputRequests[edit.tab] == nil, let state = inputStates[edit.tab] else { requestTextInput(edit.tab); return }
-            guard state.focused != nil else { inputQueue.removeFirst(); continue }
+            guard state.focused != nil || edit.action.isPageKey else { inputQueue.removeFirst(); continue }
             inputQueue.removeFirst()
             inputFlight = (edit, nil)
             inputTimeout?.cancel()
@@ -333,6 +336,7 @@ final class BrowserModel: ObservableObject {
         var url = address.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !url.isEmpty, let selected else { return }
         if !url.contains(":") { url = "https://" + url }
+        pageFocusSerial &+= 1
         Task { await navigate(url, tab: selected) }
     }
 

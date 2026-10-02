@@ -12,8 +12,8 @@ pushed to the current tracked branch as authorized by the owner.
 | Native window and chrome | SwiftUI/AppKit address/tabs/history/settings, visible real-core pixels, startup/close/resize XCUITest | Committed `c762b53a9` |
 | Owned service stack | Bundled launcher/core/gatekeeper, reviewed external navigation, fail-closed review, normal/forced cleanup | Committed `32fa07f6b` |
 | Page accessibility | Core semantic tree mapped into NSAccessibility, native actions, privacy, stale-element and tab isolation tests | Committed and pushed `41952a803` |
-| Native text editing | Core-owned UTF-16 selection, grapheme movement/deletion, IME composition/update/commit/cancel, caret/candidate geometry, text/password/textarea editing, clipboard policy and native UI tests | Foundation validated; physical OS IME and remaining editing behavior pending, see [results](MACOS_NATIVE_EDITING_RESULTS.md) |
-| Keyboard and page interaction | Keyboard-only form completion, checkbox/radio/select/range controls, find-in-page, native context menus, drag/drop and file-selection policy tests | Pending |
+| Native text editing | Core-owned UTF-16 selection, grapheme movement/deletion, IME composition/update/commit/cancel, caret/candidate geometry, text/password/textarea editing, clipboard policy and native UI tests | Foundation committed and pushed `8b80c3c53`; physical OS IME and remaining editing behavior pending, see [results](MACOS_NATIVE_EDITING_RESULTS.md) |
+| Keyboard and page interaction | Keyboard-only form completion, checkbox/radio/select/range controls, find-in-page, native context menus, drag/drop and file-selection policy tests | Core control defaults and native Tab handoff validated, see [results](MACOS_KEYBOARD_RESULTS.md); form submission and remaining interactions pending |
 | Windows and tab organization | Multiple native windows, tab groups, profile/context lifecycle, retained history and state handoff using core tab identities | Pending |
 | Downloads and printing | Actual download manager/shelf, progress/cancel/open/reveal, print/PDF media output and native panel tests | Pending |
 | Trusted browser panels | Assistant results and human permission decisions using the private owner boundary, policy-denial and no-AI-grant tests | Pending |
@@ -50,9 +50,28 @@ is implemented but skipped on this host because `AXIsProcessTrusted()` is false
 for the UI runner. Remaining editing work includes physical IME validation,
 JavaScript keyboard/beforeinput/input/composition event dispatch, undo/redo,
 complete bidirectional shaping, caret blink, preferred vertical caret position
-and keyboard input during asynchronous focus changes. Browser keyboard/form
-interaction remains the next delivery milestone; this foundation does not
-complete native editing acceptance.
+and general keyboard input during asynchronous focus changes. The later
+keyboard milestone buffers native events specifically across Tab handoffs;
+it does not complete native editing acceptance.
+
+## Keyboard control increment
+
+The core derives Tab order and default actions from the current document.
+Checkbox/radio state, single-select choices and stepped range values feed the
+same semantic snapshot and shared layout/paint output. Native AppKit Tab
+transitions retain bounded events until the core confirms the new focus, then
+deliver them to the page or the SwiftUI address editor. Command-L uses native
+address focus. The owned window also holds later keys until pending events have
+replayed, preserving event order across responder changes. The keyboard activation boundary honors existing click
+cancellation and document replacement before applying defaults.
+
+This increment covers keyboard control completion and reviewed link activation,
+not full form submission. Submission/reset, validation, popup/typeahead and
+multiple-select interaction, DOM key/input/focus/composition events, full chrome
+Tab traversal, find, context menus, drag/drop and file-selection remain required.
+Multiple-select direction keys deliberately preserve existing selections until
+their own interaction model is implemented. Physical OS IME and screen-reader
+acceptance remain separate gates.
 
 ## Completion audit
 
