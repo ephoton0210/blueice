@@ -28,7 +28,8 @@ enum BrowserCommand: Encodable, Sendable {
     case textInput(TextInputContext, TextInputAction)
     case find(UInt64, TextInputContext, FindAction)
     case contextMenuLink(PageMenuContext, PageMenuLinkAction)
-    case viewport(Double, Double, Double)
+    case viewport(Double, Double, Double, backingScale: Double? = nil)
+    case displayPreferences(DisplayPreferences)
     func encode(to encoder: Encoder) throws {
         switch self {
         case .unit(let name):
@@ -54,17 +55,36 @@ enum BrowserCommand: Encodable, Sendable {
             var value = root.nestedContainer(keyedBy: MessageKey.self, forKey: MessageKey("ContextMenuLink"))
             try value.encode(context, forKey: MessageKey("context"))
             try value.encode(action, forKey: MessageKey("action"))
-        case .viewport(let width, let height, let scale):
+        case .viewport(let width, let height, let scale, let backingScale):
             var root = encoder.container(keyedBy: MessageKey.self)
             var message = root.nestedContainer(keyedBy: MessageKey.self, forKey: MessageKey("SetViewport"))
             var value = message.nestedContainer(keyedBy: MessageKey.self, forKey: MessageKey("viewport"))
             try value.encode(width, forKey: MessageKey("width")); try value.encode(height, forKey: MessageKey("height"))
             try value.encode(scale, forKey: MessageKey("device_scale"))
+            try value.encodeIfPresent(backingScale, forKey: MessageKey("backing_scale"))
+        case .displayPreferences(let preferences):
+            var root = encoder.container(keyedBy: MessageKey.self)
+            var value = root.nestedContainer(keyedBy: MessageKey.self, forKey: MessageKey("SetDisplayPreferences"))
+            try value.encode(preferences, forKey: MessageKey("preferences"))
         }
     }
 }
 
 enum PageMenuLinkAction: String, Encodable, Sendable { case copy = "Copy", open = "Open", newTab = "OpenInNewTab" }
+
+struct DisplayPreferences: Codable, Sendable, Equatable {
+    var dark: Bool = false
+    var highContrast: Bool = false
+    var reducedMotion: Bool = false
+    enum CodingKeys: String, CodingKey { case dark, highContrast = "high_contrast", reducedMotion = "reduced_motion" }
+}
+struct DisplayPreferencesState: Decodable, Sendable {
+    let tabID: UInt64
+    let frameSource: UInt64
+    let frameGeneration: UInt64
+    let preferences: DisplayPreferences
+    enum CodingKeys: String, CodingKey { case tabID = "tab_id", frameSource = "frame_source", frameGeneration = "frame_generation", preferences }
+}
 
 struct ViewportState: Decodable, Sendable {
     let tabID: UInt64
@@ -73,6 +93,7 @@ struct ViewportState: Decodable, Sendable {
     let width: Double
     let height: Double
     let deviceScale: Double
+    let backingScale: Double?
     let zoom: Double
     let cssWidth: Double
     let cssHeight: Double
@@ -80,12 +101,13 @@ struct ViewportState: Decodable, Sendable {
     let pixelHeight: Int
     enum CodingKeys: String, CodingKey {
         case tabID = "tab_id", frameSource = "frame_source", frameGeneration = "frame_generation"
-        case width, height, deviceScale = "device_scale", zoom, cssWidth = "css_width", cssHeight = "css_height"
+        case width, height, deviceScale = "device_scale", backingScale = "backing_scale", zoom, cssWidth = "css_width", cssHeight = "css_height"
         case pixelWidth = "pixel_width", pixelHeight = "pixel_height"
     }
     var valid: Bool {
         tabID > 0 && [width, height, deviceScale, zoom, cssWidth, cssHeight].allSatisfy(\.isFinite)
             && (1...4096).contains(width) && (1...4096).contains(height) && (1...4).contains(deviceScale)
+            && (backingScale == nil || (backingScale!.isFinite && (1...4).contains(backingScale!)))
             && (0.25...5).contains(zoom) && abs(cssWidth * zoom - width) < 1e-6 && abs(cssHeight * zoom - height) < 1e-6
             && (1...4096).contains(pixelWidth) && (1...4096).contains(pixelHeight)
             && Double(pixelWidth) == ceil(width * deviceScale) && Double(pixelHeight) == ceil(height * deviceScale)
@@ -213,6 +235,7 @@ enum BrowserMessage: Decodable, Sendable {
     case findState(FindState), findUnavailable
     case contextMenu(PageContextMenu), contextLink(PageContextLink), contextUnavailable
     case viewportState(ViewportState), viewportUnavailable
+    case displayPreferences(DisplayPreferencesState), displayPreferencesUnavailable
 
     init(from decoder: Decoder) throws {
         guard let object = try? decoder.container(keyedBy: MessageKey.self), let key = object.allKeys.first else {
@@ -260,6 +283,9 @@ enum BrowserMessage: Decodable, Sendable {
         case "ViewportState":
             if let value = try? object.decode(ViewportState.self, forKey: key), value.valid { self = .viewportState(value) }
             else { self = .viewportUnavailable }
+        case "DisplayPreferencesState":
+            if let value = try? object.decode(DisplayPreferencesState.self, forKey: key), value.tabID > 0 { self = .displayPreferences(value) }
+            else { self = .displayPreferencesUnavailable }
         default: self = .unknown
         }
     }

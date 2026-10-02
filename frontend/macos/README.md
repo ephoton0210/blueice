@@ -149,6 +149,17 @@ outputs reduce raster density while retaining logical layout. See
 for actual-window and fractional-dimension regression evidence. Physical
 multi-monitor handoff and older/Intel macOS runtime acceptance remain pending.
 
+BlueIce > Settings (Command-comma) persists appearance, contrast and motion
+choices, each with a System option; View > Appearance changes light/dark mode.
+System choices observe the current macOS appearance and accessibility display
+options. Overrides apply to BlueIce windows, with visible high-contrast borders
+and reduced SwiftUI animation transactions. Inline page CSS can respond through
+`@media` and `<style media>` preferences and viewport/resolution queries. Changes
+preserve the current document and edited text without fetching. Actual backing
+scale stays separate from a capped raster density, and core images use sRGB.
+See [display preference results](../../development/browser_core/phase-22-browser-shell-accessibility/MACOS_DISPLAY_PREFERENCES_RESULTS.md)
+for native/core and actual-window evidence and the supported CSS subset.
+
 The default app owns its launcher; attaching to an existing shared launcher,
 assistant and trusted permission panels remain separate work. The
 [macOS delivery plan](../../development/browser_core/phase-22-browser-shell-accessibility/MACOS_DELIVERY_PLAN.md)

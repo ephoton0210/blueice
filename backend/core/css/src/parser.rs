@@ -316,11 +316,43 @@ fn skip_at_rule(tokens: &[Token], start: usize) -> usize {
 
 /// Parses a full stylesheet's tokens into [`Rule`]s.
 pub fn parse_rules(tokens: &[Token]) -> Vec<Rule> {
+    parse_rules_in(tokens, None, 0)
+}
+
+fn parse_rules_in(
+    tokens: &[Token],
+    environment: Option<&crate::MediaEnvironment>,
+    depth: usize,
+) -> Vec<Rule> {
     let mut rules = Vec::new();
     let mut i = 0;
     while i < tokens.len() {
         match &tokens[i] {
             Token::Whitespace => i += 1,
+            Token::AtKeyword(name)
+                if name.eq_ignore_ascii_case("media") && environment.is_some() =>
+            {
+                let end = skip_at_rule(tokens, i + 1);
+                let Some(open) = tokens[i + 1..end]
+                    .iter()
+                    .position(|t| *t == Token::LeftBrace)
+                    .map(|v| i + 1 + v)
+                else {
+                    i = end;
+                    continue;
+                };
+                if depth < 64
+                    && tokens.get(end.saturating_sub(1)) == Some(&Token::RightBrace)
+                    && crate::media::matches_tokens(&tokens[i + 1..open], environment.unwrap())
+                {
+                    rules.extend(parse_rules_in(
+                        &tokens[open + 1..end - 1],
+                        environment,
+                        depth + 1,
+                    ));
+                }
+                i = end;
+            }
             Token::AtKeyword(_) => i = skip_at_rule(tokens, i + 1),
             _ => {
                 let Some(brace) = tokens[i..].iter().position(|t| *t == Token::LeftBrace) else {
@@ -352,6 +384,10 @@ pub fn parse_rules(tokens: &[Token]) -> Vec<Rule> {
 
 pub fn parse(input: &str) -> Vec<Rule> {
     parse_rules(&tokenize(input))
+}
+
+pub fn parse_with_environment(input: &str, environment: &crate::MediaEnvironment) -> Vec<Rule> {
+    parse_rules_in(&tokenize(input), Some(environment), 0)
 }
 
 #[cfg(test)]

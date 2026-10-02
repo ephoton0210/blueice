@@ -41,6 +41,7 @@ pub mod compiler_catalog;
 pub mod compiler_output;
 pub mod context_menu;
 pub mod debugger;
+pub mod display;
 pub mod downloads;
 pub mod extension;
 pub mod find;
@@ -186,6 +187,10 @@ pub enum ClientMessage {
         zoom: f64,
     },
     GetViewportState,
+    SetDisplayPreferences {
+        preferences: display::DisplayPreferences,
+    },
+    GetDisplayPreferences,
     /// A click at a point in viewport coordinates (post-scroll, i.e.
     /// `(0,0)` is always the top-left of what's currently visible).
     Click {
@@ -401,6 +406,7 @@ pub enum ServerMessage {
     ContextMenu(context_menu::ContextMenuState),
     /// Published with frames for clients that explicitly configured a viewport.
     ViewportState(viewport::ViewportState),
+    DisplayPreferencesState(display::DisplayPreferencesState),
     /// A correlated copy reply. The core never accesses the OS clipboard.
     ContextMenuLink {
         context: context_menu::ContextMenuContext,

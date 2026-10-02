@@ -1028,6 +1028,16 @@ fn send_frame<S: Write>(
             ),
         )?;
     }
+    if page.display_preferences.is_some() {
+        blueice_ipc::write_server_message_with_ids(
+            stream,
+            Some(tab_id),
+            request_id,
+            &ServerMessage::DisplayPreferencesState(
+                page.display_preferences_state(shm::frame_source_id(frame_dir), tab_id),
+            ),
+        )?;
+    }
     Ok(())
 }
 

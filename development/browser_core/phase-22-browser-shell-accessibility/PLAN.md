@@ -232,3 +232,10 @@ reviewed new-tab navigation and correlated visible denial. Its Rust boundary,
 real-service and actual-window verification is recorded in
 [MACOS_CONTEXT_MENU_RESULTS.md](MACOS_CONTEXT_MENU_RESULTS.md). Image/media
 actions, page-text selection, drag/drop and the full delivery plan remain open.
+
+The macOS display preference increment adds persistent native appearance,
+contrast and motion controls, system observation, core inline media-query
+evaluation and sRGB output. Actual backing density remains available to CSS
+resolution even when raster density is capped. Native/core and actual-window
+evidence is recorded in [MACOS_DISPLAY_PREFERENCES_RESULTS.md](MACOS_DISPLAY_PREFERENCES_RESULTS.md).
+Physical system/monitor transitions and the full macOS delivery plan remain open.

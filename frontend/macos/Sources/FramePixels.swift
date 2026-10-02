@@ -30,9 +30,10 @@ struct FramePixels: Sendable {
     }
 
     func image() throws -> CGImage {
-        guard let provider = CGDataProvider(data: data as CFData),
+        guard let colorSpace = CGColorSpace(name: CGColorSpace.sRGB),
+              let provider = CGDataProvider(data: data as CFData),
               let image = CGImage(width: width, height: height, bitsPerComponent: 8, bitsPerPixel: 32,
-                                  bytesPerRow: width * 4, space: CGColorSpaceCreateDeviceRGB(),
+                                  bytesPerRow: width * 4, space: colorSpace,
                                   bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.last.rawValue).union(.byteOrder32Big),
                                   provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent) else {
             throw BrowserFailure.invalid("Could not display core pixels.")

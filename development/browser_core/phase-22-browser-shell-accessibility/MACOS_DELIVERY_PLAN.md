@@ -17,7 +17,7 @@ pushed to the current tracked branch as authorized by the owner.
 | Windows and tab organization | Multiple native windows, tab groups, profile/context lifecycle, retained history and state handoff using core tab identities | Pending |
 | Downloads and printing | Actual download manager/shelf, progress/cancel/open/reveal, print/PDF media output and native panel tests | Pending |
 | Trusted browser panels | Assistant results and human permission decisions using the private owner boundary, policy-denial and no-AI-grant tests | Pending |
-| macOS display and system integration | DPI/multi-monitor, zoom, theme/high contrast/reduced motion, fullscreen, localization and native menu/shortcut tests | Retina/CSS viewport, per-tab zoom and native fullscreen increment recorded in [results](MACOS_VIEWPORT_RESULTS.md); physical multi-monitor handoff and remaining system integration pending |
+| macOS display and system integration | DPI/multi-monitor, zoom, theme/high contrast/reduced motion, fullscreen, localization and native menu/shortcut tests | Retina/CSS viewport, per-tab zoom and native fullscreen committed and pushed `91f2dd78c`, see [viewport results](MACOS_VIEWPORT_RESULTS.md); persistent appearance/contrast/motion and CSS media increment recorded in [display results](MACOS_DISPLAY_PREFERENCES_RESULTS.md); physical system/monitor transitions and localization pending |
 | Full accessibility and final audit | Text ranges/live regions and supported rotor operations; actual screen-reader action; final integration, design/UI acceptance and documented remaining core limitations | Pending |
 
 ## Native editing contract
@@ -226,8 +226,36 @@ pixel caps, stale/closed-tab rejection and zoomed editing/find/menu geometry.
 Actual-window tests verify Retina CSS width, zoom shortcuts and menu presets,
 中文 clipboard editing, tab/reload retention and fullscreen entry/exit. These
 tests do not establish physical monitor handoff, older/Intel macOS runtime,
-physical IME or VoiceOver acceptance. Theme, high contrast, reduced motion,
-localization and remaining browser milestones are still required.
+physical IME or VoiceOver acceptance. The following increment supplies native
+appearance, contrast and motion preferences. Localization and the remaining
+browser milestones are still required.
+
+## Native display preference increment
+
+The native Settings scene and View > Appearance menu persist application-owned
+appearance, contrast and motion choices. System choices observe AppKit
+effective appearance and accessibility display option changes. Window overrides,
+explicit high-contrast chrome borders and reduced SwiftUI animation transactions
+consume the same resolved preferences supplied to the core.
+
+Core inline styles evaluate nested screen media conditions and style-element
+media attributes against preferences, CSS dimensions and actual screen density
+times page zoom. The optional backing density remains separate from a raster
+density reduced by the physical pixel cap. Core pixels are explicitly sRGB.
+Preference changes repaint existing documents and retained tab/history state
+without fetching or replacing edited text. Legacy protocol-two clients retain
+their existing stream until preference opt-in; new metadata preserves ordinary
+MCP completion barriers.
+
+Native search synchronization preserves AppKit marked text and suppresses
+programmatic delegate feedback. Rapid zoom writes are ordered and coalesced;
+inbound frame and display metadata are delivered in reader order. Regression
+evidence includes repeated real-core zoom/tab and preference cases, actual
+light/dark pixels, visible contrast, native menu actions and preference persistence
+through normal app termination/relaunch. The result record distinguishes these
+checks from physical system-option/monitor changes and OS IME/screen-reader
+acceptance. General CSS media support, external stylesheets, matchMedia,
+automatic UA color-scheme recoloring and the full animation pipeline remain open.
 
 ## Completion audit
 

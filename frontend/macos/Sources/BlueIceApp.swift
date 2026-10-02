@@ -9,8 +9,11 @@ import SwiftUI
 struct BlueIceApp: App {
     @NSApplicationDelegateAdaptor(BrowserAppDelegate.self) private var delegate
     var body: some Scene {
-        Settings { Text("Browser settings are available from the toolbar.").padding() }
-            .commands { NativeEditingCommands(menu: delegate.editingMenu, model: delegate.model) }
+        Settings { BrowserAppearanceSettingsView(settings: delegate.model.appearance) }
+            .commands {
+                NativeEditingCommands(menu: delegate.editingMenu, model: delegate.model)
+                BrowserAppearanceCommands(settings: delegate.model.appearance)
+            }
     }
 }
 

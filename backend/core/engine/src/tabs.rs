@@ -344,6 +344,7 @@ pub struct TabManager {
     viewport_width: f64,
     viewport_height: f64,
     display_viewport: Option<blueice_ipc::viewport::DisplayViewport>,
+    display_preferences: Option<blueice_ipc::display::DisplayPreferences>,
     /// Handed to every tab (existing and future) so `about:downloads` works
     /// in any of them.
     downloads: Option<Arc<DownloadsSource>>,
@@ -418,6 +419,7 @@ impl TabManager {
             viewport_width,
             viewport_height,
             display_viewport: None,
+            display_preferences: None,
             downloads: None,
             gatekeeper_settings: None,
             assistant_panel,
@@ -713,6 +715,9 @@ impl TabManager {
         let mut page = Page::new(self.viewport_width, self.viewport_height);
         if let Some(display) = self.display_viewport {
             page.configure_display(display);
+        }
+        if let Some(preferences) = self.display_preferences {
+            page.set_display_preferences(preferences);
         }
         page.set_downloads_source(self.downloads.clone());
         page.set_gatekeeper_settings_source(self.gatekeeper_settings.clone());
@@ -1101,6 +1106,9 @@ impl TabManager {
         if tab.page.page_zoom != 1.0 {
             page.set_page_zoom(tab.page.page_zoom);
         }
+        if let Some(preferences) = tab.page.display_preferences {
+            page.set_display_preferences(preferences);
+        }
         page.set_downloads_source(self.downloads.clone());
         page.set_gatekeeper_settings_source(self.gatekeeper_settings.clone());
         page.set_assistant_panel(Some(self.assistant_panel.clone()));
@@ -1188,6 +1196,7 @@ impl TabManager {
                 width,
                 height,
                 device_scale: 1.0,
+                backing_scale: None,
             });
             return;
         }
@@ -1227,6 +1236,21 @@ impl TabManager {
         for entry in tab.back.iter_mut().chain(tab.forward.iter_mut()) {
             if let Some(page) = entry.snapshot_mut() {
                 page.set_page_zoom(zoom);
+            }
+        }
+    }
+
+    pub(crate) fn set_display_preferences_all(
+        &mut self,
+        preferences: blueice_ipc::display::DisplayPreferences,
+    ) {
+        self.display_preferences = Some(preferences);
+        for tab in self.tabs.values_mut() {
+            tab.page.set_display_preferences(preferences);
+            for entry in tab.back.iter_mut().chain(tab.forward.iter_mut()) {
+                if let Some(page) = entry.snapshot_mut() {
+                    page.set_display_preferences(preferences);
+                }
             }
         }
     }

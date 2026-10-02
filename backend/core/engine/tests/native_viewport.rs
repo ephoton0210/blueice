@@ -130,6 +130,7 @@ impl Browser {
                     width: 300.0,
                     height: 200.0,
                     device_scale: scale,
+                    backing_scale: None,
                 },
             },
         ) else {
@@ -227,16 +228,19 @@ fn fractional_viewports_and_zoom_keep_frame_dimensions_equal_to_metadata() {
             width: 300.0000000001,
             height: 200.0000000001,
             device_scale: 1.0,
+            backing_scale: None,
         },
         DisplayViewport {
             width: 333.5,
             height: 101.25,
             device_scale: 1.5,
+            backing_scale: None,
         },
         DisplayViewport {
             width: 4096.0,
             height: 20.0,
             device_scale: 1.0,
+            backing_scale: None,
         },
     ] {
         assert!(matches!(
@@ -305,16 +309,19 @@ fn invalid_zoom_scale_dimensions_and_closed_tabs_preserve_live_state() {
             width: 0.0,
             height: 200.0,
             device_scale: 2.0,
+            backing_scale: None,
         },
         DisplayViewport {
             width: 2049.0,
             height: 200.0,
             device_scale: 2.0,
+            backing_scale: None,
         },
         DisplayViewport {
             width: 300.0,
             height: 200.0,
             device_scale: 5.0,
+            backing_scale: None,
         },
     ] {
         assert!(matches!(

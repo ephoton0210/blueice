@@ -70,6 +70,23 @@ final class HTTPFixture: @unchecked Sendable {
                 }
                 let body: String
                 switch route {
+                case "/appearance": body = """
+                    <html><head><style>
+                    #surface {width:160px;height:40px;background-color:#aabbcc}
+                    #dark, #more, #reduce, #dense {display:none}
+                    @media (prefers-color-scheme:dark) {#surface {background-color:#102030} #light {display:none} #dark {display:block}}
+                    @media (prefers-contrast:more) {#normal {display:none} #more {display:block}}
+                    @media (prefers-reduced-motion:reduce) {#surface {height:20px} #motion {display:none} #reduce {display:block}}
+                    @media (min-resolution:2dppx) {#dense {display:block}}
+                    </style></head><body><h1>Display preference fixture</h1>
+                    <input aria-label="Appearance editor" value="hello" style="display:block;width:280px;height:32px">
+                    <div id="surface"></div>
+                    <p id="light">Light content</p><p id="dark">Dark content</p>
+                    <p id="normal">Standard contrast</p><p id="more">Increased contrast</p>
+                    <p id="motion">Motion allowed</p><p id="reduce">Reduced motion</p>
+                    <p id="dense">High density screen</p>
+                    </body></html>
+                    """
                 case "/context-menu": body = """
                     <html><body><h1>Context menu fixture</h1>
                     <a aria-label="Destination link" href="/destination" style="display:block;width:280px"><b>Destination link</b></a>

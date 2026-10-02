@@ -52,6 +52,7 @@ pub struct Page {
     viewport_height: f64,
     pub(crate) display_viewport: Option<blueice_ipc::viewport::DisplayViewport>,
     pub(crate) page_zoom: f64,
+    pub(crate) display_preferences: Option<blueice_ipc::display::DisplayPreferences>,
     scroll_y: f64,
     url: Option<String>,
     network_response: Option<blueice_ipc::extension::NetworkResponseInfo>,
@@ -120,6 +121,7 @@ impl Page {
             viewport_height,
             display_viewport: None,
             page_zoom: 1.0,
+            display_preferences: None,
             scroll_y: 0.0,
             url: None,
             network_response: None,
@@ -222,7 +224,10 @@ impl Page {
 
     fn recascade(&mut self) {
         self.remember_native_form_defaults();
-        let author = crate::stylesheet::extract_inline_stylesheets(&self.doc);
+        let author = crate::stylesheet::extract_inline_stylesheets_with_environment(
+            &self.doc,
+            &self.media_environment(),
+        );
         self.styles = cascade(
             &self.doc,
             &[(Origin::Ua, &self.ua), (Origin::Author, &author)],
@@ -481,6 +486,44 @@ impl Page {
         self.resize(display.width, display.height);
     }
 
+    fn media_environment(&self) -> blueice_css::MediaEnvironment {
+        let preferences = self.display_preferences.unwrap_or_default();
+        blueice_css::MediaEnvironment {
+            width: self.viewport_width,
+            height: self.viewport_height,
+            resolution: self
+                .display_viewport
+                .map_or(1.0, |v| v.backing_scale.unwrap_or(v.device_scale))
+                * self.page_zoom,
+            dark: preferences.dark,
+            high_contrast: preferences.high_contrast,
+            reduced_motion: preferences.reduced_motion,
+        }
+    }
+
+    pub(crate) fn set_display_preferences(
+        &mut self,
+        preferences: blueice_ipc::display::DisplayPreferences,
+    ) {
+        if self.display_preferences != Some(preferences) {
+            self.display_preferences = Some(preferences);
+            self.restyle_and_relayout();
+        }
+    }
+
+    pub(crate) fn display_preferences_state(
+        &self,
+        source: u64,
+        tab_id: u64,
+    ) -> blueice_ipc::display::DisplayPreferencesState {
+        blueice_ipc::display::DisplayPreferencesState {
+            tab_id,
+            frame_source: source,
+            frame_generation: self.frame_generation,
+            preferences: self.display_preferences.unwrap_or_default(),
+        }
+    }
+
     pub(crate) fn set_page_zoom(&mut self, zoom: f64) {
         let display = self
             .display_viewport
@@ -488,6 +531,7 @@ impl Page {
                 width: self.viewport_width,
                 height: self.viewport_height,
                 device_scale: 1.0,
+                backing_scale: None,
             });
         self.page_zoom = zoom;
         self.configure_display(display);
@@ -505,6 +549,7 @@ impl Page {
                 width: self.viewport_width,
                 height: self.viewport_height,
                 device_scale: 1.0,
+                backing_scale: None,
             });
         let (pixel_width, pixel_height) = display.pixel_size();
         blueice_ipc::viewport::ViewportState {
@@ -514,6 +559,7 @@ impl Page {
             width: display.width,
             height: display.height,
             device_scale: display.device_scale,
+            backing_scale: display.backing_scale,
             zoom: self.page_zoom,
             css_width: self.viewport_width,
             css_height: self.viewport_height,
@@ -996,8 +1042,11 @@ impl Page {
         self.document_generation = previous.document_generation.wrapping_add(1);
         self.display_viewport = previous.display_viewport;
         self.page_zoom = previous.page_zoom;
+        let media_changed = self.display_preferences != previous.display_preferences;
+        self.display_preferences = previous.display_preferences;
         if self.viewport_width != previous.viewport_width
             || self.viewport_height != previous.viewport_height
+            || media_changed
         {
             self.viewport_width = previous.viewport_width;
             self.viewport_height = previous.viewport_height;

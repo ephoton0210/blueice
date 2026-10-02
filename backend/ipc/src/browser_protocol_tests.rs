@@ -7,12 +7,46 @@ use std::io::Cursor;
 use std::net::{TcpListener, TcpStream};
 
 #[test]
+fn display_preferences_round_trip_with_tab_frame_and_request_identity() {
+    let preferences = crate::display::DisplayPreferences {
+        dark: true,
+        high_contrast: true,
+        reduced_motion: false,
+    };
+    for message in [
+        ClientMessage::SetDisplayPreferences { preferences },
+        ClientMessage::GetDisplayPreferences,
+    ] {
+        let mut bytes = Vec::new();
+        write_client_message_with_ids(&mut bytes, Some(2), Some(7), &message).unwrap();
+        assert_eq!(
+            read_client_message_with_ids(&mut Cursor::new(bytes)).unwrap(),
+            (Some(2), Some(7), message)
+        );
+    }
+    let message = ServerMessage::DisplayPreferencesState(crate::display::DisplayPreferencesState {
+        tab_id: 2,
+        frame_source: 19,
+        frame_generation: 8,
+        preferences,
+    });
+    let mut bytes = Vec::new();
+    write_server_message_with_ids(&mut bytes, Some(2), Some(7), &message).unwrap();
+    assert_eq!(
+        read_server_message_with_ids(&mut Cursor::new(bytes)).unwrap(),
+        (Some(2), Some(7), message)
+    );
+    assert!(serde_json::from_str::<ClientMessage>(r#"{"SetDisplayPreferences":{"preferences":{"dark":"yes","high_contrast":false,"reduced_motion":false}}}"#).is_err());
+}
+
+#[test]
 fn display_viewport_and_zoom_round_trip_with_tab_and_request_identity() {
     use crate::viewport::{DisplayViewport, ViewportState};
     let viewport = DisplayViewport {
         width: 333.5,
         height: 101.25,
         device_scale: 1.5,
+        backing_scale: None,
     };
     viewport.validate().unwrap();
     assert_eq!(viewport.pixel_size(), (501, 152));
@@ -35,6 +69,7 @@ fn display_viewport_and_zoom_round_trip_with_tab_and_request_identity() {
         width: viewport.width,
         height: viewport.height,
         device_scale: viewport.device_scale,
+        backing_scale: None,
         zoom: 2.0,
         css_width: viewport.width / 2.0,
         css_height: viewport.height / 2.0,
@@ -61,6 +96,18 @@ fn display_viewport_and_zoom_round_trip_with_tab_and_request_identity() {
             ..viewport
         },
         DisplayViewport {
+            backing_scale: Some(f64::NAN),
+            ..viewport
+        },
+        DisplayViewport {
+            backing_scale: Some(0.0),
+            ..viewport
+        },
+        DisplayViewport {
+            backing_scale: Some(5.0),
+            ..viewport
+        },
+        DisplayViewport {
             width: 2048.00001,
             device_scale: 2.0,
             ..viewport
@@ -68,6 +115,19 @@ fn display_viewport_and_zoom_round_trip_with_tab_and_request_identity() {
     ] {
         assert!(invalid.validate().is_err());
     }
+    let legacy: DisplayViewport =
+        serde_json::from_str(r#"{"width":333.5,"height":101.25,"device_scale":1.5}"#).unwrap();
+    assert_eq!(legacy, viewport);
+    let actual = DisplayViewport {
+        backing_scale: Some(2.0),
+        ..viewport
+    };
+    actual.validate().unwrap();
+    assert_eq!(actual.pixel_size(), viewport.pixel_size());
+    assert_eq!(
+        serde_json::from_str::<DisplayViewport>(&serde_json::to_string(&actual).unwrap()).unwrap(),
+        actual
+    );
 }
 
 #[test]

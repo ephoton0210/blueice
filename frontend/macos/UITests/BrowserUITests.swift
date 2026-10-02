@@ -11,10 +11,13 @@ import XCTest
 final class BrowserUITests: XCTestCase {
     private var app: XCUIApplication!
     private var originalInputSource: TISInputSource?
+    private var preferenceDomain = ""
 
     override func setUpWithError() throws {
         continueAfterFailure = false
         app = XCUIApplication()
+        preferenceDomain = "cc.blueice.uitests." + UUID().uuidString
+        app.launchArguments = ["--preferences-domain", preferenceDomain]
         originalInputSource = TISCopyCurrentKeyboardInputSource().takeRetainedValue()
         let filter = [kTISPropertyInputSourceID as String: "com.apple.keylayout.ABC"] as CFDictionary
         let sources = TISCreateInputSourceList(filter, false).takeRetainedValue() as! [TISInputSource]
@@ -22,7 +25,10 @@ final class BrowserUITests: XCTestCase {
     }
 
     override func tearDownWithError() throws {
-        defer { if let originalInputSource { XCTAssertEqual(TISSelectInputSource(originalInputSource), noErr) } }
+        defer {
+            UserDefaults(suiteName: preferenceDomain)?.removePersistentDomain(forName: preferenceDomain)
+            if let originalInputSource { XCTAssertEqual(TISSelectInputSource(originalInputSource), noErr) }
+        }
         if app.state != .notRunning {
             if app.windows.firstMatch.exists { app.windows.firstMatch.buttons[XCUIIdentifierCloseWindow].click() }
             XCTAssertTrue(app.wait(for: .notRunning, timeout: 10), "Normal close must stop the owned services")
@@ -89,6 +95,119 @@ final class BrowserUITests: XCTestCase {
         let attachment = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
         attachment.name = "macos-retina-viewport"; attachment.lifetime = .keepAlways; add(attachment)
         XCTAssertEqual(fixture.requests, ["/context-menu", "/context-menu"])
+    }
+
+    private func preferenceWindow() -> XCUIElement {
+        app.typeKey(",", modifierFlags: .command)
+        let window = app.windows.containing(.popUpButton, identifier: "appearance-choice").firstMatch
+        XCTAssertTrue(window.waitForExistence(timeout: 10), app.debugDescription)
+        return window
+    }
+    private func choosePreference(_ window: XCUIElement, _ identifier: String, _ title: String) {
+        window.popUpButtons[identifier].click(); app.menuItems[title].click()
+    }
+    private func pageContent(_ name: String) -> XCUIElement {
+        app.groups["page"].descendants(matching: .any).matching(NSPredicate(format: "label == %@ OR value == %@", name, name)).firstMatch
+    }
+    private func waitPageContent(_ name: String, exists: Bool = true) {
+        let element = pageContent(name)
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == %@", NSNumber(value: exists)), object: element)], timeout: 15), .completed, name)
+    }
+    private func screenshotPixels(_ data: Data) throws -> (Data, Int, Int) {
+        let image = try XCTUnwrap(NSBitmapImageRep(data: data)?.cgImage)
+        let space = try XCTUnwrap(CGColorSpace(name: CGColorSpace.sRGB))
+        let context = try XCTUnwrap(CGContext(data: nil, width: image.width, height: image.height,
+            bitsPerComponent: 8, bytesPerRow: image.width * 4, space: space,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        // Convert the screenshot's embedded monitor profile as a whole. colorAt()
+        // produces Generic RGB colors and loses that profile on this macOS host.
+        context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+        return (Data(bytes: try XCTUnwrap(context.data), count: image.width * image.height * 4), image.width, image.height)
+    }
+    private func colorCount(_ data: Data, red: Double, green: Double, blue: Double) throws -> Int {
+        let (pixels, width, height) = try screenshotPixels(data); var count = 0
+        for y in stride(from: 0, to: height, by: 3) {
+            for x in stride(from: 0, to: width, by: 3) {
+                let offset = (y * width + x) * 4
+                if abs(Double(pixels[offset]) / 255 - red) < 0.02,
+                   abs(Double(pixels[offset + 1]) / 255 - green) < 0.02,
+                   abs(Double(pixels[offset + 2]) / 255 - blue) < 0.02 { count += 1 }
+            }
+        }
+        return count
+    }
+    private func brightCount(_ data: Data) throws -> Int {
+        let (pixels, _, _) = try screenshotPixels(data)
+        return stride(from: 0, to: pixels.count, by: 4).filter { offset in
+            pixels[offset] > 191 && pixels[offset + 1] > 191 && pixels[offset + 2] > 191
+        }.count
+    }
+    func testAppearanceSettingsPreservePageAndPersistAcrossNativeRelaunch() throws {
+        let fixture = try HTTPFixture(); defer { fixture.stop() }
+        launch(); enter(fixture.origin + "/appearance")
+        let editor = app.groups["page"].textFields["Appearance editor"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 15))
+        editor.click(); editor.typeKey("a", modifierFlags: .command); editor.typeText("retained text")
+        waitValue(editor, "retained text")
+        let settings = preferenceWindow()
+        choosePreference(settings, "appearance-choice", "Light")
+        choosePreference(settings, "contrast-choice", "Standard")
+        choosePreference(settings, "motion-choice", "No reduction")
+        settings.buttons[XCUIIdentifierCloseWindow].click()
+        waitPageContent("Light content"); waitPageContent("Standard contrast"); waitPageContent("Motion allowed")
+        let lightShot = app.groups["page"].screenshot()
+        let lightAttachment = XCTAttachment(screenshot: lightShot)
+        lightAttachment.name = "macos-display-light-page"; lightAttachment.lifetime = .keepAlways; add(lightAttachment)
+        let light = try XCTUnwrap(lightShot.image.tiffRepresentation)
+        XCTAssertGreaterThan(try colorCount(light, red: 170/255, green: 187/255, blue: 204/255), 100)
+        let panel = preferenceWindow()
+        choosePreference(panel, "appearance-choice", "Dark")
+        choosePreference(panel, "motion-choice", "Reduce")
+        panel.buttons[XCUIIdentifierCloseWindow].click()
+        waitPageContent("Dark content"); waitPageContent("Reduced motion")
+        let tabs = app.descendants(matching: .any)["tab-strip"]
+        let standard = try brightCount(try XCTUnwrap(tabs.screenshot().image.tiffRepresentation))
+        let contrast = preferenceWindow()
+        choosePreference(contrast, "contrast-choice", "Increased")
+        contrast.buttons[XCUIIdentifierCloseWindow].click()
+        waitPageContent("Dark content"); waitPageContent("Increased contrast"); waitPageContent("Reduced motion")
+        XCTAssertGreaterThan(try brightCount(try XCTUnwrap(tabs.screenshot().image.tiffRepresentation)), standard + 50, "Increased contrast must add a visible selected-tab outline on the same dark chrome")
+        waitPageContent("Light content", exists: false); waitPageContent("Motion allowed", exists: false)
+        waitValue(editor, "retained text")
+        let dark = try XCTUnwrap(app.groups["page"].screenshot().image.tiffRepresentation)
+        XCTAssertGreaterThan(try colorCount(dark, red: 16/255, green: 32/255, blue: 48/255), 100)
+        XCTAssertEqual(try colorCount(dark, red: 170/255, green: 187/255, blue: 204/255), 0)
+        let screenshot = XCTAttachment(screenshot: app.windows["browser-window"].screenshot())
+        screenshot.name = "macos-display-dark"; screenshot.lifetime = .keepAlways; add(screenshot)
+        XCTAssertEqual(fixture.requests, ["/appearance"])
+        app.windows["browser-window"].buttons[XCUIIdentifierCloseWindow].click()
+        XCTAssertTrue(app.wait(for: .notRunning, timeout: 10))
+        launch(); enter(fixture.origin + "/appearance")
+        waitPageContent("Dark content"); waitPageContent("Increased contrast"); waitPageContent("Reduced motion")
+        let restored = preferenceWindow()
+        XCTAssertEqual(restored.popUpButtons["appearance-choice"].value as? String, "Dark")
+        XCTAssertEqual(restored.popUpButtons["contrast-choice"].value as? String, "Increased")
+        XCTAssertEqual(restored.popUpButtons["motion-choice"].value as? String, "Reduce")
+        restored.buttons["restore-display-system"].click()
+        XCTAssertEqual(restored.popUpButtons["appearance-choice"].value as? String, "System")
+        XCTAssertEqual(restored.popUpButtons["contrast-choice"].value as? String, "System")
+        XCTAssertEqual(restored.popUpButtons["motion-choice"].value as? String, "System")
+        restored.buttons[XCUIIdentifierCloseWindow].click()
+        XCTAssertEqual(fixture.requests, ["/appearance", "/appearance"])
+    }
+    func testAppearanceMenuKeepsPreferencesAcrossTabsAndHistory() throws {
+        let fixture = try HTTPFixture(); defer { fixture.stop() }
+        launch(); enter(fixture.origin + "/appearance")
+        app.menuBars.menuBarItems["View"].click(); app.menuItems["Appearance"].hover(); app.menuItems["Dark Appearance"].click()
+        waitPageContent("Dark content"); waitPageContent("Light content", exists: false)
+        app.buttons["add-tab"].click(); waitValue(app.textFields["address"], "about:credits")
+        enter(fixture.origin + "/appearance"); waitPageContent("Dark content")
+        app.menuBars.menuBarItems["View"].click(); app.menuItems["Appearance"].hover(); app.menuItems["Light Appearance"].click()
+        waitPageContent("Light content")
+        app.buttons["tab-1"].click(); waitPageContent("Light content")
+        enter(fixture.origin + "/destination"); app.buttons["back"].click()
+        waitValue(app.textFields["address"], fixture.origin + "/appearance"); waitPageContent("Light content")
+        XCTAssertEqual(fixture.requests, ["/appearance", "/appearance", "/destination", "/appearance"])
     }
 
     func testFullScreenUpdatesViewportAndRestoresNativeWindow() {
@@ -221,12 +340,13 @@ final class BrowserUITests: XCTestCase {
         let lower = app.groups["page"].descendants(matching: .any).matching(NSPredicate(format: "label == 'Lower frost' OR value == 'Lower frost'")).firstMatch
         XCTAssertTrue(lower.waitForExistence(timeout: 10), "Find Previous must scroll to the last result")
         XCTAssertTrue(lower.frame.intersects(app.groups["page"].frame))
-        let bitmap = try XCTUnwrap(NSBitmapImageRep(data: try XCTUnwrap(app.groups["page"].screenshot().image.tiffRepresentation)))
+        let (pixels, width, height) = try screenshotPixels(try XCTUnwrap(app.groups["page"].screenshot().image.tiffRepresentation))
         var orange = 0
-        for y in stride(from: 0, to: bitmap.pixelsHigh, by: 2) {
-            for x in stride(from: 0, to: bitmap.pixelsWide, by: 2) {
-                if let color = bitmap.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB), color.redComponent > 0.85,
-                   (0.35...0.75).contains(color.greenComponent), color.blueComponent < 0.3 { orange += 1 }
+        for y in stride(from: 0, to: height, by: 2) {
+            for x in stride(from: 0, to: width, by: 2) {
+                let offset = (y * width + x) * 4
+                if Double(pixels[offset]) / 255 > 0.85, (0.35...0.75).contains(Double(pixels[offset + 1]) / 255),
+                   Double(pixels[offset + 2]) / 255 < 0.3 { orange += 1 }
             }
         }
         XCTAssertGreaterThan(orange, 10, "Current match must have visible core-rendered orange pixels")
@@ -286,12 +406,13 @@ final class BrowserUITests: XCTestCase {
         let drawn = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value BEGINSWITH 'Rendered'"), object: page)
         XCTAssertEqual(XCTWaiter.wait(for: [drawn], timeout: 15), .completed)
         let shot = page.screenshot()
-        let bitmap = try XCTUnwrap(NSBitmapImageRep(data: try XCTUnwrap(shot.image.tiffRepresentation)))
+        let (pixels, width, height) = try screenshotPixels(try XCTUnwrap(shot.image.tiffRepresentation))
         var dark = 0
-        for y in stride(from: 0, to: bitmap.pixelsHigh, by: 3) {
-            for x in stride(from: 0, to: bitmap.pixelsWide, by: 3) {
-                if let color = bitmap.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB),
-                   color.redComponent < 0.7, color.greenComponent < 0.7, color.blueComponent < 0.7 { dark += 1 }
+        for y in stride(from: 0, to: height, by: 3) {
+            for x in stride(from: 0, to: width, by: 3) {
+                let offset = (y * width + x) * 4
+                if Double(pixels[offset]) / 255 < 0.7, Double(pixels[offset + 1]) / 255 < 0.7,
+                   Double(pixels[offset + 2]) / 255 < 0.7 { dark += 1 }
             }
         }
         XCTAssertGreaterThan(dark, 100, "The viewport must contain visible core-rendered content")
@@ -374,15 +495,8 @@ final class BrowserUITests: XCTestCase {
         waitValue(app.textFields["address"], url)
         let page = app.groups["page"]
         let pixels = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
-            guard let bitmap = NSBitmapImageRep(data: page.screenshot().image.tiffRepresentation ?? Data()) else { return false }
-            for y in stride(from: 10, to: bitmap.pixelsHigh, by: 40) {
-                for x in stride(from: 10, to: bitmap.pixelsWide, by: 40) {
-                    if let color = bitmap.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB),
-                       color.redComponent < 0.25, color.greenComponent > 0.35, color.greenComponent < 0.65,
-                       color.blueComponent < 0.35 { return true }
-                }
-            }
-            return false
+            let count = try? self.colorCount(page.screenshot().image.tiffRepresentation ?? Data(), red: 32/255, green: 120/255, blue: 64/255)
+            return (count ?? 0) > 100
         }, object: page)
         XCTAssertEqual(XCTWaiter.wait(for: [pixels], timeout: 15), .completed)
         app.buttons["back"].click()
@@ -761,7 +875,7 @@ final class BrowserUITests: XCTestCase {
     }
 
     func testMissingLauncherShowsFailureAndDisabledNavigation() {
-        app.launchArguments = ["--launcher-exe", "/nonexistent/blueice-launcher"]
+        app.launchArguments += ["--launcher-exe", "/nonexistent/blueice-launcher"]
         app.launch()
         let failed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value CONTAINS[c] 'launcher' OR label CONTAINS[c] 'launcher'"), object: app.staticTexts["status"])
         XCTAssertEqual(XCTWaiter.wait(for: [failed], timeout: 10), .completed, app.debugDescription)
@@ -776,7 +890,7 @@ final class BrowserUITests: XCTestCase {
     }
 
     func testMissingCoreShowsFailureAndDisabledNavigation() {
-        app.launchArguments = ["--core-exe", "/nonexistent/blueice-core"]
+        app.launchArguments += ["--core-exe", "/nonexistent/blueice-core"]
         app.launch()
         XCTAssertTrue(app.staticTexts["status"].waitForExistence(timeout: 10))
         let failed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value CONTAINS[c] 'core' OR label CONTAINS[c] 'core'"), object: app.staticTexts["status"])

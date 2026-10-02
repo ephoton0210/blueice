@@ -23,12 +23,14 @@
 //!   [`ComputedStyle`] map, ready for `blueice-layout` once it exists.
 
 mod cascade;
+mod media;
 mod parser;
 mod selector;
 mod tokenizer;
 mod value;
 
 pub use cascade::{cascade, ua_stylesheet, ComputedStyle, Origin};
+pub use media::{matches_media, MediaEnvironment};
 pub use parser::{Declaration, Rule};
 pub use selector::{matches, ComplexSelector, Compound, SimpleSelector, Specificity};
 pub use value::{Color, Length, Value};
@@ -43,6 +45,14 @@ pub struct Stylesheet {
 pub fn parse(input: &str) -> Stylesheet {
     Stylesheet {
         rules: parser::parse(input),
+    }
+}
+
+/// Resolve conditional rules against the current screen environment while
+/// retaining the legacy parser's at-rule-skipping API.
+pub fn parse_with_environment(input: &str, environment: &MediaEnvironment) -> Stylesheet {
+    Stylesheet {
+        rules: parser::parse_with_environment(input, environment),
     }
 }
 

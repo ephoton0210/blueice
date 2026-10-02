@@ -364,6 +364,41 @@ pub(super) fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
                             )?;
                         }
                     }
+                    ClientMessage::SetDisplayPreferences { preferences } => {
+                        if tabs.get(target).is_none() {
+                            write_unknown_tab_error(stream, request_id, target)?;
+                            continue;
+                        }
+                        tabs.set_display_preferences_all(preferences);
+                        let ids: Vec<_> = tabs.ids().collect();
+                        for id in ids {
+                            send_frame(
+                                tabs.get_mut(id).expect("live display tab"),
+                                stream,
+                                frame_dir,
+                                generation,
+                                Some(id.as_u64()),
+                                request_id,
+                            )?;
+                        }
+                    }
+                    ClientMessage::GetDisplayPreferences => {
+                        let Some(page) = tabs.get(target) else {
+                            write_unknown_tab_error(stream, request_id, target)?;
+                            continue;
+                        };
+                        blueice_ipc::write_server_message_with_ids(
+                            stream,
+                            reply_tab,
+                            request_id,
+                            &ServerMessage::DisplayPreferencesState(
+                                page.display_preferences_state(
+                                    blueice_ipc::shm::frame_source_id(frame_dir),
+                                    target.as_u64(),
+                                ),
+                            ),
+                        )?;
+                    }
                     ClientMessage::SetPageZoom { zoom } => {
                         let Some(page) = tabs.get(target) else {
                             write_unknown_tab_error(stream, request_id, target)?;
@@ -389,6 +424,7 @@ pub(super) fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
                             width: state.width,
                             height: state.height,
                             device_scale: state.device_scale,
+                            backing_scale: state.backing_scale,
                         };
                         if let Err(message) = display.validate() {
                             write_error(stream, reply_tab, request_id, message)?;

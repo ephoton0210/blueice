@@ -7,7 +7,9 @@ import SwiftUI
 
 struct BrowserView: View {
     @ObservedObject var model: BrowserModel
+    @ObservedObject private var appearance: BrowserAppearance
     @FocusState private var addressFocused: Bool
+    init(model: BrowserModel) { self.model = model; self.appearance = model.appearance }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -31,9 +33,11 @@ struct BrowserView: View {
                             .padding(6)
                             .background(model.selected == tab.id ? Color.accentColor.opacity(0.15) : Color.clear)
                             .clipShape(RoundedRectangle(cornerRadius: 6))
+                            .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(model.selected == tab.id && appearance.resolved.highContrast ? Color.primary : Color.clear, lineWidth: 2).allowsHitTesting(false).accessibilityHidden(true))
                         }
                     }
                 }
+                .accessibilityIdentifier("tab-strip")
                 button("plus", "New tab", "add-tab") { model.action(.values("OpenTab", ["url": .null])) }
                     .keyboardShortcut("t", modifiers: .command)
             }
@@ -100,7 +104,7 @@ struct BrowserView: View {
                     .help("Reset page zoom")
                     .disabled(!model.ready || model.selected == nil)
             }
-            .font(.caption).foregroundStyle(.secondary).padding(.horizontal, 12).padding(.vertical, 6)
+            .font(.caption).foregroundStyle(appearance.resolved.highContrast ? .primary : .secondary).padding(.horizontal, 12).padding(.vertical, 6)
         }
         .alert("Resend form data?", isPresented: $model.resubmissionPresented, presenting: model.resubmission) { prompt in
             Button("Resend") { model.resolveResubmission(prompt.confirmationID, accept: true) }
@@ -109,6 +113,8 @@ struct BrowserView: View {
             Text("Resending will repeat the previous form submission to \(URL(string: prompt.url)?.host ?? prompt.url).")
         }
         .buttonStyle(.plain)
+        .transaction { if appearance.resolved.reducedMotion { $0.animation = nil; $0.disablesAnimations = true } }
+        .background(AppearanceWindow(settings: appearance).frame(width: 0, height: 0).accessibilityHidden(true))
         .frame(minWidth: 720, minHeight: 480)
         .onChange(of: model.addressFocusSerial) { _, _ in addressFocused = true }
         .onChange(of: model.findFocusSerial) { _, _ in addressFocused = false }
@@ -116,6 +122,7 @@ struct BrowserView: View {
 
     private func button(_ symbol: String, _ label: String, _ identifier: String, action: @escaping () -> Void) -> some View {
         Button(action: action) { Image(systemName: symbol).frame(width: 24, height: 24) }
+            .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(appearance.resolved.highContrast ? Color.primary : Color.clear, lineWidth: 1).allowsHitTesting(false).accessibilityHidden(true))
             .help(label).accessibilityLabel(label).accessibilityIdentifier(identifier)
     }
 }
@@ -133,7 +140,16 @@ private struct FindField: NSViewRepresentable {
         return field
     }
     func updateNSView(_ field: NSSearchField, context: Context) {
-        if field.stringValue != model.findQuery { field.stringValue = model.findQuery }
+        let coordinator = context.coordinator
+        coordinator.synchronizing = true
+        defer { coordinator.synchronizing = false }
+        let changedTab = coordinator.tab != model.selected
+        coordinator.tab = model.selected
+        if changedTab { field.abortEditing() }
+        let composing = (field.currentEditor() as? NSTextView)?.hasMarkedText() == true
+        // AppKit owns temporary marked text. A repaint must not replace a
+        // pending dead key/IME sequence with the last committed model query.
+        if !composing && field.stringValue != model.findQuery { field.stringValue = model.findQuery }
         field.isEnabled = model.ready && model.selected != nil
         guard context.coordinator.serial != model.findFocusSerial else { return }
         context.coordinator.serial = model.findFocusSerial
@@ -149,9 +165,12 @@ private struct FindField: NSViewRepresentable {
     final class Coordinator: NSObject, NSSearchFieldDelegate {
         weak var model: BrowserModel?
         var serial: UInt64?
+        var tab: UInt64?
+        var synchronizing = false
         init(_ model: BrowserModel) { self.model = model }
         func controlTextDidChange(_ notification: Notification) {
-            guard let field = notification.object as? NSSearchField else { return }
+            guard !synchronizing, let field = notification.object as? NSSearchField,
+                  (field.currentEditor() as? NSTextView)?.hasMarkedText() != true else { return }
             model?.setFindQuery(field.stringValue)
         }
         func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {

@@ -1841,6 +1841,7 @@ mod unix {
                     | ServerMessage::Unknown
                     | ServerMessage::FindState(_)
                     | ServerMessage::ViewportState(_)
+                    | ServerMessage::DisplayPreferencesState(_)
                     | ServerMessage::ContextMenu(_)
                     | ServerMessage::ContextMenuLink { .. }
                     | ServerMessage::TextInputState(_) => {}

@@ -73,6 +73,8 @@ final class NativeEditingTests: XCTestCase {
         await wait { model.tabs.count == 2 && model.selected != first && model.displayState != nil }
         XCTAssertEqual(model.zoomPercent, 100)
         model.select(first); await wait { model.zoomPercent == 150 }
+        XCTAssertEqual(model.selected, first)
+        XCTAssertEqual(model.displayState?.zoom, 1.5, "The selected tab must retain its confirmed core zoom")
         XCTAssertEqual(fixture.requests, ["/context-menu"])
     }
 
@@ -81,6 +83,11 @@ final class NativeEditingTests: XCTestCase {
         let root = try XCTUnwrap(JSONSerialization.jsonObject(with: bytes.dropFirst(4)) as? [String: Any])
         let viewport = ((root["message"] as? [String: Any])?["SetViewport"] as? [String: Any])?["viewport"] as? [String: Double]
         XCTAssertEqual(viewport?["device_scale"], 2)
+        XCTAssertNil(viewport?["backing_scale"], "Legacy callers retain the existing wire shape")
+        let capped = try BrowserWire.encode(.viewport(500, 300, 1, backingScale: 2), tab: 2, request: 8)
+        let cappedRoot = try XCTUnwrap(JSONSerialization.jsonObject(with: capped.dropFirst(4)) as? [String: Any])
+        let cappedViewport = ((cappedRoot["message"] as? [String: Any])?["SetViewport"] as? [String: Any])?["viewport"] as? [String: Double]
+        XCTAssertEqual(cappedViewport?["device_scale"], 1); XCTAssertEqual(cappedViewport?["backing_scale"], 2)
         func decode(_ mutate: (inout [String: Any]) -> Void = { _ in }) throws -> BrowserMessage {
             var state: [String: Any] = ["tab_id": 2, "frame_source": 19, "frame_generation": 7, "width": 500,
                 "height": 300, "device_scale": 2, "zoom": 2, "css_width": 250, "css_height": 150,
@@ -89,7 +96,9 @@ final class NativeEditingTests: XCTestCase {
             return try JSONDecoder().decode(IncomingEnvelope.self, from: JSONSerialization.data(withJSONObject: ["message": ["ViewportState": state]])).message
         }
         if case .viewportState = try decode() {} else { XCTFail("Valid geometry must decode") }
-        for bad in [try decode { $0["pixel_width"] = 999 }, try decode { $0["css_width"] = 500 }, try decode { $0["zoom"] = 6 }] {
+        if case .viewportState(let state) = try decode({ $0["backing_scale"] = 3 }) { XCTAssertEqual(state.backingScale, 3) }
+        else { XCTFail("Actual backing scale must decode independently of raster density") }
+        for bad in [try decode { $0["pixel_width"] = 999 }, try decode { $0["css_width"] = 500 }, try decode { $0["zoom"] = 6 }, try decode { $0["backing_scale"] = 0 }, try decode { $0["backing_scale"] = "2" }] {
             if case .viewportUnavailable = bad {} else { XCTFail("Invalid geometry must fail soft") }
         }
     }
@@ -128,9 +137,9 @@ final class NativeEditingTests: XCTestCase {
         XCTAssertTrue(predicate(), "Timed out waiting for real core text state", file: file, line: line)
     }
 
-    private func start(path: String = "/editing") async throws -> (BrowserModel, CorePageView, HTTPFixture) {
+    private func start(path: String = "/editing", appearance: BrowserAppearance? = nil) async throws -> (BrowserModel, CorePageView, HTTPFixture) {
         let fixture = try HTTPFixture()
-        let model = BrowserModel()
+        let model = BrowserModel(appearance: appearance)
         let view = CorePageView(frame: CGRect(x: 0, y: 0, width: 500, height: 300))
         view.model = model
         let launcher = Bundle(for: Self.self).bundleURL.deletingLastPathComponent().appendingPathComponent("BlueIce.app/Contents/MacOS/blueice-launcher")
@@ -139,6 +148,46 @@ final class NativeEditingTests: XCTestCase {
         model.address = fixture.origin + path; model.navigateAddress()
         await wait { model.representation?.url == fixture.origin + path && model.textInputState != nil }
         return (model, view, fixture)
+    }
+
+    func testDisplayPreferencesUpdateSharedPixelsWithoutLosingEditedTextOrDocument() async throws {
+        let domain = "cc.blueice.appearance.core." + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: domain)); defer { defaults.removePersistentDomain(forName: domain) }
+        let appearance = BrowserAppearance(defaults: defaults, systemPreferences: { DisplayPreferences() }, observeApplication: false)
+        let (model, _, fixture) = try await start(path: "/appearance", appearance: appearance)
+        defer { fixture.stop(); Task { await model.stop() } }
+        await wait { model.displayPreferences == DisplayPreferences() && model.representation?.nodes.contains { $0.name == "Light content" } == true }
+        func pixels(_ rgb: [UInt8]) throws -> Int {
+            let image = try XCTUnwrap(model.image)
+            let data = try XCTUnwrap(image.dataProvider?.data) as Data
+            return stride(from: 0, to: data.count, by: 4).filter { offset in
+                data[offset] == rgb[0] && data[offset + 1] == rgb[1] && data[offset + 2] == rgb[2]
+            }.count
+        }
+        XCTAssertGreaterThan(try pixels([170, 187, 204]), 100)
+        let editor = try XCTUnwrap(model.representation?.nodes.first { $0.name == "Appearance editor" })
+        model.focusPage(x: editor.bounds.x + 10, y: editor.bounds.y + 10)
+        await wait { model.textInputState?.focused != nil }
+        model.textInput(.selectAll); model.textInput(.replace("Retained 中文", nil))
+        await wait { model.textInputState?.focused?.text == "Retained 中文" && !model.textInputBusy }
+        let before = try XCTUnwrap(model.textInputState)
+        appearance.setAppearance(.dark); appearance.setContrast(.increased); appearance.setMotion(.reduced)
+        let preferences = DisplayPreferences(dark: true, highContrast: true, reducedMotion: true)
+        await wait { model.displayPreferences == preferences && model.representation?.nodes.contains { $0.name == "Reduced motion" } == true }
+        XCTAssertEqual(model.textInputState?.document_generation, before.document_generation)
+        XCTAssertEqual(model.textInputState?.focused?.text, "Retained 中文")
+        XCTAssertTrue(model.representation?.nodes.contains { $0.name == "Dark content" } == true)
+        XCTAssertFalse(model.representation?.nodes.contains { $0.name == "Light content" } == true)
+        XCTAssertGreaterThan(try pixels([16, 32, 48]), 100)
+        XCTAssertEqual(try pixels([170, 187, 204]), 0)
+        appearance.setAppearance(.light); appearance.setAppearance(.dark); appearance.setAppearance(.light)
+        await wait { model.displayPreferences?.dark == false && model.representation?.nodes.contains { $0.name == "Light content" } == true }
+        model.viewportChanged(CGSize(width: 2300, height: 300), deviceScale: 2)
+        await wait { model.displayState?.backingScale == 2 && model.representation?.nodes.contains { $0.name == "High density screen" } == true }
+        XCTAssertEqual(model.image?.width, 4096)
+        XCTAssertLessThan(try XCTUnwrap(model.displayState?.deviceScale), 2)
+        XCTAssertEqual(model.textInputState?.focused?.text, "Retained 中文")
+        XCTAssertEqual(fixture.requests, ["/appearance"], "Preference changes must not reload or fetch")
     }
 
     func testContextMenuUsesCoreHitTargetsAndRejectsStaleMenus() async throws {

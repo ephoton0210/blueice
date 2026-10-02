@@ -7,6 +7,29 @@ import Combine
 
 @MainActor
 final class BrowserModel: ObservableObject {
+    let appearance: BrowserAppearance
+    @Published private(set) var displayPreferences: DisplayPreferences?
+    private var preferenceStates: [UInt64: DisplayPreferencesState] = [:]
+    private var preferenceObservation: AnyCancellable?
+    private var preferenceTask: Task<Void, Never>?
+    private var lastSentPreferences: DisplayPreferences?
+    init(appearance: BrowserAppearance? = nil) {
+        self.appearance = appearance ?? BrowserAppearance()
+        preferenceObservation = self.appearance.$resolved.removeDuplicates().sink { [weak self] _ in
+            Task { @MainActor in self?.synchronizePreferences() }
+        }
+    }
+    private func synchronizePreferences() {
+        guard ready, selected != nil, preferenceTask == nil else { return }
+        preferenceTask = Task {
+            while ready, let tab = selected, lastSentPreferences != appearance.resolved, !Task.isCancelled {
+                let next = appearance.resolved
+                guard await send(.displayPreferences(next), tab: tab) != nil else { break }
+                lastSentPreferences = next
+            }
+            preferenceTask = nil
+        }
+    }
     @Published private(set) var tabs: [BrowserTab] = []
     @Published private(set) var selected: UInt64?
     @Published var address = ""
@@ -20,6 +43,8 @@ final class BrowserModel: ObservableObject {
     @Published private(set) var displayState: ViewportState?
     private var displayStates: [UInt64: ViewportState] = [:]
     private var desiredZooms: [UInt64: Double] = [:]
+    private var zoomWrites: [UInt64: Double] = [:]
+    private var zoomTask: Task<Void, Never>?
     var cssViewportSize: CGSize? {
         guard let state = displayState, state.frameGeneration == generation else { return nil }
         return CGSize(width: state.cssWidth, height: state.cssHeight)
@@ -33,9 +58,20 @@ final class BrowserModel: ObservableObject {
         if let value { setZoom(value) }
     }
     func setZoom(_ zoom: Double) {
-        guard ready, selected != nil, zoom.isFinite, (0.25...5).contains(zoom) else { return }
-        if let selected { desiredZooms[selected] = zoom }
-        action(.values("SetPageZoom", ["zoom": .number(zoom)]))
+        guard ready, let tab = selected, zoom.isFinite, (0.25...5).contains(zoom) else { return }
+        desiredZooms[tab] = zoom
+        zoomWrites[tab] = zoom
+        guard zoomTask == nil else { return }
+        // Absolute zoom updates may coalesce, but their writes must be ordered.
+        // Independent Tasks can send an older step after the user's final step.
+        zoomTask = Task {
+            defer { zoomTask = nil }
+            while ready, !Task.isCancelled, let next = zoomWrites.first {
+                zoomWrites.removeValue(forKey: next.key)
+                guard tabs.contains(where: { $0.id == next.key }) else { continue }
+                guard await send(.values("SetPageZoom", ["zoom": .number(next.value)]), tab: next.key) != nil else { break }
+            }
+        }
     }
     @Published private(set) var history = HistoryState()
     @Published private(set) var representation: PageRepresentation?
@@ -128,13 +164,15 @@ final class BrowserModel: ObservableObject {
                     catch let error as NSError where error.domain == NSCocoaErrorDomain && error.code == NSFileReadNoSuchFileError { return }
                 }
                 let frame = pixels
-                Task { @MainActor [weak self] in self?.apply(envelope, pixels: frame) }
+                // The reader is serial; preserve that order on the main queue.
+                // Independent Tasks may run metadata before its matching frame.
+                DispatchQueue.main.async { [weak self] in self?.apply(envelope, pixels: frame) }
             } catch {
                 let message = error.localizedDescription
-                Task { @MainActor [weak self] in
+                DispatchQueue.main.async { [weak self] in
                     guard let self else { return }
                     self.status = message; self.ready = false; self.representation = nil; self.clearTextInput()
-                    await self.session.stop()
+                    Task { await self.session.stop() }
                 }
             }
         }
@@ -144,6 +182,8 @@ final class BrowserModel: ObservableObject {
             ready = true
             status = "Ready"
             await resize(tab: 1)
+            let preferences = appearance.resolved
+            if await send(.displayPreferences(preferences), tab: 1) != nil { lastSentPreferences = preferences }
             await send(.unit("ListTabs"))
             await send(.values("Navigate", ["url": .string("about:credits")]), tab: 1)
         } catch { status = error.localizedDescription; await session.stop() }
@@ -167,7 +207,9 @@ final class BrowserModel: ObservableObject {
             if selected.map({ !live.contains($0) }) == true { resubmission = nil; resubmissionPresented = false }
             frames = frames.filter { live.contains($0.key) }
             displayStates = displayStates.filter { live.contains($0.key) }
+            preferenceStates = preferenceStates.filter { live.contains($0.key) }
             desiredZooms = desiredZooms.filter { live.contains($0.key) }
+            zoomWrites = zoomWrites.filter { live.contains($0.key) }
             histories = histories.filter { live.contains($0.key) }
             representations = representations.filter { live.contains($0.key) }
             documentEpochs = documentEpochs.filter { live.contains($0.key) }
@@ -216,6 +258,7 @@ final class BrowserModel: ObservableObject {
             guard let tab, let pixels, pixels.generation > (frames[tab]?.generation ?? 0) else { return }
             frames[tab] = pixels
             if tab == selected { displayState = nil }
+            if tab == selected { displayPreferences = nil }
             representations.removeValue(forKey: tab)
             if tab == selected { showFrame(pixels); representation = nil }
             requestRepresentation(tab)
@@ -280,6 +323,14 @@ final class BrowserModel: ObservableObject {
         case .viewportUnavailable:
             if let tab { displayStates.removeValue(forKey: tab) }
             if tab == selected { displayState = nil; status = "Display geometry unavailable" }
+        case .displayPreferences(let state):
+            guard let tab, state.tabID == tab, state.frameGeneration == frames[tab]?.generation,
+                  state.frameSource == PageRepresentation.frameSource(directory: session.frameDirectory.path) else { return }
+            preferenceStates[tab] = state
+            if tab == selected { displayPreferences = state.preferences }
+        case .displayPreferencesUnavailable:
+            if let tab { preferenceStates.removeValue(forKey: tab) }
+            if tab == selected { displayPreferences = nil; status = "Display preferences unavailable" }
         default: break
         }
     }
@@ -294,6 +345,8 @@ final class BrowserModel: ObservableObject {
         history = selected.flatMap { histories[$0] } ?? HistoryState()
         showFrame(selected.flatMap { frames[$0] })
         displayState = selected.flatMap { displayStates[$0] }
+        displayPreferences = selected.flatMap { preferenceStates[$0]?.preferences }
+        synchronizePreferences()
         representation = selected.flatMap { representations[$0] }
         accessibilityEpoch = selected.flatMap { documentEpochs[$0] } ?? 0
         textInputState = selected.flatMap { inputStates[$0] }
@@ -675,8 +728,8 @@ final class BrowserModel: ObservableObject {
         guard let target = tab ?? selected else { return }
         let width = min(4096, max(1, viewport.width)), height = min(4096, max(1, viewport.height))
         let density = min(deviceScale, 4096 / max(width, height))
-        await send(.viewport(width, height, density), tab: target)
+        await send(.viewport(width, height, density, backingScale: deviceScale), tab: target)
     }
 
-    func stop() async { findTask?.cancel(); findPanels.removeAll(); findVisible = false; findResult = nil; resubmissions.removeAll(); resubmission = nil; resubmissionPresented = false; ready = false; representation = nil; representations.removeAll(); representationRequests.removeAll(); clearTextInput(); resizeTask?.cancel(); await session.stop() }
+    func stop() async { zoomTask?.cancel(); zoomWrites.removeAll(); preferenceTask?.cancel(); lastSentPreferences = nil; preferenceStates.removeAll(); displayPreferences = nil; findTask?.cancel(); findPanels.removeAll(); findVisible = false; findResult = nil; resubmissions.removeAll(); resubmission = nil; resubmissionPresented = false; ready = false; representation = nil; representations.removeAll(); representationRequests.removeAll(); clearTextInput(); resizeTask?.cancel(); await session.stop() }
 }

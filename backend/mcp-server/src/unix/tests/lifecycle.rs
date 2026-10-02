@@ -12,6 +12,22 @@ fn go_back_uses_the_same_navigation_completion_barrier_and_returns_restored_stat
         vec![
             Box::new(|msg, s| {
                 assert!(matches!(msg, ClientMessage::GoBack));
+                reply_tab(
+                    s,
+                    7,
+                    &ServerMessage::DisplayPreferencesState(
+                        blueice_ipc::display::DisplayPreferencesState {
+                            tab_id: 7,
+                            frame_source: 19,
+                            frame_generation: 3,
+                            preferences: blueice_ipc::display::DisplayPreferences {
+                                dark: true,
+                                high_contrast: true,
+                                reduced_motion: true,
+                            },
+                        },
+                    ),
+                );
                 // Display metadata must not release the history completion barrier.
                 reply_tab(
                     s,
@@ -23,6 +39,7 @@ fn go_back_uses_the_same_navigation_completion_barrier_and_returns_restored_stat
                         width: 300.0,
                         height: 200.0,
                         device_scale: 2.0,
+                        backing_scale: None,
                         zoom: 1.5,
                         css_width: 200.0,
                         css_height: 200.0 / 1.5,

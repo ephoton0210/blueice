@@ -12,7 +12,12 @@ pub struct DisplayViewport {
     /// Native logical window content dimensions at 100% page zoom.
     pub width: f64,
     pub height: f64,
+    /// Raster density, which may be capped to respect physical frame limits.
     pub device_scale: f64,
+    /// Actual native backing density for CSS media resolution. Older clients
+    /// omit this field and use `device_scale` for both purposes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub backing_scale: Option<f64>,
 }
 impl DisplayViewport {
     pub fn pixel_size(self) -> (u32, u32) {
@@ -29,6 +34,9 @@ impl DisplayViewport {
             || !(1.0..=4096.0).contains(&self.width)
             || !(1.0..=4096.0).contains(&self.height)
             || !(1.0..=4.0).contains(&self.device_scale)
+            || self
+                .backing_scale
+                .is_some_and(|v| !v.is_finite() || !(1.0..=4.0).contains(&v))
             || (self.width * self.device_scale).ceil() > 4096.0
             || (self.height * self.device_scale).ceil() > 4096.0
         {
@@ -46,6 +54,8 @@ pub struct ViewportState {
     pub width: f64,
     pub height: f64,
     pub device_scale: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub backing_scale: Option<f64>,
     pub zoom: f64,
     pub css_width: f64,
     pub css_height: f64,
