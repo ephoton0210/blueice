@@ -2,7 +2,7 @@
 
 [← Back to plan](../BROWSER_CORE_PLAN.md)
 
-**Status**: In progress — the Unix reference frontend and an initial Windows WinUI 3 shell present the core's pixels and basic input. Complete browser-shell behavior and operating-system page accessibility remain open.
+**Status**: In progress — the Unix reference frontend, an initial Windows WinUI 3 shell and an initial macOS SwiftUI/AppKit shell present the core's pixels and basic input. Complete browser-shell behavior and operating-system page accessibility remain open.
 
 ## Windows first slice (2026-10-02)
 
@@ -31,6 +31,23 @@ directory cleanup. The C# adapter also tests wire framing and memory-mapped
 RGBA-to-BGRA conversion. `frontend/winui/tests/WindowSmoke.ps1` drives the
 real native window using UI Automation; native validation is recorded in
 [`WINDOWS_RESULTS.md`](WINDOWS_RESULTS.md).
+
+## macOS first slice (2026-10-02)
+
+[`frontend/macos`](../../../frontend/macos/README.md) supplies a dependency-free
+Xcode project using SwiftUI browser chrome and an AppKit-owned window and
+pixel/input viewport. It bundles the existing private-pipe core and supports
+built-in navigation, independent tabs, back/forward/reload, resizing, basic
+committed text and pointer/scroll input. AppKit termination waits for owned
+child-process and frame-directory cleanup. This slice shares the Windows
+private-pipe service limitations and does not implement page NSAccessibility,
+complete IME/document editing or the remaining shell/service features.
+
+XCTest covers protocol/frame boundaries and a real core process. XCUITest
+drives the actual native app and verifies visible pixels, history, committed
+reload URLs, independent tab state, last-tab closure, resizing, fail-closed
+navigation, window exit and startup failure. Native results are recorded in
+[`MACOS_RESULTS.md`](MACOS_RESULTS.md).
 
 ## Objective
 

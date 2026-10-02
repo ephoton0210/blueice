@@ -1,0 +1,33 @@
+** BUILD SUCCEEDED **
+Test Case '-[ProtocolTests.ProtocolTests testCommandsMatchRustEnvelope]' passed (0.001 seconds).
+Test Case '-[ProtocolTests.ProtocolTests testFragmentedEnvelopePreservesRequestAndTabIdentity]' passed (0.001 seconds).
+Test Case '-[ProtocolTests.ProtocolTests testFramePathSizeAndSymlinkBoundaries]' passed (0.017 seconds).
+Test Case '-[ProtocolTests.ProtocolTests testMissingCoreFailsWithoutCreatingFrames]' passed (0.001 seconds).
+Test Case '-[ProtocolTests.ProtocolTests testRealCoreRendersAndStopsOwnedProcess]' passed (1.286 seconds).
+Test Case '-[ProtocolTests.ProtocolTests testRejectsOversizedAndEmptyFramesBeforeReadingPayload]' passed (0.000 seconds).
+Test Case '-[ProtocolTests.ProtocolTests testRejectsTruncatedMessage]' passed (0.000 seconds).
+Test Case '-[ProtocolTests.ProtocolTests testUnsolicitedBroadcastDoesNotRequireRequestIdentity]' passed (0.001 seconds).
+	 Executed 8 tests, with 0 failures (0 unexpected) in 1.307 (1.309) seconds
+	 Executed 8 tests, with 0 failures (0 unexpected) in 1.307 (1.309) seconds
+	 Executed 8 tests, with 0 failures (0 unexpected) in 1.307 (1.310) seconds
+Test Case '-[BrowserUITests.BrowserUITests testExternalNavigationFailsClosedVisibly]' passed (19.226 seconds).
+Test Case '-[BrowserUITests.BrowserUITests testMissingCoreShowsFailureAndDisabledNavigation]' passed (4.547 seconds).
+Test Case '-[BrowserUITests.BrowserUITests testReloadUsesCommittedURL]' passed (8.782 seconds).
+Test Case '-[BrowserUITests.BrowserUITests testResizePublishesNewCoreFrame]' passed (9.292 seconds).
+Test Case '-[BrowserUITests.BrowserUITests testSettingsBackAndForward]' passed (10.765 seconds).
+Test Case '-[BrowserUITests.BrowserUITests testTabsRetainIndependentNavigationAndCloseLastTab]' passed (16.955 seconds).
+Test Case '-[BrowserUITests.BrowserUITests testVisibleCorePixelsAndNativeWindow]' passed (8.440 seconds).
+Test Case '-[BrowserUITests.BrowserUITests testWindowCloseTerminatesApplication]' passed (5.608 seconds).
+	 Executed 8 tests, with 0 failures (0 unexpected) in 83.615 (83.621) seconds
+	 Executed 8 tests, with 0 failures (0 unexpected) in 83.615 (83.622) seconds
+	 Executed 8 tests, with 0 failures (0 unexpected) in 83.615 (83.623) seconds
+** TEST SUCCEEDED **
+RESULTS=/Users/ephoton/git/blueice-downloads/frontend/macos/.build/results-20261002-130815.xcresult
+SCREENSHOTS=/Users/ephoton/git/blueice-downloads/frontend/macos/.build/results-20261002-130815-attachments
+
+Rust 1.96 stdio regression:
+test oversized_control_frames_are_rejected_before_allocation ... ok
+test a_partial_pipe_frame_survives_session_polling ... ok
+test stdio_refuses_to_reuse_or_delete_an_existing_directory ... ok
+test actual_stdio_core_renders_and_closes_its_owned_frame_directory ... ok
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.73s

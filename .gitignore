@@ -51,3 +51,8 @@ Thumbs.db
 # Native .NET frontend build output.
 /frontend/winui/**/bin/
 /frontend/winui/**/obj/
+
+# Native macOS frontend build, test results and local Xcode state.
+/frontend/macos/.build/
+*.xcresult/
+**/xcuserdata/
