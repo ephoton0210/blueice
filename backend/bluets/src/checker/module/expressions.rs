@@ -43,7 +43,14 @@ impl<'a> ModuleChecker<'a> {
         callee: &str,
         scope: &BTreeMap<String, Type>,
     ) -> Option<FunctionSignature> {
-        let Type::Function { parameters, result } = scope.get(callee)? else {
+        let bound = scope.get(callee)?;
+        // A declared function is bound as a value of its return type, which is a
+        // function type when it returns one: that is not a function value in
+        // scope shadowing the declaration.
+        if self.functions.contains_key(callee) && self.values.get(callee) == Some(bound) {
+            return None;
+        }
+        let Type::Function { parameters, result } = bound else {
             return None;
         };
         Some(FunctionSignature {

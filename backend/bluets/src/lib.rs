@@ -54,7 +54,7 @@ pub use debug_info::{
 pub use diagnostic::{Diagnostic, DiagnosticCode, Severity, SourceSpan};
 pub use emitter::{
     BuildArtifact, BuildOutput, EmittedRuntimeBoundary, EmittedRuntimeSite, EmittedStrictModule,
-    SourceMap, CLASS_HELPER_V1_VERSION,
+    SourceMap, CLASS_HELPER_V1_VERSION, DECORATOR_HELPER_V1_VERSION,
 };
 pub use enum_eval::{evaluate_enums, evaluate_enums_in, EnumValue, EvaluatedEnum, EvaluatedMember};
 pub use namespace_analysis::{
@@ -63,8 +63,8 @@ pub use namespace_analysis::{
 };
 pub use parser::{
     parse_module, ClassAccessor, ClassConstructor, ClassDeclaration, ClassField, ClassMemberKind,
-    ClassMemberShell, ClassMethod, ClassMethodGroup, Declaration, EnumDeclaration, EnumMember,
-    FunctionBodyItem, FunctionCatchClause, FunctionDeclaration, FunctionElseBranch,
+    ClassMemberShell, ClassMethod, ClassMethodGroup, Declaration, Decorator, EnumDeclaration,
+    EnumMember, FunctionBodyItem, FunctionCatchClause, FunctionDeclaration, FunctionElseBranch,
     FunctionIfStatement, FunctionTryStatement, FunctionWhileStatement, ImportDeclaration,
     InterfaceDeclaration, Module, NamespaceDeclaration, Parameter, ParameterProperty,
     ParameterPropertyInsertion, ParserLimits, RawDeclaration, TupleTypeElement,

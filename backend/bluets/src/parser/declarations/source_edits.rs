@@ -92,7 +92,7 @@ impl Parser {
                 .is_some_and(|token| token.is("@"));
             let next = self.tokens.get(index + 1);
             let message = if self.tokens[index].is("@") {
-                Some("decorators and TSX/JSX are not in the initial BlueTS matrix")
+                Some("decorators are supported on top-level class declarations and their members only")
             } else if self.tokens[index].is("abstract")
                 && next.is_some_and(|token| token.is("class"))
             {

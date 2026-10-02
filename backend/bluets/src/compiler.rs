@@ -951,6 +951,7 @@ pub(crate) fn fingerprint(project: &Project, options: &CompilerOptions) -> Strin
         "assign-class-fields"
     });
     add(crate::emitter::CLASS_HELPER_V1_VERSION);
+    add(crate::emitter::DECORATOR_HELPER_V1_VERSION);
     add(if options.preserve_const_enums {
         "preserve-const-enums"
     } else {

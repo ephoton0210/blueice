@@ -440,6 +440,8 @@ struct BuildMetadata {
     remote_declarations: Vec<RemoteDeclarationManifest>,
     /// The version of the private-name helper text an artifact may embed.
     class_helper_version: &'static str,
+    /// The version of the decorator helper text an artifact may embed.
+    decorator_helper_version: &'static str,
     runtime_policy: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
     runtime_helper: Option<RuntimeHelperIdentity>,
@@ -677,6 +679,7 @@ fn build_metadata(
             })
             .collect(),
         class_helper_version: blueice_bluets::CLASS_HELPER_V1_VERSION,
+        decorator_helper_version: blueice_bluets::DECORATOR_HELPER_V1_VERSION,
         runtime_policy: invocation.options.runtime_policy.as_str(),
         runtime_helper: (invocation.options.runtime_policy == RuntimePolicy::StrictRuntime)
             .then(runtime_helper_v1_identity),

@@ -959,6 +959,7 @@ impl<'a> ModuleChecker<'a> {
                         checker.check_class_constructor_bodies(class);
                         checker.check_class_method_bodies(class);
                         checker.check_class_static_blocks(class);
+                        checker.check_class_decorators(class);
                     });
                 }
                 Declaration::Import(_)

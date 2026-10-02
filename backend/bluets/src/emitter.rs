@@ -13,11 +13,13 @@ use crate::parser::{Declaration, Module, TextEdit, Type, TypeParameter};
 use crate::strict_boundaries;
 use std::collections::BTreeMap;
 
+pub use decorators::DECORATOR_HELPER_V1_VERSION;
 pub use private_lowering::CLASS_HELPER_V1_VERSION;
 
 mod class_lowering;
 mod classes;
 mod commonjs;
+mod decorators;
 mod enums;
 mod jsx;
 mod namespaces;
@@ -285,6 +287,7 @@ fn emit_javascript(
     class_lowering::lower_class_members(module, options, &mut edits)?;
     enums::lower_enums(module, project, exported_enums, options, &mut edits)?;
     namespaces::lower_namespaces(module, options, &mut edits)?;
+    decorators::lower_decorators(module, options, &mut edits)?;
     let references = if options.module_kind == crate::compiler::ModuleKind::CommonJs {
         commonjs::lower_commonjs(module, options, &mut edits)?
     } else {
@@ -336,8 +339,90 @@ fn javascript_specifier(specifier: &str, preserve_jsx: bool) -> String {
         .unwrap_or_else(|| specifier.to_string())
 }
 
+/// One-line text of an expression: runs of whitespace become one space, and a
+/// space an erased annotation left before a closing bracket or comma goes
+/// (outside string and template literals).
+fn compact_expression(text: &str) -> String {
+    let collapsed = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    let mut output = String::with_capacity(collapsed.len());
+    let mut quote: Option<char> = None;
+    let mut chars = collapsed.chars().peekable();
+    let mut escaped = false;
+    while let Some(character) = chars.next() {
+        match quote {
+            Some(open) => {
+                output.push(character);
+                if escaped {
+                    escaped = false;
+                } else if character == '\\' {
+                    escaped = true;
+                } else if character == open {
+                    quote = None;
+                }
+            }
+            None => {
+                if matches!(character, '"' | '\'' | '`') {
+                    quote = Some(character);
+                    output.push(character);
+                } else if character == ' '
+                    && chars
+                        .peek()
+                        .is_some_and(|next| matches!(next, ')' | ']' | ','))
+                {
+                    // dropped
+                } else {
+                    output.push(character);
+                }
+            }
+        }
+    }
+    output
+}
+
+/// Replaces each `\0M<start>,<end>\0` marker with the text of that source
+/// range after the edits that lie inside it, on one line.
+fn expand_relocations(replacement: &str, source: &str, edits: &[TextEdit]) -> String {
+    let mut output = String::new();
+    let mut rest = replacement;
+    while let Some(open) = rest.find("\u{0}M") {
+        output.push_str(&rest[..open]);
+        let after = &rest[open + 2..];
+        let Some(close) = after.find('\u{0}') else {
+            output.push_str(&rest[open..]);
+            return output;
+        };
+        let range = &after[..close];
+        rest = &after[close + 1..];
+        let Some((start, end)) = range.split_once(',').and_then(|(start, end)| {
+            Some((start.parse::<usize>().ok()?, end.parse::<usize>().ok()?))
+        }) else {
+            continue;
+        };
+        let mut text = String::new();
+        let mut cursor = start;
+        for edit in edits.iter().filter(|edit| {
+            edit.start >= start && edit.end <= end && !(edit.start == start && edit.end == end)
+        }) {
+            if edit.start < cursor {
+                continue;
+            }
+            text.push_str(&source[cursor..edit.start]);
+            text.push_str(&expand_relocations(&edit.replacement, source, edits));
+            cursor = edit.end;
+        }
+        text.push_str(&source[cursor..end]);
+        output.push_str(&compact_expression(&text));
+    }
+    output.push_str(rest);
+    output
+}
+
 fn apply_edits(source: &str, mut edits: Vec<TextEdit>) -> EmittedJavaScript {
     edits.sort_by_key(|edit| (edit.start, edit.end));
+    // A replacement may carry relocation markers (see `decorators::relocated`):
+    // the text of another source range, with the edits inside it applied.
+    let relocating = edits.iter().any(|edit| edit.replacement.contains('\u{0}'));
+    let snapshot = relocating.then(|| edits.clone());
     let mut emitted = ProvenanceEmitter::new(source, source.len());
     let mut cursor = 0usize;
     for edit in edits {
@@ -347,12 +432,18 @@ fn apply_edits(source: &str, mut edits: Vec<TextEdit>) -> EmittedJavaScript {
             continue;
         }
         emitted.copy(&source[cursor..edit.start], cursor);
-        if edit.replacement.is_empty() {
+        let replacement = match &snapshot {
+            Some(all) if edit.replacement.contains('\u{0}') => {
+                expand_relocations(&edit.replacement, source, all)
+            }
+            _ => edit.replacement.clone(),
+        };
+        if replacement.is_empty() {
             // Preserve physical lines so line-level source maps, diagnostics,
             // and ordinary text diffs remain stable after type erasure.
             emitted.preserve_line_breaks(&source[edit.start..edit.end], edit.start);
         } else {
-            emitted.replace(&edit.replacement, edit.start);
+            emitted.replace(&replacement, edit.start);
         }
         emitted.mark(edit.end);
         cursor = edit.end;

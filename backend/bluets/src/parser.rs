@@ -196,6 +196,8 @@ pub struct RawDeclaration {
 /// That intermediate state is rejected by the checker before any emission.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClassDeclaration {
+    /// The decorators written before the class (before or after `export`).
+    pub decorators: Vec<Decorator>,
     pub name: String,
     pub name_span: SourceSpan,
     pub extends_name: Option<String>,
@@ -213,6 +215,20 @@ pub struct ClassDeclaration {
     pub merged_interface_fields: Vec<TypeField>,
     pub exported: bool,
     pub span: SourceSpan,
+}
+
+/// A decorator: `@expression`, written before a class or one of its members.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Decorator {
+    /// The expression's tokens, without the `@`: `dec`, `a.b`, `dec(args)` or
+    /// `(expression)`.
+    pub tokens: Vec<Token>,
+    /// From the `@` to the end of the expression.
+    pub span: SourceSpan,
+    /// The expression's token range in the token list it was read from (the
+    /// module's for a class decorator, the class body's for a member's).
+    pub token_start: usize,
+    pub token_end: usize,
 }
 
 /// A class member's TypeScript accessibility modifier.
@@ -248,6 +264,9 @@ pub enum ClassMemberKind {
 /// `ClassDeclaration::body` and avoid cloning a potentially large body again.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClassMemberShell {
+    /// The decorators written before the member. `token_start` and `span` begin
+    /// after them.
+    pub decorators: Vec<Decorator>,
     pub kind: ClassMemberKind,
     pub name: Option<String>,
     pub token_start: usize,
@@ -363,6 +382,9 @@ pub struct ClassAccessor {
 /// `[static] [readonly] name[?|!][: T] [= initializer];`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClassField {
+    /// Written `accessor name`: an auto-accessor, a field with a private backing
+    /// store and a generated getter and setter.
+    pub accessor: bool,
     pub name: String,
     pub name_span: SourceSpan,
     pub visibility: Visibility,
@@ -429,6 +451,7 @@ impl ClassDeclaration {
                         .and_then(|tokens| widen_literal_tokens(tokens, false))
                 });
                 ClassField {
+                    accessor: false,
                     name: parameter.name.clone(),
                     name_span: parameter.span.clone(),
                     visibility: property.visibility,

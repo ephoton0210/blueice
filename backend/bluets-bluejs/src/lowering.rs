@@ -387,6 +387,19 @@ fn lower_function(
 /// `useDefineForClassFields: false`: an instance field becomes `this.x = init`
 /// at the start of the constructor (after `super(...)`), a static field a
 /// static block that assigns it, and a field with no initializer disappears.
+/// The expressions of a list of decorators, in source order. BlueJS evaluates
+/// and applies them with the standard decorator semantics itself, so the direct
+/// path needs no helper.
+fn lower_decorators(
+    module: &Module,
+    decorators: &[blueice_bluets::Decorator],
+) -> Result<Vec<bluejs::Expr>, BridgeError> {
+    decorators
+        .iter()
+        .map(|decorator| ExpressionLowerer::new(&module.id, &decorator.tokens).parse())
+        .collect()
+}
+
 fn lower_class(
     module: &Module,
     class: &ClassDeclaration,
@@ -445,7 +458,7 @@ fn lower_class(
                 )?,
                 getter: accessor.getter,
                 is_static: accessor.is_static,
-                decorators: Vec::new(),
+                decorators: lower_decorators(module, &member.decorators)?,
             });
             continue;
         }
@@ -460,9 +473,14 @@ fn lower_class(
                     key: bluejs::PropertyKey::Identifier(field.name.clone()),
                     initializer,
                     is_static: field.is_static,
-                    accessor: false,
-                    decorators: Vec::new(),
+                    accessor: field.accessor,
+                    decorators: lower_decorators(module, &member.decorators)?,
                 });
+            } else if !member.decorators.is_empty() || field.accessor {
+                return Err(unsupported(
+                    member.span.clone(),
+                    "decorators and auto-accessors need class fields to be defined (the default for ES2022)",
+                ));
             } else if let (true, Some(initializer)) = (field.is_static, initializer) {
                 elements.push(bluejs::ClassElement::StaticBlock(vec![assign_this_member(
                     &field.name,
@@ -509,7 +527,7 @@ fn lower_class(
             key: bluejs::PropertyKey::Identifier(name.clone()),
             function,
             is_static,
-            decorators: Vec::new(),
+            decorators: lower_decorators(module, &member.decorators)?,
         });
     }
     // Instance fields lowered to assignments, but no constructor to hold them.
@@ -538,7 +556,7 @@ fn lower_class(
             Box::new(expression)
         }),
         elements,
-        decorators: Vec::new(),
+        decorators: lower_decorators(module, &class.decorators)?,
         // Synthesized from BlueTSC's own lowered AST: no `[[SourceText]]`.
         source_text: Default::default(),
     }))

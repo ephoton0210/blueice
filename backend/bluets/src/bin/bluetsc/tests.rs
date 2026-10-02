@@ -254,6 +254,7 @@ fn test_metadata() -> BuildMetadata {
         package_resolution: None,
         remote_declarations: Vec::new(),
         class_helper_version: "bluets-class-helper-v1",
+        decorator_helper_version: "bluets-decorator-helper-v1",
         runtime_policy: "checked",
         runtime_helper: None,
         strict_boundaries: Vec::new(),

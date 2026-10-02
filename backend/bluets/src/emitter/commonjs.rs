@@ -278,6 +278,14 @@ pub(super) fn lower_commonjs(
                     format!("exports.{0} = {0};", function.name)
                 });
             }
+            // A class whose decorators or auto-accessors are lowered carries its
+            // own `export` and `exports.C = C`.
+            Declaration::Class(class)
+                if class.exported && super::decorators::lowers_class(class) =>
+            {
+                es_syntax = true;
+                chain.push(class.name.clone());
+            }
             Declaration::Class(class) if class.exported => {
                 es_syntax = true;
                 chain.push(class.name.clone());

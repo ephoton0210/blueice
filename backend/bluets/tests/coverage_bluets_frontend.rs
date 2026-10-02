@@ -4083,10 +4083,6 @@ fn unsupported_and_misplaced_syntax_is_diagnosed_not_passed_through() {
             "decorators and TSX/JSX are not in the initial BlueTS matrix",
         ),
         (
-            "@dec class A {}",
-            "decorators and TSX/JSX are not in the initial BlueTS matrix",
-        ),
-        (
             "class A { ['x'] = 1; }",
             "a class member other than a constructor, method, field or accessor",
         ),
@@ -4128,7 +4124,7 @@ fn unsupported_and_misplaced_syntax_is_diagnosed_not_passed_through() {
         ),
         (
             "const decorated = () => { @sealed class A {} };",
-            "decorators and TSX/JSX are not in the initial BlueTS matrix",
+            "decorators are supported on top-level class declarations and their members only",
         ),
         (
             "const x?: number = 1;",

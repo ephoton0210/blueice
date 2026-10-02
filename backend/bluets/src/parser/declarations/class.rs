@@ -112,11 +112,27 @@ impl Parser {
                 );
             }
         }
+        // Decorator expressions are ordinary expressions: erase their annotations.
+        let decorator_ranges: Vec<(usize, usize)> = members
+            .iter()
+            .flat_map(|member| &member.decorators)
+            .map(|decorator| {
+                (
+                    opening + 1 + decorator.token_start,
+                    opening + 1 + decorator.token_end,
+                )
+            })
+            .collect();
+        for (from, to) in decorator_ranges {
+            self.collect_expression_type_edits(from, to);
+        }
         let method_groups = class_method_groups(&self.id, &members);
         let span = SourceSpan::new(&self.id, start, self.tokens[closing].end);
         let name_span = name_token.span(&self.id);
         self.index = closing + 1;
+        let decorators = std::mem::take(&mut self.pending_decorators);
         self.declarations.push(Declaration::Class(ClassDeclaration {
+            decorators,
             name: name_token.text,
             name_span,
             extends_name: heritage.as_ref().map(|token| token.text.clone()),
@@ -324,6 +340,7 @@ impl Parser {
         });
         member.name = Some(name_token.text.clone());
         member.field = Some(ClassField {
+            accessor: modifiers.accessor_token.is_some(),
             name: name_token.text.clone(),
             name_span: name_token.span(&self.id),
             visibility,
@@ -518,8 +535,49 @@ struct MemberModifiers {
     /// Token index of an explicit accessibility keyword.
     visibility_token: Option<usize>,
     is_static: bool,
+    /// Token index of the `accessor` keyword of an auto-accessor.
+    accessor_token: Option<usize>,
     readonly_token: Option<usize>,
     name_index: usize,
+}
+
+/// The decorator that starts at `tokens[index]` (an `@`) and the index after it:
+/// `@name`, `@a.b.c`, `@name(args)`, `@a.b(args)` or `@(expression)`.
+pub(super) fn decorator_at(
+    module: &str,
+    tokens: &[Token],
+    index: usize,
+) -> Option<(Decorator, usize)> {
+    let at = tokens.get(index).filter(|token| token.is("@"))?;
+    let mut next = index + 1;
+    let first = tokens.get(next)?;
+    if first.is("(") {
+        next = matching_closing_delimiter(tokens, next, tokens.len(), "(", ")")? + 1;
+    } else {
+        if !matches!(first.kind, TokenKind::Identifier | TokenKind::Keyword) {
+            return None;
+        }
+        next += 1;
+        while tokens.get(next).is_some_and(|token| token.is("."))
+            && tokens.get(next + 1).is_some_and(|token| {
+                matches!(token.kind, TokenKind::Identifier | TokenKind::Keyword)
+            })
+        {
+            next += 2;
+        }
+        if tokens.get(next).is_some_and(|token| token.is("(")) {
+            next = matching_closing_delimiter(tokens, next, tokens.len(), "(", ")")? + 1;
+        }
+    }
+    Some((
+        Decorator {
+            tokens: tokens[index + 1..next].to_vec(),
+            span: SourceSpan::new(module, at.start, tokens[next - 1].end),
+            token_start: index + 1,
+            token_end: next,
+        },
+        next,
+    ))
 }
 
 fn scan_member_modifiers(tokens: &[Token], start: usize, end: usize) -> Option<MemberModifiers> {
@@ -534,6 +592,7 @@ fn scan_member_modifiers(tokens: &[Token], start: usize, end: usize) -> Option<M
         visibility: Visibility::Public,
         visibility_token: None,
         is_static: false,
+        accessor_token: None,
         readonly_token: None,
         name_index: start,
     };
@@ -552,6 +611,13 @@ fn scan_member_modifiers(tokens: &[Token], start: usize, end: usize) -> Option<M
         modifiers.is_static = true;
         index += 1;
     }
+    if tokens.get(index).is_some_and(|token| token.is("accessor"))
+        && name_like(index + 1)
+        && !tokens.get(index + 1).is_some_and(|token| token.is("("))
+    {
+        modifiers.accessor_token = Some(index);
+        index += 1;
+    }
     if tokens.get(index).is_some_and(|token| token.is("readonly")) && name_like(index + 1) {
         modifiers.readonly_token = Some(index);
         index += 1;
@@ -561,7 +627,7 @@ fn scan_member_modifiers(tokens: &[Token], start: usize, end: usize) -> Option<M
     if tokens.get(index).is_some_and(|token| {
         matches!(
             token.text.as_str(),
-            "public" | "protected" | "private" | "static" | "readonly"
+            "public" | "protected" | "private" | "static" | "readonly" | "accessor"
         )
     }) && name_like(index + 1)
     {
@@ -641,6 +707,14 @@ fn class_member_shells(module: &str, tokens: &[Token]) -> Vec<ClassMemberShell> 
             index += 1;
             continue;
         }
+        let mut decorators = Vec::new();
+        while let Some((decorator, next)) = decorator_at(module, tokens, index) {
+            decorators.push(decorator);
+            index = next;
+        }
+        if index >= tokens.len() {
+            break;
+        }
         let start = index;
         // `static { .. }` is an initialization block, not a member with a name.
         if tokens[index].is("static") && tokens.get(index + 1).is_some_and(|token| token.is("{")) {
@@ -654,6 +728,7 @@ fn class_member_shells(module: &str, tokens: &[Token]) -> Vec<ClassMemberShell> 
                     closing + 1,
                     ClassMemberKind::StaticBlock,
                     None,
+                    std::mem::take(&mut decorators),
                 ));
                 index = closing + 1;
                 continue;
@@ -718,6 +793,7 @@ fn class_member_shells(module: &str, tokens: &[Token]) -> Vec<ClassMemberShell> 
                             ClassMemberKind::Method
                         },
                         Some(name_token.text.clone()),
+                        std::mem::take(&mut decorators),
                     ));
                     index = end;
                     continue;
@@ -737,6 +813,7 @@ fn class_member_shells(module: &str, tokens: &[Token]) -> Vec<ClassMemberShell> 
             end,
             ClassMemberKind::Opaque,
             None,
+            std::mem::take(&mut decorators),
         ));
         index = end;
     }
@@ -786,8 +863,10 @@ fn class_member_shell(
     end: usize,
     kind: ClassMemberKind,
     name: Option<String>,
+    decorators: Vec<Decorator>,
 ) -> ClassMemberShell {
     ClassMemberShell {
+        decorators,
         kind,
         name,
         token_start: start,

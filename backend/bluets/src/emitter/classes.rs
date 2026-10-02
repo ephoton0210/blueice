@@ -272,6 +272,9 @@ pub(super) fn emit_class_declaration(
             if field.is_static {
                 output.push_str("static ");
             }
+            if field.accessor {
+                output.push_str("accessor ");
+            }
             if field.readonly {
                 output.push_str("readonly ");
             }

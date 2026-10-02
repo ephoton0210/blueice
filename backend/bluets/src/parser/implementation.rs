@@ -28,6 +28,8 @@ pub(super) struct Parser {
     ambient_depth: usize,
     /// How many `export {};` markers the body being parsed has had.
     namespace_export_markers: usize,
+    /// Decorators read before a declaration, for the class that follows them.
+    pending_decorators: Vec<Decorator>,
 }
 
 #[path = "declarations.rs"]

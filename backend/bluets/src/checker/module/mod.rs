@@ -104,6 +104,7 @@ pub(super) struct ModuleChecker<'a> {
 }
 
 mod binding;
+mod decorators;
 mod expressions;
 mod jsx;
 pub(crate) use binding::NamespaceExport;

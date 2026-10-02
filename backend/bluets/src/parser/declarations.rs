@@ -37,6 +37,7 @@ impl Parser {
             namespace_depth: 0,
             ambient_depth: 0,
             namespace_export_markers: 0,
+            pending_decorators: Vec::new(),
         }
     }
 
@@ -72,6 +73,28 @@ impl Parser {
         }
     }
 
+    /// Reads the decorators at the cursor.
+    fn parse_decorators(&mut self) -> Vec<Decorator> {
+        let mut decorators = Vec::new();
+        while self.peek("@") {
+            match class::decorator_at(&self.id, &self.tokens, self.index) {
+                Some((decorator, next)) => {
+                    self.collect_expression_type_edits(decorator.token_start, decorator.token_end);
+                    decorators.push(decorator);
+                    self.index = next;
+                }
+                None => {
+                    self.error_here(
+                        DiagnosticCode::ParseError,
+                        "expected a decorator expression",
+                    );
+                    self.bump();
+                }
+            }
+        }
+        decorators
+    }
+
     /// Parses declarations until the end of the token stream, the module's or a
     /// namespace body's.
     pub(super) fn parse_items(&mut self) {
@@ -80,7 +103,23 @@ impl Parser {
                 continue;
             }
             let start = self.current().start;
+            let mut decorators = self.parse_decorators();
             let exported = self.consume("export");
+            if exported && self.peek("@") {
+                decorators.extend(self.parse_decorators());
+            }
+            self.pending_decorators.clear();
+            if !decorators.is_empty() {
+                if self.peek("class") {
+                    self.pending_decorators = decorators;
+                } else {
+                    self.error_at(
+                        decorators[0].span.clone(),
+                        DiagnosticCode::ParseError,
+                        "decorators are not valid here; they decorate a class or a class member",
+                    );
+                }
+            }
             // `export {};` in a namespace body only says that exports are explicit.
             if self.namespace_depth > 0
                 && exported

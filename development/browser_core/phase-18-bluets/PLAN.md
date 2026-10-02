@@ -3452,3 +3452,61 @@ policy's existing refusal of everything but its one string-boundary shape; the d
 lowers embedded expressions with the existing expression subset (an arrow function inside a
 JSX expression is as limited as an arrow anywhere else there); namespace-exported names used
 as tags inside another namespace body are not rewritten.
+
+### J.5.3 Standard decorators
+
+`@expression` decorators on classes and on methods, accessors, fields and `accessor`
+(auto-accessor) members parse into `Decorator`s (the expression's tokens, `a`, `a.b`,
+`a(..)`, `a.b(..)` or `(expr)`), with `ClassField::accessor` for `accessor x`. The
+expression is an ordinary expression: its annotations are erased and it is checked.
+Decorators on anything else (a function, variable, parameter, constructor, static block, an
+overload signature, an interface member, or a member form the class parser does not
+structure) are errors, matching `tsc`. A decorator with no parameter is `TS1329`-style
+refused (`tsc`'s arity rule, probed: zero parameters rejected, one or more accepted); one
+requiring more than two, a non-callable decorator and a decorator whose return type cannot
+be what the target accepts (a function or nothing for a class, method, getter, setter and
+field; an object for an `accessor`) are refused. BlueTS has no `lib.decorators.d.ts`, so the
+context argument is untyped.
+
+**Emit** (`emitter/decorators.rs`) is TypeScript 5.9.3's ES2022 shape, from the pinned compiler: the
+decorated class becomes `let C = (() => { let _classDecorators = [..]; ... var C = class {
+static { _classThis = this; } static { <metadata, decorator arrays, __esDecorate calls in
+TypeScript's order: static non-fields, instance non-fields, static fields, instance fields,
+then the class; Symbol.metadata> } <members> ... }; return C = _classThis; })();`. Evaluation
+order is source order (class decorators, then each member's), application order is TypeScript's
+(last decorator of an element first; members before the class), `Symbol.metadata` is
+inherited through the `extends` clause, fields run the initializers decorators returned and
+queue the extra initializers `addInitializer` collected, and an undecorated `accessor` is a
+private backing field with a getter and setter. The helpers (`__bluetsEsDecorate`,
+`__bluetsRunInitializers`) are the specified algorithms of the proposal, written here,
+versioned (`bluets-decorator-helper-v1`, in the fingerprint and the manifest). Only the
+class syntax is rewritten: a decorator expression is moved into its array by a *relocation*
+(`apply_edits` expands `\0M<start>,<end>\0` markers to the text of that range with the edits
+inside it applied, so CommonJS name rewriting and erased annotations follow it), a field's
+initializer stays where it is and is wrapped in place, and every source line stays a line. A
+dotted decorator (`@a.b`) is bound to its receiver as TypeScript does. CommonJS output
+carries `exports.C = C`.
+
+Evidence: a 31-fixture accepted/rejected matrix recorded from the pinned compiler
+(`decorators-checker-matrix.tsv`), and `tests/decorators_oracle.rs`: 20 programs (all member
+kinds, class replacement and `addInitializer`, evaluation/application order, `Symbol.metadata`
+inheritance, the `access` objects, extra-initializer injection with and without fields and
+constructors, undecorated auto-accessors, `export` forms, and seven programs whose class
+definition throws, compared by error name and message) printed identically by BlueTSC and the
+pinned `tsc` output, in ES module and CommonJS output. Two general checker defects found on the
+way are fixed: a function whose return type is a function type was checked against the
+return type's parameters at its call sites, and `import * as ns` now binds the module's
+types and namespaces.
+
+**Direct execution.** BlueJS implements the standard decorators itself (Phase 13), so the
+bridge passes the decorator expressions (and `accessor`) through to the BlueJS class AST and
+needs no helper; programs are compared with Node under `tsc`'s output
+(`bluets-bluejs/tests/decorators_direct.rs`). The bridge's expression subset has no arrow
+functions, so decorators there are function declarations.
+
+Recorded gaps: the target must be ES2022 with class fields defined (other targets are refused
+with that message; `tsc` lowers the fields too); a decorated private method or accessor,
+computed or literal member names, a decorated class or auto-accessor in a namespace, `super` in a
+static member of a decorated class and a decorated class expression are refused; the
+decorator context and `Symbol.metadata` have no types; debugger mappings for the generated
+helper frames are the coarse ones every edit gets.
