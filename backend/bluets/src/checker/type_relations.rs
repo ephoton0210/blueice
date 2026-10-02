@@ -262,7 +262,10 @@ pub(super) fn is_assignable(
                             budget,
                         )
                 })
-                && is_assignable(actual_result, expected_result, aliases, visited, budget)
+                // A function type whose result is `void` accepts a function that
+                // returns anything: its result is simply ignored.
+                && (matches!(**expected_result, Type::Void)
+                    || is_assignable(actual_result, expected_result, aliases, visited, budget))
         }
         (Type::Tuple(actual), Type::Tuple(expected)) => {
             if actual.iter().any(|element| element.rest)

@@ -544,11 +544,18 @@ fn routes_unimplemented_class_member_shapes_to_opaque_shells() {
 }
 
 #[test]
-fn rejects_tsx_modules_even_when_they_contain_no_tag_tokens() {
-    let diagnostics =
-        parse_module("memory:///view.tsx", "const label: string = 'BlueIce';").unwrap_err();
-    assert_eq!(diagnostics[0].code, DiagnosticCode::UnsupportedSyntax);
-    assert!(diagnostics[0].message.contains("TSX/JSX"));
+fn tsx_modules_parse_and_a_jsx_element_is_one_operand() {
+    let module = parse_module("memory:///view.tsx", "const label: string = 'BlueIce';").unwrap();
+    assert_eq!(module.declarations.len(), 1);
+    let module = parse_module(
+        "memory:///view.tsx",
+        "const view = <div id={(x: number) => x}>{1}</div>;",
+    )
+    .unwrap();
+    assert!(
+        !module.edits.is_empty(),
+        "the annotation inside the JSX expression is erased"
+    );
 }
 
 #[test]

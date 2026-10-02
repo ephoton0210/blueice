@@ -58,6 +58,11 @@ impl<'a> ModuleChecker<'a> {
             isolated_modules: policy.isolated_modules,
             module_kind: policy.module_kind,
             es_module_interop: policy.es_module_interop,
+            jsx_mode: policy.jsx,
+            jsx_factory: policy.jsx_factory.clone(),
+            jsx_fragment_factory: policy.jsx_fragment_factory.clone(),
+            jsx_pragmas: crate::jsx::Pragmas::of(&module.source),
+            checked_jsx_elements: BTreeSet::new(),
             checked_nested_functions: BTreeSet::new(),
             async_context: None,
             generator_context: None,
@@ -639,35 +644,55 @@ impl<'a> ModuleChecker<'a> {
                     continue;
                 }
             }
-            if binding.type_only {
-                if binding.imported == "*" {
-                    if let Some(source_types) = exported {
-                        if exported_classes.is_some_and(|classes| !classes.is_empty()) {
-                            self.type_only_classes.insert(binding.local.clone());
-                        }
-                        for (name, definition) in source_types {
-                            let local = format!("{}.{}", binding.local, name);
-                            let mut definition = definition.clone();
-                            if let Some(class) =
-                                exported_classes.and_then(|classes| classes.get(name))
-                            {
-                                definition.value = specialize_imported_class_type(
-                                    &class.instance_type,
-                                    &class.source_name,
-                                    &local,
-                                );
-                            }
-                            self.insert_type(
+            if binding.imported == "*" {
+                // `import * as ns` makes the module's types nameable as `ns.T`
+                // (a value import also keeps `ns` itself as a value below).
+                if let Some(source_types) = exported {
+                    if binding.type_only
+                        && exported_classes.is_some_and(|classes| !classes.is_empty())
+                    {
+                        self.type_only_classes.insert(binding.local.clone());
+                    }
+                    for (name, definition) in source_types {
+                        let local = format!("{}.{}", binding.local, name);
+                        let mut definition = definition.clone();
+                        if let Some(class) = exported_classes.and_then(|classes| classes.get(name))
+                        {
+                            definition.value = specialize_imported_class_type(
+                                &class.instance_type,
+                                &class.source_name,
                                 &local,
-                                definition,
-                                import.span.clone(),
-                                SymbolKind::Import,
-                                false,
                             );
                         }
+                        self.insert_type(
+                            &local,
+                            definition,
+                            import.span.clone(),
+                            SymbolKind::Import,
+                            false,
+                        );
                     }
+                }
+                // The module's namespaces are members of the imported object:
+                // `ns.JSX.Element`, `ns.Ui.f`.
+                if let Some(namespaces) = self.namespace_exports.get(resolved) {
+                    for (name, namespace) in namespaces {
+                        let local = format!("{}.{name}", binding.local);
+                        let with_value = !binding.type_only && namespace.has_values;
+                        self.bind_imported_namespace(
+                            &local,
+                            namespace,
+                            &import.span,
+                            with_value,
+                            false,
+                        );
+                    }
+                }
+                if binding.type_only {
                     continue;
                 }
+            }
+            if binding.type_only {
                 if let Some(enum_) = self
                     .exports
                     .enums
@@ -1093,6 +1118,7 @@ impl<'a> ModuleChecker<'a> {
             return;
         }
         self.check_namespace_value_use(tokens, span);
+        self.check_jsx_elements(tokens, scope);
         self.check_yield_expressions(tokens, scope, span);
         let before_arrows = self.diagnostics.len();
         self.check_nested_functions_in(tokens, scope);

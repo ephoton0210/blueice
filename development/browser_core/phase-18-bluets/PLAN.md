@@ -3335,3 +3335,58 @@ Recorded gaps: an unknown identifier is still not diagnosed (a declared `const` 
 not imported is not shown to be absent), the real network path is exercised only for its
 failure and validation behaviour (no HTTPS server in tests), and the cache has no
 eviction (a full cache is an error the owner resolves).
+
+### J.5.1 JSX: parsing and checking
+
+**Lexing.** In a `.tsx` module the lexer turns a whole outermost element into one
+`JsxElement` token (`syntax.rs`, `jsx.rs`), so the statement parser and the checker's
+token-slice inference see one operand. A `<` starts an element after a token that can
+precede an expression (`(`, `,`, `=`, `=>`, `?`, `&&`, `return`, ...), or, after `:`, `;`,
+`{`, `}` or at the start, when the text scans as one; `<T,>` and `<T extends U>` are
+generic arrows, as in TypeScript, and `<=`/`<<` are operators. An embedded `{ expression }`
+is lexed by the same lexer (so strings, templates, braces and nested elements inside it
+are right), and its tokens follow the element token as the arguments of a synthetic
+`( ... , ... )` group: arrow functions, erased annotations and (later) name rewriting
+inside JSX expressions are therefore reached by every pass that walks tokens, with
+absolute offsets. The element's structure (names, attributes, spreads, children, text,
+fragments, attribute values that are elements) is a tree of source ranges
+(`jsx::parse_element`), rebuilt from the token's source by whoever needs it. The scan is
+linear in the element's size (each embedded expression is lexed once, carrying its tokens
+in the tree), nesting is bounded at 128, and a malformed element (mismatched or
+unterminated tag, a bare `>` or `}` in text, an empty attribute value) is a parse
+diagnostic. JSX text trimming and entity decoding are TypeScript 5.9.3's, with the entity
+table generated from the pinned compiler.
+
+**Checking** (`checker/module/jsx.rs`). With no `jsx` option any element is an error, as
+TS17004. An intrinsic tag takes its props from `JSX.IntrinsicElements` (unknown tag or no
+interface is an error); a function component's first parameter is its props and its
+return must be assignable to `JSX.Element | null`; a class component's props are the
+member `JSX.ElementAttributesProperty` names (and the class must satisfy
+`JSX.ElementClass`); attributes are checked for value type (in the prop's context, so
+literal unions and arrows work), unknown names (hyphenated names are never checked),
+missing required props, `{...spread}` of an object type, and children against
+`JSX.ElementChildrenAttribute`'s member (one child is its type, several an array; having
+children when the props declare none is an error). `JSX.IntrinsicAttributes` (`key`) applies to
+value-based elements only, as in `tsc`. The `JSX` namespace is looked up as
+`<factory root>.JSX` first and then globally, so an imported factory namespace
+(`import * as React`) works; that required two general fixes found on the way:
+`import * as ns` now binds the module's types and namespaces as `ns.T` and `ns.N.T` (it
+bound neither), and a function type with a `void` result accepts a function returning
+anything. Classic mode requires the factory (and fragment factory) root to be in scope,
+from `jsxFactory`/`jsxFragmentFactory` or an `@jsx`/`@jsxFrag` pragma (read from the file's
+leading comments). Every embedded expression is checked as an ordinary expression.
+
+Evidence: a 53-fixture accepted/rejected matrix recorded from the pinned compiler
+(`jsx-checker-matrix.tsv`; regenerate with `BLUEICE_WRITE_JSX_MATRIX=1`) on which BlueTSC's
+verdict agrees for every entry, plus `tests/jsx.rs` (option off, lexing corners, bounds,
+pragmas, expressions) and the `jsx.rs` unit tests. Fixtures are global scripts, because a
+module-scoped `declare namespace JSX` is not found by `tsc` either.
+
+Recorded gaps: type arguments on a tag (`<Foo<string> />`); generic components and props
+that are unions or intersections are resolved but not compared (`Props::Open`); the
+automatic runtime's `JSX` namespace comes from `<jsxImportSource>/jsx-runtime` in
+TypeScript and is not read from a package yet, so the global or factory namespace is
+used; `JSX.ElementType`, `LibraryManagedAttributes`, `IntrinsicClassAttributes`,
+`defaultProps`, duplicate-attribute and `children`-specified-twice diagnostics,
+namespaced-attribute typing; a parameter named `type` in a function declaration does not
+parse (found while writing fixtures; unrelated to JSX).

@@ -50,13 +50,6 @@ impl Parser {
     }
 
     pub(crate) fn parse_module(mut self) -> Result<Module, Vec<Diagnostic>> {
-        if self.id.ends_with(".tsx") {
-            self.unsupported(
-                SourceSpan::new(&self.id, 0, self.source.len()),
-                "TSX/JSX is not in the initial BlueTS matrix",
-            );
-            return Err(self.diagnostics);
-        }
         self.diagnose_unparenthesized_nullish_logical_mixing();
         self.diagnose_unparenthesized_unary_exponentiation();
         self.parse_items();

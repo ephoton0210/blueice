@@ -76,6 +76,50 @@ impl ModuleKind {
     }
 }
 
+/// TypeScript's `jsx` option for `.tsx` modules.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum JsxMode {
+    /// Keep the JSX syntax (the output is `.jsx`).
+    Preserve,
+    /// Keep the JSX syntax; the output is `.js` (React Native's Metro reads it).
+    ReactNative,
+    /// `React.createElement` (or the configured factory) calls.
+    React,
+    /// The automatic runtime: calls of `jsx`/`jsxs` imported from
+    /// `<jsxImportSource>/jsx-runtime`.
+    ReactJsx,
+    /// As `ReactJsx` with `jsxDEV` and source locations.
+    ReactJsxDev,
+}
+
+impl JsxMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Preserve => "preserve",
+            Self::ReactNative => "react-native",
+            Self::React => "react",
+            Self::ReactJsx => "react-jsx",
+            Self::ReactJsxDev => "react-jsxdev",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value.to_ascii_lowercase().as_str() {
+            "preserve" => Some(Self::Preserve),
+            "react-native" => Some(Self::ReactNative),
+            "react" => Some(Self::React),
+            "react-jsx" => Some(Self::ReactJsx),
+            "react-jsxdev" => Some(Self::ReactJsxDev),
+            _ => None,
+        }
+    }
+
+    /// Whether the JSX syntax is lowered to calls.
+    pub fn lowers(self) -> bool {
+        matches!(self, Self::React | Self::ReactJsx | Self::ReactJsxDev)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RuntimePolicy {
     TranspileOnly,
@@ -128,6 +172,15 @@ pub struct CompilerOptions {
     /// CommonJS `export =` module is allowed and goes through a helper that gives
     /// it a `default` member. Only meaningful with `ModuleKind::CommonJs`.
     pub es_module_interop: bool,
+    /// How `.tsx` JSX is emitted; `None` makes any JSX an error, as in
+    /// TypeScript (TS17004).
+    pub jsx: Option<JsxMode>,
+    /// `jsxFactory` (classic mode): an entity name such as `h` or `Preact.h`.
+    pub jsx_factory: Option<String>,
+    /// `jsxFragmentFactory` (classic mode): defaults to `React.Fragment`.
+    pub jsx_fragment_factory: Option<String>,
+    /// `jsxImportSource` (automatic mode): defaults to `react`.
+    pub jsx_import_source: Option<String>,
     pub runtime_policy: RuntimePolicy,
     pub source_map: bool,
     pub declaration: bool,
@@ -175,6 +228,10 @@ impl Default for CompilerOptions {
             isolated_modules: false,
             module_kind: ModuleKind::Esm,
             es_module_interop: false,
+            jsx: None,
+            jsx_factory: None,
+            jsx_fragment_factory: None,
+            jsx_import_source: None,
             runtime_policy: RuntimePolicy::Checked,
             source_map: false,
             declaration: false,
@@ -434,6 +491,9 @@ fn compile_with_cache(
             isolated_modules: options.isolated_modules,
             module_kind: options.module_kind,
             es_module_interop: options.es_module_interop,
+            jsx: options.jsx,
+            jsx_factory: options.jsx_factory.clone(),
+            jsx_fragment_factory: options.jsx_fragment_factory.clone(),
         },
         previous_checked,
         &rechecked_modules,
@@ -902,6 +962,19 @@ pub(crate) fn fingerprint(project: &Project, options: &CompilerOptions) -> Strin
         "object-const-enums"
     });
     add(options.module_kind.as_str());
+    add(options.jsx.map_or("jsx-none", JsxMode::as_str));
+    add(options
+        .jsx_factory
+        .as_deref()
+        .unwrap_or("jsx-factory-default"));
+    add(options
+        .jsx_fragment_factory
+        .as_deref()
+        .unwrap_or("jsx-fragment-default"));
+    add(options
+        .jsx_import_source
+        .as_deref()
+        .unwrap_or("jsx-import-source-default"));
     add(if options.es_module_interop {
         "es-module-interop"
     } else {

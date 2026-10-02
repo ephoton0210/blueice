@@ -1,0 +1,1 @@
+--jsx react --jsxFactory el --jsxFragmentFactory Frag

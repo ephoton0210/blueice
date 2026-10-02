@@ -164,7 +164,10 @@ impl<'a> ModuleChecker<'a> {
         Some((name, end, value, setter))
     }
 
-    fn expanded_record_fields(&self, value: Type) -> (Option<Vec<TypeField>>, bool) {
+    pub(in crate::checker::module) fn expanded_record_fields(
+        &self,
+        value: Type,
+    ) -> (Option<Vec<TypeField>>, bool) {
         let mut visited = HashSet::new();
         let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
         let fields = self.expand_record_fields(value, &mut visited, &mut budget);

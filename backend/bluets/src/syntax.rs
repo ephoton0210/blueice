@@ -22,6 +22,9 @@ pub enum TokenKind {
     String,
     Template,
     Punct,
+    /// A whole outermost JSX element of a `.tsx` module, as one operand; its
+    /// structure is scanned on demand by [`crate::jsx`].
+    JsxElement,
     Eof,
 }
 
@@ -136,13 +139,108 @@ pub(crate) fn lex_with_limits(
             format!("source exceeds the {max_source_bytes} byte limit"),
         )]);
     }
+    let (mut tokens, _) = lex_range(module, source, 0, false, max_tokens)?;
+    tokens.push(Token {
+        kind: TokenKind::Eof,
+        text: String::new(),
+        start: source.len(),
+        end: source.len(),
+    });
+    Ok(tokens)
+}
+
+/// The tokens of an expression embedded in JSX braces, whose text starts at
+/// `start`, and the offset of the `}` that closes it.
+pub(crate) fn lex_expression(
+    module: &str,
+    source: &str,
+    start: usize,
+) -> Result<(usize, Vec<Token>), String> {
+    lex_range(module, source, start, true, MAX_TOKENS)
+        .map(|(tokens, end)| (end, tokens))
+        .map_err(|diagnostics| {
+            diagnostics
+                .first()
+                .map_or_else(|| "invalid expression".to_string(), |d| d.message.clone())
+        })
+}
+
+/// Scans the JSX element at `start` of a `.tsx` module's source.
+pub(crate) fn parse_jsx(
+    module: &str,
+    source: &str,
+    start: usize,
+) -> Result<crate::jsx::JsxElement, crate::jsx::JsxError> {
+    let lexer = |from: usize| lex_expression(module, source, from);
+    crate::jsx::parse_element(source, start, &lexer)
+}
+
+/// Whether a `<` after this token can begin a JSX element rather than a
+/// comparison or a type-argument list. `Some(true)` is certain; `Some(false)` is
+/// possible (a failed scan then reads `<` as punctuation).
+fn jsx_may_start(previous: Option<&Token>) -> Option<bool> {
+    let Some(previous) = previous else {
+        return Some(false);
+    };
+    match previous.kind {
+        TokenKind::Punct => match previous.text.as_str() {
+            "(" | "," | "=" | "=>" | "?" | "[" | "&&" | "||" | "??" | "!" | "..." | "+" | "-"
+            | "*" | "/" | "%" | "==" | "!=" | "===" | "!==" | "<=" | ">=" | "&" | "|" | "^"
+            | "~" | "+=" | "-=" | "*=" | "/=" | "%=" | "&&=" | "||=" | "??=" => Some(true),
+            ":" | ";" | "{" | "}" => Some(false),
+            _ => None,
+        },
+        TokenKind::Keyword => match previous.text.as_str() {
+            "return" | "yield" | "await" | "typeof" | "void" | "throw" | "case" | "else" | "in"
+            | "default" | "of" | "delete" => Some(true),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+/// TypeScript reads `<T,>` and `<T extends U>` in a `.tsx` file as type
+/// parameters of a generic arrow function, never as an element.
+fn starts_generic_arrow(source: &str, index: usize) -> bool {
+    let rest = source[index + 1..].trim_start();
+    let rest = rest.strip_prefix("const ").map_or(rest, str::trim_start);
+    let name_length = rest
+        .char_indices()
+        .find(|(_, character)| !is_ident_continue(*character))
+        .map_or(rest.len(), |(offset, _)| offset);
+    if name_length == 0 {
+        return false;
+    }
+    let after = rest[name_length..].trim_start();
+    after.starts_with(',')
+        || after
+            .strip_prefix("extends")
+            .is_some_and(|more| more.starts_with(|c: char| c.is_whitespace()))
+}
+
+/// The token loop. With `until_brace` it stops (without consuming) at the first
+/// `}` that is not matched by a `{` inside, and returns its offset.
+fn lex_range(
+    module: &str,
+    source: &str,
+    start_at: usize,
+    until_brace: bool,
+    max_tokens: usize,
+) -> Result<(Vec<Token>, usize), Vec<Diagnostic>> {
+    let tsx = module.ends_with(".tsx");
     let bytes = source.as_bytes();
-    let mut tokens = Vec::new();
-    let mut index = 0;
+    let mut tokens: Vec<Token> = Vec::new();
+    let mut index = start_at;
     let mut diagnostics = Vec::new();
+    let mut brace_depth = 0usize;
+    let mut closing_brace = None;
 
     while index < bytes.len() {
         let byte = bytes[index];
+        if until_brace && byte == b'}' && brace_depth == 0 {
+            closing_brace = Some(index);
+            break;
+        }
         if byte.is_ascii_whitespace() {
             index += 1;
             continue;
@@ -276,9 +374,70 @@ pub(crate) fn lex_with_limits(
                 start,
                 end: index,
             });
+        } else if tsx
+            && byte == b'<'
+            && !source[index..].starts_with("<=")
+            && !source[index..].starts_with("<<")
+            && !starts_generic_arrow(source, index)
+            && jsx_may_start(tokens.last()).is_some()
+        {
+            let certain = jsx_may_start(tokens.last()) == Some(true);
+            let lexer = |from: usize| lex_expression(module, source, from);
+            match crate::jsx::parse_element(source, index, &lexer) {
+                Ok(element) => {
+                    index = element.end;
+                    tokens.push(Token {
+                        kind: TokenKind::JsxElement,
+                        text: source[start..index].to_string(),
+                        start,
+                        end: index,
+                    });
+                    // The embedded expressions follow as the arguments of the
+                    // element, so every pass that walks tokens (arrow functions,
+                    // erased annotations, name rewriting) reaches them.
+                    let synthetic = |text: &str, at: usize| Token {
+                        kind: TokenKind::Punct,
+                        text: text.to_string(),
+                        start: at,
+                        end: at,
+                    };
+                    tokens.push(synthetic("(", start));
+                    for (position, (offset, expression)) in
+                        element.expressions().into_iter().enumerate()
+                    {
+                        if position > 0 {
+                            tokens.push(synthetic(",", offset));
+                        }
+                        tokens.extend(expression.iter().cloned());
+                    }
+                    tokens.push(synthetic(")", index));
+                }
+                Err(error) if error.late || certain => {
+                    diagnostics.push(Diagnostic::error(
+                        DiagnosticCode::ParseError,
+                        SourceSpan::new(module, error.offset, error.offset.max(start + 1)),
+                        error.message,
+                    ));
+                    break;
+                }
+                Err(_) => {
+                    index += 1;
+                    tokens.push(Token {
+                        kind: TokenKind::Punct,
+                        text: "<".to_string(),
+                        start,
+                        end: index,
+                    });
+                }
+            }
         } else {
             let text = longest_punctuation(&source[index..]);
             index += text.len();
+            if text == "{" {
+                brace_depth += 1;
+            } else if text == "}" {
+                brace_depth = brace_depth.saturating_sub(1);
+            }
             tokens.push(Token {
                 kind: TokenKind::Punct,
                 text: text.to_string(),
@@ -297,14 +456,15 @@ pub(crate) fn lex_with_limits(
         }
     }
 
-    tokens.push(Token {
-        kind: TokenKind::Eof,
-        text: String::new(),
-        start: source.len(),
-        end: source.len(),
-    });
+    if until_brace && closing_brace.is_none() && diagnostics.is_empty() {
+        diagnostics.push(Diagnostic::error(
+            DiagnosticCode::ParseError,
+            SourceSpan::new(module, start_at, source.len()),
+            "unterminated JSX expression",
+        ));
+    }
     if diagnostics.is_empty() {
-        Ok(tokens)
+        Ok((tokens, closing_brace.unwrap_or(index)))
     } else {
         Err(diagnostics)
     }

@@ -199,7 +199,7 @@ pub(crate) fn check_incremental(
             &exports,
             (!project.ambient_declaration_modules.contains(module_id)).then_some(&ambient),
             &namespace_exports,
-            policy,
+            policy.clone(),
             max_type_expansions,
         );
         checker.bind();

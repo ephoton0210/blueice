@@ -12,8 +12,8 @@ use blueice_bluets::remote_declarations::{
     DeclarationCache, RemoteDeclarationSource, RemoteFetcher, RemoteLimits,
 };
 use blueice_bluets::{
-    compile, BuildArtifact, CompilerLimits, CompilerOptions, EcmaTarget, ModuleKind, ModuleLoader,
-    ModuleSource, RuntimePolicy, SourceSpan, StrictRuntimeBoundary,
+    compile, BuildArtifact, CompilerLimits, CompilerOptions, EcmaTarget, JsxMode, ModuleKind,
+    ModuleLoader, ModuleSource, RuntimePolicy, SourceSpan, StrictRuntimeBoundary,
 };
 use ring::digest::{digest, SHA256};
 use serde::{Deserialize, Serialize};
@@ -115,6 +115,14 @@ struct BlueTscConfig {
     es_module_interop: bool,
     #[serde(default)]
     module: Option<String>,
+    #[serde(default)]
+    jsx: Option<String>,
+    #[serde(default)]
+    jsx_factory: Option<String>,
+    #[serde(default)]
+    jsx_fragment_factory: Option<String>,
+    #[serde(default)]
+    jsx_import_source: Option<String>,
     #[serde(default)]
     runtime_policy: Option<String>,
     #[serde(default)]
@@ -324,6 +332,17 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
             "--preserve-const-enums" => options.preserve_const_enums = true,
             "--isolated-modules" => options.isolated_modules = true,
             "--es-module-interop" => options.es_module_interop = true,
+            "--jsx" => {
+                let name = value()?;
+                options.jsx = Some(JsxMode::parse(&name).ok_or_else(|| {
+                    format!(
+                        "unsupported jsx `{name}`; expected preserve, react-native, react, react-jsx or react-jsxdev"
+                    )
+                })?)
+            }
+            "--jsx-factory" => options.jsx_factory = Some(value()?),
+            "--jsx-fragment-factory" => options.jsx_fragment_factory = Some(value()?),
+            "--jsx-import-source" => options.jsx_import_source = Some(value()?),
             "--module" => {
                 options.module_kind = match value()?.as_str() {
                     "esnext" | "es2022" | "es2020" => ModuleKind::Esm,
@@ -380,7 +399,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
 }
 
 fn usage() -> &'static str {
-    "Usage:\n  bluetsc check <entry.ts> [--project-root <directory>] [--target es2020|es2022] [--use-define-for-class-fields true|false] [--preserve-const-enums] [--isolated-modules] [--module esnext|commonjs] [--es-module-interop] [--runtime-policy transpile-only|checked|strict-runtime]\n  bluetsc build <entry.ts> --out-dir <directory> [--project-root <directory>] [--source-map] [--declaration] [--target es2020|es2022] [--use-define-for-class-fields true|false] [--preserve-const-enums] [--isolated-modules] [--module esnext|commonjs] [--es-module-interop] [--runtime-policy transpile-only|checked|strict-runtime]\n  bluetsc fetch-declarations --config <bluetsc.json>\n  bluetsc check --config <bluetsc.json>\n  bluetsc build --config <bluetsc.json>\n\nConfig fields: entries, projectRoot, outDir, sourceMap, declaration, target, useDefineForClassFields, preserveConstEnums, isolatedModules, module, esModuleInterop, runtimePolicy, imports, moduleResolution, packageRoots, customConditions, remoteDeclarations, declarationCache, strictBoundaries."
+    "Usage:\n  bluetsc check <entry.ts> [--project-root <directory>] [--target es2020|es2022] [--use-define-for-class-fields true|false] [--preserve-const-enums] [--isolated-modules] [--module esnext|commonjs] [--es-module-interop] [--jsx preserve|react-native|react|react-jsx|react-jsxdev] [--jsx-factory <name>] [--jsx-fragment-factory <name>] [--jsx-import-source <module>] [--runtime-policy transpile-only|checked|strict-runtime]\n  bluetsc build <entry.ts> --out-dir <directory> [--project-root <directory>] [--source-map] [--declaration] [--target es2020|es2022] [--use-define-for-class-fields true|false] [--preserve-const-enums] [--isolated-modules] [--module esnext|commonjs] [--es-module-interop] [--jsx preserve|react-native|react|react-jsx|react-jsxdev] [--jsx-factory <name>] [--jsx-fragment-factory <name>] [--jsx-import-source <module>] [--runtime-policy transpile-only|checked|strict-runtime]\n  bluetsc fetch-declarations --config <bluetsc.json>\n  bluetsc check --config <bluetsc.json>\n  bluetsc build --config <bluetsc.json>\n\nConfig fields: entries, projectRoot, outDir, sourceMap, declaration, target, useDefineForClassFields, preserveConstEnums, isolatedModules, module, esModuleInterop, jsx, jsxFactory, jsxFragmentFactory, jsxImportSource, runtimePolicy, imports, moduleResolution, packageRoots, customConditions, remoteDeclarations, declarationCache, strictBoundaries."
 }
 
 #[derive(Debug)]
@@ -407,6 +426,14 @@ struct BuildMetadata {
     inline_const_enums: bool,
     module: &'static str,
     es_module_interop: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    jsx: Option<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    jsx_factory: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    jsx_fragment_factory: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    jsx_import_source: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     package_resolution: Option<PackageResolutionManifest>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -625,6 +652,10 @@ fn build_metadata(
         inline_const_enums: invocation.options.inlines_const_enums(),
         module: invocation.options.module_kind.as_str(),
         es_module_interop: invocation.options.es_module_interop,
+        jsx: invocation.options.jsx.map(JsxMode::as_str),
+        jsx_factory: invocation.options.jsx_factory.clone(),
+        jsx_fragment_factory: invocation.options.jsx_fragment_factory.clone(),
+        jsx_import_source: invocation.options.jsx_import_source.clone(),
         package_resolution,
         remote_declarations: invocation
             .remote
@@ -826,6 +857,20 @@ fn resolve_config_invocation(path: PathBuf) -> Result<Invocation, String> {
         preserve_const_enums: config.preserve_const_enums,
         isolated_modules: config.isolated_modules,
         es_module_interop: config.es_module_interop,
+        jsx: config
+            .jsx
+            .as_deref()
+            .map(|name| {
+                JsxMode::parse(name).ok_or_else(|| {
+                    format!(
+                        "unsupported jsx `{name}`; expected preserve, react-native, react, react-jsx or react-jsxdev"
+                    )
+                })
+            })
+            .transpose()?,
+        jsx_factory: config.jsx_factory,
+        jsx_fragment_factory: config.jsx_fragment_factory,
+        jsx_import_source: config.jsx_import_source,
         module_kind: options_module_kind,
         runtime_policy: parse_runtime_policy(config.runtime_policy.as_deref())?,
         source_map: config.source_map,

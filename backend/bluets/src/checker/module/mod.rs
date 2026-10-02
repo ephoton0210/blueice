@@ -14,7 +14,7 @@ enum RecordSpreadFailure {
 }
 
 /// Per-project checking policy shared by every module checker.
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub(crate) struct CheckerPolicy {
     pub(crate) enforce_types: bool,
     pub(crate) require_declared_global_calls: bool,
@@ -28,6 +28,9 @@ pub(crate) struct CheckerPolicy {
     /// of an `export =` module is allowed (`esModuleInterop`).
     pub(crate) module_kind: crate::compiler::ModuleKind,
     pub(crate) es_module_interop: bool,
+    pub(crate) jsx: Option<crate::compiler::JsxMode>,
+    pub(crate) jsx_factory: Option<String>,
+    pub(crate) jsx_fragment_factory: Option<String>,
 }
 
 pub(super) struct ModuleChecker<'a> {
@@ -42,6 +45,12 @@ pub(super) struct ModuleChecker<'a> {
     isolated_modules: bool,
     module_kind: crate::compiler::ModuleKind,
     es_module_interop: bool,
+    jsx_mode: Option<crate::compiler::JsxMode>,
+    jsx_factory: Option<String>,
+    jsx_fragment_factory: Option<String>,
+    jsx_pragmas: crate::jsx::Pragmas,
+    /// JSX elements already checked, by start offset.
+    checked_jsx_elements: BTreeSet<usize>,
     /// Arrow functions already checked, by start offset, so an expression
     /// visited from several checks reports its body once.
     checked_nested_functions: BTreeSet<usize>,
@@ -96,5 +105,6 @@ pub(super) struct ModuleChecker<'a> {
 
 mod binding;
 mod expressions;
+mod jsx;
 pub(crate) use binding::NamespaceExport;
 pub(in crate::checker) use binding::{class_export, class_instance_type};

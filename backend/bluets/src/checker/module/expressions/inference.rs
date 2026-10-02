@@ -80,6 +80,14 @@ impl<'a> ModuleChecker<'a> {
         {
             return Type::Unknown;
         }
+        // `<element .. />` is one operand: its token and the embedded expressions
+        // the lexer follows it with as arguments.
+        if tokens
+            .first()
+            .is_some_and(|token| token.kind == TokenKind::JsxElement)
+        {
+            return self.jsx_element_type();
+        }
         if let Some(function) = self.nested_function_type(strip_outer_parentheses(tokens), scope) {
             return function;
         }

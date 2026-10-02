@@ -42,7 +42,7 @@ pub(crate) struct NamespaceExport {
     class_constructors: BTreeMap<String, ClassConstructorBinding>,
     types: BTreeMap<String, TypeDefinition>,
     members: BTreeMap<String, NamespaceMembers>,
-    has_values: bool,
+    pub(in crate::checker) has_values: bool,
 }
 
 impl std::fmt::Debug for ClassConstructorBinding {
@@ -102,7 +102,7 @@ struct Published {
     class_constructors: BTreeMap<String, ClassConstructorBinding>,
     types: BTreeMap<String, TypeDefinition>,
     members: NamespaceMembers,
-    has_values: bool,
+    pub(in crate::checker) has_values: bool,
 }
 
 struct BodyRun {
@@ -291,6 +291,9 @@ impl ModuleChecker<'_> {
             isolated_modules: self.isolated_modules,
             module_kind: self.module_kind,
             es_module_interop: self.es_module_interop,
+            jsx: self.jsx_mode,
+            jsx_factory: self.jsx_factory.clone(),
+            jsx_fragment_factory: self.jsx_fragment_factory.clone(),
         }
     }
 
