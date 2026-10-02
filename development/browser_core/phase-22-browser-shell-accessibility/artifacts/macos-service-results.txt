@@ -1,0 +1,91 @@
+** BUILD SUCCEEDED **
+Test Case '-[ProtocolTests.ProtocolTests testCommandsMatchRustEnvelope]' passed (0.002 seconds).
+Test Case '-[ProtocolTests.ProtocolTests testForcedShutdownKillsOwnedDescendants]' passed (1.130 seconds).
+Test Case '-[ProtocolTests.ProtocolTests testFragmentedEnvelopePreservesRequestAndTabIdentity]' passed (0.001 seconds).
+Test Case '-[ProtocolTests.ProtocolTests testFramePathSizeAndSymlinkBoundaries]' passed (0.002 seconds).
+Test Case '-[ProtocolTests.ProtocolTests testLauncherReviewsHTTPAndPreservesCommittedPageOnDenial]' passed (1.064 seconds).
+Test Case '-[ProtocolTests.ProtocolTests testMissingCoreFailsWithoutCreatingFrames]' passed (0.001 seconds).
+Test Case '-[ProtocolTests.ProtocolTests testMissingGatekeeperFailsWithoutStartingUnreviewedCore]' passed (0.001 seconds).
+Test Case '-[ProtocolTests.ProtocolTests testRealCoreRendersAndStopsOwnedProcess]' passed (0.588 seconds).
+Test Case '-[ProtocolTests.ProtocolTests testRejectsOversizedAndEmptyFramesBeforeReadingPayload]' passed (0.001 seconds).
+Test Case '-[ProtocolTests.ProtocolTests testRejectsTruncatedMessage]' passed (0.001 seconds).
+Test Case '-[ProtocolTests.ProtocolTests testStopDuringLauncherStartupIsBoundedAndCleansDescendants]' passed (3.051 seconds).
+Test Case '-[ProtocolTests.ProtocolTests testUnavailableReviewServiceDeniesHTTPWithoutFetching]' passed (0.826 seconds).
+Test Case '-[ProtocolTests.ProtocolTests testUnsolicitedBroadcastDoesNotRequireRequestIdentity]' passed (0.001 seconds).
+	 Executed 13 tests, with 0 failures (0 unexpected) in 6.667 (6.670) seconds
+	 Executed 13 tests, with 0 failures (0 unexpected) in 6.667 (6.671) seconds
+	 Executed 13 tests, with 0 failures (0 unexpected) in 6.667 (6.671) seconds
+Test Case '-[BrowserUITests.BrowserUITests testExternalNavigationFailsClosedVisibly]' passed (12.070 seconds).
+Test Case '-[BrowserUITests.BrowserUITests testMissingCoreShowsFailureAndDisabledNavigation]' passed (4.101 seconds).
+Test Case '-[BrowserUITests.BrowserUITests testMissingLauncherShowsFailureAndDisabledNavigation]' passed (2.561 seconds).
+Test Case '-[BrowserUITests.BrowserUITests testReloadUsesCommittedURL]' passed (7.421 seconds).
+Test Case '-[BrowserUITests.BrowserUITests testResizePublishesNewCoreFrame]' passed (9.145 seconds).
+Test Case '-[BrowserUITests.BrowserUITests testReviewedHTTPContentHistoryReloadAndDenial]' passed (22.894 seconds).
+Test Case '-[BrowserUITests.BrowserUITests testSettingsBackAndForward]' passed (10.453 seconds).
+Test Case '-[BrowserUITests.BrowserUITests testTabsRetainIndependentNavigationAndCloseLastTab]' passed (14.045 seconds).
+Test Case '-[BrowserUITests.BrowserUITests testVisibleCorePixelsAndNativeWindow]' passed (6.383 seconds).
+Test Case '-[BrowserUITests.BrowserUITests testWindowCloseTerminatesApplication]' passed (4.698 seconds).
+	 Executed 10 tests, with 0 failures (0 unexpected) in 93.771 (93.777) seconds
+	 Executed 10 tests, with 0 failures (0 unexpected) in 93.771 (93.777) seconds
+	 Executed 10 tests, with 0 failures (0 unexpected) in 93.771 (93.778) seconds
+** TEST SUCCEEDED **
+RESULTS=/Users/ephoton/git/blueice-downloads/frontend/macos/.build/results-20261002-142038.xcresult
+SCREENSHOTS=/Users/ephoton/git/blueice-downloads/frontend/macos/.build/results-20261002-142038-attachments
+
+Rust launcher argument and owner lifetime tests:
+test tests::a_control_socket_flag_missing_its_value_is_an_error ... ok
+test tests::a_flag_missing_its_value_is_an_error ... ok
+test tests::a_non_numeric_height_is_an_error ... ok
+test tests::a_non_numeric_memory_poll_interval_is_an_error ... ok
+test tests::a_non_numeric_width_is_an_error ... ok
+test tests::an_unrecognized_flag_is_an_error ... ok
+test tests::assistant_flags_are_parsed_and_the_default_path_is_the_shared_default ... ok
+test tests::bounded_values_owner_policy_requires_an_explicit_debugger_socket ... ok
+test tests::every_flag_is_parsed ... ok
+test tests::no_flags_uses_the_default_rendezvous_socket_and_default_size ... ok
+test tests::static_metadata_source_breakpoint_requires_independent_owner_prerequisites ... ok
+test tests::owner_catalog_requires_a_compiler_endpoint ... ok
+test tests::owner_http_policy_requires_the_supervised_page_host ... ok
+test tests::static_metadata_contract_location_requires_its_owner_prerequisites ... ok
+test tests::static_metadata_safe_point_span_requires_explicit_owner_prerequisites ... ok
+test tests::static_metadata_source_span_step_requires_separate_owner_prerequisites ... ok
+test tests::static_metadata_symbol_contract_requires_its_owner_prerequisites ... ok
+test tests::static_metadata_symbol_location_requires_its_owner_prerequisites ... ok
+test tests::static_metadata_symbol_type_requires_its_owner_prerequisites ... ok
+test tests::static_scope_relation_requires_independent_owner_prerequisites ... ok
+test tests::the_auto_update_interval_is_opt_in_and_must_be_positive ... ok
+test tests::owner_http_policy_file_rejects_symlink_and_malformed_content ... ok
+test tests::owner_catalog_file_rejects_symlink_and_malformed_content ... ok
+test tests::owner_catalog_file_checks_physical_roots_before_launch ... ok
+test result: ok. 24 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test stdin_eof_without_opt_in_preserves_the_existing_broker_lifetime ... ok
+test owner_eof_stops_real_services_and_cleans_their_paths ... ok
+test owner_eof_before_any_browser_connects_still_cleans_up ... ok
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.79s
+
+Native owner termination checks:
+[
+  {
+    "signal": "SIGTERM",
+    "app_exit": -15,
+    "services_remaining": 0,
+    "frame_or_socket_files_remaining": 0
+  },
+  {
+    "signal": "SIGKILL",
+    "app_exit": -9,
+    "services_remaining": 0,
+    "frame_or_socket_files_remaining": 0
+  }
+]
+
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1m 43s
+cargo fmt --all -- --check: passed
+codesign --verify --deep --strict: passed
+private runtime directories remaining: 0
+screenshot ignored by Git: confirmed
+
+{
+  "source_files": 21,
+  "source_sha256": "b876c90506443937363cfa6f22a65a18921089ea2a4b274937e6962dca4706bb"
+}

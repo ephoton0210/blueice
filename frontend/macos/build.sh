@@ -7,7 +7,8 @@ set -euo pipefail
 frontend_dir=$(cd "$(dirname "$0")" && pwd)
 repo_root=$(cd "$frontend_dir/../.." && pwd)
 configuration=${1:-Debug}
-cargo_flags=(build -p blueice-engine --bin blueice-core --locked)
+cargo_flags=(build -p blueice-engine -p blueice-launcher -p blueice-ai-gatekeeper
+    --bin blueice-core --bin blueice-launcher --bin blueice-ai-gatekeeper --locked)
 case "$configuration" in
     Debug) ;;
     Release) cargo_flags+=(--release) ;;
@@ -23,5 +24,5 @@ core_profile=$(echo "$configuration" | tr '[:upper:]' '[:lower:]')
 xcodebuild -project "$frontend_dir/BlueIce.xcodeproj" -scheme BlueIce \
     -configuration "$configuration" -derivedDataPath "$frontend_dir/.build" \
     -destination "platform=macOS,arch=$(uname -m)" \
-    BLUEICE_CORE_EXE="$core_target/$core_profile/blueice-core" build
+    BLUEICE_BACKEND_DIR="$core_target/$core_profile" build
 echo "APP=$frontend_dir/.build/Build/Products/$configuration/BlueIce.app"

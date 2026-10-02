@@ -13,7 +13,7 @@ result="$frontend_dir/.build/results-$(date +%Y%m%d-%H%M%S).xcresult"
 xcodebuild -project "$frontend_dir/BlueIce.xcodeproj" -scheme BlueIce \
     -configuration Debug -derivedDataPath "$frontend_dir/.build" \
     -destination "platform=macOS,arch=$(uname -m)" -parallel-testing-enabled NO \
-    -resultBundlePath "$result" BLUEICE_CORE_EXE="$core_target/debug/blueice-core" test "$@"
+    -resultBundlePath "$result" BLUEICE_BACKEND_DIR="$core_target/debug" test "$@"
 attachments="${result%.xcresult}-attachments"
 xcrun xcresulttool export attachments --path "$result" --output-path "$attachments"
 echo "RESULTS=$result"

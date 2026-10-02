@@ -48,6 +48,10 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 #[cfg(unix)]
+#[path = "blueice-launcher/owner_lifetime.rs"]
+mod owner_lifetime;
+
+#[cfg(unix)]
 #[derive(Debug, PartialEq)]
 struct Args {
     rendezvous_socket: PathBuf,
@@ -67,6 +71,8 @@ struct Args {
     /// Its native confirmation panel may change installed optional grants;
     /// neither shared browser IPC nor the operator socket gains that route.
     trusted_frontend: bool,
+    /// Opt-in lifetime pipe: EOF on stdin requests normal broker shutdown.
+    exit_on_stdin_eof: bool,
     /// Optional owner-selected gatekeeper endpoint for the core child. This
     /// is unrelated to the private BlueJS child-host capability and exists so
     /// an operator can keep the core's existing gatekeeper routing explicit.
@@ -190,6 +196,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut frame_dir = None;
     let mut extension_manifest = None;
     let mut trusted_frontend = false;
+    let mut exit_on_stdin_eof = false;
     let mut gatekeeper_socket = None;
     let mut out_of_process_bluejs = false;
     let mut compiler_mcp_socket = None;
@@ -242,6 +249,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
             "--frame-dir" => frame_dir = Some(PathBuf::from(value()?)),
             "--extension-manifest" => extension_manifest = Some(PathBuf::from(value()?)),
             "--trusted-frontend" => trusted_frontend = true,
+            "--exit-on-stdin-eof" => exit_on_stdin_eof = true,
             "--assistant" => {
                 assistant_settings
                     .get_or_insert_with(blueice_assistant_settings::default_settings_path);
@@ -586,6 +594,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
         frame_dir,
         extension_manifest,
         trusted_frontend,
+        exit_on_stdin_eof,
         gatekeeper_socket,
         out_of_process_bluejs,
         compiler_mcp_socket,
@@ -890,6 +899,9 @@ fn main() -> ExitCode {
     // including spawning/health-checking/swapping in a fresh v2 on a
     // `Cutover` control request, and tearing down whichever `core` is
     // currently active before it returns.
+    if args.exit_on_stdin_eof {
+        owner_lifetime::stop_on_stdin_eof(args.rendezvous_socket.clone());
+    }
     let result = run_broker_with_options(
         listener,
         control_listener,

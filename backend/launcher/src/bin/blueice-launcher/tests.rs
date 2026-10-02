@@ -163,6 +163,7 @@ fn no_flags_uses_the_default_rendezvous_socket_and_default_size() {
     assert_eq!(parsed.frame_dir, None);
     assert_eq!(parsed.extension_manifest, None);
     assert!(!parsed.trusted_frontend);
+    assert!(!parsed.exit_on_stdin_eof);
     assert_eq!(parsed.gatekeeper_socket, None);
     assert!(!parsed.out_of_process_bluejs);
     assert_eq!(parsed.compiler_mcp_socket, None);
@@ -208,6 +209,7 @@ fn every_flag_is_parsed() {
         "--extension-manifest",
         "/tmp/extension.json",
         "--trusted-frontend",
+        "--exit-on-stdin-eof",
         "--gatekeeper-socket",
         "/tmp/gatekeeper.sock",
         "--out-of-process-bluejs",
@@ -247,6 +249,7 @@ fn every_flag_is_parsed() {
             frame_dir: Some(PathBuf::from("/tmp/frames")),
             extension_manifest: Some(PathBuf::from("/tmp/extension.json")),
             trusted_frontend: true,
+            exit_on_stdin_eof: true,
             gatekeeper_socket: Some(PathBuf::from("/tmp/gatekeeper.sock")),
             out_of_process_bluejs: true,
             compiler_mcp_socket: Some(PathBuf::from("/tmp/compiler-mcp.sock")),

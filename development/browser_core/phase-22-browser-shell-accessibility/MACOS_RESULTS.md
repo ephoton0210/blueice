@@ -1,5 +1,9 @@
 # macOS SwiftUI/AppKit first-slice validation
 
+This records the original private-pipe slice. The default app's later launcher
+and gatekeeper integration is recorded in
+[`MACOS_SERVICE_RESULTS.md`](MACOS_SERVICE_RESULTS.md).
+
 Validated on 2026-10-02 using a real graphical login session on macOS 26.6.2
 (Apple Silicon), Xcode 27.0 (27A266a), Swift compiler 6.4 and Rust 1.96.0.
 The application uses SwiftUI chrome, an AppKit window/pixel/input viewport

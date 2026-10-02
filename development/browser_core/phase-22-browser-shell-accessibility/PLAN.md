@@ -2,7 +2,7 @@
 
 [← Back to plan](../BROWSER_CORE_PLAN.md)
 
-**Status**: In progress — the Unix reference frontend, an initial Windows WinUI 3 shell and an initial macOS SwiftUI/AppKit shell present the core's pixels and basic input. Complete browser-shell behavior and operating-system page accessibility remain open.
+**Status**: In progress — the Unix reference frontend, an initial Windows WinUI 3 shell and a macOS SwiftUI/AppKit shell with supervised navigation present the core's pixels and basic input. Complete browser-shell behavior and operating-system page accessibility remain open.
 
 ## Windows first slice (2026-10-02)
 
@@ -48,6 +48,32 @@ drives the actual native app and verifies visible pixels, history, committed
 reload URLs, independent tab state, last-tab closure, resizing, fail-closed
 navigation, window exit and startup failure. Native results are recorded in
 [`MACOS_RESULTS.md`](MACOS_RESULTS.md).
+
+## macOS supervised navigation (2026-10-02)
+
+The default SwiftUI/AppKit app now bundles and starts `blueice-launcher`,
+`blueice-core` and `blueice-ai-gatekeeper`. It connects over an owned private
+Unix socket, enabling HTTP(S) navigation through the existing URL/content
+review flow. The explicit `--core-exe` diagnostic mode retains the fail-closed
+private-pipe contract. Persistent gatekeeper settings keep their normal path.
+
+Short, mode-0700 runtime paths accommodate Darwin's socket limit. The frontend
+creates a separate process group before spawning the launcher, requests normal
+shutdown first, and bounds fallback cleanup to that owned group. Startup
+failure, missing services and connection failure release owned resources.
+An inherited lifetime pipe selects the launcher's `--exit-on-stdin-eof` mode,
+which requests normal broker shutdown when the GUI disappears. The default
+shared-broker lifetime remains unchanged without that opt-in.
+
+Regression tests cover reviewed loopback HTTP pixels, malicious URL and hidden
+prompt-injection denial, unchanged committed page/history after denial,
+unavailable review before any HTTP fetch, startup cancellation and forced
+descendant cleanup. Native XCUITest adds HTTP pixels, history/reload/recovery
+and missing-launcher UI coverage. Results are recorded in
+[`MACOS_SERVICE_RESULTS.md`](MACOS_SERVICE_RESULTS.md).
+
+This does not complete shared-launcher attachment, assistant/permission panels,
+IME/document editing or the page NSAccessibility bridge.
 
 ## Objective
 

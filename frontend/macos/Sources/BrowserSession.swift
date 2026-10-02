@@ -4,17 +4,20 @@
 
 import Foundation
 
-// Blocking pipe reads and process waits stay off the AppKit/main actor.
+// Blocking socket/pipe reads and process waits stay off the AppKit/main actor.
 final class BrowserSession: @unchecked Sendable {
-    let frameDirectory = FileManager.default.temporaryDirectory
-        .appendingPathComponent("blueice-macos-" + UUID().uuidString)
+    // Short paths also keep the launcher's internal sockets under Darwin's limit.
+    let runtimeDirectory = URL(fileURLWithPath: "/private/tmp/bi-" + UUID().uuidString.replacingOccurrences(of: "-", with: ""))
+    var frameDirectory: URL { runtimeDirectory.appendingPathComponent("frames") }
     private let lock = NSLock()
     private let reader = DispatchQueue(label: "cc.blueice.browser.read")
     private let writer = DispatchQueue(label: "cc.blueice.browser.write")
     private let lifecycle = DispatchQueue(label: "cc.blueice.browser.lifecycle")
     private let reading = DispatchGroup()
-    private var core: Process?
-    private var input: FileHandle?
+    private var process: OwnedBrowserProcess?
+    private var connection: BrowserConnection?
+    private var ownerLiveness: FileHandle?
+    private var ownsDirectory = false
     private var started = false
     private var stopping = false
     private var handshaken = false
@@ -25,72 +28,122 @@ final class BrowserSession: @unchecked Sendable {
         get { lock.withLock { callback } }
         set { lock.withLock { callback = newValue } }
     }
-    var processID: Int32? { lock.withLock { core?.processIdentifier } }
+    var processID: Int32? { lock.withLock { process?.pid } }
 
-    func start(executable: URL) async throws {
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            reading.enter()
-            reader.async {
-                defer { self.reading.leave() }
-                var resumed = false
-                var timeout: DispatchWorkItem?
-                do {
-                    let process = Process()
-                    let toCore = Pipe(), fromCore = Pipe()
-                    process.executableURL = executable
-                    process.arguments = ["--stdio", "--frame-dir", self.frameDirectory.path]
-                    process.standardInput = toCore
-                    process.standardOutput = fromCore
-                    process.standardError = FileHandle.standardError
-                    try self.lock.withLock {
-                        guard !self.started, !self.stopping else { throw BrowserFailure.invalid("Browser session is already started or closed.") }
-                        self.started = true
-                        guard FileManager.default.isExecutableFile(atPath: executable.path) else {
-                            throw BrowserFailure.invalid("BlueIce core was not found. Build the app with build.sh first.")
+    // Default GUI mode always uses the supervised, policy-checked stack.
+    func start(launcher: URL) async throws { try await start(executable: launcher, supervised: true) }
+
+    // Explicit diagnostic mode retains the fail-closed private-pipe contract.
+    func start(executable: URL) async throws { try await start(executable: executable, supervised: false) }
+
+    private func start(executable: URL, supervised: Bool) async throws {
+        try lock.withLock {
+            guard !started, !stopping else { throw BrowserFailure.invalid("Browser session is already started or closed.") }
+            started = true
+        }
+        do {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                reading.enter()
+                reader.async {
+                    defer { self.reading.leave() }
+                    var resumed = false
+                    var timeout: DispatchWorkItem?
+                    do {
+                        let child: OwnedBrowserProcess = try self.lock.withLock {
+                            guard !self.stopping else { throw BrowserFailure.invalid("Browser session is closed.") }
+                            let names = supervised ? ["blueice-launcher", "blueice-core", "blueice-ai-gatekeeper"] : ["blueice-core"]
+                            for (index, name) in names.enumerated() {
+                                let path = index == 0 ? executable : executable.deletingLastPathComponent().appendingPathComponent(name)
+                                guard FileManager.default.isExecutableFile(atPath: path.path) else {
+                                    throw BrowserFailure.invalid("BlueIce \(name) was not found. Build the app with build.sh first.")
+                                }
+                            }
+                            // Never adopt/remove a directory owned by a different process.
+                            guard mkdir(self.runtimeDirectory.path, 0o700) == 0 else {
+                                throw BrowserFailure.invalid("Cannot create the private browser runtime directory.")
+                            }
+                            self.ownsDirectory = true
+                            var environment = ProcessInfo.processInfo.environment
+                            environment["TMPDIR"] = self.runtimeDirectory.path
+                            environment["XDG_RUNTIME_DIR"] = self.runtimeDirectory.path
+                            if supervised {
+                                let owner = Pipe()
+                                let child = try OwnedBrowserProcess(executable: executable, arguments: [
+                                    "--socket", self.runtimeDirectory.appendingPathComponent("browser.sock").path,
+                                    "--control-socket", self.runtimeDirectory.appendingPathComponent("control.sock").path,
+                                    "--frame-dir", self.frameDirectory.path,
+                                    "--width", "1024", "--height", "640", "--exit-on-stdin-eof"
+                                ], environment: environment, input: owner.fileHandleForReading)
+                                try? owner.fileHandleForReading.close()
+                                self.ownerLiveness = owner.fileHandleForWriting
+                                self.process = child
+                                return child
+                            }
+                            let toCore = Pipe(), fromCore = Pipe()
+                            let child = try OwnedBrowserProcess(executable: executable,
+                                arguments: ["--stdio", "--frame-dir", self.frameDirectory.path], environment: environment,
+                                input: toCore.fileHandleForReading, output: fromCore.fileHandleForWriting)
+                            try? toCore.fileHandleForReading.close()
+                            try? fromCore.fileHandleForWriting.close()
+                            self.connection = BrowserConnection(input: fromCore.fileHandleForReading, output: toCore.fileHandleForWriting)
+                            self.process = child
+                            return child
                         }
-                        try process.run()
-                        self.core = process
-                        self.input = toCore.fileHandleForWriting
-                    }
-                    defer {
-                        try? toCore.fileHandleForWriting.close()
-                        try? fromCore.fileHandleForReading.close()
-                    }
-                    let deadline = DispatchWorkItem {
-                        if self.lock.withLock({ !self.handshaken }), process.isRunning { process.terminate() }
-                    }
-                    timeout = deadline
-                    DispatchQueue.global().asyncAfter(deadline: .now() + 10, execute: deadline)
-                    try self.writer.sync { try self.write(.values("Hello", ["protocol_version": .unsigned(UInt64(BrowserWire.version))]), tab: nil) }
-                    func read() throws -> IncomingEnvelope {
-                        try BrowserWire.read { try fromCore.fileHandleForReading.read(upToCount: $0) ?? Data() }
-                    }
-                    let hello = try read()
-                    guard case .hello(BrowserWire.version) = hello.message, hello.requestID == 1 else {
-                        throw BrowserFailure.invalid("BlueIce core uses an incompatible browser protocol.")
-                    }
-                    self.lock.withLock { self.handshaken = true }
-                    deadline.cancel()
-                    resumed = true
-                    continuation.resume()
-                    while !self.lock.withLock({ self.stopping }) { self.received?(.success(try read())) }
-                } catch {
-                    timeout?.cancel()
-                    if !resumed { continuation.resume(throwing: error) }
-                    else if !self.lock.withLock({ self.stopping }) {
-                        self.received?(.failure(.invalid("Core connection ended: \(error.localizedDescription)")))
+                        let deadline = DispatchWorkItem {
+                            self.lock.withLock {
+                                if !self.handshaken {
+                                    self.connection?.interrupt()
+                                    child.signalGroup(SIGKILL)
+                                }
+                            }
+                        }
+                        timeout = deadline
+                        DispatchQueue.global().asyncAfter(deadline: .now() + 12, execute: deadline)
+                        if supervised {
+                            let connectDeadline = Date().addingTimeInterval(10)
+                            var connected: BrowserConnection?
+                            while connected == nil && Date() < connectDeadline && child.isRunning && !self.lock.withLock({ self.stopping }) {
+                                connected = try? BrowserConnection(socketPath: self.runtimeDirectory.appendingPathComponent("browser.sock").path)
+                                if connected == nil { Thread.sleep(forTimeInterval: 0.02) }
+                            }
+                            guard let connected else { throw BrowserFailure.invalid("BlueIce launcher could not start its core and gatekeeper services.") }
+                            self.lock.withLock { self.connection = connected }
+                        }
+                        guard let transport = self.lock.withLock({ self.connection }) else { throw BrowserFailure.invalid("Browser connection is unavailable.") }
+                        try self.writer.sync { try self.write(.values("Hello", ["protocol_version": .unsigned(UInt64(BrowserWire.version))]), tab: nil) }
+                        func read() throws -> IncomingEnvelope {
+                            try BrowserWire.read { try transport.input.read(upToCount: $0) ?? Data() }
+                        }
+                        let hello = try read()
+                        guard case .hello(BrowserWire.version) = hello.message, hello.requestID == 1 else {
+                            throw BrowserFailure.invalid("BlueIce services use an incompatible browser protocol.")
+                        }
+                        try self.lock.withLock {
+                            guard !self.stopping else { throw BrowserFailure.invalid("Browser session is closed.") }
+                            self.handshaken = true
+                        }
+                        deadline.cancel()
+                        resumed = true
+                        continuation.resume()
+                        while !self.lock.withLock({ self.stopping }) { self.received?(.success(try read())) }
+                    } catch {
+                        timeout?.cancel()
+                        if !resumed { continuation.resume(throwing: error) }
+                        else if !self.lock.withLock({ self.stopping }) {
+                            self.received?(.failure(.invalid("Browser service connection ended: \(error.localizedDescription)")))
+                        }
                     }
                 }
             }
-        }
+        } catch { await stop(); throw error }
     }
 
     func send(_ command: BrowserCommand, tab: UInt64? = nil) async throws {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             writer.async {
                 do {
-                    guard self.lock.withLock({ !self.stopping && self.handshaken && self.core?.isRunning == true }) else {
-                        throw BrowserFailure.invalid("BlueIce core is not running.")
+                    guard self.lock.withLock({ !self.stopping && self.handshaken && self.process?.isRunning == true }) else {
+                        throw BrowserFailure.invalid("BlueIce browser services are not running.")
                     }
                     try self.write(command, tab: tab)
                     continuation.resume()
@@ -100,29 +153,30 @@ final class BrowserSession: @unchecked Sendable {
     }
 
     private func write(_ command: BrowserCommand, tab: UInt64?) throws {
-        guard let pipe = lock.withLock({ input }) else { throw BrowserFailure.invalid("Core connection is unavailable.") }
+        guard let transport = lock.withLock({ connection }) else { throw BrowserFailure.invalid("Browser connection is unavailable.") }
         requestID += 1
-        try pipe.write(contentsOf: BrowserWire.encode(command, tab: tab, request: requestID))
+        try transport.output.write(contentsOf: BrowserWire.encode(command, tab: tab, request: requestID))
     }
 
     func stop() async {
         lock.withLock { stopping = true }
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             lifecycle.async {
-                if let process = self.lock.withLock({ self.core }), process.isRunning {
-                    let terminate = DispatchWorkItem { if process.isRunning { process.terminate() } }
-                    let force = DispatchWorkItem { if process.isRunning { kill(process.processIdentifier, SIGKILL) } }
-                    DispatchQueue.global().asyncAfter(deadline: .now() + 2, execute: terminate)
-                    DispatchQueue.global().asyncAfter(deadline: .now() + 3, execute: force)
-                    self.writer.sync { try? self.write(.unit("Shutdown"), tab: nil) }
-                    process.waitUntilExit()
-                    terminate.cancel()
-                    force.cancel()
+                self.writer.sync {
+                    if self.lock.withLock({ self.handshaken }) { try? self.write(.unit("Shutdown"), tab: nil) }
                 }
+                self.lock.withLock { self.connection?.interrupt() }
+                self.lock.withLock { try? self.ownerLiveness?.close(); self.ownerLiveness = nil }
+                self.lock.withLock { self.process }?.finish()
                 self.reading.wait()
-                self.lock.withLock { self.input = nil; self.core = nil; self.callback = nil }
-                // This path is a fresh UUID owned exclusively by this child.
-                try? FileManager.default.removeItem(at: self.frameDirectory)
+                self.lock.withLock {
+                    self.connection?.close()
+                    self.connection = nil; self.process = nil; self.callback = nil
+                    if self.ownsDirectory {
+                        try? FileManager.default.removeItem(at: self.runtimeDirectory)
+                        self.ownsDirectory = false
+                    }
+                }
                 continuation.resume()
             }
         }

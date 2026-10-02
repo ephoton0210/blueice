@@ -24,11 +24,17 @@ final class BrowserModel: ObservableObject {
     func start() async {
         let arguments = ProcessInfo.processInfo.arguments
         let executable: URL
+        let supervised: Bool
         if let option = arguments.firstIndex(of: "--core-exe") {
             guard arguments.indices.contains(option + 1) else { status = "--core-exe requires a core executable path."; return }
             executable = URL(fileURLWithPath: arguments[option + 1])
+            supervised = false
         } else {
-            executable = Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/blueice-core")
+            if let option = arguments.firstIndex(of: "--launcher-exe") {
+                guard arguments.indices.contains(option + 1) else { status = "--launcher-exe requires a launcher executable path."; return }
+                executable = URL(fileURLWithPath: arguments[option + 1])
+            } else { executable = Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/blueice-launcher") }
+            supervised = true
         }
         session.received = { [weak self, directory = session.frameDirectory] result in
             do {
@@ -42,11 +48,16 @@ final class BrowserModel: ObservableObject {
                 Task { @MainActor [weak self] in self?.apply(envelope, pixels: frame) }
             } catch {
                 let message = error.localizedDescription
-                Task { @MainActor [weak self] in self?.status = message; self?.ready = false }
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    self.status = message; self.ready = false
+                    await self.session.stop()
+                }
             }
         }
         do {
-            try await session.start(executable: executable)
+            if supervised { try await session.start(launcher: executable) }
+            else { try await session.start(executable: executable) }
             ready = true
             status = "Ready"
             await send(.unit("ListTabs"))

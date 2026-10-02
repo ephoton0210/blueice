@@ -14,7 +14,13 @@ final class BrowserUITests: XCTestCase {
         app = XCUIApplication()
     }
 
-    override func tearDownWithError() throws { app.terminate() }
+    override func tearDownWithError() throws {
+        if app.state != .notRunning {
+            if app.windows.firstMatch.exists { app.windows.firstMatch.buttons[XCUIIdentifierCloseWindow].click() }
+            XCTAssertTrue(app.wait(for: .notRunning, timeout: 10), "Normal close must stop the owned services")
+            app.terminate()
+        }
+    }
 
     private func launch() {
         app.launch()
@@ -114,11 +120,61 @@ final class BrowserUITests: XCTestCase {
 
     func testExternalNavigationFailsClosedVisibly() {
         launch()
-        enter("https://example.invalid")
+        enter("http://malware.test/")
         let denied = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value CONTAINS[c] 'blocked' OR label CONTAINS[c] 'blocked'"), object: app.staticTexts["status"])
         XCTAssertEqual(XCTWaiter.wait(for: [denied], timeout: 15), .completed, app.debugDescription)
         app.buttons["reload"].click()
         waitValue(app.textFields["address"], "about:credits")
+    }
+
+    func testReviewedHTTPContentHistoryReloadAndDenial() throws {
+        let fixture = try HTTPFixture()
+        defer { fixture.stop() }
+        launch()
+        let url = fixture.origin + "/safe"
+        enter(url)
+        waitValue(app.textFields["address"], url)
+        let page = app.groups["page"]
+        let pixels = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            guard let bitmap = NSBitmapImageRep(data: page.screenshot().image.tiffRepresentation ?? Data()) else { return false }
+            for y in stride(from: 10, to: bitmap.pixelsHigh, by: 40) {
+                for x in stride(from: 10, to: bitmap.pixelsWide, by: 40) {
+                    if let color = bitmap.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB),
+                       color.redComponent < 0.25, color.greenComponent > 0.35, color.greenComponent < 0.65,
+                       color.blueComponent < 0.35 { return true }
+                }
+            }
+            return false
+        }, object: page)
+        XCTAssertEqual(XCTWaiter.wait(for: [pixels], timeout: 15), .completed)
+        app.buttons["back"].click()
+        waitValue(app.textFields["address"], "about:credits")
+        app.buttons["forward"].click()
+        waitValue(app.textFields["address"], url)
+        enter("about:settings", submit: false)
+        let beforeReload = fixture.requests.count
+        app.buttons["reload"].click()
+        waitValue(app.textFields["address"], url)
+        XCTAssertGreaterThan(fixture.requests.count, beforeReload)
+        enter(fixture.origin + "/blocked")
+        let denied = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value CONTAINS[c] 'blocked' OR label CONTAINS[c] 'blocked'"), object: app.staticTexts["status"])
+        XCTAssertEqual(XCTWaiter.wait(for: [denied], timeout: 15), .completed)
+        app.buttons["reload"].click()
+        waitValue(app.textFields["address"], url)
+        XCTAssertEqual(fixture.requests.filter { $0 == "/blocked" }.count, 1)
+        let attachment = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
+        attachment.name = "macos-reviewed-http"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
+    func testMissingLauncherShowsFailureAndDisabledNavigation() {
+        app.launchArguments = ["--launcher-exe", "/nonexistent/blueice-launcher"]
+        app.launch()
+        let failed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value CONTAINS[c] 'launcher' OR label CONTAINS[c] 'launcher'"), object: app.staticTexts["status"])
+        XCTAssertEqual(XCTWaiter.wait(for: [failed], timeout: 10), .completed, app.debugDescription)
+        XCTAssertFalse(app.buttons["reload"].isEnabled)
+        XCTAssertFalse(app.buttons["add-tab"].isEnabled)
     }
 
     func testWindowCloseTerminatesApplication() {
