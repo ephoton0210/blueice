@@ -85,11 +85,24 @@ fn rig_with_limits(
 fn try_talk(public: &Path, message: &[u8]) -> io::Result<Vec<u8>> {
     let mut stream = UnixStream::connect(public)?;
     stream.set_read_timeout(Some(Duration::from_secs(10)))?;
-    stream.write_all(message)?;
-    stream.shutdown(Shutdown::Write)?;
-    let mut reply = Vec::new();
-    stream.read_to_end(&mut reply)?;
-    Ok(reply)
+    stream.set_write_timeout(Some(Duration::from_secs(10)))?;
+    let mut writer = stream.try_clone()?;
+    // Drain replies while writing: large echoes can fill Darwin's smaller
+    // socket buffers in both directions before a sequential writer finishes.
+    thread::scope(|scope| {
+        let sending = scope.spawn(|| {
+            writer.write_all(message)?;
+            writer.shutdown(Shutdown::Write)
+        });
+        let mut reply = Vec::new();
+        let reading = stream.read_to_end(&mut reply);
+        if reading.is_err() {
+            let _ = stream.shutdown(Shutdown::Both);
+        }
+        sending.join().expect("test socket writer panicked")?;
+        reading?;
+        Ok(reply)
+    })
 }
 
 fn talk(public: &Path, message: &[u8]) -> Vec<u8> {

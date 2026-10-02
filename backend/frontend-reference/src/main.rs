@@ -1840,6 +1840,7 @@ mod unix {
                     | ServerMessage::FormResubmissionResolved { .. }
                     | ServerMessage::Unknown
                     | ServerMessage::FindState(_)
+                    | ServerMessage::WindowState(_)
                     | ServerMessage::ViewportState(_)
                     | ServerMessage::DisplayPreferencesState(_)
                     | ServerMessage::ContextMenu(_)

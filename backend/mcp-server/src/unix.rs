@@ -242,7 +242,8 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::Hello { .. }
                 | ServerMessage::TextInputState(_)
                 | ServerMessage::FindState(_)
-                    | ServerMessage::ViewportState(_)
+                    | ServerMessage::WindowState(_)
+                | ServerMessage::ViewportState(_)
                     | ServerMessage::DisplayPreferencesState(_)
                     | ServerMessage::ContextMenu(_)
                     | ServerMessage::ContextMenuLink { .. }
@@ -344,6 +345,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::Hello { .. }
                 | ServerMessage::TextInputState(_)
                 | ServerMessage::FindState(_)
+                | ServerMessage::WindowState(_)
                 | ServerMessage::ViewportState(_)
                 | ServerMessage::DisplayPreferencesState(_)
                 | ServerMessage::ContextMenu(_)
@@ -601,6 +603,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::Hello { .. }
                 | ServerMessage::TextInputState(_)
                 | ServerMessage::FindState(_)
+                | ServerMessage::WindowState(_)
                 | ServerMessage::ViewportState(_)
                 | ServerMessage::DisplayPreferencesState(_)
                 | ServerMessage::ContextMenu(_)
@@ -674,6 +677,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::Hello { .. }
                 | ServerMessage::TextInputState(_)
                 | ServerMessage::FindState(_)
+                | ServerMessage::WindowState(_)
                 | ServerMessage::ViewportState(_)
                 | ServerMessage::DisplayPreferencesState(_)
                 | ServerMessage::ContextMenu(_)
@@ -794,6 +798,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::Hello { .. }
                 | ServerMessage::TextInputState(_)
                 | ServerMessage::FindState(_)
+                | ServerMessage::WindowState(_)
                 | ServerMessage::ViewportState(_)
                 | ServerMessage::DisplayPreferencesState(_)
                 | ServerMessage::ContextMenu(_)
@@ -864,6 +869,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::Hello { .. }
                 | ServerMessage::TextInputState(_)
                 | ServerMessage::FindState(_)
+                | ServerMessage::WindowState(_)
                 | ServerMessage::ViewportState(_)
                 | ServerMessage::DisplayPreferencesState(_)
                 | ServerMessage::ContextMenu(_)
@@ -933,6 +939,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::Hello { .. }
                 | ServerMessage::TextInputState(_)
                 | ServerMessage::FindState(_)
+                | ServerMessage::WindowState(_)
                 | ServerMessage::ViewportState(_)
                 | ServerMessage::DisplayPreferencesState(_)
                 | ServerMessage::ContextMenu(_)
@@ -1014,6 +1021,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::Hello { .. }
                 | ServerMessage::TextInputState(_)
                 | ServerMessage::FindState(_)
+                | ServerMessage::WindowState(_)
                 | ServerMessage::ViewportState(_)
                 | ServerMessage::DisplayPreferencesState(_)
                 | ServerMessage::ContextMenu(_)
@@ -1135,6 +1143,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::Hello { .. }
                 | ServerMessage::TextInputState(_)
                 | ServerMessage::FindState(_)
+                | ServerMessage::WindowState(_)
                 | ServerMessage::ViewportState(_)
                 | ServerMessage::DisplayPreferencesState(_)
                 | ServerMessage::ContextMenu(_)

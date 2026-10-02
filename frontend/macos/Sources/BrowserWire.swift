@@ -31,6 +31,7 @@ enum BrowserCommand: Encodable, Sendable {
     case viewport(Double, Double, Double, backingScale: Double? = nil)
     case displayPreferences(DisplayPreferences)
     case tabGroup(TabGroupAction)
+    case window(WindowAction)
     func encode(to encoder: Encoder) throws {
         switch self {
         case .unit(let name):
@@ -67,6 +68,9 @@ enum BrowserCommand: Encodable, Sendable {
             var root = encoder.container(keyedBy: MessageKey.self)
             var value = root.nestedContainer(keyedBy: MessageKey.self, forKey: MessageKey("SetDisplayPreferences"))
             try value.encode(preferences, forKey: MessageKey("preferences"))
+        case .window(let action):
+            var root = encoder.container(keyedBy: MessageKey.self)
+            try root.encode(action, forKey: MessageKey("Window"))
         case .tabGroup(let action):
             let (name, fields) = action.payload
             try BrowserCommand.values(name, fields).encode(to: encoder)
@@ -205,7 +209,7 @@ private struct MessageKey: CodingKey {
     init?(intValue: Int) { return nil }
 }
 
-struct BrowserTab: Decodable, Identifiable, Sendable {
+struct BrowserTab: Decodable, Identifiable, Sendable, Equatable {
     let id: UInt64
     var url: String?
     var groupID: UInt64? = nil
@@ -274,6 +278,7 @@ enum BrowserMessage: Decodable, Sendable {
     case contextMenu(PageContextMenu), contextLink(PageContextLink), contextUnavailable
     case viewportState(ViewportState), viewportUnavailable
     case displayPreferences(DisplayPreferencesState), displayPreferencesUnavailable
+    case windowState(BrowserWindowState), windowsUnavailable
     case groups([BrowserTabGroup]), groupChanged(BrowserTabGroup, created: Bool)
     case groupAssigned(UInt64, UInt64?), groupClosed(UInt64), groupsUnavailable
 
@@ -299,6 +304,9 @@ enum BrowserMessage: Decodable, Sendable {
             let value = try object.decode(Opened.self, forKey: key)
             self = .opened(value.tab_id, value.url)
         case "TabClosed": self = .closed(try object.decode(Tab.self, forKey: key).tab_id)
+        case "WindowState":
+            if let state = try? object.decode(BrowserWindowState.self, forKey: key), state.valid { self = .windowState(state) }
+            else { self = .windowsUnavailable }
         case "TabGroups":
             if let groups = try? object.decode([BrowserTabGroup].self, forKey: key),
                groups.allSatisfy(\.valid), Set(groups.map(\.id)).count == groups.count { self = .groups(groups) }

@@ -245,4 +245,15 @@ with SwiftUI sheets, native tab/group/View menus, collapse and nullable membersh
 Core IDs, pages, editor values, history and zoom remain intact when groups change
 or dissolve. Native validation/cancel, empty/stale groups and dedicated error
 notices are recorded in [MACOS_TAB_GROUP_RESULTS.md](MACOS_TAB_GROUP_RESULTS.md).
-Multiple-window viewports, profile lifecycle and the full delivery plan remain open.
+The later shared-core window increment delivers multiple-window viewports. Profile lifecycle and the full delivery plan remain open.
+
+The macOS shared-core window increment adds an opt-in canonical window registry,
+window-local viewports and existing-page tab transfer. Command-N, Window menu
+activation and tab context-menu transfer create actual AppKit windows over one
+owned service session. Closing the source window leaves the destination live;
+active editing/find/group menus follow it. Transfer retains committed values,
+selection, history, group membership, zoom and find state, while fencing stale
+source-window commands and ending composition. New tab membership precedes review,
+so denied pages remain visible and closable. The native and core regression record
+is [MACOS_WINDOW_RESULTS.md](MACOS_WINDOW_RESULTS.md). Profile/context lifecycle,
+session restoration, drag reordering and the other delivery milestones remain open.

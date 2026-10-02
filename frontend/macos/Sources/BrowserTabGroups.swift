@@ -93,6 +93,7 @@ struct BrowserTabStrip: View {
         .clipShape(RoundedRectangle(cornerRadius: 6))
         .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(model.selected == tab.id && appearance.resolved.highContrast ? Color.primary : Color.clear, lineWidth: 2).allowsHitTesting(false).accessibilityHidden(true))
         .contextMenu {
+            if let workspace = model.windowManager { TabWindowMenu(workspace: workspace, tab: tab.id, window: model.windowID) }
             Button("New Tab Group…") { model.beginTabGroupEditor(tab: tab.id) }
                 .disabled(!model.groupsAvailable || model.groupBusy)
             Menu("Move to Group") {
@@ -138,7 +139,7 @@ struct BrowserTabGroupEditor: View {
                         .buttonStyle(.plain).accessibilityLabel(title).accessibilityIdentifier("group-color-" + title.lowercased())
                 }
             }
-            if !targetExists { Text("The tab or group was closed.").foregroundStyle(.red).accessibilityIdentifier("group-target-closed") }
+            if !targetExists { Text("The tab or group is no longer available.").foregroundStyle(.red).accessibilityIdentifier("group-target-closed") }
             else if let error = model.groupError { Text(error).foregroundStyle(.red).accessibilityIdentifier("group-error") }
             else { Text("Use a name of up to 80 characters and a six-digit hex color. Tabs keep their pages and history.").font(.caption).foregroundStyle(.secondary) }
             HStack {

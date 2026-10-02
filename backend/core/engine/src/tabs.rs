@@ -26,6 +26,9 @@ use std::fmt;
 use std::sync::Arc;
 use url::Url;
 
+mod windows;
+pub use windows::WindowId;
+
 /// A single extension connection cannot install an unbounded number of
 /// navigation rules. The small cap keeps this deliberately declarative slice
 /// from becoming a general purpose core-side routing database.
@@ -281,6 +284,7 @@ struct Tab {
     back: Vec<HistoryEntry>,
     forward: Vec<HistoryEntry>,
     group_id: Option<GroupId>,
+    window_id: WindowId,
 }
 
 impl Tab {
@@ -337,13 +341,9 @@ pub struct TabManager {
     /// Creation order gives `ListTabGroups` stable, browser-like ordering.
     group_order: Vec<GroupId>,
     next_group_id: u64,
-    /// The one physical window's current size -- every tab shares it
-    /// (there is one `frontend` window regardless of tab count), so a
-    /// newly [`TabManager::open_tab`]-ed tab starts at whatever the
-    /// window's current size is, not a hardcoded default.
-    viewport_width: f64,
-    viewport_height: f64,
-    display_viewport: Option<blueice_ipc::viewport::DisplayViewport>,
+    windows: BTreeMap<WindowId, windows::CoreWindow>,
+    next_window_id: u64,
+    native_windows: bool,
     display_preferences: Option<blueice_ipc::display::DisplayPreferences>,
     /// Handed to every tab (existing and future) so `about:downloads` works
     /// in any of them.
@@ -406,6 +406,7 @@ impl TabManager {
                 back: Vec::new(),
                 forward: Vec::new(),
                 group_id: None,
+                window_id: WindowId::from_u64(1),
             },
         );
         TabManager {
@@ -416,9 +417,21 @@ impl TabManager {
             groups: HashMap::new(),
             group_order: Vec::new(),
             next_group_id: 1,
-            viewport_width,
-            viewport_height,
-            display_viewport: None,
+            windows: BTreeMap::from([(
+                WindowId::from_u64(1),
+                windows::CoreWindow {
+                    viewport: blueice_ipc::viewport::DisplayViewport {
+                        width: viewport_width,
+                        height: viewport_height,
+                        device_scale: 1.0,
+                        backing_scale: None,
+                    },
+                    native: false,
+                    tabs: vec![default_tab],
+                },
+            )]),
+            next_window_id: 2,
+            native_windows: false,
             display_preferences: None,
             downloads: None,
             gatekeeper_settings: None,
@@ -710,10 +723,22 @@ impl TabManager {
     /// Opens a new, blank tab at the window's current size, returning
     /// its `TabId`.
     pub fn open_tab(&mut self) -> TabId {
+        self.open_tab_in_window(WindowId::from_u64(1))
+            .expect("the legacy default window must be live")
+    }
+
+    /// Opens a page in a live window using its current display environment.
+    pub fn open_tab_in_window(&mut self, window: WindowId) -> Result<TabId, String> {
+        let owner = self.windows.get(&window).ok_or("Unknown browser window")?;
+        let display = owner.viewport;
+        let native = owner.native;
         let id = TabId(self.next_tab_id);
-        self.next_tab_id += 1;
-        let mut page = Page::new(self.viewport_width, self.viewport_height);
-        if let Some(display) = self.display_viewport {
+        let next = self
+            .next_tab_id
+            .checked_add(1)
+            .ok_or("Tab identities exhausted")?;
+        let mut page = Page::new(display.width, display.height);
+        if native {
             page.configure_display(display);
         }
         if let Some(preferences) = self.display_preferences {
@@ -730,10 +755,17 @@ impl TabManager {
                 back: Vec::new(),
                 forward: Vec::new(),
                 group_id: None,
+                window_id: window,
             },
         );
+        self.next_tab_id = next;
         self.order.push(id);
-        id
+        self.windows
+            .get_mut(&window)
+            .expect("validated window")
+            .tabs
+            .push(id);
+        Ok(id)
     }
 
     /// Where every tab's `about:downloads` reads from -- applied to the
@@ -781,11 +813,14 @@ impl TabManager {
     /// `ChromeCommand`-level chrome policy staying `frontend`'s concern,
     /// not something `core` enforces.
     pub fn close_tab(&mut self, id: TabId) -> bool {
-        let existed = self.tabs.remove(&id).is_some();
-        if existed {
-            self.order.retain(|&t| t != id);
+        let Some(tab) = self.tabs.remove(&id) else {
+            return false;
+        };
+        self.order.retain(|&t| t != id);
+        if let Some(window) = self.windows.get_mut(&tab.window_id) {
+            window.tabs.retain(|&t| t != id);
         }
-        existed
+        true
     }
 
     pub fn get(&self, id: TabId) -> Option<&Page> {
@@ -1098,8 +1133,12 @@ impl TabManager {
             .map(Page::next_node_id)
             .max()
             .expect("a live tab always has a current page");
+        let window = self
+            .windows
+            .get(&tab.window_id)
+            .expect("a live tab has a live window");
         let mut page =
-            Page::new_continuing_from(self.viewport_width, self.viewport_height, next_node_id);
+            Page::new_continuing_from(window.viewport.width, window.viewport.height, next_node_id);
         if let Some(display) = tab.page.display_viewport {
             page.configure_display(display);
         }
@@ -1176,57 +1215,20 @@ impl TabManager {
         self.order.iter().copied()
     }
 
-    /// Updates the one shared window size every future [`Self::
-    /// open_tab`] call starts new tabs at -- called on every `Resize`
-    /// regardless of which tab it's addressed to, since there is one
-    /// physical window's dimensions, not one per tab.
+    /// Updates the legacy default window's size for subsequently opened tabs.
     pub fn set_window_size(&mut self, width: f64, height: f64) {
-        self.viewport_width = width;
-        self.viewport_height = height;
+        if let Some(window) = self.windows.get_mut(&WindowId::from_u64(1)) {
+            window.viewport.width = width;
+            window.viewport.height = height;
+        }
     }
 
-    /// Reflows every live tab to the one physical frontend window's content
-    /// size. There is no active tab in core, so eagerly updating every page is
-    /// the only policy that keeps a newly selected background tab from showing
-    /// a stale viewport. The caller owns frame publication and can tag the
-    /// selected tab's response with its request id.
+    /// Explicit global reflow retained for domain callers. Session Resize
+    /// addresses only the window that owns its target tab.
     pub fn resize_all(&mut self, width: f64, height: f64) {
-        if self.display_viewport.is_some() {
-            self.configure_viewport_all(blueice_ipc::viewport::DisplayViewport {
-                width,
-                height,
-                device_scale: 1.0,
-                backing_scale: None,
-            });
-            return;
-        }
-        self.set_window_size(width, height);
-        for tab in self.tabs.values_mut() {
-            tab.page.resize(width, height);
-            // Snapshot entries are restored without a network round trip, so
-            // keep their retained layouts at the one physical window's current
-            // viewport too. URL-only entries have no retained page to resize.
-            for entry in tab.back.iter_mut().chain(tab.forward.iter_mut()) {
-                if let Some(page) = entry.snapshot_mut() {
-                    page.resize(width, height);
-                }
-            }
-        }
-    }
-
-    pub(crate) fn configure_viewport_all(
-        &mut self,
-        display: blueice_ipc::viewport::DisplayViewport,
-    ) {
-        self.set_window_size(display.width, display.height);
-        self.display_viewport = Some(display);
-        for tab in self.tabs.values_mut() {
-            tab.page.configure_display(display);
-            for entry in tab.back.iter_mut().chain(tab.forward.iter_mut()) {
-                if let Some(page) = entry.snapshot_mut() {
-                    page.configure_display(display);
-                }
-            }
+        let ids: Vec<_> = self.window_ids().collect();
+        for id in ids {
+            self.resize_window(id, width, height);
         }
     }
 

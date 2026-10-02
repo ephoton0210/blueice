@@ -558,13 +558,28 @@ pub(super) fn handle_open_tab<S: Write>(
     generation: &mut u64,
     request_id: Option<u64>,
     url: Option<String>,
+    window: crate::WindowId,
     pending_nav_seq: &mut HashMap<TabId, u64>,
     downloads_refresher: &mut DownloadsRefresher,
     completion_tx: &mpsc::Sender<Completion>,
     gatekeeper_socket: &Path,
     extension_events: Option<&mpsc::SyncSender<ExtensionRuntimeEvent>>,
 ) -> io::Result<()> {
-    let new_id = tabs.open_tab();
+    let new_id = match tabs.open_tab_in_window(window) {
+        Ok(id) => id,
+        Err(message) => return write_error(stream, None, request_id, message),
+    };
+    // Membership precedes review: a denied or failed new page still belongs
+    // to its window and must remain visible/closable in native chrome.
+    super::windows::write_window_state(
+        tabs,
+        stream,
+        None,
+        blueice_ipc::windows::WindowEvent::TabOpened {
+            tab_id: new_id.as_u64(),
+            window_id: window.as_u64(),
+        },
+    )?;
     let Some(url) = url else {
         return blueice_ipc::write_server_message_with_ids(
             stream,

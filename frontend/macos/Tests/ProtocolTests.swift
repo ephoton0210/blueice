@@ -5,6 +5,28 @@
 import XCTest
 
 final class ProtocolTests: XCTestCase {
+    func testWindowRegistryRejectsAmbiguousOwnershipAndEncodesNativeActions() throws {
+        let viewport = WindowViewport(width: 300, height: 200, deviceScale: 2, backingScale: 2)
+        for action in [WindowAction.list, .create(viewport), .resize(2, viewport), .close(2), .move(2), .open(2, nil), .command(2, .unit("GetTextInputState"))] {
+            let bytes = try BrowserWire.encode(.window(action), tab: 9, request: 7)
+            let root = try XCTUnwrap(JSONSerialization.jsonObject(with: bytes.dropFirst(4)) as? [String: Any])
+            XCTAssertNotNil((root["message"] as? [String: Any])?["Window"])
+            XCTAssertEqual(root["tab_id"] as? Int, 9); XCTAssertEqual(root["request_id"] as? Int, 7)
+        }
+        let display: [String: Any] = ["width": 300, "height": 200, "device_scale": 2, "backing_scale": 2]
+        func decode(_ windows: [[String: Any]], event: Any = "Snapshot") throws -> BrowserMessage {
+            let data = try JSONSerialization.data(withJSONObject: ["message": ["WindowState": ["windows": windows, "event": event]]])
+            return try JSONDecoder().decode(IncomingEnvelope.self, from: data).message
+        }
+        let first: [String: Any] = ["id": 1, "viewport": display, "tabs": [["id": 9, "url": "about:credits", "group_id": 3]]]
+        if case .windowState(let state) = try decode([first]) { XCTAssertEqual(state.windows.first?.tabs.first?.id, 9) }
+        else { XCTFail("Canonical ownership must reach native windows") }
+        for invalid in [[first,first], [first,["id": 2,"viewport": display,"tabs": [["id": 9,"url": NSNull()]]]], [["id": 0,"viewport": display,"tabs": []]]] {
+            if case .windowsUnavailable = try decode(invalid) {} else { XCTFail("Invalid or duplicate ownership must fail soft") }
+        }
+        if case .windowsUnavailable = try decode([first],event: ["TabMoved": ["tab_id": 9,"from_window": 2,"to_window": 2]]) {} else { XCTFail("An event cannot claim a tab in a different window") }
+    }
+
     func testTabGroupWireRetainsCoreIDsAndRejectsMalformedMetadata() throws {
         func message(_ value: [String: Any]) throws -> IncomingEnvelope {
             try JSONDecoder().decode(IncomingEnvelope.self, from: JSONSerialization.data(withJSONObject:

@@ -246,7 +246,29 @@ editor targets cannot save. Core replies update the chrome, and group errors
 have their own notice without replacing navigation or policy messages.
 See [tab group results](../../development/browser_core/phase-22-browser-shell-accessibility/MACOS_TAB_GROUP_RESULTS.md).
 Groups currently live in the running core session; restart restoration,
-drag reordering, multiple windows and profile handoff remain pending.
+drag reordering and profile handoff remain pending.
+
+Native windows share one owned launcher/core/gatekeeper session. Command-N and
+File > New Window open a real AppKit window; Window menu entries activate it.
+Tab context menus move an existing tab to another window or to a new empty
+window. The core keeps the same page, document, history, values, group and zoom;
+transfer does not fetch the page again. Each window has an independent logical
+viewport and backing density, including its background tabs and history pages.
+Closing a window closes only its tabs; closing the last window stops the owned
+services. Native editing, find and group commands follow the active window.
+
+An additive `Window` action/`WindowState` registry records canonical ordered
+membership. Existing tab summaries/open replies keep their wire shape, and
+legacy clients receive registry metadata only after opting into window actions.
+New membership is published before policy review, so denied pages remain visible
+and closable. Native page commands include their originating window ID; stale
+source-window callbacks cannot reach a moved tab. Transfer also invalidates the
+native focus generation and ends temporary composition, preserving committed
+text and selection. Window IDs are lifecycle checks and confer no permission.
+Malformed registry metadata disables management with a Retry notice while
+preserving native windows. Find queries and pending resubmission prompts move
+with their tab; profile isolation/restoration and drag reordering remain open.
+See [multi-window results](../../development/browser_core/phase-22-browser-shell-accessibility/MACOS_WINDOW_RESULTS.md).
 
 Frame refresh temporarily suspends semantic actions until the representation
 matches the current tab, source, generation and URL. Native element identities
@@ -260,6 +282,6 @@ keyboard/beforeinput/input/composition event dispatch, undo/redo, complete
 bidirectional shaping and caret blink remain open, as do full form event/validity behavior,
 select popup/typeahead/multiple-selection interaction, complete toolbar Tab
 traversal, image/media context actions, page-text selection/copy, drag/drop,
-file selection, multiple windows, downloads/printing/permission
+file selection, downloads/printing/permission
 panels and localization. Automated checks cover the recorded features; an
 interactive VoiceOver session remains unvalidated.

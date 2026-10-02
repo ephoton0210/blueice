@@ -150,6 +150,90 @@ final class NativeEditingTests: XCTestCase {
         return (model, view, fixture)
     }
 
+    func testSharedWindowsKeepOneCoreAndTransferEditorHistoryZoomAndGroup() async throws {
+        let fixture = try HTTPFixture(); defer { fixture.stop() }
+        let workspace = BrowserWorkspace()
+        defer { Task { await workspace.stop() } }
+        let launcher = Bundle(for: Self.self).bundleURL.deletingLastPathComponent().appendingPathComponent("BlueIce.app/Contents/MacOS/blueice-launcher")
+        await workspace.start(launcher: launcher)
+        let first = try XCTUnwrap(workspace.models[1])
+        await wait { first.representation?.url == "about:credits" && first.groupsAvailable }
+        let pid = try XCTUnwrap(workspace.processID)
+        first.address = fixture.origin + "/editing"; first.navigateAddress()
+        await wait { first.representation?.url == fixture.origin + "/editing" && first.displayState != nil }
+        let tab = try XCTUnwrap(first.selected)
+        let editor = try XCTUnwrap(first.representation?.nodes.first { $0.name == "Editor" })
+        first.focusPage(x: editor.bounds.x + 5, y: editor.bounds.y + 5)
+        await wait { first.textInputState?.focused != nil }
+        first.textInput(.selectAll); first.textInput(.replace("Moved 中文", nil))
+        first.setZoom(1.5)
+        await wait { first.textInputState?.focused?.text == "Moved 中文" && first.zoomPercent == 150 && !first.textInputBusy }
+        let groupID = await first.createTabGroup(name: "Shared", color: "#4477cc", tab: tab)
+        XCTAssertNotNil(groupID)
+        let document = try XCTUnwrap(first.textInputState).document_generation
+        let created = await workspace.createWindow()
+        let id = try XCTUnwrap(created), second = try XCTUnwrap(workspace.models[id])
+        await wait { second.representation?.url == "about:credits" && second.groupsAvailable }
+        first.viewportChanged(CGSize(width: 500, height: 300), deviceScale: 2)
+        second.viewportChanged(CGSize(width: 320, height: 240), deviceScale: 1)
+        await wait { first.displayState?.pixelWidth == 1000 && second.displayState?.pixelWidth == 320 }
+        XCTAssertEqual(first.cssViewportSize?.width ?? 0, 500 / 1.5, accuracy: 0.01)
+        XCTAssertEqual(second.cssViewportSize?.width, 320)
+        first.address = "http://malware.test/"; first.navigateAddress()
+        await wait { first.status.contains("Navigation blocked") }
+        let denied = first.status
+        second.viewportChanged(CGSize(width: 360, height: 240), deviceScale: 1)
+        await wait { second.displayState?.pixelWidth == 360 }
+        XCTAssertEqual(first.status, denied, "Other window metadata must preserve the denied page notice")
+        let moved = await workspace.moveTab(tab, to: id); XCTAssertTrue(moved)
+        await wait { first.tabs.isEmpty && second.selected == tab && second.textInputState?.focused?.text == "Moved 中文" && second.zoomPercent == 150 }
+        XCTAssertEqual(second.textInputState?.document_generation, document)
+        XCTAssertEqual(second.tabs.first { $0.id == tab }?.groupID, groupID)
+        XCTAssertTrue(second.history.back)
+        XCTAssertEqual(workspace.processID, pid)
+        let originalDestinationTab = try XCTUnwrap(second.tabs.first { $0.id != tab }?.id)
+        second.action(.values("OpenTab", ["url": .null]))
+        await wait { second.tabs.count == 3 && second.selected != tab && second.selected != originalDestinationTab && second.representation?.url == "about:credits" }
+        let appended = try XCTUnwrap(second.selected)
+        // A legacy peer's global list can arrive after the window snapshot.
+        second.apply(IncomingEnvelope(requestID: nil, tabID: nil, message: .tabs(second.tabs.sorted { $0.id < $1.id })), pixels: nil)
+        XCTAssertEqual(second.tabs.map(\.id), [originalDestinationTab, tab, appended], "Legacy global Tab lists must preserve canonical window-local order")
+        second.action(.unit("CloseTab"))
+        await wait { second.tabs.count == 2 }
+        second.select(tab)
+        await wait { second.textInputState?.focused?.text == "Moved 中文" && second.zoomPercent == 150 }
+        let closed = await workspace.closeWindow(1); XCTAssertTrue(closed)
+        await wait { !first.ready && second.ready && workspace.models[1] == nil }
+        XCTAssertEqual(workspace.processID, pid); XCTAssertEqual(kill(pid, 0), 0)
+        second.textInput(.selectAll); second.textInput(.replace("After move", nil))
+        await wait { second.textInputState?.focused?.text == "After move" && !second.textInputBusy }
+        let thirdID = await workspace.createWindow(openTab: false)
+        let third = try XCTUnwrap(thirdID)
+        XCTAssertGreaterThan(third, id)
+        let movedAgain = await workspace.moveTab(tab, to: third); XCTAssertTrue(movedAgain)
+        await wait { workspace.models[third]?.textInputState?.focused?.text == "After move" }
+        XCTAssertTrue(second.tabs.allSatisfy { $0.id != tab })
+        let destination = try XCTUnwrap(workspace.models[third])
+        destination.action(.values("OpenTab", ["url": .string("http://malware.test/")]))
+        await wait { destination.tabs.count == 2 && destination.selected == tab && destination.status.contains("Navigation blocked") }
+        XCTAssertEqual(second.representation?.url, "about:credits", "Denied new pages must stay in their owning window")
+        let deniedTab = try XCTUnwrap(destination.tabs.first { $0.id != tab }?.id)
+        destination.action(.unit("CloseTab"), tab: deniedTab)
+        await wait { destination.tabs.count == 1 && destination.selected == tab && destination.textInputState?.focused?.text == "After move" }
+        XCTAssertEqual(fixture.requests, ["/editing"], "Window transfer and a denied new page must not fetch the page")
+        let invalid = try JSONDecoder().decode(IncomingEnvelope.self, from: Data("{\"message\":{\"WindowState\":{\"windows\":[{\"id\":0}],\"event\":\"Snapshot\"}}}".utf8))
+        workspace.session.received?(.success(invalid))
+        await wait { !workspace.canManageWindows && !destination.ready && !second.ready }
+        XCTAssertEqual(workspace.models.count, 2, "Malformed metadata must retain both native models")
+        await workspace.refreshWindows()
+        await wait { destination.ready && second.ready && destination.representation?.url == fixture.origin + "/editing" && destination.textInputState?.focused?.text == "After move" }
+        XCTAssertEqual(destination.textInputState?.document_generation, document)
+        XCTAssertEqual(workspace.processID, pid); XCTAssertEqual(fixture.requests, ["/editing"])
+        await workspace.stop()
+        XCTAssertEqual(kill(pid, 0), -1); XCTAssertEqual(kill(-pid, 0), -1)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: workspace.session.runtimeDirectory.path))
+    }
+
     func testNativeTabGroupsPreserveCoreDocumentEditorHistoryAndZoom() async throws {
         let (model, _, fixture) = try await start(path: "/editing")
         defer { fixture.stop(); Task { await model.stop() } }

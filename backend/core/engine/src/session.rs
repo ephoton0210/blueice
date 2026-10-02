@@ -1085,6 +1085,7 @@ use run_loop::*;
 mod extension_bridge;
 use extension_bridge::*;
 mod navigation;
+mod windows;
 use navigation::*;
 mod assistant_tasks;
 use assistant_tasks::*;

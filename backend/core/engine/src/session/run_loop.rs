@@ -82,6 +82,33 @@ pub(super) fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
         }
         match incoming {
             Ok((tab_id, request_id, msg)) => {
+                // A tab can move while native callbacks are queued. Validate
+                // its original window before dispatching any page operation.
+                let msg =
+                    if let ClientMessage::Window(blueice_ipc::windows::WindowAction::Command {
+                        window_id,
+                        message,
+                    }) = msg
+                    {
+                        let target = tab_id
+                            .map(TabId::from_u64)
+                            .unwrap_or_else(|| tabs.default_tab());
+                        if tabs.tab_window(target) != Some(crate::WindowId::from_u64(window_id))
+                            || matches!(*message, ClientMessage::Window(_))
+                        {
+                            write_error(
+                                stream,
+                                tab_id,
+                                request_id,
+                                "Native tab window is stale".into(),
+                            )?;
+                            continue;
+                        }
+                        *message
+                    } else {
+                        msg
+                    };
+
                 let target = tab_id
                     .map(TabId::from_u64)
                     .unwrap_or_else(|| tabs.default_tab());
@@ -351,8 +378,10 @@ pub(super) fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
                             write_error(stream, reply_tab, request_id, message)?;
                             continue;
                         }
-                        tabs.configure_viewport_all(viewport);
-                        let ids: Vec<_> = tabs.ids().collect();
+                        let window = tabs.tab_window(target).expect("live viewport tab");
+                        tabs.configure_window_viewport(window, viewport)
+                            .expect("validated viewport");
+                        let ids: Vec<_> = tabs.window_tabs(window).collect();
                         for id in ids {
                             send_frame(
                                 tabs.get_mut(id).expect("live viewport tab"),
@@ -469,13 +498,11 @@ pub(super) fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
                             write_unknown_tab_error(stream, request_id, target)?;
                             continue;
                         }
-                        // A native frontend has one physical content viewport,
-                        // not one viewport per selected tab. Eagerly reflowing
-                        // every Page here keeps a background tab display-ready
-                        // when that frontend later selects it; there is still
-                        // no core "active tab" state.
-                        tabs.resize_all(width as f64, height as f64);
-                        let resized: Vec<TabId> = tabs.ids().collect();
+                        // Reflow all members of the addressed tab's window;
+                        // other native windows keep their own environments.
+                        let window = tabs.tab_window(target).expect("live resize tab");
+                        tabs.resize_window(window, width as f64, height as f64);
+                        let resized: Vec<TabId> = tabs.window_tabs(window).collect();
                         for id in resized {
                             let page = tabs.get_mut(id).expect("ids only yields live tabs");
                             send_frame(
@@ -725,19 +752,23 @@ pub(super) fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
                                 gatekeeper_socket,
                                 extension_events,
                             )?,
-                            ContextMenuLinkAction::OpenInNewTab => handle_open_tab(
-                                tabs,
-                                stream,
-                                frame_dir,
-                                generation,
-                                request_id,
-                                Some(url),
-                                &mut pending_nav_seq,
-                                &mut downloads_refresher,
-                                &completion_tx,
-                                gatekeeper_socket,
-                                extension_events,
-                            )?,
+                            ContextMenuLinkAction::OpenInNewTab => {
+                                let window = tabs.tab_window(target).expect("live context tab");
+                                handle_open_tab(
+                                    tabs,
+                                    stream,
+                                    frame_dir,
+                                    generation,
+                                    request_id,
+                                    Some(url),
+                                    window,
+                                    &mut pending_nav_seq,
+                                    &mut downloads_refresher,
+                                    &completion_tx,
+                                    gatekeeper_socket,
+                                    extension_events,
+                                )?
+                            }
                         }
                     }
                     ClientMessage::Find {
@@ -1125,6 +1156,30 @@ pub(super) fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
                         }
                         None => write_unknown_tab_error(stream, request_id, target)?,
                     },
+                    ClientMessage::Window(action) => {
+                        use blueice_ipc::windows::WindowAction;
+                        tabs.enable_native_windows();
+                        if let WindowAction::OpenTab { window_id, url } = action {
+                            handle_open_tab(
+                                tabs,
+                                stream,
+                                frame_dir,
+                                generation,
+                                request_id,
+                                url,
+                                crate::WindowId::from_u64(window_id),
+                                &mut pending_nav_seq,
+                                &mut downloads_refresher,
+                                &completion_tx,
+                                gatekeeper_socket,
+                                extension_events,
+                            )?;
+                        } else {
+                            windows::handle_window_action(
+                                tabs, stream, frame_dir, generation, request_id, target, action,
+                            )?;
+                        }
+                    }
                     ClientMessage::OpenTab { url } => handle_open_tab(
                         tabs,
                         stream,
@@ -1132,6 +1187,7 @@ pub(super) fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
                         generation,
                         request_id,
                         url,
+                        crate::WindowId::from_u64(1),
                         &mut pending_nav_seq,
                         &mut downloads_refresher,
                         &completion_tx,
@@ -1140,7 +1196,19 @@ pub(super) fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
                     )?,
                     ClientMessage::CloseTab => {
                         pending_resubmissions.remove(&target);
+                        let window = tabs.tab_window(target);
                         if tabs.close_tab(target) {
+                            if let Some(window) = window {
+                                windows::write_window_state(
+                                    tabs,
+                                    stream,
+                                    None,
+                                    blueice_ipc::windows::WindowEvent::TabClosed {
+                                        tab_id: target.as_u64(),
+                                        window_id: window.as_u64(),
+                                    },
+                                )?;
+                            }
                             blueice_ipc::write_server_message_with_ids(
                                 stream,
                                 reply_tab,

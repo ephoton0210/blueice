@@ -8,18 +8,26 @@ import Combine
 @MainActor
 final class BrowserModel: ObservableObject {
     let appearance: BrowserAppearance
+    let windowID: UInt64
+    private weak var workspace: BrowserWorkspace?
+    private let session: BrowserSession
+    private var windowTabs: [UInt64]?
+    var windowManager: BrowserWorkspace? { workspace }
     @Published private(set) var displayPreferences: DisplayPreferences?
     private var preferenceStates: [UInt64: DisplayPreferencesState] = [:]
     private var preferenceObservation: AnyCancellable?
     private var preferenceTask: Task<Void, Never>?
     private var lastSentPreferences: DisplayPreferences?
-    init(appearance: BrowserAppearance? = nil) {
+    init(appearance: BrowserAppearance? = nil, workspace: BrowserWorkspace? = nil, windowID: UInt64 = 1) {
         self.appearance = appearance ?? BrowserAppearance()
+        self.workspace = workspace; self.windowID = windowID
+        self.session = workspace?.session ?? BrowserSession()
         preferenceObservation = self.appearance.$resolved.removeDuplicates().sink { [weak self] _ in
             Task { @MainActor in self?.synchronizePreferences() }
         }
     }
     private func synchronizePreferences() {
+        if let workspace { workspace.synchronizePreferences(); return }
         guard ready, selected != nil, preferenceTask == nil else { return }
         preferenceTask = Task {
             while ready, let tab = selected, lastSentPreferences != appearance.resolved, !Task.isCancelled {
@@ -138,7 +146,6 @@ final class BrowserModel: ObservableObject {
     private var representations: [UInt64: PageRepresentation] = [:]
     private var documentEpochs: [UInt64: UInt64] = [:]
     private var representationRequests: [UInt64: (epoch: UInt64, generation: UInt64)] = [:]
-    private let session = BrowserSession()
     private var frames: [UInt64: FramePixels] = [:]
     private var histories: [UInt64: HistoryState] = [:]
     private var viewport = CGSize(width: 1024, height: 640)
@@ -146,23 +153,7 @@ final class BrowserModel: ObservableObject {
     private var resizeTask: Task<Void, Never>?
 
     func start(launcher: URL? = nil) async {
-        let arguments = ProcessInfo.processInfo.arguments
-        let executable: URL
-        let supervised: Bool
-        if let launcher {
-            executable = launcher
-            supervised = true
-        } else if let option = arguments.firstIndex(of: "--core-exe") {
-            guard arguments.indices.contains(option + 1) else { status = "--core-exe requires a core executable path."; return }
-            executable = URL(fileURLWithPath: arguments[option + 1])
-            supervised = false
-        } else {
-            if let option = arguments.firstIndex(of: "--launcher-exe") {
-                guard arguments.indices.contains(option + 1) else { status = "--launcher-exe requires a launcher executable path."; return }
-                executable = URL(fileURLWithPath: arguments[option + 1])
-            } else { executable = Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/blueice-launcher") }
-            supervised = true
-        }
+        if let workspace { await workspace.start(launcher: launcher); return }
         session.received = { [weak self, directory = session.frameDirectory] result in
             do {
                 let envelope = try result.get()
@@ -185,8 +176,7 @@ final class BrowserModel: ObservableObject {
             }
         }
         do {
-            if supervised { try await session.start(launcher: executable) }
-            else { try await session.start(executable: executable) }
+            try await session.startForBrowser(launcher: launcher)
             ready = true
             status = "Ready"
             await resize(tab: 1)
@@ -198,8 +188,15 @@ final class BrowserModel: ObservableObject {
         } catch { status = error.localizedDescription; await session.stop() }
     }
 
-    private func apply(_ envelope: IncomingEnvelope, pixels: FramePixels?) {
+    func apply(_ envelope: IncomingEnvelope, pixels: FramePixels?) {
         let tab = envelope.tabID
+        if windowTabs != nil, let tab, !tabs.contains(where: { $0.id == tab }) {
+            switch envelope.message {
+            case .opened, .closed, .frame, .navigated, .navigationStarted, .history, .textInputState, .textInputUnavailable,
+                 .viewportState, .displayPreferences, .representation, .representationUnavailable, .blocked, .error: return
+            default: break
+            }
+        }
         let groupRequest = envelope.requestID.map { groupRequests.contains($0) } ?? false
         if groupRequest { groupRequests.removeAll { $0 == envelope.requestID } }
         if groupOperation != nil, groupRequest, groupReplies.count < 128 {
@@ -235,9 +232,15 @@ final class BrowserModel: ObservableObject {
             for index in tabs.indices where tabs[index].groupID == id { tabs[index].groupID = nil }
         case .groupsUnavailable:
             groups = []; groupsAvailable = false; groupError = "Tab groups unavailable"
-        case .tabs(let list):
-            tabs = list
+        case .tabs(let incoming):
+            let list = windowTabs.map { ordered in
+                let byID = Dictionary(incoming.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+                return ordered.compactMap { byID[$0] }
+            } ?? incoming
+            if windowTabs != nil, list == tabs { return }
             let live = Set(list.map(\.id))
+            if let flight = inputFlight, !live.contains(flight.edit.tab) { clearTextInput() }
+            tabs = list
             findPanels = findPanels.filter { live.contains($0.key) }
             resubmissions = resubmissions.filter { live.contains($0.key) }
             if selected.map({ !live.contains($0) }) == true { resubmission = nil; resubmissionPresented = false }
@@ -258,7 +261,8 @@ final class BrowserModel: ObservableObject {
         case .opened(let id, let url):
             if menuOperation != nil && menuReplies.count < 16 { menuReplies.append(envelope) }
             selected = id
-            if !tabs.contains(where: { $0.id == id }) { tabs.append(BrowserTab(id: id, url: url)) }
+            if let index = tabs.firstIndex(where: { $0.id == id }) { tabs[index].url = url }
+            else { tabs.append(BrowserTab(id: id, url: url)) }
             showSelected()
             if url != nil { status = "Ready" }
             Task {
@@ -326,10 +330,10 @@ final class BrowserModel: ObservableObject {
             if resubmission?.confirmationID == id { resubmission = nil; resubmissionPresented = false }
         case .blocked(let reason):
             if menuOperation != nil && menuReplies.count < 16 { menuReplies.append(envelope) }
-            if tab == selected { status = "Navigation blocked: " + reason }
+            if tab == selected || (workspace != nil && tabs.contains(where: { $0.id == tab && $0.url == nil })) { status = "Navigation blocked: " + reason }
         case .error(let message):
             if menuOperation != nil && menuReplies.count < 16 { menuReplies.append(envelope) }
-            if tab == nil || tab == selected { status = message }
+            if tab == nil || tab == selected || (workspace != nil && tabs.contains(where: { $0.id == tab && $0.url == nil })) { status = message }
             if let request = envelope.requestID, request == inputFlight?.request {
                 applyTextInput(envelope)
             } else if inputFlight != nil && inputFlight?.request == nil {
@@ -337,6 +341,7 @@ final class BrowserModel: ObservableObject {
             }
         case .textInputState, .textInputUnavailable:
             applyTextInput(envelope)
+            if let tab, findPanels[tab]?.shown == true, findPanels[tab]?.result == nil { action(.unit("GetFindState"), tab: tab) }
         case .findState(let state):
             guard let tab, tab == state.tabID, let context = inputStates[tab]?.context,
                   state.frameSource == context.frame_source, state.documentGeneration == context.document_generation,
@@ -404,7 +409,35 @@ final class BrowserModel: ObservableObject {
 
     func action(_ command: BrowserCommand, tab: UInt64? = nil) {
         let target = tab ?? selected
+        if workspace != nil, case .values("OpenTab", let fields) = command {
+            let url: String? = { if case .string(let text) = fields["url"] { return text }; return nil }()
+            Task { await send(.window(.open(windowID, url))) }; return
+        }
         Task { await send(command, tab: target) }
+    }
+
+    func prepareManagedSession(_ value: Bool) {
+        guard value != ready else { return }; ready = value
+        guard value else { return }; status = "Ready"
+        if let tab = selected {
+            // Retry recovers fresh pixels, semantics and input identity even
+            // when canonical membership is unchanged.
+            Task { await send(.unit("GetHistoryState"), tab: tab); await resize() }
+        }
+    }
+    func transferLocalTabState(_ tab: UInt64, to destination: BrowserModel) {
+        if var panel = findPanels[tab] { panel.result = nil; destination.findPanels[tab] = panel }
+        if let prompt = resubmissions[tab] { destination.resubmissions[tab] = prompt }
+    }
+    func updateWindowTabs(_ list: [BrowserTab]) {
+        windowTabs = list.map(\.id)
+        apply(IncomingEnvelope(requestID: nil, tabID: nil, message: .tabs(list)), pixels: nil)
+    }
+    func workspaceFailed(_ message: String) { status = message; ready = false; representation = nil; clearTextInput() }
+    func openInitialPage() async {
+        await send(.unit("ListTabGroups"))
+        await resize()
+        if let tab = selected { await navigate("about:credits", tab: tab) }
     }
 
     func beginTabGroupEditor(group: UInt64? = nil, tab: UInt64? = nil) {
@@ -445,7 +478,7 @@ final class BrowserModel: ObservableObject {
     func sendTabGroupCommand(_ action: TabGroupAction, tab: UInt64? = nil) async -> UInt64? {
         guard ready else { return nil }
         do {
-            return try await session.send(.tabGroup(action), tab: tab) { [weak self] request in
+            let willSend: @Sendable (UInt64) -> Void = { [weak self] request in
                 // Both registration and inbound messages use the serial main
                 // queue, so even an immediate core error has its own notice.
                 DispatchQueue.main.async { [weak self] in
@@ -454,6 +487,8 @@ final class BrowserModel: ObservableObject {
                     if self.groupRequests.count > 128 { self.groupRequests.removeFirst() }
                 }
             }
+            if let workspace { return try await workspace.send(.tabGroup(action), tab: tab, owner: self, willSend: willSend) }
+            return try await session.send(.tabGroup(action), tab: tab, willSend: willSend)
         } catch { groupError = error.localizedDescription; return nil }
     }
     func dismissTabGroupError() { groupError = nil }
@@ -572,7 +607,7 @@ final class BrowserModel: ObservableObject {
                 // the source URL/history and visibly report its denied request.
                 if let notice {
                     if contextMenuIsCurrent(context) { status = notice }
-                    if let tab = reply.tabID, tab != context.tabID, !tabs.contains(where: { $0.id == tab }) {
+                    if let tab = reply.tabID, tab != context.tabID, windowTabs == nil || windowTabs?.contains(tab) == true {
                         await send(.unit("CloseTab"), tab: tab)
                     }
                 }
@@ -840,7 +875,10 @@ final class BrowserModel: ObservableObject {
     @discardableResult
     private func send(_ command: BrowserCommand, tab: UInt64? = nil) async -> UInt64? {
         guard ready else { return nil }
-        do { return try await session.send(command, tab: tab) }
+        do {
+            if let workspace { return try await workspace.send(command, tab: tab, owner: self) }
+            return try await session.send(command, tab: tab)
+        }
         catch { status = error.localizedDescription; return nil }
     }
 
@@ -857,11 +895,14 @@ final class BrowserModel: ObservableObject {
     }
 
     private func resize(tab: UInt64? = nil) async {
-        guard let target = tab ?? selected else { return }
         let width = min(4096, max(1, viewport.width)), height = min(4096, max(1, viewport.height))
         let density = min(deviceScale, 4096 / max(width, height))
-        await send(.viewport(width, height, density, backingScale: deviceScale), tab: target)
+        if let workspace {
+            await workspace.resizeWindow(windowID, viewport: WindowViewport(width: width, height: height, deviceScale: density, backingScale: deviceScale))
+        } else if let target = tab ?? selected {
+            await send(.viewport(width, height, density, backingScale: deviceScale), tab: target)
+        }
     }
 
-    func stop() async { groupOperation = nil; groupReplies = []; groupRequests = []; groupBusy = false; groups = []; groupsAvailable = false; groupEditor = nil; zoomTask?.cancel(); zoomWrites.removeAll(); preferenceTask?.cancel(); lastSentPreferences = nil; preferenceStates.removeAll(); displayPreferences = nil; findTask?.cancel(); findPanels.removeAll(); findVisible = false; findResult = nil; resubmissions.removeAll(); resubmission = nil; resubmissionPresented = false; ready = false; representation = nil; representations.removeAll(); representationRequests.removeAll(); clearTextInput(); resizeTask?.cancel(); await session.stop() }
+    func stop() async { groupOperation = nil; groupReplies = []; groupRequests = []; groupBusy = false; groups = []; groupsAvailable = false; groupEditor = nil; zoomTask?.cancel(); zoomWrites.removeAll(); preferenceTask?.cancel(); lastSentPreferences = nil; preferenceStates.removeAll(); displayPreferences = nil; findTask?.cancel(); findPanels.removeAll(); findVisible = false; findResult = nil; resubmissions.removeAll(); resubmission = nil; resubmissionPresented = false; ready = false; representation = nil; representations.removeAll(); representationRequests.removeAll(); clearTextInput(); resizeTask?.cancel(); if workspace == nil { await session.stop() } }
 }

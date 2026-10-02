@@ -14,7 +14,7 @@ pushed to the current tracked branch as authorized by the owner.
 | Page accessibility | Core semantic tree mapped into NSAccessibility, native actions, privacy, stale-element and tab isolation tests | Committed and pushed `41952a803` |
 | Native text editing | Core-owned UTF-16 selection, grapheme movement/deletion, IME composition/update/commit/cancel, caret/candidate geometry, text/password/textarea editing, clipboard policy and native UI tests | Foundation committed and pushed `8b80c3c53`; physical OS IME and remaining editing behavior pending, see [results](MACOS_NATIVE_EDITING_RESULTS.md) |
 | Keyboard and page interaction | Keyboard-only form completion, checkbox/radio/select/range controls, find-in-page, native context menus, drag/drop and file-selection policy tests | Keyboard increment committed and pushed `97794bb57`; native form reset committed and pushed `4c1c6e922`; GET/POST submission committed and pushed `1bf78a3d9`; find/ordered clipboard committed and pushed `614489c59`; native context menus committed and pushed `531b6b2df`; remaining interactions pending |
-| Windows and tab organization | Multiple native windows, tab groups, profile/context lifecycle, retained history and state handoff using core tab identities | Native group increment implemented; verification recorded in [tab group results](MACOS_TAB_GROUP_RESULTS.md); multiple windows and profile handoff pending |
+| Windows and tab organization | Multiple native windows, tab groups, profile/context lifecycle, retained history and state handoff using core tab identities | Native group increment committed and pushed `6e141967f`, see [tab group results](MACOS_TAB_GROUP_RESULTS.md); shared-core windows/tab transfer implemented, verification recorded in [window results](MACOS_WINDOW_RESULTS.md); profile/context handoff pending |
 | Downloads and printing | Actual download manager/shelf, progress/cancel/open/reveal, print/PDF media output and native panel tests | Pending |
 | Trusted browser panels | Assistant results and human permission decisions using the private owner boundary, policy-denial and no-AI-grant tests | Pending |
 | macOS display and system integration | DPI/multi-monitor, zoom, theme/high contrast/reduced motion, fullscreen, localization and native menu/shortcut tests | Retina/CSS viewport, per-tab zoom and native fullscreen committed and pushed `91f2dd78c`, see [viewport results](MACOS_VIEWPORT_RESULTS.md); persistent appearance/contrast/motion and CSS media committed and pushed `0609c8a81`, recorded in [display results](MACOS_DISPLAY_PREFERENCES_RESULTS.md); physical system/monitor transitions and localization pending |
@@ -273,9 +273,23 @@ policy-denial notices. Inbound state remains in reader order, and mutations do
 not fetch or replace documents. The result record covers retained text, history,
 zoom, identity, native menus, validation/cancel and empty/stale group UI.
 
-Multiple native windows still need a core window registry and independent
-per-window viewport routing, then transfer that retains the same tab identities.
-They must not be approximated by launching unrelated copies of each page.
+## Native shared-core window increment
+
+Command-N and Window menu activation manage actual AppKit windows over one
+owned launcher/core/gatekeeper session. The core registry supplies monotonic
+window IDs, canonical ordered tab membership and independent viewport routing.
+Tab context menus transfer the same page to an existing or new window, retaining
+document identity, committed text, selection, history, zoom and group. Find
+queries and pending resubmission prompts follow the tab. Transfer ends temporary
+composition and rejects queued page commands from the source window.
+
+Closing one window closes only its members; closing the last window exits the
+app and tears down its owned services. Failed navigation retains closable
+membership, and malformed registry metadata offers Retry without destroying
+the windows. Recovery refreshes history, pixels, semantics and editing state.
+Real-service and actual-window evidence is recorded in
+[window results](MACOS_WINDOW_RESULTS.md).
+
 Profile/context lifecycle, restart restoration, drag reorder and physical
 IME/screen-reader acceptance remain separate delivery requirements.
 

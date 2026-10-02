@@ -30,6 +30,20 @@ final class BrowserSession: @unchecked Sendable {
     }
     var processID: Int32? { lock.withLock { process?.pid } }
 
+    func startForBrowser(launcher: URL? = nil) async throws {
+        let arguments = ProcessInfo.processInfo.arguments
+        if let launcher { try await start(launcher: launcher); return }
+        if let option = arguments.firstIndex(of: "--core-exe") {
+            guard arguments.indices.contains(option + 1) else { throw BrowserFailure.invalid("--core-exe requires a core executable path.") }
+            try await start(executable: URL(fileURLWithPath: arguments[option + 1])); return
+        }
+        if let option = arguments.firstIndex(of: "--launcher-exe") {
+            guard arguments.indices.contains(option + 1) else { throw BrowserFailure.invalid("--launcher-exe requires a launcher executable path.") }
+            try await start(launcher: URL(fileURLWithPath: arguments[option + 1])); return
+        }
+        try await start(launcher: Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/blueice-launcher"))
+    }
+
     // Default GUI mode always uses the supervised, policy-checked stack.
     func start(launcher: URL) async throws { try await start(executable: launcher, supervised: true) }
 

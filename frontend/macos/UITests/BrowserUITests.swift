@@ -30,7 +30,14 @@ final class BrowserUITests: XCTestCase {
             if let originalInputSource { XCTAssertEqual(TISSelectInputSource(originalInputSource), noErr) }
         }
         if app.state != .notRunning {
-            if app.windows.firstMatch.exists { app.windows.firstMatch.buttons[XCUIIdentifierCloseWindow].click() }
+            let deadline = Date().addingTimeInterval(15)
+            while app.state != .notRunning, Date() < deadline {
+                let candidate = app.windows.matching(NSPredicate(format: "identifier BEGINSWITH 'browser-window'")).firstMatch
+                guard candidate.exists else { break }
+                let window = app.windows[candidate.identifier]
+                window.buttons[XCUIIdentifierCloseWindow].click()
+                _ = XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: window)], timeout: 5)
+            }
             XCTAssertTrue(app.wait(for: .notRunning, timeout: 10), "Normal close must stop the owned services")
             app.terminate()
         }
@@ -49,12 +56,13 @@ final class BrowserUITests: XCTestCase {
                        "Expected \(value), received \(String(describing: element.value))")
     }
 
-    private func enter(_ text: String, submit: Bool = true) {
-        let address = app.textFields["address"]
+    private func enter(_ text: String, submit: Bool = true, in window: XCUIElement? = nil) {
+        let address = (window ?? app).textFields["address"]
         address.click()
         app.menuBars.menuBarItems["Edit"].click()
         app.menuItems["Input Source"].hover()
         app.menuItems["ABC"].click()
+        address.click()
         address.typeKey("a", modifierFlags: .command)
         address.typeText(text)
         if submit { address.typeKey(.return, modifierFlags: []) }
@@ -75,6 +83,122 @@ final class BrowserUITests: XCTestCase {
         app.buttons["tab-\(id)"].rightClick()
         XCTAssertTrue(app.windows["browser-window"].menuItems["Move to Group"].waitForExistence(timeout: 10), app.debugDescription)
         app.windows["browser-window"].menuItems["Move to Group"].hover(); chooseChromeContext(group)
+    }
+
+    private func activateWindow(_ id: Int) {
+        app.menuBars.menuBarItems["Window"].click()
+        let item = app.menuBars.menuItems["Window \(id)"]
+        XCTAssertTrue(item.waitForExistence(timeout: 10)); item.click()
+    }
+    private func transferTab(_ tab: Int, from window: XCUIElement, to destination: String) {
+        window.buttons["tab-\(tab)"].rightClick()
+        let menu = window.menuItems["Move to Window"]
+        XCTAssertTrue(menu.waitForExistence(timeout: 10)); menu.hover()
+        let item = window.menuItems[destination]
+        XCTAssertTrue(item.waitForExistence(timeout: 10)); XCTAssertTrue(item.isEnabled); item.click()
+    }
+
+    func testNativeWindowsTransferEditedGroupedTabAndCloseOriginalWindow() throws {
+        let fixture = try HTTPFixture(); defer { fixture.stop() }
+        let saved = saveClipboard(); defer { NSPasteboard.general.clearContents(); NSPasteboard.general.writeObjects(saved) }
+        launch()
+        let first = app.windows["browser-window"]
+        enter(fixture.origin + "/context-menu", in: first)
+        let original = first.groups["page"].textFields["Context editor"]
+        XCTAssertTrue(original.waitForExistence(timeout: 15)); paste("Window 中文", into: original)
+        app.menuBars.menuBarItems["View"].click(); app.menuItems["Page Zoom"].hover(); app.menuItems["150%"].click()
+        waitValue(first.buttons["page-zoom"], "150%")
+        first.buttons["new-tab-group"].click()
+        XCTAssertTrue(first.textFields["group-name"].waitForExistence(timeout: 10))
+        paste("Shared", into: first.textFields["group-name"]); first.buttons["group-save"].click()
+        XCTAssertTrue(first.buttons["tab-group-1"].waitForExistence(timeout: 10))
+        app.typeKey("n", modifierFlags: .command)
+        let second = app.windows["browser-window-2"]
+        XCTAssertTrue(second.waitForExistence(timeout: 15)); waitValue(second.textFields["address"], "about:credits")
+        waitValue(second.buttons["page-zoom"], "100%")
+        app.typeKey("=", modifierFlags: .command); waitValue(second.buttons["page-zoom"], "110%")
+        waitValue(first.buttons["page-zoom"], "150%")
+        activateWindow(1)
+        transferTab(1, from: first, to: "Window 2")
+        waitValue(second.textFields["address"], fixture.origin + "/context-menu")
+        let moved = second.groups["page"].textFields["Context editor"]
+        XCTAssertTrue(moved.waitForExistence(timeout: 15)); waitValue(moved, "Window 中文")
+        waitValue(second.buttons["page-zoom"], "150%")
+        XCTAssertEqual(moved.frame.width, 420, accuracy: 3)
+        XCTAssertTrue(second.buttons["tab-group-1"].exists); XCTAssertTrue(second.buttons["back"].isEnabled)
+        XCTAssertFalse(first.buttons["tab-1"].exists); XCTAssertFalse(first.textFields["address"].isEnabled)
+        activateWindow(1); first.buttons[XCUIIdentifierCloseWindow].click()
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: first)], timeout: 10), .completed)
+        XCTAssertNotEqual(app.state, .notRunning)
+        activateWindow(2); paste("After close 中文", into: moved)
+        app.typeKey("0", modifierFlags: .command); waitValue(second.buttons["page-zoom"], "100%")
+        transferTab(1, from: second, to: "New Window")
+        let third = app.windows["browser-window-3"]
+        XCTAssertTrue(third.waitForExistence(timeout: 15)); waitValue(third.textFields["address"], fixture.origin + "/context-menu")
+        waitValue(third.groups["page"].textFields["Context editor"], "After close 中文")
+        XCTAssertTrue(third.buttons["tab-group-1"].exists); XCTAssertFalse(third.buttons["tab-3"].exists)
+        XCTAssertTrue(second.buttons["tab-2"].exists); XCTAssertFalse(second.buttons["tab-1"].exists)
+        XCTAssertEqual(fixture.requests, ["/context-menu"], "Moving the existing page must not fetch it again")
+        let attachment = XCTAttachment(screenshot: third.screenshot())
+        attachment.name = "macos-shared-core-windows"; attachment.lifetime = .keepAlways; add(attachment)
+        activateWindow(2); second.buttons[XCUIIdentifierCloseWindow].click()
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: second)], timeout: 10), .completed)
+        third.buttons[XCUIIdentifierCloseWindow].click()
+        XCTAssertTrue(app.wait(for: .notRunning, timeout: 10), "The last native window must stop the owned services")
+    }
+
+    func testResizingSecondWindowPreservesFirstViewportAndAddressDraft() throws {
+        let fixture = try HTTPFixture(); defer { fixture.stop() }
+        launch(); let first = app.windows["browser-window"]
+        enter(fixture.origin + "/context-menu", in: first)
+        let page = first.groups["page"]
+        XCTAssertTrue(first.groups["page"].textFields["Context editor"].waitForExistence(timeout: 15))
+        let before = page.value as? String, width = page.frame.width
+        enter("about:settings", submit: false, in: first)
+        app.typeKey("n", modifierFlags: .command)
+        let second = app.windows["browser-window-2"]
+        XCTAssertTrue(second.waitForExistence(timeout: 15)); waitValue(second.textFields["address"], "about:credits")
+        let otherPage = second.groups["page"]
+        let rendered = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value BEGINSWITH 'Rendered'"), object: otherPage)
+        XCTAssertEqual(XCTWaiter.wait(for: [rendered], timeout: 15), .completed)
+        let oldWidth = otherPage.frame.width, oldPixels = otherPage.value as? String
+        let corner = second.coordinate(withNormalizedOffset: CGVector(dx: 1, dy: 1)).withOffset(CGVector(dx: -2, dy: -2))
+        corner.click(forDuration: 0.2, thenDragTo: corner.withOffset(CGVector(dx: -120, dy: -100)))
+        let changed = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            otherPage.frame.width < oldWidth - 60 && (otherPage.value as? String) != oldPixels
+        }, object: otherPage)
+        XCTAssertEqual(XCTWaiter.wait(for: [changed], timeout: 15), .completed)
+        XCTAssertEqual(page.frame.width, width, accuracy: 1); XCTAssertEqual(page.value as? String, before)
+        waitValue(first.textFields["address"], "about:settings")
+        activateWindow(1); first.buttons["reload"].click()
+        waitValue(first.textFields["address"], fixture.origin + "/context-menu")
+        XCTAssertEqual(fixture.requests, ["/context-menu", "/context-menu"])
+    }
+
+    func testWindowTransferKeepsFindQueryAndActiveWindowCommands() throws {
+        let fixture = try HTTPFixture(); defer { fixture.stop() }
+        launch()
+        let first = app.windows["browser-window"]
+        enter(fixture.origin + "/find", in: first)
+        XCTAssertTrue(first.groups["page"].descendants(matching: .any).matching(NSPredicate(format: "label == 'Find fixture' OR value == 'Find fixture'")).firstMatch.waitForExistence(timeout: 15))
+        app.typeKey("f", modifierFlags: .command)
+        let query = first.searchFields["find-query"]
+        XCTAssertTrue(query.waitForExistence(timeout: 10)); query.typeText("frost"); waitFind("1 of 4")
+        transferTab(1, from: first, to: "New Window")
+        let second = app.windows["browser-window-2"]
+        XCTAssertTrue(second.waitForExistence(timeout: 15)); waitValue(second.textFields["address"], fixture.origin + "/find")
+        let transferredQuery = second.searchFields["find-query"]
+        XCTAssertTrue(transferredQuery.waitForExistence(timeout: 10)); waitValue(transferredQuery, "frost")
+        let summary = second.staticTexts["find-results"]
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == '1 of 4' OR value == '1 of 4'"), object: summary)], timeout: 15), .completed)
+        app.typeKey("g", modifierFlags: .command)
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == '2 of 4' OR value == '2 of 4'"), object: summary)], timeout: 15), .completed)
+        XCTAssertFalse(first.searchFields["find-query"].exists)
+        XCTAssertTrue(second.buttons["back"].isEnabled)
+        second.buttons["find-close"].click(); XCTAssertFalse(transferredQuery.exists)
+        app.typeKey("f", modifierFlags: .command)
+        XCTAssertTrue(transferredQuery.waitForExistence(timeout: 10)); waitValue(transferredQuery, "frost")
+        XCTAssertEqual(fixture.requests, ["/find"])
     }
 
     func testTabGroupsNativeEditorCollapseMoveRemovePreservePagesAndZoom() throws {

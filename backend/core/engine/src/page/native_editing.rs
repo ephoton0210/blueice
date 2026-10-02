@@ -158,6 +158,16 @@ impl EditorSession {
 }
 
 impl Page {
+    /// A new native window owns the editor after transfer. Keep its value,
+    /// focus and selection, commit temporary composition and fence old keys.
+    pub(crate) fn transfer_native_editor(&mut self) {
+        self.native_focus_generation = self.native_focus_generation.wrapping_add(1);
+        self.native_focus_exit = None;
+        if let Some(editor) = self.native_editor.as_mut() {
+            editor.composition = None;
+        }
+    }
+
     pub(crate) fn focus_native_editor_at(&mut self, target: Option<NodeId>) -> bool {
         let changed = self.native_focus_at(self.native_pointer_focus(target));
         self.native_focus_start = target.and_then(|id| self.event_element_target(id));

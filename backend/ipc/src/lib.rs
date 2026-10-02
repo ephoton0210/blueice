@@ -54,6 +54,7 @@ pub mod permission_control;
 pub mod script;
 pub mod shm;
 pub mod viewport;
+pub mod windows;
 
 pub use ai::{AiNode, AiSnapshot, Bounds, NameFrom, NodeAction, NodeState, Role};
 
@@ -187,6 +188,8 @@ pub enum ClientMessage {
         zoom: f64,
     },
     GetViewportState,
+    /// Opt in to core-owned window membership and independent viewports.
+    Window(windows::WindowAction),
     SetDisplayPreferences {
         preferences: display::DisplayPreferences,
     },
@@ -406,6 +409,8 @@ pub enum ServerMessage {
     ContextMenu(context_menu::ContextMenuState),
     /// Published with frames for clients that explicitly configured a viewport.
     ViewportState(viewport::ViewportState),
+    /// Canonical native windows and ordered tab membership.
+    WindowState(windows::WindowState),
     DisplayPreferencesState(display::DisplayPreferencesState),
     /// A correlated copy reply. The core never accesses the OS clipboard.
     ContextMenuLink {

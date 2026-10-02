@@ -13,6 +13,7 @@ struct BrowserView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            if let workspace = model.windowManager { BrowserWorkspaceNotice(workspace: workspace) }
             BrowserTabStrip(model: model)
             Divider()
             if let error = model.groupError, model.groupEditor == nil {
