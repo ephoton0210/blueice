@@ -103,6 +103,8 @@ pub trait ReadTimeout {
     fn set_read_timeout(&self, dur: Option<Duration>) -> io::Result<()>;
 }
 
+pub mod message_pipe;
+
 /// A request from the extension-protocol listener into the one thread that
 /// owns `TabManager` and all live [`Page`] state. Keeping the reply channel
 /// with the request means an extension handler can wait for a bounded answer

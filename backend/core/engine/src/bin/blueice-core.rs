@@ -19,6 +19,11 @@
 //! route the narrow BlueJS script, debugger, and registered-project compiler
 //! protocols into that same session thread; their listeners never own DOM,
 //! tab, realm, VM, source graph, or compiler-cache state themselves.
+//!
+//! `--stdio --frame-dir <new-directory>` instead accepts a private inherited
+//! browser-protocol pipe on Unix or Windows. It reuses the same session loop
+//! without the Unix launcher/service listeners; external navigation stays
+//! blocked while gatekeeper review is unavailable.
 
 #[cfg(unix)]
 use blueice_engine::downloads_page::DownloadsSource;
@@ -272,6 +277,12 @@ fn cleanup_private_sockets(
 
 #[cfg(unix)]
 fn main() -> ExitCode {
+    if std::env::args_os()
+        .nth(1)
+        .is_some_and(|arg| arg == "--stdio")
+    {
+        return stdio::main();
+    }
     let args = match parse_args(std::env::args().skip(1)) {
         Ok(args) => args,
         Err(message) => {
@@ -1009,10 +1020,20 @@ fn main() -> ExitCode {
 }
 
 #[cfg(not(unix))]
-fn main() {
-    eprintln!("blueice-core is currently supported only on Unix platforms");
-    std::process::exit(1);
+fn main() -> std::process::ExitCode {
+    if std::env::args_os()
+        .nth(1)
+        .is_some_and(|arg| arg == "--stdio")
+    {
+        stdio::main()
+    } else {
+        eprintln!("blueice-core on this platform requires --stdio and --frame-dir");
+        std::process::ExitCode::FAILURE
+    }
 }
+
+#[path = "blueice-core/stdio.rs"]
+mod stdio;
 
 #[cfg(all(test, unix))]
 #[path = "blueice-core/tests.rs"]

@@ -1,0 +1,9 @@
+PASS real WinUI window and core-rendered credits
+PASS reload preserves the committed URL
+PASS settings, back and forward
+PASS create, select and close tabs
+PASS external navigation fails closed visibly
+PAGE_BOUNDS=28,145,944,488
+ADDRESS_BOUNDS=178,107,650,32
+PASS visible rendered page pixels (2999 dark samples)
+PASS window close stops core and removes frames

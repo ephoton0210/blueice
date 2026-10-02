@@ -44,3 +44,10 @@ Thumbs.db
 # neither of which belongs in version control.
 /differential-testing/node_modules/
 /differential-testing/output/
+
+# Generated browser validation screenshots.
+/development/browser_core/**/artifacts/*.png
+
+# Native .NET frontend build output.
+/frontend/winui/**/bin/
+/frontend/winui/**/obj/

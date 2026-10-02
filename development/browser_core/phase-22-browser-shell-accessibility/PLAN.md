@@ -2,7 +2,35 @@
 
 [← Back to plan](../BROWSER_CORE_PLAN.md)
 
-**Status**: Proposed — the reference frontend presents pixels and basic pointer/scroll/resize input, but it is not yet a complete browser shell or an operating-system accessibility client.
+**Status**: In progress — the Unix reference frontend and an initial Windows WinUI 3 shell present the core's pixels and basic input. Complete browser-shell behavior and operating-system page accessibility remain open.
+
+## Windows first slice (2026-10-02)
+
+[`frontend/winui`](../../../frontend/winui/README.md) implements an unpackaged,
+self-contained x64 WinUI 3 application with a native address field, tab
+creation/selection/closing, back/forward/reload, settings navigation, viewport
+resize and basic pointer/scroll/character input. A private child-process
+stdin/stdout connection uses the existing version-two browser envelopes;
+`blueice-core --stdio` owns the same `TabManager` and render/session code as
+the Unix entry point. Frame pixels remain in bounded, generation-specific
+memory-mapped files rather than entering the control channel.
+
+The first slice supports core-rendered built-in pages. Windows still lacks
+the launcher/gatekeeper/service transports, so external navigation returns
+the existing unavailable-gatekeeper response. No review is bypassed, and
+this private mode does not yet provide a shared launcher/MCP rendezvous.
+Trusted permission/assistant panels, full IME/editing, group controls,
+clipboard, printing, multiple windows, localization and page accessibility
+bridges remain separate delivery items. The earlier Unix transport and
+launcher behavior are unchanged.
+
+Regression tests cover actual child-process rendering, request/tab identity,
+fragmented pipe reads across session polls, oversized messages, unavailable
+review without any outgoing HTTP connection, and ownership-preserving frame
+directory cleanup. The C# adapter also tests wire framing and memory-mapped
+RGBA-to-BGRA conversion. `frontend/winui/tests/WindowSmoke.ps1` drives the
+real native window using UI Automation; native validation is recorded in
+[`WINDOWS_RESULTS.md`](WINDOWS_RESULTS.md).
 
 ## Objective
 

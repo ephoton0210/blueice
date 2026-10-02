@@ -1,0 +1,27 @@
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+     License, v. 2.0. If a copy of the MPL was not distributed with this
+     file, You can obtain one at https://mozilla.org/MPL/2.0/. -->
+<Window x:Class="BlueIce.WinUI.MainWindow"
+ xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+ xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Title="BlueIce">
+ <Grid x:Name="Root" Background="{ThemeResource ApplicationPageBackgroundThemeBrush}" Loaded="WindowLoaded">
+  <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+  <TabView x:Name="Tabs" IsAddTabButtonVisible="True" AddTabButtonClick="AddTab" TabCloseRequested="CloseTab" SelectionChanged="SelectTab" AutomationProperties.AutomationId="BrowserTabs" />
+  <ContentControl Grid.Row="1" x:Name="Navigation" IsEnabled="False" HorizontalContentAlignment="Stretch">
+  <Grid Padding="12,6" ColumnSpacing="8">
+   <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+   <Button x:Name="BackButton" Content="&#xE72B;" FontFamily="Segoe Fluent Icons" Click="GoBack" IsEnabled="False" AutomationProperties.Name="Back" AutomationProperties.AutomationId="BackButton" ToolTipService.ToolTip="Back"/>
+   <Button x:Name="ForwardButton" Grid.Column="1" Content="&#xE72A;" FontFamily="Segoe Fluent Icons" Click="GoForward" IsEnabled="False" AutomationProperties.Name="Forward" AutomationProperties.AutomationId="ForwardButton" ToolTipService.ToolTip="Forward"/>
+   <Button Grid.Column="2" Content="&#xE72C;" FontFamily="Segoe Fluent Icons" Click="Reload" AutomationProperties.Name="Reload" AutomationProperties.AutomationId="ReloadButton" ToolTipService.ToolTip="Reload"/>
+   <TextBox x:Name="Address" Grid.Column="3" PlaceholderText="Enter a URL" KeyDown="AddressKeyDown" AutomationProperties.Name="Address" AutomationProperties.AutomationId="AddressBar"/>
+   <Button Grid.Column="4" Content="Go" Click="NavigateAddress" AutomationProperties.AutomationId="GoButton"/>
+   <Button Grid.Column="5" Content="Settings" Click="OpenSettings" AutomationProperties.AutomationId="SettingsButton"/>
+  </Grid>
+  </ContentControl>
+  <Grid Grid.Row="2" x:Name="Viewport" SizeChanged="ViewportChanged" Background="White">
+   <Image x:Name="PageImage" Stretch="Fill" IsTabStop="True" PointerPressed="PageClick" PointerWheelChanged="PageScroll" CharacterReceived="PageCharacter" KeyDown="PageKey" AutomationProperties.Name="Web content" AutomationProperties.AutomationId="PageImage" />
+   <TextBlock x:Name="EmptyMessage" Text="Starting BlueIce…" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="Black" />
+  </Grid>
+  <TextBlock Grid.Row="3" x:Name="Status" Margin="12,5" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" AutomationProperties.AutomationId="BrowserStatus"/>
+ </Grid>
+</Window>
