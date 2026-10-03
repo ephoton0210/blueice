@@ -23,6 +23,7 @@ struct HttpRequest {
     target: String,
     headers: String,
     body: String,
+    raw_body: Vec<u8>,
 }
 
 fn read_http(mut stream: TcpStream) -> HttpRequest {
@@ -62,7 +63,8 @@ fn read_http(mut stream: TcpStream) -> HttpRequest {
     let request = HttpRequest {
         method: first.next().unwrap().into(),
         target: first.next().unwrap().into(),
-        body: String::from_utf8(bytes[header_end..header_end + length].to_vec()).unwrap(),
+        body: String::from_utf8_lossy(&bytes[header_end..header_end + length]).into_owned(),
+        raw_body: bytes[header_end..header_end + length].to_vec(),
         headers,
     };
     if request.target == "/slow" {
@@ -721,4 +723,168 @@ fn range_submission_matches_the_default_and_clamped_values_shown_by_the_core() {
         browser.requests.lock().unwrap()[0].target,
         "/received?default=50&limited=20&bad=50"
     );
+}
+
+fn prepare_files(browser: &mut Browser, name: &str) -> blueice_ipc::file_input::FileInputState {
+    let id = browser
+        .snapshot()
+        .nodes
+        .iter()
+        .find(|n| n.name.as_deref() == Some(name))
+        .unwrap()
+        .id;
+    browser.send(ClientMessage::FileInput(
+        blueice_ipc::file_input::FileInputAction::Prepare {
+            frame_source: browser.state.frame_source,
+            document_generation: browser.state.document_generation,
+            node_id: id,
+        },
+    ));
+    loop {
+        match blueice_ipc::read_server_message(&mut browser.client).unwrap() {
+            ServerMessage::FileInputState(state) => return state,
+            ServerMessage::FrameReady { .. } => {}
+            other => panic!("{other:?}"),
+        }
+    }
+}
+fn assign_files(
+    browser: &mut Browser,
+    context: blueice_ipc::file_input::FileInputContext,
+    files: Vec<blueice_ipc::file_input::FileData>,
+) -> ServerMessage {
+    browser.send(ClientMessage::FileInput(
+        blueice_ipc::file_input::FileInputAction::Set { context, files },
+    ));
+    loop {
+        match blueice_ipc::read_server_message(&mut browser.client).unwrap() {
+            ServerMessage::FrameReady { .. } => {}
+            other => return other,
+        }
+    }
+}
+#[test]
+fn selected_binary_files_submit_ordered_multipart_without_path_or_content_in_review() {
+    use blueice_ipc::file_input::FileData;
+    let mut browser=Browser::with_rules("<form method=post action='/received' enctype='multipart/form-data'><input type=file name=upload required multiple aria-label=Upload><input name=q value=after><button aria-label=Submit>Send</button></form>",true);
+    let state = prepare_files(&mut browser, "Upload");
+    let bytes = vec![0, 255, 13, 10, 7];
+    assert!(matches!(
+        assign_files(
+            &mut browser,
+            state.context,
+            vec![
+                FileData {
+                    name: "中文.bin".into(),
+                    media_type: "application/octet-stream".into(),
+                    bytes: bytes.clone()
+                },
+                FileData {
+                    name: "quoted\".txt".into(),
+                    media_type: "text/plain".into(),
+                    bytes: b"one\ntwo\rthree".to_vec()
+                }
+            ]
+        ),
+        ServerMessage::FileInputState(_)
+    ));
+    browser.submit("Submit");
+    let requests = browser.requests.lock().unwrap();
+    assert_eq!(requests.len(), 1);
+    assert_eq!(requests[0].method, "POST");
+    let raw = &requests[0].raw_body;
+    assert!(raw.windows(bytes.len()).any(|part| part == bytes));
+    assert!(requests[0]
+        .body
+        .contains("filename=\"中文.bin\"\r\nContent-Type: application/octet-stream"));
+    assert!(requests[0].body.contains("filename=\"quoted%22.txt\""));
+    assert!(raw
+        .windows(b"one\ntwo\rthree".len())
+        .any(|part| part == b"one\ntwo\rthree"));
+    assert!(
+        requests[0].body.find("中文.bin").unwrap()
+            < requests[0].body.find("quoted%22.txt").unwrap()
+    );
+    assert!(
+        requests[0].body.find("quoted%22.txt").unwrap()
+            < requests[0].body.find("name=\"q\"").unwrap()
+    );
+    let reviews = browser.reviews.lock().unwrap();
+    assert!(reviews
+        .iter()
+        .any(|r| matches!(r, GatekeeperRequest::CheckFormSubmission { .. })));
+    assert!(!format!("{reviews:?}").contains("中文.bin"));
+}
+#[test]
+fn reset_file_selection_rejects_late_picker_and_required_submission() {
+    use blueice_ipc::file_input::FileData;
+    let mut browser=Browser::new("<form action='/received'><input type=file name=upload required aria-label=Upload><button type=reset aria-label=Reset>Reset</button><button aria-label=Submit>Send</button></form>");
+    let first = prepare_files(&mut browser, "Upload");
+    assert!(matches!(
+        assign_files(
+            &mut browser,
+            first.context,
+            vec![FileData {
+                name: "selected.txt".into(),
+                media_type: "text/plain".into(),
+                bytes: b"chosen".to_vec()
+            }]
+        ),
+        ServerMessage::FileInputState(_)
+    ));
+    let selected = prepare_files(&mut browser, "Upload");
+    browser.focus("Reset");
+    browser.key(PageKey::Enter);
+    assert!(prepare_files(&mut browser, "Upload").names.is_empty());
+    assert!(matches!(
+        assign_files(&mut browser, selected.context, vec![]),
+        ServerMessage::Error { .. }
+    ));
+    browser.focus("Submit");
+    browser.send(ClientMessage::TextInput {
+        context: TextInputContext {
+            version: browser.state.version,
+            frame_source: browser.state.frame_source,
+            document_generation: browser.state.document_generation,
+            focus_generation: browser.state.focus_generation,
+        },
+        action: TextInputAction::Key {
+            key: PageKey::Enter,
+            shift: false,
+        },
+    });
+    assert!(matches!(
+        blueice_ipc::read_server_message(&mut browser.client).unwrap(),
+        ServerMessage::Error { .. }
+    ));
+    assert!(browser.requests.lock().unwrap().is_empty());
+}
+#[test]
+fn file_context_cannot_be_retargeted_to_another_tab_and_get_sends_only_filename() {
+    use blueice_ipc::file_input::FileData;
+    let mut browser=Browser::new("<form action='/received'><input type=file name=upload aria-label=Upload><button aria-label=Submit>Send</button></form>");
+    let state = prepare_files(&mut browser, "Upload");
+    let mut wrong = state.context;
+    wrong.tab_id = 99;
+    assert!(matches!(
+        assign_files(&mut browser, wrong, vec![]),
+        ServerMessage::Error { .. }
+    ));
+    assert!(matches!(
+        assign_files(
+            &mut browser,
+            state.context,
+            vec![FileData {
+                name: "filename.txt".into(),
+                media_type: "text/plain".into(),
+                bytes: b"private-file-bytes".to_vec()
+            }]
+        ),
+        ServerMessage::FileInputState(_)
+    ));
+    browser.submit("Submit");
+    let requests = browser.requests.lock().unwrap();
+    assert_eq!(requests[0].target, "/received?upload=filename.txt");
+    assert!(requests[0].raw_body.is_empty());
+    assert!(!format!("{:?}", browser.reviews.lock().unwrap()).contains("private-file-bytes"));
 }

@@ -13,9 +13,9 @@ pushed to the current tracked branch as authorized by the owner.
 | Owned service stack | Bundled launcher/core/gatekeeper, reviewed external navigation, fail-closed review, normal/forced cleanup | Committed `32fa07f6b` |
 | Page accessibility | Core semantic tree mapped into NSAccessibility, native actions, privacy, stale-element and tab isolation tests | Committed and pushed `41952a803` |
 | Native text editing | Core-owned UTF-16 selection, grapheme movement/deletion, IME composition/update/commit/cancel, caret/candidate geometry, text/password/textarea editing, clipboard policy and native UI tests | Foundation committed and pushed `8b80c3c53`; physical OS IME and remaining editing behavior pending, see [results](MACOS_NATIVE_EDITING_RESULTS.md) |
-| Keyboard and page interaction | Keyboard-only form completion, checkbox/radio/select/range controls, find-in-page, native context menus, drag/drop and file-selection policy tests | Keyboard increment committed and pushed `97794bb57`; native form reset committed and pushed `4c1c6e922`; GET/POST submission committed and pushed `1bf78a3d9`; find/ordered clipboard committed and pushed `614489c59`; native context menus committed and pushed `531b6b2df`; remaining interactions pending |
+| Keyboard and page interaction | Keyboard-only form completion, checkbox/radio/select/range controls, find-in-page, native context menus, drag/drop and file-selection policy tests | Keyboard increment committed and pushed `97794bb57`; native form reset committed and pushed `4c1c6e922`; GET/POST submission committed and pushed `1bf78a3d9`; find/ordered clipboard committed and pushed `614489c59`; native context menus committed and pushed `531b6b2df`; native file-input panel/content submission implemented and accepted, see [file-input results](MACOS_FILE_INPUT_RESULTS.md); remaining interactions pending |
 | Windows and tab organization | Multiple native windows, tab groups, profile/context lifecycle, retained history and state handoff using core tab identities | Native groups committed and pushed `6e141967f`; shared-core windows/tab transfer committed and pushed `b318e0de8`; context lifecycle and persistent profile identities committed and pushed `ee450a3df`, see [context results](MACOS_CONTEXT_RESULTS.md); durable session restoration and full storage partitioning pending |
-| Downloads and printing | Actual download manager/shelf, progress/cancel/open/reveal, print/PDF media output and native panel tests | Native manager panel and linked-file downloads committed and pushed `b62b38aa7`, see [download results](MACOS_DOWNLOAD_RESULTS.md); core print-media pagination and native print/PDF panel implemented, final acceptance recorded in [print results](MACOS_PRINT_RESULTS.md); automatic response downloads, destination/credential UI, quarantine, vector PDF and physical-printer acceptance pending |
+| Downloads and printing | Actual download manager/shelf, progress/cancel/open/reveal, print/PDF media output and native panel tests | Native manager panel and linked-file downloads committed and pushed `b62b38aa7`, see [download results](MACOS_DOWNLOAD_RESULTS.md); core print-media pagination and native print/PDF committed and pushed `0d2e3ea58`, acceptance recorded in [print results](MACOS_PRINT_RESULTS.md); automatic response downloads, destination/credential UI, quarantine, vector PDF and physical-printer acceptance pending |
 | Trusted browser panels | Assistant results and human permission decisions using the private owner boundary, policy-denial and no-AI-grant tests | Pending |
 | macOS display and system integration | DPI/multi-monitor, zoom, theme/high contrast/reduced motion, fullscreen, localization and native menu/shortcut tests | Retina/CSS viewport, per-tab zoom and native fullscreen committed and pushed `91f2dd78c`, see [viewport results](MACOS_VIEWPORT_RESULTS.md); persistent appearance/contrast/motion and CSS media committed and pushed `0609c8a81`, recorded in [display results](MACOS_DISPLAY_PREFERENCES_RESULTS.md); physical system/monitor transitions and localization pending |
 | Full accessibility and final audit | Text ranges/live regions and supported rotor operations; actual screen-reader action; final integration, design/UI acceptance and documented remaining core limitations | Pending |
@@ -92,9 +92,10 @@ focus change, while preserving navigation and mandatory policy-denial notices.
 
 This increment covers the native reset default. Full cancelable DOM reset-event
 dispatch, complete constraint validation, dirty value/default
-DOM property semantics and file-input state remain pending.
-The later submission increment delivers GET/POST methods and encodings. The separate result
-record identifies exactly which real-service and actual-window cases passed.
+DOM property semantics remain pending. The later file-input increment adds
+retained file selection and reset. The later submission increment delivers
+GET/POST methods and encodings. The separate result record identifies exactly
+which real-service and actual-window cases passed.
 
 ## Native form submission increment
 
@@ -348,8 +349,32 @@ print-media ink, cancel/reopen the panel, and retain the edited browser document
 
 The bounded output currently consists of 192 DPI core raster images in native
 PDF pages. Full @page/fragmentation, vector/searchable PDF, custom margin and
-background UI, and physical printer jobs remain separate. File input selection,
-private owner permission panels and the other delivery gates stay open.
+background UI, and physical printer jobs remain separate. The following
+file-input increment delivers regular-file selection; private owner permission
+panels and the other delivery gates stay open.
+
+## Native file-input increment
+
+Core owns selected file contents separately from markup and publishes only
+basenames in shared pixels and semantics. A local native pointer/press/Enter/
+Space action requests validated core hints, then opens the actual AppKit Open
+panel. Ordinary browser/AI replies never open a picker. Native reads are bounded
+regular-file reads of the panel's returned URLs; no selected path is sent to
+core as reader instructions or metadata. HTML value attributes do not select files.
+
+Selection replies retain tab/window/source/document/node/revision fences.
+Cancel preserves selected files; reset, explicit empty value assignment and
+navigation invalidate stale selections. File count/content budgets are atomic.
+Multipart keeps binary bytes and ordered entries; other encodings use names,
+and mandatory form/URL review and body limits still apply. Public content IPC
+does not attest consent or confer private owner/permission authority.
+
+Actual UI tests choose multiple files through the system folder/path panel,
+submit and inspect binary HTTP bodies, cancel/reopen with Space, and reset while
+retaining ordinary editor content. The acceptance record is
+[file-input results](MACOS_FILE_INPUT_RESULTS.md). Directory/capture, label click
+forwarding, drag/drop, full File/Blob/FileList and input/change/cancel events,
+private owner panels and the other delivery gates remain open.
 
 ## Completion audit
 

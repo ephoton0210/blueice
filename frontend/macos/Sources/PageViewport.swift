@@ -99,7 +99,14 @@ final class CorePageView: NSView, NSTextInputClient {
     weak var editingMenu: NativeEditingMenu?
     var image: CGImage?
     var pageFocusSerial: UInt64 = 0
-    lazy var accessibilityTree = PageAccessibilityTree(view: self) { [weak self] snapshot, epoch, node, _ in
+    private let filePicker = BrowserFilePicker()
+    lazy var accessibilityTree = PageAccessibilityTree(view: self) { [weak self] snapshot, epoch, node, action in
+        if let self, action == .press, node.state.fileInput, let model = self.model, let window = self.window,
+           model.selected == snapshot.tabID, model.accessibilityEpoch == epoch,
+           model.representation?.generation == snapshot.generation {
+            self.filePicker.present(node: node,model: model,window: window)
+            return true
+        }
         guard let self, self.model?.accessibilityAction(snapshot, epoch: epoch, node: node) == true else { return false }
         self.window?.makeFirstResponder(self)
         return true
@@ -126,15 +133,18 @@ final class CorePageView: NSView, NSTextInputClient {
     override func layout() { super.layout(); reportSize() }
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow(); reportSize()
+        if window == nil { filePicker.cancel() }
         (window as? BrowserWindow)?.pageInput = self
         windowObservation = window.map { window in
             NotificationCenter.default.publisher(for: NSWindow.didUpdateNotification, object: window)
+                .merge(with: NotificationCenter.default.publisher(for: NSWindow.willCloseNotification, object: window))
                 .merge(with: NotificationCenter.default.publisher(for: NSControl.textDidBeginEditingNotification))
                 .receive(on: RunLoop.main).sink { [weak self] notification in
                     Task { @MainActor in
                         guard let self, let owned = self.window,
                               notification.object as? NSWindow === owned ||
                               (notification.object as? NSView)?.window === owned else { return }
+                        if notification.name == NSWindow.willCloseNotification { self.filePicker.cancel() }
                         self.replayPendingKeys()
                     }
                 }
@@ -173,6 +183,14 @@ final class CorePageView: NSView, NSTextInputClient {
         window?.makeFirstResponder(self)
         tabTransition = nil; pendingKeys.removeAll()
         let point = convert(event.locationInWindow, from: nil)
+        if let model, let snapshot = model.representation, let window,
+           let node = snapshot.nodes.reversed().first(where: {
+               $0.state.fileInput && !$0.state.disabled && !$0.occluded
+                   && snapshot.viewRect(for: $0,viewport: bounds.size,image: size).contains(point)
+           }) {
+            filePicker.present(node: node,model: model,window: window)
+            return
+        }
         pendingMarked = nil; pendingSelection = nil; pendingContext = nil
         model?.focusPage(x: point.x * size.width / bounds.width,
                          y: point.y * size.height / bounds.height,
@@ -284,6 +302,11 @@ final class CorePageView: NSView, NSTextInputClient {
             default: key = event.charactersIgnoringModifiers == " " ? .space : nil
             }
             if let key {
+                if key == .enter || key == .space, let model, let window,
+                   let node = model.representation?.nodes.first(where: { $0.state.fileInput && $0.state.focused && !$0.state.disabled }) {
+                    filePicker.present(node: node,model: model,window: window)
+                    return
+                }
                 if key == .tab { beginTabTransition(shift: event.modifierFlags.contains(.shift)) }
                 else { model?.textInput(.key(key, event.modifierFlags.contains(.shift))) }
                 return
@@ -316,6 +339,7 @@ final class CorePageView: NSView, NSTextInputClient {
     }
 
     func refreshTextInput() {
+        filePicker.invalidateIfNeeded()
         let context = model?.textInputState?.context
         if let state = model?.textInputState, state.focus_exit != nil,
            handledFocusExit != state.context, window?.firstResponder === self {

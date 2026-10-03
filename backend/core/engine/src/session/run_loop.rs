@@ -685,6 +685,95 @@ pub(super) fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
                             send_frame(page, stream, frame_dir, generation, reply_tab, request_id)?;
                         }
                     }
+                    ClientMessage::FileInput(action) => {
+                        use blueice_ipc::file_input::FileInputAction;
+                        let source = shm::frame_source_id(frame_dir);
+                        let mut dispatched = false;
+                        let result = match action {
+                            FileInputAction::Prepare {
+                                frame_source,
+                                document_generation,
+                                node_id,
+                            } => {
+                                let available = frame_source == source
+                                    && tabs.get(target).is_some_and(|page| {
+                                        page.file_input_state(node_id, source, document_generation)
+                                            .is_ok()
+                                    });
+                                if !available {
+                                    Err("File control is stale or unavailable".into())
+                                } else {
+                                    dispatched = true;
+                                    match dispatch_click_before_default(
+                                        &mut page_script_runtime.javascript_executor,
+                                        tabs,
+                                        target,
+                                        NodeId::from_u64(node_id),
+                                        requests.script,
+                                    ) {
+                                        Ok(Some(true)) => {
+                                            Err("File selection was cancelled by the page".into())
+                                        }
+                                        Err(_) => {
+                                            Err("Page activation listener unavailable".into())
+                                        }
+                                        Ok(_) => {
+                                            let page = tabs
+                                                .get_mut(target)
+                                                .expect("activation retains tab");
+                                            page.file_input_state(
+                                                node_id,
+                                                source,
+                                                document_generation,
+                                            )
+                                            .inspect(
+                                                |_| {
+                                                    page.native_focus_at(Some(NodeId::from_u64(
+                                                        node_id,
+                                                    )));
+                                                },
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                            FileInputAction::Set { context, .. }
+                                if context.tab_id != target.as_u64() =>
+                            {
+                                Err("File selection belongs to another tab".into())
+                            }
+                            FileInputAction::Set { context, files } => tabs
+                                .get_mut(target)
+                                .ok_or_else(|| "Unknown file tab".to_string())
+                                .and_then(|page| page.set_file_input(&context, source, files)),
+                        };
+                        match result {
+                            Ok(mut state) => {
+                                state.context.tab_id = target.as_u64();
+                                let page = tabs.get_mut(target).expect("file reply retains tab");
+                                send_frame(
+                                    page, stream, frame_dir, generation, reply_tab, request_id,
+                                )?;
+                                blueice_ipc::write_server_message_with_ids(
+                                    stream,
+                                    reply_tab,
+                                    request_id,
+                                    &ServerMessage::FileInputState(state),
+                                )?;
+                            }
+                            Err(message) => {
+                                if dispatched {
+                                    if let Some(page) = tabs.get_mut(target) {
+                                        send_frame(
+                                            page, stream, frame_dir, generation, reply_tab,
+                                            request_id,
+                                        )?;
+                                    }
+                                }
+                                write_error(stream, reply_tab, request_id, message)?;
+                            }
+                        }
+                    }
                     ClientMessage::Print(action) => {
                         match print_jobs.handle(tabs, target, frame_dir, action) {
                             Ok(state) => blueice_ipc::write_server_message_with_ids(

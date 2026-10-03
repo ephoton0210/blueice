@@ -35,8 +35,7 @@ impl Page {
             }
             let default = match tag(&self.doc, node) {
                 "input" => ControlDefault::Input {
-                    // No file picker exists yet. A value attribute must never
-                    // become a selected file or restore a local path.
+                    // A value attribute never selects a file or restores a path.
                     value: (input_type(&self.doc, node) != "file")
                         .then(|| element_attribute(&self.doc, node, "value").map(str::to_string))
                         .flatten(),
@@ -53,6 +52,7 @@ impl Page {
     }
 
     pub(super) fn reset_native_form(&mut self, form: NodeId) {
+        self.native_file_revision = self.native_file_revision.wrapping_add(1);
         let mut nodes = Vec::new();
         let mut pending = vec![self.doc.root()];
         while let Some(node) = pending.pop() {
@@ -107,6 +107,10 @@ impl Page {
     }
 
     fn restore_native_form_default(&mut self, node: NodeId) {
+        if input_type(&self.doc, node) == "file" {
+            self.native_files.remove(&node);
+            self.doc.set_file_control_names(node, vec![]);
+        }
         let Some(default) = self.native_form_defaults.get(&node).cloned() else {
             return;
         };

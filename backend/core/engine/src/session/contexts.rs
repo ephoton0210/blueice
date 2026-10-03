@@ -159,6 +159,7 @@ pub(super) fn scoped_command(
         | ClientMessage::Scroll { .. }
         | ClientMessage::InsertText { .. }
         | ClientMessage::DeleteBackward
+        | ClientMessage::FileInput(_)
         | ClientMessage::GetTextInputState
         | ClientMessage::TextInput { .. }
         | ClientMessage::GetRepresentation

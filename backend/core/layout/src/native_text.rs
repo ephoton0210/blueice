@@ -33,6 +33,22 @@ pub fn input_button_label(doc: &Document, node: NodeId) -> Option<String> {
         .to_ascii_lowercase()
         .as_str()
     {
+        "file" => {
+            let choose = if attribute("multiple").is_some() {
+                "Choose Files"
+            } else {
+                "Choose File"
+            };
+            let names = doc.file_control_names(node);
+            return Some(format!(
+                "{choose} — {}",
+                if names.is_empty() {
+                    "No file selected".into()
+                } else {
+                    names.join(", ")
+                }
+            ));
+        }
         "reset" => "Reset",
         "submit" => "Submit",
         "button" => "",

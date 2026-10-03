@@ -73,6 +73,8 @@ pub struct Page {
     /// Core-owned defaults survive live native/extension value changes. This
     /// private state never enters accessibility or script IPC snapshots.
     native_form_defaults: HashMap<NodeId, native_forms::ControlDefault>,
+    native_files: HashMap<NodeId, Vec<blueice_ipc::file_input::FileData>>,
+    native_file_revision: u64,
     highlighted: Option<NodeId>,
     find: find::FindSession,
     /// The most recent raster frame for this one tab. Another tab rendering
@@ -136,6 +138,8 @@ impl Page {
             native_focus_exit: None,
             native_focus_start: None,
             native_form_defaults: HashMap::new(),
+            native_files: HashMap::new(),
+            native_file_revision: 0,
             last_navigation: None,
             post_expired: false,
             submission_pending: false,
@@ -177,6 +181,8 @@ impl Page {
         self.network_response = None;
         self.network_trace = None;
         self.native_form_defaults.clear();
+        self.native_files.clear();
+        self.native_file_revision = self.native_file_revision.wrapping_add(1);
         self.last_navigation = None;
         self.post_expired = false;
         self.submission_pending = false;
@@ -203,6 +209,7 @@ impl Page {
     /// navigation has no entry in the prior `styles` map; layout would leave
     /// script DOM state and the rendered frame out of sync.
     fn restyle_and_relayout(&mut self) {
+        self.prune_native_files();
         self.recascade();
         self.relayout();
     }
@@ -680,6 +687,20 @@ impl Page {
                 None
             }
             NodeAction::SetValue(value) => {
+                if matches!(self.doc.data(id),NodeData::Element { tag_name,.. } if tag_name=="input")
+                    && element_attribute(&self.doc, id, "type")
+                        .is_some_and(|kind| kind.eq_ignore_ascii_case("file"))
+                {
+                    // Empty IDL-like values can clear a selection. Nonempty
+                    // values never become filenames, contents, or OS paths.
+                    if value.is_empty() {
+                        self.native_files.remove(&id);
+                        self.doc.set_file_control_names(id, vec![]);
+                        self.native_file_revision = self.native_file_revision.wrapping_add(1);
+                        self.relayout();
+                    }
+                    return None;
+                }
                 if let NodeData::Element { attributes, .. } = self.doc.data_mut(id) {
                     match attributes.iter_mut().find(|(k, _)| k == "value") {
                         Some((_, existing)) => *existing = value,
@@ -1143,6 +1164,9 @@ impl Page {
         let kind = element_attribute(&self.doc, node, "type")
             .unwrap_or("text")
             .to_ascii_lowercase();
+        if kind == "file" {
+            return Some(self.doc.file_control_names(node).join(", "));
+        }
         if kind == "range" {
             return blueice_layout::input_range_values(&self.doc, node).map(|(_, _, value)| {
                 // Preserve a valid in-range source spelling, including exact
@@ -1212,6 +1236,7 @@ impl Page {
 mod context_menu;
 mod dom_helpers;
 mod dom_write;
+mod file_input;
 mod find;
 mod form_submission;
 mod native_editing;

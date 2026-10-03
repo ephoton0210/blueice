@@ -45,6 +45,7 @@ pub mod debugger;
 pub mod display;
 pub mod downloads;
 pub mod extension;
+pub mod file_input;
 pub mod find;
 pub mod gatekeeper;
 pub mod input;
@@ -87,6 +88,7 @@ pub enum ChromeCommand {
 /// Sent by a client (`frontend` today; `extension`/AI later) to `core`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ClientMessage {
+    FileInput(file_input::FileInputAction),
     /// Create, render, or release a core-owned frozen print document.
     Print(printing::PrintAction),
     /// The protocol_version handshake (`phase-1-ai-representation-
@@ -375,6 +377,7 @@ pub enum AssistantTaskKind {
 /// Sent by `core` to a client.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ServerMessage {
+    FileInputState(file_input::FileInputState),
     PrintState(printing::PrintReply),
     /// A form request has started; carries no POST body or field metadata.
     NavigationStarted {

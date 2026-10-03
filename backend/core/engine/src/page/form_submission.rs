@@ -10,10 +10,11 @@ use super::*;
 use crate::navigation_request::{BrowserNavigation, FormSource};
 use blueice_net::{FormEncoding, NavigationRequest, MAX_FORM_BODY_BYTES};
 
-struct Entry {
+struct Entry<'a> {
     name: String,
     value: String,
     empty_file: bool,
+    file: Option<&'a blueice_ipc::file_input::FileData>,
 }
 
 fn crlf(value: &str) -> String {
@@ -208,6 +209,9 @@ impl Page {
         let validate = element_attribute(&self.doc, form, "novalidate").is_none()
             && submitter
                 .is_none_or(|node| element_attribute(&self.doc, node, "formnovalidate").is_none());
+        let encoding = chosen("enctype", "formenctype")
+            .unwrap_or("application/x-www-form-urlencoded")
+            .to_ascii_lowercase();
         let mut entries = Vec::new();
         let mut protected = false;
         let mut size = 0usize;
@@ -275,7 +279,7 @@ impl Page {
                         .into_iter()
                         .any(|member| element_attribute(&self.doc, member, "checked").is_some())
                 } else if kind == "input" && input == "file" {
-                    true
+                    self.native_files.get(&node).is_none_or(Vec::is_empty)
                 } else if kind == "select" {
                     let selected = self.selected_options(node);
                     selected.is_empty()
@@ -319,6 +323,30 @@ impl Page {
                         name: name.clone(),
                         value,
                         empty_file: false,
+                        file: None,
+                    });
+                    if entries.len() > 1024 || size > MAX_FORM_BODY_BYTES {
+                        return Err("Form data exceeds the navigation limit".into());
+                    }
+                }
+            } else if kind == "input"
+                && input == "file"
+                && self.native_files.get(&node).is_some_and(|f| !f.is_empty())
+            {
+                for file in &self.native_files[&node] {
+                    size = size
+                        .saturating_add(name.len())
+                        .saturating_add(file.name.len())
+                        .saturating_add(if post && encoding == "multipart/form-data" {
+                            file.bytes.len()
+                        } else {
+                            0
+                        });
+                    entries.push(Entry {
+                        name: name.clone(),
+                        value: file.name.clone(),
+                        empty_file: false,
+                        file: Some(file),
                     });
                     if entries.len() > 1024 || size > MAX_FORM_BODY_BYTES {
                         return Err("Form data exceeds the navigation limit".into());
@@ -351,6 +379,7 @@ impl Page {
                     name,
                     value,
                     empty_file,
+                    file: None,
                 });
             }
             if entries.len() > 1024 || size > MAX_FORM_BODY_BYTES {
@@ -362,9 +391,6 @@ impl Page {
         if protected && !post {
             return Err("Protected form fields require a POST request".into());
         }
-        let encoding = chosen("enctype", "formenctype")
-            .unwrap_or("application/x-www-form-urlencoded")
-            .to_ascii_lowercase();
         let request = if !post || encoding != "text/plain" && encoding != "multipart/form-data" {
             let mut encoded = String::new();
             for entry in &entries {
@@ -417,30 +443,49 @@ impl Page {
                     .map(|byte| format!("{byte:02x}"))
                     .collect::<String>()
             );
-            let mut encoded = String::new();
+            let mut encoded = Vec::new();
             for entry in &entries {
-                let name = crlf(&entry.name)
-                    .replace('\r', "%0D")
-                    .replace('\n', "%0A")
-                    .replace('"', "%22");
-                encoded.push_str(&format!(
-                    "--{boundary}\r\nContent-Disposition: form-data; name=\"{name}\""
-                ));
-                if entry.empty_file {
-                    encoded.push_str("; filename=\"\"\r\nContent-Type: application/octet-stream");
+                let escape = |value: &str| {
+                    crlf(value)
+                        .replace('\r', "%0D")
+                        .replace('\n', "%0A")
+                        .replace('"', "%22")
+                };
+                let name = escape(&entry.name);
+                encoded.extend_from_slice(
+                    format!("--{boundary}\r\nContent-Disposition: form-data; name=\"{name}\"")
+                        .as_bytes(),
+                );
+                if let Some(file) = entry.file {
+                    encoded.extend_from_slice(
+                        format!(
+                            "; filename=\"{}\"\r\nContent-Type: {}",
+                            escape(&file.name),
+                            file.media_type
+                        )
+                        .as_bytes(),
+                    );
+                } else if entry.empty_file {
+                    encoded.extend_from_slice(
+                        b"; filename=\"\"\r\nContent-Type: application/octet-stream",
+                    );
                 }
-                encoded.push_str("\r\n\r\n");
-                encoded.push_str(&crlf(&entry.value));
-                encoded.push_str("\r\n");
+                encoded.extend_from_slice(b"\r\n\r\n");
+                if let Some(file) = entry.file {
+                    encoded.extend_from_slice(&file.bytes);
+                } else {
+                    encoded.extend_from_slice(crlf(&entry.value).as_bytes());
+                }
+                encoded.extend_from_slice(b"\r\n");
                 if encoded.len() > MAX_FORM_BODY_BYTES {
                     return Err("Form data exceeds the navigation limit".into());
                 }
             }
-            encoded.push_str(&format!("--{boundary}--\r\n"));
+            encoded.extend_from_slice(format!("--{boundary}--\r\n").as_bytes());
             NavigationRequest::post(
                 url.to_string(),
                 FormEncoding::Multipart { boundary },
-                encoded.into_bytes(),
+                encoded,
             )
         }
         .map_err(|error| error.to_string())?;

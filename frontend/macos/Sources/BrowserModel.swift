@@ -13,6 +13,54 @@ final class BrowserModel: ObservableObject {
     @Published private(set) var profileName = "Default"
     @Published var profileEditor: ProfileEditor?
     @Published var downloadsPresented = false
+    @Published var fileInputErrorPresented = false
+    private(set) var fileInputError = ""
+    private var fileOperation: UUID?
+    private var fileReplies: [IncomingEnvelope] = []
+    func presentFileInputError(_ text: String) { fileInputError = text; fileInputErrorPresented = true }
+    func fileInputIsCurrent(_ context: FileInputContext, tab: UInt64) -> Bool {
+        ready && selected == tab && context.tab_id == tab && tabs.contains(where: { $0.id == tab }) && status != "Loading…"
+            && context.frame_source == PageRepresentation.frameSource(directory: session.frameDirectory.path)
+            && textInputState?.document_generation == context.document_generation
+    }
+    private func fileReply(_ action: FileInputAction, tab: UInt64) async -> FileInputState? {
+        guard ready, fileOperation == nil else { return nil }
+        let token = UUID(); fileOperation = token; fileReplies.removeAll()
+        defer { if fileOperation == token { fileOperation = nil; fileReplies.removeAll() } }
+        let epoch = documentEpochs[tab,default: 0]
+        guard let request = await send(.fileInput(action),tab: tab) else { return nil }
+        let deadline = Date().addingTimeInterval(5)
+        while !Task.isCancelled, ready, fileOperation == token, selected == tab,
+              documentEpochs[tab,default: 0] == epoch, Date() < deadline {
+            if let reply = fileReplies.first(where: { $0.requestID == request && $0.tabID == tab }) {
+                if case .fileInputState(let state) = reply.message { return state }
+                return nil
+            }
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        return nil
+    }
+    func prepareFileInput(_ node: UInt64) async -> FileInputState? {
+        guard ready, !textInputBusy, let tab = selected, let input = textInputState,
+              representation?.nodes.contains(where: { $0.id == node && $0.state.fileInput && !$0.state.disabled }) == true else { return nil }
+        guard let state = await fileReply(.prepare(input.frame_source,input.document_generation,node),tab: tab),
+              state.context.tab_id == tab,
+              state.context.frame_source == input.frame_source, state.context.document_generation == input.document_generation,
+              state.context.node_id == node, state.accept.utf8.count <= 4096, state.names.count <= 16,
+              state.names.allSatisfy(SelectedFile.validName) else { return nil }
+        return state
+    }
+    func setFileInput(_ context: FileInputContext, files: [SelectedFile], tab: UInt64) async -> Bool {
+        guard fileInputIsCurrent(context,tab: tab) else { return false }
+        guard let state = await fileReply(.set(context,files),tab: tab),
+              state.context.frame_source == context.frame_source, state.context.document_generation == context.document_generation,
+              state.context.node_id == context.node_id, state.context.revision == context.revision &+ 1,
+              state.names == files.map(\.name) else {
+            if fileInputIsCurrent(context,tab: tab) { presentFileInputError("The file selection could not be applied. Please choose the files again.") }
+            return false
+        }
+        return true
+    }
     @Published private(set) var printBusy = false
     @Published var printErrorPresented = false
     private(set) var printError = ""
@@ -238,6 +286,12 @@ final class BrowserModel: ObservableObject {
 
     func apply(_ envelope: IncomingEnvelope, pixels: FramePixels?) {
         let tab = envelope.tabID
+        if fileOperation != nil, fileReplies.count < 16 {
+            switch envelope.message {
+            case .fileInputState, .error: fileReplies.append(envelope)
+            default: break
+            }
+        }
         if windowTabs != nil, let tab, !tabs.contains(where: { $0.id == tab }) {
             switch envelope.message {
             case .opened, .closed, .frame, .navigated, .navigationStarted, .history, .textInputState, .textInputUnavailable,

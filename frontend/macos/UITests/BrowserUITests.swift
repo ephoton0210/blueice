@@ -9,6 +9,85 @@ import XCTest
 
 @MainActor
 final class BrowserUITests: XCTestCase {
+    private func chooseFileAtPath(_ path: String, selectAll: Bool = false) throws {
+        let panel = app.sheets["open-panel"]
+        XCTAssertTrue(panel.waitForExistence(timeout: 10),app.debugDescription)
+        panel.typeKey("g",modifierFlags: [.command,.shift])
+        let folder = app.sheets["GoToWindow"].textFields["PathTextField"]
+        XCTAssertTrue(folder.waitForExistence(timeout: 10),app.debugDescription)
+        folder.click(); folder.typeKey("a",modifierFlags: .command)
+        NSPasteboard.general.clearContents(); NSPasteboard.general.setString(path,forType: .string)
+        folder.typeKey("v",modifierFlags: .command); folder.typeKey(.return,modifierFlags: [])
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"),object: app.sheets["GoToWindow"])],timeout: 10),.completed)
+        if selectAll { panel.typeKey("a",modifierFlags: .command) }
+        let choose = panel.buttons["Choose"]
+        XCTAssertTrue(choose.waitForExistence(timeout: 10),app.debugDescription)
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == true"),object: choose)],timeout: 10),.completed,panel.debugDescription)
+        let image = XCTAttachment(screenshot: app.windows["browser-window"].screenshot())
+        image.name = "macos-native-file-picker"; image.lifetime = .keepAlways; add(image)
+        choose.click()
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"),object: panel)],timeout: 10),.completed)
+    }
+
+    func testNativeFilePickerUploadsBinaryAndRetainsOnlyBasenames() throws {
+        let fixture = try HTTPFixture(); defer { fixture.stop() }
+        let saved = saveClipboard(); defer { NSPasteboard.general.clearContents(); NSPasteboard.general.writeObjects(saved) }
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("bi-file-ui-" + UUID().uuidString)
+        try FileManager.default.createDirectory(at: root,withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let file = root.appendingPathComponent("chosen-中文.bin")
+        let bytes = Data([0,255,13,10,7]); try bytes.write(to: file)
+        let second = root.appendingPathComponent("second-👨‍👩‍👧‍👦.txt")
+        let secondBytes = Data("one\ntwo\rthree".utf8); try secondBytes.write(to: second)
+        app.launchArguments += ["-AppleLanguages","(en)","-AppleLocale","en_US"]
+        launch(); enter(fixture.origin + "/file-input")
+        let upload = app.groups["page"].buttons["Upload files"]
+        XCTAssertTrue(upload.waitForExistence(timeout: 15),app.debugDescription)
+        XCTAssertFalse(app.groups["page"].buttons["Disabled file"].isEnabled)
+        upload.click(); try chooseFileAtPath(file.path,selectAll: true)
+        waitValue(upload,file.lastPathComponent + ", " + second.lastPathComponent)
+        XCTAssertFalse((upload.value as? String ?? "").contains(root.path))
+        waitValue(app.groups["page"].textFields["Retained editor"],"retained 中文")
+        let image = XCTAttachment(screenshot: app.windows["browser-window"].screenshot())
+        image.name = "macos-file-selected-page"; image.lifetime = .keepAlways; add(image)
+        XCTAssertEqual(fixture.requests,["/file-input"])
+        app.groups["page"].buttons["Send files"].click()
+        waitPageContent("Files received")
+        XCTAssertEqual(fixture.requests,["/file-input","/upload-received"])
+        let request = try XCTUnwrap(fixture.records.last)
+        XCTAssertEqual(request.method,"POST")
+        XCTAssertNotNil(request.body.range(of: bytes))
+        XCTAssertNotNil(request.body.range(of: secondBytes))
+        XCTAssertNotNil(request.body.range(of: Data("filename=\"\(second.lastPathComponent)\"".utf8)))
+        XCTAssertNotNil(request.body.range(of: Data("filename=\"\(file.lastPathComponent)\"".utf8)))
+        XCTAssertNil(request.body.range(of: Data(root.path.utf8)))
+        XCTAssertTrue(request.headers.lowercased().contains("multipart/form-data; boundary="))
+    }
+
+    func testNativeFilePickerCancelKeyboardAndResetPreserveDocument() throws {
+        let fixture = try HTTPFixture(); defer { fixture.stop() }
+        let saved = saveClipboard(); defer { NSPasteboard.general.clearContents(); NSPasteboard.general.writeObjects(saved) }
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("bi-file-cancel-" + UUID().uuidString)
+        try FileManager.default.createDirectory(at: root,withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let file = root.appendingPathComponent("retained.txt"); try Data("chosen content".utf8).write(to: file)
+        app.launchArguments += ["-AppleLanguages","(en)","-AppleLocale","en_US"]
+        launch(); enter(fixture.origin + "/file-input")
+        let upload = app.groups["page"].buttons["Upload files"]
+        XCTAssertTrue(upload.waitForExistence(timeout: 15))
+        upload.click(); try chooseFileAtPath(file.path); waitValue(upload,file.lastPathComponent)
+        // Cancelling a later picker preserves the existing file selection.
+        upload.click()
+        let panel = app.sheets["open-panel"]
+        XCTAssertTrue(panel.buttons["Cancel"].waitForExistence(timeout: 10)); panel.buttons["Cancel"].click()
+        waitValue(upload,file.lastPathComponent)
+        // The page remains focused on its file button; Space is a native gesture.
+        app.typeKey(" ",modifierFlags: [])
+        XCTAssertTrue(panel.buttons["Cancel"].waitForExistence(timeout: 10),app.debugDescription); panel.buttons["Cancel"].click()
+        app.groups["page"].buttons["Reset files"].click(); waitValue(upload,"")
+        waitValue(app.groups["page"].textFields["Retained editor"],"retained 中文")
+        XCTAssertEqual(fixture.requests,["/file-input"])
+    }
     func testNativePrintPanelPaperOrientationScaleAndSavePDF() throws {
         let fixture = try HTTPFixture(); defer { fixture.stop() }
         let saved = saveClipboard(); defer { NSPasteboard.general.clearContents(); NSPasteboard.general.writeObjects(saved) }
@@ -291,6 +370,7 @@ final class BrowserUITests: XCTestCase {
             if let originalInputSource { XCTAssertEqual(TISSelectInputSource(originalInputSource), noErr) }
         }
         if app.state != .notRunning {
+            if app.sheets["open-panel"].buttons["Cancel"].exists { app.sheets["open-panel"].buttons["Cancel"].click() }
             if app.sheets["GoToWindow"].exists { app.typeKey(.escape,modifierFlags: []) }
             if app.sheets["save-panel"].buttons["CancelButton"].exists { app.sheets["save-panel"].buttons["CancelButton"].click() }
             if app.sheets["alert"].buttons["OK"].exists { app.sheets["alert"].buttons["OK"].click() }

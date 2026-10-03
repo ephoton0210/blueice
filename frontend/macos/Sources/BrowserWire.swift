@@ -34,6 +34,7 @@ enum BrowserCommand: Encodable, Sendable {
     case window(WindowAction)
     case browserContext(ContextAction)
     case printAction(PrintAction)
+    case fileInput(FileInputAction)
     func encode(to encoder: Encoder) throws {
         switch self {
         case .unit(let name):
@@ -76,6 +77,9 @@ enum BrowserCommand: Encodable, Sendable {
         case .printAction(let action):
             var root = encoder.container(keyedBy: MessageKey.self)
             try root.encode(action,forKey: MessageKey("Print"))
+        case .fileInput(let action):
+            var root = encoder.container(keyedBy: MessageKey.self)
+            try root.encode(action,forKey: MessageKey("FileInput"))
         case .browserContext(let action):
             var root = encoder.container(keyedBy: MessageKey.self)
             try root.encode(action, forKey: MessageKey("BrowserContext"))
@@ -277,6 +281,7 @@ struct FormResubmission: Decodable, Sendable {
 }
 
 enum BrowserMessage: Decodable, Sendable {
+    case fileInputState(FileInputState)
     case printState(PrintReply)
     case hello(UInt32), tabs([BrowserTab]), opened(UInt64, String?), closed(UInt64)
     case navigationStarted, navigated(String), history(HistoryState), frame(FrameNotice)
@@ -308,6 +313,7 @@ enum BrowserMessage: Decodable, Sendable {
             struct Resolution: Decodable { let confirmation_id: UInt64 }
             self = .formResubmissionResolved(try object.decode(Resolution.self, forKey: key).confirmation_id)
         case "PrintState": self = .printState(try object.decode(PrintReply.self,forKey: key))
+        case "FileInputState": self = .fileInputState(try object.decode(FileInputState.self,forKey: key))
         case "Hello": self = .hello(try object.decode(Hello.self, forKey: key).protocol_version)
         case "Tabs": self = .tabs(try object.decode([BrowserTab].self, forKey: key))
         case "TabOpened":

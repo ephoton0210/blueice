@@ -161,7 +161,7 @@ impl Page {
         }
     }
 
-    pub(super) fn native_focus_at(&mut self, focused: Option<NodeId>) -> bool {
+    pub(crate) fn native_focus_at(&mut self, focused: Option<NodeId>) -> bool {
         self.native_focus_exit = None;
         let focused = focused.filter(|id| self.native_focusable(*id));
         if self.focused == focused {

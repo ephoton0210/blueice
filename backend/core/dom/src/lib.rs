@@ -89,9 +89,25 @@ pub struct Document {
     allocator: NodeIdAllocator,
     nodes: HashMap<NodeId, NodeRecord>,
     root: Option<NodeId>,
+    // Browser-owned display names are separate from author attributes. This
+    // carries no path or bytes and survives frozen print-document cloning.
+    file_names: HashMap<NodeId, Vec<String>>,
 }
 
 impl Document {
+    pub fn file_control_names(&self, id: NodeId) -> &[String] {
+        self.file_names.get(&id).map_or(&[], Vec::as_slice)
+    }
+
+    pub fn set_file_control_names(&mut self, id: NodeId, names: Vec<String>) {
+        if self.contains(id) {
+            if names.is_empty() {
+                self.file_names.remove(&id);
+            } else {
+                self.file_names.insert(id, names);
+            }
+        }
+    }
     pub fn new() -> Self {
         Self::new_continuing_from(0)
     }
@@ -313,6 +329,7 @@ impl Document {
             self.free_subtree(current);
         }
         self.nodes.remove(&id);
+        self.file_names.remove(&id);
     }
 }
 

@@ -328,6 +328,17 @@ margins/background controls and physical-printer acceptance remain open. Printin
 adds no MCP filesystem operation or human permission grant. See
 [print results](../../development/browser_core/phase-22-browser-shell-accessibility/MACOS_PRINT_RESULTS.md).
 
+Native file buttons open the system Open dialog from local mouse, accessibility
+press, Enter or Space actions. Cancel retains the previous selection; form reset
+clears it. Selection supports regular files, single/multiple mode and supported
+`accept` hints. Core receives names and content, with no selected path in reader
+instructions or metadata; pixels and accessibility show only basenames.
+Multipart retains raw binary content and the existing reviewed
+navigation policy. Limits are 16 files/1 MiB per input and 64 files/4 MiB per
+document, with the existing 1 MiB final form body limit. Directory/capture,
+label forwarding, drag/drop and full web File API/events remain open. See
+[file input results](../../development/browser_core/phase-22-browser-shell-accessibility/MACOS_FILE_INPUT_RESULTS.md).
+
 Frame refresh temporarily suspends semantic actions until the representation
 matches the current tab, source, generation and URL. Native element identities
 survive a refresh within one document; reload, navigation and tab changes
@@ -340,5 +351,5 @@ keyboard/beforeinput/input/composition event dispatch, undo/redo, complete
 bidirectional shaping and caret blink remain open, as do full form event/validity behavior,
 select popup/typeahead/multiple-selection interaction, complete toolbar Tab
 traversal, image/media context actions, page-text selection/copy, drag/drop,
-file selection, automatic attachment downloads, permission panels and localization. Automated checks cover the recorded features; an
+full file API/events, automatic attachment downloads, permission panels and localization. Automated checks cover the recorded features; an
 interactive VoiceOver session remains unvalidated.

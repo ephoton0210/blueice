@@ -102,6 +102,8 @@ pub struct NodeState {
     #[serde(default)]
     pub native_focusable: bool,
     #[serde(default)]
+    pub file_input: bool,
+    #[serde(default)]
     pub radio: bool,
     /// A password control; callers must not expose its value as ordinary text.
     #[serde(default)]

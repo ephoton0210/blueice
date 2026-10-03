@@ -157,6 +157,7 @@ final class PageAccessibilityElement: NSAccessibilityElement {
     }
     override func accessibilityLabel() -> String? { node.name }
     override func accessibilityValue() -> Any? {
+        if node.state.fileInput { return node.state.value }
         switch node.role {
         case .checkBox: return node.state.checked.map { NSNumber(value: $0) }
         case .textBox, .slider, .comboBox: return node.state.protected ? nil : node.state.value

@@ -163,7 +163,7 @@ fn infer_role(tag: &str, attributes: &[(String, String)]) -> Option<Role> {
             {
                 "checkbox" | "radio" => Role::CheckBox,
                 "range" => Role::Slider,
-                "submit" | "button" | "reset" => Role::Button,
+                "submit" | "button" | "reset" | "file" => Role::Button,
                 _ => Role::TextBox,
             },
         ),
@@ -324,6 +324,8 @@ fn compute_state(
         value: page.native_control_public_value(node),
         native_text_input: page.supports_native_text_input(node),
         native_focusable: page.native_focusable(node),
+        file_input: tag == "input"
+            && attr(attributes, "type").is_some_and(|kind| kind.eq_ignore_ascii_case("file")),
         radio: tag == "input"
             && attr(attributes, "type").is_some_and(|kind| kind.eq_ignore_ascii_case("radio")),
         protected: tag == "input"

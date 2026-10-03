@@ -97,6 +97,7 @@ struct BrowserView: View {
             Text("Resending will repeat the previous form submission to \(URL(string: prompt.url)?.host ?? prompt.url).")
         }
         .alert("Could not print",isPresented: $model.printErrorPresented) { Button("OK",role: .cancel) {} } message: { Text(model.printError) }
+        .alert("Could not select files",isPresented: $model.fileInputErrorPresented) { Button("OK",role: .cancel) {} } message: { Text(model.fileInputError) }
         .sheet(item: $model.groupEditor) { editor in BrowserTabGroupEditor(model: model, editor: editor) }
         .sheet(item: $model.profileEditor) { editor in
             if let workspace = model.windowManager { BrowserProfileEditor(model: model, workspace: workspace, editor: editor) }

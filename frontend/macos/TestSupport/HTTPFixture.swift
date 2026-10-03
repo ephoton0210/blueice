@@ -70,6 +70,18 @@ final class HTTPFixture: @unchecked Sendable {
                 }
                 let body: String
                 switch route {
+                case "/file-input": body = """
+                    <html><body><h1>File selection fixture</h1>
+                    <form method="post" action="/upload-received" enctype="multipart/form-data">
+                    <input type="file" name="upload" required multiple accept=".txt,.bin" aria-label="Upload files" style="display:block;width:520px;height:40px">
+                    <input aria-label="Retained editor" value="retained 中文" style="display:block;width:280px;height:32px">
+                    <button type="reset" aria-label="Reset files">Reset files</button>
+                    <button aria-label="Send files">Send files</button></form>
+                    <input type="file" aria-label="Single file" style="display:block;width:520px;height:40px">
+                    <input type="file" disabled aria-label="Disabled file" style="display:block;width:520px;height:40px">
+                    </body></html>
+                    """
+                case "/upload-received": body = "<h1>Files received</h1>"
                 case "/printing": body = """
                     <html><head><style>
                     p {margin:0;line-height:40px}
