@@ -15,6 +15,7 @@ final class BrowserSession: @unchecked Sendable {
     private let lifecycle = DispatchQueue(label: "cc.blueice.browser.lifecycle")
     private let reading = DispatchGroup()
     private var process: OwnedBrowserProcess?
+    private var supervisedExecutable: URL?
     private var connection: BrowserConnection?
     private var ownerLiveness: FileHandle?
     private var ownsDirectory = false
@@ -29,6 +30,7 @@ final class BrowserSession: @unchecked Sendable {
         set { lock.withLock { callback = newValue } }
     }
     var processID: Int32? { lock.withLock { process?.pid } }
+    var downloadsExecutable: URL? { lock.withLock { supervisedExecutable?.deletingLastPathComponent().appendingPathComponent("blueice-downloads") } }
 
     func startForBrowser(launcher: URL? = nil) async throws {
         let arguments = ProcessInfo.processInfo.arguments
@@ -81,10 +83,13 @@ final class BrowserSession: @unchecked Sendable {
                             environment["TMPDIR"] = self.runtimeDirectory.path
                             environment["XDG_RUNTIME_DIR"] = self.runtimeDirectory.path
                             if supervised {
+                                self.supervisedExecutable = executable
+                                environment["BLUEICE_NATIVE_DOWNLOADS_MANAGED"] = "1"
                                 let owner = Pipe()
                                 let child = try OwnedBrowserProcess(executable: executable, arguments: [
                                     "--socket", self.runtimeDirectory.appendingPathComponent("browser.sock").path,
                                     "--control-socket", self.runtimeDirectory.appendingPathComponent("control.sock").path,
+                                    "--owned-gatekeeper-socket", self.runtimeDirectory.appendingPathComponent("blueice/gatekeeper.sock").path,
                                     "--frame-dir", self.frameDirectory.path,
                                     "--width", "1024", "--height", "640", "--exit-on-stdin-eof"
                                 ], environment: environment, input: owner.fileHandleForReading)

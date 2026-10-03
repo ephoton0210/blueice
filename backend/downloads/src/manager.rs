@@ -489,8 +489,12 @@ impl TransferManager {
         let loaded = store.load();
 
         let mut entries = BTreeMap::new();
+        let mut generation = 0;
         for stored in loaded.transfers {
             let mut info = stored.info;
+            // Clients retain each record's revision from List after reconnect;
+            // the next mutation must be newer than every persisted record.
+            generation = generation.max(info.generation);
             bound_loaded_info(&mut info);
             let mut events = info.events.clone();
             if !info.dest_path.is_empty() {
@@ -549,7 +553,7 @@ impl TransferManager {
         }
         let state = State {
             next_id: loaded.next_id,
-            generation: 0,
+            generation,
             entries,
             subscribers: Vec::new(),
             last_saved: Instant::now(),

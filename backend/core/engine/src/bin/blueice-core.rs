@@ -807,10 +807,14 @@ fn main() -> ExitCode {
         if let Some((registry, extension_id)) = extension_permissions.as_ref() {
             tabs.set_extension_permission_registry(Arc::clone(registry), extension_id.clone());
         }
-        tabs.set_downloads_source(Arc::new(match downloads_socket {
-            Some(socket) => DownloadsSource::at(socket),
-            None => DownloadsSource::new(),
-        }));
+        let downloads_socket =
+            downloads_socket.unwrap_or_else(blueice_ipc::downloads::default_downloads_socket_path);
+        let downloads_source = if std::env::var_os("BLUEICE_NATIVE_DOWNLOADS_MANAGED").is_some() {
+            DownloadsSource::without_spawner(downloads_socket)
+        } else {
+            DownloadsSource::at(downloads_socket)
+        };
+        tabs.set_downloads_source(Arc::new(downloads_source));
         tabs.set_gatekeeper_settings_source(Arc::new(GatekeeperSettingsSource::at(
             gatekeeper_socket.clone(),
         )));

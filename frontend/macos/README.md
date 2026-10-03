@@ -21,16 +21,16 @@ open frontend/macos/.build/Build/Products/Debug/BlueIce.app
 
 `build.sh Release` builds optimized services and frontend. The Xcode project
 copies and locally signs `blueice-core`, `blueice-launcher` and
-`blueice-ai-gatekeeper` inside the app bundle. It
+`blueice-ai-gatekeeper`, plus the on-demand `blueice-downloads`, inside the app bundle. It
 reuses `.build/core-target` for Rust output, keeping native frontend builds
 independent of the workspace's larger cache; an explicit `CARGO_TARGET_DIR`
 overrides that directory. Builds use an ad hoc identity for local development;
 distribution signing and notarization are separate work. To build from Xcode, first build the services
 with the script, then open `BlueIce.xcodeproj` and select the shared `BlueIce`
-scheme. `BLUEICE_BACKEND_DIR` overrides the directory of all three binaries
+scheme. `BLUEICE_BACKEND_DIR` overrides the directory of all four binaries
 when invoking Xcode directly. When running the app executable directly,
 `--launcher-exe /absolute/path/to/blueice-launcher` overrides the launcher;
-the core and gatekeeper must reside beside it. The explicit diagnostic option
+the core, gatekeeper and optional download service must reside beside it. The explicit diagnostic option
 `--core-exe /absolute/path/to/blueice-core` retains the private-pipe mode,
 which denies external navigation when review is unavailable.
 
@@ -51,8 +51,9 @@ CARGO_TARGET_DIR="$PWD/frontend/macos/.build/core-target" \
 ```
 
 XCUITest requires an unlocked graphical login session and macOS approval for
-Xcode's test runner to automate the UI. The tests operate only the BlueIce
-application. They use stable accessibility identifiers on native controls,
+Xcode's test runner to automate the UI. The tests operate the BlueIce
+application; explicit download actions also inspect Finder and the default file
+handler using uniquely named test documents. They use stable accessibility identifiers on native controls,
 launch the bundled service stack, and inspect screenshots of the actual viewport.
 They do not replace the core with a simulated renderer.
 
@@ -227,7 +228,7 @@ inert, and pending clipboard operations cannot run after a tab switch.
 
 Right-click or Control-click opens an AppKit menu for the core's current hit
 target. Shift-F10 opens it on a focused editor. Links offer Open, Open in New
-Tab and Copy Link Address; editors offer Cut, Copy, Paste and Select All with
+Tab, Copy Link Address and Download Linked File; editors offer Cut, Copy, Paste and Select All with
 password/readonly policy. Page Back, Forward, Reload and Find keep their
 ordinary behavior. Opening a menu does not activate a page link/button, and
 an existing editor selection survives right-click. Copy Link Address does not
@@ -288,6 +289,28 @@ are not partitioned by this increment. Invalid saved catalogs are retained while
 profile management is disabled. The read-only MCP list_browser_contexts tool
 observes the same core context, window and group registry.
 
+File > Downloads (Command-Option-L) and the toolbar open a shared SwiftUI download
+panel. It starts the bundled manager only when explicitly opened, a linked file
+is downloaded, or about:downloads is visited. The panel displays live byte,
+speed, connection, ETA and segment details; Pause, Resume, Cancel and Remove use
+the real service. Completed items open with the current macOS file handler or
+select their file in Finder. Removing history preserves completed files.
+Only checked regular files inside the configured downloads folder can open.
+
+Download Linked File revalidates the hit target in core and keeps the source tab
+and clipboard intact. Every download and explicit Resume uses the same owned
+Gatekeeper checkpoint as browsing. The default file root is ~/Downloads/BlueIce;
+the bounded persistent catalog lives in ~/Library/Application Support/BlueIce/Downloads.
+Diagnostic options --downloads-directory and --downloads-data-directory select
+explicit roots. Normal shutdown stops downloads before core/review; the inherited
+owner pipe checkpoints active transfers after abrupt GUI exit. Relaunch restores
+paused history and never automatically resumes. Core about:downloads and native
+controls share one manager and catalog. See
+[download results](../../development/browser_core/phase-22-browser-shell-accessibility/MACOS_DOWNLOAD_RESULTS.md).
+Automatic response/attachment downloads, destination chooser, credential/settings
+UI, quarantine integration and print/PDF output remain separate delivery work.
+The catalog and preferences are currently shared across browser profiles.
+
 Frame refresh temporarily suspends semantic actions until the representation
 matches the current tab, source, generation and URL. Native element identities
 survive a refresh within one document; reload, navigation and tab changes
@@ -300,6 +323,6 @@ keyboard/beforeinput/input/composition event dispatch, undo/redo, complete
 bidirectional shaping and caret blink remain open, as do full form event/validity behavior,
 select popup/typeahead/multiple-selection interaction, complete toolbar Tab
 traversal, image/media context actions, page-text selection/copy, drag/drop,
-file selection, downloads/printing/permission
+file selection, automatic attachment downloads, printing/permission
 panels and localization. Automated checks cover the recorded features; an
 interactive VoiceOver session remains unvalidated.

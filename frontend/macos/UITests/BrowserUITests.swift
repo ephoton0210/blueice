@@ -9,6 +9,127 @@ import XCTest
 
 @MainActor
 final class BrowserUITests: XCTestCase {
+    func testNativeDownloadsTransferControlsPersistenceAndFinderActions() throws {
+        let fixture = try DownloadFixture(); defer { fixture.stop() }
+        let root = URL(fileURLWithPath: "/private/tmp/bi-download-ui-" + UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let files = root.appendingPathComponent("files")
+        app.launchArguments += ["--downloads-directory",files.path,"--downloads-data-directory",root.appendingPathComponent("data").path]
+        let saved = saveClipboard(); defer { NSPasteboard.general.clearContents(); NSPasteboard.general.writeObjects(saved) }
+        launch()
+        XCTAssertFalse(FileManager.default.fileExists(atPath: files.path))
+        app.menuBars.menuBarItems["File"].click(); app.menuItems["Downloads…"].click()
+        XCTAssertTrue(app.staticTexts["downloads-empty"].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.buttons["download-start"].isEnabled)
+        paste("file:///etc/hosts",into: app.textFields["download-url"])
+        XCTAssertFalse(app.buttons["download-start"].isEnabled)
+        paste(fixture.origin + "/notes.txt",into: app.textFields["download-url"])
+        paste("../outside.txt",into: app.textFields["download-name"])
+        XCTAssertFalse(app.buttons["download-start"].isEnabled)
+        let name = "BlueIce-" + UUID().uuidString + ".txt"
+        paste(name,into: app.textFields["download-name"])
+        app.buttons["download-start"].click(); waitDownload(1,"Completed")
+        let file = files.appendingPathComponent(name)
+        XCTAssertEqual(try Data(contentsOf: file),fixture.bytes)
+        app.buttons["downloads-refresh"].click(); waitDownload(1,"Completed")
+        app.buttons["download-reveal-1"].click()
+        let finder = XCUIApplication(bundleIdentifier: "com.apple.finder")
+        XCTAssertTrue(finder.descendants(matching: .any).matching(NSPredicate(format: "label == %@",name)).firstMatch.waitForExistence(timeout: 15),finder.debugDescription)
+        app.activate()
+        let handlerURL = try XCTUnwrap(NSWorkspace.shared.urlForApplication(toOpen: file))
+        let handler = XCUIApplication(bundleIdentifier: try XCTUnwrap(Bundle(url: handlerURL)?.bundleIdentifier))
+        app.buttons["download-open-1"].click()
+        XCTAssertTrue(handler.wait(for: .runningForeground,timeout: 15),handler.debugDescription)
+        let document = handler.windows[name]
+        XCTAssertTrue(document.waitForExistence(timeout: 15),handler.debugDescription)
+        if document.buttons[XCUIIdentifierCloseWindow].exists { document.buttons[XCUIIdentifierCloseWindow].click() }
+        app.activate()
+        startDownload(fixture.origin + "/large.txt",name: "large.txt")
+        waitDownload(2,"Downloading")
+        app.buttons["download-pause-2"].click(); waitDownload(2,"Paused")
+        XCTAssertTrue(app.buttons["download-resume-2"].exists)
+        fixture.setSlow(false)
+        app.buttons["download-resume-2"].click(); waitDownload(2,"Completed")
+        XCTAssertEqual(try Data(contentsOf: files.appendingPathComponent("large.txt")),fixture.large)
+        app.buttons["download-remove-2"].click()
+        XCTAssertTrue(FileManager.default.fileExists(atPath: files.appendingPathComponent("large.txt").path))
+        startDownload(fixture.origin + "/setup.exe",name: "setup.exe"); waitDownload(3,"Blocked")
+        XCTAssertTrue(app.staticTexts["download-blocked-3"].exists)
+        XCTAssertFalse(app.buttons["download-open-3"].exists)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: files.appendingPathComponent("setup.exe").path))
+        app.buttons["download-remove-3"].click()
+        fixture.setSlow(true)
+        startDownload(fixture.origin + "/large-cancel.txt",name: "cancel.txt"); waitDownload(4,"Downloading")
+        app.buttons["download-cancel-4"].click(); waitDownload(4,"Cancelled")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: files.appendingPathComponent("cancel.txt.blueice-part").path))
+        app.buttons["download-remove-4"].click()
+        startDownload(fixture.origin + "/large-exit.txt",name: "exit.txt"); waitDownload(5,"Downloading")
+        app.buttons["downloads-close"].click()
+        app.windows["browser-window"].buttons[XCUIIdentifierCloseWindow].click()
+        XCTAssertTrue(app.wait(for: .notRunning,timeout: 15))
+        let before = fixture.requests.count
+        launch(); app.buttons["downloads"].click(); waitDownload(5,"Paused")
+        XCTAssertEqual(fixture.requests.count,before,"Reopening the catalog must not restart a transfer")
+        waitDownload(1,"Completed")
+        XCTAssertFalse(app.staticTexts["download-state-2"].exists)
+        let attachment = XCTAttachment(screenshot: app.windows["browser-window"].screenshot())
+        attachment.name = "macos-native-downloads"; attachment.lifetime = .keepAlways; add(attachment)
+        app.buttons["download-cancel-5"].click(); waitDownload(5,"Cancelled")
+        app.buttons["download-remove-5"].click()
+        app.buttons["download-remove-1"].click()
+        XCTAssertTrue(app.staticTexts["downloads-empty"].waitForExistence(timeout: 10))
+        XCTAssertEqual(try Data(contentsOf: file),fixture.bytes)
+        app.buttons["downloads-close"].click()
+    }
+
+    func testNativeDownloadLinkedFilePreservesSourceTabAndClipboard() throws {
+        let fixture = try DownloadFixture(); defer { fixture.stop() }
+        let root = URL(fileURLWithPath: "/private/tmp/bi-download-link-ui-" + UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let files = root.appendingPathComponent("files")
+        app.launchArguments += ["--downloads-directory",files.path,"--downloads-data-directory",root.appendingPathComponent("data").path]
+        let saved = saveClipboard(); defer { NSPasteboard.general.clearContents(); NSPasteboard.general.writeObjects(saved) }
+        launch(); enter(fixture.origin + "/links")
+        let link = app.groups["page"].links["Download notes"]
+        XCTAssertTrue(link.waitForExistence(timeout: 15))
+        NSPasteboard.general.clearContents(); NSPasteboard.general.setString("Keep clipboard 中文",forType: .string)
+        link.rightClick(); chooseContext("Download Linked File")
+        waitDownload(1,"Completed")
+        XCTAssertEqual(try Data(contentsOf: files.appendingPathComponent("notes.txt")),fixture.bytes)
+        XCTAssertEqual(NSPasteboard.general.string(forType: .string),"Keep clipboard 中文")
+        app.buttons["downloads-close"].click()
+        waitValue(app.textFields["address"],fixture.origin + "/links")
+        XCTAssertTrue(link.exists); XCTAssertFalse(app.buttons["tab-2"].exists)
+        app.buttons["downloads"].click(); waitDownload(1,"Completed")
+        startDownload(fixture.origin + "/large-forced-exit.txt",name: "forced-exit.txt"); waitDownload(2,"Downloading")
+        let running = NSRunningApplication.runningApplications(withBundleIdentifier: "cc.blueice.BlueIce")
+        XCTAssertEqual(running.count,1,"The forced-exit test requires one identifiable BlueIce instance")
+        let process = try XCTUnwrap(running.first)
+        XCTAssertEqual(kill(process.processIdentifier,SIGKILL),0,"Terminate only this test's BlueIce process")
+        XCTAssertTrue(app.wait(for: .notRunning,timeout: 15))
+        let catalog = root.appendingPathComponent("data/transfers.json")
+        let checkpoint = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            guard let data = try? Data(contentsOf: catalog), let text = String(data: data,encoding: .utf8) else { return false }
+            return text.contains("\"paused\"")
+        },object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [checkpoint],timeout: 15),.completed,"Owner EOF must checkpoint without GUI cleanup callbacks")
+        let before = fixture.requests.count
+        launch(); app.buttons["downloads"].click(); waitDownload(2,"Paused")
+        XCTAssertEqual(fixture.requests.count,before,"Forced-exit recovery must require explicit Resume")
+        waitDownload(1,"Completed")
+        app.buttons["download-cancel-2"].click(); waitDownload(2,"Cancelled")
+        app.buttons["downloads-close"].click()
+    }
+
+    private func startDownload(_ url: String, name: String) {
+        paste(url,into: app.textFields["download-url"]); paste(name,into: app.textFields["download-name"])
+        XCTAssertTrue(app.buttons["download-start"].isEnabled); app.buttons["download-start"].click()
+    }
+    private func waitDownload(_ id: Int, _ state: String) {
+        let element = app.staticTexts["download-state-\(id)"]
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == true AND value == %@",state),object: element)],timeout: 20),.completed,app.debugDescription)
+    }
+
     func testProfilesNativeCreateRenameScopedWindowsPersistenceAndRemoval() throws {
         let fixture = try HTTPFixture(); defer { fixture.stop() }
         launch()
@@ -80,6 +201,7 @@ final class BrowserUITests: XCTestCase {
             if let originalInputSource { XCTAssertEqual(TISSelectInputSource(originalInputSource), noErr) }
         }
         if app.state != .notRunning {
+            if app.buttons["downloads-close"].exists { app.buttons["downloads-close"].click() }
             let deadline = Date().addingTimeInterval(15)
             while app.state != .notRunning, Date() < deadline {
                 let candidate = app.windows.matching(NSPredicate(format: "identifier BEGINSWITH 'browser-window'")).firstMatch

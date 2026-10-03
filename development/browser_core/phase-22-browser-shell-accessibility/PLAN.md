@@ -266,3 +266,11 @@ restoring pages or fetching URLs. MCP can read the same canonical registry throu
 list_browser_contexts. Acceptance is recorded in
 [MACOS_CONTEXT_RESULTS.md](MACOS_CONTEXT_RESULTS.md). Durable tab restoration,
 storage partitioning and private browsing remain separate requirements.
+
+The native download increment connects a shared on-demand manager to SwiftUI
+controls and AppKit linked-file actions. It shares browsing's owned Gatekeeper,
+persists paused transfers after normal/forced GUI exit, and opens/reveals actual
+completed files through macOS. The restart revision counter preserves monotonic
+updates so recovered controls remain live. Acceptance is recorded in
+[MACOS_DOWNLOAD_RESULTS.md](MACOS_DOWNLOAD_RESULTS.md); automatic response
+downloads, native destination/credential UI, quarantine and print/PDF remain open.

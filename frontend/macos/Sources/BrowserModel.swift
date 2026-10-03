@@ -12,6 +12,7 @@ final class BrowserModel: ObservableObject {
     private(set) var contextID: UInt64 = 1
     @Published private(set) var profileName = "Default"
     @Published var profileEditor: ProfileEditor?
+    @Published var downloadsPresented = false
     private var canonicalContextGroups: [BrowserTabGroup]?
     private weak var workspace: BrowserWorkspace?
     private let session: BrowserSession
@@ -587,8 +588,9 @@ final class BrowserModel: ObservableObject {
         return nil
     }
 
-    func performContextLink(_ context: PageMenuContext, action: PageMenuLinkAction) async {
+    func performContextLink(_ context: PageMenuContext, action: PageMenuLinkAction, download: Bool = false) async {
         guard contextMenuIsCurrent(context) else { return }
+        guard !download || (action == .copy && windowManager != nil) else { return }
         if action == .open { await send(.contextMenuLink(context, action), tab: context.tabID); return }
         if action == .newTab { await openContextLinkTab(context); return }
         let operation = UUID()
@@ -599,6 +601,11 @@ final class BrowserModel: ObservableObject {
         while !Task.isCancelled, menuOperation == operation, contextMenuIsCurrent(context), Date() < deadline {
             if let reply = menuReplies.first(where: { $0.requestID == request && $0.tabID == context.tabID }) {
                 guard case .contextLink(let link) = reply.message, link.context == context else { return }
+                if download, let workspace = windowManager {
+                    downloadsPresented = true
+                    _ = await workspace.downloads.start(link.url,name: nil)
+                    return
+                }
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(link.url, forType: .string)
                 return

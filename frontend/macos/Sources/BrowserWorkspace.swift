@@ -9,6 +9,7 @@ import SwiftUI
 @MainActor
 final class BrowserWorkspace: ObservableObject {
     let session = BrowserSession()
+    let downloads: BrowserDownloadsModel
     let appearance: BrowserAppearance
     @Published private(set) var windows: [BrowserWindowSummary] = []
     @Published private(set) var contexts: [BrowserContextSummary] = []
@@ -39,8 +40,9 @@ final class BrowserWorkspace: ObservableObject {
     private var sentPreferences: DisplayPreferences?
     var processID: Int32? { session.processID }
 
-    init(appearance: BrowserAppearance? = nil, contextDefaults: UserDefaults? = nil) {
+    init(appearance: BrowserAppearance? = nil, contextDefaults: UserDefaults? = nil, downloadConfiguration: DownloadConfiguration? = nil) {
         self.appearance = appearance ?? BrowserAppearance()
+        self.downloads = BrowserDownloadsModel(browser: session,configuration: downloadConfiguration ?? .configured())
         self.contextPreferences = BrowserContextPreferences(defaults: contextDefaults)
         models[1] = BrowserModel(appearance: self.appearance, workspace: self, windowID: 1)
         preferenceObservation = self.appearance.$resolved.removeDuplicates().sink { [weak self] _ in
@@ -65,7 +67,7 @@ final class BrowserWorkspace: ObservableObject {
                     guard let self else { return }
                     self.connected = false; self.canManageWindows = false
                     for model in self.models.values { model.workspaceFailed(message) }
-                    Task { await self.session.stop() }
+                    Task { await self.downloads.stop(); await self.session.stop() }
                 }
             }
         }
@@ -89,6 +91,7 @@ final class BrowserWorkspace: ObservableObject {
         } catch {
             connected = false; canManageWindows = false
             for model in models.values { model.workspaceFailed(error.localizedDescription) }
+            await downloads.stop()
             await session.stop()
         }
     }
@@ -110,6 +113,9 @@ final class BrowserWorkspace: ObservableObject {
     }
     private func receive(_ envelope: IncomingEnvelope, pixels: FramePixels?) {
         guard !stopping else { return }
+        if case .navigated(let url) = envelope.message, url == "about:downloads" || url.hasPrefix("about:downloads?") {
+            Task { await downloads.connect() }
+        }
         if let request = envelope.requestID, contextRequests.remove(request) != nil {
             if contextReplies.count < 64 { contextReplies.append(envelope) }
             if case .error(let message) = envelope.message { notice = message; return }
@@ -297,6 +303,7 @@ final class BrowserWorkspace: ObservableObject {
         canManageContexts = false; contextRequests = []; contextReplies = []
         preferenceTask?.cancel(); replies = []; requests = [:]; requestOwners = [:]
         for model in models.values { await model.stop() }
+        await downloads.stop()
         await session.stop()
     }
 }

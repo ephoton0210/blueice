@@ -223,6 +223,9 @@ final class CorePageView: NSView, NSTextInputClient {
             item("Open Link") { model in Task { await model.performContextLink(state.context, action: .open) } }
             item("Open Link in New Tab") { model in Task { await model.performContextLink(state.context, action: .newTab) } }
             item("Copy Link Address") { model in Task { await model.performContextLink(state.context, action: .copy) } }
+            if model?.windowManager != nil {
+                item("Download Linked File") { model in Task { await model.performContextLink(state.context, action: .copy, download: true) } }
+            }
             menu.addItem(.separator())
         }
         if let field = state.input?.focused {

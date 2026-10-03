@@ -30,6 +30,77 @@ use std::time::{Duration, Instant};
 const KIB: usize = 1024;
 const MIB: usize = 1024 * 1024;
 
+#[test]
+fn owner_pipe_eof_checkpoints_active_downloads_without_resuming_on_restart() {
+    let dirs = Dirs::new();
+    let gate = FakeGatekeeper::clear_all();
+    let server = TestServer::start();
+    let mut resource = Resource::new(body(4 * MIB));
+    resource.delay_per_chunk = Duration::from_millis(10);
+    server.serve("/owner.bin", resource);
+    let child = Command::new(env!("CARGO_BIN_EXE_blueice-downloads"))
+        .arg("--socket")
+        .arg(dirs.socket())
+        .arg("--download-dir")
+        .arg(dirs.downloads.path())
+        .arg("--data-dir")
+        .arg(dirs.data.path())
+        .arg("--gatekeeper-socket")
+        .arg(&gate.socket)
+        .arg("--exit-on-stdin-eof")
+        .stdin(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut process = Process {
+        child,
+        socket: dirs.socket(),
+    };
+    process.wait_until_listening();
+    let mut client = process.client();
+    let transfer = client
+        .start(&server.url("/owner.bin"), None, false)
+        .unwrap();
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        let info = client.get(transfer.id).unwrap();
+        if info.state == TransferState::Active && info.completed_bytes > 0 {
+            break;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "No active transfer before owner loss"
+        );
+        thread::sleep(Duration::from_millis(10));
+    }
+    drop(process.child.stdin.take());
+    assert!(process.wait_exit(Duration::from_secs(10)).success());
+    assert!(!dirs.socket().exists());
+    let mut restarted = Process::spawn(&dirs, &gate.socket);
+    let mut client = restarted.client();
+    let restored = client.get(transfer.id).unwrap();
+    assert_eq!(restored.state, TransferState::Paused);
+    assert!(!std::path::Path::new(&restored.dest_path).exists());
+    assert!(restored.completed_bytes > 0);
+    let mut stream = UnixStream::connect(&restarted.socket).unwrap();
+    blueice_ipc::downloads::write_downloads_request(
+        &mut stream,
+        Some(1),
+        &DownloadsRequest::Hello {
+            protocol_version: DOWNLOADS_PROTOCOL_VERSION,
+        },
+    )
+    .unwrap();
+    blueice_ipc::downloads::read_downloads_reply(&mut stream).unwrap();
+    blueice_ipc::downloads::write_downloads_request(
+        &mut stream,
+        Some(2),
+        &DownloadsRequest::Shutdown,
+    )
+    .unwrap();
+    blueice_ipc::downloads::read_downloads_reply(&mut stream).unwrap();
+    assert!(restarted.wait_exit(Duration::from_secs(10)).success());
+}
+
 /// A spawned downloads process, killed on drop so a failing test can't
 /// leave one running.
 struct Process {

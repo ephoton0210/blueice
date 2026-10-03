@@ -22,6 +22,9 @@ struct Rig {
 
 impl Rig {
     fn start(owner_pipe: bool) -> Self {
+        Self::start_with_gatekeeper(owner_pipe, false)
+    }
+    fn start_with_gatekeeper(owner_pipe: bool, selected_gatekeeper: bool) -> Self {
         static NEXT: AtomicU64 = AtomicU64::new(0);
         // Short on Darwin too, independently of the test runner's long TMPDIR.
         let directory = PathBuf::from(format!(
@@ -67,6 +70,11 @@ impl Rig {
             .process_group(0);
         if owner_pipe {
             command.arg("--exit-on-stdin-eof");
+        }
+        if selected_gatekeeper {
+            command
+                .arg("--owned-gatekeeper-socket")
+                .arg(directory.join("blueice/review.sock"));
         }
         Self {
             child: command.spawn().unwrap(),
@@ -119,6 +127,54 @@ impl Rig {
             "gatekeeper socket was not cleaned up"
         );
     }
+}
+
+#[test]
+fn owned_gatekeeper_endpoint_preserves_existing_files_and_symlinks() {
+    let directory = std::env::temp_dir().join(format!("bi-gk-occupied-{}", std::process::id()));
+    std::fs::create_dir(&directory).unwrap();
+    let file = directory.join("existing.sock");
+    std::fs::write(&file, b"existing owner").unwrap();
+    assert!(matches!(
+        blueice_launcher::SpawnedGatekeeper::spawn_at(file.clone()),
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists
+    ));
+    assert_eq!(std::fs::read(&file).unwrap(), b"existing owner");
+    let link = directory.join("existing-link.sock");
+    std::os::unix::fs::symlink(&file, &link).unwrap();
+    assert!(matches!(
+        blueice_launcher::SpawnedGatekeeper::spawn_at(link.clone()),
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists
+    ));
+    assert_eq!(std::fs::read_link(&link).unwrap(), file);
+    std::fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn native_owner_can_select_the_managed_gatekeeper_endpoint_and_eof_removes_it() {
+    let mut rig = Rig::start_with_gatekeeper(true, true);
+    let mut browser = rig.connect("browser.sock");
+    client_handshake(&mut browser).unwrap();
+    let path = rig.directory.join("blueice/review.sock");
+    assert!(path.exists());
+    let mut review = UnixStream::connect(&path).unwrap();
+    blueice_ipc::gatekeeper::write_gatekeeper_request(
+        &mut review,
+        &blueice_ipc::gatekeeper::GatekeeperRequest::CheckDownload {
+            url: "https://example.com/setup.exe".into(),
+            file_name: "setup.exe".into(),
+            content_type: Some("application/x-msdownload".into()),
+            total_bytes: Some(1),
+        },
+    )
+    .unwrap();
+    assert!(matches!(
+        blueice_ipc::gatekeeper::read_gatekeeper_reply(&mut review).unwrap(),
+        blueice_ipc::gatekeeper::GatekeeperReply::Rejected { .. }
+    ));
+    drop(rig.child.stdin.take());
+    rig.wait_for_clean_exit();
+    assert!(!path.exists());
 }
 
 impl Drop for Rig {

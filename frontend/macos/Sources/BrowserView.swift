@@ -43,6 +43,7 @@ struct BrowserView: View {
                 }
                 if let workspace = model.windowManager {
                     BrowserProfileMenu(model: model, workspace: workspace)
+                    button("arrow.down.circle", "Downloads", "downloads") { model.downloadsPresented = true }
                 }
             }
             .disabled(!model.ready || model.selected == nil)
@@ -98,6 +99,9 @@ struct BrowserView: View {
         .sheet(item: $model.groupEditor) { editor in BrowserTabGroupEditor(model: model, editor: editor) }
         .sheet(item: $model.profileEditor) { editor in
             if let workspace = model.windowManager { BrowserProfileEditor(model: model, workspace: workspace, editor: editor) }
+        }
+        .sheet(isPresented: $model.downloadsPresented) {
+            if let workspace = model.windowManager { BrowserDownloadsView(downloads: workspace.downloads) }
         }
         .buttonStyle(.plain)
         .transaction { if appearance.resolved.reducedMotion { $0.animation = nil; $0.disablesAnimations = true } }

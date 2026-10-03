@@ -1620,7 +1620,14 @@ fn a_new_process_sees_history_and_finds_interrupted_transfers_paused_never_auto_
         "opening persisted history leaves the interrupted transfer paused with no job to restart it"
     );
 
-    second.resume(big).unwrap();
+    let resumed = second.resume(big).unwrap();
+    assert!(
+        resumed.generation
+            > interrupted
+                .generation
+                .max(second.get(done).unwrap().generation),
+        "restarting must not rewind generations used by live clients"
+    );
     wait_until(|| second.get(big).unwrap().state == TransferState::Completed);
     assert_eq!(
         std::fs::read(second.get(big).unwrap().dest_path).unwrap(),

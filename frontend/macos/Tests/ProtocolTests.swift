@@ -359,7 +359,7 @@ final class ProtocolTests: XCTestCase {
         let generation = events.snapshot.generation
         let sockets = try FileManager.default.contentsOfDirectory(at: session.runtimeDirectory.appendingPathComponent("blueice"),
                                                                  includingPropertiesForKeys: nil)
-        let gatekeeper = try XCTUnwrap(sockets.first { $0.lastPathComponent.hasPrefix("blueice-launcher-gatekeeper-") })
+        let gatekeeper = try XCTUnwrap(sockets.first { $0.lastPathComponent == "gatekeeper.sock" })
         try FileManager.default.removeItem(at: gatekeeper)
         try await session.send(.values("Navigate", ["url": .string(fixture.origin + "/safe")]), tab: 1)
         await events.wait { $0.blocked == 1 }

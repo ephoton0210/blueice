@@ -15,10 +15,10 @@ use blueice_ipc::local_socket::{bind_private_listener, ensure_private_socket_dir
 use std::io::{self, Read};
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-pub const USAGE: &str = "usage: blueice-downloads [--socket PATH] [--download-dir DIR] [--data-dir DIR] [--gatekeeper-socket PATH] [--max-concurrent N] [--sftp-known-hosts PATH] [--sftp-private-key PATH]";
+pub const USAGE: &str = "usage: blueice-downloads [--socket PATH] [--download-dir DIR] [--data-dir DIR] [--gatekeeper-socket PATH] [--max-concurrent N] [--sftp-known-hosts PATH] [--sftp-private-key PATH] [--exit-on-stdin-eof]";
 pub const CREDENTIAL_USAGE: &str = "usage: blueice-downloads credential set <sftp-password|sftp-key-passphrase|ftps-password> --host HOST --username USER [--port PORT] [--socket PATH] --secret-stdin";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -30,6 +30,7 @@ pub struct Args {
     pub max_concurrent: usize,
     pub sftp_known_hosts: Option<PathBuf>,
     pub sftp_private_key: Option<PathBuf>,
+    pub exit_on_stdin_eof: bool,
 }
 
 /// A credential write deliberately kept outside the MCP tool surface. The
@@ -61,6 +62,7 @@ impl Default for Args {
             max_concurrent: 3,
             sftp_known_hosts: None,
             sftp_private_key: None,
+            exit_on_stdin_eof: false,
         }
     }
 }
@@ -77,6 +79,7 @@ pub fn parse_args(args: impl IntoIterator<Item = String>) -> Result<Args, String
                 .ok_or_else(|| format!("{name} needs a value\n{USAGE}"))
         };
         match flag.as_str() {
+            "--exit-on-stdin-eof" => parsed.exit_on_stdin_eof = true,
             "--socket" => parsed.socket = PathBuf::from(value("--socket")?),
             "--download-dir" => parsed.download_dir = PathBuf::from(value("--download-dir")?),
             "--data-dir" => parsed.data_dir = PathBuf::from(value("--data-dir")?),
@@ -247,7 +250,24 @@ pub fn run(args: Args) -> io::Result<()> {
     config.options.sftp_private_key = args.sftp_private_key;
     let manager = TransferManager::open(config)?;
 
-    serve(listener, manager.clone(), Arc::new(AtomicBool::new(false)));
+    let stop = Arc::new(AtomicBool::new(false));
+    if args.exit_on_stdin_eof {
+        let owner_stop = Arc::clone(&stop);
+        std::thread::spawn(move || {
+            let mut buffer = [0u8; 256];
+            let mut input = io::stdin().lock();
+            loop {
+                match input.read(&mut buffer) {
+                    Ok(0) => break,
+                    Ok(_) => {}
+                    Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+                    Err(_) => break,
+                }
+            }
+            owner_stop.store(true, Ordering::SeqCst);
+        });
+    }
+    serve(listener, manager.clone(), stop);
 
     manager.shutdown();
     let _ = std::fs::remove_file(&args.socket);
@@ -298,7 +318,8 @@ mod tests {
                 gatekeeper_socket: "/g".into(),
                 max_concurrent: 5,
                 sftp_known_hosts: None,
-                sftp_private_key: None
+                sftp_private_key: None,
+                exit_on_stdin_eof: false,
             }
         );
     }

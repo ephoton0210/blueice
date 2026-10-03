@@ -275,10 +275,20 @@ pub struct SpawnedGatekeeper {
 
 impl SpawnedGatekeeper {
     pub fn spawn() -> io::Result<Self> {
+        Self::spawn_at(unique_internal_gatekeeper_socket_path())
+    }
+
+    /// An owner-selected endpoint for the same supervised checkpoint. Never
+    /// remove an existing listener/file while establishing a new session.
+    pub fn spawn_at(socket_path: PathBuf) -> io::Result<Self> {
+        if std::fs::symlink_metadata(&socket_path).is_ok() {
+            return Err(io::Error::new(
+                io::ErrorKind::AlreadyExists,
+                "The owned gatekeeper endpoint already exists",
+            ));
+        }
         let this_exe = std::env::current_exe()?;
         let gatekeeper_bin = sibling_gatekeeper_binary(&this_exe);
-        let socket_path = unique_internal_gatekeeper_socket_path();
-        let _ = std::fs::remove_file(&socket_path);
 
         let mut child = Command::new(&gatekeeper_bin)
             .arg("--socket")

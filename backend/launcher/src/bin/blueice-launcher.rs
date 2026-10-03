@@ -77,6 +77,9 @@ struct Args {
     /// is unrelated to the private BlueJS child-host capability and exists so
     /// an operator can keep the core's existing gatekeeper routing explicit.
     gatekeeper_socket: Option<PathBuf>,
+    /// Selects the launcher's own checkpoint address so other owner-managed
+    /// services can share it. This does not attach to an existing checkpoint.
+    owned_gatekeeper_socket: Option<PathBuf>,
     /// Explicitly asks the launcher to create and supervise one isolated
     /// BlueJS page-host child for each core generation. The endpoint/token
     /// are generated internally and are never CLI values.
@@ -198,6 +201,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut trusted_frontend = false;
     let mut exit_on_stdin_eof = false;
     let mut gatekeeper_socket = None;
+    let mut owned_gatekeeper_socket = None;
     let mut out_of_process_bluejs = false;
     let mut compiler_mcp_socket = None;
     let mut compiler_catalog_file = None;
@@ -265,6 +269,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
                 auto_update = Some(Duration::from_secs(secs));
             }
             "--gatekeeper-socket" => gatekeeper_socket = Some(PathBuf::from(value()?)),
+            "--owned-gatekeeper-socket" => owned_gatekeeper_socket = Some(PathBuf::from(value()?)),
             "--out-of-process-bluejs" => out_of_process_bluejs = true,
             "--compiler-mcp-socket" => compiler_mcp_socket = Some(PathBuf::from(value()?)),
             "--compiler-catalog-file" => compiler_catalog_file = Some(PathBuf::from(value()?)),
@@ -586,6 +591,9 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     if page_http_policy_file.is_some() && !out_of_process_bluejs {
         return Err("--page-http-policy-file requires --out-of-process-bluejs".to_string());
     }
+    if gatekeeper_socket.is_some() && owned_gatekeeper_socket.is_some() {
+        return Err("Select an owned gatekeeper endpoint or an external override, not both".into());
+    }
     Ok(Args {
         rendezvous_socket,
         control_socket,
@@ -596,6 +604,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
         trusted_frontend,
         exit_on_stdin_eof,
         gatekeeper_socket,
+        owned_gatekeeper_socket,
         out_of_process_bluejs,
         compiler_mcp_socket,
         compiler_catalog_file,
@@ -647,7 +656,11 @@ fn main() -> ExitCode {
     // The launcher owns the mandatory gatekeeper checkpoint for its whole
     // lifetime and every core generation shares it. An explicit
     // `--gatekeeper-socket` is an owner override of that private default.
-    let gatekeeper = match SpawnedGatekeeper::spawn() {
+    let gatekeeper = match args
+        .owned_gatekeeper_socket
+        .clone()
+        .map_or_else(SpawnedGatekeeper::spawn, SpawnedGatekeeper::spawn_at)
+    {
         Ok(gatekeeper) => gatekeeper,
         Err(e) => {
             eprintln!("blueice-launcher: failed to spawn blueice-ai-gatekeeper: {e}");

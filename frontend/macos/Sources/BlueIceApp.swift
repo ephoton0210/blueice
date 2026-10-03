@@ -24,6 +24,7 @@ struct BrowserActiveCommands: Commands {
         NativeEditingCommands(menu: delegate.editingMenu, model: delegate.model)
         BrowserTabGroupCommands(model: delegate.model)
         BrowserProfileCommands(model: delegate.model, workspace: delegate.workspace)
+        BrowserDownloadsCommands(model: delegate.model)
     }
 }
 
