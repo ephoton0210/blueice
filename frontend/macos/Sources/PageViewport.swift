@@ -47,6 +47,7 @@ struct PageViewport: NSViewRepresentable {
     func updateNSView(_ view: CorePageView, context: Context) {
         view.image = model.image
         view.invalidateContextMenu()
+        view.invalidateSelectMenu()
         view.setAccessibilityValue(model.image.map { "Rendered \($0.width) × \($0.height), frame \(model.generation)" } ?? "No rendered page")
         view.accessibilityTree.update(model.representation, epoch: model.accessibilityEpoch,
                                       imageSize: model.cssViewportSize ?? .zero, tab: model.selected)
@@ -107,7 +108,10 @@ final class CorePageView: NSView, NSTextInputClient, NSUserInterfaceValidations 
             self.filePicker.present(node: node,model: model,window: window)
             return true
         }
-        guard let self, self.model?.accessibilityAction(snapshot, epoch: epoch, node: node) == true else { return false }
+        guard let self, self.model?.accessibilityAction(snapshot, epoch: epoch, node: node, toggleSelect: action == .select || action == .deselect, focusOnly: action == .focus) == true else { return false }
+        if action == .press, node.role == .comboBox, !node.state.selectList {
+            self.pendingSelectPopup = (snapshot.tabID, epoch, node.id)
+        }
         self.window?.makeFirstResponder(self)
         return true
     }
@@ -118,6 +122,8 @@ final class CorePageView: NSView, NSTextInputClient, NSUserInterfaceValidations 
     private var handledFocusExit: TextInputContext?
     private var contextMenuTask: Task<Void, Never>?
     private var activeContextMenu: (menu: NSMenu, context: PageMenuContext)?
+    private var pendingSelectPopup: (tab: UInt64, epoch: UInt64, node: UInt64)?
+    private var activeSelectMenu: (menu: NSMenu, context: TextInputContext, frame: UInt64, tab: UInt64)?
     override var isFlipped: Bool { true }
     override var acceptsFirstResponder: Bool { true }
     private lazy var coreUndoManager = CoreUndoManager(view: self)
@@ -135,7 +141,7 @@ final class CorePageView: NSView, NSTextInputClient, NSUserInterfaceValidations 
     override func layout() { super.layout(); reportSize() }
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow(); reportSize()
-        if window == nil { filePicker.cancel() }
+        if window == nil { filePicker.cancel(); pendingSelectPopup = nil; activeSelectMenu?.menu.cancelTracking(); activeSelectMenu = nil }
         (window as? BrowserWindow)?.pageInput = self
         windowObservation = window.map { window in
             NotificationCenter.default.publisher(for: NSWindow.didUpdateNotification, object: window)
@@ -147,6 +153,10 @@ final class CorePageView: NSView, NSTextInputClient, NSUserInterfaceValidations 
                               notification.object as? NSWindow === owned ||
                               (notification.object as? NSView)?.window === owned else { return }
                         if notification.name == NSWindow.willCloseNotification { self.filePicker.cancel() }
+                        if !owned.isKeyWindow || notification.name == NSWindow.willCloseNotification
+                            || notification.name == NSControl.textDidBeginEditingNotification {
+                            self.pendingSelectPopup = nil; self.activeSelectMenu?.menu.cancelTracking(); self.activeSelectMenu = nil
+                        }
                         self.replayPendingKeys()
                     }
                 }
@@ -183,7 +193,7 @@ final class CorePageView: NSView, NSTextInputClient, NSUserInterfaceValidations 
         if event.modifierFlags.contains(.control) { rightMouseDown(with: event); return }
         guard let size = model?.cssViewportSize, bounds.width > 0, bounds.height > 0 else { return }
         window?.makeFirstResponder(self)
-        tabTransition = nil; pendingKeys.removeAll()
+        tabTransition = nil; pendingKeys.removeAll(); pendingSelectPopup = nil
         let point = convert(event.locationInWindow, from: nil)
         if let model, let snapshot = model.representation, let window,
            let node = snapshot.nodes.reversed().first(where: {
@@ -193,10 +203,16 @@ final class CorePageView: NSView, NSTextInputClient, NSUserInterfaceValidations 
             filePicker.present(node: node,model: model,window: window)
             return
         }
+        pendingSelectPopup = nil
+        if let model, let snapshot = model.representation,
+           let node = snapshot.nodes.reversed().first(where: {
+               $0.role == .comboBox && !$0.state.selectList && !$0.state.disabled && !$0.occluded
+               && snapshot.viewRect(for: $0, viewport: bounds.size, image: size).contains(point)
+           }) { pendingSelectPopup = (snapshot.tabID, model.accessibilityEpoch, node.id) }
         pendingMarked = nil; pendingSelection = nil; pendingContext = nil
         model?.focusPage(x: point.x * size.width / bounds.width,
                          y: point.y * size.height / bounds.height,
-                         extend: event.modifierFlags.contains(.shift), clickCount: event.clickCount)
+                         extend: event.modifierFlags.contains(.shift), clickCount: event.clickCount, toggleSelect: event.modifierFlags.contains(.command))
     }
 
     override func rightMouseDown(with event: NSEvent) {
@@ -225,6 +241,60 @@ final class CorePageView: NSView, NSTextInputClient, NSUserInterfaceValidations 
             activeContextMenu.menu.cancelTracking()
             self.activeContextMenu = nil
         }
+    }
+
+    func selectMenuIsCurrent(_ state: TextInputState) -> Bool {
+        guard let model, let current = model.textInputState else { return false }
+        return model.selected == state.tab_id && current.context == state.context
+            && current.frame_generation == state.frame_generation && model.generation == state.frame_generation
+            && current.select?.node_id == state.select?.node_id
+    }
+
+    func invalidateSelectMenu() {
+        if let active = activeSelectMenu,
+           model?.selected != active.tab || model?.textInputState?.context != active.context
+            || model?.generation != active.frame {
+            active.menu.cancelTracking(); activeSelectMenu = nil
+        }
+    }
+
+    func makeSelectMenu(_ state: TextInputState) -> NSMenu {
+        let menu = NSMenu(title: "Page options"); menu.autoenablesItems = false
+        guard let select = state.select, select.popup else { return menu }
+        var previousGroup: String?
+        for choice in select.options {
+            if choice.group != previousGroup {
+                if let group = choice.group {
+                    let heading = NSMenuItem(title: group, action: nil, keyEquivalent: ""); heading.isEnabled = false
+                    menu.addItem(heading)
+                }
+                previousGroup = choice.group
+            }
+            let item = PageMenuItem(title: choice.label) { [weak self] in
+                guard let self, self.selectMenuIsCurrent(state) else { return }
+                self.model?.textInput(.selectOption(choice.node_id, state.frame_generation, false, false))
+            }
+            item.identifier = NSUserInterfaceItemIdentifier("page-option-\(choice.node_id)")
+            item.isEnabled = !choice.disabled; item.state = choice.selected ? .on : .off
+            item.indentationLevel = choice.group == nil ? 0 : 1; menu.addItem(item)
+        }
+        if select.limited {
+            let notice = NSMenuItem(title: "More choices available with the keyboard", action: nil, keyEquivalent: "")
+            notice.isEnabled = false; menu.addItem(notice)
+        }
+        return menu
+    }
+
+    private func presentSelectMenu(_ state: TextInputState) {
+        guard let select = state.select, select.popup, let window, window.isKeyWindow,
+              let size = model?.cssViewportSize, selectMenuIsCurrent(state) else { return }
+        let menu = makeSelectMenu(state)
+        let rect = state.viewRect(select.bounds, viewport: bounds.size, image: size)
+        guard rect.intersects(bounds) else { return }
+        activeSelectMenu = (menu, state.context, state.frame_generation, state.tab_id)
+        let selected = menu.items.first { $0.state == .on }
+        menu.popUp(positioning: selected, at: CGPoint(x: rect.minX, y: rect.maxY), in: self)
+        activeSelectMenu = nil
     }
 
     func makeContextMenu(_ state: PageContextMenu) -> NSMenu {
@@ -282,6 +352,14 @@ final class CorePageView: NSView, NSTextInputClient, NSUserInterfaceValidations 
     }
 
     override func scrollWheel(with event: NSEvent) {
+        let point = convert(event.locationInWindow, from: nil)
+        if let model, let snapshot = model.representation, let size = model.cssViewportSize,
+           snapshot.nodes.contains(where: { $0.state.selectList && !$0.state.disabled && !$0.occluded
+               && snapshot.viewRect(for: $0, viewport: bounds.size, image: size).contains(point) }),
+           event.scrollingDeltaY != 0, bounds.width > 0, bounds.height > 0 {
+            model.textInput(.selectScroll(point.x * size.width / bounds.width, point.y * size.height / bounds.height,
+                event.scrollingDeltaY > 0 ? -1 : 1)); return
+        }
         let zoom = model?.displayState?.zoom ?? 1
         model?.action(.values("Scroll", ["delta_y": .number(-event.scrollingDeltaY * (event.hasPreciseScrollingDeltas ? 1 : 20) / zoom)]))
     }
@@ -292,6 +370,14 @@ final class CorePageView: NSView, NSTextInputClient, NSUserInterfaceValidations 
         if entryTabEvent === event { entryTabEvent = nil; return }
         entryTabEvent = nil
         if tabTransition != nil { if pendingKeys.count < 512 { pendingKeys.append(event) }; return }
+        if let state = model?.textInputState, let select = state.select,
+           event.modifierFlags.intersection([.command, .control, .option]) == .command {
+            let key: PageKey? = [123: .left, 124: .right, 125: .down, 126: .up, 115: .home, 119: .end, 116: .pageUp, 121: .pageDown, 49: .space][Int(event.keyCode)]
+            if let key, select.multiple {
+                model?.textInput(.selectKey(key, event.modifierFlags.contains(.shift), true)); return
+            }
+            if event.charactersIgnoringModifiers?.lowercased() == "a", select.multiple { model?.textInput(.selectAll); return }
+        }
         if !hasMarkedText(), event.modifierFlags.intersection([.command, .control, .option]).isEmpty {
             let key: PageKey?
             switch event.keyCode {
@@ -304,9 +390,14 @@ final class CorePageView: NSView, NSTextInputClient, NSUserInterfaceValidations 
             case 126: key = .up
             case 115: key = .home
             case 119: key = .end
+            case 116: key = .pageUp
+            case 121: key = .pageDown
             default: key = event.charactersIgnoringModifiers == " " ? .space : nil
             }
             if let key {
+                if key == .enter || key == .space, let state = model?.textInputState, state.select?.popup == true {
+                    presentSelectMenu(state); return
+                }
                 if key == .enter || key == .space, let model, let window,
                    let node = model.representation?.nodes.first(where: { $0.state.fileInput && $0.state.focused && !$0.state.disabled }) {
                     filePicker.present(node: node,model: model,window: window)
@@ -348,6 +439,14 @@ final class CorePageView: NSView, NSTextInputClient, NSUserInterfaceValidations 
 
     func refreshTextInput() {
         filePicker.invalidateIfNeeded()
+        invalidateSelectMenu()
+        if let pending = pendingSelectPopup, let model, !model.textInputBusy {
+            if model.selected != pending.tab || model.accessibilityEpoch != pending.epoch { pendingSelectPopup = nil }
+            else if let state = model.textInputState, state.select?.node_id == pending.node {
+                pendingSelectPopup = nil
+                Task { @MainActor [weak self] in self?.presentSelectMenu(state) }
+            }
+        }
         let context = model?.textInputState?.context
         if let state = model?.textInputState, state.focus_exit != nil,
            handledFocusExit != state.context, window?.firstResponder === self {
@@ -402,6 +501,10 @@ final class CorePageView: NSView, NSTextInputClient, NSUserInterfaceValidations 
     }
 
     func insertText(_ string: Any, replacementRange: NSRange) {
+        if model?.textInputState?.select != nil {
+            let text = (string as? NSAttributedString)?.string ?? (string as? String ?? "")
+            model?.textInput(.replace(text, nil)); return
+        }
         let text = (string as? NSAttributedString)?.string ?? (string as? String ?? "")
         guard text.utf16.count <= 65_536,
               replacementRange.location == NSNotFound || TextRange.replacement(replacementRange) != nil else { return }

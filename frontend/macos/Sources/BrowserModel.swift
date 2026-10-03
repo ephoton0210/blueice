@@ -887,7 +887,7 @@ final class BrowserModel: ObservableObject {
         Task { await send(.unit("GetRepresentation"), tab: tab) }
     }
 
-    func accessibilityAction(_ snapshot: PageRepresentation, epoch: UInt64, node: PageNode) -> Bool {
+    func accessibilityAction(_ snapshot: PageRepresentation, epoch: UInt64, node: PageNode, toggleSelect: Bool = false, focusOnly: Bool = false) -> Bool {
         guard ready, selected == snapshot.tabID, documentEpochs[snapshot.tabID, default: 0] == epoch,
               let frame = frames[snapshot.tabID], representation?.generation == snapshot.generation,
               snapshot.matches(tab: snapshot.tabID, generation: frame.generation,
@@ -900,7 +900,7 @@ final class BrowserModel: ObservableObject {
             .intersection(CGRect(origin: .zero, size: cssSize))
         guard !visible.isEmpty else { return false }
         // Use the same hit-test/default-action pipeline as a physical page click.
-        focusPage(x: visible.midX, y: visible.midY)
+        focusPage(x: visible.midX, y: visible.midY, toggleSelect: toggleSelect, focusOnly: focusOnly)
         return true
     }
 
@@ -924,13 +924,16 @@ final class BrowserModel: ObservableObject {
         drainTextInput()
     }
 
-    func focusPage(x: Double, y: Double, extend: Bool = false, clickCount: Int = 1) {
+    func focusPage(x: Double, y: Double, extend: Bool = false, clickCount: Int = 1, toggleSelect: Bool = false, focusOnly: Bool = false) {
         guard ready, let tab = selected else { return }
         inputSerials[tab, default: 0] += 1
         inputFocusPending.insert(tab)
         inputStates.removeValue(forKey: tab); textInputState = nil
         inputQueue.removeAll { $0.tab == tab }
-        textInput(.pointer(x, y, extend, UInt8(min(3, max(1, clickCount)))))
+        if !focusOnly {
+            if toggleSelect { textInput(.selectPointer(x, y, extend, true)) }
+            else { textInput(.pointer(x, y, extend, UInt8(min(3, max(1, clickCount))))) }
+        }
         Task {
             await send(.values("Click", ["x": .number(x), "y": .number(y)]), tab: tab)
             inputFocusPending.remove(tab)
@@ -957,7 +960,7 @@ final class BrowserModel: ObservableObject {
             guard edit.epoch == documentEpochs[edit.tab, default: 0], edit.serial == inputSerials[edit.tab, default: 0],
                   tabs.contains(where: { $0.id == edit.tab }) else { inputQueue.removeFirst(); continue }
             guard inputRequests[edit.tab] == nil, let state = inputStates[edit.tab] else { requestTextInput(edit.tab); return }
-            guard state.focused != nil || edit.action.isPageKey else { inputQueue.removeFirst(); continue }
+            guard state.focused != nil || state.select != nil || edit.action.isPageKey else { inputQueue.removeFirst(); continue }
             inputQueue.removeFirst()
             var action = edit.action
             if let clipboard = edit.clipboard {

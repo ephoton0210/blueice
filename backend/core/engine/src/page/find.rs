@@ -276,6 +276,34 @@ fn collect(
                         height: style.font_size_px * 1.2,
                     };
                     index.run(text, bounds, style, Some(content));
+                } else if let (
+                    Some(NativeForm::SelectList {
+                        options,
+                        first,
+                        row_height,
+                        ..
+                    }),
+                    Some(style),
+                ) = (form, style)
+                {
+                    for (row, option) in options.iter().enumerate().skip(*first) {
+                        let bounds = Bounds {
+                            x: content.x + 3.0,
+                            y: content.y + (row - *first) as f64 * *row_height,
+                            width: blueice_font::measure_text_width(
+                                &option.label,
+                                style.font_size_px,
+                                style.is_bold(),
+                                style.is_italic(),
+                            ),
+                            height: *row_height,
+                        };
+                        if bounds.y >= content.y + content.height {
+                            break;
+                        }
+                        index.word_space();
+                        index.run(&option.label, bounds, style, Some(content));
+                    }
                 } else if form.is_none() {
                     for (row, child) in fragment.children.iter().enumerate() {
                         if row > 0 {

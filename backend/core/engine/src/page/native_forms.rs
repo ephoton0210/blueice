@@ -53,6 +53,7 @@ impl Page {
 
     pub(super) fn reset_native_form(&mut self, form: NodeId) {
         self.native_file_revision = self.native_file_revision.wrapping_add(1);
+        self.native_select = super::native_select::SelectSession::default();
         let mut nodes = Vec::new();
         let mut pending = vec![self.doc.root()];
         while let Some(node) = pending.pop() {

@@ -200,6 +200,20 @@ final class HTTPFixture: @unchecked Sendable {
                     <a href="/destination" style="display:block">Continue</a>
                     </body></html>
                     """
+                case "/select": body = """
+                    <html><body><h1>Select controls</h1><form action="/received" method="get">
+                    <select name="region" aria-label="Region" style="display:block;width:260px;height:32px">
+                    <option value="a">Alpha</option><optgroup label="Unavailable" disabled><option value="locked">Locked choice</option></optgroup>
+                    <optgroup label="Destinations"><option value="same" label="Beta">hidden words</option><option value="bravo">Bravo</option><option value="cn">中文</option></optgroup></select>
+                    <select multiple size="4" name="topic" aria-label="Topics" style="display:block;width:260px;height:96px">
+                    <option value="a" selected>Topic Alpha</option><option value="b">Topic Beta</option><option disabled value="locked">Topic Locked</option>
+                    <option value="c" selected>Topic Gamma</option><option value="d">Topic Delta</option><option value="e">Topic Emoji 😀</option></select>
+                    <button type="reset" style="width:140px;height:30px">Reset choices</button>
+                    <button type="submit" style="width:140px;height:30px">Send choices GET</button>
+                    <button type="submit" formmethod="post" formaction="/posted" style="width:140px;height:30px">Send choices POST</button>
+                    <select disabled aria-label="Disabled choices" style="display:block;width:260px;height:32px"><option>Unavailable</option></select>
+                    </form></body></html>
+                    """
                 case "/editing": body = """
                     <html><body><h1>Native editing fixture</h1>
                     <input aria-label="Editor" value="A😀B" style="display:block;width:300px;height:36px">

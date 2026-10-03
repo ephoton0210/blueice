@@ -60,6 +60,8 @@ pub enum PageKey {
     Home,
     End,
     Escape,
+    PageUp,
+    PageDown,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -73,6 +75,30 @@ pub enum TextInputAction {
     Key {
         key: PageKey,
         shift: bool,
+    },
+    /// Choose only an option of the live focused select. Popup choices also
+    /// fence the frame that supplied their labels and enabled state.
+    SelectOption {
+        option_id: u64,
+        frame_generation: u64,
+        extend: bool,
+        toggle: bool,
+    },
+    SelectKey {
+        key: PageKey,
+        extend: bool,
+        toggle: bool,
+    },
+    SelectPointer {
+        x: f64,
+        y: f64,
+        extend: bool,
+        toggle: bool,
+    },
+    SelectScroll {
+        x: f64,
+        y: f64,
+        rows: i32,
     },
     /// A missing range replaces marked text, or otherwise the core selection.
     Replace {
@@ -154,4 +180,26 @@ pub struct TextInputState {
     #[serde(default)]
     pub focus_exit: Option<FocusDirection>,
     pub focused: Option<TextControlState>,
+    #[serde(default)]
+    pub select: Option<Box<SelectControlState>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SelectChoice {
+    pub node_id: u64,
+    pub label: String,
+    pub group: Option<String>,
+    pub selected: bool,
+    pub disabled: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SelectControlState {
+    pub node_id: u64,
+    pub multiple: bool,
+    pub popup: bool,
+    pub limited: bool,
+    pub bounds: Bounds,
+    pub active_option: Option<u64>,
+    pub options: Vec<SelectChoice>,
 }

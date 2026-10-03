@@ -13,7 +13,7 @@ pushed to the current tracked branch as authorized by the owner.
 | Owned service stack | Bundled launcher/core/gatekeeper, reviewed external navigation, fail-closed review, normal/forced cleanup | Committed `32fa07f6b` |
 | Page accessibility | Core semantic tree mapped into NSAccessibility, native actions, privacy, stale-element and tab isolation tests | Committed and pushed `41952a803` |
 | Native text editing | Core-owned UTF-16 selection, grapheme movement/deletion, IME composition/update/commit/cancel, caret/candidate geometry, text/password/textarea editing, clipboard policy and native UI tests | Foundation committed and pushed `8b80c3c53`; bounded native Undo/Redo implemented and accepted, see [Undo/Redo results](MACOS_UNDO_REDO_RESULTS.md); physical OS IME and remaining editing behavior pending, see [foundation results](MACOS_NATIVE_EDITING_RESULTS.md) |
-| Keyboard and page interaction | Keyboard-only form completion, checkbox/radio/select/range controls, find-in-page, native context menus, drag/drop and file-selection policy tests | Keyboard increment committed and pushed `97794bb57`; native form reset committed and pushed `4c1c6e922`; GET/POST submission committed and pushed `1bf78a3d9`; find/ordered clipboard committed and pushed `614489c59`; native context menus committed and pushed `531b6b2df`; native file-input panel/content submission committed and pushed `222d7f78e`, see [file-input results](MACOS_FILE_INPUT_RESULTS.md); remaining interactions pending |
+| Keyboard and page interaction | Keyboard-only form completion, checkbox/radio/select/range controls, find-in-page, native context menus, drag/drop and file-selection policy tests | Keyboard increment committed and pushed `97794bb57`; native form reset committed and pushed `4c1c6e922`; GET/POST submission committed and pushed `1bf78a3d9`; find/ordered clipboard committed and pushed `614489c59`; native context menus committed and pushed `531b6b2df`; native file-input panel/content submission committed and pushed `222d7f78e`, see [file-input results](MACOS_FILE_INPUT_RESULTS.md); native select popup/typeahead/multiple selection accepted, see [select results](MACOS_SELECT_CONTROLS_RESULTS.md); remaining interactions pending |
 | Windows and tab organization | Multiple native windows, tab groups, profile/context lifecycle, retained history and state handoff using core tab identities | Native groups committed and pushed `6e141967f`; shared-core windows/tab transfer committed and pushed `b318e0de8`; context lifecycle and persistent profile identities committed and pushed `ee450a3df`, see [context results](MACOS_CONTEXT_RESULTS.md); durable native session restoration implemented and accepted, see [session results](MACOS_SESSION_RESTORE_RESULTS.md); full storage partitioning pending |
 | Downloads and printing | Actual download manager/shelf, progress/cancel/open/reveal, print/PDF media output and native panel tests | Native manager panel and linked-file downloads committed and pushed `b62b38aa7`, see [download results](MACOS_DOWNLOAD_RESULTS.md); core print-media pagination and native print/PDF committed and pushed `0d2e3ea58`, acceptance recorded in [print results](MACOS_PRINT_RESULTS.md); automatic response downloads, destination/credential UI, quarantine, vector PDF and physical-printer acceptance pending |
 | Trusted browser panels | Assistant results and human permission decisions using the private owner boundary, policy-denial and no-AI-grant tests | Native installed-extension permission child and two-step one-shot confirmation committed and pushed `f83c94152`, see [permission results](MACOS_PERMISSION_RESULTS.md). Native assistant settings and proposal decisions committed and pushed `b53a91111`, see [assistant settings results](MACOS_ASSISTANT_SETTINGS_RESULTS.md). Native assistant result/sidebar and translation surfaces implemented and accepted, see [assistant page results](MACOS_ASSISTANT_PAGE_RESULTS.md). Remaining permission UI pending |
@@ -91,13 +91,49 @@ cancellation and document replacement before applying defaults.
 
 This increment covers keyboard control completion and reviewed link activation.
 The later submission increment covers GET/POST and required-field checks.
-Complete validation, popup/typeahead and
-multiple-select interaction, DOM key/input/focus/composition events, full chrome
+Complete validation, DOM key/input/focus/composition events, full chrome
 Tab traversal, context menus, drag/drop and file-selection remain required.
 The later find increment delivers page search.
-Multiple-select direction keys deliberately preserve existing selections until
-their own interaction model is implemented. Physical OS IME and screen-reader
+The native select increment below implements multiple-select interaction. Physical OS IME and screen-reader
 acceptance remain separate gates.
+
+## Native select controls increment
+
+AppKit presents single-choice selects with an NSMenu built from the core's
+option identities, visible labels, optgroup labels, enabled state and selected
+choice. Mouse and Enter/Space activation wait for acknowledged native focus.
+Choices must still belong to the live focused control; popup actions additionally
+fence the frame that supplied their labels. Navigation, tab/window ownership,
+focus changes, native chrome editing and newer frames invalidate tracking.
+
+Multiple and size-based controls render clipped option rows through shared
+layout/paint fragments, with matching pointer and accessibility bounds. Core
+interaction handles ordinary selection, Command toggle/movement, Space toggle,
+Shift ranges, Select All, Home/End/PageUp/PageDown, Unicode prefix search and
+repeated-letter cycling. Wheel scrolling works over an enabled list without
+changing page focus, selectedness or outer scroll. Keyboard movement reveals the
+active row. Focus changes end prefix/range sessions; form reset and document
+replacement clear transient interaction state. The multiple-select public value
+is the first selected option, and the existing form entry list preserves all
+selected enabled values in document order. An unselected size-based list has no
+implicit first choice.
+
+Accessibility exposes a native list with selected children and supported option
+selection actions. AX focus preserves existing selections; disabled, clipped or
+invalidated elements cannot mutate a control. The native state is bounded to
+1,024 choices with 256 Unicode scalars per label/group; the menu reports omitted
+choices, and keyboard interaction retains access to the complete core option
+set. The optional state uses indirection to keep the existing server message
+and reference-frontend event sizes bounded. Older text-state payloads continue
+to decode without select metadata.
+
+Complete acceptance passed: 161 native tests with one physical Zhuyin skip and
+7,226 Rust tests; all-targets build, strict Clippy, formatting, eight signatures
+and owned-process cleanup passed with unchanged frozen inputs. The result record
+is [MACOS_SELECT_CONTROLS_RESULTS.md](MACOS_SELECT_CONTROLS_RESULTS.md).
+This increment does not complete cancelable keyboard/beforeinput/input/change/
+focus events, HTML dirty-selectedness/defaultSelected IDL, customizable selects,
+full option CSS/layout, complete validation or physical VoiceOver acceptance.
 
 ## Native form reset increment
 

@@ -1846,6 +1846,63 @@ final class BrowserUITests: XCTestCase {
         XCTAssertEqual(fixture.requests, ["/accessibility", "/destination"])
     }
 
+    func testNativeSelectPopupMouseKeyboardTypeaheadAndCancellation() throws {
+        let fixture = try HTTPFixture(); defer { fixture.stop() }
+        launch(); enter(fixture.origin + "/select")
+        let page = app.groups["page"], region = page.comboBoxes["Region"]
+        XCTAssertTrue(region.waitForExistence(timeout: 15))
+        XCTAssertFalse(page.comboBoxes["Disabled choices"].isEnabled)
+        region.click()
+        XCTAssertTrue(app.menuItems["Beta"].waitForExistence(timeout: 15))
+        XCTAssertFalse(app.menuItems["Locked choice"].isEnabled)
+        app.menuItems["中文"].click(); waitValue(region, "cn")
+        app.typeText("br"); waitValue(region, "bravo")
+        app.typeKey(.return, modifierFlags: [])
+        XCTAssertTrue(app.menuItems["Beta"].waitForExistence(timeout: 15))
+        app.typeKey(.escape, modifierFlags: []); waitValue(region, "bravo")
+        region.click(); XCTAssertTrue(app.menuItems["Beta"].waitForExistence(timeout: 15))
+        app.menuItems["Beta"].click(); waitValue(region, "same")
+        let attachment = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
+        attachment.name = "macos-select-controls"; attachment.lifetime = .keepAlways; add(attachment)
+        page.buttons["Send choices GET"].click()
+        waitValue(app.textFields["address"], fixture.origin + "/received?region=same&topic=a&topic=c")
+        XCTAssertEqual(fixture.requests, ["/select", "/received?region=same&topic=a&topic=c"])
+    }
+
+    func testNativeMultipleSelectionCommandClickShiftRangeSelectAllAndReset() throws {
+        let fixture = try HTTPFixture(); defer { fixture.stop() }
+        launch(); enter(fixture.origin + "/select")
+        let page = app.groups["page"], topics = page.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Topics")).firstMatch
+        XCTAssertTrue(topics.waitForExistence(timeout: 15))
+        func choice(_ title: String) -> XCUIElement { topics.groups[title] }
+        func waitSelected(_ title: String, _ selected: Bool) {
+            let expectation = XCTNSPredicateExpectation(predicate: NSPredicate { object, _ in
+                (object as? XCUIElement)?.isSelected == selected
+            }, object: choice(title))
+            XCTAssertEqual(XCTWaiter.wait(for: [expectation], timeout: 15), .completed)
+        }
+        waitSelected("Topic Alpha", true); waitSelected("Topic Gamma", true)
+        XCUIElement.perform(withKeyModifiers: .command) { choice("Topic Beta").click() }
+        waitSelected("Topic Alpha", true); waitSelected("Topic Beta", true); waitSelected("Topic Gamma", true)
+        XCUIElement.perform(withKeyModifiers: .command) { choice("Topic Beta").click() }
+        waitSelected("Topic Beta", false)
+        XCUIElement.perform(withKeyModifiers: .shift) { choice("Topic Gamma").click() }
+        waitSelected("Topic Alpha", false); waitSelected("Topic Beta", true); waitSelected("Topic Gamma", true)
+        XCTAssertFalse(choice("Topic Locked").isEnabled)
+        app.typeKey(.end, modifierFlags: [.shift])
+        waitSelected("Topic Delta", true); waitSelected("Topic Emoji 😀", true)
+        app.typeKey("a", modifierFlags: [.command])
+        waitSelected("Topic Alpha", true); waitSelected("Topic Locked", false)
+        page.buttons["Reset choices"].click()
+        waitSelected("Topic Alpha", true); waitSelected("Topic Beta", false); waitSelected("Topic Gamma", true)
+        // A reset also discards the old range anchor and restores scroll position.
+        app.typeKey(.tab, modifierFlags: [.shift]); app.typeKey(.downArrow, modifierFlags: [.shift])
+        waitSelected("Topic Alpha", true); waitSelected("Topic Beta", true); waitSelected("Topic Gamma", false)
+        page.buttons["Send choices POST"].click(); waitValue(app.textFields["address"], fixture.origin + "/posted")
+        let request = try XCTUnwrap(fixture.records.last)
+        XCTAssertEqual(request.method, "POST"); XCTAssertEqual(String(data: request.body, encoding: .utf8), "region=a&topic=a&topic=b")
+    }
+
     func testKeyboardOnlyNativeControlsAndLinkActivation() throws {
         let fixture = try HTTPFixture()
         defer { fixture.stop() }

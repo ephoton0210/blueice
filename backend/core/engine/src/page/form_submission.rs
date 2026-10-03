@@ -106,45 +106,14 @@ impl Page {
     }
 
     fn selected_options(&self, node: NodeId) -> Vec<NodeId> {
-        let options = self.native_options(node);
-        let multiple = element_attribute(&self.doc, node, "multiple").is_some();
-        let selected = options
-            .iter()
-            .rev()
-            .find(|id| element_attribute(&self.doc, **id, "selected").is_some())
-            .copied()
-            .or_else(|| {
-                (!multiple && self.select_display_size(node) == 1)
-                    .then(|| {
-                        options
-                            .iter()
-                            .copied()
-                            .find(|id| !self.native_control_disabled(*id))
-                    })
-                    .flatten()
-            });
-        options
+        blueice_layout::select_options(&self.doc, node)
             .into_iter()
-            .filter(|option| {
-                if multiple {
-                    element_attribute(&self.doc, *option, "selected").is_some()
-                } else {
-                    selected == Some(*option)
-                }
-            })
+            .filter(|option| option.selected)
+            .map(|option| option.node)
             .collect()
     }
     fn select_display_size(&self, node: NodeId) -> u32 {
-        element_attribute(&self.doc, node, "size")
-            .and_then(|value| value.parse::<u32>().ok())
-            .filter(|size| *size > 0)
-            .unwrap_or_else(|| {
-                if element_attribute(&self.doc, node, "multiple").is_some() {
-                    4
-                } else {
-                    1
-                }
-            })
+        blueice_layout::select_display_size(&self.doc, node)
     }
     fn submitted_options(&self, node: NodeId) -> Vec<NodeId> {
         self.selected_options(node)

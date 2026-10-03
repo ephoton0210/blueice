@@ -4,7 +4,7 @@
 
 import AppKit
 
-enum PageAccessibilityAction { case press, focus }
+enum PageAccessibilityAction: Equatable { case press, focus, select, deselect }
 
 @MainActor
 final class PageAccessibilityTree {
@@ -96,10 +96,13 @@ final class PageAccessibilityTree {
     func allows(_ element: PageAccessibilityElement, _ action: PageAccessibilityAction) -> Bool {
         guard snapshot != nil, elements[element.node.id] === element, !element.node.state.disabled, isVisible(element.node),
               !element.node.occluded else { return false }
+        if element.node.role == .option, [.press, .select, .deselect].contains(action) {
+            return element.node.parent.flatMap { elements[$0] }?.node.state.selectList == true
+        }
         switch (action, element.node.role) {
         case (.press, .link), (.press, .button): return true
         case (.press, .textBox), (.focus, .textBox): return element.node.state.nativeTextInput || element.node.state.nativeFocusable
-        case (.press, .checkBox): return element.node.state.nativeFocusable
+        case (.press, .checkBox), (.press, .comboBox), (.focus, .comboBox): return element.node.state.nativeFocusable
         default: return false
         }
     }
@@ -139,7 +142,7 @@ final class PageAccessibilityElement: NSAccessibilityElement {
         case .textBox: return .textField
         case .checkBox: return node.state.radio ? .radioButton : .checkBox
         case .slider: return .slider
-        case .comboBox: return .comboBox
+        case .comboBox: return node.state.selectList ? .list : .comboBox
         case .list: return .list
         case .paragraph: return .staticText
         case .image: return .image
@@ -165,16 +168,28 @@ final class PageAccessibilityElement: NSAccessibilityElement {
         default: return nil
         }
     }
+    override func accessibilitySelectedChildren() -> [Any]? {
+        guard node.role == .comboBox, node.state.selectList else { return super.accessibilitySelectedChildren() }
+        return accessibilityChildren()?.compactMap { child in
+            guard let child = child as? PageAccessibilityElement, child.node.state.selected else { return nil }
+            return child
+        }
+    }
     override func accessibilityFrame() -> NSRect { tree?.frame(for: node) ?? .zero }
     override func isAccessibilityEnabled() -> Bool { tree?.contains(self) == true && !node.state.disabled }
     override func isAccessibilityRequired() -> Bool { node.state.required }
     override func isAccessibilitySelected() -> Bool { node.state.selected || node.state.radio && node.state.checked == true }
+    override func setAccessibilitySelected(_ selected: Bool) {
+        guard selected != node.state.selected else { return }
+        _ = tree?.act(self, selected ? .select : .deselect)
+    }
     override func isAccessibilityFocused() -> Bool { tree?.focusedElement() === self }
     override func setAccessibilityFocused(_ focused: Bool) {
         if focused { _ = tree?.act(self, .focus) }
     }
     override func accessibilityPerformPress() -> Bool { tree?.act(self, .press) ?? false }
     override func isAccessibilitySelectorAllowed(_ selector: Selector) -> Bool {
+        if selector == #selector(setAccessibilitySelected(_:)) { return tree?.allows(self, .select) ?? false }
         if selector == #selector(accessibilityPerformPress) { return tree?.allows(self, .press) ?? false }
         if selector == #selector(setAccessibilityFocused(_:)) { return tree?.allows(self, .focus) ?? false }
         // A native text field role does not imply DOM value/selection mutation support.

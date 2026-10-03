@@ -105,6 +105,10 @@ pub struct NodeState {
     pub file_input: bool,
     #[serde(default)]
     pub radio: bool,
+    #[serde(default)]
+    pub select_list: bool,
+    #[serde(default)]
+    pub multiple: bool,
     /// A password control; callers must not expose its value as ordinary text.
     #[serde(default)]
     pub protected: bool,

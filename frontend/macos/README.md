@@ -435,3 +435,22 @@ select popup/typeahead/multiple-selection interaction, complete toolbar Tab
 traversal, image/media context actions, page-text selection/copy, drag/drop,
 full file API/events, automatic attachment downloads, remaining trusted panels and localization. Automated checks cover the recorded features; an
 interactive VoiceOver session remains unvalidated.
+
+## Native select controls
+
+Single-choice selects use an AppKit options menu with core-owned labels,
+optgroups, disabled choices and selection. Mouse and Enter/Space open the menu;
+Escape cancels it. Typed Unicode prefixes and repeated letters search choices.
+Multiple and size-based selects use clipped core-rendered option rows. Command
+click toggles a choice, Shift extends a range, Command arrows move the active
+row, Space toggles it, Command-A selects enabled choices, and Home/End/Page keys
+navigate. Wheel scrolling over a list preserves page focus and selection.
+
+Native accessibility lists expose selected children and option selection writes;
+focus alone preserves selection. The native menu carries at most 1,024 choices
+with 256 Unicode scalars per label/group and reports omitted choices. Keyboard
+navigation/search operates on the complete core list. Form reset clears range
+and search state, while GET/POST submission includes selected enabled values in
+DOM order. Core document/focus ownership and popup frame checks reject obsolete
+commands. Full DOM change/input events, dirty-selectedness IDL, customizable
+selects and physical screen-reader acceptance remain pending.

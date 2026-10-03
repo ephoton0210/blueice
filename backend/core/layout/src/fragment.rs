@@ -14,12 +14,31 @@
 use blueice_dom::NodeId;
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct SelectOption {
+    pub node: NodeId,
+    pub label: String,
+    pub group: Option<String>,
+    pub disabled: bool,
+    pub selected: bool,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum NativeForm {
     Button(String),
     CheckBox(bool),
     Radio(bool),
     Select(String),
-    Range { min: f64, max: f64, value: f64 },
+    SelectList {
+        options: Vec<SelectOption>,
+        first: usize,
+        row_height: f64,
+        active: Option<NodeId>,
+    },
+    Range {
+        min: f64,
+        max: f64,
+        value: f64,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]

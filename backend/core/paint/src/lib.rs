@@ -367,6 +367,71 @@ fn paint_native_form(
         NativeForm::CheckBox(checked) => if *checked { "☑" } else { "☐" }.to_string(),
         NativeForm::Radio(checked) => if *checked { "◉" } else { "○" }.to_string(),
         NativeForm::Select(label) => format!("{label} ▾"),
+        NativeForm::SelectList {
+            options,
+            first,
+            row_height,
+            active,
+        } => {
+            for (index, option) in options.iter().enumerate().skip(*first) {
+                let y = rect.y + (index - *first) as f64 * *row_height;
+                if y >= rect.y + rect.height {
+                    break;
+                }
+                if option.selected {
+                    out.push(PaintCommand::Rect {
+                        rect: Rect {
+                            x: rect.x,
+                            y,
+                            width: rect.width,
+                            height: *row_height,
+                        },
+                        color: apply_opacity(Color::Rgba(35, 100, 220, 255), opacity),
+                    });
+                }
+                if *active == Some(option.node) {
+                    let color = apply_opacity(Color::Rgba(20, 20, 20, 255), opacity);
+                    for border in [
+                        Rect {
+                            x: rect.x,
+                            y,
+                            width: rect.width,
+                            height: 1.0,
+                        },
+                        Rect {
+                            x: rect.x,
+                            y: y + *row_height - 1.0,
+                            width: rect.width,
+                            height: 1.0,
+                        },
+                    ] {
+                        out.push(PaintCommand::Rect {
+                            rect: border,
+                            color,
+                        });
+                    }
+                }
+                out.push(PaintCommand::Text {
+                    x: rect.x + 3.0,
+                    y,
+                    text: option.label.clone(),
+                    color: apply_opacity(
+                        if option.disabled {
+                            Color::Rgba(128, 128, 128, 255)
+                        } else if option.selected {
+                            Color::Rgba(255, 255, 255, 255)
+                        } else {
+                            style.color
+                        },
+                        opacity,
+                    ),
+                    font_size_px: style.font_size_px,
+                    bold: style.is_bold(),
+                    italic: style.is_italic(),
+                });
+            }
+            return;
+        }
         NativeForm::Range { min, max, value } => {
             let fraction = if max > min {
                 (value - min) / (max - min)

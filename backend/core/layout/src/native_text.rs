@@ -107,52 +107,21 @@ pub(super) fn form_control(doc: &Document, node: NodeId) -> Option<crate::Native
             .map(|(_, value)| value.as_str())
     };
     if tag_name == "select" {
-        fn collect(
-            doc: &Document,
-            id: NodeId,
-            disabled: bool,
-            options: &mut Vec<(bool, bool, String)>,
-        ) {
-            let mut disabled = disabled;
-            if let NodeData::Element {
-                tag_name,
-                attributes,
-            } = doc.data(id)
-            {
-                disabled |= attributes.iter().any(|(name, _)| name == "disabled");
-                if tag_name == "option" {
-                    fn text(doc: &Document, id: NodeId, out: &mut String) {
-                        if let NodeData::Text { data } = doc.data(id) {
-                            out.push_str(data);
-                        }
-                        for child in doc.children(id) {
-                            text(doc, child, out);
-                        }
-                    }
-                    let mut label = String::new();
-                    text(doc, id, &mut label);
-                    options.push((
-                        attributes.iter().any(|(name, _)| name == "selected"),
-                        disabled,
-                        label.split_whitespace().collect::<Vec<_>>().join(" "),
-                    ));
-                }
-            }
-            for child in doc.children(id) {
-                collect(doc, child, disabled, options);
-            }
+        let options = select_options(doc, node);
+        if select_display_size(doc, node) > 1 || attribute("multiple").is_some() {
+            return Some(NativeForm::SelectList {
+                options,
+                first: 0,
+                row_height: 20.0,
+                active: None,
+            });
         }
-        let mut options = Vec::new();
-        for child in doc.children(node) {
-            collect(doc, child, false, &mut options);
-        }
-        let selected = options
-            .iter()
-            .rev()
-            .find(|option| option.0)
-            .or_else(|| options.iter().find(|option| !option.1));
         return Some(NativeForm::Select(
-            selected.map(|option| option.2.clone()).unwrap_or_default(),
+            options
+                .iter()
+                .find(|option| option.selected)
+                .map(|option| option.label.clone())
+                .unwrap_or_default(),
         ));
     }
     if tag_name != "input" {
@@ -299,4 +268,101 @@ pub(super) fn lines(
     }
     emit(&mut result, text, measured, start, offset);
     result
+}
+
+/// Option identities, labels and selectedness shared by layout and interaction.
+/// Descendants of another select do not belong to this control.
+pub fn select_options(doc: &Document, select: NodeId) -> Vec<crate::SelectOption> {
+    fn attr<'a>(doc: &'a Document, id: NodeId, key: &str) -> Option<&'a str> {
+        match doc.data(id) {
+            NodeData::Element { attributes, .. } => attributes
+                .iter()
+                .find(|(name, _)| name == key)
+                .map(|(_, value)| value.as_str()),
+            _ => None,
+        }
+    }
+    fn text(doc: &Document, id: NodeId, out: &mut String) {
+        if let NodeData::Text { data } = doc.data(id) {
+            out.push_str(data);
+        }
+        for child in doc.children(id) {
+            text(doc, child, out);
+        }
+    }
+    fn collect(
+        doc: &Document,
+        id: NodeId,
+        disabled: bool,
+        group: Option<String>,
+        out: &mut Vec<crate::SelectOption>,
+    ) {
+        let NodeData::Element { tag_name, .. } = doc.data(id) else {
+            return;
+        };
+        if tag_name == "select" {
+            return;
+        }
+        let disabled = disabled || attr(doc, id, "disabled").is_some();
+        let group = if tag_name == "optgroup" {
+            attr(doc, id, "label").map(str::to_string)
+        } else {
+            group
+        };
+        if tag_name == "option" {
+            let mut label = String::new();
+            text(doc, id, &mut label);
+            let label = attr(doc, id, "label")
+                .filter(|label| !label.is_empty())
+                .map(str::to_string)
+                .unwrap_or_else(|| label.split_whitespace().collect::<Vec<_>>().join(" "));
+            out.push(crate::SelectOption {
+                node: id,
+                label,
+                group,
+                disabled,
+                selected: attr(doc, id, "selected").is_some(),
+            });
+            return;
+        }
+        for child in doc.children(id) {
+            collect(doc, child, disabled, group.clone(), out);
+        }
+    }
+    let mut options = Vec::new();
+    for child in doc.children(select) {
+        collect(doc, child, false, None, &mut options);
+    }
+    if attr(doc, select, "multiple").is_none() {
+        let chosen = options
+            .iter()
+            .rposition(|option| option.selected)
+            .or_else(|| {
+                (select_display_size(doc, select) == 1)
+                    .then(|| options.iter().position(|option| !option.disabled))
+                    .flatten()
+            });
+        for (index, option) in options.iter_mut().enumerate() {
+            option.selected = chosen == Some(index);
+        }
+    }
+    options
+}
+
+pub fn select_display_size(doc: &Document, node: NodeId) -> u32 {
+    let NodeData::Element { attributes, .. } = doc.data(node) else {
+        return 1;
+    };
+    attributes
+        .iter()
+        .find(|(key, _)| key == "size")
+        .and_then(|(_, value)| value.trim().parse::<u32>().ok())
+        .filter(|size| *size > 0)
+        .unwrap_or_else(|| {
+            if attributes.iter().any(|(key, _)| key == "multiple") {
+                4
+            } else {
+                1
+            }
+        })
 }

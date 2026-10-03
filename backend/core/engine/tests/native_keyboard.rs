@@ -846,15 +846,30 @@ fn multiline_default_keys_and_non_aligned_range_end_use_current_core_control() {
 }
 
 #[test]
-fn single_select_keys_do_not_destroy_existing_multiple_selections() {
+fn multiple_select_shift_keys_extend_from_the_anchor_and_skip_disabled_options() {
     let mut browser = Browser::new(
         "<select multiple aria-label='Multiple'><option selected value='a'>Alpha</option>\
-         <option selected value='b'>Beta</option><option value='c'>Gamma</option></select>",
+         <option disabled value='x'>Disabled</option><option value='b'>Beta</option><option value='c'>Gamma</option></select>",
     );
     browser.key(PageKey::Tab, false);
-    let before = browser.snapshot().nodes;
-    browser.key(PageKey::ArrowDown, false);
-    assert_eq!(browser.snapshot().nodes, before);
+    browser.key(PageKey::ArrowDown, true);
+    let selected: Vec<_> = browser
+        .snapshot()
+        .nodes
+        .into_iter()
+        .filter(|node| node.state.selected)
+        .filter_map(|node| node.name)
+        .collect();
+    assert_eq!(selected, ["Alpha", "Beta"]);
+    browser.key(PageKey::ArrowDown, true);
+    let selected: Vec<_> = browser
+        .snapshot()
+        .nodes
+        .into_iter()
+        .filter(|node| node.state.selected)
+        .filter_map(|node| node.name)
+        .collect();
+    assert_eq!(selected, ["Alpha", "Beta", "Gamma"]);
 }
 
 #[test]
@@ -1202,4 +1217,375 @@ fn reset_keeps_original_and_edited_passwords_out_of_native_observation() {
     let observation = format!("{:?} {snapshot:?}", browser.state);
     assert!(!observation.contains("original-private"));
     assert!(!observation.contains("edited-private-value"));
+}
+
+#[test]
+fn select_popup_uses_option_identity_labels_groups_and_rejects_disabled_foreign_or_stale_choices() {
+    let mut browser = Browser::new("<select><option value='same'>Alpha</option><optgroup label='Group' disabled><option>Locked</option></optgroup><option value='same' label='Beta'>hidden label</option></select><select><option>Foreign</option></select>");
+    browser.key(PageKey::Tab, false);
+    let state = browser.state.select.clone().unwrap();
+    assert!(state.popup);
+    assert!(!state.multiple);
+    assert_eq!(
+        state
+            .options
+            .iter()
+            .map(|o| o.label.as_str())
+            .collect::<Vec<_>>(),
+        ["Alpha", "Locked", "Beta"]
+    );
+    assert_eq!(state.options[1].group.as_deref(), Some("Group"));
+    assert!(state.options[1].disabled);
+    let frame = browser.state.frame_generation;
+    let choice = |id, frame| TextInputAction::SelectOption {
+        option_id: id,
+        frame_generation: frame,
+        extend: false,
+        toggle: false,
+    };
+    assert!(browser
+        .input(browser.context(), choice(state.options[1].node_id, frame))
+        .is_err());
+    let foreign = browser
+        .snapshot()
+        .nodes
+        .iter()
+        .find(|n| n.name.as_deref() == Some("Foreign"))
+        .unwrap()
+        .id;
+    assert!(browser
+        .input(browser.context(), choice(foreign, frame))
+        .is_err());
+    browser
+        .input(browser.context(), choice(state.options[2].node_id, frame))
+        .unwrap();
+    assert!(browser.state.select.as_ref().unwrap().options[2].selected);
+    assert!(browser
+        .input(browser.context(), choice(state.options[0].node_id, frame))
+        .is_err());
+    assert!(browser.state.select.as_ref().unwrap().options[2].selected);
+}
+
+#[test]
+fn select_typeahead_cycles_repeated_letters_matches_unicode_and_resets_at_focus_changes() {
+    let mut browser = Browser::new("<select><option>Alpha</option><option>Beta</option><option disabled>Blocked</option><option>Bravo</option><option>中文</option></select><input>");
+    browser.key(PageKey::Tab, false);
+    let type_text = |text: &str| TextInputAction::Replace {
+        text: text.into(),
+        replacement: None,
+    };
+    browser.input(browser.context(), type_text("b")).unwrap();
+    assert_eq!(
+        browser
+            .state
+            .select
+            .as_ref()
+            .unwrap()
+            .options
+            .iter()
+            .find(|o| o.selected)
+            .unwrap()
+            .label,
+        "Beta"
+    );
+    browser.input(browser.context(), type_text("b")).unwrap();
+    assert_eq!(
+        browser
+            .state
+            .select
+            .as_ref()
+            .unwrap()
+            .options
+            .iter()
+            .find(|o| o.selected)
+            .unwrap()
+            .label,
+        "Bravo"
+    );
+    browser.key(PageKey::Tab, false);
+    browser.key(PageKey::Tab, true);
+    browser.input(browser.context(), type_text("中")).unwrap();
+    browser.input(browser.context(), type_text("文")).unwrap();
+    assert_eq!(
+        browser
+            .state
+            .select
+            .as_ref()
+            .unwrap()
+            .options
+            .iter()
+            .find(|o| o.selected)
+            .unwrap()
+            .label,
+        "中文"
+    );
+    assert!(browser.state.focused.is_none());
+}
+
+#[test]
+fn multiple_select_command_focus_space_toggle_select_all_and_shift_range_keep_core_state() {
+    let mut browser = Browser::new("<select multiple size='2'><option selected>A</option><option disabled>Locked</option><option>B</option><option>C</option></select><input>");
+    browser.key(PageKey::Tab, false);
+    let selected = |browser: &Browser| {
+        browser
+            .state
+            .select
+            .as_ref()
+            .unwrap()
+            .options
+            .iter()
+            .filter(|o| o.selected)
+            .map(|o| o.label.as_str())
+            .collect::<Vec<_>>()
+            .join(",")
+    };
+    browser
+        .input(
+            browser.context(),
+            TextInputAction::SelectKey {
+                key: PageKey::ArrowDown,
+                extend: false,
+                toggle: true,
+            },
+        )
+        .unwrap();
+    assert_eq!(selected(&browser), "A");
+    browser.key(PageKey::Space, false);
+    assert_eq!(selected(&browser), "A,B");
+    browser.key(PageKey::Space, false);
+    assert_eq!(selected(&browser), "A");
+    browser.key(PageKey::ArrowDown, true);
+    assert_eq!(selected(&browser), "B,C");
+    browser
+        .input(browser.context(), TextInputAction::SelectAll)
+        .unwrap();
+    assert_eq!(selected(&browser), "A,B,C");
+    let old = browser.context();
+    browser.key(PageKey::Tab, false);
+    assert!(browser.input(old, TextInputAction::SelectAll).is_err());
+}
+
+#[test]
+fn listbox_size_has_no_implicit_selection_and_pointer_modifiers_use_visible_option_bounds() {
+    let mut browser = Browser::new("<select multiple size='2'><option>A</option><option>B</option><option>C</option><option>D</option></select><select size='3'><option>Empty choice</option></select>");
+    let snapshot = browser.snapshot();
+    assert!(snapshot
+        .nodes
+        .iter()
+        .filter(|n| n.role == blueice_ipc::Role::ComboBox)
+        .all(|n| n.state.value.is_none()));
+    browser.key(PageKey::Tab, false);
+    let b = browser
+        .snapshot()
+        .nodes
+        .iter()
+        .find(|n| n.name.as_deref() == Some("B"))
+        .unwrap()
+        .bounds;
+    browser
+        .input(
+            browser.context(),
+            TextInputAction::SelectPointer {
+                x: b.x + 2.0,
+                y: b.y + 2.0 - browser.state.scroll_y,
+                extend: false,
+                toggle: true,
+            },
+        )
+        .unwrap();
+    assert!(browser.state.select.as_ref().unwrap().options[1].selected);
+    browser.key(PageKey::End, true);
+    assert_eq!(
+        browser
+            .state
+            .select
+            .as_ref()
+            .unwrap()
+            .options
+            .iter()
+            .filter(|o| o.selected)
+            .map(|o| o.label.as_str())
+            .collect::<Vec<_>>(),
+        ["B", "C", "D"]
+    );
+    let snapshot = browser.snapshot();
+    let a = snapshot
+        .nodes
+        .iter()
+        .find(|n| n.name.as_deref() == Some("A"))
+        .unwrap();
+    let d = snapshot
+        .nodes
+        .iter()
+        .find(|n| n.name.as_deref() == Some("D"))
+        .unwrap();
+    assert_eq!(a.bounds.height, 0.0);
+    assert!(d.bounds.height > 0.0);
+    browser.key(PageKey::Tab, false);
+    assert!(!browser.state.select.as_ref().unwrap().options[0].selected);
+    browser.key(PageKey::Home, false);
+    let option = browser.state.select.as_ref().unwrap().options[0].node_id;
+    browser
+        .input(
+            browser.context(),
+            TextInputAction::SelectOption {
+                option_id: option,
+                frame_generation: browser.state.frame_generation,
+                extend: false,
+                toggle: true,
+            },
+        )
+        .unwrap();
+    assert!(!browser.state.select.as_ref().unwrap().options[0].selected);
+}
+
+#[test]
+fn multiple_select_value_is_the_first_selected_option_and_reset_restores_defaults_and_anchor() {
+    let mut browser = Browser::new("<form><select multiple aria-label='Choice'><option selected value='a'>A</option><option value='b'>B</option><option selected value='c'>C</option></select><button type='reset' aria-label='Reset'>Reset</button></form>");
+    assert_eq!(
+        browser
+            .snapshot()
+            .nodes
+            .iter()
+            .find(|n| n.name.as_deref() == Some("Choice"))
+            .unwrap()
+            .state
+            .value
+            .as_deref(),
+        Some("a")
+    );
+    browser.key(PageKey::Tab, false);
+    browser.key(PageKey::End, false);
+    browser.key(PageKey::Tab, false);
+    browser.key(PageKey::Enter, false);
+    browser.key(PageKey::Tab, true);
+    assert_eq!(
+        browser
+            .state
+            .select
+            .as_ref()
+            .unwrap()
+            .options
+            .iter()
+            .filter(|o| o.selected)
+            .map(|o| o.label.as_str())
+            .collect::<Vec<_>>(),
+        ["A", "C"]
+    );
+    browser.key(PageKey::ArrowDown, true);
+    assert_eq!(
+        browser
+            .state
+            .select
+            .as_ref()
+            .unwrap()
+            .options
+            .iter()
+            .filter(|o| o.selected)
+            .map(|o| o.label.as_str())
+            .collect::<Vec<_>>(),
+        ["A", "B"]
+    );
+}
+
+#[test]
+fn select_scroll_without_focus_changes_only_visible_options_and_page_keys_reveal_the_active_choice()
+{
+    let mut browser = Browser::new("<select multiple size='2' aria-label='Scrollable'><option>A</option><option>B</option><option>C</option><option>D</option><option>E</option></select>");
+    let control = browser
+        .snapshot()
+        .nodes
+        .iter()
+        .find(|n| n.name.as_deref() == Some("Scrollable"))
+        .unwrap()
+        .bounds;
+    browser
+        .input(
+            browser.context(),
+            TextInputAction::SelectScroll {
+                x: control.x + 3.0,
+                y: control.y + 3.0,
+                rows: 3,
+            },
+        )
+        .unwrap();
+    assert!(browser.state.focused_node.is_none());
+    let snapshot = browser.snapshot();
+    assert!(
+        snapshot
+            .nodes
+            .iter()
+            .find(|n| n.name.as_deref() == Some("E"))
+            .unwrap()
+            .bounds
+            .height
+            > 0.0
+    );
+    assert_eq!(
+        snapshot
+            .nodes
+            .iter()
+            .find(|n| n.name.as_deref() == Some("A"))
+            .unwrap()
+            .bounds
+            .height,
+        0.0
+    );
+    browser.key(PageKey::Tab, false);
+    browser.key(PageKey::PageDown, true);
+    browser.key(PageKey::PageDown, true);
+    assert_eq!(
+        browser
+            .state
+            .select
+            .as_ref()
+            .unwrap()
+            .options
+            .iter()
+            .filter(|o| o.selected)
+            .map(|o| o.label.as_str())
+            .collect::<Vec<_>>(),
+        ["A", "B", "C"]
+    );
+    browser.key(PageKey::PageUp, true);
+    assert_eq!(
+        browser
+            .state
+            .select
+            .as_ref()
+            .unwrap()
+            .options
+            .iter()
+            .filter(|o| o.selected)
+            .map(|o| o.label.as_str())
+            .collect::<Vec<_>>(),
+        ["A", "B"]
+    );
+}
+
+#[test]
+fn select_presentation_is_bounded_without_losing_keyboard_access_to_later_options() {
+    let mut html = String::from("<select>");
+    for index in 0..1025 {
+        html.push_str(&format!("<option value='{index}'>Choice {index}</option>"));
+    }
+    html.push_str("</select>");
+    let mut browser = Browser::new(&html);
+    browser.key(PageKey::Tab, false);
+    let select = browser.state.select.as_ref().unwrap();
+    assert!(select.limited);
+    assert_eq!(select.options.len(), 1024);
+    browser.key(PageKey::End, false);
+    assert_eq!(
+        browser
+            .snapshot()
+            .nodes
+            .iter()
+            .find(|n| n.role == blueice_ipc::Role::ComboBox)
+            .unwrap()
+            .state
+            .value
+            .as_deref(),
+        Some("1024")
+    );
 }

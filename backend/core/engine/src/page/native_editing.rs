@@ -249,6 +249,7 @@ impl Page {
             scroll_y: self.scroll_y,
             focused_node: self.focused.map(|id| id.as_u64()),
             focus_exit: self.native_focus_exit,
+            select: self.native_select_state().map(Box::new),
             focused,
         }
     }
@@ -281,6 +282,9 @@ impl Page {
                 self.native_undo.close_group(node);
             }
             return self.native_page_key(key, shift, context, source);
+        }
+        if let Some(result) = self.native_select_action(&action) {
+            return result;
         }
         let Some((mut editor, info)) = self.live_editor() else {
             return Ok(false);
@@ -324,7 +328,11 @@ impl Page {
             self.native_undo.close_group(editor.node);
         }
         match action {
-            TextInputAction::Key { .. } => unreachable!("page keys handled above"),
+            TextInputAction::Key { .. }
+            | TextInputAction::SelectKey { .. }
+            | TextInputAction::SelectOption { .. }
+            | TextInputAction::SelectPointer { .. }
+            | TextInputAction::SelectScroll { .. } => unreachable!("control actions handled above"),
             TextInputAction::Replace { text, replacement } => {
                 if !info.writable {
                     return Err("Native text control is read-only".into());

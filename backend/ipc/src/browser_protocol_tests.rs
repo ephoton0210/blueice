@@ -262,6 +262,7 @@ fn native_ranges_check_overflow_and_password_state_stays_redacted_on_wire() {
         scroll_y: 0.0,
         focused_node: Some(5),
         focus_exit: None,
+        select: None,
         focused: Some(TextControlState {
             node_id: 5,
             text: None,

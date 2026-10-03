@@ -196,6 +196,14 @@ fn compute_name(
             Some(NameFrom::Attribute("aria-label".to_string())),
         );
     }
+    if tag == "option" {
+        if let Some(label) = attr(attributes, "label").filter(|label| !label.is_empty()) {
+            return (
+                Some(label.to_string()),
+                Some(NameFrom::Attribute("label".into())),
+            );
+        }
+    }
     if tag == "img" {
         return match attr(attributes, "alt") {
             Some(alt) => (
@@ -326,6 +334,10 @@ fn compute_state(
         native_focusable: page.native_focusable(node),
         file_input: tag == "input"
             && attr(attributes, "type").is_some_and(|kind| kind.eq_ignore_ascii_case("file")),
+        select_list: tag == "select"
+            && (blueice_layout::select_display_size(page.doc(), node) > 1
+                || has_attr(attributes, "multiple")),
+        multiple: tag == "select" && has_attr(attributes, "multiple"),
         radio: tag == "input"
             && attr(attributes, "type").is_some_and(|kind| kind.eq_ignore_ascii_case("radio")),
         protected: tag == "input"
@@ -333,7 +345,7 @@ fn compute_state(
         checked,
         disabled: has_attr(attributes, "disabled") || page.native_control_disabled(node),
         required: has_attr(attributes, "required"),
-        selected: tag == "option" && has_attr(attributes, "selected"),
+        selected: tag == "option" && page.native_option_selected(node),
         hovered: page.hovered() == Some(node),
         focused: page.focused() == Some(node),
     }

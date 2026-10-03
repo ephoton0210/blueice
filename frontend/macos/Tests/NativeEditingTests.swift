@@ -7,6 +7,133 @@ import XCTest
 
 @MainActor
 final class NativeEditingTests: XCTestCase {
+    func testNativeSelectAccessibilitySelectionWritesScrollAndInvalidatedElements() async throws {
+        let (model, view, fixture) = try await start(path: "/select")
+        defer { fixture.stop(); Task { await model.stop() } }
+        model.textInput(.key(.tab, false)); model.textInput(.key(.tab, false))
+        await wait { model.textInputState?.select?.multiple == true && !model.textInputBusy && model.representation?.generation == model.generation }
+        let snapshot = try XCTUnwrap(model.representation)
+        view.accessibilityTree.update(snapshot, epoch: model.accessibilityEpoch, imageSize: model.cssViewportSize ?? .zero)
+        let list = try XCTUnwrap(view.accessibilityTree.elements[try XCTUnwrap(model.textInputState?.select?.node_id)])
+        list.setAccessibilityFocused(true)
+        await wait { model.textInputState?.select?.multiple == true && !model.textInputBusy }
+        XCTAssertEqual(model.textInputState?.select?.options.filter(\.selected).map(\.label), ["Topic Alpha", "Topic Gamma"], "AX focus must preserve selections")
+        await wait { model.representation?.generation == model.generation }
+        view.accessibilityTree.update(model.representation, epoch: model.accessibilityEpoch, imageSize: model.cssViewportSize ?? .zero)
+        let betaNode = try XCTUnwrap(snapshot.nodes.first { $0.name == "Topic Beta" })
+        let beta = try XCTUnwrap(view.accessibilityTree.elements[betaNode.id])
+        XCTAssertTrue(beta.isAccessibilitySelectorAllowed(#selector(NSAccessibilityElement.setAccessibilitySelected(_:))))
+        beta.setAccessibilitySelected(true)
+        await wait { model.textInputState?.select?.options[1].selected == true && !model.textInputBusy && model.representation?.generation == model.generation }
+        view.accessibilityTree.update(model.representation, epoch: model.accessibilityEpoch, imageSize: model.cssViewportSize ?? .zero)
+        beta.setAccessibilitySelected(false)
+        await wait { model.textInputState?.select?.options[1].selected == false && !model.textInputBusy && model.representation?.generation == model.generation }
+        let current = try XCTUnwrap(model.representation)
+        view.accessibilityTree.update(current, epoch: model.accessibilityEpoch, imageSize: model.cssViewportSize ?? .zero)
+        let locked = try XCTUnwrap(view.accessibilityTree.elements[try XCTUnwrap(current.nodes.first { $0.name == "Topic Locked" }).id])
+        XCTAssertFalse(locked.isAccessibilitySelectorAllowed(#selector(NSAccessibilityElement.setAccessibilitySelected(_:))))
+        locked.setAccessibilitySelected(true)
+        XCTAssertFalse(model.textInputState?.select?.options[2].selected ?? true)
+        let bounds = try XCTUnwrap(model.textInputState?.select?.bounds)
+        model.textInput(.selectScroll(bounds.x + 4, bounds.y - current.scrollY + 4, 3))
+        await wait { (model.representation?.nodes.first { $0.name == "Topic Emoji 😀" }?.bounds.height ?? 0) > 0 && !model.textInputBusy }
+        XCTAssertEqual(model.textInputState?.select?.options.filter(\.selected).map(\.label), ["Topic Alpha", "Topic Gamma"])
+        view.accessibilityTree.update(nil, epoch: model.accessibilityEpoch, imageSize: .zero)
+        beta.setAccessibilitySelected(true); XCTAssertFalse(model.textInputBusy)
+        XCTAssertFalse(model.textInputState?.select?.options[1].selected ?? true)
+        await model.stop()
+    }
+
+    func testNativeSelectStateRejectsMalformedOwnershipChoicesAndChecksActionEncoding() throws {
+        let bounds: [String: Any] = ["x": 0, "y": 0, "width": 120, "height": 24]
+        let option: [String: Any] = ["node_id": 6, "label": "中文", "group": NSNull(), "selected": true, "disabled": false]
+        let select: [String: Any] = ["node_id": 5, "multiple": false, "popup": true, "limited": false,
+                                   "bounds": bounds, "active_option": 6, "options": [option]]
+        func decode(_ select: [String: Any]) throws -> BrowserMessage {
+            let state: [String: Any] = ["version": 1, "frame_source": 19, "document_generation": 7,
+                "focus_generation": 3, "frame_generation": 8, "tab_id": 2, "scroll_y": 0,
+                "focused_node": 5, "focused": NSNull(), "focus_exit": NSNull(), "select": select]
+            let data = try JSONSerialization.data(withJSONObject: ["message": ["TextInputState": state]])
+            return try JSONDecoder().decode(IncomingEnvelope.self, from: data).message
+        }
+        if case .textInputState = try decode(select) {} else { XCTFail("Valid select must decode") }
+        for (key, value) in [("node_id", 9 as Any), ("multiple", true as Any), ("options", [option, option] as Any), ("active_option", 99 as Any)] {
+            var invalid = select; invalid[key] = value
+            if case .textInputUnavailable = try decode(invalid) {} else { XCTFail("Invalid select must fail soft") }
+        }
+        let context = TextInputContext(version: 1, frame_source: 19, document_generation: 7, focus_generation: 3)
+        for (action, name) in [(TextInputAction.selectOption(6, 8, true, false), "SelectOption"),
+            (.selectPointer(1, 2, false, true), "SelectPointer"), (.selectKey(.pageDown, true, false), "SelectKey"), (.selectScroll(1, 2, 3), "SelectScroll")] {
+            let bytes = try BrowserWire.encode(.textInput(context, action), tab: 2, request: 7)
+            let root = try XCTUnwrap(JSONSerialization.jsonObject(with: bytes.dropFirst(4)) as? [String: Any])
+            let input = try XCTUnwrap((root["message"] as? [String: Any])?["TextInput"] as? [String: Any])
+            XCTAssertNotNil((input["action"] as? [String: Any])?[name])
+        }
+    }
+
+    func testNativeSelectMenuLabelsDisabledGroupsTypeaheadAndStaleItemsThroughRealCore() async throws {
+        let (model, view, fixture) = try await start(path: "/select")
+        defer { fixture.stop(); Task { await model.stop() } }
+        model.textInput(.key(.tab, false))
+        await wait { model.textInputState?.select?.popup == true && !model.textInputBusy }
+        let state = try XCTUnwrap(model.textInputState)
+        let menu = view.makeSelectMenu(state)
+        XCTAssertFalse(try XCTUnwrap(menu.items.first { $0.title == "Locked choice" }).isEnabled)
+        XCTAssertFalse(try XCTUnwrap(menu.items.first { $0.title == "Unavailable" }).isEnabled)
+        let beta = try XCTUnwrap(menu.items.first { $0.title == "Beta" })
+        XCTAssertEqual(beta.indentationLevel, 1)
+        XCTAssertTrue(NSApp.sendAction(try XCTUnwrap(beta.action), to: beta.target, from: beta))
+        await wait { model.textInputState?.select?.options.first { $0.selected }?.label == "Beta" && !model.textInputBusy }
+        let alpha = try XCTUnwrap(menu.items.first { $0.title == "Alpha" })
+        XCTAssertTrue(NSApp.sendAction(try XCTUnwrap(alpha.action), to: alpha.target, from: alpha))
+        XCTAssertEqual(model.textInputState?.select?.options.first { $0.selected }?.label, "Beta")
+        view.insertText("b", replacementRange: NSRange(location: NSNotFound, length: 0))
+        view.insertText("r", replacementRange: NSRange(location: NSNotFound, length: 0))
+        await wait { model.textInputState?.select?.options.first { $0.selected }?.label == "Bravo" && !model.textInputBusy }
+        model.textInput(.key(.tab, false)); model.textInput(.key(.tab, true))
+        await wait { model.textInputState?.select?.popup == true && !model.textInputBusy }
+        view.insertText("中文", replacementRange: NSRange(location: NSNotFound, length: 0))
+        await wait { model.textInputState?.select?.options.first { $0.selected }?.label == "中文" && !model.textInputBusy }
+        XCTAssertNil(model.textInputState?.focused)
+        await model.stop()
+    }
+
+    func testNativeMultipleSelectionCommandMovementRangeScrollResetAndPostSubmission() async throws {
+        let (model, view, fixture) = try await start(path: "/select")
+        defer { fixture.stop(); Task { await model.stop() } }
+        model.textInput(.key(.tab, false)); model.textInput(.key(.tab, false))
+        await wait { model.textInputState?.select?.multiple == true && !model.textInputBusy }
+        func selected() -> [String] { model.textInputState?.select?.options.filter(\.selected).map(\.label) ?? [] }
+        XCTAssertEqual(selected(), ["Topic Alpha", "Topic Gamma"])
+        model.textInput(.selectKey(.down, false, true))
+        await wait { model.textInputState?.select?.active_option == model.textInputState?.select?.options[1].node_id && !model.textInputBusy }
+        XCTAssertEqual(selected(), ["Topic Alpha", "Topic Gamma"])
+        model.textInput(.key(.space, false))
+        await wait { selected() == ["Topic Alpha", "Topic Beta", "Topic Gamma"] && !model.textInputBusy }
+        model.textInput(.key(.end, true))
+        await wait { selected() == ["Topic Beta", "Topic Gamma", "Topic Delta", "Topic Emoji 😀"] && !model.textInputBusy }
+        await wait { model.representation?.nodes.first { $0.name == "Topic Emoji 😀" }?.bounds.height ?? 0 > 0 }
+        let snapshot = try XCTUnwrap(model.representation)
+        view.accessibilityTree.update(snapshot, epoch: model.accessibilityEpoch, imageSize: model.cssViewportSize ?? .zero)
+        let list = try XCTUnwrap(view.accessibilityTree.elements[try XCTUnwrap(model.textInputState?.select?.node_id)])
+        XCTAssertEqual(list.accessibilityRole(), .list)
+        XCTAssertEqual(list.accessibilitySelectedChildren()?.count, 4)
+        // Repeated native Tab and activation go through the acknowledged queue.
+        model.textInput(.key(.tab, false)); model.textInput(.key(.enter, false)); model.textInput(.key(.tab, true))
+        await wait { model.textInputState?.select?.multiple == true && !model.textInputBusy }
+        XCTAssertEqual(selected(), ["Topic Alpha", "Topic Gamma"])
+        model.textInput(.key(.down, true))
+        await wait { selected() == ["Topic Alpha", "Topic Beta"] && !model.textInputBusy }
+        let current = try XCTUnwrap(model.representation)
+        let post = try XCTUnwrap(current.nodes.first { $0.name == "Send choices POST" })
+        XCTAssertTrue(model.accessibilityAction(current, epoch: model.accessibilityEpoch, node: post))
+        await wait { model.representation?.url == fixture.origin + "/posted" }
+        let request = try XCTUnwrap(fixture.records.last)
+        XCTAssertEqual(request.method, "POST")
+        XCTAssertEqual(String(data: request.body, encoding: .utf8), "region=a&topic=a&topic=b")
+        await model.stop()
+    }
+
     func testUndoManagerCommitsCompositionRestoresUTF16SelectionAndKeepsCancelledRedo() async throws {
         let (model, view, fixture) = try await start()
         defer { fixture.stop(); Task { await model.stop() } }

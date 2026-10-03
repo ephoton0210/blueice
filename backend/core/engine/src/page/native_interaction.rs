@@ -55,19 +55,6 @@ pub(super) fn form_owner(doc: &Document, id: NodeId) -> Option<NodeId> {
     nearest_form_ancestor(doc, id)
 }
 
-fn disabled_option(doc: &Document, id: NodeId) -> bool {
-    let mut node = Some(id);
-    while let Some(id) = node {
-        match tag(doc, id) {
-            "select" => break,
-            "option" | "optgroup" if has(doc, id, "disabled") => return true,
-            _ => {}
-        }
-        node = doc.parent(id);
-    }
-    false
-}
-
 impl Page {
     pub(crate) fn native_activation_link(&self, node: NodeId) -> Option<String> {
         nearest_link_href(&self.doc, node).map(|href| self.resolve_link_href(href))
@@ -169,6 +156,8 @@ impl Page {
         }
         self.commit_native_composition();
         self.focused = focused;
+        self.native_select
+            .focus(focused.filter(|id| tag(&self.doc, *id) == "select"));
         self.native_focus_start = focused;
         self.native_focus_generation = self.native_focus_generation.wrapping_add(1);
         self.native_editor = None;
@@ -377,7 +366,7 @@ impl Page {
             return Ok(false);
         };
         if tag(&self.doc, id) == "select" {
-            return self.native_select_key(id, key);
+            return self.native_select_key(id, key, shift, false);
         }
         if tag(&self.doc, id) == "input" && input_type(&self.doc, id) == "range" {
             return self.native_range_key(id, key);
@@ -421,70 +410,6 @@ impl Page {
             return self.native_text_input(context, source, action);
         }
         Ok(false)
-    }
-
-    pub(super) fn native_options(&self, select: NodeId) -> Vec<NodeId> {
-        let mut nodes = Vec::new();
-        descendants(&self.doc, select, &mut nodes);
-        nodes
-            .into_iter()
-            .filter(|id| tag(&self.doc, *id) == "option")
-            .collect()
-    }
-
-    pub(crate) fn native_select_value(&self, id: NodeId) -> Option<String> {
-        let options = self.native_options(id);
-        let option = options
-            .iter()
-            .rev()
-            .find(|id| has(&self.doc, **id, "selected"))
-            .or_else(|| options.iter().find(|id| !disabled_option(&self.doc, **id)))?;
-        Some(
-            element_attribute(&self.doc, *option, "value")
-                .map(str::to_string)
-                .unwrap_or_else(|| {
-                    node_text_content(&self.doc, *option)
-                        .split_whitespace()
-                        .collect::<Vec<_>>()
-                        .join(" ")
-                }),
-        )
-    }
-
-    fn native_select_key(&mut self, id: NodeId, key: PageKey) -> Result<bool, String> {
-        // Multiple-selection interaction needs its own selection anchor and
-        // native presentation. Do not collapse an existing selection here.
-        if has(&self.doc, id, "multiple") {
-            return Ok(false);
-        }
-        let options = self.native_options(id);
-        let enabled: Vec<_> = options
-            .iter()
-            .copied()
-            .filter(|id| !self.native_control_disabled(*id))
-            .collect();
-        if enabled.is_empty() {
-            return Ok(false);
-        }
-        let current = options
-            .iter()
-            .rev()
-            .find(|id| has(&self.doc, **id, "selected"))
-            .copied()
-            .unwrap_or(enabled[0]);
-        let index = enabled.iter().position(|id| *id == current).unwrap_or(0);
-        let target = match key {
-            PageKey::ArrowDown | PageKey::ArrowRight => enabled[(index + 1).min(enabled.len() - 1)],
-            PageKey::ArrowUp | PageKey::ArrowLeft => enabled[index.saturating_sub(1)],
-            PageKey::Home => enabled[0],
-            PageKey::End => *enabled.last().unwrap(),
-            _ => return Ok(false),
-        };
-        for option in options {
-            self.native_set_boolean(option, "selected", option == target);
-        }
-        self.relayout();
-        Ok(true)
     }
 
     fn native_range_key(&mut self, id: NodeId, key: PageKey) -> Result<bool, String> {

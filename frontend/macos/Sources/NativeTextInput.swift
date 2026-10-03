@@ -34,16 +34,20 @@ enum TextMovement: String, Encodable, Sendable {
 
 enum PageKey: String, Encodable, Sendable {
     case tab = "Tab", enter = "Enter", space = "Space", left = "ArrowLeft", right = "ArrowRight"
-    case up = "ArrowUp", down = "ArrowDown", home = "Home", end = "End", escape = "Escape"
+    case up = "ArrowUp", down = "ArrowDown", home = "Home", end = "End", escape = "Escape", pageUp = "PageUp", pageDown = "PageDown"
 }
 enum FocusDirection: String, Decodable, Sendable { case forward = "Forward", backward = "Backward" }
 
 enum TextInputAction: Encodable, Sendable {
     case key(PageKey, Bool)
-    var isPageKey: Bool { if case .key = self { return true }; return false }
+    var isPageKey: Bool {
+        switch self { case .key, .selectOption, .selectKey, .selectPointer, .selectScroll: return true; default: return false }
+    }
     case replace(String, TextRange?), compose(String, TextRange, TextRange?)
     case finishComposition, cancelComposition, select(TextRange), selectAll
     case undo, redo
+    case selectScroll(Double, Double, Int32)
+    case selectOption(UInt64, UInt64, Bool, Bool), selectKey(PageKey, Bool, Bool), selectPointer(Double, Double, Bool, Bool)
     case move(TextMovement, Bool), delete(Bool), pointer(Double, Double, Bool, UInt8)
 
     private struct Key: CodingKey {
@@ -62,6 +66,17 @@ enum TextInputAction: Encodable, Sendable {
         switch self {
         case .key(let key, let shift):
             var value = fields("Key"); try value.encode(key, forKey: Key("key")); try value.encode(shift, forKey: Key("shift"))
+        case .selectOption(let id, let frame, let extend, let toggle):
+            var value = fields("SelectOption"); try value.encode(id, forKey: Key("option_id")); try value.encode(frame, forKey: Key("frame_generation"))
+            try value.encode(extend, forKey: Key("extend")); try value.encode(toggle, forKey: Key("toggle"))
+        case .selectScroll(let x, let y, let rows):
+            var value = fields("SelectScroll"); try value.encode(x, forKey: Key("x")); try value.encode(y, forKey: Key("y")); try value.encode(rows, forKey: Key("rows"))
+        case .selectKey(let key, let extend, let toggle):
+            var value = fields("SelectKey"); try value.encode(key, forKey: Key("key"))
+            try value.encode(extend, forKey: Key("extend")); try value.encode(toggle, forKey: Key("toggle"))
+        case .selectPointer(let x, let y, let extend, let toggle):
+            var value = fields("SelectPointer"); try value.encode(x, forKey: Key("x")); try value.encode(y, forKey: Key("y"))
+            try value.encode(extend, forKey: Key("extend")); try value.encode(toggle, forKey: Key("toggle"))
         case .finishComposition: try unit("FinishComposition")
         case .cancelComposition: try unit("CancelComposition")
         case .undo: try unit("Undo")
@@ -113,6 +128,7 @@ struct TextInputState: Decodable, Sendable {
     let focused_node: UInt64?
     let focus_exit: FocusDirection?
     let focused: TextControlState?
+    let select: SelectControlState?
     var context: TextInputContext {
         TextInputContext(version: version, frame_source: frame_source,
                          document_generation: document_generation, focus_generation: focus_generation)
@@ -125,6 +141,17 @@ struct TextInputState: Decodable, Sendable {
         }
         guard version == 1, scroll_y.isFinite, abs(scroll_y) <= 1e9 else { throw BrowserFailure.invalid("Invalid native text state.") }
         guard focus_exit == nil || focused_node == nil && focused == nil else { throw BrowserFailure.invalid("Invalid native focus handoff.") }
+        if let select {
+            guard focused == nil, focused_node == select.node_id, focus_exit == nil,
+                  validBounds(select.bounds), select.options.count <= 1024,
+                  Set(select.options.map(\.node_id)).count == select.options.count,
+                  select.options.allSatisfy({ $0.label.unicodeScalars.count <= 256 && ($0.group?.unicodeScalars.count ?? 0) <= 256 }),
+                  !select.popup || !select.multiple,
+                  select.active_option == nil || select.limited || select.options.contains(where: { $0.node_id == select.active_option && !$0.disabled }),
+                  select.multiple || select.options.filter(\.selected).count <= 1 else {
+                throw BrowserFailure.invalid("Invalid native select state.")
+            }
+        }
         guard let field = focused else { return }
         guard focused_node == nil || focused_node == field.node_id else { throw BrowserFailure.invalid("Mismatched native focus target.") }
         guard field.text_length <= 65_536, field.selection.valid(length: field.text_length),
@@ -154,4 +181,21 @@ struct TextInputState: Decodable, Sendable {
         return CGRect(x: rect.x * viewport.width / image.width, y: (rect.y - scroll_y) * viewport.height / image.height,
                       width: rect.width * viewport.width / image.width, height: rect.height * viewport.height / image.height)
     }
+}
+
+struct SelectControlState: Decodable, Sendable {
+    struct Choice: Decodable, Sendable {
+        let node_id: UInt64
+        let label: String
+        let group: String?
+        let selected: Bool
+        let disabled: Bool
+    }
+    let node_id: UInt64
+    let multiple: Bool
+    let popup: Bool
+    let limited: Bool
+    let bounds: PageNode.Bounds
+    let active_option: UInt64?
+    let options: [Choice]
 }

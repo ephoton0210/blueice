@@ -67,6 +67,7 @@ pub struct Page {
     hovered: Option<NodeId>,
     focused: Option<NodeId>,
     native_editor: Option<native_editing::EditorSession>,
+    native_select: native_select::SelectSession,
     native_undo: native_editing::undo::UndoHistory,
     native_focus_generation: u64,
     native_focus_exit: Option<blueice_ipc::input::FocusDirection>,
@@ -135,6 +136,7 @@ impl Page {
             hovered: None,
             focused: None,
             native_editor: None,
+            native_select: native_select::SelectSession::default(),
             native_undo: native_editing::undo::UndoHistory::default(),
             native_focus_generation: 0,
             native_focus_exit: None,
@@ -183,6 +185,7 @@ impl Page {
         self.network_response = None;
         self.network_trace = None;
         self.native_form_defaults.clear();
+        self.native_select = native_select::SelectSession::default();
         self.native_undo.clear();
         self.native_files.clear();
         self.native_file_revision = self.native_file_revision.wrapping_add(1);
@@ -227,6 +230,7 @@ impl Page {
                 available_width: self.viewport_width,
             },
         );
+        self.adjust_native_select_scroll();
         self.adjust_native_editor_scroll();
         let max_scroll = (self.fragment.height - self.viewport_height).max(0.0);
         self.scroll_y = self.scroll_y.min(max_scroll);
@@ -685,6 +689,7 @@ impl Page {
                     self.commit_native_composition();
                     self.native_focus_generation = self.native_focus_generation.wrapping_add(1);
                     self.native_editor = None;
+                    self.native_select.focus(Some(id));
                     self.native_focus_exit = None;
                 }
                 self.focused = Some(id);
@@ -1077,6 +1082,7 @@ impl Page {
     /// to the departed document can never alias this one).
     pub(crate) fn continue_tab_generations_from(&mut self, previous: &Page) {
         self.native_undo.clear();
+        self.native_select = native_select::SelectSession::default();
         self.frame_generation = previous.frame_generation;
         self.document_generation = previous.document_generation.wrapping_add(1);
         self.display_viewport = previous.display_viewport;
@@ -1259,6 +1265,7 @@ mod form_submission;
 mod native_editing;
 mod native_forms;
 mod native_interaction;
+mod native_select;
 pub(crate) mod printing;
 use dom_helpers::*;
 
