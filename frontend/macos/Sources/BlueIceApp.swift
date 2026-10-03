@@ -9,11 +9,18 @@ import SwiftUI
 struct BlueIceApp: App {
     @NSApplicationDelegateAdaptor(BrowserAppDelegate.self) private var delegate
     var body: some Scene {
-        Settings { BrowserAppearanceSettingsView(settings: delegate.model.appearance) }
+        Settings {
+            VStack(spacing: 0) {
+                BrowserAppearanceSettingsView(settings: delegate.model.appearance)
+                BrowserSessionSettingsView(workspace: delegate.workspace, preferences: delegate.workspace.sessionPreferences)
+                    .padding([.horizontal, .bottom], 24).frame(width: 460)
+            }
+        }
             .commands {
                 BrowserActiveCommands(delegate: delegate)
                 BrowserAppearanceCommands(settings: delegate.workspace.appearance)
                 BrowserWindowCommands(workspace: delegate.workspace)
+                BrowserSessionCommands(workspace: delegate.workspace)
             }
     }
 }
@@ -56,6 +63,19 @@ final class BrowserAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
             }
         }
         workspace.onActivateWindow = { [weak self] id in self?.browserWindows[id]?.makeKeyAndOrderFront(nil) }
+        workspace.onCaptureWindowFrame = { [weak self] id in
+            guard let frame = self?.browserWindows[id]?.frame else { return nil }
+            return .init(x: frame.origin.x, y: frame.origin.y, width: frame.width, height: frame.height)
+        }
+        workspace.onRestoreWindowFrame = { [weak self] id, saved in
+            guard let window = self?.browserWindows[id] else { return }
+            let rect = NSRect(x: saved.x, y: saved.y, width: saved.width, height: saved.height)
+            let screen = NSScreen.screens.max { left, right in
+                let a = left.visibleFrame.intersection(rect), b = right.visibleFrame.intersection(rect)
+                return (a.isNull ? 0 : a.width * a.height) < (b.isNull ? 0 : b.width * b.height)
+            }
+            window.setFrame(window.constrainFrameRect(rect, to: screen ?? NSScreen.main), display: true)
+        }
         workspace.onContextsChanged = { [weak self] in
             guard let self else { return }
             for (id, window) in self.browserWindows { if let model = self.workspace.models[id] { window.title = self.title(model) } }
@@ -86,6 +106,8 @@ final class BrowserAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
         if model !== active { model = active }
         if workspace.activeWindowID != id { workspace.activeWindowID = id }
     }
+    func windowDidMove(_ notification: Notification) { workspace.scheduleSessionSave() }
+    func windowDidResize(_ notification: Notification) { workspace.scheduleSessionSave() }
     private func title(_ model: BrowserModel) -> String {
         let profile = model.profileName == "Default" ? "BlueIce" : "BlueIce · \(model.profileName)"
         return model.windowID == 1 ? profile : "\(profile) · Window \(model.windowID)"

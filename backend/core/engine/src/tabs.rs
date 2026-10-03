@@ -225,6 +225,8 @@ enum HistoryEntry {
     Snapshot(Box<Page>),
 }
 
+mod navigation_session;
+
 impl HistoryEntry {
     fn post_request(&self) -> Option<&crate::navigation_request::BrowserNavigation> {
         match self {

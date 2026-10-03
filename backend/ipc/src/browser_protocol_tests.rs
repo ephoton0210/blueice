@@ -7,6 +7,46 @@ use std::io::Cursor;
 use std::net::{TcpListener, TcpStream};
 
 #[test]
+fn navigation_session_round_trip_preserves_document_and_request_identity() {
+    use crate::navigation_session::*;
+    let context = SessionDocument {
+        tab_id: 7,
+        frame_source: 11,
+        document_generation: 0,
+    };
+    let history = NavigationHistory {
+        entries: vec![NavigationEntry {
+            url: None,
+            was_post: false,
+        }],
+        cursor: 0,
+        zoom: 1.5,
+    };
+    for action in [
+        NavigationSessionAction::Inspect,
+        NavigationSessionAction::Restore {
+            context: context.clone(),
+            history: history.clone(),
+        },
+    ] {
+        let message = ClientMessage::NavigationSession(action);
+        let mut bytes = Vec::new();
+        write_client_message_with_ids(&mut bytes, Some(7), Some(41), &message).unwrap();
+        assert_eq!(
+            read_client_message_with_ids(&mut Cursor::new(bytes)).unwrap(),
+            (Some(7), Some(41), message)
+        );
+    }
+    let message = ServerMessage::NavigationSessionState { context, history };
+    let mut bytes = Vec::new();
+    write_server_message_with_ids(&mut bytes, Some(7), Some(41), &message).unwrap();
+    assert_eq!(
+        read_server_message_with_ids(&mut Cursor::new(bytes)).unwrap(),
+        (Some(7), Some(41), message)
+    );
+}
+
+#[test]
 fn display_preferences_round_trip_with_tab_frame_and_request_identity() {
     let preferences = crate::display::DisplayPreferences {
         dark: true,

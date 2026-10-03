@@ -241,6 +241,7 @@ final class BrowserModel: ObservableObject {
     }
     func setZoom(_ zoom: Double) {
         guard ready, let tab = selected, zoom.isFinite, (0.25...5).contains(zoom) else { return }
+        workspace?.scheduleSessionSave()
         desiredZooms[tab] = zoom
         zoomWrites[tab] = zoom
         guard zoomTask == nil else { return }
@@ -453,9 +454,10 @@ final class BrowserModel: ObservableObject {
             else { tabs.append(BrowserTab(id: id, url: url)) }
             showSelected()
             if url != nil { status = "Ready" }
+            let restoring = workspace?.restoringSession == true
             Task {
                 await send(.unit("ListTabs"))
-                if url == nil { await navigate("about:credits", tab: id) }
+                if url == nil && !restoring { await navigate("about:credits", tab: id) }
                 await send(.unit("GetHistoryState"), tab: id)
             }
         case .closed:
@@ -595,6 +597,7 @@ final class BrowserModel: ObservableObject {
             textInput(.finishComposition)
         }
         selected = tab
+        workspace?.scheduleSessionSave()
         resubmission = resubmissions[tab]; resubmissionPresented = resubmission != nil
         showSelected()
         if assistantPresented { refreshAssistantTranslation() }
@@ -633,7 +636,7 @@ final class BrowserModel: ObservableObject {
     func openInitialPage() async {
         await send(.unit("ListTabGroups"))
         await resize()
-        if let tab = selected { await navigate("about:credits", tab: tab) }
+        if let tab = selected { await send(.values("Navigate", ["url": .string("about:credits")]), tab: tab); await resize() }
     }
 
     func beginTabGroupEditor(group: UInt64? = nil, tab: UInt64? = nil) {
@@ -1070,6 +1073,7 @@ final class BrowserModel: ObservableObject {
     }
 
     private func navigate(_ url: String, tab: UInt64) async {
+        workspace?.scheduleSessionSave()
         if tab == selected { status = "Loading…" }
         await send(.values("Navigate", ["url": .string(url)]), tab: tab)
         await resize()

@@ -36,8 +36,12 @@ enum BrowserCommand: Encodable, Sendable {
     case printAction(PrintAction)
     case fileInput(FileInputAction)
     case assistantPage(AssistantDocument, AssistantPageAction)
+    case navigationSession(NavigationSessionAction)
     func encode(to encoder: Encoder) throws {
         switch self {
+        case .navigationSession(let action):
+            var root = encoder.container(keyedBy: MessageKey.self)
+            try root.encode(action, forKey: MessageKey("NavigationSession"))
         case .assistantPage(let context, let action):
             var root = encoder.container(keyedBy: MessageKey.self)
             var box = root.nestedContainer(keyedBy: MessageKey.self, forKey: MessageKey("AssistantPage"))
@@ -286,6 +290,7 @@ struct FormResubmission: Decodable, Sendable {
 }
 
 enum BrowserMessage: Decodable, Sendable {
+    case navigationSessionState(NavigationSessionState), sessionUnavailable
     case assistantResult(AssistantPageResult), assistantUnavailable, translation(TranslationState), translationUnavailable
     case fileInputState(FileInputState)
     case printState(PrintReply)
@@ -314,6 +319,9 @@ enum BrowserMessage: Decodable, Sendable {
         struct Blocked: Decodable { let reason: String }
         struct Failure: Decodable { let message: String }
         switch key.stringValue {
+        case "NavigationSessionState":
+            if let state = try? object.decode(NavigationSessionState.self, forKey: key), state.valid { self = .navigationSessionState(state) }
+            else { self = .sessionUnavailable }
         case "AssistantPageResult":
             if let result = try? object.decode(AssistantPageResult.self, forKey: key), result.valid { self = .assistantResult(result) }
             else { self = .assistantUnavailable }

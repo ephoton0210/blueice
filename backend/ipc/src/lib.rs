@@ -51,6 +51,7 @@ pub mod find;
 pub mod gatekeeper;
 pub mod input;
 pub mod local_socket;
+pub mod navigation_session;
 pub mod owner_bootstrap;
 pub mod page_host;
 pub mod permission_control;
@@ -189,6 +190,7 @@ pub enum ClientMessage {
         context: assistant_page::AssistantDocument,
         action: assistant_page::AssistantPageAction,
     },
+    NavigationSession(navigation_session::NavigationSessionAction),
     /// The viewport size changed; `core` re-lays-out at the new width.
     Resize {
         width: u32,
@@ -469,6 +471,10 @@ pub enum ServerMessage {
         context: assistant_page::AssistantDocument,
         kind: AssistantTaskKind,
         text: String,
+    },
+    NavigationSessionState {
+        context: navigation_session::SessionDocument,
+        history: navigation_session::NavigationHistory,
     },
     /// Reply to [`ClientMessage::GetRepresentation`].
     Representation(AiSnapshot),

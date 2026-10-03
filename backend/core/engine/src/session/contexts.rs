@@ -144,6 +144,7 @@ pub(super) fn scoped_command(
         | ClientMessage::ConfirmFormResubmission { .. }
         | ClientMessage::GetHistoryState
         | ClientMessage::AssistantPage { .. }
+        | ClientMessage::NavigationSession(_)
         | ClientMessage::GetTranslationState
         | ClientMessage::SetTranslationLanguage { .. }
         | ClientMessage::Find { .. }

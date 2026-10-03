@@ -6,6 +6,7 @@ import AppKit
 import Carbon
 import ApplicationServices
 import XCTest
+import Darwin
 
 @MainActor
 final class BrowserUITests: XCTestCase {
@@ -767,6 +768,138 @@ final class BrowserUITests: XCTestCase {
         XCTAssertTrue(app.windows["browser-window"].exists)
         waitValue(app.windows["browser-window"].textFields["address"],"about:credits")
         XCTAssertEqual(fixture.requests,["/editing"])
+    }
+
+    func testSessionRestoresProfilesWindowsGroupsSelectionHistoryAndZoom() throws {
+        let fixture = try HTTPFixture(); defer { fixture.stop() }
+        launch(); enter(fixture.origin + "/first"); waitValue(app.textFields["address"], fixture.origin + "/first")
+        enter(fixture.origin + "/second"); waitValue(app.textFields["address"], fixture.origin + "/second")
+        app.buttons["back"].click(); waitValue(app.textFields["address"], fixture.origin + "/first")
+        app.menuBars.menuBarItems["View"].click(); app.menuItems["Page Zoom"].hover(); app.menuItems["150%"].click()
+        waitValue(app.buttons["page-zoom"], "150%")
+        app.buttons["new-tab-group"].click(); XCTAssertTrue(app.textFields["group-name"].waitForExistence(timeout: 10))
+        paste("Study", into: app.textFields["group-name"]); app.buttons["group-color-red"].click(); app.buttons["group-save"].click()
+        XCTAssertTrue(app.buttons["tab-group-1"].waitForExistence(timeout: 10))
+        app.buttons["add-tab"].click(); waitValue(app.textFields["address"], "about:credits")
+        app.buttons["tab-1"].click(); app.buttons["tab-group-1"].click()
+        waitValue(app.buttons["tab-group-1"], "Collapsed, 1 tabs, contains selected tab")
+        app.typeKey("n", modifierFlags: .command)
+        let second = app.windows["browser-window-2"]
+        XCTAssertTrue(second.waitForExistence(timeout: 15)); enter(fixture.origin + "/editing", in: second)
+        XCTAssertTrue(second.textFields["Editor"].waitForExistence(timeout: 15)); paste("unsaved-form-content", into: second.textFields["Editor"])
+        app.menuBars.menuBarItems["Profiles"].click(); app.menuItems["New Profile…"].click()
+        XCTAssertTrue(app.textFields["profile-name"].waitForExistence(timeout: 10)); paste("Work", into: app.textFields["profile-name"])
+        app.buttons["profile-save"].click()
+        let third = app.windows["browser-window-3"]
+        XCTAssertTrue(third.waitForExistence(timeout: 15)); enter(fixture.origin + "/appearance", in: third)
+        waitValue(third.textFields["address"], fixture.origin + "/appearance")
+        let settings = preferenceWindow(); settings.checkBoxes["session-remember"].click(); settings.checkBoxes["session-reopen"].click()
+        settings.buttons[XCUIIdentifierCloseWindow].click(); activateWindow(3)
+        let archive = try waitSessionArchive(windows: 3, tabs: 4)
+        XCTAssertFalse(String(decoding: archive, as: UTF8.self).contains("unsaved-form-content"))
+        let originalFrame = app.windows["browser-window"].frame
+        app.typeKey("q", modifierFlags: .command); XCTAssertTrue(app.wait(for: .notRunning, timeout: 15))
+        app.launch()
+        let root = app.windows["browser-window-2"]
+        let work = app.windows["browser-window-4"]
+        XCTAssertTrue(work.waitForExistence(timeout: 20)); waitValue(work.textFields["address"], fixture.origin + "/appearance")
+        XCTAssertEqual(app.windows.matching(NSPredicate(format: "identifier BEGINSWITH 'browser-window'")).count, 3)
+        waitValue(work.descendants(matching: .any).matching(identifier: "profile-menu").firstMatch, "Work")
+        activateWindow(2); waitValue(root.textFields["address"], fixture.origin + "/first")
+        XCTAssertEqual(root.frame.width, originalFrame.width, accuracy: 3)
+        XCTAssertEqual(root.frame.height, originalFrame.height, accuracy: 3)
+        XCTAssertEqual(root.frame.minX, originalFrame.minX, accuracy: 3)
+        XCTAssertEqual(root.frame.minY, originalFrame.minY, accuracy: 3)
+        waitValue(root.buttons["page-zoom"], "150%")
+        XCTAssertEqual(root.buttons["tab-group-1"].label, "Study")
+        waitValue(root.buttons["tab-group-1"], "Collapsed, 1 tabs, contains selected tab")
+        XCTAssertTrue(root.buttons["forward"].isEnabled)
+        activateWindow(3); waitValue(app.windows["browser-window-3"].textFields["Editor"], "A😀B")
+        activateWindow(2); root.buttons["forward"].click(); waitValue(root.textFields["address"], fixture.origin + "/second")
+        let attachment = XCTAttachment(screenshot: root.screenshot()); attachment.name = "macos-session-restored"; attachment.lifetime = .keepAlways; add(attachment)
+        XCTAssertEqual(fixture.requests, ["/first", "/second", "/first", "/editing", "/appearance", "/first", "/editing", "/appearance", "/second"])
+    }
+
+    func testSessionPostMarkerNeverPersistsBodyOrReplaysRequest() throws {
+        let fixture = try HTTPFixture(); defer { fixture.stop() }
+        launch(); enter(fixture.origin + "/forms")
+        let query = app.groups["page"].textFields["Query"]
+        XCTAssertTrue(query.waitForExistence(timeout: 15)); paste("private-post-session-value", into: query)
+        app.groups["page"].buttons["Send POST"].click(); waitValue(app.textFields["address"], fixture.origin + "/posted?kept=1")
+        XCTAssertEqual(fixture.records.last?.method, "POST")
+        XCTAssertTrue(String(decoding: try XCTUnwrap(fixture.records.last?.body), as: UTF8.self).contains("private-post-session-value"))
+        let settings = preferenceWindow(); settings.checkBoxes["session-remember"].click(); settings.checkBoxes["session-reopen"].click()
+        settings.buttons[XCUIIdentifierCloseWindow].click()
+        let archive = try waitSessionArchive(windows: 1, tabs: 1)
+        XCTAssertFalse(String(decoding: archive, as: UTF8.self).contains("private-post-session-value"))
+        XCTAssertTrue(String(decoding: archive, as: UTF8.self).contains("\"was_post\":true"))
+        app.typeKey("q", modifierFlags: .command); XCTAssertTrue(app.wait(for: .notRunning, timeout: 15)); app.launch()
+        let restored = app.windows["browser-window-2"]
+        XCTAssertTrue(restored.waitForExistence(timeout: 20)); waitValue(restored.textFields["address"], fixture.origin + "/posted?kept=1")
+        waitPageContent("POST page could not be restored")
+        restored.buttons["reload"].click()
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == 'Form data has expired; submit the form again' OR value == 'Form data has expired; submit the form again'"), object: restored.staticTexts["status"])], timeout: 15), .completed)
+        XCTAssertEqual(fixture.records.count, 2); XCTAssertFalse(restored.sheets.buttons["Resend"].exists)
+    }
+
+    func testSessionManualRestoreForgetAndInvalidPreferenceRecovery() throws {
+        launch(); enter("about:settings"); waitValue(app.textFields["address"], "about:settings")
+        let settings = preferenceWindow(); settings.checkBoxes["session-remember"].click()
+        settings.buttons[XCUIIdentifierCloseWindow].click(); _ = try waitSessionArchive(windows: 1, tabs: 1)
+        app.typeKey("q", modifierFlags: .command); XCTAssertTrue(app.wait(for: .notRunning, timeout: 15))
+        launch(); app.menuBars.menuBarItems["File"].click(); app.menuItems["Restore Last Session"].click()
+        let restored = app.windows["browser-window-2"]
+        XCTAssertTrue(restored.waitForExistence(timeout: 15)); waitValue(restored.textFields["address"], "about:settings")
+        let panel = preferenceWindow(); panel.buttons["session-forget"].click()
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in self.storedSessionArchive() == nil }, object: nil)], timeout: 10), .completed)
+        panel.buttons[XCUIIdentifierCloseWindow].click(); app.typeKey("q", modifierFlags: .command)
+        XCTAssertTrue(app.wait(for: .notRunning, timeout: 15))
+        app.launchArguments += ["-browser.session.archive", "malformed-session-fixture"]
+        launch(); let recovery = preferenceWindow()
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "label CONTAINS 'unavailable' OR value CONTAINS 'unavailable'"), object: recovery.staticTexts["session-status"])], timeout: 10), .completed)
+        XCTAssertNil(storedSessionArchive())
+        XCTAssertFalse(recovery.buttons["session-restore"].isEnabled); recovery.buttons["session-forget"].click()
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in self.storedSessionArchive() == nil }, object: nil)], timeout: 10), .completed)
+    }
+
+    func testSessionRestorationRechecksChangedContentAndKeepsDenialVisible() throws {
+        let fixture = try HTTPFixture(); defer { fixture.stop() }
+        launch(); enter(fixture.origin + "/session-change"); waitPageContent("Initially reviewed page")
+        let settings = preferenceWindow(); settings.checkBoxes["session-remember"].click(); settings.checkBoxes["session-reopen"].click()
+        settings.buttons[XCUIIdentifierCloseWindow].click(); _ = try waitSessionArchive(windows: 1, tabs: 1)
+        app.typeKey("q", modifierFlags: .command); XCTAssertTrue(app.wait(for: .notRunning, timeout: 15)); app.launch()
+        let window = app.windows["browser-window-2"]
+        XCTAssertTrue(window.waitForExistence(timeout: 20))
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "label CONTAINS 'Navigation blocked' OR value CONTAINS 'Navigation blocked'"), object: window.staticTexts["status"])], timeout: 15), .completed)
+        XCTAssertFalse(pageContent("Initially reviewed page").exists)
+        let archive = try waitSessionArchive(windows: 1, tabs: 1)
+        XCTAssertTrue(String(decoding: archive, as: UTF8.self).contains("/session-change"))
+        XCTAssertEqual(fixture.requests, ["/session-change", "/session-change"])
+        XCTAssertTrue(window.buttons["add-tab"].isEnabled)
+    }
+
+    private func storedSessionArchive() -> Data? {
+        // The generated UI runner is sandboxed. Read the app's isolated test
+        // domain, rather than the runner's separate suite with the same name.
+        guard let user = getpwuid(getuid()), let home = user.pointee.pw_dir else { return nil }
+        let file = URL(fileURLWithPath: String(cString: home)).appendingPathComponent("Library/Preferences").appendingPathComponent(preferenceDomain + ".plist")
+        guard let data = try? Data(contentsOf: file),
+              let values = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any] else { return nil }
+        return values["browser.session.archive"] as? Data
+    }
+
+    private func waitSessionArchive(windows: Int, tabs: Int) throws -> Data {
+        let expectation = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            guard let data = self.storedSessionArchive(),
+                  let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let profiles = root["profiles"] as? [[String: Any]] else { return false }
+            let savedWindows = profiles.flatMap { $0["windows"] as? [[String: Any]] ?? [] }
+            return savedWindows.count == windows && savedWindows.reduce(0) { $0 + ($1["tabs"] as? [Any] ?? []).count } == tabs
+        }, object: nil)
+        let result = XCTWaiter.wait(for: [expectation], timeout: 15)
+        if result != .completed { _ = preferenceWindow() }
+        XCTAssertEqual(result, .completed, app.debugDescription)
+        return try XCTUnwrap(storedSessionArchive())
     }
 
     private var app: XCUIApplication!

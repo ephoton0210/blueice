@@ -14,7 +14,7 @@ pushed to the current tracked branch as authorized by the owner.
 | Page accessibility | Core semantic tree mapped into NSAccessibility, native actions, privacy, stale-element and tab isolation tests | Committed and pushed `41952a803` |
 | Native text editing | Core-owned UTF-16 selection, grapheme movement/deletion, IME composition/update/commit/cancel, caret/candidate geometry, text/password/textarea editing, clipboard policy and native UI tests | Foundation committed and pushed `8b80c3c53`; physical OS IME and remaining editing behavior pending, see [results](MACOS_NATIVE_EDITING_RESULTS.md) |
 | Keyboard and page interaction | Keyboard-only form completion, checkbox/radio/select/range controls, find-in-page, native context menus, drag/drop and file-selection policy tests | Keyboard increment committed and pushed `97794bb57`; native form reset committed and pushed `4c1c6e922`; GET/POST submission committed and pushed `1bf78a3d9`; find/ordered clipboard committed and pushed `614489c59`; native context menus committed and pushed `531b6b2df`; native file-input panel/content submission committed and pushed `222d7f78e`, see [file-input results](MACOS_FILE_INPUT_RESULTS.md); remaining interactions pending |
-| Windows and tab organization | Multiple native windows, tab groups, profile/context lifecycle, retained history and state handoff using core tab identities | Native groups committed and pushed `6e141967f`; shared-core windows/tab transfer committed and pushed `b318e0de8`; context lifecycle and persistent profile identities committed and pushed `ee450a3df`, see [context results](MACOS_CONTEXT_RESULTS.md); durable session restoration and full storage partitioning pending |
+| Windows and tab organization | Multiple native windows, tab groups, profile/context lifecycle, retained history and state handoff using core tab identities | Native groups committed and pushed `6e141967f`; shared-core windows/tab transfer committed and pushed `b318e0de8`; context lifecycle and persistent profile identities committed and pushed `ee450a3df`, see [context results](MACOS_CONTEXT_RESULTS.md); durable native session restoration implemented and accepted, see [session results](MACOS_SESSION_RESTORE_RESULTS.md); full storage partitioning pending |
 | Downloads and printing | Actual download manager/shelf, progress/cancel/open/reveal, print/PDF media output and native panel tests | Native manager panel and linked-file downloads committed and pushed `b62b38aa7`, see [download results](MACOS_DOWNLOAD_RESULTS.md); core print-media pagination and native print/PDF committed and pushed `0d2e3ea58`, acceptance recorded in [print results](MACOS_PRINT_RESULTS.md); automatic response downloads, destination/credential UI, quarantine, vector PDF and physical-printer acceptance pending |
 | Trusted browser panels | Assistant results and human permission decisions using the private owner boundary, policy-denial and no-AI-grant tests | Native installed-extension permission child and two-step one-shot confirmation committed and pushed `f83c94152`, see [permission results](MACOS_PERMISSION_RESULTS.md). Native assistant settings and proposal decisions committed and pushed `b53a91111`, see [assistant settings results](MACOS_ASSISTANT_SETTINGS_RESULTS.md). Native assistant result/sidebar and translation surfaces implemented and accepted, see [assistant page results](MACOS_ASSISTANT_PAGE_RESULTS.md). Remaining permission UI pending |
 | macOS display and system integration | DPI/multi-monitor, zoom, theme/high contrast/reduced motion, fullscreen, localization and native menu/shortcut tests | Retina/CSS viewport, per-tab zoom and native fullscreen committed and pushed `91f2dd78c`, see [viewport results](MACOS_VIEWPORT_RESULTS.md); persistent appearance/contrast/motion and CSS media committed and pushed `0609c8a81`, recorded in [display results](MACOS_DISPLAY_PREFERENCES_RESULTS.md); physical system/monitor transitions and localization pending |
@@ -313,10 +313,11 @@ same registry and waits for its exact request; unsolicited snapshots do not
 complete it. Legacy tab/open wire shapes remain unchanged.
 
 Bounded preferences persist names and logical UUID keys independently of runtime
-IDs. Relaunch recreates empty named contexts with fresh runtime IDs and preserves
-their UUIDs; it does not restore pages or fetch remembered URLs. Invalid saved
-catalogs are retained and profile management is disabled. Full session/tab
-restoration remains Phase 16 work. Cookies, cache and authentication are not yet
+IDs. Profile-catalog restoration recreates empty named contexts with fresh runtime
+IDs and preserves their UUIDs. Page restoration is an independent opt-in choice
+provided by the durable session increment below. Invalid saved
+catalogs are retained and profile management is disabled. The durable native
+session increment below adds opt-in tab/window restoration. Cookies, cache and authentication are not yet
 implemented in the network layer; this increment does not add private browsing
 or per-profile storage, assistant, extension, download or display preferences.
 Final acceptance is recorded in [context results](MACOS_CONTEXT_RESULTS.md).
@@ -385,3 +386,34 @@ feature they exercise; do not use a broad green test count as evidence for
 untested IME, screen-reader, permission, print, profile or window behavior.
 The Phase 22 cross-platform work remains separate from this macOS delivery;
 its unfinished items must not be reported as achieved by the macOS frontend.
+
+
+## Durable native session restoration increment
+
+The native Settings scene provides independent Remember and Reopen-on-startup
+choices, Restore Last Session, and explicit Forget. A versioned, bounded archive
+stores logical profile/window UUIDs, groups (including empty groups), tab order,
+selection, history cursor and forward branch, zoom and window geometry. Runtime
+IDs, frame/document identities, page HTML, form values, selected files, POST
+bodies and permission grants are excluded. Initial default-page startup preserves
+a previous saved session for manual restoration. User changes debounce saving;
+normal termination flushes all live windows before stopping owned services.
+Malformed or over-limit archives are retained until explicit Forget.
+
+Restoration recreates core-owned windows/tabs and profile groups. Every current
+GET uses ordinary mandatory URL/content review before history metadata can attach
+to its live document. Redirected current URLs use the reviewed final destination.
+Rejected navigation preserves its native denial and original saved URL. Imported
+POST entries are expired markers: a current POST becomes a fixed warning in a
+blank tab, and reload/history never silently resubmit it as GET. Forward/backward
+GET history remains gated. An additive, document-bound NavigationSession protocol
+keeps request, tab, window and profile ownership checks. MCP and the reference
+frontend tolerate the additional reply without changing legacy wire shapes.
+
+Native UI coverage exercises automatic and manual restoration, three windows
+across two profiles, selected/collapsed groups, forward history, zoom and geometry,
+private POST-body exclusion, expired-form behavior, invalid preferences and
+changed-content denial. Acceptance is recorded in
+[session restoration results](MACOS_SESSION_RESTORE_RESULTS.md). Full network
+storage partitioning, fullscreen/miniaturized session state, restored form contents
+and the other unfinished milestones remain outside this increment.

@@ -1849,6 +1849,7 @@ mod unix {
                     | ServerMessage::ContextMenu(_)
                     | ServerMessage::ContextMenuLink { .. }
                     | ServerMessage::AssistantPageResult { .. }
+                    | ServerMessage::NavigationSessionState { .. }
                     | ServerMessage::TextInputState(_) => {}
                 },
                 UserEvent::Disconnected => {

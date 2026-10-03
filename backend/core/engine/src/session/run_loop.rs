@@ -342,6 +342,72 @@ pub(super) fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
                             },
                         )?;
                     }
+                    ClientMessage::NavigationSession(action) => {
+                        use blueice_ipc::navigation_session::{
+                            NavigationSessionAction, SessionDocument,
+                        };
+                        let Some(page) = tabs.get(target) else {
+                            write_unknown_tab_error(stream, request_id, target)?;
+                            continue;
+                        };
+                        let source = blueice_ipc::shm::frame_source_id(frame_dir);
+                        let restoring = !matches!(action, NavigationSessionAction::Inspect);
+                        let mut replaced = false;
+                        if let NavigationSessionAction::Restore { context, history } = action {
+                            if context.tab_id != target.as_u64()
+                                || context.frame_source != source
+                                || context.document_generation != page.document_generation()
+                            {
+                                write_error(
+                                    stream,
+                                    reply_tab,
+                                    request_id,
+                                    "Session document is stale".into(),
+                                )?;
+                                continue;
+                            }
+                            match tabs.restore_navigation_session(target, history) {
+                                Ok(changed) => {
+                                    replaced = changed;
+                                    supersede_pending_navigation(&mut pending_nav_seq, target);
+                                }
+                                Err(reason) => {
+                                    write_error(stream, reply_tab, request_id, reason.into())?;
+                                    continue;
+                                }
+                            }
+                        }
+                        match tabs.navigation_session(target) {
+                            Ok(history) => {
+                                let page = tabs.get_mut(target).expect("checked session tab");
+                                blueice_ipc::write_server_message_with_ids(
+                                    stream,
+                                    reply_tab,
+                                    request_id,
+                                    &ServerMessage::NavigationSessionState {
+                                        context: SessionDocument {
+                                            tab_id: target.as_u64(),
+                                            frame_source: source,
+                                            document_generation: page.document_generation(),
+                                        },
+                                        history,
+                                    },
+                                )?;
+                                if replaced {
+                                    reply_navigated(page, stream, reply_tab, request_id)?;
+                                }
+                                // Inspection is read-only; restoration publishes its zoom or fixed POST notice.
+                                if restoring {
+                                    send_frame(
+                                        page, stream, frame_dir, generation, reply_tab, request_id,
+                                    )?;
+                                }
+                            }
+                            Err(reason) => {
+                                write_error(stream, reply_tab, request_id, reason.into())?
+                            }
+                        }
+                    }
                     ClientMessage::SetTranslationLanguage { target_language } => {
                         if tabs.get(target).is_none() {
                             write_unknown_tab_error(stream, request_id, target)?;
