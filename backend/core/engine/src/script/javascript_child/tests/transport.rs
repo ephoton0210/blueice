@@ -45,6 +45,32 @@ fn page_host_connection_waits_for_a_bound_socket_to_start_listening() {
 }
 
 #[test]
+fn pumping_accepts_a_final_reply_when_the_peer_closes_immediately() {
+    for attempt in 0..128 {
+        let (core, mut child) = UnixStream::pair().unwrap();
+        let child_task = thread::spawn(move || {
+            assert_eq!(
+                page_host::read_page_host_request(&mut child).unwrap(),
+                PageHostRequest::Shutdown
+            );
+            page_host::write_page_host_reply(&mut child, &PageHostReply::ShutdownAck).unwrap();
+            // The final frame remains valid even if EOF reaches core before
+            // its reply reader starts. Repeat to exercise both schedules.
+        });
+        let reply = PageHostConnection { stream: core }.request_while_pumping_script_with_timeout(
+            PageHostRequest::Shutdown,
+            &mut || Ok(()),
+            Duration::from_secs(2),
+        );
+        child_task.join().unwrap();
+        assert_eq!(
+            reply.unwrap_or_else(|error| panic!("attempt {attempt}: {error}")),
+            PageHostReply::ShutdownAck
+        );
+    }
+}
+
+#[test]
 fn page_host_transport_pumps_before_the_child_replies() {
     let (core, mut child) = UnixStream::pair().unwrap();
     let (resume_sender, resume_receiver) = mpsc::sync_channel(1);

@@ -82,6 +82,16 @@ impl PageHostConnection {
             ));
         }
         let deadline = Instant::now() + wait;
+        // Install the receive bound before sending. A child can reply and
+        // close immediately; Darwin may reject SO_RCVTIMEO after that EOF,
+        // even though a complete, valid reply is still buffered.
+        if let Err(error) = self.stream.set_read_timeout(Some(wait)) {
+            let _ = self.stream.shutdown(Shutdown::Both);
+            return Err(io::Error::new(
+                error.kind(),
+                format!("page-host read timeout: {error}"),
+            ));
+        }
         self.stream.set_write_timeout(Some(wait)).map_err(|error| {
             io::Error::new(error.kind(), format!("page-host write timeout: {error}"))
         })?;
@@ -105,13 +115,6 @@ impl PageHostConnection {
                 return Err(error);
             }
         };
-        if let Err(error) = reader.set_read_timeout(Some(remaining)) {
-            let _ = self.stream.shutdown(Shutdown::Both);
-            return Err(io::Error::new(
-                error.kind(),
-                format!("page-host read timeout: {error}"),
-            ));
-        }
         let (reply_sender, reply_receiver) = mpsc::sync_channel(1);
         let reader_task = thread::spawn(move || {
             let _ = reply_sender.send(page_host::read_page_host_reply(&mut reader));
