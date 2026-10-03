@@ -146,6 +146,11 @@ final class BrowserModel: ObservableObject {
     @Published private(set) var selected: UInt64?
     @Published var address = ""
     @Published private(set) var status = "Starting BlueIce…"
+    @Published var permissionsErrorPresented = false
+
+    func openPermissions() {
+        if !session.openPermissions() { permissionsErrorPresented = true }
+    }
     @Published private(set) var resubmission: FormResubmission?
     @Published var resubmissionPresented = false
     private var resubmissions: [UInt64: FormResubmission] = [:]

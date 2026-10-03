@@ -21,13 +21,14 @@ open frontend/macos/.build/Build/Products/Debug/BlueIce.app
 
 `build.sh Release` builds optimized services and frontend. The Xcode project
 copies and locally signs `blueice-core`, `blueice-launcher` and
-`blueice-ai-gatekeeper`, plus the on-demand `blueice-downloads`, inside the app bundle. It
+`blueice-ai-gatekeeper`, plus the on-demand `blueice-downloads` and
+`blueice-extension-host`, inside the app bundle. It
 reuses `.build/core-target` for Rust output, keeping native frontend builds
 independent of the workspace's larger cache; an explicit `CARGO_TARGET_DIR`
 overrides that directory. Builds use an ad hoc identity for local development;
 distribution signing and notarization are separate work. To build from Xcode, first build the services
 with the script, then open `BlueIce.xcodeproj` and select the shared `BlueIce`
-scheme. `BLUEICE_BACKEND_DIR` overrides the directory of all four binaries
+scheme. `BLUEICE_BACKEND_DIR` overrides the directory of those five binaries
 when invoking Xcode directly. When running the app executable directly,
 `--launcher-exe /absolute/path/to/blueice-launcher` overrides the launcher;
 the core, gatekeeper and optional download service must reside beside it. The explicit diagnostic option
@@ -339,6 +340,30 @@ document, with the existing 1 MiB final form body limit. Directory/capture,
 label forwarding, drag/drop and full web File API/events remain open. See
 [file input results](../../development/browser_core/phase-22-browser-shell-accessibility/MACOS_FILE_INPUT_RESULTS.md).
 
+The Permissions toolbar button opens the native SwiftUI/AppKit permission app
+spawned by this browser's launcher. That exact child inherits the existing
+private permission pipes; the ordinary browser and operator sockets cannot
+carry its decisions. The bundled launcher resolves a fixed nested app, with no
+caller-selected frontend path. Unpackaged launchers retain their sibling frontend.
+Only this launcher's process group and bundle URL are activated from the toolbar.
+
+The panel displays the installed package name, version, digest, capability,
+origin scope and confirmed grant state. Allow/Revoke first shows a confirmation,
+then waits for core's reply for that exact package and generation. Cancel does
+not grant. A one-time DOM read separately reviews the live tab/document URL and
+requires a second Allow one read action; a changed document is rejected and the
+bearer stays internal to core and launcher. Closing the panel hides it and cancels
+an unfinished decision. Losing the private child stops the broker and disables
+browser actions. Permission grants remain process-lifetime.
+
+There is no installed extension by default. For an owner-selected validated
+package, launch the main app executable with `--extension-manifest /absolute/path/to/extension.json`.
+This startup option goes through the existing launcher/core package validation;
+neither a page nor browser/MCP messages can install a package or replace the path.
+The included extension host executes the existing package implementation.
+Assistant settings/proposal panels, extension installation UI and general
+site/OS permission prompts remain delivery work.
+
 Frame refresh temporarily suspends semantic actions until the representation
 matches the current tab, source, generation and URL. Native element identities
 survive a refresh within one document; reload, navigation and tab changes
@@ -351,5 +376,5 @@ keyboard/beforeinput/input/composition event dispatch, undo/redo, complete
 bidirectional shaping and caret blink remain open, as do full form event/validity behavior,
 select popup/typeahead/multiple-selection interaction, complete toolbar Tab
 traversal, image/media context actions, page-text selection/copy, drag/drop,
-full file API/events, automatic attachment downloads, permission panels and localization. Automated checks cover the recorded features; an
+full file API/events, automatic attachment downloads, remaining trusted panels and localization. Automated checks cover the recorded features; an
 interactive VoiceOver session remains unvalidated.

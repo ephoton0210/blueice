@@ -9,6 +9,153 @@ import XCTest
 
 @MainActor
 final class BrowserUITests: XCTestCase {
+    private func permissionPackage() throws -> URL {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("bi-permissions-ui-" + UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let manifest = root.appendingPathComponent("extension.json")
+        try Data(#"{"name":"Native permission fixture","version":"1","blueice_api_version":1,"entry_point":"extension.wasm","capabilities":{"optional":["storage"],"runtime_ephemeral":["dom:read"]}}"#.utf8).write(to: manifest)
+        var wasm = Data([0,97,115,109,1,0,0,0,1,4,1,96,0,0,3,2,1,0,7,17,1,13])
+        wasm.append(Data("blueice_start".utf8)); wasm.append(contentsOf: [0,0,10,4,1,2,0,11])
+        try wasm.write(to: root.appendingPathComponent("extension.wasm"))
+        return manifest
+    }
+    private func openPermissionPanel() -> XCUIApplication {
+        app.buttons["permissions"].click()
+        let panels = XCUIApplication(bundleIdentifier: "cc.blueice.BlueIcePanels")
+        XCTAssertTrue(panels.windows["permissions-window"].waitForExistence(timeout: 10), panels.debugDescription)
+        return panels
+    }
+    private func waitPermissionValue(_ element: XCUIElement, _ label: String) {
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", label), object: element)], timeout: 10), .completed, element.debugDescription)
+    }
+    func testNativePermissionPanelEmptyStateAndCloseKeepBrowserAlive() throws {
+        launch()
+        let panels = openPermissionPanel()
+        XCTAssertTrue(panels.staticTexts["permissions-empty"].waitForExistence(timeout: 10), panels.debugDescription)
+        XCTAssertFalse(panels.buttons["permission-confirm"].exists)
+        panels.windows["permissions-window"].buttons[XCUIIdentifierCloseWindow].click()
+        XCTAssertTrue(app.windows["browser-window"].exists)
+        app.activate(); enter("about:settings"); waitValue(app.textFields["address"], "about:settings")
+        waitValue(app.staticTexts["status"], "Ready")
+        XCTAssertTrue(app.groups["page"].exists)
+        _ = openPermissionPanel()
+        XCTAssertTrue(panels.staticTexts["permissions-empty"].exists)
+    }
+    func testNativePermissionGrantCancelRevokeAndRefreshRetainPage() throws {
+        let manifest = try permissionPackage()
+        defer { try? FileManager.default.removeItem(at: manifest.deletingLastPathComponent()) }
+        app.launchArguments += ["--extension-manifest", manifest.path]
+        launch()
+        let panels = openPermissionPanel()
+        XCTAssertTrue(panels.staticTexts["permission-package-name"].waitForExistence(timeout: 10), panels.debugDescription)
+        waitPermissionValue(panels.staticTexts["permission-package-name"], "Native permission fixture")
+        let state = panels.staticTexts["permission-state-storage"]
+        waitPermissionValue(state, "Not allowed")
+        panels.buttons["permission-change-storage"].click()
+        XCTAssertTrue(panels.staticTexts["permission-confirmation"].waitForExistence(timeout: 5))
+        waitPermissionValue(state, "Not allowed")
+        panels.buttons["permission-cancel"].click(); waitPermissionValue(state, "Not allowed")
+        panels.buttons["permission-change-storage"].click(); panels.buttons["permission-confirm"].click()
+        waitPermissionValue(state, "Allowed")
+        panels.buttons["permissions-refresh"].click(); waitPermissionValue(state, "Allowed")
+        let image = XCTAttachment(screenshot: panels.windows["permissions-window"].screenshot())
+        image.name = "macos-native-permission-allowed"; image.lifetime = .keepAlways; add(image)
+        panels.buttons["permission-change-storage"].click(); panels.buttons["permission-confirm"].click()
+        waitPermissionValue(state, "Not allowed")
+        panels.windows["permissions-window"].buttons[XCUIIdentifierCloseWindow].click()
+        app.activate(); waitValue(app.textFields["address"], "about:credits")
+        XCTAssertTrue(app.groups["page"].exists)
+    }
+    func testNativeOneShotReviewCancelAndStaleDocumentRejection() throws {
+        let fixture = try HTTPFixture(); defer { fixture.stop() }
+        let manifest = try permissionPackage()
+        defer { try? FileManager.default.removeItem(at: manifest.deletingLastPathComponent()) }
+        app.launchArguments += ["--extension-manifest", manifest.path]
+        launch(); enter(fixture.origin + "/input")
+        let panels = openPermissionPanel()
+        XCTAssertTrue(panels.buttons["permission-review-document"].waitForExistence(timeout: 10), panels.debugDescription)
+        panels.buttons["permission-review-document"].click()
+        XCTAssertTrue(panels.staticTexts["permission-reviewed-url"].waitForExistence(timeout: 10), panels.debugDescription)
+        waitPermissionValue(panels.staticTexts["permission-reviewed-url"], fixture.origin + "/input")
+        XCTAssertFalse(panels.staticTexts["permissions-notice"].exists)
+        panels.buttons["permission-cancel"].click()
+        XCTAssertFalse(panels.buttons["permission-confirm-one-shot"].exists)
+        panels.buttons["permission-review-document"].click()
+        XCTAssertTrue(panels.buttons["permission-confirm-one-shot"].waitForExistence(timeout: 5))
+        app.activate(); enter(fixture.origin + "/second")
+        panels.activate(); panels.buttons["permission-confirm-one-shot"].click()
+        waitPermissionValue(panels.staticTexts["permissions-notice"], "the reviewed HTTP(S) document changed before confirmation")
+        XCTAssertFalse(panels.buttons["permission-confirm-one-shot"].exists)
+        panels.buttons["permissions-refresh"].click()
+        XCTAssertTrue(panels.buttons["permission-review-document"].waitForExistence(timeout: 5))
+        panels.buttons["permission-review-document"].click()
+        XCTAssertTrue(panels.staticTexts["permission-reviewed-url"].waitForExistence(timeout: 5))
+        waitPermissionValue(panels.staticTexts["permission-reviewed-url"], fixture.origin + "/second")
+        panels.buttons["permission-confirm-one-shot"].click()
+        waitPermissionValue(panels.staticTexts["permissions-notice"], "One DOM read allowed for the reviewed document. This is not a persistent permission.")
+        waitPermissionValue(panels.staticTexts["permission-state-storage"], "Not allowed")
+    }
+    func testNativePermissionChildExitClosesTheOwnedServiceConnection() throws {
+        launch()
+        let panels = openPermissionPanel()
+        XCTAssertTrue(panels.staticTexts["permissions-empty"].waitForExistence(timeout: 10))
+        // This companion is launcher-owned, so XCTest's terminate/reap path
+        // races the launcher's own waitpid. Kill only the uniquely identified
+        // child and observe both applications through their ordinary UI.
+        let ownedPanels = NSRunningApplication.runningApplications(withBundleIdentifier: "cc.blueice.BlueIcePanels")
+        XCTAssertEqual(ownedPanels.count, 1, "Identify this test's permission child before terminating it")
+        let child = try XCTUnwrap(ownedPanels.first)
+        XCTAssertEqual(kill(child.processIdentifier, SIGKILL), 0)
+        XCTAssertTrue(panels.wait(for: .notRunning, timeout: 10))
+        let status = app.staticTexts["status"]
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate:
+            NSPredicate(format: "value BEGINSWITH 'Browser service connection ended:'"), object: status)], timeout: 15), .completed, app.debugDescription)
+        XCTAssertFalse(app.textFields["address"].isEnabled)
+        XCTAssertFalse(app.buttons["permissions"].isEnabled)
+        XCTAssertTrue(app.windows["browser-window"].exists)
+    }
+    func testNativeOneShotLongURLKeepsConfirmationReachable() throws {
+        let fixture = try HTTPFixture(); defer { fixture.stop() }
+        let manifest = try permissionPackage()
+        defer { try? FileManager.default.removeItem(at: manifest.deletingLastPathComponent()) }
+        let saved = saveClipboard(); defer { NSPasteboard.general.clearContents(); NSPasteboard.general.writeObjects(saved) }
+        app.launchArguments += ["--extension-manifest", manifest.path]
+        launch()
+        let url = fixture.origin + "/review?context=" + String(repeating: "document/", count: 900)
+        paste(url, into: app.textFields["address"]); app.typeKey(.return, modifierFlags: [])
+        waitValue(app.textFields["address"], url); waitValue(app.staticTexts["status"], "Ready")
+        let panels = openPermissionPanel()
+        XCTAssertTrue(panels.buttons["permission-review-document"].waitForExistence(timeout: 10))
+        panels.buttons["permission-review-document"].click()
+        XCTAssertTrue(panels.staticTexts["permission-reviewed-url"].waitForExistence(timeout: 10))
+        waitPermissionValue(panels.staticTexts["permission-reviewed-url"], url)
+        let confirm = panels.buttons["permission-confirm-one-shot"]
+        XCTAssertTrue(confirm.isHittable, "A legal long URL must keep the human confirmation reachable")
+        confirm.click()
+        waitPermissionValue(panels.staticTexts["permissions-notice"], "One DOM read allowed for the reviewed document. This is not a persistent permission.")
+        XCTAssertEqual(fixture.requests.count, 1, "Review and confirmation must not refetch the document")
+    }
+    func testPermissionWindowFailurePreservesTheNavigationDenial() throws {
+        var directory = Bundle(for: BrowserUITests.self).bundleURL.deletingLastPathComponent()
+        var core: URL?
+        while directory.path != "/" {
+            let candidate = directory.appendingPathComponent("BlueIce.app/Contents/MacOS/blueice-core")
+            if FileManager.default.isExecutableFile(atPath: candidate.path) { core = candidate; break }
+            directory.deleteLastPathComponent()
+        }
+        app.launchArguments += ["--core-exe", try XCTUnwrap(core).path]
+        launch(); enter("http://malware.test/")
+        let status = app.staticTexts["status"]
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate:
+            NSPredicate(format: "value BEGINSWITH 'Navigation blocked:'"), object: status)], timeout: 15), .completed)
+        let denial = try XCTUnwrap(status.value as? String)
+        app.buttons["permissions"].click()
+        XCTAssertEqual(status.value as? String, denial, "A chrome action must preserve the mandatory navigation denial")
+        let ok = app.sheets["alert"].buttons["OK"]
+        XCTAssertTrue(ok.waitForExistence(timeout: 10), app.debugDescription)
+        ok.click(); waitValue(status, denial)
+    }
+
     private func chooseFileAtPath(_ path: String, selectAll: Bool = false) throws {
         let panel = app.sheets["open-panel"]
         XCTAssertTrue(panel.waitForExistence(timeout: 10),app.debugDescription)

@@ -49,6 +49,29 @@ pub(super) fn sibling_extension_host_binary(this_exe: &Path) -> PathBuf {
 /// be from the same installed build. Never accept an arbitrary binary path
 /// from a control-socket caller as a substitute for this child.
 pub(super) fn sibling_frontend_binary(this_exe: &Path) -> PathBuf {
+    // The macOS browser owns this launcher. Its permission window is still
+    // an exact launcher-spawned child, isolated from public browser sockets.
+    // An unpackaged launcher retains the ordinary sibling frontend contract.
+    #[cfg(target_os = "macos")]
+    if this_exe
+        .file_name()
+        .is_some_and(|name| name == "blueice-launcher")
+    {
+        if let Some(directory) = this_exe.parent() {
+            if directory.file_name().is_some_and(|name| name == "MacOS")
+                && directory.parent().is_some_and(|parent| {
+                    parent.file_name().is_some_and(|name| name == "Contents")
+                        && parent.parent().is_some_and(|bundle| {
+                            bundle
+                                .extension()
+                                .is_some_and(|extension| extension == "app")
+                        })
+                })
+            {
+                return directory.join("BlueIcePanels.app/Contents/MacOS/BlueIcePanels");
+            }
+        }
+    }
     let name = if cfg!(windows) {
         "blueice-frontend.exe"
     } else {

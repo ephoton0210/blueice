@@ -44,6 +44,10 @@ struct BrowserView: View {
                 if let workspace = model.windowManager {
                     BrowserProfileMenu(model: model, workspace: workspace)
                     button("arrow.down.circle", "Downloads", "downloads") { model.downloadsPresented = true }
+                    button("shield.lefthalf.filled", "Permissions", "permissions") { model.openPermissions() }
+                        .alert("Permissions unavailable", isPresented: $model.permissionsErrorPresented) {
+                            Button("OK", role: .cancel) {}
+                        } message: { Text("This browser's permission window is unavailable.") }
                 }
             }
             .disabled(!model.ready || model.selected == nil)

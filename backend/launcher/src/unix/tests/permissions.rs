@@ -621,3 +621,31 @@ fn assistant_requests_are_answered_without_inspecting_the_core_and_cancel_an_eph
         "any intervening request cancels an ephemeral review"
     );
 }
+#[cfg(target_os = "macos")]
+#[test]
+fn bundled_macos_permissions_use_the_fixed_native_child_without_a_path_override() {
+    assert_eq!(
+        sibling_frontend_binary(Path::new("/Applications/BlueIce.app/Contents/MacOS/blueice-launcher")),
+        PathBuf::from("/Applications/BlueIce.app/Contents/MacOS/BlueIcePanels.app/Contents/MacOS/BlueIcePanels")
+    );
+    for (launcher, expected) in [
+        ("/tmp/debug/blueice-launcher", "/tmp/debug/blueice-frontend"),
+        (
+            "/tmp/debug/deps/test-launcher",
+            "/tmp/debug/blueice-frontend",
+        ),
+        (
+            "/tmp/other/Contents/MacOS/blueice-launcher",
+            "/tmp/other/Contents/MacOS/blueice-frontend",
+        ),
+        (
+            "/tmp/BlueIce.app/Contents/MacOS/other",
+            "/tmp/BlueIce.app/Contents/MacOS/blueice-frontend",
+        ),
+    ] {
+        assert_eq!(
+            sibling_frontend_binary(Path::new(launcher)),
+            PathBuf::from(expected)
+        );
+    }
+}

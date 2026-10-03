@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-import Foundation
+import AppKit
 
 // Blocking socket/pipe reads and process waits stay off the AppKit/main actor.
 final class BrowserSession: @unchecked Sendable {
@@ -31,6 +31,17 @@ final class BrowserSession: @unchecked Sendable {
     }
     var processID: Int32? { lock.withLock { process?.pid } }
     var downloadsExecutable: URL? { lock.withLock { supervisedExecutable?.deletingLastPathComponent().appendingPathComponent("blueice-downloads") } }
+
+    @MainActor
+    func openPermissions() -> Bool {
+        guard let owner = processID, let app = lock.withLock({ supervisedExecutable?.deletingLastPathComponent().appendingPathComponent("BlueIcePanels.app") }) else { return false }
+        // Activate only the private child of this owned launcher. Another
+        // browser instance's panel cannot receive this person's decision.
+        guard let child = NSRunningApplication.runningApplications(withBundleIdentifier: "cc.blueice.BlueIcePanels").first(where: {
+            getpgid($0.processIdentifier) == owner && $0.bundleURL?.resolvingSymlinksInPath() == app.resolvingSymlinksInPath()
+        }) else { return false }
+        return child.activate(options: [])
+    }
 
     func startForBrowser(launcher: URL? = nil) async throws {
         let arguments = ProcessInfo.processInfo.arguments
@@ -86,13 +97,25 @@ final class BrowserSession: @unchecked Sendable {
                                 self.supervisedExecutable = executable
                                 environment["BLUEICE_NATIVE_DOWNLOADS_MANAGED"] = "1"
                                 let owner = Pipe()
-                                let child = try OwnedBrowserProcess(executable: executable, arguments: [
+                                var launcherArguments = [
                                     "--socket", self.runtimeDirectory.appendingPathComponent("browser.sock").path,
                                     "--control-socket", self.runtimeDirectory.appendingPathComponent("control.sock").path,
                                     "--owned-gatekeeper-socket", self.runtimeDirectory.appendingPathComponent("blueice/gatekeeper.sock").path,
                                     "--frame-dir", self.frameDirectory.path,
                                     "--width", "1024", "--height", "640", "--exit-on-stdin-eof"
-                                ], environment: environment, input: owner.fileHandleForReading)
+                                ]
+                                let panels = executable.deletingLastPathComponent().appendingPathComponent("BlueIcePanels.app/Contents/MacOS/BlueIcePanels")
+                                if FileManager.default.isExecutableFile(atPath: panels.path) {
+                                    launcherArguments.append("--trusted-frontend")
+                                }
+                                // Owner startup input only. No browser/AI IPC
+                                // message can select or replace this package.
+                                let arguments = ProcessInfo.processInfo.arguments
+                                if let index = arguments.firstIndex(of: "--extension-manifest"), arguments.indices.contains(index + 1) {
+                                    launcherArguments += ["--extension-manifest", arguments[index + 1]]
+                                }
+                                let child = try OwnedBrowserProcess(executable: executable, arguments: launcherArguments,
+                                    environment: environment, input: owner.fileHandleForReading)
                                 try? owner.fileHandleForReading.close()
                                 self.ownerLiveness = owner.fileHandleForWriting
                                 self.process = child
