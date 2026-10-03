@@ -59,8 +59,8 @@ struct OneShotArmed: Decodable, Sendable {
     let document_epoch: UInt64
 }
 enum PermissionReply: Decodable, Sendable {
-    case state(PermissionSnapshot), review(OneShotReview), armed(OneShotArmed), rejected(String)
-    private enum Keys: String, CodingKey { case state, ephemeral_review, ephemeral_armed, rejected }
+    case state(PermissionSnapshot), review(OneShotReview), armed(OneShotArmed), rejected(String), assistant(NativeAssistantState)
+    private enum Keys: String, CodingKey { case state, ephemeral_review, ephemeral_armed, rejected, assistant_settings_state }
     private struct Rejection: Decodable { let reason: String }
     init(from decoder: Decoder) throws {
         let box = try decoder.container(keyedBy: Keys.self)
@@ -84,6 +84,10 @@ enum PermissionReply: Decodable, Sendable {
                 throw PanelFailure.invalid("Invalid one-shot acknowledgement.")
             }
             self = .armed(value)
+        case .assistant_settings_state:
+            let value = try box.decode(NativeAssistantState.self, forKey: .assistant_settings_state)
+            guard value.valid else { throw PanelFailure.invalid("Invalid assistant settings state.") }
+            self = .assistant(value)
         case .rejected: self = .rejected(try box.decode(Rejection.self, forKey: .rejected).reason)
         }
     }
@@ -93,7 +97,11 @@ enum PermissionRequest: Encodable, Sendable {
     case change(UInt64, String, String, Bool)
     case review(UInt64, String, UInt64)
     case arm(OneShotReview)
-    private enum Keys: String, CodingKey { case change, inspect_ephemeral, arm_ephemeral }
+    case inspectAssistant, editAssistant(NativeAssistantSettings), approveAssistant(UInt64, String), denyAssistant(UInt64)
+    private enum Keys: String, CodingKey { case change, inspect_ephemeral, arm_ephemeral, edit_assistant_settings, approve_assistant_proposal, deny_assistant_proposal }
+    private struct Edit: Encodable { let settings: NativeAssistantSettings }
+    private struct Approve: Encodable { let id: UInt64; let digest: String }
+    private struct Deny: Encodable { let id: UInt64 }
     private struct Change: Encodable {
         let expected_core_generation: UInt64; let expected_extension_id: String
         let capability: String; let action: String
@@ -108,9 +116,13 @@ enum PermissionRequest: Encodable, Sendable {
     }
     func encode(to encoder: Encoder) throws {
         if case .inspect = self { var box = encoder.singleValueContainer(); try box.encode("inspect"); return }
+        if case .inspectAssistant = self { var box = encoder.singleValueContainer(); try box.encode("inspect_assistant_settings"); return }
         var box = encoder.container(keyedBy: Keys.self)
         switch self {
-        case .inspect: break
+        case .inspect, .inspectAssistant: break
+        case .editAssistant(let settings): try box.encode(Edit(settings: settings), forKey: .edit_assistant_settings)
+        case .approveAssistant(let id, let digest): try box.encode(Approve(id: id, digest: digest), forKey: .approve_assistant_proposal)
+        case .denyAssistant(let id): try box.encode(Deny(id: id), forKey: .deny_assistant_proposal)
         case .change(let generation, let extensionID, let capability, let grant):
             try box.encode(Change(expected_core_generation: generation, expected_extension_id: extensionID,
                                   capability: capability, action: grant ? "grant" : "revoke"), forKey: .change)

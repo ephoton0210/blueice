@@ -111,9 +111,28 @@ final class BrowserSession: @unchecked Sendable {
                                 // Owner startup input only. No browser/AI IPC
                                 // message can select or replace this package.
                                 let arguments = ProcessInfo.processInfo.arguments
+                                if let index = arguments.firstIndex(of: "--control-socket") {
+                                    guard arguments.indices.contains(index + 1) else { throw BrowserFailure.invalid("--control-socket requires an operator socket path.") }
+                                    // Owner-selected rendezvous only. This is
+                                    // still the proposal/read-only operator
+                                    // protocol, never the private decision pipe.
+                                    let slot = launcherArguments.firstIndex(of: "--control-socket")! + 1
+                                    launcherArguments[slot] = arguments[index + 1]
+                                }
                                 if let index = arguments.firstIndex(of: "--extension-manifest"), arguments.indices.contains(index + 1) {
                                     launcherArguments += ["--extension-manifest", arguments[index + 1]]
                                 }
+                                let settings: URL
+                                if let index = arguments.firstIndex(of: "--assistant-settings") {
+                                    guard arguments.indices.contains(index + 1) else { throw BrowserFailure.invalid("--assistant-settings requires a settings file path.") }
+                                    settings = URL(fileURLWithPath: arguments[index + 1])
+                                } else {
+                                    settings = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+                                        .appendingPathComponent("BlueIce/assistant-settings.json")
+                                }
+                                // A missing file is backend=none. Only a native
+                                // confirmed edit persists/enables a local model.
+                                launcherArguments += ["--assistant-settings", settings.path]
                                 let child = try OwnedBrowserProcess(executable: executable, arguments: launcherArguments,
                                     environment: environment, input: owner.fileHandleForReading)
                                 try? owner.fileHandleForReading.close()

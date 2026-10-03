@@ -22,13 +22,13 @@ open frontend/macos/.build/Build/Products/Debug/BlueIce.app
 `build.sh Release` builds optimized services and frontend. The Xcode project
 copies and locally signs `blueice-core`, `blueice-launcher` and
 `blueice-ai-gatekeeper`, plus the on-demand `blueice-downloads` and
-`blueice-extension-host`, inside the app bundle. It
+`blueice-extension-host` and `blueice-ai-assistant`, inside the app bundle. It
 reuses `.build/core-target` for Rust output, keeping native frontend builds
 independent of the workspace's larger cache; an explicit `CARGO_TARGET_DIR`
 overrides that directory. Builds use an ad hoc identity for local development;
 distribution signing and notarization are separate work. To build from Xcode, first build the services
 with the script, then open `BlueIce.xcodeproj` and select the shared `BlueIce`
-scheme. `BLUEICE_BACKEND_DIR` overrides the directory of those five binaries
+scheme. `BLUEICE_BACKEND_DIR` overrides the directory of those six binaries
 when invoking Xcode directly. When running the app executable directly,
 `--launcher-exe /absolute/path/to/blueice-launcher` overrides the launcher;
 the core, gatekeeper and optional download service must reside beside it. The explicit diagnostic option
@@ -163,7 +163,7 @@ See [display preference results](../../development/browser_core/phase-22-browser
 for native/core and actual-window evidence and the supported CSS subset.
 
 The default app owns its launcher; attaching to an existing shared launcher,
-assistant and trusted permission panels remain separate work. The
+assistant result panels and remaining permission surfaces remain separate work. The
 [macOS delivery plan](../../development/browser_core/phase-22-browser-shell-accessibility/MACOS_DELIVERY_PLAN.md)
 tracks the remaining milestones. The page exposes the core's semantic representation through virtual
 NSAccessibility elements: names, roles, hierarchy, values/state and screen
@@ -340,7 +340,7 @@ document, with the existing 1 MiB final form body limit. Directory/capture,
 label forwarding, drag/drop and full web File API/events remain open. See
 [file input results](../../development/browser_core/phase-22-browser-shell-accessibility/MACOS_FILE_INPUT_RESULTS.md).
 
-The Permissions toolbar button opens the native SwiftUI/AppKit permission app
+The Permissions and assistant settings toolbar button opens the native SwiftUI/AppKit panel app
 spawned by this browser's launcher. That exact child inherits the existing
 private permission pipes; the ordinary browser and operator sockets cannot
 carry its decisions. The bundled launcher resolves a fixed nested app, with no
@@ -361,8 +361,32 @@ package, launch the main app executable with `--extension-manifest /absolute/pat
 This startup option goes through the existing launcher/core package validation;
 neither a page nor browser/MCP messages can install a package or replace the path.
 The included extension host executes the existing package implementation.
-Assistant settings/proposal panels, extension installation UI and general
-site/OS permission prompts remain delivery work.
+The native Assistant Settings tab inspects the same launcher's settings in
+force and pending AI proposal. It edits backend, resource limits, loopback
+provider/base/model and Candle file/context fields, with native file choosers.
+Review changes shows complete before/after values; Confirm and apply is a
+separate action. Proposed settings use the same two-step approval, bound to the
+displayed proposal ID and digest. Deny leaves current settings unchanged.
+Refresh, switching tabs or closing cancels unfinished confirmation. Controls
+and bidirectional formatting in agent-influenced values appear as explicit
+Unicode escapes; model output is not executed or interpreted as consent.
+
+The missing settings file defaults to Off. Confirmed changes are validated and
+atomically persisted by the launcher at
+`~/Library/Application Support/BlueIce/assistant-settings.json`; startup
+`--assistant-settings /absolute/path/to/settings.json` selects a different file.
+The main app's owner-only `--control-socket /absolute/path/to/operator.sock`
+option exposes the existing operator protocol at that address for proposals
+and inspection; it adds no approval or grant route. Tests use independent
+short temporary paths and test-only networking entitlements. Loopback endpoints
+remain credential-free HTTP to numeric localhost with an explicit port and
+`/v1/`. In-process inference requires a Candle-enabled service build and local
+compatible model files; the default build enables the loopback backend.
+See [assistant settings results](../../development/browser_core/phase-22-browser-shell-accessibility/MACOS_ASSISTANT_SETTINGS_RESULTS.md).
+
+Assistant result/translation surfaces, extension installation UI, explicit
+panel appearance/localization integration and general site/OS permission
+prompts remain delivery work.
 
 Frame refresh temporarily suspends semantic actions until the representation
 matches the current tab, source, generation and URL. Native element identities

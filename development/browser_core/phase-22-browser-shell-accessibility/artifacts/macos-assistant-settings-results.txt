@@ -1,0 +1,135 @@
+{
+  "date": "2026-10-03",
+  "base_commit": "f83c9415288b02758c2d2624e115eafe9e8d9fd3",
+  "native_inputs": {
+    "base_commit": "f83c9415288b02758c2d2624e115eafe9e8d9fd3",
+    "count": 50,
+    "aggregate_sha256": "b09e62764a19da68f438bbb167a27dfbd087c6baa8588ff6dda0a45dfe302df5",
+    "sha256": {
+      "frontend/macos/BlueIce.xcodeproj/project.pbxproj": "c0795c8e7a673f2fb788ea2e095019396bf15065c0b9c9c77015aeff59f15f0a",
+      "frontend/macos/BlueIce.xcodeproj/xcshareddata/xcschemes/BlueIce.xcscheme": "8bcbbb239c0338c3966325dabc00d9913d5941647bc7a6f6dbc47cc425d29120",
+      "frontend/macos/Sources/BlueIceApp.swift": "531b4f0d5cba81d010c9a9f2f24031bfd378fcb60ec0b43f2467ddc36858308c",
+      "frontend/macos/Sources/BrowserAppearance.swift": "b2c9464b4809788a7a7e9b2b64ae561b3aefd317dc0bc99cf589b015ff539129",
+      "frontend/macos/Sources/BrowserContexts.swift": "600788bbba729bfab2d94ce9494e2f16617ef7db3d1e5a9a2462160a90d08f82",
+      "frontend/macos/Sources/BrowserDownloads.swift": "626c31eb6fedeb026a0cf4b47095e73eb1c5a4f5ff10bbdcd7a83bbd4ef48e8e",
+      "frontend/macos/Sources/BrowserDownloadsSession.swift": "ec188a3b9fef4e6e5d406380f14614136735456a2af82ed1ca4bd017f6c4fc60",
+      "frontend/macos/Sources/BrowserDownloadsView.swift": "8bdfa9f20cc6dcc38369e3531e4c5b4b56bdf85768583fd4a1bd0f4f3a3799b3",
+      "frontend/macos/Sources/BrowserFileInput.swift": "697400d0b27739d0ccefd9f182b6ea703d02f163e3362b87019fc229e127a36f",
+      "frontend/macos/Sources/BrowserModel.swift": "85009b46aced3afc07166eba5006aac4f2f6675943c38e023fa0ca7847d3362a",
+      "frontend/macos/Sources/BrowserPrinting.swift": "cc6f27675bad9da105bc636a4fe51f170c93c8c0aebc489dfeaaf50f2917c86c",
+      "frontend/macos/Sources/BrowserProfiles.swift": "567e294e5e625d42e93a60915592420e25c4ef601fab90ea5a3658265b187d20",
+      "frontend/macos/Sources/BrowserSession.swift": "7c9dc29d3ddd85189f6a16c0ab1e196dd7c517695d70b059571bf52052119184",
+      "frontend/macos/Sources/BrowserTabGroups.swift": "461eb63889b341530c3b350c856cba46b849c59b82c4d29aeb01f25fba195c21",
+      "frontend/macos/Sources/BrowserTransport.swift": "190d649ecf0b70b3ce760cc77bd36a177ea1bf699d91e6e2f79c23d00ea7e824",
+      "frontend/macos/Sources/BrowserView.swift": "6bbd80064366ba866a8943159278a6816a49c9b9b2c8a49dea341e0775111b2c",
+      "frontend/macos/Sources/BrowserWindows.swift": "785ed9139a9ce3be2f47d910720d0e50921e006878a96aee1acb0ce89afdba39",
+      "frontend/macos/Sources/BrowserWire.swift": "0be4466ce1828da6b65df168b04355dc2c63af721e517f8892b70646bb1e72af",
+      "frontend/macos/Sources/BrowserWorkspace.swift": "984ef1cb7bb14dc5241bbf4c8410c2dc705b4059b17df8e7296c32b3d9097ce2",
+      "frontend/macos/Sources/FramePixels.swift": "83fa709d3dcae552678c9e70fc61dedcd5a7635ebf296c88cb09cdd08d84cf8e",
+      "frontend/macos/Sources/NativeEditingMenu.swift": "35eaac7df71f5c8cc15c93f2ed4b22207235d20d7193e737ad019c1cfa35c0f1",
+      "frontend/macos/Sources/NativeTextInput.swift": "06d4738730d145a0ca0fd0ed4d0f3f0f97f40a22bca2c1308ca0bccee6040cb1",
+      "frontend/macos/Sources/PageAccessibility.swift": "9297173cb262caea97c8ef84efaaacb56f3a157524838862bdc43ede8eb612ed",
+      "frontend/macos/Sources/PageRepresentation.swift": "cdd49c9e5f26ca2b59f60180b592d7e0964941c7522a28eab2bac3bf2c20c927",
+      "frontend/macos/Sources/PageViewport.swift": "265b47239e920ff785d452d3b03ac244caab81a6100403d64d338e8f12b03cb0",
+      "frontend/macos/TestSupport/DownloadFixture.swift": "9e9b08d9450c6eb7492556461256add1fdbbe872837b6d1ab9395f360ddc841b",
+      "frontend/macos/TestSupport/HTTPFixture.swift": "86791daf4da8ee97f784594e1bc374e198e66b958e8ec00ed5859d2546203df4",
+      "frontend/macos/TestSupport/run-signed-test.sh": "489f4acbe836737b963c545f38c48a7ca7a7c35c8af4cdae63824d998584f9e0",
+      "frontend/macos/Tests/AccessibilityTests.swift": "b7a0c222874f8f42560b42cdc1b1a86fe9715ddd51bfb24def5a7de5d28c46c4",
+      "frontend/macos/Tests/AssistantSettingsTests.swift": "56d87476908552baae0f1ce9419d69d648fbafdf8c82d07e4a1da1589d33fc22",
+      "frontend/macos/Tests/BrowserAppearanceTests.swift": "c426f0b2e18f04aadb14b2e55cf28edae81980f37450676cafa4c70aa361dd83",
+      "frontend/macos/Tests/DownloadTests.swift": "6702b337d8321826b5be9e8af3f63790809c0986798495725fed2bf702d14e84",
+      "frontend/macos/Tests/FileInputTests.swift": "417f99651ad9e01a0fde4fce4d06348fbd436bd2b835bd9628828d8d31c2e38b",
+      "frontend/macos/Tests/NativeEditingTests.swift": "367ed183627ac3e97fd741d0d887755a86dca4b0cf65a6fd447fd61e0f081f56",
+      "frontend/macos/Tests/PermissionPanelTests.swift": "268e29ccd6d0cd3a3951ce61a73d958722b5738f14405a0d081acb64bbe12454",
+      "frontend/macos/Tests/PrintingTests.swift": "d3a6de655f232e52f9a7835c57166b050e9b3b53dd14dec0610b9f3520e25333",
+      "frontend/macos/Tests/ProtocolTests.swift": "cb186a18662431a7e7cb7cb435afa62b1ea573f50a599b333909467973e9d074",
+      "frontend/macos/TrustedPanels/AssistantSettingsModel.swift": "1b298e1a5c6cb46712e9f000e22db74c681749067ec9ccfc4e4ba627e7da2eb7",
+      "frontend/macos/TrustedPanels/AssistantSettingsView.swift": "d678fde20a8ed83d3c2c1052040726d58dc2dbaf49a5430a7b3282b8dab93ff5",
+      "frontend/macos/TrustedPanels/AssistantSettingsWire.swift": "f88c5a0fb5b1cbd7937f462cddd619882b81184796bac39ed05a7266589df166",
+      "frontend/macos/TrustedPanels/BlueIcePanels.swift": "9b632f6de23b90e91a173d4a5738ab69cc5389cddff18cd34ddc7ec8ac526a36",
+      "frontend/macos/TrustedPanels/Info.plist": "1f34d649941c988212a71330955d459bea90edd9b2e4e00363d33f87c3c979c1",
+      "frontend/macos/TrustedPanels/PermissionModel.swift": "da41cc6aee84bf897fdca456f50539b639ea16ec261c75ccb41460fc3e5c6e8d",
+      "frontend/macos/TrustedPanels/PermissionTransport.swift": "3f5a5e621f9730cdf63d0a0096f45a52a8bea3c4a160cae57265dc47b80057eb",
+      "frontend/macos/TrustedPanels/PermissionWire.swift": "5f060cbf5520444b16a513a510af22e3e87bbba971e3508251e5c641347cea64",
+      "frontend/macos/UITests/BrowserUITests.swift": "1e16db7dd6512e60c29807a4ccb5f46cc5bac2b3400122157dc3e95a1e3e400b",
+      "frontend/macos/UITests/Network.entitlements": "49f282a5386d7342d755793a95987bcbbc25ee32b619d3bd46a04c23cc990ac8",
+      "frontend/macos/build-panels.sh": "8ad6d523058c62bf7e1ff2d30e8aa1995b5cd685814a8d1d9a1d0726fd6e67b6",
+      "frontend/macos/build.sh": "67e852696321e6148b32392ca1f66f154e512be08f05041e668e812fd8a724cb",
+      "frontend/macos/test.sh": "10cc3053d4b63573c3ea1f45578a4e399b6e5c1e27bb485cabdfa1cb2656ce5e"
+    }
+  },
+  "native_full": {
+    "bundle": "frontend/macos/.build/results-20261003-145105.xcresult",
+    "command": "frontend/macos/test.sh",
+    "exit_code": 0,
+    "total": 131,
+    "passed": 130,
+    "failed": 0,
+    "skipped": 1,
+    "xctest_passed": 79,
+    "xcuitest_passed": 51,
+    "physical_zhuyin_skip": "UI runner lacks Accessibility trust",
+    "internal_qos_warnings": 38,
+    "swiftui_view_update_warnings": 0
+  },
+  "focused_rust": {
+    "assistant_settings_service": {
+      "passed": 12,
+      "failed": 0,
+      "ignored": 0,
+      "exit_code": 0
+    },
+    "trusted_window_filter": {
+      "passed": 5,
+      "failed": 0,
+      "ignored": 0,
+      "exit_code": 0
+    }
+  },
+  "rust_source_unchanged": true,
+  "rust_workspace_base_evidence": "MACOS_PERMISSION_RESULTS.md: 7201 passed, 69 ignored; not rerun in this increment",
+  "signatures": {
+    "ad_hoc_development_signing": true,
+    "strict_verified": [
+      "frontend/macos/.build/Build/Products/Debug/BlueIce.app",
+      "frontend/macos/.build/Build/Products/Debug/BlueIce.app/Contents/MacOS/BlueIcePanels.app",
+      "frontend/macos/.build/Build/Products/Debug/BlueIce.app/Contents/MacOS/blueice-launcher",
+      "frontend/macos/.build/Build/Products/Debug/BlueIce.app/Contents/MacOS/blueice-core",
+      "frontend/macos/.build/Build/Products/Debug/BlueIce.app/Contents/MacOS/blueice-ai-gatekeeper",
+      "frontend/macos/.build/Build/Products/Debug/BlueIce.app/Contents/MacOS/blueice-downloads",
+      "frontend/macos/.build/Build/Products/Debug/BlueIce.app/Contents/MacOS/blueice-extension-host",
+      "frontend/macos/.build/Build/Products/Debug/BlueIce.app/Contents/MacOS/blueice-ai-assistant"
+    ],
+    "architectures": {
+      "BlueIce": "x86_64 arm64",
+      "BlueIcePanels.app/Contents/MacOS/BlueIcePanels": "x86_64 arm64"
+    }
+  },
+  "native_teardown": {
+    "native_app_service_helper_runner_processes": 0,
+    "excluded": "Older and Rust processes outside the native bundle prefix are excluded."
+  },
+  "screenshot": {
+    "bundle": "frontend/macos/.build/results-20261003-145105.xcresult",
+    "test": "BrowserUITests/testNativeAssistantSettingsReviewCancelApplyAndRelaunch()",
+    "file": "frontend/macos/.build/results-20261003-145105-attachments/2A331834-2DDD-4164-8125-52B1ED780BD0.png",
+    "copy": "development/browser_core/phase-22-browser-shell-accessibility/artifacts/macos-native-assistant-settings.png",
+    "sha256": "064b24aebd606701ac55156be5f6578e9ed378c744e42f2e263e468fe9b7a57b",
+    "edited": false,
+    "system_local_network_prompt_visible": true
+  },
+  "checks": {
+    "rustfmt_exit_code": 0,
+    "project_plist_lint_exit_code": 0,
+    "shell_syntax_exit_code": 0,
+    "whitespace_exit_code": 0,
+    "new_source_mpl_headers": "passed"
+  },
+  "limits": [
+    "The two focused Rust filters overlap and are not summed as unique tests.",
+    "Candle configuration fields do not establish feature-enabled inference or model quality.",
+    "Physical IME, VoiceOver, panel appearance/localization and other delivery milestones remain open.",
+    "No fresh Linux, Windows, coverage, distribution-signing or physical hardware acceptance.",
+    "System local-network dialog remains visible and unchanged. Screenshots/build outputs stay ignored."
+  ]
+}

@@ -9,6 +9,168 @@ import XCTest
 
 @MainActor
 final class BrowserUITests: XCTestCase {
+    private func openAssistantSettings() -> XCUIApplication {
+        let panels = openPermissionPanel()
+        let selector = panels.radioButtons["Assistant Settings"]
+        XCTAssertTrue(selector.waitForExistence(timeout: 10), panels.debugDescription)
+        XCTAssertTrue(selector.isEnabled); selector.click()
+        XCTAssertTrue(panels.staticTexts["assistant-settings-current"].waitForExistence(timeout: 10), panels.debugDescription)
+        return panels
+    }
+    private func persistedAssistant() throws -> [String: Any] {
+        try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: assistantSettingsFile)) as? [String: Any])
+    }
+    private func editAssistantField(_ panels: XCUIApplication, _ identifier: String, _ text: String) {
+        let field = panels.textFields[identifier]
+        XCTAssertTrue(field.waitForExistence(timeout: 5)); field.click()
+        field.typeKey("a", modifierFlags: .command); field.typeText(text)
+    }
+    func testNativeAssistantSettingsReviewCancelApplyAndRelaunch() throws {
+        launch()
+        var panels = openAssistantSettings()
+        waitPermissionValue(panels.staticTexts["assistant-settings-current"], "In force: none · idle 600 seconds · niceness 10")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: assistantSettingsFile.path), "Inspection never persists a setting")
+        editAssistantField(panels, "assistant-idle", "29")
+        panels.buttons["assistant-settings-review"].click()
+        XCTAssertTrue(panels.staticTexts["assistant-settings-notice"].waitForExistence(timeout: 5))
+        XCTAssertFalse(panels.buttons["assistant-settings-confirm"].exists)
+        editAssistantField(panels, "assistant-idle", "630")
+        panels.buttons["assistant-settings-review"].click()
+        XCTAssertTrue(panels.buttons["assistant-settings-confirm"].waitForExistence(timeout: 5))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: assistantSettingsFile.path))
+        panels.buttons["assistant-settings-cancel"].click()
+        XCTAssertFalse(FileManager.default.fileExists(atPath: assistantSettingsFile.path))
+        panels.buttons["assistant-settings-review"].click(); panels.buttons["assistant-settings-confirm"].click()
+        waitPermissionValue(panels.staticTexts["assistant-settings-notice"], "Assistant settings applied.")
+        XCTAssertEqual(try persistedAssistant()["idle_timeout_secs"] as? Int, 630)
+        XCTAssertEqual(try persistedAssistant()["backend"] as? String, "none")
+        let attachment = XCTAttachment(screenshot: panels.windows["permissions-window"].screenshot())
+        attachment.name = "macos-native-assistant-settings"; attachment.lifetime = .keepAlways; add(attachment)
+        panels.windows["permissions-window"].buttons[XCUIIdentifierCloseWindow].click()
+        app.activate(); waitValue(app.textFields["address"], "about:credits")
+        app.windows["browser-window"].buttons[XCUIIdentifierCloseWindow].click()
+        XCTAssertTrue(app.wait(for: .notRunning, timeout: 15))
+        launch(); panels = openAssistantSettings()
+        waitPermissionValue(panels.staticTexts["assistant-settings-current"], "In force: none · idle 630 seconds · niceness 10")
+    }
+    func testNativeAssistantProposalCannotApplyWithoutExactHumanConfirmation() throws {
+        launch()
+        let initial: [String: Any] = ["version": 1, "backend": "none", "idle_timeout_secs": 600, "nice": 10, "loopback": NSNull(), "candle": NSNull(), "max_resident_mb": NSNull()]
+        var blocked = initial; blocked["nice"] = 0
+        XCTAssertNotNil(try assistantControl(["ProposeAssistantSettings": ["settings": blocked]])["AssistantProposalBlocked"])
+        var proposed = initial; proposed["idle_timeout_secs"] = 660
+        let accepted = try XCTUnwrap(try assistantControl(["ProposeAssistantSettings": ["settings": proposed]])["AssistantProposalAccepted"] as? [String: Any])
+        let id = try XCTUnwrap(accepted["id"] as? UInt64)
+        let digest = try XCTUnwrap(accepted["digest"] as? String)
+        let panels = openAssistantSettings()
+        waitPermissionValue(panels.staticTexts["assistant-proposal-digest"], digest)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: assistantSettingsFile.path))
+        // The ordinary operator protocol has no approval route.
+        XCTAssertThrowsError(try assistantControl(["ApproveAssistantProposal": ["id": id, "digest": digest]]))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: assistantSettingsFile.path))
+        panels.buttons["assistant-proposal-review"].click()
+        XCTAssertTrue(panels.buttons["assistant-settings-confirm"].waitForExistence(timeout: 5))
+        panels.buttons["assistant-settings-cancel"].click()
+        XCTAssertFalse(FileManager.default.fileExists(atPath: assistantSettingsFile.path))
+        panels.buttons["assistant-proposal-review"].click()
+        panels.buttons["assistant-settings-refresh"].click()
+        XCTAssertFalse(panels.buttons["assistant-settings-confirm"].exists, "Fresh state cancels approval")
+        panels.buttons["assistant-proposal-review"].click(); panels.buttons["assistant-settings-confirm"].click()
+        waitPermissionValue(panels.staticTexts["assistant-settings-notice"], "Assistant settings applied.")
+        XCTAssertEqual(try persistedAssistant()["idle_timeout_secs"] as? Int, 660)
+        XCTAssertEqual(try assistantControl(["AssistantProposalStatus": ["id": id]])["AssistantProposalStatus"] as? [String: String], ["status": "approved"])
+        var denied = proposed; denied["idle_timeout_secs"] = 690
+        _ = try assistantControl(["ProposeAssistantSettings": ["settings": denied]])
+        panels.buttons["assistant-settings-refresh"].click()
+        XCTAssertTrue(panels.buttons["assistant-proposal-deny"].waitForExistence(timeout: 5))
+        panels.buttons["assistant-proposal-deny"].click()
+        waitPermissionValue(panels.staticTexts["assistant-settings-notice"], "Proposal denied. Settings unchanged.")
+        XCTAssertEqual(try persistedAssistant()["idle_timeout_secs"] as? Int, 660)
+    }
+    func testNativeAssistantLoopbackEditorAndClosingUnconfirmedChanges() throws {
+        launch()
+        let panels = openAssistantSettings()
+        panels.popUpButtons["assistant-backend"].click(); panels.menuItems["Loopback server"].click()
+        editAssistantField(panels, "assistant-model", "local-model")
+        editAssistantField(panels, "assistant-base-url", "http://example.com:11434/v1/")
+        panels.buttons["assistant-settings-review"].click()
+        XCTAssertTrue(panels.staticTexts["assistant-settings-notice"].waitForExistence(timeout: 5))
+        XCTAssertFalse(panels.buttons["assistant-settings-confirm"].exists)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: assistantSettingsFile.path))
+        editAssistantField(panels, "assistant-base-url", "http://127.0.0.1:11434/v1/")
+        panels.buttons["assistant-settings-review"].click()
+        XCTAssertTrue(panels.buttons["assistant-settings-confirm"].waitForExistence(timeout: 5))
+        XCTAssertTrue(panels.buttons["assistant-settings-confirm"].isHittable)
+        panels.windows["permissions-window"].buttons[XCUIIdentifierCloseWindow].click()
+        app.activate(); _ = openPermissionPanel()
+        if panels.radioButtons["Assistant Settings"].value as? Int != 1 { panels.radioButtons["Assistant Settings"].click() }
+        XCTAssertTrue(panels.staticTexts["assistant-settings-current"].waitForExistence(timeout: 10))
+        XCTAssertFalse(panels.buttons["assistant-settings-confirm"].exists)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: assistantSettingsFile.path))
+        panels.popUpButtons["assistant-backend"].click(); panels.menuItems["Loopback server"].click()
+        editAssistantField(panels, "assistant-model", "local-model")
+        panels.buttons["assistant-settings-review"].click(); panels.buttons["assistant-settings-confirm"].click()
+        waitPermissionValue(panels.staticTexts["assistant-settings-notice"], "Assistant settings applied.")
+        let persisted = try persistedAssistant()
+        XCTAssertEqual(persisted["backend"] as? String, "loopback")
+        let loopback = try XCTUnwrap(persisted["loopback"] as? [String: String])
+        XCTAssertEqual(loopback, ["provider": "ollama", "base_url": "http://127.0.0.1:11434/v1/", "model": "local-model"])
+        XCTAssertEqual(app.textFields["address"].value as? String, "about:credits")
+    }
+    func testSwitchingTrustedPanelsCancelsSettingsAndOneShotConfirmation() throws {
+        let fixture = try HTTPFixture(); defer { fixture.stop() }
+        let manifest = try permissionPackage(); defer { try? FileManager.default.removeItem(at: manifest.deletingLastPathComponent()) }
+        app.launchArguments += ["--extension-manifest", manifest.path]
+        launch(); enter(fixture.origin + "/input")
+        let panels = openPermissionPanel()
+        XCTAssertTrue(panels.buttons["permission-review-document"].waitForExistence(timeout: 10))
+        panels.buttons["permission-review-document"].click()
+        XCTAssertTrue(panels.buttons["permission-confirm-one-shot"].waitForExistence(timeout: 5))
+        panels.radioButtons["Assistant Settings"].click()
+        XCTAssertTrue(panels.staticTexts["assistant-settings-current"].waitForExistence(timeout: 10))
+        editAssistantField(panels, "assistant-nice", "11"); panels.buttons["assistant-settings-review"].click()
+        XCTAssertTrue(panels.buttons["assistant-settings-confirm"].waitForExistence(timeout: 5))
+        panels.radioButtons["Permissions"].click()
+        XCTAssertTrue(panels.buttons["permission-review-document"].waitForExistence(timeout: 5))
+        XCTAssertFalse(panels.buttons["permission-confirm-one-shot"].exists)
+        waitPermissionValue(panels.staticTexts["permission-state-storage"], "Not allowed")
+        panels.radioButtons["Assistant Settings"].click()
+        XCTAssertTrue(panels.staticTexts["assistant-settings-current"].waitForExistence(timeout: 5))
+        XCTAssertFalse(panels.buttons["assistant-settings-confirm"].exists)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: assistantSettingsFile.path))
+        XCTAssertEqual(fixture.requests, ["/input"])
+    }
+    // Test-only ordinary operator connection. It can propose/inspect but
+    // cannot send a decision through the launcher's private window pipe.
+    private func assistantControl(_ request: Any) throws -> [String: Any] {
+        let path = Array(assistantControlSocket.path.utf8) + [0]
+        var address = sockaddr_un(); address.sun_family = sa_family_t(AF_UNIX); address.sun_len = UInt8(MemoryLayout<sockaddr_un>.size)
+        guard path.count <= MemoryLayout.size(ofValue: address.sun_path) else { throw NSError(domain: "AssistantControl", code: 1) }
+        withUnsafeMutableBytes(of: &address.sun_path) { $0.copyBytes(from: path) }
+        let descriptor = socket(AF_UNIX, SOCK_STREAM, 0)
+        guard descriptor >= 0 else { throw NSError(domain: "AssistantControl", code: 2) }
+        let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true); defer { try? handle.close() }
+        let result = withUnsafePointer(to: &address) { $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { connect(descriptor, $0, socklen_t(MemoryLayout<sockaddr_un>.size)) } }
+        guard result == 0 else { throw NSError(domain: "AssistantControl", code: Int(errno), userInfo: [NSLocalizedDescriptionKey: "Cannot connect to the owned test socket: \(assistantControlSocket.path)"]) }
+        var timeout = timeval(tv_sec: 5, tv_usec: 0)
+        _ = setsockopt(descriptor, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
+        _ = fcntl(descriptor, F_SETNOSIGPIPE, 1)
+        let body = try JSONSerialization.data(withJSONObject: request, options: [.fragmentsAllowed])
+        var count = UInt32(body.count).littleEndian
+        var frame = withUnsafeBytes(of: &count) { Data($0) }; frame.append(body); try handle.write(contentsOf: frame)
+        func read(_ count: Int) throws -> Data {
+            var data = Data()
+            while data.count < count {
+                guard let part = try handle.read(upToCount: count - data.count), !part.isEmpty else { throw NSError(domain: "AssistantControl", code: 4) }
+                data.append(part)
+            }
+            return data
+        }
+        let prefix = try read(4)
+        let length = prefix.enumerated().reduce(UInt32(0)) { $0 | UInt32($1.element) << ($1.offset * 8) }
+        guard length > 0, length <= 128 * 1024 else { throw NSError(domain: "AssistantControl", code: 5) }
+        return try XCTUnwrap(JSONSerialization.jsonObject(with: read(Int(length))) as? [String: Any])
+    }
     private func permissionPackage() throws -> URL {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("bi-permissions-ui-" + UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
@@ -499,12 +661,21 @@ final class BrowserUITests: XCTestCase {
     private var app: XCUIApplication!
     private var originalInputSource: TISInputSource?
     private var preferenceDomain = ""
+    private var assistantSettingsFile: URL!
+    private var assistantControlSocket: URL!
 
     override func setUpWithError() throws {
         continueAfterFailure = false
         app = XCUIApplication()
         preferenceDomain = "cc.blueice.uitests." + UUID().uuidString
         app.launchArguments = ["--preferences-domain", preferenceDomain]
+        let assistantRoot = FileManager.default.temporaryDirectory.appendingPathComponent("as-" + UUID().uuidString.prefix(12))
+        try FileManager.default.createDirectory(at: assistantRoot, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
+        assistantSettingsFile = assistantRoot.appendingPathComponent("settings.json")
+        app.launchArguments += ["--assistant-settings", assistantSettingsFile.path]
+        assistantControlSocket = assistantRoot.appendingPathComponent("c.sock")
+        XCTAssertLessThan(assistantControlSocket.path.utf8.count, 104, "Darwin Unix sockets require short paths")
+        app.launchArguments += ["--control-socket", assistantControlSocket.path]
         originalInputSource = TISCopyCurrentKeyboardInputSource().takeRetainedValue()
         let filter = [kTISPropertyInputSourceID as String: "com.apple.keylayout.ABC"] as CFDictionary
         let sources = TISCreateInputSourceList(filter, false).takeRetainedValue() as! [TISInputSource]
@@ -513,6 +684,8 @@ final class BrowserUITests: XCTestCase {
 
     override func tearDownWithError() throws {
         defer {
+            try? FileManager.default.removeItem(at: assistantSettingsFile.deletingLastPathComponent())
+            try? FileManager.default.removeItem(at: assistantControlSocket)
             UserDefaults(suiteName: preferenceDomain)?.removePersistentDomain(forName: preferenceDomain)
             if let originalInputSource { XCTAssertEqual(TISSelectInputSource(originalInputSource), noErr) }
         }

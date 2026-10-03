@@ -14,6 +14,7 @@ struct BlueIcePanelsApp: App {
 final class PermissionPanelDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var window: NSWindow?
     private var model: PermissionPanelModel?
+    private var assistant: AssistantSettingsModel?
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Stay hidden until the user opens Permissions in their browser. The
         // initial inspection satisfies launcher's existing readiness barrier.
@@ -22,14 +23,16 @@ final class PermissionPanelDelegate: NSObject, NSApplicationDelegate, NSWindowDe
         guard arguments.contains("--trusted-window-stdio"), let option = arguments.firstIndex(of: "--socket"),
               arguments.indices.contains(option + 1) else { NSApp.terminate(nil); return }
         do {
-            let model = PermissionPanelModel(service: try NativePermissionService(socket: arguments[option + 1])); self.model = model
+            let service = try NativePermissionService(socket: arguments[option + 1])
+            let model = PermissionPanelModel(service: service); self.model = model
+            let assistant = AssistantSettingsModel(service: service); self.assistant = assistant
             let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 640, height: 560),
                                   styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
-            window.title = "BlueIce Permissions"; window.identifier = .init("permissions-window")
+            window.title = "BlueIce Browser Panels"; window.identifier = .init("permissions-window")
             window.isReleasedWhenClosed = false; window.delegate = self; window.center()
-            window.contentView = NSHostingView(rootView: PermissionPanelView(model: model))
+            window.contentView = NSHostingView(rootView: TrustedPanelsView(permissions: model, assistant: assistant))
             self.window = window
-            Task { await model.refresh() }
+            Task { await model.refresh(); await assistant.refresh() }
         } catch { NSApp.terminate(nil) }
     }
     func applicationDidBecomeActive(_ notification: Notification) { openWindow() }
@@ -39,10 +42,10 @@ final class PermissionPanelDelegate: NSObject, NSApplicationDelegate, NSWindowDe
     private func openWindow() {
         let refresh = window?.isVisible == false
         window?.makeKeyAndOrderFront(nil)
-        if refresh, let model { Task { await model.refresh() } }
+        if refresh, let model, let assistant { Task { await model.refresh(); await assistant.refresh() } }
     }
     func windowShouldClose(_ sender: NSWindow) -> Bool {
-        model?.cancel(); sender.orderOut(nil); NSApp.hide(nil); return false
+        model?.cancel(); assistant?.cancel(); sender.orderOut(nil); NSApp.hide(nil); return false
     }
 }
 struct PermissionPanelView: View {

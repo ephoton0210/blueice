@@ -5,8 +5,11 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <!-- Only the XCUITest runner hosts the loopback HTTP fixture. -->
+    <!-- Test-only loopback fixtures and the owner's ordinary proposal socket.
+         The private decision pipes remain owned by the native child. -->
     <key>com.apple.security.network.server</key>
+    <true/>
+    <key>com.apple.security.network.client</key>
     <true/>
 </dict>
 </plist>
