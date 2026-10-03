@@ -67,6 +67,7 @@ pub struct Page {
     hovered: Option<NodeId>,
     focused: Option<NodeId>,
     native_editor: Option<native_editing::EditorSession>,
+    native_undo: native_editing::undo::UndoHistory,
     native_focus_generation: u64,
     native_focus_exit: Option<blueice_ipc::input::FocusDirection>,
     native_focus_start: Option<NodeId>,
@@ -134,6 +135,7 @@ impl Page {
             hovered: None,
             focused: None,
             native_editor: None,
+            native_undo: native_editing::undo::UndoHistory::default(),
             native_focus_generation: 0,
             native_focus_exit: None,
             native_focus_start: None,
@@ -181,6 +183,7 @@ impl Page {
         self.network_response = None;
         self.network_trace = None;
         self.native_form_defaults.clear();
+        self.native_undo.clear();
         self.native_files.clear();
         self.native_file_revision = self.native_file_revision.wrapping_add(1);
         self.last_navigation = None;
@@ -215,6 +218,7 @@ impl Page {
     }
 
     fn relayout(&mut self) {
+        self.native_undo.prune(&self.doc);
         self.fragment = layout(
             &self.doc,
             self.doc.root(),
@@ -678,6 +682,7 @@ impl Page {
             }
             NodeAction::Focus => {
                 if self.focused != Some(id) {
+                    self.commit_native_composition();
                     self.native_focus_generation = self.native_focus_generation.wrapping_add(1);
                     self.native_editor = None;
                     self.native_focus_exit = None;
@@ -687,6 +692,7 @@ impl Page {
                 None
             }
             NodeAction::SetValue(value) => {
+                self.native_undo.forget(id);
                 if matches!(self.doc.data(id),NodeData::Element { tag_name,.. } if tag_name=="input")
                     && element_attribute(&self.doc, id, "type")
                         .is_some_and(|kind| kind.eq_ignore_ascii_case("file"))
@@ -969,6 +975,11 @@ impl Page {
             return Err("the child node is already attached".to_string());
         }
         self.doc.append_child(parent, child);
+        let mut ancestor = Some(parent);
+        while let Some(id) = ancestor {
+            self.native_undo.forget(id);
+            ancestor = self.doc.parent(id);
+        }
         self.native_form_script_text_change(parent);
         // Newly created elements have no computed style until they join this
         // document. Recompute author/UA styles before layout and paint.
@@ -999,6 +1010,11 @@ impl Page {
         value: String,
     ) -> Result<(), String> {
         let node = self.script_node(node)?;
+        let mut ancestor = Some(node);
+        while let Some(id) = ancestor {
+            self.native_undo.forget(id);
+            ancestor = self.doc.parent(id);
+        }
         if let NodeData::Text { data } = self.doc.data_mut(node) {
             *data = value;
         } else {
@@ -1060,6 +1076,7 @@ impl Page {
     /// its document generation is strictly greater (so a page-script realm bound
     /// to the departed document can never alias this one).
     pub(crate) fn continue_tab_generations_from(&mut self, previous: &Page) {
+        self.native_undo.clear();
         self.frame_generation = previous.frame_generation;
         self.document_generation = previous.document_generation.wrapping_add(1);
         self.display_viewport = previous.display_viewport;

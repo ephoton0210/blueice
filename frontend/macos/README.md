@@ -187,6 +187,22 @@ Commands are fenced by frame source, document and focus generations and
 serialized through core acknowledgements. The shell retains only pending IME
 range metadata while waiting for the core; it has no parallel DOM or layout.
 
+Edit → Undo/Redo, Command-Z/Shift-Command-Z and the native page context menu
+replay core-owned text transactions and UTF-16 selections. AppKit's undo manager
+is a forwarding proxy with undo registration disabled. Address/find fields keep
+their ordinary Cocoa editing. Paste, cut and committed IME sequences are atomic;
+continuous typing or same-direction deletion groups within one second until
+selection, movement, focus or another command ends the group. Each page retains
+at most 128 transactions and 4 MiB of UTF-8 snapshots across its controls, with
+older edits evicted and a context-menu notice when the history was limited.
+Snapshots use zeroizing storage and are never serialized. Password state exposes
+only availability, lengths and selection. Marked composition disables replay;
+cancel keeps the existing redo branch. Window transfer retains histories while
+fencing old commands; navigation/reload/reset, successful external writes and
+removed or no-longer-writable controls invalidate the affected history. New edits
+discard the current control's redo branch. See
+[Undo/Redo results](../../development/browser_core/phase-22-browser-shell-accessibility/MACOS_UNDO_REDO_RESULTS.md).
+
 The core also owns sequential Tab/Shift-Tab order, positive and negative
 tabindex handling, disabled/hidden/inert exclusions, radio groups with form
 owners, checkbox Space, radio arrows, single-select arrows/Home/End and range
@@ -413,7 +429,7 @@ AXValue, accessibility text ranges, live-region announcements or rotor search.
 Native editing geometry is currently available through `NSTextInputClient`,
 independently of those AX text APIs. Actual OS IME verification is pending
 runner Accessibility permission on the recorded host. JavaScript
-keyboard/beforeinput/input/composition event dispatch, undo/redo, complete
+keyboard/beforeinput/input/composition event dispatch, complete
 bidirectional shaping and caret blink remain open, as do full form event/validity behavior,
 select popup/typeahead/multiple-selection interaction, complete toolbar Tab
 traversal, image/media context actions, page-text selection/copy, drag/drop,

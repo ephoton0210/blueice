@@ -167,6 +167,7 @@ impl Page {
         if self.focused == focused {
             return false;
         }
+        self.commit_native_composition();
         self.focused = focused;
         self.native_focus_start = focused;
         self.native_focus_generation = self.native_focus_generation.wrapping_add(1);

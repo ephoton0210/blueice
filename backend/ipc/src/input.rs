@@ -87,6 +87,8 @@ pub enum TextInputAction {
     },
     FinishComposition,
     CancelComposition,
+    Undo,
+    Redo,
     Select {
         range: TextRange,
     },
@@ -123,6 +125,12 @@ pub struct TextControlState {
     pub protected: bool,
     pub writable: bool,
     pub multiline: bool,
+    #[serde(default)]
+    pub can_undo: bool,
+    #[serde(default)]
+    pub can_redo: bool,
+    #[serde(default)]
+    pub undo_limited: bool,
     pub selection: TextRange,
     pub marked: Option<TextRange>,
     pub bounds: Bounds,

@@ -202,6 +202,8 @@ fn native_text_actions_round_trip_with_document_and_focus_fences() {
         },
         TextInputAction::FinishComposition,
         TextInputAction::CancelComposition,
+        TextInputAction::Undo,
+        TextInputAction::Redo,
         TextInputAction::Select { range },
         TextInputAction::SelectAll,
         TextInputAction::Move {
@@ -267,6 +269,9 @@ fn native_ranges_check_overflow_and_password_state_stays_redacted_on_wire() {
             protected: true,
             writable: true,
             multiline: false,
+            can_undo: true,
+            can_redo: false,
+            undo_limited: false,
             selection: TextRange {
                 location: 9,
                 length: 0,
@@ -288,6 +293,16 @@ fn native_ranges_check_overflow_and_password_state_stays_redacted_on_wire() {
     assert!(std::str::from_utf8(&bytes[4..])
         .unwrap()
         .contains("\"text\":null"));
+    let mut legacy = serde_json::to_value(&expected).unwrap();
+    let field = legacy["TextInputState"]["focused"].as_object_mut().unwrap();
+    for key in ["can_undo", "can_redo", "undo_limited"] {
+        field.remove(key);
+    }
+    let ServerMessage::TextInputState(legacy) = serde_json::from_value(legacy).unwrap() else {
+        panic!("text state");
+    };
+    let field = legacy.focused.unwrap();
+    assert!(!field.can_undo && !field.can_redo && !field.undo_limited);
 }
 
 #[test]

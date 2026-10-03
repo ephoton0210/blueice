@@ -29,6 +29,268 @@ struct Browser {
     pixels: Vec<u8>,
 }
 
+#[test]
+fn undo_redo_restore_unicode_selection_pixels_and_independent_control_histories() {
+    let mut browser = Browser::new("<input value='A😀B'><input value='next'>");
+    browser.key(PageKey::Tab, false);
+    browser
+        .input(browser.context(), TextInputAction::SelectAll)
+        .unwrap();
+    let before = browser.pixels.clone();
+    browser
+        .input(
+            browser.context(),
+            TextInputAction::Replace {
+                text: "中文👨‍👩‍👧‍👦".into(),
+                replacement: None,
+            },
+        )
+        .unwrap();
+    assert!(browser.state.focused.as_ref().unwrap().can_undo);
+    browser
+        .input(browser.context(), TextInputAction::Undo)
+        .unwrap();
+    let field = browser.state.focused.as_ref().unwrap();
+    assert_eq!(field.text.as_deref(), Some("A😀B"));
+    assert_eq!((field.selection.location, field.selection.length), (0, 4));
+    assert!(field.can_redo);
+    assert_eq!(browser.pixels, before);
+    browser
+        .input(browser.context(), TextInputAction::Redo)
+        .unwrap();
+    assert_eq!(
+        browser.state.focused.as_ref().unwrap().text.as_deref(),
+        Some("中文👨‍👩‍👧‍👦")
+    );
+    let old = browser.context();
+    browser.key(PageKey::Tab, false);
+    browser
+        .input(
+            browser.context(),
+            TextInputAction::Replace {
+                text: "!".into(),
+                replacement: None,
+            },
+        )
+        .unwrap();
+    assert!(browser.input(old, TextInputAction::Undo).is_err());
+    assert_eq!(
+        browser.state.focused.as_ref().unwrap().text.as_deref(),
+        Some("next!")
+    );
+    browser.key(PageKey::Tab, true);
+    browser
+        .input(browser.context(), TextInputAction::Undo)
+        .unwrap();
+    assert_eq!(
+        browser.state.focused.as_ref().unwrap().text.as_deref(),
+        Some("A😀B")
+    );
+}
+
+#[test]
+fn undo_groups_typing_and_committed_composition_but_drops_redo_after_a_new_edit() {
+    use blueice_ipc::input::TextRange;
+    let mut browser = Browser::new("<textarea>old</textarea>");
+    browser.key(PageKey::Tab, false);
+    for text in ["a", "b", "c"] {
+        browser
+            .input(
+                browser.context(),
+                TextInputAction::Replace {
+                    text: text.into(),
+                    replacement: None,
+                },
+            )
+            .unwrap();
+    }
+    browser
+        .input(browser.context(), TextInputAction::Undo)
+        .unwrap();
+    assert_eq!(
+        browser.state.focused.as_ref().unwrap().text.as_deref(),
+        Some("old")
+    );
+    browser
+        .input(browser.context(), TextInputAction::SelectAll)
+        .unwrap();
+    for text in ["中", "中文"] {
+        browser
+            .input(
+                browser.context(),
+                TextInputAction::Compose {
+                    text: text.into(),
+                    selection: TextRange {
+                        location: text.encode_utf16().count() as u32,
+                        length: 0,
+                    },
+                    replacement: None,
+                },
+            )
+            .unwrap();
+    }
+    browser
+        .input(browser.context(), TextInputAction::FinishComposition)
+        .unwrap();
+    assert!(!browser.state.focused.as_ref().unwrap().can_redo);
+    browser
+        .input(browser.context(), TextInputAction::Undo)
+        .unwrap();
+    assert_eq!(
+        browser.state.focused.as_ref().unwrap().text.as_deref(),
+        Some("old")
+    );
+    browser
+        .input(browser.context(), TextInputAction::Redo)
+        .unwrap();
+    assert_eq!(
+        browser.state.focused.as_ref().unwrap().text.as_deref(),
+        Some("中文")
+    );
+    browser
+        .input(browser.context(), TextInputAction::Undo)
+        .unwrap();
+    browser
+        .input(
+            browser.context(),
+            TextInputAction::Replace {
+                text: "new branch".into(),
+                replacement: None,
+            },
+        )
+        .unwrap();
+    assert!(!browser.state.focused.as_ref().unwrap().can_redo);
+    browser
+        .input(browser.context(), TextInputAction::Redo)
+        .unwrap();
+    assert_eq!(
+        browser.state.focused.as_ref().unwrap().text.as_deref(),
+        Some("new branch")
+    );
+}
+
+#[test]
+fn undo_password_state_never_discloses_old_or_new_plaintext() {
+    let mut browser = Browser::new("<input type='password' value='old-secret'>");
+    browser.key(PageKey::Tab, false);
+    browser
+        .input(browser.context(), TextInputAction::SelectAll)
+        .unwrap();
+    browser
+        .input(
+            browser.context(),
+            TextInputAction::Replace {
+                text: "new-private-password".into(),
+                replacement: None,
+            },
+        )
+        .unwrap();
+    for action in [TextInputAction::Undo, TextInputAction::Redo] {
+        browser.input(browser.context(), action).unwrap();
+        let field = browser.state.focused.as_ref().unwrap();
+        assert!(field.protected);
+        assert_eq!(field.text, None);
+        let state = serde_json::to_string(&browser.state).unwrap();
+        assert!(!state.contains("old-secret") && !state.contains("new-private-password"));
+        assert!(browser
+            .snapshot()
+            .nodes
+            .iter()
+            .all(|node| !format!("{node:?}").contains("secret")));
+    }
+    assert_eq!(browser.state.focused.as_ref().unwrap().text_length, 20);
+}
+
+#[test]
+fn undo_external_same_value_write_and_form_reset_remove_history() {
+    let mut browser = Browser::new(
+        "<form><input aria-label='Editor' value='start'><button type='reset'>Reset</button></form>",
+    );
+    browser.key(PageKey::Tab, false);
+    browser
+        .input(
+            browser.context(),
+            TextInputAction::Replace {
+                text: "!".into(),
+                replacement: None,
+            },
+        )
+        .unwrap();
+    let node = browser
+        .snapshot()
+        .nodes
+        .iter()
+        .find(|n| n.name.as_deref() == Some("Editor"))
+        .unwrap()
+        .id;
+    browser.interaction(ClientMessage::ActOn {
+        id: node,
+        action: NodeAction::SetValue("start!".into()),
+    });
+    assert!(!browser.state.focused.as_ref().unwrap().can_undo);
+    browser
+        .input(
+            browser.context(),
+            TextInputAction::Replace {
+                text: "new".into(),
+                replacement: None,
+            },
+        )
+        .unwrap();
+    browser.key(PageKey::Tab, false);
+    browser.key(PageKey::Enter, false);
+    browser.key(PageKey::Tab, true);
+    assert_eq!(
+        browser.state.focused.as_ref().unwrap().text.as_deref(),
+        Some("start")
+    );
+    assert!(!browser.state.focused.as_ref().unwrap().can_undo);
+}
+
+#[test]
+fn undo_bounded_history_retains_recent_atomic_edits_and_reports_eviction() {
+    use blueice_ipc::input::TextRange;
+    let mut browser = Browser::new("<input value='initial'>");
+    browser.key(PageKey::Tab, false);
+    for i in 0..140 {
+        let size = browser.state.focused.as_ref().unwrap().text_length;
+        browser
+            .input(
+                browser.context(),
+                TextInputAction::Replace {
+                    text: format!("value {i}"),
+                    replacement: Some(TextRange {
+                        location: 0,
+                        length: size,
+                    }),
+                },
+            )
+            .unwrap();
+    }
+    assert!(browser.state.focused.as_ref().unwrap().undo_limited);
+    let mut undos = 0;
+    while browser.state.focused.as_ref().unwrap().can_undo {
+        browser
+            .input(browser.context(), TextInputAction::Undo)
+            .unwrap();
+        undos += 1;
+    }
+    assert_eq!(undos, 128);
+    assert_eq!(
+        browser.state.focused.as_ref().unwrap().text.as_deref(),
+        Some("value 11")
+    );
+    while browser.state.focused.as_ref().unwrap().can_redo {
+        browser
+            .input(browser.context(), TextInputAction::Redo)
+            .unwrap();
+    }
+    assert_eq!(
+        browser.state.focused.as_ref().unwrap().text.as_deref(),
+        Some("value 139")
+    );
+}
+
 impl Browser {
     fn new(html: &str) -> Self {
         Self::with_executor(html, None)

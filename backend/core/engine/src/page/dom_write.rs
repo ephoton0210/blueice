@@ -22,6 +22,7 @@ impl Page {
                 id.as_u64()
             ));
         }
+        self.native_undo.forget(id);
         let NodeData::Element { attributes, .. } = self.doc.data_mut(id) else {
             unreachable!("a checked input node remains an element");
         };
@@ -105,6 +106,7 @@ impl Page {
                 id.as_u64()
             ));
         }
+        self.native_undo.forget(id);
         self.set_node_text_content(id, value)
     }
 

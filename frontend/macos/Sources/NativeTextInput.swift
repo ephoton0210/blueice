@@ -43,6 +43,7 @@ enum TextInputAction: Encodable, Sendable {
     var isPageKey: Bool { if case .key = self { return true }; return false }
     case replace(String, TextRange?), compose(String, TextRange, TextRange?)
     case finishComposition, cancelComposition, select(TextRange), selectAll
+    case undo, redo
     case move(TextMovement, Bool), delete(Bool), pointer(Double, Double, Bool, UInt8)
 
     private struct Key: CodingKey {
@@ -63,6 +64,8 @@ enum TextInputAction: Encodable, Sendable {
             var value = fields("Key"); try value.encode(key, forKey: Key("key")); try value.encode(shift, forKey: Key("shift"))
         case .finishComposition: try unit("FinishComposition")
         case .cancelComposition: try unit("CancelComposition")
+        case .undo: try unit("Undo")
+        case .redo: try unit("Redo")
         case .selectAll: try unit("SelectAll")
         case .replace(let text, let range):
             var value = fields("Replace"); try value.encode(text, forKey: Key("text")); try value.encode(range, forKey: Key("replacement"))
@@ -88,6 +91,9 @@ struct TextControlState: Decodable, Sendable {
     let protected: Bool
     let writable: Bool
     let multiline: Bool
+    let can_undo: Bool?
+    let can_redo: Bool?
+    let undo_limited: Bool?
     let selection: TextRange
     let marked: TextRange?
     let bounds: PageNode.Bounds

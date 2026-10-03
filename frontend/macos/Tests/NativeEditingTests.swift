@@ -7,6 +7,90 @@ import XCTest
 
 @MainActor
 final class NativeEditingTests: XCTestCase {
+    func testUndoManagerCommitsCompositionRestoresUTF16SelectionAndKeepsCancelledRedo() async throws {
+        let (model, view, fixture) = try await start()
+        defer { fixture.stop(); Task { await model.stop() } }
+        try await focus("Editor", model: model, view: view)
+        let manager = try XCTUnwrap(view.undoManager)
+        XCTAssertFalse(manager.isUndoRegistrationEnabled)
+        XCTAssertFalse(manager.canUndo); XCTAssertFalse(manager.canRedo)
+        model.textInput(.select(TextRange(NSRange(location: 1, length: 2))))
+        await wait { model.textInputState?.focused?.selection.nsRange == NSRange(location: 1, length: 2) && !model.textInputBusy }
+        let unknown = NSRange(location: NSNotFound, length: 0)
+        view.setMarkedText("中", selectedRange: NSRange(location: 1, length: 0), replacementRange: unknown)
+        XCTAssertFalse(manager.canUndo); XCTAssertFalse(manager.canRedo)
+        view.setMarkedText("中文", selectedRange: NSRange(location: 2, length: 0), replacementRange: unknown)
+        await wait { model.textInputState?.focused?.text == "A中文B" && !model.textInputBusy }
+        XCTAssertFalse(manager.canUndo); XCTAssertFalse(manager.canRedo)
+        view.unmarkText()
+        await wait { model.textInputState?.focused?.marked == nil && manager.canUndo && !model.textInputBusy }
+        manager.undo()
+        await wait { model.textInputState?.focused?.text == "A😀B" && !model.textInputBusy }
+        XCTAssertEqual(view.selectedRange(), NSRange(location: 1, length: 2)); XCTAssertTrue(manager.canRedo)
+        view.setMarkedText("cancel", selectedRange: NSRange(location: 6, length: 0), replacementRange: unknown)
+        await wait { model.textInputState?.focused?.marked != nil && !model.textInputBusy }
+        view.doCommand(by: NSSelectorFromString("cancelOperation:"))
+        await wait { model.textInputState?.focused?.text == "A😀B" && !model.textInputBusy }
+        XCTAssertTrue(manager.canRedo)
+        manager.redo()
+        await wait { model.textInputState?.focused?.text == "A中文B" && !model.textInputBusy }
+        XCTAssertEqual(view.selectedRange(), NSRange(location: 3, length: 0))
+        await model.stop()
+    }
+
+    func testUndoPasswordPrivacyReadonlyAndQueuedCommandsThroughAppKit() async throws {
+        let (model, view, fixture) = try await start()
+        defer { fixture.stop(); Task { await model.stop() } }
+        try await focus("Secret", model: model, view: view)
+        let manager = try XCTUnwrap(view.undoManager)
+        view.selectAll(nil); view.insertText("temporary-secret", replacementRange: NSRange(location: NSNotFound, length: 0))
+        manager.undo()
+        await wait { model.textInputState?.focused?.text_length == UInt32("private-fixture-secret".utf16.count) && !model.textInputBusy && manager.canRedo }
+        XCTAssertNil(model.textInputState?.focused?.text)
+        XCTAssertNil(view.attributedSubstring(forProposedRange: NSRange(location: 0, length: 2), actualRange: nil))
+        manager.redo()
+        await wait { model.textInputState?.focused?.text_length == UInt32("temporary-secret".utf16.count) && !model.textInputBusy }
+        XCTAssertNil(model.representation?.nodes.first { $0.name == "Secret" }?.state.value)
+        try await focus("Readonly", model: model, view: view)
+        XCTAssertFalse(manager.canUndo); XCTAssertFalse(manager.canRedo)
+        manager.undo(); manager.redo(); XCTAssertEqual(model.textInputState?.focused?.text, "locked")
+        await model.stop()
+    }
+
+    func testUndoHistoryFollowsWindowTransferAndClearsOnReload() async throws {
+        let fixture = try HTTPFixture(); defer { fixture.stop() }
+        let workspace = BrowserWorkspace(); defer { Task { await workspace.stop() } }
+        let launcher = Bundle(for: Self.self).bundleURL.deletingLastPathComponent().appendingPathComponent("BlueIce.app/Contents/MacOS/blueice-launcher")
+        await workspace.start(launcher: launcher)
+        let first = try XCTUnwrap(workspace.models[1])
+        first.address = fixture.origin + "/editing"; first.navigateAddress()
+        await wait { first.representation?.url == fixture.origin + "/editing" }
+        let view = CorePageView(frame: CGRect(x: 0, y: 0, width: 500, height: 300)); view.model = first
+        try await focus("Editor", model: first, view: view)
+        let tab = try XCTUnwrap(first.selected), old = try XCTUnwrap(first.textInputState?.context)
+        view.selectAll(nil); view.insertText("Moved 中文", replacementRange: NSRange(location: NSNotFound, length: 0))
+        await wait { first.textInputState?.focused?.text == "Moved 中文" && !first.textInputBusy }
+        let created = await workspace.createWindow(), id = try XCTUnwrap(created)
+        let second = try XCTUnwrap(workspace.models[id])
+        let moved = await workspace.moveTab(tab, to: id); XCTAssertTrue(moved)
+        await wait { second.textInputState?.focused?.text == "Moved 中文" && !second.textInputBusy }
+        second.action(.textInput(old, .undo))
+        await wait { second.status.contains("Stale") }
+        XCTAssertEqual(second.textInputState?.focused?.text, "Moved 中文")
+        view.model = second
+        try XCTUnwrap(view.undoManager).undo()
+        await wait { second.textInputState?.focused?.text == "A😀B" && !second.textInputBusy }
+        try XCTUnwrap(view.undoManager).redo()
+        await wait { second.textInputState?.focused?.text == "Moved 中文" && !second.textInputBusy }
+        let generation = second.generation
+        second.reload()
+        await wait { second.generation > generation && second.textInputState?.focused == nil }
+        try await focus("Editor", model: second, view: view)
+        XCTAssertFalse(try XCTUnwrap(view.undoManager).canUndo); XCTAssertFalse(try XCTUnwrap(view.undoManager).canRedo)
+        XCTAssertEqual(fixture.requests, ["/editing", "/editing"])
+        await workspace.stop()
+    }
+
     func testContextsKeepOneCoreSeparateGroupsAndRestorePersistentKeysWithFreshRuntimeIDs() async throws {
         let domain = "cc.blueice.context-service-tests." + UUID().uuidString
         let defaults = try XCTUnwrap(UserDefaults(suiteName: domain)); defer { defaults.removePersistentDomain(forName: domain) }
@@ -81,6 +165,12 @@ final class NativeEditingTests: XCTestCase {
         XCTAssertEqual((compose["replacement"] as? [String: Int])?["length"], 2)
         XCTAssertNil(TextRange.replacement(NSRange(location: NSNotFound, length: 0)))
         XCTAssertNil(TextRange.replacement(NSRange(location: 65_536, length: 1)))
+        for (action, name) in [(TextInputAction.undo, "Undo"), (.redo, "Redo")] {
+            let bytes = try BrowserWire.encode(.textInput(context, action), tab: 2, request: 8)
+            let root = try XCTUnwrap(JSONSerialization.jsonObject(with: bytes.dropFirst(4)) as? [String: Any])
+            let input = try XCTUnwrap((root["message"] as? [String: Any])?["TextInput"] as? [String: Any])
+            XCTAssertEqual(input["action"] as? String, name)
+        }
     }
 
     func testMalformedTextStateFailsSoftAndRejectsProtectedPlaintext() throws {

@@ -132,7 +132,10 @@ struct BrowserSessionSettingsView: View {
                 Toggle("Reopen saved session on startup", isOn: Binding(get: { preferences.reopen }, set: preferences.setReopen))
                     .disabled(!preferences.remember).accessibilityIdentifier("session-reopen")
                 Text("Saves visited URLs, history, groups, selected tabs, window positions and zoom. Pages are reviewed again when reopened. Form contents, passwords, selected files and POST bodies are not saved.").font(.caption)
-                if let notice = preferences.error ?? preferences.status { Text(verbatim: notice).font(.caption).accessibilityIdentifier("session-status") }
+                // Keep the switches stationary when the first save completes.
+                Text(verbatim: preferences.error ?? preferences.status ?? " ")
+                    .font(.caption).accessibilityIdentifier("session-status")
+                    .accessibilityHidden(preferences.error == nil && preferences.status == nil)
                 HStack {
                     Button("Restore Last Session") { Task { await workspace.restoreSavedSession() } }.disabled(!workspace.canRestoreSession).accessibilityIdentifier("session-restore")
                     Button("Forget Session and Stop Remembering") { workspace.setRememberSession(false) }.accessibilityIdentifier("session-forget")

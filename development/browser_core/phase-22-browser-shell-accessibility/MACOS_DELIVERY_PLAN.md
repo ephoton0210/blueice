@@ -12,7 +12,7 @@ pushed to the current tracked branch as authorized by the owner.
 | Native window and chrome | SwiftUI/AppKit address/tabs/history/settings, visible real-core pixels, startup/close/resize XCUITest | Committed `c762b53a9` |
 | Owned service stack | Bundled launcher/core/gatekeeper, reviewed external navigation, fail-closed review, normal/forced cleanup | Committed `32fa07f6b` |
 | Page accessibility | Core semantic tree mapped into NSAccessibility, native actions, privacy, stale-element and tab isolation tests | Committed and pushed `41952a803` |
-| Native text editing | Core-owned UTF-16 selection, grapheme movement/deletion, IME composition/update/commit/cancel, caret/candidate geometry, text/password/textarea editing, clipboard policy and native UI tests | Foundation committed and pushed `8b80c3c53`; physical OS IME and remaining editing behavior pending, see [results](MACOS_NATIVE_EDITING_RESULTS.md) |
+| Native text editing | Core-owned UTF-16 selection, grapheme movement/deletion, IME composition/update/commit/cancel, caret/candidate geometry, text/password/textarea editing, clipboard policy and native UI tests | Foundation committed and pushed `8b80c3c53`; bounded native Undo/Redo implemented and accepted, see [Undo/Redo results](MACOS_UNDO_REDO_RESULTS.md); physical OS IME and remaining editing behavior pending, see [foundation results](MACOS_NATIVE_EDITING_RESULTS.md) |
 | Keyboard and page interaction | Keyboard-only form completion, checkbox/radio/select/range controls, find-in-page, native context menus, drag/drop and file-selection policy tests | Keyboard increment committed and pushed `97794bb57`; native form reset committed and pushed `4c1c6e922`; GET/POST submission committed and pushed `1bf78a3d9`; find/ordered clipboard committed and pushed `614489c59`; native context menus committed and pushed `531b6b2df`; native file-input panel/content submission committed and pushed `222d7f78e`, see [file-input results](MACOS_FILE_INPUT_RESULTS.md); remaining interactions pending |
 | Windows and tab organization | Multiple native windows, tab groups, profile/context lifecycle, retained history and state handoff using core tab identities | Native groups committed and pushed `6e141967f`; shared-core windows/tab transfer committed and pushed `b318e0de8`; context lifecycle and persistent profile identities committed and pushed `ee450a3df`, see [context results](MACOS_CONTEXT_RESULTS.md); durable native session restoration implemented and accepted, see [session results](MACOS_SESSION_RESTORE_RESULTS.md); full storage partitioning pending |
 | Downloads and printing | Actual download manager/shelf, progress/cancel/open/reveal, print/PDF media output and native panel tests | Native manager panel and linked-file downloads committed and pushed `b62b38aa7`, see [download results](MACOS_DOWNLOAD_RESULTS.md); core print-media pagination and native print/PDF committed and pushed `0d2e3ea58`, acceptance recorded in [print results](MACOS_PRINT_RESULTS.md); automatic response downloads, destination/credential UI, quarantine, vector PDF and physical-printer acceptance pending |
@@ -48,11 +48,35 @@ The 2026-10-02 foundation includes those deterministic callbacks, range/geometry
 boundaries and actual-window selection/clipboard tests. Its system Zhuyin test
 is implemented but skipped on this host because `AXIsProcessTrusted()` is false
 for the UI runner. Remaining editing work includes physical IME validation,
-JavaScript keyboard/beforeinput/input/composition event dispatch, undo/redo,
+JavaScript keyboard/beforeinput/input/composition event dispatch,
 complete bidirectional shaping, caret blink, preferred vertical caret position
 and general keyboard input during asynchronous focus changes. The later
 keyboard milestone buffers native events specifically across Tab handoffs;
 it does not complete native editing acceptance.
+
+## Native Undo/Redo increment
+
+The core stores private, zeroizing before/after values and UTF-16 selections for
+each editable control, bounded globally per page to 128 transactions and 4 MiB.
+Atomic paste/cut and committed compositions coexist with one-second typing and
+same-direction deletion groups. Movement, selection and focus boundaries end a
+group. AppKit forwards native Edit commands, keyboard shortcuts and context-menu
+actions to the same ordered, document/focus-fenced input boundary; its proxy
+disables Cocoa undo registration and stores no text transactions. Cocoa address
+and find editors retain their own responder behavior.
+
+Marked composition disables replay; cancellation preserves the earlier redo
+branch. Password transactions remain private in the core, with only availability
+and selection/length metadata exposed. Transfer keeps the existing page's
+history with fresh focus ownership. Navigation/reload, form reset, external
+value/text writes and removed or no-longer-editable controls discard affected
+histories. A new edit drops that control's redo branch; eviction is reported in
+the page context menu. Session restoration never persists editing histories.
+The full native gate passed with 155 passes and one physical Zhuyin skip; the
+Rust workspace passed 7,217 cases. The increment also stabilizes the session
+Settings status row and verifies Forget through GUI state, normal exit, disk
+removal and relaunch. The dated acceptance record is
+[MACOS_UNDO_REDO_RESULTS.md](MACOS_UNDO_REDO_RESULTS.md).
 
 ## Keyboard control increment
 

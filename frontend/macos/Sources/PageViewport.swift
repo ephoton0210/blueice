@@ -74,7 +74,7 @@ struct PageViewport: NSViewRepresentable {
     }
 }
 
-final class CorePageView: NSView, NSTextInputClient {
+final class CorePageView: NSView, NSTextInputClient, NSUserInterfaceValidations {
     weak var model: BrowserModel? {
         didSet {
             textObservation = model.map { model in
@@ -120,6 +120,8 @@ final class CorePageView: NSView, NSTextInputClient {
     private var activeContextMenu: (menu: NSMenu, context: PageMenuContext)?
     override var isFlipped: Bool { true }
     override var acceptsFirstResponder: Bool { true }
+    private lazy var coreUndoManager = CoreUndoManager(view: self)
+    override var undoManager: UndoManager? { coreUndoManager }
 
     override func draw(_ dirtyRect: NSRect) {
         NSColor.white.setFill()
@@ -247,6 +249,9 @@ final class CorePageView: NSView, NSTextInputClient {
             menu.addItem(.separator())
         }
         if let field = state.input?.focused {
+            item("Undo", enabled: field.can_undo == true) { $0.textInput(.undo) }
+            item("Redo", enabled: field.can_redo == true) { $0.textInput(.redo) }
+            if field.undo_limited == true { item("Earlier edits may be unavailable", enabled: false) { _ in } }
             let copy = !field.protected && field.selection.length > 0
             item("Cut", enabled: copy && field.writable) { $0.copySelection(cut: true) }
             item("Copy", enabled: copy) { $0.copySelection() }
@@ -322,7 +327,7 @@ final class CorePageView: NSView, NSTextInputClient {
     }
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         if tabTransition != nil, event.modifierFlags.intersection([.command, .option, .control]) == .command,
-           ["a", "c", "x", "v"].contains(event.charactersIgnoringModifiers?.lowercased() ?? "") {
+           ["a", "c", "x", "v", "z"].contains(event.charactersIgnoringModifiers?.lowercased() ?? "") {
             if pendingKeys.count < 512 { pendingKeys.append(event) }; return true
         }
         guard event.modifierFlags.intersection([.command, .option, .control]) == .command,
@@ -333,6 +338,9 @@ final class CorePageView: NSView, NSTextInputClient {
         case "c": copy(nil)
         case "x": cut(nil)
         case "v": paste(nil)
+        case "z":
+            guard !hasMarkedText() else { return false }
+            if event.modifierFlags.contains(.shift) { redo(nil) } else { undo(nil) }
         default: return false
         }
         return true
@@ -513,12 +521,33 @@ final class CorePageView: NSView, NSTextInputClient {
     @objc func paste(_ sender: Any?) {
         model?.pasteClipboard()
     }
+    @objc func undo(_ sender: Any?) { coreUndoManager.undo() }
+    @objc func redo(_ sender: Any?) { coreUndoManager.redo() }
+    func validateUserInterfaceItem(_ item: NSValidatedUserInterfaceItem) -> Bool {
+        switch item.action?.description {
+        case "undo:": return coreUndoManager.canUndo
+        case "redo:": return coreUndoManager.canRedo
+        default: return model?.ready == true
+        }
+    }
 
     override func resignFirstResponder() -> Bool {
         if hasMarkedText() { unmarkText() }
         editingMenu?.focus(nil)
         return super.resignFirstResponder()
     }
+}
+
+@MainActor
+private final class CoreUndoManager: UndoManager {
+    private weak var view: CorePageView?
+    init(view: CorePageView) { self.view = view; super.init(); disableUndoRegistration() }
+    private var field: TextControlState? { view?.model?.textInputState?.focused }
+    private var editable: Bool { view?.model?.ready == true && field?.writable == true && view?.hasMarkedText() == false }
+    override var canUndo: Bool { editable && (field?.can_undo == true || view?.model?.textInputBusy == true) }
+    override var canRedo: Bool { editable && (field?.can_redo == true || view?.model?.textInputBusy == true) }
+    override func undo() { if canUndo { view?.model?.textInput(.undo) } }
+    override func redo() { if canRedo { view?.model?.textInput(.redo) } }
 }
 
 @MainActor

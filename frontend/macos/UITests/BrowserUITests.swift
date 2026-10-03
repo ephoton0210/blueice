@@ -793,7 +793,7 @@ final class BrowserUITests: XCTestCase {
         let third = app.windows["browser-window-3"]
         XCTAssertTrue(third.waitForExistence(timeout: 15)); enter(fixture.origin + "/appearance", in: third)
         waitValue(third.textFields["address"], fixture.origin + "/appearance")
-        let settings = preferenceWindow(); settings.checkBoxes["session-remember"].click(); settings.checkBoxes["session-reopen"].click()
+        let settings = preferenceWindow(); try enableSessionRestoration(settings, windows: 3, tabs: 4)
         settings.buttons[XCUIIdentifierCloseWindow].click(); activateWindow(3)
         let archive = try waitSessionArchive(windows: 3, tabs: 4)
         XCTAssertFalse(String(decoding: archive, as: UTF8.self).contains("unsaved-form-content"))
@@ -828,7 +828,7 @@ final class BrowserUITests: XCTestCase {
         app.groups["page"].buttons["Send POST"].click(); waitValue(app.textFields["address"], fixture.origin + "/posted?kept=1")
         XCTAssertEqual(fixture.records.last?.method, "POST")
         XCTAssertTrue(String(decoding: try XCTUnwrap(fixture.records.last?.body), as: UTF8.self).contains("private-post-session-value"))
-        let settings = preferenceWindow(); settings.checkBoxes["session-remember"].click(); settings.checkBoxes["session-reopen"].click()
+        let settings = preferenceWindow(); try enableSessionRestoration(settings, windows: 1, tabs: 1)
         settings.buttons[XCUIIdentifierCloseWindow].click()
         let archive = try waitSessionArchive(windows: 1, tabs: 1)
         XCTAssertFalse(String(decoding: archive, as: UTF8.self).contains("private-post-session-value"))
@@ -851,8 +851,17 @@ final class BrowserUITests: XCTestCase {
         let restored = app.windows["browser-window-2"]
         XCTAssertTrue(restored.waitForExistence(timeout: 15)); waitValue(restored.textFields["address"], "about:settings")
         let panel = preferenceWindow(); panel.buttons["session-forget"].click()
-        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in self.storedSessionArchive() == nil }, object: nil)], timeout: 10), .completed)
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == 0 OR value == '0'"), object: panel.checkBoxes["session-remember"])], timeout: 10), .completed)
+        XCTAssertFalse(panel.buttons["session-restore"].isEnabled)
+        XCTAssertFalse(panel.checkBoxes["session-reopen"].isEnabled)
         panel.buttons[XCUIIdentifierCloseWindow].click(); app.typeKey("q", modifierFlags: .command)
+        XCTAssertTrue(app.wait(for: .notRunning, timeout: 15))
+        // cfprefsd owns the plist flush; verify durability after normal exit.
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in self.storedSessionArchive() == nil }, object: nil)], timeout: 30), .completed)
+        launch(); let forgotten = preferenceWindow()
+        XCTAssertTrue(NSPredicate(format: "value == 0 OR value == '0'").evaluate(with: forgotten.checkBoxes["session-remember"]))
+        XCTAssertFalse(forgotten.buttons["session-restore"].isEnabled)
+        forgotten.buttons[XCUIIdentifierCloseWindow].click(); app.typeKey("q", modifierFlags: .command)
         XCTAssertTrue(app.wait(for: .notRunning, timeout: 15))
         app.launchArguments += ["-browser.session.archive", "malformed-session-fixture"]
         launch(); let recovery = preferenceWindow()
@@ -865,7 +874,7 @@ final class BrowserUITests: XCTestCase {
     func testSessionRestorationRechecksChangedContentAndKeepsDenialVisible() throws {
         let fixture = try HTTPFixture(); defer { fixture.stop() }
         launch(); enter(fixture.origin + "/session-change"); waitPageContent("Initially reviewed page")
-        let settings = preferenceWindow(); settings.checkBoxes["session-remember"].click(); settings.checkBoxes["session-reopen"].click()
+        let settings = preferenceWindow(); try enableSessionRestoration(settings, windows: 1, tabs: 1)
         settings.buttons[XCUIIdentifierCloseWindow].click(); _ = try waitSessionArchive(windows: 1, tabs: 1)
         app.typeKey("q", modifierFlags: .command); XCTAssertTrue(app.wait(for: .notRunning, timeout: 15)); app.launch()
         let window = app.windows["browser-window-2"]
@@ -876,6 +885,16 @@ final class BrowserUITests: XCTestCase {
         XCTAssertTrue(String(decoding: archive, as: UTF8.self).contains("/session-change"))
         XCTAssertEqual(fixture.requests, ["/session-change", "/session-change"])
         XCTAssertTrue(window.buttons["add-tab"].isEnabled)
+    }
+
+    private func enableSessionRestoration(_ settings: XCUIElement, windows: Int, tabs: Int) throws {
+        let remember = settings.checkBoxes["session-remember"], reopen = settings.checkBoxes["session-reopen"]
+        remember.click()
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == 1 OR value == '1'"), object: remember)], timeout: 10), .completed)
+        _ = try waitSessionArchive(windows: windows, tabs: tabs)
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == true"), object: reopen)], timeout: 10), .completed)
+        reopen.click()
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == 1 OR value == '1'"), object: reopen)], timeout: 10), .completed)
     }
 
     private func storedSessionArchive() -> Data? {
@@ -900,6 +919,81 @@ final class BrowserUITests: XCTestCase {
         if result != .completed { _ = preferenceWindow() }
         XCTAssertEqual(result, .completed, app.debugDescription)
         return try XCTUnwrap(storedSessionArchive())
+    }
+
+    func testUndoRedoNativeMenuKeyboardUnicodeAndContextMenu() throws {
+        let fixture = try HTTPFixture(); defer { fixture.stop() }
+        let saved = saveClipboard(); defer { NSPasteboard.general.clearContents(); NSPasteboard.general.writeObjects(saved) }
+        launch(); enter(fixture.origin + "/editing")
+        let field = app.groups["page"].textFields["Editor"]
+        XCTAssertTrue(field.waitForExistence(timeout: 15)); field.click()
+        app.menuBars.menuBarItems["Edit"].click(); XCTAssertFalse(app.menuItems["Undo"].isEnabled); app.typeKey(.escape, modifierFlags: [])
+        paste("中文👨‍👩‍👧‍👦", into: field)
+        app.menuBars.menuBarItems["Edit"].click(); XCTAssertTrue(app.menuItems["Undo"].isEnabled); app.menuItems["Undo"].click()
+        waitValue(field, "A😀B")
+        app.typeKey("z", modifierFlags: [.command, .shift]); waitValue(field, "中文👨‍👩‍👧‍👦")
+        field.rightClick(); chooseContext("Undo"); waitValue(field, "A😀B")
+        field.rightClick(); chooseContext("Redo"); waitValue(field, "中文👨‍👩‍👧‍👦")
+        field.typeKey("z", modifierFlags: .command); waitValue(field, "A😀B")
+        paste("new branch", into: field)
+        app.menuBars.menuBarItems["Edit"].click(); XCTAssertFalse(app.menuItems["Redo"].isEnabled); app.typeKey(.escape, modifierFlags: [])
+        XCTAssertEqual(fixture.requests, ["/editing"])
+        let attachment = XCTAttachment(screenshot: app.windows["browser-window"].screenshot()); attachment.name = "macos-undo-redo"; attachment.lifetime = .keepAlways; add(attachment)
+    }
+
+    func testUndoRedoClipboardTextareaPasswordReadonlyAndAddressResponder() throws {
+        let fixture = try HTTPFixture(); defer { fixture.stop() }
+        let saved = saveClipboard(); defer { NSPasteboard.general.clearContents(); NSPasteboard.general.writeObjects(saved) }
+        launch(); enter(fixture.origin + "/editing")
+        let page = app.groups["page"], notes = page.textFields["Notes"]
+        XCTAssertTrue(notes.waitForExistence(timeout: 15))
+        paste("中文\nשלום\n👩‍👩‍👧‍👦", into: notes)
+        notes.typeKey("a", modifierFlags: .command); notes.typeKey("x", modifierFlags: .command); waitValue(notes, "")
+        notes.typeKey("z", modifierFlags: .command); waitValue(notes, "中文\nשלום\n👩‍👩‍👧‍👦")
+        notes.typeKey("z", modifierFlags: .command); waitValue(notes, "first\nsecond")
+        notes.typeKey("z", modifierFlags: [.command, .shift]); waitValue(notes, "中文\nשלום\n👩‍👩‍👧‍👦")
+        let address = app.textFields["address"]
+        paste("address draft", into: address)
+        address.typeKey("z", modifierFlags: .command); waitValue(address, fixture.origin + "/editing")
+        waitValue(notes, "中文\nשלום\n👩‍👩‍👧‍👦")
+        let secret = page.secureTextFields["Secret"]
+        NSPasteboard.general.clearContents(); NSPasteboard.general.setString("temporary-secret", forType: .string)
+        secret.click(); secret.typeKey("a", modifierFlags: .command); secret.typeKey("v", modifierFlags: .command)
+        app.menuBars.menuBarItems["Edit"].click(); XCTAssertTrue(app.menuItems["Undo"].isEnabled); app.menuItems["Undo"].click()
+        app.menuBars.menuBarItems["Edit"].click(); XCTAssertTrue(app.menuItems["Redo"].isEnabled); app.menuItems["Redo"].click()
+        XCTAssertFalse(app.debugDescription.contains("temporary-secret")); XCTAssertFalse(app.debugDescription.contains("private-fixture-secret"))
+        let readonly = page.textFields["Readonly"]; readonly.click()
+        app.menuBars.menuBarItems["Edit"].click(); XCTAssertFalse(app.menuItems["Undo"].isEnabled); XCTAssertFalse(app.menuItems["Redo"].isEnabled); app.typeKey(.escape, modifierFlags: [])
+        readonly.typeKey("z", modifierFlags: .command); waitValue(readonly, "locked")
+        XCTAssertEqual(fixture.requests, ["/editing"])
+    }
+
+    func testUndoRedoTabIsolationWindowTransferAndReload() throws {
+        let fixture = try HTTPFixture(); defer { fixture.stop() }
+        let saved = saveClipboard(); defer { NSPasteboard.general.clearContents(); NSPasteboard.general.writeObjects(saved) }
+        launch()
+        let first = app.windows["browser-window"]
+        enter(fixture.origin + "/editing", in: first)
+        let field = first.groups["page"].textFields["Editor"]
+        XCTAssertTrue(field.waitForExistence(timeout: 15)); paste("First tab", into: field)
+        app.typeKey("t", modifierFlags: .command); enter(fixture.origin + "/editing", in: first)
+        let other = first.groups["page"].textFields["Editor"]
+        XCTAssertTrue(other.waitForExistence(timeout: 15)); paste("Second tab", into: other)
+        other.typeKey("z", modifierFlags: .command); waitValue(other, "A😀B")
+        first.buttons["tab-1"].click(); waitValue(field, "First tab")
+        app.typeKey("n", modifierFlags: .command)
+        let second = app.windows["browser-window-2"]
+        XCTAssertTrue(second.waitForExistence(timeout: 15)); waitValue(second.textFields["address"], "about:credits")
+        activateWindow(1); transferTab(1, from: first, to: "Window 2")
+        let moved = second.groups["page"].textFields["Editor"]
+        XCTAssertTrue(moved.waitForExistence(timeout: 15)); activateWindow(2); moved.click()
+        moved.typeKey("z", modifierFlags: .command); waitValue(moved, "A😀B")
+        moved.typeKey("z", modifierFlags: [.command, .shift]); waitValue(moved, "First tab")
+        second.buttons["reload"].click(); waitValue(moved, "A😀B"); moved.click()
+        app.menuBars.menuBarItems["Edit"].click(); XCTAssertFalse(app.menuItems["Undo"].isEnabled); XCTAssertFalse(app.menuItems["Redo"].isEnabled); app.typeKey(.escape, modifierFlags: [])
+        activateWindow(1); waitValue(first.groups["page"].textFields["Editor"], "A😀B")
+        first.groups["page"].textFields["Editor"].click(); app.typeKey("z", modifierFlags: [.command, .shift]); waitValue(first.groups["page"].textFields["Editor"], "Second tab")
+        XCTAssertEqual(fixture.requests, ["/editing", "/editing", "/editing"])
     }
 
     private var app: XCUIApplication!

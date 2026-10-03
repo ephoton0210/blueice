@@ -15,6 +15,7 @@ use unicode_segmentation::UnicodeSegmentation;
 mod geometry;
 #[cfg(test)]
 mod tests;
+pub(in crate::page) mod undo;
 
 #[derive(Clone)]
 pub(super) struct EditorSession {
@@ -161,9 +162,11 @@ impl Page {
     /// A new native window owns the editor after transfer. Keep its value,
     /// focus and selection, commit temporary composition and fence old keys.
     pub(crate) fn transfer_native_editor(&mut self) {
+        self.commit_native_composition();
         self.native_focus_generation = self.native_focus_generation.wrapping_add(1);
         self.native_focus_exit = None;
         if let Some(editor) = self.native_editor.as_mut() {
+            self.native_undo.close_group(editor.node);
             editor.composition = None;
         }
     }
@@ -193,9 +196,28 @@ impl Page {
         Some((editor, info))
     }
 
+    pub(super) fn commit_native_composition(&mut self) {
+        if let Some((mut editor, info)) = self.live_editor() {
+            if editor.composition.is_some() {
+                let before = undo::Value::from_composition(&editor);
+                editor.composition = None;
+                self.native_undo.record(
+                    editor.node,
+                    info,
+                    before,
+                    undo::Value::from_editor(&editor),
+                    undo::Kind::Atomic,
+                    self.native_focus_generation,
+                );
+                self.native_editor = Some(editor);
+            }
+        }
+    }
+
     pub(crate) fn native_text_input_state(&self, source: u64) -> TextInputState {
         let focused = self.live_editor().and_then(|(editor, info)| {
             let geometry = geometry::Geometry::new(self, &editor, info)?;
+            let (can_undo, can_redo) = self.native_undo.availability(&editor, info);
             Some(TextControlState {
                 node_id: editor.node.as_u64(),
                 text: (!info.protected).then(|| editor.observed.clone()),
@@ -203,6 +225,9 @@ impl Page {
                 protected: info.protected,
                 writable: info.writable,
                 multiline: info.multiline,
+                can_undo,
+                can_redo,
+                undo_limited: self.native_undo.limited,
                 selection: editor.selection(),
                 marked: editor
                     .composition
@@ -251,12 +276,53 @@ impl Page {
     ) -> Result<bool, String> {
         self.validate_native_input_context(context, source)?;
         if let TextInputAction::Key { key, shift } = action {
+            self.commit_native_composition();
+            if let Some(node) = self.focused {
+                self.native_undo.close_group(node);
+            }
             return self.native_page_key(key, shift, context, source);
         }
         let Some((mut editor, info)) = self.live_editor() else {
             return Ok(false);
         };
         let original = editor.observed.clone();
+        let before = if editor.composition.is_some() {
+            undo::Value::from_composition(&editor)
+        } else {
+            undo::Value::from_editor(&editor)
+        };
+        let kind = match &action {
+            TextInputAction::Replace {
+                text,
+                replacement: None,
+            } if editor.composition.is_none()
+                && editor.selection().length == 0
+                && text.graphemes(true).count() == 1
+                && !text.contains(['\n', '\r']) =>
+            {
+                undo::Kind::Typing
+            }
+            TextInputAction::Delete { forward }
+                if editor.composition.is_none() && editor.selection().length == 0 =>
+            {
+                if *forward {
+                    undo::Kind::DeleteForward
+                } else {
+                    undo::Kind::DeleteBackward
+                }
+            }
+            _ => undo::Kind::Atomic,
+        };
+        let record = !matches!(
+            action,
+            TextInputAction::Compose { .. }
+                | TextInputAction::CancelComposition
+                | TextInputAction::Undo
+                | TextInputAction::Redo
+        );
+        if kind == undo::Kind::Atomic {
+            self.native_undo.close_group(editor.node);
+        }
         match action {
             TextInputAction::Key { .. } => unreachable!("page keys handled above"),
             TextInputAction::Replace { text, replacement } => {
@@ -310,6 +376,12 @@ impl Page {
             }
             TextInputAction::FinishComposition => {
                 editor.composition = None;
+            }
+            TextInputAction::Undo => {
+                self.native_undo.replay(&mut editor, info, false);
+            }
+            TextInputAction::Redo => {
+                self.native_undo.replay(&mut editor, info, true);
             }
             TextInputAction::CancelComposition => {
                 if let Some(composition) = editor.composition.take() {
@@ -429,6 +501,16 @@ impl Page {
                     }
                 }
             }
+        }
+        if record && editor.composition.is_none() {
+            self.native_undo.record(
+                editor.node,
+                info,
+                before,
+                undo::Value::from_editor(&editor),
+                kind,
+                self.native_focus_generation,
+            );
         }
         let changed = editor.observed != original;
         if changed {

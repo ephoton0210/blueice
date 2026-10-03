@@ -358,6 +358,7 @@ dependencies = [
  "unicode-segmentation",
  "ureq",
  "url",
+ "zeroize",
 ]
 
 [[package]]

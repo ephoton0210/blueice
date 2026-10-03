@@ -972,7 +972,7 @@ final class BrowserModel: ObservableObject {
                     if clipboard == .copy { continue }
                 case .paste:
                     guard let text = NSPasteboard.general.string(forType: .string), text.utf16.count <= 65_536 else { continue }
-                    action = .replace(text, nil)
+                    action = .replace(text, field.selection)
                 }
             }
             inputFlight = (edit, nil)

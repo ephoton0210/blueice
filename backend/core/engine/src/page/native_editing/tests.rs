@@ -32,6 +32,99 @@ fn range(location: u32, length: u32) -> TextRange {
 }
 
 #[test]
+fn undo_cancellation_keeps_redo_and_focus_commits_one_composition_transaction() {
+    let (mut page, id) = editor("<input id='field' value='old'><input id='next' value='next'>");
+    apply(&mut page, TextInputAction::SelectAll);
+    apply(
+        &mut page,
+        TextInputAction::Replace {
+            text: "new".into(),
+            replacement: None,
+        },
+    );
+    apply(&mut page, TextInputAction::Undo);
+    apply(
+        &mut page,
+        TextInputAction::Compose {
+            text: "中".into(),
+            selection: range(1, 0),
+            replacement: None,
+        },
+    );
+    assert!(!page.native_text_input_state(17).focused.unwrap().can_undo);
+    apply(&mut page, TextInputAction::Undo);
+    assert_eq!(page.live_editor().unwrap().0.observed, "中");
+    apply(&mut page, TextInputAction::CancelComposition);
+    assert!(page.native_text_input_state(17).focused.unwrap().can_redo);
+    apply(&mut page, TextInputAction::Redo);
+    apply(&mut page, TextInputAction::SelectAll);
+    apply(
+        &mut page,
+        TextInputAction::Compose {
+            text: "中文".into(),
+            selection: range(2, 0),
+            replacement: None,
+        },
+    );
+    let next = page.script_get_element_by_id("next").unwrap();
+    page.focus_native_editor_at(Some(next));
+    page.focus_native_editor_at(Some(id));
+    apply(&mut page, TextInputAction::Undo);
+    assert_eq!(page.live_editor().unwrap().0.observed, "new");
+    apply(&mut page, TextInputAction::Redo);
+    assert_eq!(page.live_editor().unwrap().0.observed, "中文");
+}
+
+#[test]
+fn undo_textarea_script_mutation_readonly_and_document_replacement_forget_private_history() {
+    let (mut page, id) = editor("<textarea id='field'>old</textarea>");
+    apply(
+        &mut page,
+        TextInputAction::Replace {
+            text: "!".into(),
+            replacement: None,
+        },
+    );
+    assert!(page.native_text_input_state(17).focused.unwrap().can_undo);
+    let handle = page.script_handle_for_node(id);
+    page.script_set_text_content(handle, "old!".into()).unwrap();
+    assert!(!page.native_text_input_state(17).focused.unwrap().can_undo);
+    apply(
+        &mut page,
+        TextInputAction::Replace {
+            text: "new".into(),
+            replacement: None,
+        },
+    );
+    if let NodeData::Element { attributes, .. } = page.doc.data_mut(id) {
+        attributes.push(("readonly".into(), "".into()));
+    }
+    page.relayout();
+    assert!(!page.native_text_input_state(17).focused.unwrap().can_undo);
+    if let NodeData::Element { attributes, .. } = page.doc.data_mut(id) {
+        attributes.retain(|(name, _)| name != "readonly");
+    }
+    page.relayout();
+    assert!(!page.native_text_input_state(17).focused.unwrap().can_undo);
+    apply(
+        &mut page,
+        TextInputAction::Replace {
+            text: "again".into(),
+            replacement: None,
+        },
+    );
+    let old = context(&page);
+    page.load_html_str("<textarea id='field'>fresh</textarea>", None);
+    let fresh = page.script_get_element_by_id("field").unwrap();
+    page.focus_native_editor_at(Some(fresh));
+    assert!(!page.native_text_input_state(17).focused.unwrap().can_undo);
+    assert!(page
+        .native_text_input(&old, 17, TextInputAction::Undo)
+        .is_err());
+    assert_eq!(page.live_editor().unwrap().0.observed, "fresh");
+}
+
+#[test]
 fn textarea_public_value_preserves_whitespace_and_masked_values_remain_absent() {
     let (page, id) = editor("<textarea id='field'>中文\nשלום  next\n</textarea><input id='secret' type='password' value='hidden'>");
     assert_eq!(
