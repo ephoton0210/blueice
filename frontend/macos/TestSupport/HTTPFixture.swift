@@ -70,6 +70,18 @@ final class HTTPFixture: @unchecked Sendable {
                 }
                 let body: String
                 switch route {
+                case "/printing": body = """
+                    <html><head><style>
+                    p {margin:0;line-height:40px}
+                    #paper {display:none}
+                    #surface {width:180px;height:80px;background-color:#0000ff}
+                    @media print {#screen {display:none} #paper {display:block} #surface {background-color:#ff0000}}
+                    </style></head><body><h1>Print fixture</h1>
+                    <input aria-label="Print editor" value="retained 中文" style="display:block;width:280px;height:32px">
+                    <div id="surface"></div><p id="screen">SCREEN ONLY</p><p id="paper">PAPER ONLY</p>
+                    \(String(repeating: "<p>Pagination line for the frozen core document.</p>",count: 55))
+                    </body></html>
+                    """
                 case "/appearance": body = """
                     <html><head><style>
                     #surface {width:160px;height:40px;background-color:#aabbcc}

@@ -52,6 +52,7 @@ pub mod local_socket;
 pub mod owner_bootstrap;
 pub mod page_host;
 pub mod permission_control;
+pub mod printing;
 pub mod script;
 pub mod shm;
 pub mod viewport;
@@ -86,6 +87,8 @@ pub enum ChromeCommand {
 /// Sent by a client (`frontend` today; `extension`/AI later) to `core`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ClientMessage {
+    /// Create, render, or release a core-owned frozen print document.
+    Print(printing::PrintAction),
     /// The protocol_version handshake (`phase-1-ai-representation-
     /// layer/PLAN.md` §3): every independent client sends this
     /// immediately after connecting, before anything else -- `core`
@@ -372,6 +375,7 @@ pub enum AssistantTaskKind {
 /// Sent by `core` to a client.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ServerMessage {
+    PrintState(printing::PrintReply),
     /// A form request has started; carries no POST body or field metadata.
     NavigationStarted {
         url: String,

@@ -15,7 +15,7 @@ pushed to the current tracked branch as authorized by the owner.
 | Native text editing | Core-owned UTF-16 selection, grapheme movement/deletion, IME composition/update/commit/cancel, caret/candidate geometry, text/password/textarea editing, clipboard policy and native UI tests | Foundation committed and pushed `8b80c3c53`; physical OS IME and remaining editing behavior pending, see [results](MACOS_NATIVE_EDITING_RESULTS.md) |
 | Keyboard and page interaction | Keyboard-only form completion, checkbox/radio/select/range controls, find-in-page, native context menus, drag/drop and file-selection policy tests | Keyboard increment committed and pushed `97794bb57`; native form reset committed and pushed `4c1c6e922`; GET/POST submission committed and pushed `1bf78a3d9`; find/ordered clipboard committed and pushed `614489c59`; native context menus committed and pushed `531b6b2df`; remaining interactions pending |
 | Windows and tab organization | Multiple native windows, tab groups, profile/context lifecycle, retained history and state handoff using core tab identities | Native groups committed and pushed `6e141967f`; shared-core windows/tab transfer committed and pushed `b318e0de8`; context lifecycle and persistent profile identities committed and pushed `ee450a3df`, see [context results](MACOS_CONTEXT_RESULTS.md); durable session restoration and full storage partitioning pending |
-| Downloads and printing | Actual download manager/shelf, progress/cancel/open/reveal, print/PDF media output and native panel tests | Native manager panel and linked-file downloads verified in this increment, see [download results](MACOS_DOWNLOAD_RESULTS.md); automatic response downloads, destination/credential UI, quarantine and print/PDF pending |
+| Downloads and printing | Actual download manager/shelf, progress/cancel/open/reveal, print/PDF media output and native panel tests | Native manager panel and linked-file downloads committed and pushed `b62b38aa7`, see [download results](MACOS_DOWNLOAD_RESULTS.md); core print-media pagination and native print/PDF panel implemented, final acceptance recorded in [print results](MACOS_PRINT_RESULTS.md); automatic response downloads, destination/credential UI, quarantine, vector PDF and physical-printer acceptance pending |
 | Trusted browser panels | Assistant results and human permission decisions using the private owner boundary, policy-denial and no-AI-grant tests | Pending |
 | macOS display and system integration | DPI/multi-monitor, zoom, theme/high contrast/reduced motion, fullscreen, localization and native menu/shortcut tests | Retina/CSS viewport, per-tab zoom and native fullscreen committed and pushed `91f2dd78c`, see [viewport results](MACOS_VIEWPORT_RESULTS.md); persistent appearance/contrast/motion and CSS media committed and pushed `0609c8a81`, recorded in [display results](MACOS_DISPLAY_PREFERENCES_RESULTS.md); physical system/monitor transitions and localization pending |
 | Full accessibility and final audit | Text ranges/live regions and supported rotor operations; actual screen-reader action; final integration, design/UI acceptance and documented remaining core limitations | Pending |
@@ -319,6 +319,37 @@ restoration remains Phase 16 work. Cookies, cache and authentication are not yet
 implemented in the network layer; this increment does not add private browsing
 or per-profile storage, assistant, extension, download or display preferences.
 Final acceptance is recorded in [context results](MACOS_CONTEXT_RESULTS.md).
+
+## Native print and PDF increment
+
+File > Print and Command-P capture a cloned core DOM under the current tab,
+window, frame-directory source and document generation. The same CSS/layout/
+paint/raster pipeline uses print media and the native printable paper area.
+Preview paper/orientation/scaling changes reflow that frozen document without
+fetching, running scripts or mutating the live page. Protected native text stays
+masked, and focus/caret/find overlays are excluded. Page cuts avoid text-line
+and native-control interiors; output limits fail visibly rather than truncate.
+
+A dedicated broker connection lets synchronous AppKit preview callbacks read
+core pages without blocking on the MainActor browser reader. The broker retains
+its ordinary broadcast behavior: a random high request namespace and exact
+request/tab/ticket/revision checks distinguish the job's replies. Tickets name
+read-only jobs and confer no private owner or human authority. Job pixels use a
+private subdirectory, separate from screen generations and frame retention.
+Release, invalidation, timeout expiry and core teardown remove the print files.
+
+The AppKit panel supplies paper size, orientation, scale and page selection.
+Its PDF destination uses the actual system Save dialog. Numeric controls can
+publish intermediate values (8 while entering 80); a valid later profile clears
+preview failure, while an invalid source or final profile cancels delivery.
+Printable default names remove path separators/control characters. Actual UI
+checks save and inspect a three-page A4 landscape PDF at 80% scaling, confirm
+print-media ink, cancel/reopen the panel, and retain the edited browser document.
+
+The bounded output currently consists of 192 DPI core raster images in native
+PDF pages. Full @page/fragmentation, vector/searchable PDF, custom margin and
+background UI, and physical printer jobs remain separate. File input selection,
+private owner permission panels and the other delivery gates stay open.
 
 ## Completion audit
 

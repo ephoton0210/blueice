@@ -173,3 +173,25 @@ fn malformed_queries_deep_nesting_and_nonfinite_environments_are_bounded() {
     );
     assert!(!matches_media(&q, &env));
 }
+
+#[test]
+fn print_medium_selects_rules_without_changing_screen_defaults() {
+    let screen = MediaEnvironment::default();
+    let print = MediaEnvironment {
+        print: true,
+        ..screen
+    };
+    for q in ["print", "PRINT and (min-width: 800px)", "not screen", "all"] {
+        assert!(matches_media(q, &print), "{q}");
+    }
+    for q in [
+        "screen",
+        "not print",
+        "print and (unsupported: yes)",
+        "print and not (unsupported: yes)",
+    ] {
+        assert!(!matches_media(q, &print), "{q}");
+    }
+    assert!(!matches_media("print", &screen));
+    assert!(matches_media("screen", &screen));
+}

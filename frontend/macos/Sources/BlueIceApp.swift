@@ -25,6 +25,7 @@ struct BrowserActiveCommands: Commands {
         BrowserTabGroupCommands(model: delegate.model)
         BrowserProfileCommands(model: delegate.model, workspace: delegate.workspace)
         BrowserDownloadsCommands(model: delegate.model)
+        BrowserPrintingCommands(model: delegate.model)
     }
 }
 

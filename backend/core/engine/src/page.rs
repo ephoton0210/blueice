@@ -489,6 +489,7 @@ impl Page {
     fn media_environment(&self) -> blueice_css::MediaEnvironment {
         let preferences = self.display_preferences.unwrap_or_default();
         blueice_css::MediaEnvironment {
+            print: false,
             width: self.viewport_width,
             height: self.viewport_height,
             resolution: self
@@ -1216,6 +1217,7 @@ mod form_submission;
 mod native_editing;
 mod native_forms;
 mod native_interaction;
+pub(crate) mod printing;
 use dom_helpers::*;
 
 #[cfg(test)]

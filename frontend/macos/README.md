@@ -308,8 +308,25 @@ paused history and never automatically resumes. Core about:downloads and native
 controls share one manager and catalog. See
 [download results](../../development/browser_core/phase-22-browser-shell-accessibility/MACOS_DOWNLOAD_RESULTS.md).
 Automatic response/attachment downloads, destination chooser, credential/settings
-UI, quarantine integration and print/PDF output remain separate delivery work.
+UI and quarantine integration remain separate delivery work.
 The catalog and preferences are currently shared across browser profiles.
+
+File > Print (Command-P) captures the current core document and opens the native
+AppKit print panel. Paper size, orientation and scaling reflow the frozen DOM
+using print media; the live page, viewport, editor, find state and history stay
+unchanged. PDF uses the system Save dialog and the selected native destination.
+Print previews recover when a numeric control passes through an unsupported
+intermediate value. Replaced/closed/transferred source documents invalidate the
+job, and unsupported final settings cancel the operation with a visible error.
+
+Core emits paginated 192 DPI RGBA surfaces, which AppKit places into the PDF or
+print job. Text lines and native form controls stay intact at page cuts; this is
+not complete CSS paged-media fragmentation. Jobs are limited to 32 pages and
+64 million pixels each, at most two frozen documents and a ten-minute lifetime.
+PDF pages contain raster images; searchable/vector text, @page rules, custom
+margins/background controls and physical-printer acceptance remain open. Printing
+adds no MCP filesystem operation or human permission grant. See
+[print results](../../development/browser_core/phase-22-browser-shell-accessibility/MACOS_PRINT_RESULTS.md).
 
 Frame refresh temporarily suspends semantic actions until the representation
 matches the current tab, source, generation and URL. Native element identities
@@ -323,6 +340,5 @@ keyboard/beforeinput/input/composition event dispatch, undo/redo, complete
 bidirectional shaping and caret blink remain open, as do full form event/validity behavior,
 select popup/typeahead/multiple-selection interaction, complete toolbar Tab
 traversal, image/media context actions, page-text selection/copy, drag/drop,
-file selection, automatic attachment downloads, printing/permission
-panels and localization. Automated checks cover the recorded features; an
+file selection, automatic attachment downloads, permission panels and localization. Automated checks cover the recorded features; an
 interactive VoiceOver session remains unvalidated.

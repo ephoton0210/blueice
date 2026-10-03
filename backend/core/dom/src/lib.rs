@@ -43,7 +43,7 @@ impl NodeId {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Clone, Default)]
 struct NodeIdAllocator {
     next: u64,
 }
@@ -69,7 +69,7 @@ pub enum NodeData {
     },
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct NodeRecord {
     data: NodeData,
     parent: Option<NodeId>,
@@ -84,7 +84,7 @@ struct NodeRecord {
 /// (not `Rc<RefCell<..>>` cycles) so removed subtrees actually free
 /// their memory rather than leaking on a reference cycle -- load-bearing
 /// for `core`'s low-memory requirement (plan §1).
-#[derive(Debug, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct Document {
     allocator: NodeIdAllocator,
     nodes: HashMap<NodeId, NodeRecord>,

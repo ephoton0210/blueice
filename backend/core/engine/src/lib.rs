@@ -30,6 +30,7 @@ mod translation;
 use blueice_css::{cascade, ua_stylesheet, Origin};
 use blueice_paint::Frame;
 
+pub use page::printing::{FrozenPrintDocument, PrintedDocument};
 pub use page::Page;
 pub use tabs::{
     BrowserContext, BrowserContextId, ClosedBrowserContext, GroupId, HistorySnapshotMode, TabGroup,

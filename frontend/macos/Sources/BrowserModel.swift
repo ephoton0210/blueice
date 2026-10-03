@@ -13,6 +13,42 @@ final class BrowserModel: ObservableObject {
     @Published private(set) var profileName = "Default"
     @Published var profileEditor: ProfileEditor?
     @Published var downloadsPresented = false
+    @Published private(set) var printBusy = false
+    @Published var printErrorPresented = false
+    private(set) var printError = ""
+    var canPrint: Bool {
+        ready && !printBusy && generation > 0 && status != "Loading…" && selected != nil
+            && representation?.tabID == selected && textInputState?.tab_id == selected
+    }
+    func printCurrentPage() async {
+        guard canPrint, let tab = selected, let document = textInputState?.document_generation else { return }
+        printBusy = true
+        defer { printBusy = false }
+        let runtime = session.runtimeDirectory
+        let source = PageRepresentation.frameSource(directory: session.frameDirectory.path)
+        let context = contextID
+        let window = windowID
+        do {
+            let info = BrowserPrintView.info()
+            let profile = try PrintProfile.from(info)
+            let (printer,output) = try await Task.detached(priority: .userInitiated) {
+                let printer = try BrowserPrintSession(runtime: runtime,tab: tab,context: context,window: window,source: source,document: document)
+                do { return (printer,try printer.render(profile)) }
+                catch { printer.end(); throw error }
+            }.value
+            defer { printer.end() }
+            guard ready, selected == tab, contextID == context else { return }
+            let view = BrowserPrintView(session: printer,output: output)
+            let operation = NSPrintOperation(view: view,printInfo: info)
+            operation.jobTitle = BrowserPrintView.jobTitle(representation)
+            operation.showsPrintPanel = true; operation.showsProgressPanel = true
+            operation.printPanel.options = [.showsCopies,.showsPageRange,.showsPaperSize,.showsOrientation,.showsScaling,.showsPreview]
+            _ = operation.run()
+            if let failure = view.failure { throw failure }
+        } catch {
+            printError = error.localizedDescription; printErrorPresented = true
+        }
+    }
     private var canonicalContextGroups: [BrowserTabGroup]?
     private weak var workspace: BrowserWorkspace?
     private let session: BrowserSession
@@ -876,6 +912,7 @@ final class BrowserModel: ObservableObject {
         guard !url.isEmpty, let selected else { return }
         if !url.contains(":") { url = "https://" + url }
         pageFocusSerial &+= 1
+        status = "Loading…"
         Task { await navigate(url, tab: selected) }
     }
 

@@ -9,6 +9,96 @@ import XCTest
 
 @MainActor
 final class BrowserUITests: XCTestCase {
+    func testNativePrintPanelPaperOrientationScaleAndSavePDF() throws {
+        let fixture = try HTTPFixture(); defer { fixture.stop() }
+        let saved = saveClipboard(); defer { NSPasteboard.general.clearContents(); NSPasteboard.general.writeObjects(saved) }
+        app.launchArguments += ["-AppleLanguages","(en)","-AppleLocale","en_US"]
+        launch(); enter(fixture.origin + "/printing")
+        XCTAssertTrue(app.groups["page"].textFields["Print editor"].waitForExistence(timeout: 15))
+        waitValue(app.staticTexts["status"],"Ready")
+        let requests = fixture.requests
+        app.typeKey("p",modifierFlags: .command)
+        let panel = app.dialogs["Print"]
+        XCTAssertTrue(panel.buttons["Cancel"].waitForExistence(timeout: 15),app.debugDescription)
+        let landscape = panel.radioButtons[" Landscape"]
+        XCTAssertTrue(landscape.exists,panel.debugDescription); landscape.click()
+        let four = panel.radioButtons["All 4 Pages"]
+        XCTAssertTrue(four.waitForExistence(timeout: 15),panel.debugDescription)
+        let scaleIndex = try XCTUnwrap(panel.textFields.allElementsBoundByIndex.firstIndex { ($0.value as? String) == "100%" })
+        let scale = panel.textFields.element(boundBy: scaleIndex)
+        XCTAssertTrue(scale.exists); scale.click(); scale.typeKey("a",modifierFlags: .command); scale.typeText("80"); scale.typeKey(.tab,modifierFlags: [])
+        XCTAssertTrue(panel.radioButtons["All 3 Pages"].waitForExistence(timeout: 15),panel.debugDescription)
+        let paper = panel.popUpButtons.matching(NSPredicate(format: "value BEGINSWITH 'US Letter'")).firstMatch
+        XCTAssertTrue(paper.exists); paper.click()
+        let a4 = app.menuItems.matching(NSPredicate(format: "title BEGINSWITH 'A4'")).firstMatch
+        XCTAssertTrue(a4.waitForExistence(timeout: 5),app.debugDescription); a4.click()
+        let preview = XCTAttachment(screenshot: app.screenshot()); preview.name = "macos-native-print-settings"; preview.lifetime = .keepAlways; add(preview)
+        panel.buttons["PDF"].click()
+        XCTAssertTrue(app.buttons["Save"].waitForExistence(timeout: 10),app.debugDescription)
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("bi-print-ui-" + UUID().uuidString)
+        try FileManager.default.createDirectory(at: root,withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let file = root.appendingPathComponent("BlueIce-Print.pdf")
+        let save = app.sheets["save-panel"]
+        XCTAssertTrue(save.buttons["Save"].isEnabled)
+        XCTAssertFalse((save.textFields["saveAsNameTextField"].value as? String ?? "/").contains("/"))
+        paste(file.lastPathComponent,into: save.textFields["saveAsNameTextField"])
+        let expand = save.disclosureTriangles["NS_OPEN_SAVE_DISCLOSURE_TRIANGLE"]
+        if (expand.value as? NSNumber)?.intValue == 0 { expand.click() }
+        save.typeKey("g",modifierFlags: [.command,.shift])
+        let folder = app.sheets["GoToWindow"].textFields["PathTextField"]
+        XCTAssertTrue(folder.waitForExistence(timeout: 10),app.debugDescription)
+        folder.click(); folder.typeKey("a",modifierFlags: .command); NSPasteboard.general.clearContents(); NSPasteboard.general.setString(root.path,forType: .string); folder.typeKey("v",modifierFlags: .command); folder.typeKey(.return,modifierFlags: [])
+        save.buttons["Save"].click()
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"),object: panel)],timeout: 15),.completed)
+        app.menuBars.menuBarItems["File"].click()
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == true"),object: app.menuItems["Print…"])],timeout: 15),.completed)
+        app.typeKey(.escape,modifierFlags: [])
+        XCTAssertTrue(app.groups["page"].textFields["Print editor"].waitForExistence(timeout: 15))
+        let document = try XCTUnwrap(CGPDFDocument(file as CFURL))
+        let pdfAttachment = XCTAttachment(data: try Data(contentsOf: file),uniformTypeIdentifier: "com.adobe.pdf"); pdfAttachment.name = "macos-core-print.pdf"; pdfAttachment.lifetime = .keepAlways; add(pdfAttachment)
+        print("PRINTED_PDF_PAGES=\(document.numberOfPages) BOX=\(document.page(at: 1)?.getBoxRect(.mediaBox) ?? .zero)")
+        XCTAssertEqual(document.numberOfPages,3)
+        let first = try XCTUnwrap(document.page(at: 1))
+        let size = first.getBoxRect(.mediaBox).size
+        XCTAssertEqual(size.width,842,accuracy: 1); XCTAssertEqual(size.height,595,accuracy: 1)
+        XCTAssertEqual(try Data(contentsOf: file).prefix(5),Data("%PDF-".utf8))
+        var bytes = [UInt8](repeating: 255,count: Int(size.width) * Int(size.height) * 4)
+        let context = try XCTUnwrap(CGContext(data: &bytes,width: Int(size.width),height: Int(size.height),bitsPerComponent: 8,bytesPerRow: Int(size.width) * 4,space: CGColorSpaceCreateDeviceRGB(),bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        context.drawPDFPage(first)
+        var red = 0; var blue = 0
+        for i in stride(from: 0,to: bytes.count,by: 4) {
+            if bytes[i] > 240 && bytes[i+1] < 15 && bytes[i+2] < 15 { red += 1 }
+            if bytes[i] < 15 && bytes[i+1] < 15 && bytes[i+2] > 240 { blue += 1 }
+        }
+        XCTAssertGreaterThan(red,1000); XCTAssertEqual(blue,0)
+        XCTAssertEqual(app.groups["page"].textFields["Print editor"].value as? String,"retained 中文")
+        waitValue(app.textFields["address"],fixture.origin + "/printing")
+        let attachment = XCTAttachment(screenshot: app.windows["browser-window"].screenshot()); attachment.name = "macos-print-restored-page"; attachment.lifetime = .keepAlways; add(attachment)
+        XCTAssertEqual(fixture.requests,requests)
+    }
+
+    func testNativePrintPanelCancelPreservesEditedDocument() throws {
+        let fixture = try HTTPFixture(); defer { fixture.stop() }
+        let saved = saveClipboard(); defer { NSPasteboard.general.clearContents(); NSPasteboard.general.writeObjects(saved) }
+        app.launchArguments += ["-AppleLanguages","(en)","-AppleLocale","en_US"]
+        launch(); enter(fixture.origin + "/printing")
+        let editor = app.groups["page"].textFields["Print editor"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 15)); paste("Print retained 中文",into: editor); waitValue(editor,"Print retained 中文")
+        let requests = fixture.requests
+        app.menuBars.menuBarItems["File"].click(); app.menuItems["Print…"].click()
+        let cancel = app.dialogs["Print"].buttons["Cancel"]
+        XCTAssertTrue(cancel.waitForExistence(timeout: 15),app.debugDescription)
+        let attachment = XCTAttachment(screenshot: app.screenshot()); attachment.name = "macos-native-print-panel"; attachment.lifetime = .keepAlways; add(attachment)
+        cancel.click()
+        XCTAssertTrue(editor.waitForExistence(timeout: 15)); waitValue(editor,"Print retained 中文")
+        waitValue(app.textFields["address"],fixture.origin + "/printing")
+        XCTAssertEqual(fixture.requests,requests)
+        // Cancelling releases the captured job; a second invocation must work.
+        app.typeKey("p",modifierFlags: .command)
+        XCTAssertTrue(cancel.waitForExistence(timeout: 15)); cancel.click()
+    }
+
     func testNativeDownloadsTransferControlsPersistenceAndFinderActions() throws {
         let fixture = try DownloadFixture(); defer { fixture.stop() }
         let root = URL(fileURLWithPath: "/private/tmp/bi-download-ui-" + UUID().uuidString)
@@ -201,6 +291,11 @@ final class BrowserUITests: XCTestCase {
             if let originalInputSource { XCTAssertEqual(TISSelectInputSource(originalInputSource), noErr) }
         }
         if app.state != .notRunning {
+            if app.sheets["GoToWindow"].exists { app.typeKey(.escape,modifierFlags: []) }
+            if app.sheets["save-panel"].buttons["CancelButton"].exists { app.sheets["save-panel"].buttons["CancelButton"].click() }
+            if app.sheets["alert"].buttons["OK"].exists { app.sheets["alert"].buttons["OK"].click() }
+            if app.dialogs["Print"].menus.firstMatch.exists { app.typeKey(.escape,modifierFlags: []) }
+            if app.dialogs["Print"].buttons["Cancel"].exists { app.dialogs["Print"].buttons["Cancel"].click() }
             if app.buttons["downloads-close"].exists { app.buttons["downloads-close"].click() }
             let deadline = Date().addingTimeInterval(15)
             while app.state != .notRunning, Date() < deadline {
@@ -543,8 +638,13 @@ final class BrowserUITests: XCTestCase {
         let element = pageContent(name)
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == %@", NSNumber(value: exists)), object: element)], timeout: 15), .completed, name)
     }
-    private func screenshotPixels(_ data: Data) throws -> (Data, Int, Int) {
-        let image = try XCTUnwrap(NSBitmapImageRep(data: data)?.cgImage)
+    private func screenshotPixels(_ data: Data, area: CGRect? = nil) throws -> (Data, Int, Int) {
+        var image = try XCTUnwrap(NSBitmapImageRep(data: data)?.cgImage)
+        if let area {
+            let rect = CGRect(x: area.minX * Double(image.width),y: area.minY * Double(image.height),
+                              width: area.width * Double(image.width),height: area.height * Double(image.height)).integral
+            image = try XCTUnwrap(image.cropping(to: rect))
+        }
         let space = try XCTUnwrap(CGColorSpace(name: CGColorSpace.sRGB))
         let context = try XCTUnwrap(CGContext(data: nil, width: image.width, height: image.height,
             bitsPerComponent: 8, bytesPerRow: image.width * 4, space: space,
@@ -554,8 +654,8 @@ final class BrowserUITests: XCTestCase {
         context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
         return (Data(bytes: try XCTUnwrap(context.data), count: image.width * image.height * 4), image.width, image.height)
     }
-    private func colorCount(_ data: Data, red: Double, green: Double, blue: Double) throws -> Int {
-        let (pixels, width, height) = try screenshotPixels(data); var count = 0
+    private func colorCount(_ data: Data, red: Double, green: Double, blue: Double, area: CGRect? = nil) throws -> Int {
+        let (pixels, width, height) = try screenshotPixels(data,area: area); var count = 0
         for y in stride(from: 0, to: height, by: 3) {
             for x in stride(from: 0, to: width, by: 3) {
                 let offset = (y * width + x) * 4
@@ -589,7 +689,13 @@ final class BrowserUITests: XCTestCase {
         let lightAttachment = XCTAttachment(screenshot: lightShot)
         lightAttachment.name = "macos-display-light-page"; lightAttachment.lifetime = .keepAlways; add(lightAttachment)
         let light = try XCTUnwrap(lightShot.image.tiffRepresentation)
-        XCTAssertGreaterThan(try colorCount(light, red: 170/255, green: 187/255, blue: 204/255), 100)
+        let pageFrame = app.groups["page"].frame
+        // Sample the empty CSS surface immediately below the editor. Whole-page
+        // near-color searches can match unrelated text/control antialiasing.
+        let surface = CGRect(x: (editor.frame.minX - pageFrame.minX + 10) / pageFrame.width,
+                             y: (editor.frame.maxY - pageFrame.minY + 5) / pageFrame.height,
+                             width: 100 / pageFrame.width,height: 10 / pageFrame.height)
+        XCTAssertGreaterThan(try colorCount(light, red: 170/255, green: 187/255, blue: 204/255,area: surface), 100)
         let panel = preferenceWindow()
         choosePreference(panel, "appearance-choice", "Dark")
         choosePreference(panel, "motion-choice", "Reduce")
@@ -605,8 +711,8 @@ final class BrowserUITests: XCTestCase {
         waitPageContent("Light content", exists: false); waitPageContent("Motion allowed", exists: false)
         waitValue(editor, "retained text")
         let dark = try XCTUnwrap(app.groups["page"].screenshot().image.tiffRepresentation)
-        XCTAssertGreaterThan(try colorCount(dark, red: 16/255, green: 32/255, blue: 48/255), 100)
-        XCTAssertEqual(try colorCount(dark, red: 170/255, green: 187/255, blue: 204/255), 0)
+        XCTAssertGreaterThan(try colorCount(dark, red: 16/255, green: 32/255, blue: 48/255,area: surface), 100)
+        XCTAssertEqual(try colorCount(dark, red: 170/255, green: 187/255, blue: 204/255,area: surface), 0)
         let screenshot = XCTAttachment(screenshot: app.windows["browser-window"].screenshot())
         screenshot.name = "macos-display-dark"; screenshot.lifetime = .keepAlways; add(screenshot)
         XCTAssertEqual(fixture.requests, ["/appearance"])

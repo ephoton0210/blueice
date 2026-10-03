@@ -2,12 +2,14 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Bounded screen media evaluation. Unknown features retain unknown truth
+//! Bounded screen and print media evaluation. Unknown features retain unknown truth
 //! through negation; an unsupported condition never becomes a matching rule.
 use crate::tokenizer::{tokenize, Token};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct MediaEnvironment {
+    /// Select print media without changing the live screen environment.
+    pub print: bool,
     pub width: f64,
     pub height: f64,
     /// Physical pixels per CSS pixel, including page zoom.
@@ -19,6 +21,7 @@ pub struct MediaEnvironment {
 impl Default for MediaEnvironment {
     fn default() -> Self {
         Self {
+            print: false,
             width: 1024.0,
             height: 640.0,
             resolution: 1.0,
@@ -128,8 +131,10 @@ fn query_truth(tokens: &[Token], env: &MediaEnvironment) -> Truth {
             .iter()
             .any(|v| kind.eq_ignore_ascii_case(v))
         {
-            let medium =
-                Truth::of(kind.eq_ignore_ascii_case("screen") || kind.eq_ignore_ascii_case("all"));
+            let medium = Truth::of(
+                kind.eq_ignore_ascii_case("all")
+                    || kind.eq_ignore_ascii_case(if env.print { "print" } else { "screen" }),
+            );
             let result = if tokens.len() == 1 {
                 medium
             } else if ident(&tokens[1], "and") && tokens.len() > 2 && !top_level_or(&tokens[2..]) {

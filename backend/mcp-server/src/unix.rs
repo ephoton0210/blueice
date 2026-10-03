@@ -245,7 +245,8 @@ impl<S: Read + Write> CoreConnection<S> {
                     | ServerMessage::WindowState(_)
                     | ServerMessage::BrowserContextState(_)
                 | ServerMessage::ViewportState(_)
-                    | ServerMessage::DisplayPreferencesState(_)
+                    | ServerMessage::PrintState(_)
+                | ServerMessage::DisplayPreferencesState(_)
                     | ServerMessage::ContextMenu(_)
                     | ServerMessage::ContextMenuLink { .. }
                 | ServerMessage::NavigationStarted { .. }
@@ -349,6 +350,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::WindowState(_)
                 | ServerMessage::BrowserContextState(_)
                 | ServerMessage::ViewportState(_)
+                | ServerMessage::PrintState(_)
                 | ServerMessage::DisplayPreferencesState(_)
                 | ServerMessage::ContextMenu(_)
                 | ServerMessage::ContextMenuLink { .. }
@@ -608,6 +610,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::WindowState(_)
                 | ServerMessage::BrowserContextState(_)
                 | ServerMessage::ViewportState(_)
+                | ServerMessage::PrintState(_)
                 | ServerMessage::DisplayPreferencesState(_)
                 | ServerMessage::ContextMenu(_)
                 | ServerMessage::ContextMenuLink { .. }
@@ -683,6 +686,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::WindowState(_)
                 | ServerMessage::BrowserContextState(_)
                 | ServerMessage::ViewportState(_)
+                | ServerMessage::PrintState(_)
                 | ServerMessage::DisplayPreferencesState(_)
                 | ServerMessage::ContextMenu(_)
                 | ServerMessage::ContextMenuLink { .. }
@@ -805,6 +809,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::WindowState(_)
                 | ServerMessage::BrowserContextState(_)
                 | ServerMessage::ViewportState(_)
+                | ServerMessage::PrintState(_)
                 | ServerMessage::DisplayPreferencesState(_)
                 | ServerMessage::ContextMenu(_)
                 | ServerMessage::ContextMenuLink { .. }
@@ -877,6 +882,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::WindowState(_)
                 | ServerMessage::BrowserContextState(_)
                 | ServerMessage::ViewportState(_)
+                | ServerMessage::PrintState(_)
                 | ServerMessage::DisplayPreferencesState(_)
                 | ServerMessage::ContextMenu(_)
                 | ServerMessage::ContextMenuLink { .. }
@@ -948,6 +954,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::WindowState(_)
                 | ServerMessage::BrowserContextState(_)
                 | ServerMessage::ViewportState(_)
+                | ServerMessage::PrintState(_)
                 | ServerMessage::DisplayPreferencesState(_)
                 | ServerMessage::ContextMenu(_)
                 | ServerMessage::ContextMenuLink { .. }
@@ -1031,6 +1038,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::WindowState(_)
                 | ServerMessage::BrowserContextState(_)
                 | ServerMessage::ViewportState(_)
+                | ServerMessage::PrintState(_)
                 | ServerMessage::DisplayPreferencesState(_)
                 | ServerMessage::ContextMenu(_)
                 | ServerMessage::ContextMenuLink { .. }
@@ -1154,6 +1162,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::WindowState(_)
                 | ServerMessage::BrowserContextState(_)
                 | ServerMessage::ViewportState(_)
+                | ServerMessage::PrintState(_)
                 | ServerMessage::DisplayPreferencesState(_)
                 | ServerMessage::ContextMenu(_)
                 | ServerMessage::ContextMenuLink { .. }

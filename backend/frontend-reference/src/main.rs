@@ -1843,6 +1843,7 @@ mod unix {
                     | ServerMessage::WindowState(_)
                     | ServerMessage::BrowserContextState(_)
                     | ServerMessage::ViewportState(_)
+                    | ServerMessage::PrintState(_)
                     | ServerMessage::DisplayPreferencesState(_)
                     | ServerMessage::ContextMenu(_)
                     | ServerMessage::ContextMenuLink { .. }

@@ -145,6 +145,7 @@ pub(super) fn scoped_command(
         | ClientMessage::GetHistoryState
         | ClientMessage::Find { .. }
         | ClientMessage::GetFindState
+        | ClientMessage::Print(_)
         | ClientMessage::GetContextMenu { .. }
         | ClientMessage::ContextMenuLink { .. }
         | ClientMessage::Resize { .. }

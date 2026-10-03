@@ -57,6 +57,7 @@ pub(super) fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
     let (completion_tx, completion_rx) = mpsc::channel::<Completion>();
     let (assistant_tx, assistant_rx) = mpsc::channel::<AssistantCompletion>();
     let mut pending_nav_seq: HashMap<TabId, u64> = HashMap::new();
+    let mut print_jobs = printing::PrintJobs::default();
     let mut pending_resubmissions: HashMap<TabId, PendingResubmission> = HashMap::new();
     let (listing_tx, listing_rx) = mpsc::channel::<DownloadsListing>();
     let mut downloads_refresher = DownloadsRefresher::default();
@@ -66,6 +67,7 @@ pub(super) fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
 
     let mut requests = requests;
     loop {
+        print_jobs.expire(tabs);
         pending_resubmissions.retain(|tab, pending| {
             tabs.get(*tab)
                 .is_some_and(|page| page.document_generation() == pending.document)
@@ -681,6 +683,17 @@ pub(super) fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
                                 .get_mut(target)
                                 .expect("a text edit cannot close a core-owned tab");
                             send_frame(page, stream, frame_dir, generation, reply_tab, request_id)?;
+                        }
+                    }
+                    ClientMessage::Print(action) => {
+                        match print_jobs.handle(tabs, target, frame_dir, action) {
+                            Ok(state) => blueice_ipc::write_server_message_with_ids(
+                                stream,
+                                reply_tab,
+                                request_id,
+                                &ServerMessage::PrintState(state),
+                            )?,
+                            Err(message) => write_error(stream, reply_tab, request_id, message)?,
                         }
                     }
                     ClientMessage::GetContextMenu {

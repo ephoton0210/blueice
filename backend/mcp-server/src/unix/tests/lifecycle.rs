@@ -15,6 +15,13 @@ fn go_back_uses_the_same_navigation_completion_barrier_and_returns_restored_stat
                 reply_tab(
                     s,
                     7,
+                    &ServerMessage::PrintState(blueice_ipc::printing::PrintReply::Ended {
+                        ticket: "a".repeat(32),
+                    }),
+                );
+                reply_tab(
+                    s,
+                    7,
                     &ServerMessage::DisplayPreferencesState(
                         blueice_ipc::display::DisplayPreferencesState {
                             tab_id: 7,
