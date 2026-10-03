@@ -7,6 +7,64 @@ import Combine
 
 @MainActor
 final class BrowserModel: ObservableObject {
+    let assistant = BrowserAssistant()
+    @Published var assistantPresented = false
+    private var assistantRequestIDs: Set<UInt64> = []
+    private var assistantObservation: AnyCancellable?
+    var canAskAssistant: Bool { ready && status != "Loading…" && selected.flatMap { assistant.page($0)?.translation } != nil }
+    var canOpenAssistantTask: Bool { ready && status != "Loading…" && textInputState != nil }
+    func showAndAskAssistant(organize: Bool = false) {
+        guard canOpenAssistantTask, let tab = selected else { return }
+        assistantPresented = true; observeAssistant(tab)
+        guard let document = assistant.page(tab)?.document else { return }
+        refreshAssistantTranslation()
+        Task {
+            let deadline = Date().addingTimeInterval(5)
+            while ready, selected == tab, assistant.page(tab)?.document == document, Date() < deadline {
+                if canAskAssistant { askAssistant(organize: organize); return }
+                try? await Task.sleep(for: .milliseconds(20))
+            }
+        }
+    }
+    func toggleAssistant() {
+        assistantPresented.toggle()
+        if assistantPresented { refreshAssistantTranslation() }
+    }
+    private func observeAssistant(_ tab: UInt64) {
+        guard let input = inputStates[tab], let url = tabs.first(where: { $0.id == tab })?.url else { return }
+        assistant.observe(.init(tab_id: tab, frame_source: input.frame_source, document_generation: input.document_generation), url: url)
+    }
+    func refreshAssistantTranslation() {
+        guard ready, status != "Loading…", let tab = selected else { return }
+        observeAssistant(tab)
+        if let operation = assistant.translate(tab, action: .inspect) { performAssistant(operation) }
+    }
+    func askAssistant(organize: Bool = false) {
+        guard canAskAssistant, let tab = selected else { return }
+        observeAssistant(tab)
+        let task: AssistantTask = organize ? .organized(assistant.page(tab)?.instruction ?? "") : .summary
+        if let operation = assistant.begin(tab, task: task) { performAssistant(operation) }
+    }
+    func changeTranslation(_ action: AssistantTranslationAction) {
+        guard ready, status != "Loading…", let tab = selected else { return }
+        observeAssistant(tab)
+        if let operation = assistant.translate(tab, action: action) { performAssistant(operation) }
+    }
+    private func performAssistant(_ operation: AssistantOperation) {
+        Task {
+            do {
+                let register: @Sendable (UInt64) -> Void = { [weak model = self] request in
+                    DispatchQueue.main.async {
+                        operation.requestID = request
+                        model?.assistantRequestIDs.insert(request)
+                        if let model, model.assistantRequestIDs.count > 512, let oldest = model.assistantRequestIDs.min() { model.assistantRequestIDs.remove(oldest) }
+                    }
+                }
+                if let workspace { _ = try await workspace.send(operation.command, tab: operation.document.tab_id, owner: self, willSend: register) }
+                else { _ = try await session.send(operation.command, tab: operation.document.tab_id, willSend: register) }
+            } catch { operation.owner?.expire(operation) }
+        }
+    }
     let appearance: BrowserAppearance
     let windowID: UInt64
     private(set) var contextID: UInt64 = 1
@@ -118,6 +176,13 @@ final class BrowserModel: ObservableObject {
         self.appearance = appearance ?? BrowserAppearance()
         self.workspace = workspace; self.windowID = windowID
         self.session = workspace?.session ?? BrowserSession()
+        assistantObservation = assistant.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
+        assistant.languageConfirmed = { [weak self] language in
+            let store = BrowserAppearance.preferenceStore()
+            if let language { store.set(language, forKey: "browser.translationLanguage") }
+            else { store.removeObject(forKey: "browser.translationLanguage") }
+            self?.workspace?.refreshAssistantTranslation()
+        }
         preferenceObservation = self.appearance.$resolved.removeDuplicates().sink { [weak self] _ in
             Task { @MainActor in self?.synchronizePreferences() }
         }
@@ -271,7 +336,7 @@ final class BrowserModel: ObservableObject {
                 let message = error.localizedDescription
                 DispatchQueue.main.async { [weak self] in
                     guard let self else { return }
-                    self.status = message; self.ready = false; self.representation = nil; self.clearTextInput()
+                    self.assistant.clear(); self.status = message; self.ready = false; self.representation = nil; self.clearTextInput()
                     Task { await self.session.stop() }
                 }
             }
@@ -291,6 +356,13 @@ final class BrowserModel: ObservableObject {
 
     func apply(_ envelope: IncomingEnvelope, pixels: FramePixels?) {
         let tab = envelope.tabID
+        switch envelope.message {
+        case .assistantResult, .assistantUnavailable, .translation, .translationUnavailable:
+            _ = assistant.receive(envelope); return
+        case .error where envelope.requestID.map({ assistantRequestIDs.contains($0) || workspace?.isAssistantRequest($0) == true }) == true:
+            _ = assistant.receive(envelope); return
+        default: break
+        }
         if fileOperation != nil, fileReplies.count < 16 {
             switch envelope.message {
             case .fileInputState, .error: fileReplies.append(envelope)
@@ -354,6 +426,7 @@ final class BrowserModel: ObservableObject {
             } ?? incoming
             if windowTabs != nil, list == tabs { return }
             let live = Set(list.map(\.id))
+            assistant.retainTabs(live)
             if let flight = inputFlight, !live.contains(flight.edit.tab) { clearTextInput() }
             tabs = list
             findPanels = findPanels.filter { live.contains($0.key) }
@@ -388,8 +461,10 @@ final class BrowserModel: ObservableObject {
         case .closed:
             Task { await send(.unit("ListTabs")) }
         case .navigationStarted:
+            if let tab { assistant.invalidate(tab, clear: false) }
             if tab == selected { status = "Loading…" }
         case .navigated(let url):
+            if let tab { assistant.invalidate(tab, clear: true) }
             if let tab { findPanels.removeValue(forKey: tab) }
             if tab == selected { findTask?.cancel(); findVisible = false; findQuery = ""; findResult = nil }
             if let tab { resubmissions.removeValue(forKey: tab) }
@@ -456,6 +531,10 @@ final class BrowserModel: ObservableObject {
             }
         case .textInputState, .textInputUnavailable:
             applyTextInput(envelope)
+            if let tab {
+                observeAssistant(tab)
+                if assistantPresented, tab == selected, assistant.page(tab)?.translation == nil { refreshAssistantTranslation() }
+            }
             if let tab, findPanels[tab]?.shown == true, findPanels[tab]?.result == nil { action(.unit("GetFindState"), tab: tab) }
         case .findState(let state):
             guard let tab, tab == state.tabID, let context = inputStates[tab]?.context,
@@ -518,6 +597,7 @@ final class BrowserModel: ObservableObject {
         selected = tab
         resubmission = resubmissions[tab]; resubmissionPresented = resubmission != nil
         showSelected()
+        if assistantPresented { refreshAssistantTranslation() }
         if findVisible { action(.unit("GetFindState"), tab: tab) }
         Task { await send(.unit("GetHistoryState"), tab: tab); await resize() }
     }
@@ -541,6 +621,7 @@ final class BrowserModel: ObservableObject {
         }
     }
     func transferLocalTabState(_ tab: UInt64, to destination: BrowserModel) {
+        assistant.transfer(tab, to: destination.assistant)
         if var panel = findPanels[tab] { panel.result = nil; destination.findPanels[tab] = panel }
         if let prompt = resubmissions[tab] { destination.resubmissions[tab] = prompt }
     }
@@ -548,7 +629,7 @@ final class BrowserModel: ObservableObject {
         windowTabs = list.map(\.id)
         apply(IncomingEnvelope(requestID: nil, tabID: nil, message: .tabs(list)), pixels: nil)
     }
-    func workspaceFailed(_ message: String) { status = message; ready = false; representation = nil; clearTextInput() }
+    func workspaceFailed(_ message: String) { assistant.clear(); status = message; ready = false; representation = nil; clearTextInput() }
     func openInitialPage() async {
         await send(.unit("ListTabGroups"))
         await resize()
@@ -1026,5 +1107,5 @@ final class BrowserModel: ObservableObject {
         }
     }
 
-    func stop() async { groupOperation = nil; groupReplies = []; groupRequests = []; groupBusy = false; groups = []; groupsAvailable = false; groupEditor = nil; zoomTask?.cancel(); zoomWrites.removeAll(); preferenceTask?.cancel(); lastSentPreferences = nil; preferenceStates.removeAll(); displayPreferences = nil; findTask?.cancel(); findPanels.removeAll(); findVisible = false; findResult = nil; resubmissions.removeAll(); resubmission = nil; resubmissionPresented = false; ready = false; representation = nil; representations.removeAll(); representationRequests.removeAll(); clearTextInput(); resizeTask?.cancel(); if workspace == nil { await session.stop() } }
+    func stop() async { assistant.clear(); groupOperation = nil; groupReplies = []; groupRequests = []; groupBusy = false; groups = []; groupsAvailable = false; groupEditor = nil; zoomTask?.cancel(); zoomWrites.removeAll(); preferenceTask?.cancel(); lastSentPreferences = nil; preferenceStates.removeAll(); displayPreferences = nil; findTask?.cancel(); findPanels.removeAll(); findVisible = false; findResult = nil; resubmissions.removeAll(); resubmission = nil; resubmissionPresented = false; ready = false; representation = nil; representations.removeAll(); representationRequests.removeAll(); clearTextInput(); resizeTask?.cancel(); if workspace == nil { await session.stop() } }
 }

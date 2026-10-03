@@ -100,7 +100,19 @@ final class BrowserWorkspace: ObservableObject {
         let window = owner?.windowID
         let scopedWindow = window.flatMap { id in tab.map { _ in BrowserCommand.window(.command(id, command)) } } ?? command
         let outbound = owner.map { BrowserCommand.browserContext(.command($0.contextID, scopedWindow)) } ?? scopedWindow
+        let assistantCommand: Bool
+        switch command {
+        case .assistantPage, .unit("GetTranslationState"), .values("SetTranslationLanguage", _): assistantCommand = true
+        default: assistantCommand = false
+        }
         return try await session.send(outbound, tab: tab) { [weak self] request in
+            if assistantCommand {
+                DispatchQueue.main.async { [weak self] in
+                    guard let self else { return }
+                    self.assistantRequests.insert(request)
+                    if self.assistantRequests.count > 512, let oldest = self.assistantRequests.min() { self.assistantRequests.remove(oldest) }
+                }
+            }
             if let window {
                 DispatchQueue.main.async { [weak self] in
                     guard let self else { return }
@@ -111,8 +123,21 @@ final class BrowserWorkspace: ObservableObject {
             willSend?(request)
         }
     }
+    private var assistantRequests: Set<UInt64> = []
+    func isAssistantRequest(_ id: UInt64) -> Bool { assistantRequests.contains(id) }
+    func refreshAssistantTranslation() {
+        Task { for model in models.values where model.assistantPresented { model.refreshAssistantTranslation() } }
+    }
     private func receive(_ envelope: IncomingEnvelope, pixels: FramePixels?) {
         guard !stopping else { return }
+        if let request = envelope.requestID, assistantRequests.contains(request) {
+            switch envelope.message {
+            case .assistantResult, .assistantUnavailable, .translation, .translationUnavailable, .error:
+                for model in models.values { model.apply(envelope, pixels: pixels) }
+                assistantRequests.remove(request); return
+            default: break
+            }
+        }
         if case .navigated(let url) = envelope.message, url == "about:downloads" || url.hasPrefix("about:downloads?") {
             Task { await downloads.connect() }
         }
@@ -301,6 +326,7 @@ final class BrowserWorkspace: ObservableObject {
     func stop() async {
         guard !stopping else { return }; stopping = true; connected = false; canManageWindows = false
         canManageContexts = false; contextRequests = []; contextReplies = []
+        assistantRequests.removeAll()
         preferenceTask?.cancel(); replies = []; requests = [:]; requestOwners = [:]
         for model in models.values { await model.stop() }
         await downloads.stop()

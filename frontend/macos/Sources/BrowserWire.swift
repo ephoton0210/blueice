@@ -35,8 +35,13 @@ enum BrowserCommand: Encodable, Sendable {
     case browserContext(ContextAction)
     case printAction(PrintAction)
     case fileInput(FileInputAction)
+    case assistantPage(AssistantDocument, AssistantPageAction)
     func encode(to encoder: Encoder) throws {
         switch self {
+        case .assistantPage(let context, let action):
+            var root = encoder.container(keyedBy: MessageKey.self)
+            var box = root.nestedContainer(keyedBy: MessageKey.self, forKey: MessageKey("AssistantPage"))
+            try box.encode(context, forKey: MessageKey("context")); try box.encode(action, forKey: MessageKey("action"))
         case .unit(let name):
             var value = encoder.singleValueContainer()
             try value.encode(name)
@@ -281,6 +286,7 @@ struct FormResubmission: Decodable, Sendable {
 }
 
 enum BrowserMessage: Decodable, Sendable {
+    case assistantResult(AssistantPageResult), assistantUnavailable, translation(TranslationState), translationUnavailable
     case fileInputState(FileInputState)
     case printState(PrintReply)
     case hello(UInt32), tabs([BrowserTab]), opened(UInt64, String?), closed(UInt64)
@@ -308,6 +314,12 @@ enum BrowserMessage: Decodable, Sendable {
         struct Blocked: Decodable { let reason: String }
         struct Failure: Decodable { let message: String }
         switch key.stringValue {
+        case "AssistantPageResult":
+            if let result = try? object.decode(AssistantPageResult.self, forKey: key), result.valid { self = .assistantResult(result) }
+            else { self = .assistantUnavailable }
+        case "TranslationState":
+            if let state = try? object.decode(TranslationState.self, forKey: key), state.valid { self = .translation(state) }
+            else { self = .translationUnavailable }
         case "FormResubmission": self = .formResubmission(try object.decode(FormResubmission.self, forKey: key))
         case "FormResubmissionResolved":
             struct Resolution: Decodable { let confirmation_id: UInt64 }

@@ -23,6 +23,7 @@ final class BrowserSession: @unchecked Sendable {
     private var stopping = false
     private var handshaken = false
     private var requestID: UInt64 = 0 // Accessed only on writer.
+    private var initialTranslationLanguage: String?
     private var callback: (@Sendable (Result<IncomingEnvelope, BrowserFailure>) -> Void)?
 
     var received: (@Sendable (Result<IncomingEnvelope, BrowserFailure>) -> Void)? {
@@ -44,6 +45,8 @@ final class BrowserSession: @unchecked Sendable {
     }
 
     func startForBrowser(launcher: URL? = nil) async throws {
+        let language = await MainActor.run { BrowserAppearance.preferenceStore().string(forKey: "browser.translationLanguage") }
+        lock.withLock { initialTranslationLanguage = language.flatMap { TranslationState.validTag($0) ? $0 : nil } }
         let arguments = ProcessInfo.processInfo.arguments
         if let launcher { try await start(launcher: launcher); return }
         if let option = arguments.firstIndex(of: "--core-exe") {
@@ -178,6 +181,21 @@ final class BrowserSession: @unchecked Sendable {
                         let hello = try read()
                         guard case .hello(BrowserWire.version) = hello.message, hello.requestID == 1 else {
                             throw BrowserFailure.invalid("BlueIce services use an incompatible browser protocol.")
+                        }
+                        if supervised, let language = self.lock.withLock({ self.initialTranslationLanguage }) {
+                            let request = try self.writer.sync { try self.write(.values("SetTranslationLanguage", ["target_language": .string(language)]), tab: 1) }
+                            var confirmed = false
+                            for _ in 0..<256 {
+                                let reply = try read()
+                                if reply.requestID == request {
+                                    guard case .translation(let state) = reply.message, state.language == language else {
+                                        throw BrowserFailure.invalid("The saved translation preference could not be applied.")
+                                    }
+                                    confirmed = true; break
+                                }
+                                self.received?(.success(reply))
+                            }
+                            guard confirmed else { throw BrowserFailure.invalid("The saved translation preference was not confirmed.") }
                         }
                         try self.lock.withLock {
                             guard !self.stopping else { throw BrowserFailure.invalid("Browser session is closed.") }

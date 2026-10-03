@@ -143,6 +143,9 @@ pub(super) fn scoped_command(
         | ClientMessage::GoForward
         | ClientMessage::ConfirmFormResubmission { .. }
         | ClientMessage::GetHistoryState
+        | ClientMessage::AssistantPage { .. }
+        | ClientMessage::GetTranslationState
+        | ClientMessage::SetTranslationLanguage { .. }
         | ClientMessage::Find { .. }
         | ClientMessage::GetFindState
         | ClientMessage::Print(_)

@@ -70,6 +70,7 @@ final class HTTPFixture: @unchecked Sendable {
                 }
                 let body: String
                 switch route {
+                case "/assistant": body = "<html><body><h1>Hello</h1><p>World</p><input type='password' aria-label='Assistant secret' value='assistant-private-secret'><p hidden>assistant-hidden-secret</p></body></html>"
                 case "/file-input": body = """
                     <html><body><h1>File selection fixture</h1>
                     <form method="post" action="/upload-received" enctype="multipart/form-data">

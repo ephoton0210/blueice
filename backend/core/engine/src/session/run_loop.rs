@@ -392,7 +392,55 @@ pub(super) fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
                             reply_tab,
                             request_id,
                             target,
-                            task,
+                            (task, None),
+                            &assistant_tx,
+                        )?;
+                    }
+                    ClientMessage::AssistantPage { context, action } => {
+                        use blueice_ipc::assistant_page::AssistantPageAction;
+                        let Some(page) = tabs.get_mut(target) else {
+                            write_unknown_tab_error(stream, request_id, target)?;
+                            continue;
+                        };
+                        if context.tab_id != target.as_u64()
+                            || context.frame_source != blueice_ipc::shm::frame_source_id(frame_dir)
+                            || context.document_generation != page.document_generation()
+                        {
+                            write_error(
+                                stream,
+                                reply_tab,
+                                request_id,
+                                "Assistant document is stale".into(),
+                            )?;
+                            continue;
+                        }
+                        let task = match action {
+                            AssistantPageAction::Summarize => ClientMessage::SummarizePage,
+                            AssistantPageAction::Organize { instruction } => {
+                                ClientMessage::OrganizePage { instruction }
+                            }
+                            AssistantPageAction::ShowTranslation { shown } => {
+                                let changed = page.set_translation_shown(shown);
+                                write_translation_state(
+                                    tabs, stream, reply_tab, request_id, target,
+                                )?;
+                                if changed {
+                                    let page =
+                                        tabs.get_mut(target).expect("checked immediately above");
+                                    send_frame(
+                                        page, stream, frame_dir, generation, reply_tab, request_id,
+                                    )?;
+                                }
+                                continue;
+                            }
+                        };
+                        begin_assistant_task(
+                            tabs,
+                            stream,
+                            reply_tab,
+                            request_id,
+                            target,
+                            (task, Some(context)),
                             &assistant_tx,
                         )?;
                     }

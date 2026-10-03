@@ -384,9 +384,26 @@ remain credential-free HTTP to numeric localhost with an explicit port and
 compatible model files; the default build enables the loopback backend.
 See [assistant settings results](../../development/browser_core/phase-22-browser-shell-accessibility/MACOS_ASSISTANT_SETTINGS_RESULTS.md).
 
-Assistant result/translation surfaces, extension installation UI, explicit
-panel appearance/localization integration and general site/OS permission
-prompts remain delivery work.
+The native Assistant menu and toolbar open a resizable SwiftUI sidebar.
+Summarize and Organize read the core's current visible page text; the result is
+selectable plain text, including literal HTML/Markdown characters. Results and
+pending tasks follow the core tab when it moves to another window. Navigation,
+tab close, stop-waiting and translation changes invalidate obsolete results.
+Each task checks the tab, frame source, document generation, request ID and kind.
+Document-bound tasks do not publish text into the legacy shared assistant page.
+Failures appear in the sidebar and preserve mandatory navigation denials.
+
+Translation Apply/Off chooses the language for future navigations across all
+windows and profiles. Only a confirmed core reply saves the language tag in the
+native preference domain; startup confirms it before initial navigation.
+Show translated page switches an available translation without refetching.
+The existing private settings/permissions child remains the place for model
+configuration and human permission decisions. The sidebar grants no permission.
+UI tests use a deterministic loopback model endpoint with the real bundled
+assistant, core and mandatory gatekeeper. Model quality remains outside that
+acceptance. Extension installation UI, explicit panel appearance/localization
+integration and general site/OS permission prompts remain delivery work.
+See [assistant page results](../../development/browser_core/phase-22-browser-shell-accessibility/MACOS_ASSISTANT_PAGE_RESULTS.md).
 
 Frame refresh temporarily suspends semantic actions until the representation
 matches the current tab, source, generation and URL. Native element identities

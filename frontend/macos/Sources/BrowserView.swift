@@ -38,6 +38,7 @@ struct BrowserView: View {
                     .accessibilityIdentifier("address")
                     .onSubmit { addressFocused = false; model.navigateAddress() }
                 button("arrow.right", "Go", "go") { model.navigateAddress() }
+                button("sparkles", "Local assistant", "assistant") { model.toggleAssistant() }
                 button("gearshape", "Settings", "settings") {
                     model.action(.values("Navigate", ["url": .string("about:settings")]))
                 }
@@ -71,16 +72,19 @@ struct BrowserView: View {
                 .padding(.horizontal, 12).padding(.vertical, 8)
                 Divider()
             }
-            ZStack {
-                PageViewport(model: model)
-                if model.image == nil {
-                    Text(model.selected == nil ? "Open a new tab" : "Waiting for page…")
-                        .foregroundStyle(.secondary)
-                        .accessibilityIdentifier("empty-page")
-                        .allowsHitTesting(false)
+            HSplitView {
+                ZStack {
+                    PageViewport(model: model)
+                    if model.image == nil {
+                        Text(model.selected == nil ? "Open a new tab" : "Waiting for page…")
+                            .foregroundStyle(.secondary)
+                            .accessibilityIdentifier("empty-page")
+                            .allowsHitTesting(false)
+                    }
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                if model.assistantPresented { BrowserAssistantView(model: model, assistant: model.assistant) }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
             Divider()
             HStack {
                 Text(model.status).lineLimit(2).accessibilityIdentifier("status")

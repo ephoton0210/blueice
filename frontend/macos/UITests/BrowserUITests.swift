@@ -9,6 +9,117 @@ import XCTest
 
 @MainActor
 final class BrowserUITests: XCTestCase {
+    private func configureAssistant(_ model: AssistantModelFixture) throws {
+        let settings: [String: Any] = ["version": 1, "backend": "loopback", "idle_timeout_secs": 600,
+            "nice": 10, "max_resident_mb": 2048, "candle": NSNull(),
+            "loopback": ["provider": "ollama", "base_url": model.baseURL, "model": "local-model"]]
+        try JSONSerialization.data(withJSONObject: settings).write(to: assistantSettingsFile)
+    }
+    private func openAssistant(in window: XCUIElement? = nil, ready: Bool = true) {
+        let scope = window ?? app!
+        scope.buttons["assistant"].click()
+        XCTAssertTrue(scope.buttons["assistant-summarize"].waitForExistence(timeout: 10), app.debugDescription)
+        if ready { XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == true"), object: scope.buttons["assistant-summarize"])], timeout: 10), .completed, app.debugDescription) }
+    }
+    private func waitAssistantText(_ element: XCUIElement, _ text: String) {
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@ OR value == %@", text, text), object: element)], timeout: 15), .completed, app.debugDescription)
+    }
+    private func waitModelRequests(_ model: AssistantModelFixture, count: Int) {
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in model.prompts.count >= count }, object: nil)], timeout: 10), .completed)
+    }
+    func testNativeAssistantSummaryOrganizePlainTextAndProtectedInputPrivacy() throws {
+        let origin = try HTTPFixture(); defer { origin.stop() }
+        let model = try AssistantModelFixture(); defer { model.stop() }; try configureAssistant(model)
+        launch(); enter(origin.origin + "/assistant")
+        XCTAssertTrue(app.groups["page"].secureTextFields["Assistant secret"].waitForExistence(timeout: 15))
+        openAssistant(); app.buttons["assistant-summarize"].click()
+        waitAssistantText(app.staticTexts["assistant-result"], AssistantModelFixture.summary)
+        let user = try XCTUnwrap(model.prompts.first).user
+        XCTAssertTrue(user.contains("Hello") && user.contains("World"))
+        XCTAssertFalse(user.contains("assistant-private-secret")); XCTAssertFalse(user.contains("assistant-hidden-secret"))
+        waitValue(app.textFields["address"], origin.origin + "/assistant")
+        let instruction = app.textFields["assistant-instruction"]
+        instruction.click(); instruction.typeKey("a", modifierFlags: .command); instruction.typeText("Make a table.")
+        app.buttons["assistant-organize"].click()
+        waitAssistantText(app.staticTexts["assistant-result"], AssistantModelFixture.organized)
+        XCTAssertTrue(model.prompts.last?.system.contains("Make a table.") == true)
+        let attachment = XCTAttachment(screenshot: app.windows["browser-window"].screenshot())
+        attachment.name = "macos-native-assistant-result"; attachment.lifetime = .keepAlways; add(attachment)
+        app.buttons["assistant-close"].click(); app.typeKey("a", modifierFlags: [.command, .shift])
+        waitAssistantText(app.staticTexts["assistant-result"], AssistantModelFixture.organized)
+        XCTAssertEqual(origin.requests, ["/assistant"])
+    }
+    func testNativeAssistantDiscardsOldDocumentReplyAndStopsWaiting() throws {
+        let origin = try HTTPFixture(); defer { origin.stop() }
+        let model = try AssistantModelFixture(); defer { model.stop() }; try configureAssistant(model)
+        launch(); enter(origin.origin + "/assistant"); openAssistant(); model.hold()
+        app.buttons["assistant-summarize"].click(); waitModelRequests(model, count: 1)
+        enter(origin.origin + "/second"); waitValue(app.textFields["address"], origin.origin + "/second")
+        XCTAssertTrue(app.groups["page"].staticTexts["BlueIce external page"].waitForExistence(timeout: 15))
+        model.release()
+        XCTAssertFalse(app.staticTexts["assistant-result"].exists)
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == true"), object: app.buttons["assistant-summarize"])], timeout: 10), .completed)
+        model.hold(); app.buttons["assistant-summarize"].click(); waitModelRequests(model, count: 2)
+        app.buttons["assistant-stop"].click(); model.release()
+        waitAssistantText(app.staticTexts["assistant-notice"], "Stopped waiting. The local task may finish in the background.")
+        XCTAssertFalse(app.staticTexts["assistant-result"].exists)
+        app.buttons["assistant-summarize"].click()
+        waitAssistantText(app.staticTexts["assistant-result"], AssistantModelFixture.summary)
+        XCTAssertEqual(origin.requests, ["/assistant", "/second"])
+    }
+    func testNativeAssistantTranslationToggleAndPreferenceRelaunch() throws {
+        let origin = try HTTPFixture(); defer { origin.stop() }
+        let model = try AssistantModelFixture(); defer { model.stop() }; try configureAssistant(model)
+        launch(); openAssistant()
+        app.buttons["assistant-language-apply"].click()
+        waitAssistantText(app.staticTexts["assistant-language-state"], "Target: zh-TW")
+        enter(origin.origin + "/assistant")
+        XCTAssertTrue(app.groups["page"].staticTexts["你好"].waitForExistence(timeout: 15), app.debugDescription)
+        let toggle = app.checkBoxes["assistant-show-translation"]
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == true"), object: toggle)], timeout: 10), .completed)
+        toggle.click(); XCTAssertTrue(app.groups["page"].staticTexts["Hello"].waitForExistence(timeout: 10))
+        toggle.click(); XCTAssertTrue(app.groups["page"].staticTexts["你好"].waitForExistence(timeout: 10))
+        XCTAssertEqual(origin.requests, ["/assistant"])
+        app.windows["browser-window"].buttons[XCUIIdentifierCloseWindow].click()
+        XCTAssertTrue(app.wait(for: .notRunning, timeout: 15))
+        launch(); enter(origin.origin + "/assistant")
+        XCTAssertTrue(app.groups["page"].staticTexts["你好"].waitForExistence(timeout: 15), app.debugDescription)
+        openAssistant(); app.buttons["assistant-language-off"].click()
+        waitAssistantText(app.staticTexts["assistant-language-state"], "Target: Off")
+        XCTAssertNil(UserDefaults(suiteName: preferenceDomain)?.string(forKey: "browser.translationLanguage"))
+    }
+    func testNativeAssistantFailurePreservesMandatoryNavigationDenial() throws {
+        let origin = try HTTPFixture(); defer { origin.stop() }
+        launch(); enter(origin.origin + "/assistant")
+        XCTAssertTrue(app.groups["page"].secureTextFields["Assistant secret"].waitForExistence(timeout: 15))
+        enter(origin.origin + "/blocked")
+        let status = app.staticTexts["status"]
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "value BEGINSWITH 'Navigation blocked'"), object: status)], timeout: 15), .completed)
+        let denial = try XCTUnwrap(status.value as? String)
+        openAssistant(); app.buttons["assistant-summarize"].click()
+        XCTAssertTrue(app.staticTexts["assistant-notice"].waitForExistence(timeout: 15))
+        XCTAssertEqual(status.value as? String, denial)
+        waitAssistantText(app.staticTexts["assistant-source"], origin.origin + "/assistant")
+        XCTAssertTrue(app.groups["page"].staticTexts["Hello"].exists)
+        XCTAssertEqual(origin.requests, ["/assistant", "/blocked"])
+    }
+    func testNativeAssistantPendingResultFollowsTabToAnotherWindow() throws {
+        let origin = try HTTPFixture(); defer { origin.stop() }
+        let model = try AssistantModelFixture(); defer { model.stop() }; try configureAssistant(model)
+        launch(); let first = app.windows["browser-window"]
+        enter(origin.origin + "/assistant", in: first); openAssistant(in: first)
+        model.hold(); first.buttons["assistant-summarize"].click(); waitModelRequests(model, count: 1)
+        app.typeKey("n", modifierFlags: .command)
+        let second = app.windows["browser-window-2"]
+        XCTAssertTrue(second.waitForExistence(timeout: 15))
+        activateWindow(1); transferTab(1, from: first, to: "Window 2")
+        activateWindow(2); openAssistant(in: second, ready: false)
+        XCTAssertTrue(second.buttons["assistant-stop"].waitForExistence(timeout: 10)); model.release()
+        waitAssistantText(second.staticTexts["assistant-result"], AssistantModelFixture.summary)
+        waitValue(second.textFields["address"], origin.origin + "/assistant")
+        XCTAssertFalse(first.staticTexts["assistant-result"].exists)
+        XCTAssertEqual(origin.requests, ["/assistant"])
+    }
     private func openAssistantSettings() -> XCUIApplication {
         let panels = openPermissionPanel()
         let selector = panels.radioButtons["Assistant Settings"]

@@ -293,6 +293,62 @@ fn a_client_chooses_the_language_and_toggles_the_shown_text() {
 }
 
 #[test]
+fn native_document_bound_translation_toggles_share_the_same_document() {
+    use blueice_ipc::assistant_page::{AssistantDocument, AssistantPageAction};
+    let (gatekeeper, _) = recording_gatekeeper();
+    let assistant = assistant();
+    let mut core = Core::start(
+        &gatekeeper,
+        &[
+            "--assistant-socket",
+            assistant.to_str().unwrap(),
+            "--translate-to",
+            "zh-TW",
+        ],
+    );
+    core.navigate(&web_server());
+    core.send(&ClientMessage::GetTextInputState);
+    let ServerMessage::TextInputState(input) = core.read() else {
+        panic!("expected document state")
+    };
+    let context = AssistantDocument {
+        tab_id: 1,
+        frame_source: input.frame_source,
+        document_generation: input.document_generation,
+    };
+    for (shown, expected) in [(false, ["Hello", "World"]), (true, ["你好", "世界"])] {
+        blueice_ipc::write_client_message_with_ids(
+            &mut core.stream,
+            Some(1),
+            Some(890),
+            &native_command(ClientMessage::AssistantPage {
+                context: context.clone(),
+                action: AssistantPageAction::ShowTranslation { shown },
+            }),
+        )
+        .unwrap();
+        let (tab, request, reply) =
+            blueice_ipc::read_server_message_with_ids(&mut core.stream).unwrap();
+        assert_eq!((tab, request), (Some(1), Some(890)));
+        assert_eq!(
+            reply,
+            ServerMessage::TranslationState {
+                language: Some("zh-TW".into()),
+                available: true,
+                shown
+            }
+        );
+        assert!(matches!(core.read(), ServerMessage::FrameReady { .. }));
+        assert_eq!(names(&core.snapshot()), expected);
+        core.send(&ClientMessage::GetTextInputState);
+        let ServerMessage::TextInputState(state) = core.read() else {
+            panic!("expected document state")
+        };
+        assert_eq!(state.document_generation, context.document_generation);
+    }
+}
+
+#[test]
 fn translation_is_unavailable_and_says_so_without_an_assistant() {
     let (gatekeeper, _) = recording_gatekeeper();
     let mut core = Core::start(&gatekeeper, &[]);

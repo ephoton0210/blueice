@@ -270,6 +270,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::HistoryState { .. }
                 | ServerMessage::TranslationState { .. }
                 | ServerMessage::AssistantResult { .. }
+                | ServerMessage::AssistantPageResult { .. }
                 | ServerMessage::ExtensionToolbar { .. }
                 | ServerMessage::ExtensionPopup { .. } => {}
             }
@@ -370,6 +371,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::HistoryState { .. }
                 | ServerMessage::TranslationState { .. }
                 | ServerMessage::AssistantResult { .. }
+                | ServerMessage::AssistantPageResult { .. }
                 | ServerMessage::ExtensionToolbar { .. }
                 | ServerMessage::ExtensionPopup { .. } => {}
             }
@@ -632,6 +634,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::HistoryState { .. }
                 | ServerMessage::TranslationState { .. }
                 | ServerMessage::AssistantResult { .. }
+                | ServerMessage::AssistantPageResult { .. }
                 | ServerMessage::ExtensionToolbar { .. }
                 | ServerMessage::ExtensionPopup { .. } => {}
             }
@@ -709,6 +712,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::HistoryState { .. }
                 | ServerMessage::TranslationState { .. }
                 | ServerMessage::AssistantResult { .. }
+                | ServerMessage::AssistantPageResult { .. }
                 | ServerMessage::ExtensionToolbar { .. }
                 | ServerMessage::ExtensionPopup { .. } => {}
             }
@@ -832,6 +836,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::HistoryState { .. }
                 | ServerMessage::TranslationState { .. }
                 | ServerMessage::AssistantResult { .. }
+                | ServerMessage::AssistantPageResult { .. }
                 | ServerMessage::ExtensionToolbar { .. }
                 | ServerMessage::ExtensionPopup { .. } => {}
             }
@@ -905,6 +910,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::HistoryState { .. }
                 | ServerMessage::TranslationState { .. }
                 | ServerMessage::AssistantResult { .. }
+                | ServerMessage::AssistantPageResult { .. }
                 | ServerMessage::ExtensionToolbar { .. }
                 | ServerMessage::ExtensionPopup { .. }
                 | ServerMessage::TabGroups(_) => {}
@@ -979,6 +985,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::HistoryState { .. }
                 | ServerMessage::TranslationState { .. }
                 | ServerMessage::AssistantResult { .. }
+                | ServerMessage::AssistantPageResult { .. }
                 | ServerMessage::ExtensionToolbar { .. }
                 | ServerMessage::ExtensionPopup { .. } => {}
             }
@@ -1061,6 +1068,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::HistoryState { .. }
                 | ServerMessage::TranslationState { .. }
                 | ServerMessage::AssistantResult { .. }
+                | ServerMessage::AssistantPageResult { .. }
                 | ServerMessage::ExtensionToolbar { .. }
                 | ServerMessage::ExtensionPopup { .. } => {}
             }
@@ -1189,6 +1197,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::HistoryState { .. }
                 | ServerMessage::TranslationState { .. }
                 | ServerMessage::AssistantResult { .. }
+                | ServerMessage::AssistantPageResult { .. }
                 | ServerMessage::ExtensionToolbar { .. }
                 | ServerMessage::ExtensionPopup { .. } => {}
             }

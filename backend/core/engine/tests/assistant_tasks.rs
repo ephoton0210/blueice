@@ -61,6 +61,167 @@ fn with_assistant(assistant: &Path) -> [&str; 2] {
     ["--assistant-socket", assistant.to_str().unwrap()]
 }
 
+fn assistant_document(core: &mut Core) -> blueice_ipc::assistant_page::AssistantDocument {
+    core.send(&ClientMessage::GetTextInputState);
+    let ServerMessage::TextInputState(state) = core.read() else {
+        panic!("expected native document state")
+    };
+    blueice_ipc::assistant_page::AssistantDocument {
+        tab_id: state.tab_id,
+        frame_source: state.frame_source,
+        document_generation: state.document_generation,
+    }
+}
+
+#[test]
+fn native_assistant_actions_reject_replaced_documents_and_wrong_tabs_before_reading() {
+    use blueice_ipc::assistant_page::AssistantPageAction;
+    let (gatekeeper, _) = recording_gatekeeper();
+    let assistant = assistant_serving(Voice);
+    let mut core = Core::start(&gatekeeper, &with_assistant(&assistant));
+    core.navigate(&web_server());
+    let context = assistant_document(&mut core);
+    core.send(&native_command(ClientMessage::GetTranslationState));
+    assert_eq!(
+        core.read(),
+        ServerMessage::TranslationState {
+            language: None,
+            available: false,
+            shown: false
+        }
+    );
+    core.send(&native_command(ClientMessage::SetTranslationLanguage {
+        target_language: Some("zh-TW".into()),
+    }));
+    assert_eq!(
+        core.read(),
+        ServerMessage::TranslationState {
+            language: Some("zh-TW".into()),
+            available: false,
+            shown: false
+        }
+    );
+    for (context_id, window_id) in [(2, 1), (1, 2)] {
+        core.send(&ClientMessage::BrowserContext(
+            blueice_ipc::browser_contexts::ContextAction::Command {
+                context_id,
+                message: Box::new(ClientMessage::Window(
+                    blueice_ipc::windows::WindowAction::Command {
+                        window_id,
+                        message: Box::new(ClientMessage::AssistantPage {
+                            context: context.clone(),
+                            action: AssistantPageAction::Summarize,
+                        }),
+                    },
+                )),
+            },
+        ));
+        assert!(matches!(core.read(), ServerMessage::Error { .. }));
+    }
+    for action in [
+        AssistantPageAction::Summarize,
+        AssistantPageAction::Organize {
+            instruction: "table".into(),
+        },
+        AssistantPageAction::ShowTranslation { shown: false },
+    ] {
+        for wrong in [
+            blueice_ipc::assistant_page::AssistantDocument {
+                tab_id: 2,
+                ..context.clone()
+            },
+            blueice_ipc::assistant_page::AssistantDocument {
+                frame_source: context.frame_source.wrapping_add(1),
+                ..context.clone()
+            },
+            blueice_ipc::assistant_page::AssistantDocument {
+                document_generation: context.document_generation.wrapping_add(1),
+                ..context.clone()
+            },
+        ] {
+            core.send(&ClientMessage::AssistantPage {
+                context: wrong,
+                action: action.clone(),
+            });
+            assert!(
+                matches!(core.read(), ServerMessage::Error { message } if message == "Assistant document is stale")
+            );
+        }
+    }
+    core.navigate("about:credits");
+    core.send(&ClientMessage::AssistantPage {
+        context,
+        action: AssistantPageAction::Summarize,
+    });
+    assert!(
+        matches!(core.read(), ServerMessage::Error { message } if message == "Assistant document is stale")
+    );
+}
+
+#[test]
+fn native_tasks_echo_the_exact_document_and_request_without_changing_the_page() {
+    use blueice_ipc::assistant_page::AssistantPageAction;
+    let (gatekeeper, _) = recording_gatekeeper();
+    let assistant = assistant_serving(Voice);
+    let mut core = Core::start(&gatekeeper, &with_assistant(&assistant));
+    core.navigate(&web_server());
+    let context = assistant_document(&mut core);
+    blueice_ipc::write_client_message_with_ids(
+        &mut core.stream,
+        Some(1),
+        Some(781),
+        &native_command(ClientMessage::AssistantPage {
+            context: context.clone(),
+            action: AssistantPageAction::Summarize,
+        }),
+    )
+    .unwrap();
+    let (tab, request, reply) =
+        blueice_ipc::read_server_message_with_ids(&mut core.stream).unwrap();
+    assert_eq!((tab, request), (Some(1), Some(781)));
+    assert_eq!(
+        reply,
+        ServerMessage::AssistantPageResult {
+            context: context.clone(),
+            kind: AssistantTaskKind::Summary,
+            text: "SUMMARY OF: Hello / World".into()
+        }
+    );
+    assert_eq!(assistant_document(&mut core), context);
+    assert_eq!(names(&core.snapshot()), ["Hello", "World"]);
+    blueice_ipc::write_client_message_with_ids(
+        &mut core.stream,
+        Some(1),
+        Some(782),
+        &native_command(ClientMessage::AssistantPage {
+            context: context.clone(),
+            action: AssistantPageAction::Organize {
+                instruction: "Group the main points.".into(),
+            },
+        }),
+    )
+    .unwrap();
+    let (tab, request, reply) =
+        blueice_ipc::read_server_message_with_ids(&mut core.stream).unwrap();
+    assert_eq!((tab, request), (Some(1), Some(782)));
+    match reply {
+        ServerMessage::AssistantPageResult {
+            context: actual,
+            kind: AssistantTaskKind::Organized,
+            text,
+        } => {
+            assert_eq!(actual, context);
+            assert!(text.starts_with("ORGANIZED: ") && text.contains("Hello / World"));
+        }
+        other => panic!("unexpected native organize reply {other:?}"),
+    }
+    assert_eq!(assistant_document(&mut core), context);
+    assert_eq!(names(&core.snapshot()), ["Hello", "World"]);
+    core.navigate("about:assistant");
+    let panel = names(&core.snapshot()).join(" ");
+    assert!(!panel.contains("SUMMARY OF: Hello") && !panel.contains("ORGANIZED: Hello"));
+}
+
 fn representation_of(core: &mut Core, tab: u64) -> AiSnapshot {
     blueice_ipc::write_client_message_with_ids(
         &mut core.stream,

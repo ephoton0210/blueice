@@ -325,6 +325,32 @@ fn client_message_round_trips_through_the_wire_format() {
         },
         ClientMessage::ShowTranslation { shown: false },
         ClientMessage::GetTranslationState,
+        ClientMessage::AssistantPage {
+            context: assistant_page::AssistantDocument {
+                tab_id: 1,
+                frame_source: 44,
+                document_generation: 3,
+            },
+            action: assistant_page::AssistantPageAction::Summarize,
+        },
+        ClientMessage::AssistantPage {
+            context: assistant_page::AssistantDocument {
+                tab_id: 1,
+                frame_source: 44,
+                document_generation: 3,
+            },
+            action: assistant_page::AssistantPageAction::Organize {
+                instruction: "make a table".into(),
+            },
+        },
+        ClientMessage::AssistantPage {
+            context: assistant_page::AssistantDocument {
+                tab_id: 1,
+                frame_source: 44,
+                document_generation: 3,
+            },
+            action: assistant_page::AssistantPageAction::ShowTranslation { shown: false },
+        },
         ClientMessage::SummarizePage,
         ClientMessage::OrganizePage {
             instruction: "make a table".to_string(),
@@ -390,6 +416,15 @@ fn server_message_round_trips_through_the_wire_format() {
         ServerMessage::AssistantResult {
             kind: AssistantTaskKind::Organized,
             text: "| a | 1 |".to_string(),
+        },
+        ServerMessage::AssistantPageResult {
+            context: assistant_page::AssistantDocument {
+                tab_id: 1,
+                frame_source: 44,
+                document_generation: 3,
+            },
+            kind: AssistantTaskKind::Summary,
+            text: "literal <script> and **text**".into(),
         },
         ServerMessage::TranslationState {
             language: Some("zh-TW".to_string()),

@@ -25,6 +25,19 @@ use std::time::{Duration, Instant};
 
 pub const PAGE: &str = "<h1>Hello</h1><p>World</p>";
 
+/// The same context/window envelope used by the native macOS GUI.
+pub fn native_command(message: ClientMessage) -> ClientMessage {
+    ClientMessage::BrowserContext(blueice_ipc::browser_contexts::ContextAction::Command {
+        context_id: 1,
+        message: Box::new(ClientMessage::Window(
+            blueice_ipc::windows::WindowAction::Command {
+                window_id: 1,
+                message: Box::new(message),
+            },
+        )),
+    })
+}
+
 pub fn short_path(label: &str) -> PathBuf {
     static COUNTER: AtomicU64 = AtomicU64::new(0);
     let n = COUNTER.fetch_add(1, Ordering::Relaxed);
@@ -149,7 +162,20 @@ impl Core {
             .spawn()
             .expect("failed to spawn blueice-core");
         assert!(wait_for(&socket), "blueice-core never created its socket");
-        let mut stream = UnixStream::connect(&socket).unwrap();
+        // bind creates the pathname before listen becomes ready on macOS.
+        let deadline = Instant::now() + Duration::from_secs(2);
+        let mut stream = loop {
+            match UnixStream::connect(&socket) {
+                Ok(stream) => break stream,
+                Err(error)
+                    if error.kind() == std::io::ErrorKind::ConnectionRefused
+                        && Instant::now() < deadline =>
+                {
+                    thread::sleep(Duration::from_millis(10));
+                }
+                Err(error) => panic!("blueice-core socket was not ready: {error}"),
+            }
+        };
         blueice_ipc::client_handshake(&mut stream).unwrap();
         Core {
             child,

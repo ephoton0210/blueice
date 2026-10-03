@@ -36,6 +36,7 @@ pub const MAX_FRAME_BYTES: usize = 8 * 1024 * 1024;
 
 pub mod ai;
 pub mod assistant;
+pub mod assistant_page;
 pub mod browser_contexts;
 pub mod compiler;
 pub mod compiler_catalog;
@@ -180,6 +181,13 @@ pub enum ClientMessage {
     /// Completes like [`ClientMessage::SummarizePage`].
     OrganizePage {
         instruction: String,
+    },
+    /// Native UI operation on the exact displayed document. Legacy assistant
+    /// commands retain their shapes; this additive path rejects stale sources
+    /// before collecting text or toggling the page's translation.
+    AssistantPage {
+        context: assistant_page::AssistantDocument,
+        action: assistant_page::AssistantPageAction,
     },
     /// The viewport size changed; `core` re-lays-out at the new width.
     Resize {
@@ -454,6 +462,11 @@ pub enum ServerMessage {
     /// [`ClientMessage::OrganizePage`]. The text is model output derived from
     /// untrusted page text and must be treated as such.
     AssistantResult {
+        kind: AssistantTaskKind,
+        text: String,
+    },
+    AssistantPageResult {
+        context: assistant_page::AssistantDocument,
         kind: AssistantTaskKind,
         text: String,
     },

@@ -9,6 +9,7 @@ pub(super) struct AssistantCompletion {
     pub(super) reply_tab: Option<u64>,
     pub(super) request_id: Option<u64>,
     pub(super) kind: blueice_ipc::AssistantTaskKind,
+    pub(super) context: Option<blueice_ipc::assistant_page::AssistantDocument>,
     pub(super) source_url: Option<String>,
     pub(super) request: Option<String>,
     pub(super) outcome: Result<String, String>,
@@ -27,9 +28,13 @@ pub(super) fn begin_assistant_task<S: Write>(
     reply_tab: Option<u64>,
     request_id: Option<u64>,
     target: TabId,
-    task: ClientMessage,
+    task: (
+        ClientMessage,
+        Option<blueice_ipc::assistant_page::AssistantDocument>,
+    ),
     assistant_tx: &mpsc::Sender<AssistantCompletion>,
 ) -> io::Result<()> {
+    let (task, context) = task;
     let Some(page) = tabs.get(target) else {
         return write_unknown_tab_error(stream, request_id, target);
     };
@@ -86,6 +91,7 @@ pub(super) fn begin_assistant_task<S: Write>(
             reply_tab,
             request_id,
             kind,
+            context,
             source_url,
             request: instruction,
             outcome,
@@ -94,10 +100,9 @@ pub(super) fn begin_assistant_task<S: Write>(
     Ok(())
 }
 
-/// Records a finished task on the shared `about:assistant` panel, answers the
-/// request that started it, and publishes a fresh frame for every tab showing
-/// the panel. A failure is recorded and answered too: nothing else would tell
-/// the person why no result appeared.
+/// Answers the original request. Legacy tasks also update the shared
+/// `about:assistant` panel; document-bound native results stay with their
+/// requester and do not publish page text to other profiles' panel tabs.
 pub(super) fn finish_assistant_task<S: Write>(
     tabs: &mut TabManager,
     stream: &mut S,
@@ -109,25 +114,42 @@ pub(super) fn finish_assistant_task<S: Write>(
         blueice_ipc::AssistantTaskKind::Summary => crate::assistant_page::PanelKind::Summary,
         blueice_ipc::AssistantTaskKind::Organized => crate::assistant_page::PanelKind::Organized,
     };
-    tabs.assistant_panel().push(
-        panel_kind,
-        done.source_url,
-        done.request,
-        done.outcome.clone(),
-    );
+    let legacy = done.context.is_none();
+    if legacy {
+        tabs.assistant_panel().push(
+            panel_kind,
+            done.source_url,
+            done.request,
+            done.outcome.clone(),
+        );
+    }
     match done.outcome {
-        Ok(text) => blueice_ipc::write_server_message_with_ids(
-            stream,
-            done.reply_tab,
-            done.request_id,
-            &ServerMessage::AssistantResult {
-                kind: done.kind,
-                text,
-            },
-        )?,
+        Ok(text) => {
+            let reply = match done.context {
+                Some(context) => ServerMessage::AssistantPageResult {
+                    context,
+                    kind: done.kind,
+                    text,
+                },
+                None => ServerMessage::AssistantResult {
+                    kind: done.kind,
+                    text,
+                },
+            };
+            blueice_ipc::write_server_message_with_ids(
+                stream,
+                done.reply_tab,
+                done.request_id,
+                &reply,
+            )?;
+        }
         Err(reason) => write_error(stream, done.reply_tab, done.request_id, reason)?,
     }
-    for id in tabs.refresh_assistant_panels() {
+    for id in if legacy {
+        tabs.refresh_assistant_panels()
+    } else {
+        Vec::new()
+    } {
         let page = tabs.get_mut(id).expect("refresh only returns live tabs");
         send_frame(page, stream, frame_dir, generation, Some(id.as_u64()), None)?;
     }
