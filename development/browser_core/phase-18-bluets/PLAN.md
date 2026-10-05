@@ -4022,3 +4022,17 @@ with every TypeScript-oracle fixture converted to CRLF in the isolated Linux
 copy. That copy is restored before format/check and both crates' all-target
 Clippy with `-D warnings`, which also pass. The M6 gate remains unchecked
 until the complete CI run on the corrected revision passes.
+
+
+### M6 workspace replay: Unix-only disk-test import
+
+CI run [37383748056](https://github.com/ephoton0210/blueice/actions/runs/37383748056)
+on `44a7c2819` passes both pinned TypeScript oracle jobs and the coverage job:
+workspace line coverage is 90.48% and independent BlueJS line coverage is
+93.00%. The Windows 11 arm64 workspace tests pass, but all-target Clippy
+rejects an unused `Path` import in `package_resolution_disk.rs`. That type
+is used only by the existing Unix-only symlink helper. Its import now has
+the same `cfg(unix)` condition. All five existing disk-resolution tests,
+format/check and both BlueTS crates' all-target Clippy with `-D warnings`
+pass in the Linux runner. The complete M6 replay on the corrected revision
+is still required before checking the milestone.

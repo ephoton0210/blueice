@@ -6,7 +6,9 @@
 //! stay inside or leave them, and cache invalidation by revalidation.
 
 use std::fs;
-use std::path::{Path, PathBuf};
+#[cfg(unix)]
+use std::path::Path;
+use std::path::PathBuf;
 
 use blueice_bluets::package_resolution::{
     ImportMode, ModuleResolution, OsPackageFs, PackageResolver, PackageResolverConfig, ResolveError,
