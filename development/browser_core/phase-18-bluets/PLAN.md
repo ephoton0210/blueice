@@ -3706,3 +3706,38 @@ standard library remain K.1.3 and K.1.4. Full parity stays off.
 
 The six sources listed in K.1.R.1 are still at their audited sizes. After this verified feature
 commit and push, split those sources and run a separate K.0 gate before K.1.3 adds responsibilities.
+
+
+### K.1.R.1 Split near-limit compiler and direct-runtime sources
+
+After the verified K.1.2 feature commit and push, the six audited production sources were split
+by responsibility. Import/export and module-system validation now live in `binding/modules.rs`;
+class body checking and type/surface helpers live in `classes/bodies.rs` and `classes/types.rs`;
+inherited signature and rest-parameter helpers live in `overrides/signatures.rs`. The CLI keeps
+execution and artifact publication in `bluetsc.rs`, with arguments and owner configuration in
+`bluetsc/config.rs`. The direct bridge separates calls/construction and writes in `expression/`,
+and class/decorator lowering from namespace/enum lowering in `lowering/`.
+
+The split moves complete items, preserves source headers, and changes only module declarations,
+imports and the visibility needed for the original callers. No parser/checker/emitter/runtime
+behavior or authority changes, and existing public-boundary and pinned-oracle coverage remains
+the validation boundary.
+
+| Original source | Before | After | New child modules |
+| --- | ---: | ---: | --- |
+| `checker/module/binding.rs` | 1205 | 759 | `modules.rs` (474) |
+| `checker/module/binding/classes.rs` | 1520 | 963 | `bodies.rs` (364), `types.rs` (241) |
+| `checker/module/binding/classes/overrides.rs` | 1487 | 998 | `signatures.rs` (509) |
+| `bin/bluetsc.rs` | 1693 | 1021 | `bluetsc/config.rs` (687) |
+| `bluets-bluejs/src/expression.rs` | 1234 | 874 | `calls.rs` (249), `writes.rs` (139) |
+| `bluets-bluejs/src/lowering.rs` | 1340 | 698 | `classes.rs` (292), `namespaces.rs` (385) |
+
+
+The K.1.R.1 gate passed on 2026-10-05: `cargo fmt --all -- --check`, all-target
+Clippy for `blueice-bluets` and `blueice-bluets-bluejs` with `-D warnings`, and
+`BLUEICE_BLUETSC_ORACLE=<tsc 5.9.3> FORCE_COLOR=0 cargo test -p blueice-bluets
+-p blueice-bluets-bluejs -j 4 --no-fail-fast -- --include-ignored --test-threads=4`.
+The 51 test targets passed 1004 tests, including all 104 ignored oracle tests in 21 suite files,
+with no failures, ignored tests or filtered tests. The refusal inventory was regenerated
+for the moved source locations. A fresh production-source audit found no Rust source
+in either crate at or above 1200 lines. K.1.3 proceeds after this separate commit and push.

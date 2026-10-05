@@ -136,9 +136,9 @@ excluded). A refusal is never silent: the program is rejected with this text.
 
 ### checker (22)
 
-- `backend/bluets/src/checker/module/binding.rs:533` — `export =` cannot be used when the module system is ECMAScript; use `--module commonjs`
-- `backend/bluets/src/checker/module/binding.rs:525` — `import x = require()` cannot be used when the module system is ECMAScript; use `--module commonjs`
-- `backend/bluets/src/checker/module/binding.rs:228` — a class member other than a constructor, method, field or accessor \ (a computed, generator or `accessor` member) is not supported yet
+- `backend/bluets/src/checker/module/binding/modules.rs:167` — `export =` cannot be used when the module system is ECMAScript; use `--module commonjs`
+- `backend/bluets/src/checker/module/binding/modules.rs:159` — `import x = require()` cannot be used when the module system is ECMAScript; use `--module commonjs`
+- `backend/bluets/src/checker/module/binding.rs:220` — a class member other than a constructor, method, field or accessor \ (a computed, generator or `accessor` member) is not supported yet
 - `backend/bluets/src/checker/module/binding/enums.rs:214` — a computed initializer that refers to the member `{}` must write it \ as `{}.{}`
 - `backend/bluets/src/checker/module/decorators.rs:116` — a decorator can only decorate a method implementation, not an overload
 - `backend/bluets/src/checker/module/binding/classes/fields.rs:318` — a field initializer that refers to a later field inside a nested \ function is not supported yet
@@ -146,12 +146,12 @@ excluded). A refusal is never silent: the program is rejected with this text.
 - `backend/bluets/src/checker/module/binding/classes/visibility.rs:490` — cannot prove that access to `{}` is permitted for this receiver
 - `backend/bluets/src/checker/module/binding/classes/visibility.rs:544` — cannot prove that access to `{}` is permitted for this receiver
 - `backend/bluets/src/checker/module/binding/classes/fields.rs:104` — class field `{}` needs a type annotation unless its initializer \ or default is a number, string or boolean literal
-- `backend/bluets/src/checker/module/binding/classes.rs:621` — class tuple rest annotation cannot be specialized within the type budget
+- `backend/bluets/src/checker/module/binding/classes.rs:610` — class tuple rest annotation cannot be specialized within the type budget
 - `backend/bluets/src/checker/module/binding/names.rs:145` — cyclic tuple spread cannot be resolved
 - `backend/bluets/src/checker/module/binding/classes/fields.rs:371` — definite assignment of `{}` through a branch is not supported yet
 - `backend/bluets/src/checker/module/binding/classes/fields.rs:426` — field `{}` redeclares a member of an imported base class, which is not supported yet
 - `backend/bluets/src/checker/module/binding/classes/accessors.rs:125` — getter `{}` needs a return type annotation; inferring it from the \ body is not supported yet
-- `backend/bluets/src/checker/module/binding.rs:1028` — interface heritage {name} must name an interface declaration
+- `backend/bluets/src/checker/module/binding.rs:576` — interface heritage {name} must name an interface declaration
 - `backend/bluets/src/checker/module/binding/namespaces.rs:1040` — namespace `{source}` has no run-time members; import it with `import type`
 - `backend/bluets/src/checker/module/binding/classes/accessors.rs:346` — redeclaring `{name}` as an accessor over a member of an \ imported base class is not supported yet
 - `backend/bluets/src/checker/module/binding/classes/visibility.rs:302` — redeclaring the protected member `{name}` of an imported base \ class is not supported yet
@@ -201,29 +201,29 @@ excluded). A refusal is never silent: the program is rejected with this text.
 
 ### expression (23)
 
-- `backend/bluets-bluejs/src/expression.rs:419` — a unary expression cannot be the unparenthesized base of exponentiation
-- `backend/bluets-bluejs/src/expression.rs:631` — array literals cannot combine holes and spread elements in the v1 direct bridge subset
-- `backend/bluets-bluejs/src/expression.rs:642` — array literals cannot combine holes and spread elements in the v1 direct bridge subset
-- `backend/bluets-bluejs/src/expression.rs:901` — only a direct identifier receiver may use optional dot access
-- `backend/bluets-bluejs/src/expression.rs:914` — only an identifier property is in the first optional dot subset
-- `backend/bluets-bluejs/src/expression.rs:715` — only constructor calls with parentheses are in the v1 direct bridge subset
-- `backend/bluets-bluejs/src/expression.rs:980` — only direct identifier and property calls are in the v1 direct bridge subset
-- `backend/bluets-bluejs/src/expression.rs:117` — only identifier and property assignment targets are in the v1 direct bridge subset
-- `backend/bluets-bluejs/src/expression.rs:532` — only identifier and property update targets are in the v1 direct bridge subset
-- `backend/bluets-bluejs/src/expression.rs:683` — only identifier constructors are in the v1 direct bridge subset
-- `backend/bluets-bluejs/src/expression.rs:935` — only identifier dot property names are in the v1 direct bridge subset
-- `backend/bluets-bluejs/src/expression.rs:853` — only identifier object keys may use shorthand; methods are not in the v1 direct bridge subset
-- `backend/bluets-bluejs/src/expression.rs:835` — only identifier, string, numeric, and computed object property keys are in the v1 direct bridge subset
-- `backend/bluets-bluejs/src/expression.rs:474` — only property delete targets are in the v1 direct bridge subset
-- `backend/bluets-bluejs/src/expression.rs:173` — parentheses are required when mixing `??` with `&&` or `||`
-- `backend/bluets-bluejs/src/expression.rs:181` — parentheses are required when mixing `??` with `&&` or `||`
-- `backend/bluets-bluejs/src/expression.rs:1224` — unsupported expression token `?.` in a template substitution
-- `backend/bluets-bluejs/src/expression.rs:27` — unsupported expression token `{}`
-- `backend/bluets-bluejs/src/expression.rs:578` — unsupported keyword `{}` in a runtime expression
-- `backend/bluets-bluejs/src/expression.rs:563` — unsupported numeric literal
-- `backend/bluets-bluejs/src/expression.rs:826` — unsupported numeric object key
-- `backend/bluets-bluejs/src/expression.rs:605` — unsupported runtime expression token `{}`
-- `backend/bluets-bluejs/src/expression.rs:1097` — unsupported string escape in the v1 direct bridge subset
+- `backend/bluets-bluejs/src/expression.rs:349` — a unary expression cannot be the unparenthesized base of exponentiation
+- `backend/bluets-bluejs/src/expression.rs:504` — array literals cannot combine holes and spread elements in the v1 direct bridge subset
+- `backend/bluets-bluejs/src/expression.rs:515` — array literals cannot combine holes and spread elements in the v1 direct bridge subset
+- `backend/bluets-bluejs/src/expression/calls.rs:127` — only a direct identifier receiver may use optional dot access
+- `backend/bluets-bluejs/src/expression/calls.rs:140` — only an identifier property is in the first optional dot subset
+- `backend/bluets-bluejs/src/expression/calls.rs:53` — only constructor calls with parentheses are in the v1 direct bridge subset
+- `backend/bluets-bluejs/src/expression/calls.rs:206` — only direct identifier and property calls are in the v1 direct bridge subset
+- `backend/bluets-bluejs/src/expression/writes.rs:71` — only identifier and property assignment targets are in the v1 direct bridge subset
+- `backend/bluets-bluejs/src/expression/writes.rs:128` — only identifier and property update targets are in the v1 direct bridge subset
+- `backend/bluets-bluejs/src/expression/calls.rs:21` — only identifier constructors are in the v1 direct bridge subset
+- `backend/bluets-bluejs/src/expression/calls.rs:161` — only identifier dot property names are in the v1 direct bridge subset
+- `backend/bluets-bluejs/src/expression.rs:627` — only identifier object keys may use shorthand; methods are not in the v1 direct bridge subset
+- `backend/bluets-bluejs/src/expression.rs:609` — only identifier, string, numeric, and computed object property keys are in the v1 direct bridge subset
+- `backend/bluets-bluejs/src/expression.rs:404` — only property delete targets are in the v1 direct bridge subset
+- `backend/bluets-bluejs/src/expression.rs:103` — parentheses are required when mixing `??` with `&&` or `||`
+- `backend/bluets-bluejs/src/expression.rs:111` — parentheses are required when mixing `??` with `&&` or `||`
+- `backend/bluets-bluejs/src/expression.rs:857` — unsupported expression token `?.` in a template substitution
+- `backend/bluets-bluejs/src/expression.rs:30` — unsupported expression token `{}`
+- `backend/bluets-bluejs/src/expression.rs:451` — unsupported keyword `{}` in a runtime expression
+- `backend/bluets-bluejs/src/expression.rs:436` — unsupported numeric literal
+- `backend/bluets-bluejs/src/expression.rs:600` — unsupported numeric object key
+- `backend/bluets-bluejs/src/expression.rs:478` — unsupported runtime expression token `{}`
+- `backend/bluets-bluejs/src/expression.rs:730` — unsupported string escape in the v1 direct bridge subset
 
 ### jsx_direct (8)
 
@@ -252,38 +252,38 @@ excluded). A refusal is never silent: the program is rejected with this text.
 
 ### lowering (32)
 
-- `backend/bluets-bluejs/src/lowering.rs:401` — BlueJS implements the standard decorators; `experimentalDecorators` programs run as `bluetsc build --experimental-decorators` output
-- `backend/bluets-bluejs/src/lowering.rs:221` — BlueTS did not retain a canonical target for this runtime import
-- `backend/bluets-bluejs/src/lowering.rs:46` — ESM default exports require the module bridge
-- `backend/bluets-bluejs/src/lowering.rs:52` — ESM named exports require the module bridge
-- `backend/bluets-bluejs/src/lowering.rs:806` — a derived constructor needs a top-level super call for the statements that must follow it
-- `backend/bluets-bluejs/src/lowering.rs:1021` — a nested function declaration is outside the direct try subset
-- `backend/bluets-bluejs/src/lowering.rs:1074` — a nested function declaration is outside the direct while subset
-- `backend/bluets-bluejs/src/lowering.rs:849` — a rest parameter must be the final direct function parameter
-- `backend/bluets-bluejs/src/lowering.rs:611` — an ambient const enum needs its uses inlined, which the direct bridge does not do
-- `backend/bluets-bluejs/src/lowering.rs:91` — an exported class requires the module bridge
-- `backend/bluets-bluejs/src/lowering.rs:119` — an exported enum requires the module bridge
-- `backend/bluets-bluejs/src/lowering.rs:97` — an exported namespace requires the module bridge
-- `backend/bluets-bluejs/src/lowering.rs:1002` — block-local declarations are outside the direct try subset
-- `backend/bluets-bluejs/src/lowering.rs:1027` — body syntax is outside the direct try subset
-- `backend/bluets-bluejs/src/lowering.rs:64` — declared or exported variables require a non-script bridge mode
-- `backend/bluets-bluejs/src/lowering.rs:256` — declared or overloaded functions cannot be lowered to a direct module
-- `backend/bluets-bluejs/src/lowering.rs:250` — declared variables cannot be lowered to a direct module
-- `backend/bluets-bluejs/src/lowering.rs:80` — declared, overloaded, or exported functions require a non-script bridge mode
-- `backend/bluets-bluejs/src/lowering.rs:489` — decorators and auto-accessors need class fields to be defined (the default for ES2022)
-- `backend/bluets-bluejs/src/lowering.rs:843` — destructured parameters are not yet in the v1 direct bridge subset
-- `backend/bluets-bluejs/src/lowering.rs:916` — function body syntax is not yet in the v1 direct bridge subset
-- `backend/bluets-bluejs/src/lowering.rs:1080` — loop body syntax is outside the direct while subset
-- `backend/bluets-bluejs/src/lowering.rs:1053` — loop-local declarations are outside the direct while subset
-- `backend/bluets-bluejs/src/lowering.rs:1008` — loops are outside the direct try subset
-- `backend/bluets-bluejs/src/lowering.rs:910` — nested function declarations are not yet in the v1 direct bridge subset
-- `backend/bluets-bluejs/src/lowering.rs:1059` — nested loops are outside the direct while subset
-- `backend/bluets-bluejs/src/lowering.rs:1014` — nested try statements are outside the direct try subset
-- `backend/bluets-bluejs/src/lowering.rs:212` — runtime imports require the direct module-graph bridge
-- `backend/bluets-bluejs/src/lowering.rs:58` — runtime imports require the module bridge
-- `backend/bluets-bluejs/src/lowering.rs:516` — this class member has no direct lowering
-- `backend/bluets-bluejs/src/lowering.rs:1331` — this declaration cannot appear in a namespace body lowered directly
-- `backend/bluets-bluejs/src/lowering.rs:1065` — try statements are outside the direct while body subset
+- `backend/bluets-bluejs/src/lowering/classes.rs:29` — BlueJS implements the standard decorators; `experimentalDecorators` programs run as `bluetsc build --experimental-decorators` output
+- `backend/bluets-bluejs/src/lowering.rs:227` — BlueTS did not retain a canonical target for this runtime import
+- `backend/bluets-bluejs/src/lowering.rs:52` — ESM default exports require the module bridge
+- `backend/bluets-bluejs/src/lowering.rs:58` — ESM named exports require the module bridge
+- `backend/bluets-bluejs/src/lowering/classes.rs:268` — a derived constructor needs a top-level super call for the statements that must follow it
+- `backend/bluets-bluejs/src/lowering.rs:576` — a nested function declaration is outside the direct try subset
+- `backend/bluets-bluejs/src/lowering.rs:629` — a nested function declaration is outside the direct while subset
+- `backend/bluets-bluejs/src/lowering.rs:404` — a rest parameter must be the final direct function parameter
+- `backend/bluets-bluejs/src/lowering/namespaces.rs:46` — an ambient const enum needs its uses inlined, which the direct bridge does not do
+- `backend/bluets-bluejs/src/lowering.rs:97` — an exported class requires the module bridge
+- `backend/bluets-bluejs/src/lowering.rs:125` — an exported enum requires the module bridge
+- `backend/bluets-bluejs/src/lowering.rs:103` — an exported namespace requires the module bridge
+- `backend/bluets-bluejs/src/lowering.rs:557` — block-local declarations are outside the direct try subset
+- `backend/bluets-bluejs/src/lowering.rs:582` — body syntax is outside the direct try subset
+- `backend/bluets-bluejs/src/lowering.rs:70` — declared or exported variables require a non-script bridge mode
+- `backend/bluets-bluejs/src/lowering.rs:262` — declared or overloaded functions cannot be lowered to a direct module
+- `backend/bluets-bluejs/src/lowering.rs:256` — declared variables cannot be lowered to a direct module
+- `backend/bluets-bluejs/src/lowering.rs:86` — declared, overloaded, or exported functions require a non-script bridge mode
+- `backend/bluets-bluejs/src/lowering/classes.rs:117` — decorators and auto-accessors need class fields to be defined (the default for ES2022)
+- `backend/bluets-bluejs/src/lowering.rs:398` — destructured parameters are not yet in the v1 direct bridge subset
+- `backend/bluets-bluejs/src/lowering.rs:471` — function body syntax is not yet in the v1 direct bridge subset
+- `backend/bluets-bluejs/src/lowering.rs:635` — loop body syntax is outside the direct while subset
+- `backend/bluets-bluejs/src/lowering.rs:608` — loop-local declarations are outside the direct while subset
+- `backend/bluets-bluejs/src/lowering.rs:563` — loops are outside the direct try subset
+- `backend/bluets-bluejs/src/lowering.rs:465` — nested function declarations are not yet in the v1 direct bridge subset
+- `backend/bluets-bluejs/src/lowering.rs:614` — nested loops are outside the direct while subset
+- `backend/bluets-bluejs/src/lowering.rs:569` — nested try statements are outside the direct try subset
+- `backend/bluets-bluejs/src/lowering.rs:218` — runtime imports require the direct module-graph bridge
+- `backend/bluets-bluejs/src/lowering.rs:64` — runtime imports require the module bridge
+- `backend/bluets-bluejs/src/lowering/classes.rs:144` — this class member has no direct lowering
+- `backend/bluets-bluejs/src/lowering/namespaces.rs:376` — this declaration cannot appear in a namespace body lowered directly
+- `backend/bluets-bluejs/src/lowering.rs:620` — try statements are outside the direct while body subset
 
 ### namespace_analysis (1)
 

@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: K.1.R.1.** Sections A to J are complete (summarized below); J.6 closed in its
+**Current leaf: K.1.3.** Sections A to J are complete (summarized below); J.6 closed in its
 measured form (`COMPATIBILITY_INVENTORY.md`). Section K closes the gaps that inventory lists.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
@@ -252,7 +252,7 @@ and import rules.
 
 #### K.1 source refactoring queue
 
-- [ ] **K.1.R.1 Split existing near-limit compiler/runtime sources after the K.1.2 gate.**
+- [x] **K.1.R.1 Split existing near-limit compiler/runtime sources after the K.1.2 gate.**
   The 2026-10-05 baseline audit found the production sources below. Split them by the listed
   responsibilities, preserve behavior, run K.0's two-crate gate, then commit and push before K.1.3.
 
