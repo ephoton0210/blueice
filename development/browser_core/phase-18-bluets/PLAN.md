@@ -3815,3 +3815,20 @@ remain below 1200 lines. The workspace and coverage milestone gate remains M6 af
 Standard-library typing, inferred function/getter returns and wider inference rules remain
 K.1.4/K.1.5/K.4; value re-export syntax and imported-type query parsing remain inventory gaps.
 Full parity stays off.
+
+
+### K.1.4 Standard-library oracle before implementation
+
+Recorded 78 `lib-*` verdicts from TypeScript 5.9.3 with the same ES2020/ES2022
+`--target` and `--lib`, strict checking and no DOM library: 39 accepted and 39 rejected.
+The offline replay checks both `check` and `build`, including the absence of output
+for a rejected input. The cases cover Array/ReadonlyArray, primitive and boxed methods,
+Object/Function, Promise, Map/Set/WeakMap, Math/JSON/Symbol, the Error family, iteration,
+Date/RegExp and target-selected `at`/`hasOwn`. A Node program compares the selected runtime
+calls, and three declaration programs compare methods, instances and collections.
+
+The failing replay on 2026-10-06 confirms missing named library types, unchecked method
+arguments and results, unselected target members, and missing manifest identity. Public
+compiler tests require static library types to stay out of the source graph and artifacts,
+local/owner declaration replacement, the existing page binding policy, and target selection.
+These tests precede the implementation; K.1.4 remains unchecked until its full K.0 gate passes.
