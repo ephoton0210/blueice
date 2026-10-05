@@ -3741,3 +3741,23 @@ The 51 test targets passed 1004 tests, including all 104 ignored oracle tests in
 with no failures, ignored tests or filtered tests. The refusal inventory was regenerated
 for the moved source locations. A fresh production-source audit found no Rust source
 in either crate at or above 1200 lines. K.1.3 proceeds after this separate commit and push.
+
+
+### K.1.3 Imported value types — test-first evidence
+
+The pinned TypeScript 5.9.3 compiler recorded 62 `imported-type-*` verdicts
+(31 accepted, 31 rejected), including named/default/namespace imports, CommonJS
+named imports and `import = require`/`export =`, interop, private exporter types,
+generic and overloaded functions, class/enum bindings, dependency chains and
+annotated/unannotated cycles. Sources use the existing authorized `.ts` resolution
+path; emit comparisons enable TypeScript's relative-extension rewrite.
+
+The initial 54-entry public CLI replay disagreed on 26 typing verdicts before
+implementation, including accepting rejected argument/result/property types and
+unannotated circular inference. The committed replay exercises both `check` and
+`build` with no output on rejection. Four `import-decl-*` programs compare exact
+inferred `.d.ts` text, and a linked program compares Node output and declarations.
+Public compiler tests require inferred import/variable symbol metadata, exporter
+private-type identity, dependency-surface reuse/invalidation and the explicit
+unchecked transpile policy. These are failing tests for the implementation that follows;
+K.1.3 remains unchecked until its full K.0 gate passes.
