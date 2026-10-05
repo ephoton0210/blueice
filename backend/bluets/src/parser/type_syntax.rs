@@ -458,7 +458,9 @@ impl Parser {
     }
 
     pub(super) fn consume_identifier(&mut self) -> Option<String> {
-        if self.current().kind == TokenKind::Identifier {
+        // `of` is syntax only at the separator of a for-of head; it is a
+        // valid binding name everywhere an identifier is required.
+        if self.current().kind == TokenKind::Identifier || self.current().is("of") {
             let value = self.current().text.clone();
             self.bump();
             Some(value)

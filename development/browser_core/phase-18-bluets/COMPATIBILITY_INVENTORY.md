@@ -27,10 +27,11 @@ test files (`grep -rl '#\[ignore' backend/bluets*/tests`), section 4 is
 | `decorators_checker_matrix.rs`, `decorators_oracle.rs` | standard decorators: accept/reject (32); evaluation/application order, contexts, metadata, class replacement, errors at class definition, run under Node | 32 entries, 20 programs |
 | `legacy_decorators_checker_matrix.rs`, `legacy_decorators_oracle.rs` | `experimentalDecorators`/`emitDecoratorMetadata`: accept/reject (19); `__decorate`/`__param`/metadata call order and values, ES2022 and ES2020, ESM and CommonJS | 19 entries, 18 programs |
 | `unknown_name_checker_matrix.rs` | accept/reject through `check` and `build` for lexical value/type names, hoisting, TDZ, imports, namespaces and shadowing; one program compares Node output and declarations | 108 entries, 1 program |
+| `immutable_checker_matrix.rs` | accept/reject through `check` and `build` for const/import rebinding, compound/update/pattern/iteration writes, shadowing and readonly members; one program compares Node output and declarations | 173 entries, 1 program |
 | `option_combinations_oracle.rs` | one program over every combination of `target`, module system, `useDefineForClassFields`, `preserveConstEnums`, `isolatedModules` | 48 combinations |
 | `bluets-bluejs/tests/namespace_parity.rs`, `jsx_direct.rs`, `decorators_direct.rs` | the direct runtime (BlueJS) against Node running `tsc`'s output | 7 + 7 + 6 programs |
 
-The fixture corpus under `tests/fixtures/typescript_oracle/` has 1090 top-level directories; each is an
+The fixture corpus under `tests/fixtures/typescript_oracle/` has 1263 top-level directories; each is an
 entry whose verdict was recorded from the pinned compiler by an ignored test
 (`BLUEICE_WRITE_*_MATRIX=1`), and the ordinary (non-ignored) tests replay the recorded verdicts offline.
 
@@ -43,11 +44,11 @@ whitespace.
 ### Measured pass rate (2026-10-05, macOS 26 / Apple silicon, pinned `typescript@5.9.3`, Node 26)
 
 Every differential suite of section 1 was run against the pinned compiler with none skipped:
-**20 of 20 suites pass, 102 ignored oracle tests pass, 0 failures.** The versioned case list is the
-repository itself at the commit that carries this file: 868 recorded accepted/rejected verdicts (class
-523, namespace 76, enum 57, JSX 53, decorators 32, legacy decorators 19, unknown names 108), 109 core-subset
+**21 of 21 suites pass, 104 ignored oracle tests pass, 0 failures.** The versioned case list is the
+repository itself at the commit that carries this file: 1041 recorded accepted/rejected verdicts (class
+523, namespace 76, enum 57, JSX 53, decorators 32, legacy decorators 19, unknown names 108, immutables 173), 109 core-subset
 cases in `typescript_oracle.rs`, and the emit-and-run programs (JSX 11, standard decorators 20,
-legacy decorators 18, CommonJS 6, unknown names 1, option combinations 48,
+legacy decorators 18, CommonJS 6, unknown names 1, immutables 1, option combinations 48,
 namespace/enum/class downlevel under both targets, direct-runtime parity 20). The same suites run in CI on
 Ubuntu 24.04 and macOS 15; Windows is not covered (G-M3). The percentage means only: *of the forms inside
 the subset, every one agrees with `tsc`*. It says nothing about the forms in section 3, which are refused.
@@ -60,7 +61,7 @@ generators); ES module and CommonJS emit; classes (fields, accessors, visibility
 names, parameter properties, class+interface merging); enums and `const enum`; namespaces (nested, merged
 with classes, enums, functions); `.tsx` JSX in every `jsx` mode; standard and legacy decorators; installed
 packages through `node10`/`node16`/`bundler` resolution inside owner-authorized roots; pinned remote
-declarations. The precise per-feature descriptions, with their recorded gaps, are the `J.x` and `K.1.1` sections of
+declarations. The precise per-feature descriptions, with their recorded gaps, are the `J.x`, `K.1.1` and `K.1.2` sections of
 `PLAN.md`.
 
 ## 3. Open gaps against `tsc` 5.9.3
@@ -79,11 +80,11 @@ suite entry, then removing the row.
 | G-T3 | Conditional types, `infer`, mapped types, template-literal types, indexed access and `keyof`/`typeof` type operators in full, recursive types beyond the type budget. |
 | G-T4 | Overload resolution in full (call and construct signatures, contextual signature selection), optional chaining and non-null assertion typing in all positions. |
 | G-T5 | Index signatures, `readonly` arrays/tuples, `unique symbol`, `bigint`, `symbol`, `never`/`unknown` flow rules, `satisfies`, `as const`, enum-like literal inference. |
-| G-T6 | Structural-compatibility details: excess-property checks in every position, weak types, optional/exactOptional rules, `strictFunctionTypes` and method bivariance, `exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`. |
+| G-T6 | Structural-compatibility details: excess-property checks in every position, weak types, optional/exactOptional rules, `strictFunctionTypes` and method bivariance, `exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`. K.1.2 enforces lexical binding immutability and readonly write targets in the supported expression forms. |
 | G-T7 | `lib.d.ts`: there is no standard library declaration set; host types come from the owner-supplied declarations, so ECMAScript/DOM globals are not typed as in `tsc`. K.1.1 resolves undeclared value/type names and recognizes a finite name-only ECMAScript/console compatibility list; the versioned, typed library remains K.1.4. |
 | G-T8 | Inferred return types of declarations without annotations (getters, methods, exported functions in `.d.ts` emit), widening and literal freshness in all positions. |
 | G-T9 | `abstract` classes, `implements` clauses, generic classes and heritage, class expressions, computed class member names, `declare` fields, `override`/`noImplicitOverride`, index-signature members. |
-| G-T10 | `import type`/`export type` forms beyond the supported ones, `export default <expression>`, value re-exports (`export * from`, `export { x } from`), import attributes, `export as namespace`, `declare module` augmentation and ambient module declarations, global augmentation, triple-slash directives, `unique` declaration merging beyond class+interface+namespace. |
+| G-T10 | Ordinary imported values remain `unknown` apart from dedicated class/enum/namespace bindings (K.1.3). `import type`/`export type` forms beyond the supported ones, `export default <expression>`, value re-exports (`export * from`, `export { x } from`), import attributes, `export as namespace`, `declare module` augmentation and ambient module declarations, global augmentation, triple-slash directives, `unique` declaration merging beyond class+interface+namespace. |
 
 ### 3.2 Emit
 

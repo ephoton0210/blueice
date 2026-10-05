@@ -586,4 +586,4 @@ mod calls;
 mod enum_access;
 mod mutation;
 
-use mutation::{contains_readonly_member, member_access_target, unescaped_property_name};
+use mutation::{member_access_target, unescaped_property_name};

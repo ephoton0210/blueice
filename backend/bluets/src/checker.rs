@@ -19,7 +19,10 @@ pub use crate::parser::Type;
 mod properties;
 mod scopes;
 mod type_relations;
-use properties::{property_type, PropertyType, TypeExpansionBudget};
+use properties::{
+    contains_readonly_member, mutation_field_type, property_type, readonly_property, PropertyType,
+    TypeExpansionBudget,
+};
 pub(crate) use type_relations::type_label;
 use type_relations::{
     accepts_strict_unknown, complete_type_arguments, expand_concrete_tuple_spreads,
@@ -157,6 +160,7 @@ struct AmbientDeclarations {
     types: BTreeMap<String, TypeDefinition>,
     values: BTreeMap<String, Type>,
     functions: BTreeMap<String, Vec<FunctionSignature>>,
+    binding_kinds: BTreeMap<String, scopes::BindingKind>,
 }
 
 /// Rechecks the requested modules while retaining checker output for modules
@@ -283,15 +287,25 @@ fn ambient_declarations(project: &Project) -> (AmbientDeclarations, Vec<Diagnost
                     },
                     &interface.span,
                 ),
-                Declaration::Variable(variable) if variable.declared => insert_ambient_value(
-                    &mut ambient,
-                    &mut diagnostics,
-                    &variable.name,
-                    variable.annotation.clone().unwrap_or(Type::Unknown),
-                    &variable.span,
-                ),
+                Declaration::Variable(variable) if variable.declared => {
+                    insert_ambient_value(
+                        &mut ambient,
+                        &mut diagnostics,
+                        &variable.name,
+                        variable.annotation.clone().unwrap_or(Type::Unknown),
+                        &variable.span,
+                    );
+                    if variable.kind == crate::parser::VariableKind::Const {
+                        ambient
+                            .binding_kinds
+                            .insert(variable.name.clone(), scopes::BindingKind::Const);
+                    }
+                }
                 Declaration::Function(function) if function.declared || function.overload => {
                     insert_ambient_function(&mut ambient, &mut diagnostics, function);
+                    ambient
+                        .binding_kinds
+                        .insert(function.name.clone(), scopes::BindingKind::Function);
                 }
                 _ => {}
             }

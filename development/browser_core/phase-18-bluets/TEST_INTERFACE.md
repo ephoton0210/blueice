@@ -62,6 +62,8 @@ Replies retain BlueJS's `kind` and `phase` conventions while preserving the stab
 
 A successful reply contains `language_version`, the deterministic compiler `fingerprint`, and an `artifacts` summary. The summary names only canonical module IDs and whether a JavaScript artifact has Source Map or declaration output; it never returns source text. A failure also includes `code` (for example `BTS3003`), message, and a half-open source span in UTF-8 bytes.
 
+Immutable binding writes report `BTS3006` as `TypeError` in the `type` phase, with the written identifier's byte span. Readonly member writes retain `BTS3003`; resource exhaustion reports `resource_error` and produces no artifact.
+
 Example:
 
 ```json

@@ -22,6 +22,7 @@ impl ScopeModel<'_> {
                         false,
                         function_type(&function.parameters, &function.return_type),
                     );
+                    self.binding_kind(scope, &function.name, BindingKind::Function);
                     self.function(function, scope);
                 }
                 Declaration::TypeAlias(alias) => {
@@ -50,6 +51,15 @@ impl ScopeModel<'_> {
                         if binding.type_only || import.type_only || pure_type {
                             self.value(scope, &binding.local, 0, false, true, Type::Unknown);
                         }
+                        self.binding_kind(
+                            scope,
+                            &binding.local,
+                            if binding.imported == "*" {
+                                BindingKind::NamespaceImport
+                            } else {
+                                BindingKind::Import
+                            },
+                        );
                         // Qualified namespace members resolve from the bound
                         // type map; a namespace root is not itself a type.
                         if self.qualified_types.contains(&binding.local) {
@@ -65,6 +75,7 @@ impl ScopeModel<'_> {
                         .map(|binding| binding.declared_type.clone())
                         .unwrap_or(Type::Unknown);
                     self.value(scope, &class.name, class.span.end, true, false, constructor);
+                    self.binding_kind(scope, &class.name, BindingKind::Class);
                     self.class(class, scope, !cyclic.contains(class.name.as_str()));
                 }
                 Declaration::Enum(enumeration) => {
@@ -80,6 +91,7 @@ impl ScopeModel<'_> {
                             arguments: Vec::new(),
                         },
                     );
+                    self.binding_kind(scope, &enumeration.name, BindingKind::Enum);
                     let inner =
                         self.child(Some(scope), enumeration.body_span.clone(), false, false);
                     for member in &enumeration.members {
@@ -111,12 +123,20 @@ impl ScopeModel<'_> {
                                 arguments: Vec::new(),
                             },
                         );
+                        self.binding_kind(scope, &namespace.name, BindingKind::Namespace);
                     }
                     let span = SourceSpan::new(
                         &self.module.id,
                         namespace.header_span.end,
                         namespace.closing_span.end,
                     );
+                    if self.scopes[scope]
+                        .values
+                        .get(&namespace.name)
+                        .is_some_and(|binding| binding.kind == BindingKind::Mutable)
+                    {
+                        self.binding_kind(scope, &namespace.name, BindingKind::Namespace);
+                    }
                     let inner = self.child(Some(scope), span, true, false);
                     let outer = &self.scopes[scope].namespace_path;
                     self.scopes[inner].namespace_path = if outer.is_empty() {
@@ -140,6 +160,9 @@ impl ScopeModel<'_> {
                         format!("{scope}::{}", namespace.name)
                     };
                     self.scopes[inner].namespace_identity = identity.clone();
+                    if let Some(binding) = self.scopes[scope].values.get_mut(&namespace.name) {
+                        binding.namespace = Some(identity.clone());
+                    }
                     if let Some(members) = self.namespace_members.get(&identity) {
                         self.scopes[inner].values = members.values.clone();
                         self.scopes[inner].types = members.types.clone();
@@ -365,12 +388,15 @@ impl ScopeModel<'_> {
             });
         }
         let scope = self.child(Some(parent), class.body_span.clone(), false, false);
+        self.private_class(class, scope);
         let constructor = self.scopes[parent]
             .values
             .get(&class.name)
             .map(|binding| binding.declared_type.clone())
             .unwrap_or(Type::Unknown);
         self.value(scope, &class.name, 0, true, false, constructor);
+        self.binding_kind(scope, &class.name, BindingKind::Class);
+        self.class_this(scope, &class.name, true);
         for member in &class.members {
             for decorator in &member.decorators {
                 self.expression(&decorator.tokens, parent);
@@ -382,11 +408,34 @@ impl ScopeModel<'_> {
                     } else {
                         self.child(Some(scope), field.span.clone(), false, true)
                     };
+                    if !field.is_static {
+                        self.class_this(initializer_scope, &class.name, false);
+                    }
                     self.expression(initializer, initializer_scope);
                 }
             }
             if let Some(constructor) = &member.constructor {
                 let inner = self.child(Some(scope), constructor.span.clone(), true, true);
+                self.class_this(inner, &class.name, false);
+                let mut fields: BTreeSet<String> = class
+                    .members
+                    .iter()
+                    .filter_map(|member| member.field.as_ref())
+                    .filter(|field| field.readonly && !field.is_static)
+                    .map(|field| field.name.clone())
+                    .collect();
+                fields.extend(
+                    constructor
+                        .parameter_properties
+                        .iter()
+                        .filter(|property| property.readonly)
+                        .map(|property| {
+                            constructor.parameters[property.parameter_index]
+                                .name
+                                .clone()
+                        }),
+                );
+                self.constructor_fields.insert(inner, fields);
                 self.value(inner, "arguments", 0, false, false, Type::Unknown);
                 self.parameters(&constructor.parameters, inner);
                 if let Some(items) = &constructor.body {
@@ -395,6 +444,7 @@ impl ScopeModel<'_> {
             }
             if let Some(method) = &member.method {
                 let inner = self.child(Some(scope), method.span.clone(), true, true);
+                self.class_this(inner, &class.name, method.is_static);
                 self.value(inner, "arguments", 0, false, false, Type::Unknown);
                 self.parameters(&method.parameters, inner);
                 if let Some(items) = &method.body {
@@ -403,12 +453,14 @@ impl ScopeModel<'_> {
             }
             if let Some(accessor) = &member.accessor {
                 let inner = self.child(Some(scope), accessor.span.clone(), true, true);
+                self.class_this(inner, &class.name, accessor.is_static);
                 self.value(inner, "arguments", 0, false, false, Type::Unknown);
                 self.parameters(&accessor.parameters, inner);
                 self.function_body(&accessor.body, inner, &accessor.span);
             }
             if let Some(block) = &member.static_block {
                 let inner = self.child(Some(scope), block.span.clone(), true, false);
+                self.class_this(inner, &class.name, true);
                 self.body(&block.body, inner);
             }
         }
@@ -486,7 +538,7 @@ impl ScopeModel<'_> {
     }
 }
 
-fn function_type(parameters: &[Parameter], result: &Option<Type>) -> Type {
+pub(super) fn function_type(parameters: &[Parameter], result: &Option<Type>) -> Type {
     Type::Function {
         parameters: parameters.to_vec(),
         result: Box::new(result.clone().unwrap_or(Type::Unknown)),

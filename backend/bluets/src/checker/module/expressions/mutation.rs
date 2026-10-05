@@ -120,8 +120,8 @@ impl<'a> ModuleChecker<'a> {
                 value: expected,
                 readonly,
             } => {
-                let own_constructor_field = mutation.operator.is("=")
-                    && matches!(mutation.receiver, [receiver] if receiver.is("this"))
+                let own_constructor_field = !mutation.operator.is("delete")
+                    && matches!(strip_outer_parentheses(mutation.receiver), [receiver] if receiver.is("this"))
                     && self
                         .constructor_readonly_fields
                         .as_ref()
@@ -372,7 +372,13 @@ impl<'a> ModuleChecker<'a> {
                             }
                         }
                     };
-                if readonly {
+                let own_constructor_field = !operator.is("delete")
+                    && matches!(strip_outer_parentheses(receiver), [receiver] if receiver.is("this"))
+                    && self
+                        .constructor_readonly_fields
+                        .as_ref()
+                        .is_some_and(|fields| property.is_some_and(|name| fields.contains(name)));
+                if readonly && !own_constructor_field {
                     let mutation_span = SourceSpan::new(
                         &span.module,
                         target
@@ -582,31 +588,4 @@ pub(super) fn unescaped_property_name(text: &str) -> Option<&str> {
                 .and_then(|value| value.strip_suffix('"'))
         })?;
     (!value.contains('\\')).then_some(value)
-}
-
-pub(in crate::checker::module) fn contains_readonly_member(
-    value: &Type,
-    aliases: &BTreeMap<String, TypeDefinition>,
-    visited: &mut HashSet<String>,
-    budget: &mut TypeExpansionBudget,
-) -> Result<bool, ()> {
-    match value {
-        Type::Record(fields) => Ok(fields.iter().any(|field| field.readonly)),
-        Type::Named { .. } => {
-            match instantiate_named(value, aliases, visited, budget, "readonly property") {
-                Some(value) => contains_readonly_member(&value, aliases, visited, budget),
-                None if budget.exhausted => Err(()),
-                None => Ok(false),
-            }
-        }
-        Type::Union(parts) | Type::Intersection(parts) => {
-            for part in parts {
-                if contains_readonly_member(part, aliases, visited, budget)? {
-                    return Ok(true);
-                }
-            }
-            Ok(false)
-        }
-        _ => Ok(false),
-    }
 }

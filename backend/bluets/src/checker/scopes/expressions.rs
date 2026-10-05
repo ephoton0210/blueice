@@ -59,6 +59,7 @@ impl ScopeModel<'_> {
                     result: Box::new(function.return_type.clone().unwrap_or(Type::Unknown)),
                 },
             );
+            self.binding_kind(scope, &function.name, BindingKind::Function);
             self.function(&function, scope);
             return tokens
                 .partition_point(|token| token.start < function.span.end)
@@ -72,6 +73,7 @@ impl ScopeModel<'_> {
                 .partition_point(|token| token.start < nested.span.end)
                 .max(index + 1);
         }
+        self.mutation(tokens, index, scope);
         if token.kind == TokenKind::Template {
             self.template(token, scope);
         } else if token.kind == TokenKind::JsxElement {
@@ -91,7 +93,12 @@ impl ScopeModel<'_> {
                         .is_some_and(|token| matches!(token.text.as_str(), "{" | "," | ";" | "}")));
             let label_use = previous.is_some_and(|token| token.is("break") || token.is("continue"));
             let erased = self.erased(token);
-            if !property && !key && !label_use && !erased {
+            if !property
+                && !key
+                && !label_use
+                && !erased
+                && !self.declaration_names.contains(&token.start)
+            {
                 self.reference(scope, token);
             }
         }
@@ -105,9 +112,11 @@ impl ScopeModel<'_> {
             .extend(function.type_parameters.iter().map(|p| p.name.clone()));
         if function.kind != NestedFunctionKind::Arrow {
             self.value(scope, "arguments", 0, false, false, Type::Unknown);
+            self.value(scope, "this", 0, false, false, Type::Unknown);
         }
         if let Some(name) = &function.name {
             self.value(scope, name, 0, false, false, Type::Unknown);
+            self.binding_kind(scope, name, BindingKind::Function);
         }
         self.parameters(&function.parameters, scope);
         match &function.body {
@@ -178,12 +187,28 @@ impl ScopeModel<'_> {
         let mut index = 0;
         let mut declaration_names = BTreeSet::new();
         while index < tokens.len() {
+            while statement_scopes.contains(&current)
+                && tokens[index].start >= self.scopes[current].span.end
+            {
+                statement_scopes.remove(&current);
+                current = self.scopes[current].parent.unwrap_or(scope);
+            }
             if declaration_names.contains(&index) {
                 index += 1;
                 continue;
             }
             let token = &tokens[index];
-            if token.is("for") {
+            if token.is("for")
+                && !index
+                    .checked_sub(1)
+                    .and_then(|index| tokens.get(index))
+                    .is_some_and(|token| token.is(".") || token.is("?."))
+                && !self.module.nested_functions.contains_key(&token.start)
+                && tokens
+                    .get(index + 1)
+                    .is_some_and(|token| token.is("(") || token.is("await"))
+            {
+                self.iteration_mutation(tokens, index, current);
                 if let Some(operator) = self.for_of_operator(tokens, index) {
                     loop_operators.insert(operator);
                 }
@@ -208,10 +233,52 @@ impl ScopeModel<'_> {
                 );
             } else if token.is("}") {
                 current = stack.pop().unwrap_or(scope);
-                while statement_scopes.remove(&current) {
+                while statement_scopes.contains(&current)
+                    && token.end >= self.scopes[current].span.end
+                {
+                    statement_scopes.remove(&current);
                     current = self.scopes[current].parent.unwrap_or(scope);
                 }
             } else if matches!(token.text.as_str(), "const" | "let" | "var") {
+                if tokens
+                    .get(index + 1)
+                    .is_some_and(|token| token.is("[") || token.is("{"))
+                {
+                    if let Some(end) = targets::close(tokens, index + 1) {
+                        let pattern = &tokens[index + 1..=end];
+                        let mut names = Vec::new();
+                        if targets::pattern(pattern, &mut names, 0).is_err() {
+                            self.mutation_limit(token);
+                        } else {
+                            let mut target = current;
+                            if token.is("var") {
+                                while !self.scopes[target].var_boundary {
+                                    target = self.scopes[target].parent.unwrap();
+                                }
+                            }
+                            let ready = declaration_ready(tokens, end);
+                            for name in names {
+                                if let [name] = name {
+                                    self.value(
+                                        target,
+                                        &name.text,
+                                        if token.is("var") { 0 } else { ready },
+                                        false,
+                                        false,
+                                        Type::Unknown,
+                                    );
+                                    self.declaration_names.insert(name.start);
+                                    if token.is("const") {
+                                        self.binding_kind(target, &name.text, BindingKind::Const);
+                                    }
+                                }
+                            }
+                        }
+                        self.expression(pattern, current);
+                        index = end + 1;
+                        continue;
+                    }
+                }
                 if let Some(name) = tokens.get(index + 1).filter(|token| is_value_name(token)) {
                     let mut target = current;
                     if token.is("var") {
@@ -236,6 +303,12 @@ impl ScopeModel<'_> {
                                 .get(&token.start)
                                 .cloned()
                         })
+                        .or_else(|| {
+                            self.scopes[target]
+                                .values
+                                .get(&name.text)
+                                .map(|binding| binding.declared_type.clone())
+                        })
                         .unwrap_or(Type::Unknown);
                     if let Some(variable) = &variable {
                         if let Some(annotation) = &variable.annotation {
@@ -257,6 +330,11 @@ impl ScopeModel<'_> {
                         false,
                         value,
                     );
+                    self.declaration_names.insert(name.start);
+                    if token.is("const") {
+                        self.binding_kind(target, &name.text, BindingKind::Const);
+                    }
+                    self.variable_initializer(target, &name.text, tokens, index + 1, ready);
                     let mut after = tokens.partition_point(|token| token.start < ready);
                     while tokens.get(after).is_some_and(|token| token.is(","))
                         && tokens.get(after + 1).is_some_and(is_value_name)
@@ -278,6 +356,11 @@ impl ScopeModel<'_> {
                             false,
                             annotation,
                         );
+                        self.declaration_names.insert(next.start);
+                        if token.is("const") {
+                            self.binding_kind(target, &next.text, BindingKind::Const);
+                        }
+                        self.variable_initializer(target, &next.text, tokens, after + 1, ready);
                         after = tokens.partition_point(|token| token.start < ready);
                     }
                     index += 2;
@@ -343,7 +426,7 @@ impl ScopeModel<'_> {
     }
 }
 
-fn is_value_name(token: &Token) -> bool {
+pub(super) fn is_value_name(token: &Token) -> bool {
     !token.text.starts_with('#')
         && (token.kind == TokenKind::Identifier
             || (token.kind == TokenKind::Keyword
@@ -408,11 +491,14 @@ fn declaration_ready(tokens: &[Token], name: usize) -> usize {
 }
 
 fn loop_end(tokens: &[Token], start: usize) -> Option<usize> {
-    let close = matching_end(tokens, start + 1, "(", ")")?;
+    let open = (start + 1..tokens.len()).find(|index| tokens[*index].is("("))?;
+    let close = matching_end(tokens, open, "(", ")")?;
     if tokens.get(close + 1)?.is("{") {
         matching_end(tokens, close + 1, "{", "}")
     } else {
-        (close + 1..tokens.len()).find(|index| tokens[*index].is(";"))
+        (close + 1..tokens.len())
+            .find(|index| tokens[*index].is(";"))
+            .or_else(|| (!tokens.is_empty()).then_some(tokens.len() - 1))
     }
 }
 

@@ -10,6 +10,9 @@ use super::*;
 use crate::parser::{NestedFunctionBody, VariableDeclaration, VariableKind};
 
 mod expressions;
+mod mutations;
+mod private;
+mod targets;
 mod walk;
 
 type ScopeId = usize;
@@ -28,6 +31,22 @@ struct Binding {
     /// A type-only import blocks value lookup rather than exposing an outer value.
     type_only: bool,
     declared_type: Type,
+    kind: BindingKind,
+    namespace: Option<String>,
+    initializer: Option<(usize, usize)>,
+}
+
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+pub(super) enum BindingKind {
+    #[default]
+    Mutable,
+    Const,
+    Import,
+    NamespaceImport,
+    Function,
+    Class,
+    Enum,
+    Namespace,
 }
 
 struct Scope {
@@ -40,6 +59,8 @@ struct Scope {
     span: SourceSpan,
     namespace_path: String,
     namespace_identity: String,
+    /// ECMAScript private identifiers retain their lexical declaring class.
+    class_owner: Option<ScopeId>,
     ambient_exports: bool,
     values: BTreeMap<String, Binding>,
     types: BTreeSet<String>,
@@ -74,6 +95,11 @@ pub(super) struct ScopeModel<'a> {
     namespace_members: BTreeMap<String, NamespaceBindings>,
     scope_ranges: Vec<(usize, ScopeId)>,
     erased_ranges: Vec<(usize, usize)>,
+    declaration_names: BTreeSet<usize>,
+    mutations: Vec<mutations::MutationUse>,
+    mutation_error: Option<Diagnostic>,
+    constructor_fields: BTreeMap<ScopeId, BTreeSet<String>>,
+    private_classes: BTreeMap<ScopeId, private::PrivateClass>,
 }
 
 impl<'a> ScopeModel<'a> {
@@ -92,6 +118,7 @@ impl<'a> ScopeModel<'a> {
             module.source.len().saturating_add(1),
         )
         .unwrap_or_default();
+        let tokens = targets::private_identifiers(tokens);
         let mut model = Self {
             module,
             project,
@@ -107,6 +134,11 @@ impl<'a> ScopeModel<'a> {
             namespace_members: BTreeMap::new(),
             scope_ranges: Vec::new(),
             erased_ranges: Vec::new(),
+            declaration_names: BTreeSet::new(),
+            mutations: Vec::new(),
+            mutation_error: None,
+            constructor_fields: BTreeMap::new(),
+            private_classes: BTreeMap::new(),
         };
         model.child(
             None,
@@ -186,6 +218,9 @@ impl<'a> ScopeModel<'a> {
         if let Some(ambient) = ambient {
             for (name, value) in &ambient.values {
                 model.value(0, name, 0, false, false, value.clone());
+                if let Some(kind) = ambient.binding_kinds.get(name) {
+                    model.binding_kind(0, name, *kind);
+                }
             }
             model.scopes[0].types.extend(ambient.types.keys().cloned());
         }
@@ -243,6 +278,7 @@ impl<'a> ScopeModel<'a> {
         let namespace_identity = parent.map_or_else(String::new, |parent| {
             self.scopes[parent].namespace_identity.clone()
         });
+        let class_owner = parent.and_then(|parent| self.scopes[parent].class_owner);
         self.scopes.push(Scope {
             parent,
             span,
@@ -250,6 +286,7 @@ impl<'a> ScopeModel<'a> {
             execution,
             namespace_path,
             namespace_identity,
+            class_owner,
             ambient_exports: false,
             values: BTreeMap::new(),
             types: BTreeSet::new(),
@@ -273,6 +310,9 @@ impl<'a> ScopeModel<'a> {
                 class,
                 type_only,
                 declared_type,
+                kind: BindingKind::Mutable,
+                namespace: None,
+                initializer: None,
             },
         );
     }
@@ -437,6 +477,7 @@ impl<'a> ScopeModel<'a> {
                 }
             }
         }
+        diagnostics.extend(self.mutation_diagnostics());
         diagnostics
     }
 

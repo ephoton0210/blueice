@@ -160,3 +160,173 @@ pub(super) fn property_type(
         _ => PropertyType::Missing,
     }
 }
+
+pub(super) fn contains_readonly_member(
+    value: &Type,
+    aliases: &BTreeMap<String, TypeDefinition>,
+    visited: &mut HashSet<String>,
+    budget: &mut TypeExpansionBudget,
+) -> Result<bool, ()> {
+    match value {
+        Type::Record(fields) => Ok(fields.iter().any(|field| field.readonly)),
+        Type::Named { .. } => {
+            match instantiate_named(value, aliases, visited, budget, "readonly property") {
+                Some(value) => contains_readonly_member(&value, aliases, visited, budget),
+                None if budget.exhausted => Err(()),
+                None => Ok(false),
+            }
+        }
+        Type::Union(parts) | Type::Intersection(parts) => {
+            for part in parts {
+                if contains_readonly_member(part, aliases, visited, budget)? {
+                    return Ok(true);
+                }
+            }
+            Ok(false)
+        }
+        _ => Ok(false),
+    }
+}
+
+/// Mutability also applies to private/protected marker fields and to a
+/// readonly alternative of a union. Accessibility is checked separately.
+pub(super) fn readonly_property(
+    owner: &Type,
+    property: &str,
+    aliases: &BTreeMap<String, TypeDefinition>,
+    visited: &mut HashSet<String>,
+    budget: &mut TypeExpansionBudget,
+    private_owner: Option<&str>,
+    depth: usize,
+) -> bool {
+    if depth > 128 {
+        budget.exhausted = true;
+        return false;
+    }
+    if !budget.consume() {
+        return false;
+    }
+    match owner {
+        Type::Record(fields) => {
+            if fields.iter().any(|field| field.name == property) {
+                fields
+                    .iter()
+                    .any(|field| field.name == property && field.readonly)
+            } else {
+                fields
+                    .iter()
+                    .find(|field| mutation_name_matches(&field.name, property, private_owner))
+                    .is_some_and(|field| field.readonly)
+            }
+        }
+        Type::Named { .. } => {
+            instantiate_named(owner, aliases, visited, budget, "readonly mutation").is_some_and(
+                |value| {
+                    readonly_property(
+                        &value,
+                        property,
+                        aliases,
+                        visited,
+                        budget,
+                        private_owner,
+                        depth + 1,
+                    )
+                },
+            )
+        }
+        Type::Union(parts) | Type::Intersection(parts) => parts.iter().any(|part| {
+            readonly_property(
+                part,
+                property,
+                aliases,
+                &mut visited.clone(),
+                budget,
+                private_owner,
+                depth + 1,
+            )
+        }),
+        _ => false,
+    }
+}
+
+fn mutation_name_matches(name: &str, property: &str, private_owner: Option<&str>) -> bool {
+    let marker = name.split_once(' ').and_then(|(visibility, rest)| {
+        matches!(visibility, "private" | "protected")
+            .then(|| rest.split_once(' '))
+            .flatten()
+    });
+    name == property
+        || marker.is_some_and(|(owner, name)| {
+            name == property && (!property.starts_with('#') || private_owner == Some(owner))
+        })
+}
+
+/// A restricted member's type can carry a readonly target further down a
+/// receiver chain. This lookup serves mutation checks only; the ordinary
+/// checker still applies accessibility before permitting member access.
+pub(super) fn mutation_field_type(
+    owner: &Type,
+    property: &str,
+    aliases: &BTreeMap<String, TypeDefinition>,
+    visited: &mut HashSet<String>,
+    budget: &mut TypeExpansionBudget,
+    private_owner: Option<&str>,
+    depth: usize,
+) -> Option<Type> {
+    if depth > 128 {
+        budget.exhausted = true;
+        return None;
+    }
+    if !budget.consume() {
+        return None;
+    }
+    match owner {
+        Type::Record(fields) => fields
+            .iter()
+            .find(|field| mutation_name_matches(&field.name, property, private_owner))
+            .map(|field| {
+                if field.optional {
+                    Type::Union(vec![field.value.clone(), Type::Undefined])
+                } else {
+                    field.value.clone()
+                }
+            }),
+        Type::Named { .. } => {
+            instantiate_named(owner, aliases, visited, budget, "mutation receiver").and_then(
+                |value| {
+                    mutation_field_type(
+                        &value,
+                        property,
+                        aliases,
+                        visited,
+                        budget,
+                        private_owner,
+                        depth + 1,
+                    )
+                },
+            )
+        }
+        Type::Union(parts) | Type::Intersection(parts) => {
+            let values: Vec<_> = parts
+                .iter()
+                .filter_map(|part| {
+                    mutation_field_type(
+                        part,
+                        property,
+                        aliases,
+                        &mut visited.clone(),
+                        budget,
+                        private_owner,
+                        depth + 1,
+                    )
+                })
+                .collect();
+            match values.as_slice() {
+                [] => None,
+                [value] => Some(value.clone()),
+                _ => Some(Type::Union(values)),
+            }
+        }
+        _ => None,
+    }
+}

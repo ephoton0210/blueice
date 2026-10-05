@@ -3645,3 +3645,64 @@ owns a versioned standard library and its types. It adds no DOM name and no runt
 and `require_declared_global_calls` still requires the owner's declarations. Imported value
 inference, immutable assignment enforcement, broader query/operator typing and TypeScript
 numeric diagnostic parity remain K.1.3, K.1.2, K.4 and K.3 respectively. Full parity stays off.
+
+
+### K.1.2 Immutable bindings and member writes
+
+Each lexical binding now retains mutability independently of its inferred type. Writes resolve
+against that binding's scope identity, so a writable parameter, `let`, `var` or catch binding can
+shadow an outer `const` or import. Constant/import/function/class/enum/namespace rebinding reports
+`BTS3006`, with the corresponding TS2588/TS2632-family code in the message and the original written
+identifier as the diagnostic span. An imported object's mutable contents remain writable; a
+namespace import's immediate exported properties remain immutable. Namespace exports share their
+mutability across reopened bodies, including nested namespaces. Qualified tokens merged by the
+namespace parser are expanded back to the original lexer tokens for target diagnostics. Raw
+lexer tokens join an adjacent private marker and identifier into `#name`, matching the parser's
+runtime token representation and preserving the complete private identifier span.
+
+Assignment, every compound assignment, prefix/postfix updates, recursive array/object/rest/default
+destructuring targets, implicit for-of/for-in writes and writes in nested functions, class fields,
+methods, constructors and static blocks use the same target scan. Pattern declaration names are
+excluded from writes and reads; computed keys and default RHS expressions remain reads. Loop scopes
+survive object literals in their source expression and end with the loop, including an unbraced body.
+The contextual word `of` remains a valid declared name as well as a for-of separator.
+
+Readonly destructuring and iteration look through declared records, class surfaces, private/protected
+markers, nested members, literal computed keys, arrays, tuples and aliases. Restricted receiver
+fields retain their declared types during mutation lookup; ordinary accessibility checking remains
+separate. ECMAScript private names select their lexical declaring class, so equal spellings in a base
+and derived class do not share mutability. A string key with the same spelling is an ordinary
+property and does not select a private symbol. Bounded initializer
+references recover a receiver's declared type when its local declaration was inferred. Only the
+immediate constructor of the declaring class may initialize its own readonly instance fields, using
+plain/compound assignment, updates or destructuring; inherited fields, nested closures and other
+receivers keep the readonly restriction. Existing direct and nested property mutation checks retain
+their conservative refusals. Property helpers are shared in `checker/properties.rs`; target grammar
+and lexical mutation checks live in separate scope modules, each below 650 lines.
+
+Target scans cap their token traversal at `max(max_type_expansions * 32, 64)`, retained mutation
+leaves at `max(max_type_expansions * 16, 256)`, and pattern/receiver/alias recursion at 128. Type
+lookup uses the compiler's shared expansion budget. Exceeding a bound reports `ResourceLimit` and
+prevents output rather than silently accepting an unchecked write. Owner-supplied ambient constants
+retain their binding kind. `TranspileOnly` keeps its explicit unchecked behavior; no source loading,
+network or runtime authority changes.
+
+Evidence: `immutable_checker_matrix.rs` records 173 pinned TypeScript 5.9.3 verdicts (75 accepted,
+98 rejected), replayed through `check` and `build`; the runtime program compares Node output and
+exact `.d.ts` text. `tests/immutables.rs` adds seven public-boundary tests for diagnostic positions,
+shadowing, namespace exports, readonly targets, constructor permission, ambient ownership,
+transpile policy and exhausted budgets. The initial 130-case failing replay was committed before
+implementation; additional receiver cases were recorded and shown to fail before their fixes.
+
+The final K.1.2 gate passed on 2026-10-05: `cargo fmt --all -- --check`, all-target
+Clippy for `blueice-bluets` and `blueice-bluets-bluejs` with `-D warnings`, and
+`BLUEICE_BLUETSC_ORACLE=<tsc 5.9.3> FORCE_COLOR=0 cargo test -p blueice-bluets
+-p blueice-bluets-bluejs -j 4 --no-fail-fast -- --include-ignored --test-threads=4`.
+The 51 test targets passed 1004 tests, including all 104 ignored oracle tests in 21 suite files,
+with no failures, ignored tests or filtered tests. Existing accepted entries remain accepted.
+The unbraced-loop regression from K.1.1 is covered by its unchanged name matrix. The refusal
+inventory was regenerated from the final source; imported value typing and the versioned
+standard library remain K.1.3 and K.1.4. Full parity stays off.
+
+The six sources listed in K.1.R.1 are still at their audited sizes. After this verified feature
+commit and push, split those sources and run a separate K.0 gate before K.1.3 adds responsibilities.

@@ -2,4 +2,4 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-import area = require("./dep"); console.log(area.value);
+import area = require("./dep.ts"); console.log(area.value);
