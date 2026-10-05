@@ -6,7 +6,6 @@
 
 use super::*;
 
-/// Appends the object ids among `values`, skipping every primitive.
 /// The heap values a reaction target keeps alive. A native target's promise is
 /// already rooted through `Vm::promises`, so only a capability adds any.
 fn reaction_target_values(target: &ReactionTarget) -> Vec<&Value> {
@@ -18,10 +17,25 @@ fn reaction_target_values(target: &ReactionTarget) -> Vec<&Value> {
     }
 }
 
+/// Appends the object ids among `values`, skipping every primitive.
 fn push_object_roots<'a>(roots: &mut Vec<ObjectId>, values: impl IntoIterator<Item = &'a Value>) {
     for value in values {
         if let Value::Object(id) = value {
             roots.push(*id);
+        }
+    }
+}
+
+/// The synchronous root entry cannot suspend at a generator or await boundary.
+pub(super) fn root_interpreter_exit(exit: InterpreterExit) -> Result<Value, RuntimeError> {
+    match exit {
+        InterpreterExit::Return(value) => Ok(value),
+        InterpreterExit::Yield { .. } => Err(RuntimeError::TypeError(
+            "yield requires a generator function".into(),
+        )),
+        InterpreterExit::Suspend { .. } => unreachable!("only generator entry suspends"),
+        InterpreterExit::Await { .. } => {
+            unreachable!("only module evaluation can suspend at await")
         }
     }
 }
@@ -101,10 +115,12 @@ impl Vm {
         module: bool,
     ) -> Result<Value, RuntimeError> {
         self.prepare_root_execution(code, module)?;
-        if publish_globals {
-            self.prepare_global_declarations(code)?;
-        }
-        let result = self.run(code);
+        let result = if publish_globals {
+            self.prepare_global_declarations(code)
+                .and_then(|()| self.run(code))
+        } else {
+            self.run(code)
+        };
         self.finish_root_execution(result)
     }
 
@@ -122,7 +138,7 @@ impl Vm {
         self.uncaught_throw_site = None;
         self.throw_epoch = 0;
         if let Some(root) = self.result_root.take() {
-            self.heap.unroot(root)?;
+            self.release_root(root);
         }
         // ClearKeptObjects runs at the end of the preceding ECMAScript job.
         // The next job's initial collection must not retain its WeakRef
@@ -131,7 +147,8 @@ impl Vm {
         self.with_roots(|heap| {
             heap.collect_major();
             Ok(())
-        })?;
+        })
+        .expect("major collection does not allocate or return a heap error");
         self.enqueue_finalization_cleanup_jobs();
         self.bindings.resize(code.bindings.len(), None);
         self.binding_metadata = code.bindings.clone();
@@ -168,9 +185,16 @@ impl Vm {
             }
             Ok(value)
         });
-        if let Err(RuntimeError::Thrown(Value::Object(id))) = &result {
-            self.result_root = Some(self.heap.root(*id)?);
-        }
+        let result = match result {
+            Err(RuntimeError::Thrown(Value::Object(id))) => match self.heap.root(id) {
+                Ok(root) => {
+                    self.result_root = Some(root);
+                    Err(RuntimeError::Thrown(Value::Object(id)))
+                }
+                Err(error) => Err(error.into()),
+            },
+            result => result,
+        };
         self.stack.clear();
         self.bindings.clear();
         self.binding_metadata.clear();
@@ -195,7 +219,8 @@ impl Vm {
         self.with_roots(|heap| {
             heap.collect_major();
             Ok(())
-        })?;
+        })
+        .expect("major collection does not allocate or return a heap error");
         self.enqueue_finalization_cleanup_jobs();
         self.uncaught_throw_site = if result.as_ref().is_err_and(RuntimeError::is_catchable) {
             self.pending_throw_site
@@ -224,6 +249,9 @@ impl Vm {
         code: &Bytecode,
     ) -> Result<(), RuntimeError> {
         let slots = code.scopes.first().cloned().unwrap_or_default();
+        if slots.is_empty() {
+            return Ok(());
+        }
         let global = self
             .global("globalThis")?
             .object_id()
@@ -243,7 +271,8 @@ impl Vm {
                 if existing.is_some_and(|binding| !binding.property)
                     || self
                         .heap
-                        .get_own_property_descriptor(global, binding.name.as_str())?
+                        .get_own_property_descriptor(global, binding.name.as_str())
+                        .expect("globalThis is the permanently rooted ordinary realm global")
                         .is_some_and(|descriptor| descriptor.configurable == Some(false))
                 {
                     return Err(RuntimeError::SyntaxError(format!(
@@ -275,7 +304,7 @@ impl Vm {
             let binding = &code.bindings[slot as usize];
             let function = code.global_function_names.contains(&binding.name);
             if !self.global_bindings.contains_key(&binding.name) {
-                if self.global_var_is_accessor(global, binding, function)? {
+                if self.global_var_is_accessor(global, binding, function) {
                     continue;
                 }
                 self.create_global_binding(global, binding, function, false)?;
@@ -292,19 +321,16 @@ impl Vm {
     /// so it can neither read through the getter nor forward to the setter:
     /// such a `var` gets no global binding at all. Name lookups and
     /// assignments then reach the accessor through the global object itself.
-    fn global_var_is_accessor(
-        &self,
-        global: ObjectId,
-        binding: &Binding,
-        function: bool,
-    ) -> Result<bool, RuntimeError> {
+    fn global_var_is_accessor(&self, global: ObjectId, binding: &Binding, function: bool) -> bool {
         if function || binding.lexical {
-            return Ok(false);
+            return false;
         }
-        Ok(self
-            .heap
-            .get_own_property_descriptor(global, binding.name.as_str())?
-            .is_some_and(|descriptor| descriptor.accessor()))
+        // Both declaration-instantiation callers resolved the permanently
+        // rooted ordinary realm global before this non-allocating query.
+        self.heap
+            .get_own_property_descriptor(global, binding.name.as_str())
+            .expect("declaration instantiation retains its validated ordinary global")
+            .is_some_and(|descriptor| descriptor.accessor())
     }
 
     /// Standard global properties exist independently of a script lexical
@@ -368,7 +394,10 @@ impl Vm {
             .heap
             .get_own_property_descriptor(global, name)?
             .is_some()
-            || self.heap.is_extensible(global)?)
+            || self
+                .heap
+                .is_extensible(global)
+                .expect("the preceding descriptor read validated the ordinary global"))
     }
 
     pub(super) fn can_declare_global_function(
@@ -378,7 +407,10 @@ impl Vm {
     ) -> Result<bool, RuntimeError> {
         self.materialize_lexical_global(global, name)?;
         let Some(descriptor) = self.heap.get_own_property_descriptor(global, name)? else {
-            return Ok(self.heap.is_extensible(global)?);
+            return Ok(self
+                .heap
+                .is_extensible(global)
+                .expect("the preceding descriptor read validated the ordinary global"));
         };
         Ok(descriptor.configurable == Some(true)
             || (descriptor.value.is_some()
@@ -439,7 +471,7 @@ impl Vm {
             Ok(())
         })();
         if let Err(error) = result {
-            self.heap.unroot(root)?;
+            self.release_root(root);
             return Err(error);
         }
         self.global_bindings.insert(
@@ -447,7 +479,6 @@ impl Vm {
             GlobalBinding {
                 cell,
                 mutable: binding.mutable,
-                strict_immutable: binding.strict_immutable,
                 property,
                 _root: root,
             },
@@ -463,7 +494,7 @@ impl Vm {
     /// reset, for a caller (`ShadowRealm.prototype.evaluate`, so far the
     /// only one) whose own semantics need a fresh global lexical scope on
     /// each call rather than this VM's ordinary one-persistent-scope model.
-    pub(super) fn reset_lexical_global_bindings(&mut self) -> Result<(), RuntimeError> {
+    pub(super) fn reset_lexical_global_bindings(&mut self) {
         let stale: Vec<String> = self
             .global_bindings
             .iter()
@@ -471,18 +502,23 @@ impl Vm {
             .map(|(name, _)| name.clone())
             .collect();
         for name in stale {
-            if let Some(binding) = self.global_bindings.remove(&name) {
-                self.heap.unroot(binding._root)?;
-            }
+            let binding = self
+                .global_bindings
+                .remove(&name)
+                .expect("the collected lexical binding keys remain in this private map");
+            // Removal transfers this private binding's unique root to cleanup.
+            self.release_root(binding._root);
         }
-        Ok(())
     }
 
     pub(super) fn global_binding_value(&self, name: &str) -> Result<Option<Value>, RuntimeError> {
         let Some(binding) = self.global_bindings.get(name) else {
             return Ok(None);
         };
-        self.heap.get_own(binding.cell, "value").map_err(Into::into)
+        Ok(self
+            .heap
+            .get_own(binding.cell, "value")
+            .expect("each published GlobalBinding owns its cell's permanent root"))
     }
 
     pub(super) fn set_global_binding(
@@ -495,17 +531,21 @@ impl Vm {
         };
         let cell = binding.cell;
         let mutable = binding.mutable;
-        let strict_immutable = binding.strict_immutable;
-        if self.heap.get_own(cell, "value")?.is_none() {
+        if self
+            .heap
+            .get_own(cell, "value")
+            .expect("each published GlobalBinding owns its cell's permanent root")
+            .is_none()
+        {
             return Err(RuntimeError::ReferenceError(name.into()));
         }
-        if !mutable && strict_immutable {
+        // Global immutable declarations are const/using bindings. A named
+        // function expression's non-strict self binding belongs to its call
+        // frame and is handled by binding_allows_assignment, never here.
+        if !mutable {
             return Err(RuntimeError::TypeError(format!(
                 "assignment to constant {name}"
             )));
-        }
-        if !mutable {
-            return Ok(true);
         }
         self.store_global_cell(cell, value)?;
         Ok(true)
@@ -586,18 +626,21 @@ impl Vm {
     /// Whether `slot` is an eval-created `var` whose binding was deleted (its
     /// cell then has no value): closures still hold the cell, but the name
     /// resolves outward again.
-    pub(super) fn eval_var_deleted(&self, slot: usize) -> Result<bool, RuntimeError> {
+    pub(super) fn eval_var_deleted(&self, slot: usize) -> bool {
         if !self
             .binding_metadata
             .get(slot)
             .is_some_and(|binding| binding.eval_var)
         {
-            return Ok(false);
+            return false;
         }
         let Some(&cell) = self.cells.get(&slot) else {
-            return Ok(false);
+            return false;
         };
-        Ok(self.heap.get_own(cell, "value")?.is_none())
+        self.heap
+            .get_own(cell, "value")
+            .expect("the current frame retains its eval binding cell")
+            .is_none()
     }
 
     /// PutValue for a reference that resolved to binding slot `slot`.
@@ -616,7 +659,7 @@ impl Vm {
         if self.store_dynamic_eval_shadowing_binding(slot, name, value.clone())? {
             return Ok(());
         }
-        if self.eval_var_deleted(slot)? {
+        if self.eval_var_deleted(slot) {
             return if recreate {
                 self.recreate_eval_var(slot, value)
             } else {
@@ -663,14 +706,14 @@ impl Vm {
     /// the variable environment is the global one or a function's.
     fn recreate_eval_var(&mut self, slot: usize, value: Value) -> Result<(), RuntimeError> {
         let name = self.binding_metadata[slot].name.clone();
-        let Some(&cell) = self.cells.get(&slot) else {
-            return Ok(());
-        };
+        let cell = *self.cells.get(&slot).expect(
+            "assign_binding_slot just verified this retained cell has a deleted eval value",
+        );
         if self.script_global_slots.contains_key(&slot) {
-            let global = self
-                .global("globalThis")?
-                .object_id()
-                .expect("globalThis is an object");
+            let global = *self
+                .globals
+                .get("globalThis")
+                .expect("a global eval slot was installed after its global object was created");
             let defined = self.with_roots(|heap| {
                 heap.define_own_property(
                     global,
@@ -682,26 +725,26 @@ impl Vm {
                 return Ok(());
             }
             let root = self.heap.root(cell)?;
-            self.with_roots(|heap| heap.set(cell, "value", value))?;
+            if let Err(error) = self.with_roots(|heap| heap.set(cell, "value", value)) {
+                self.release_root(root);
+                return Err(error);
+            }
             self.global_bindings.insert(
                 name,
                 GlobalBinding {
                     cell,
                     mutable: true,
-                    strict_immutable: false,
                     property: true,
                     _root: root,
                 },
             );
-        } else if self.eval_dynamic_slots.contains_key(&slot) {
+        } else {
+            // InitializeBinding can request recreation only for the declaring
+            // eval's own var slot. Global slots were handled above; captures
+            // of existing function eval vars and fresh declarations are both
+            // recorded by prepare_dynamic_eval_bindings before interpretation.
+            debug_assert!(self.eval_dynamic_slots.contains_key(&slot));
             self.with_roots(|heap| heap.set(cell, "value", value))?;
-            self.dynamic_eval_bindings.insert(
-                name.clone(),
-                DynamicEvalBinding {
-                    cell,
-                    shadowed_cells: Vec::new(),
-                },
-            );
             if let Some(env) = self.parameter_eval_env {
                 self.stack.push(Value::Object(cell));
                 let recorded =
@@ -709,8 +752,13 @@ impl Vm {
                 self.stack.pop();
                 recorded?;
             }
-        } else {
-            self.assign_unbound_name(&name, value, false)?;
+            self.dynamic_eval_bindings.insert(
+                name,
+                DynamicEvalBinding {
+                    cell,
+                    shadowed_cells: Vec::new(),
+                },
+            );
         }
         Ok(())
     }
@@ -723,10 +771,16 @@ impl Vm {
     /// is looked up again like any unresolved name.
     pub(super) fn delete_eval_var(&mut self, slot: usize) -> Result<bool, RuntimeError> {
         let name = self.binding_metadata[slot].name.clone();
-        let Some(&cell) = self.cells.get(&slot) else {
-            return self.delete_unbound_name(&name);
-        };
-        if self.heap.get_own(cell, "value")?.is_none() {
+        let cell = *self
+            .cells
+            .get(&slot)
+            .expect("eval declaration instantiation or closure capture installed this cell");
+        if self
+            .heap
+            .get_own(cell, "value")
+            .expect("the current frame retains its eval binding cell")
+            .is_none()
+        {
             return self.delete_unbound_name(&name);
         }
         let global_binding = self
@@ -736,14 +790,14 @@ impl Vm {
         if global_binding {
             return self.delete_unbound_name(&name);
         }
-        self.remove_eval_binding(&name, cell)?;
+        self.remove_eval_binding(&name, cell);
         Ok(true)
     }
 
     /// Removes the eval-created binding `name` whose cell is `cell` from
     /// every record of it: the function's eval variables, the variable
     /// environment object closures capture, and the cell's own value.
-    fn remove_eval_binding(&mut self, name: &str, cell: ObjectId) -> Result<(), RuntimeError> {
+    fn remove_eval_binding(&mut self, name: &str, cell: ObjectId) {
         if self
             .dynamic_eval_bindings
             .get(name)
@@ -762,17 +816,24 @@ impl Vm {
             }
         }
         for object in self.with_objects.clone() {
-            let Some(id) = object.object_id() else {
-                continue;
-            };
+            let id = object
+                .object_id()
+                .expect("with entry boxes its operand before retaining the environment");
             if self.is_parameter_eval_env(id)
-                && self.heap.get_own(id, name)? == Some(Value::Object(cell))
+                && self
+                    .heap
+                    .get_own(id, name)
+                    .expect("the frame retains its ordinary parameter-eval environment")
+                    == Some(Value::Object(cell))
             {
-                self.heap.delete(id, name)?;
+                self.heap
+                    .delete(id, name)
+                    .expect("removing an ordinary environment data property cannot allocate");
             }
         }
-        self.heap.delete(cell, "value")?;
-        Ok(())
+        self.heap
+            .delete(cell, "value")
+            .expect("the resolved eval cell is retained and deletion cannot allocate");
     }
 
     /// `delete name` where the name was found in a function's variable
@@ -790,10 +851,12 @@ impl Vm {
         else {
             return Ok(true);
         };
-        self.remove_eval_binding(name, cell)?;
+        self.remove_eval_binding(name, cell);
         // The binding may be missing from the environment of the frame that
         // is running (a closure), so drop this record of it in any case.
-        self.heap.delete(env, name)?;
+        self.heap
+            .delete(env, name)
+            .expect("the preceding own lookup validated this retained ordinary environment");
         Ok(true)
     }
 
@@ -887,8 +950,10 @@ impl Vm {
             if let Some(binding) = self.global_bindings.remove(name) {
                 // Closures that captured the cell see the name resolve
                 // outward, not the stale value.
-                self.heap.delete(binding.cell, "value")?;
-                self.heap.unroot(binding._root)?;
+                self.heap
+                    .delete(binding.cell, "value")
+                    .expect("removing the rooted global binding's own value cannot allocate");
+                self.release_root(binding._root);
             }
         }
         Ok(deleted)
@@ -906,13 +971,13 @@ impl Vm {
         // by a non-writable global property (`NaN`, `undefined`) rejects the
         // write, silently in sloppy code and with a TypeError in strict code.
         if let Some(name) = &property {
-            let global = self
-                .global("globalThis")?
-                .object_id()
-                .expect("globalThis is an object");
+            let global = *self.globals.get("globalThis").expect(
+                "a property-backed global binding was published with its permanent global object",
+            );
             if self
                 .heap
-                .get_own_property_descriptor(global, name.as_str())?
+                .get_own_property_descriptor(global, name.as_str())
+                .expect("the property-backed binding retains the ordinary realm global")
                 .is_some_and(|descriptor| descriptor.writable == Some(false))
             {
                 return if self.strict {
@@ -926,10 +991,9 @@ impl Vm {
         }
         self.with_roots(|heap| heap.set(cell, "value", value.clone()))?;
         if let Some(name) = property {
-            let global = self
-                .global("globalThis")?
-                .object_id()
-                .expect("globalThis is an object");
+            let global = *self.globals.get("globalThis").expect(
+                "a property-backed global binding was published with its permanent global object",
+            );
             self.with_roots(|heap| heap.set(global, name, value))?;
         }
         Ok(())
@@ -982,15 +1046,19 @@ impl Vm {
         let slots = code.scopes[scope as usize].clone();
         for slot in slots {
             let slot = slot as usize;
-            let value = self.binding_value(slot)?;
+            // CloneScope is emitted only after every initializer in a lexical
+            // for declaration has completed. These retained lexical cells do
+            // not use the deleted-eval-variable or global-property fallback.
+            let value = self
+                .binding_value(slot)
+                .expect("the active lexical for cell remains live")
+                .expect("lexical for initializers complete before CloneScope");
             let cell = self.with_roots(|heap| heap.alloc_object(None))?;
             // Insert before the allocation-backed store so the fresh cell is
             // an interpreter root if the store needs to collect.
             self.cells.insert(slot, cell);
             self.bindings[slot] = None;
-            if let Some(value) = value {
-                self.with_roots(|heap| heap.set(cell, "value", value))?;
-            }
+            self.with_roots(|heap| heap.set(cell, "value", value))?;
         }
         Ok(())
     }
@@ -1038,25 +1106,24 @@ impl Vm {
         // A compiler-emitted `break` can close its target for-of iterator
         // before a surrounding handler starts finalizer cleanup.
         let active = iterators.split_off(depth.min(iterators.len()));
+        // Scope teardown can release all of these records before cleanup.
+        // A callback on the inner iterator can collect before the outer one
+        // is visited, so retain the entire pending set until cleanup ends.
+        let base = self.stack.len();
+        self.stack.extend(active.iter().cloned());
         let mut first_error = None;
         for record in active.into_iter().rev() {
-            // Scope teardown may already have released the binding that held
-            // this record. Keep it on the VM stack while user-defined
-            // `return()` can allocate or collect.
-            self.stack.push(record);
-            let record = self
-                .stack
-                .last()
-                .expect("iterator record is rooted")
-                .clone();
             let result = self.iterator_close(&record);
-            self.stack.pop();
             if let Err(error) = result {
                 if first_error.is_none() {
+                    if let RuntimeError::Thrown(value) = &error {
+                        self.stack.push(value.clone());
+                    }
                     first_error = Some(error);
                 }
             }
         }
+        self.stack.truncate(base);
         first_error
     }
 
@@ -1071,25 +1138,8 @@ impl Vm {
         iterators: &mut Vec<Value>,
         depth: usize,
     ) -> Result<(), RuntimeError> {
-        let active = iterators.split_off(depth.min(iterators.len()));
-        let mut completion = None;
-        for record in active.into_iter().rev() {
-            // A close callback can allocate while an earlier close error is
-            // the selected completion. Keep a thrown JavaScript value rooted
-            // until every outer iterator has received its close notification.
-            let base = self.stack.len();
-            if let Some(RuntimeError::Thrown(value)) = &completion {
-                self.stack.push(value.clone());
-            }
-            let result = self.iterator_close(&record);
-            self.stack.truncate(base);
-            if completion.is_none() {
-                if let Err(error) = result {
-                    completion = Some(error);
-                }
-            }
-        }
-        completion.map_or(Ok(()), Err)
+        self.close_iterators_to_first_error(iterators, depth)
+            .map_or(Ok(()), Err)
     }
 
     pub(super) fn error_value(&mut self, error: RuntimeError) -> Result<Value, RuntimeError> {
@@ -1327,10 +1377,9 @@ impl Vm {
         }
     }
 
-    pub(super) fn with_roots<T>(
-        &mut self,
-        operation: impl FnOnce(&mut Heap) -> Result<T, HeapError>,
-    ) -> Result<T, RuntimeError> {
+    /// Collect the VM's external heap edges once, independently of the
+    /// allocating operation's return type and closure instantiation.
+    fn execution_roots(&self) -> Vec<ObjectId> {
         // Every object the VM holds outside the heap is gathered into one
         // plain batch and handed to the heap for the duration of `operation`.
         // Registering each one individually in the heap's root table cost a
@@ -1369,6 +1418,25 @@ impl Vm {
             for object in &self.kept_weak_objects {
                 roots.push(*object);
             }
+            roots.extend(self.async_frame_roots.iter().copied());
+            // Lazy prototypes are strong Realm edges even before a public
+            // constructor retains them. Failed constructor publication must
+            // not leave a cached ID pointing at a collected prototype.
+            roots.extend(
+                [
+                    self.promise_prototype,
+                    self.map_prototype,
+                    self.set_prototype,
+                    self.weak_map_prototype,
+                    self.weak_set_prototype,
+                    self.weak_ref_prototype,
+                    self.finalization_registry_prototype,
+                    self.disposable_stack_prototype,
+                    self.async_disposable_stack_prototype,
+                ]
+                .into_iter()
+                .flatten(),
+            );
             for object in self
                 .home_object
                 .iter()
@@ -1499,9 +1567,9 @@ impl Vm {
                     } => {
                         roots.push(*target);
                         for value in [thenable, then] {
-                            if let Value::Object(id) = value {
-                                roots.push(*id);
-                            }
+                            roots.push(value.object_id().expect(
+                                "a thenable job is queued with an object and its callable then",
+                            ));
                         }
                     }
                     PromiseJob::DynamicImport { target, .. } => roots.push(*target),
@@ -1550,6 +1618,14 @@ impl Vm {
                 roots.push(*id);
             }
         }
+        roots
+    }
+
+    pub(super) fn with_roots<T>(
+        &mut self,
+        operation: impl FnOnce(&mut Heap) -> Result<T, HeapError>,
+    ) -> Result<T, RuntimeError> {
+        let roots = self.execution_roots();
         self.heap.push_scoped_roots(roots);
         let result = operation(&mut self.heap);
         self.heap.pop_scoped_roots();
@@ -1562,16 +1638,7 @@ impl Vm {
         let mut iterators = Vec::new();
         let result = self
             .interpret(code, &mut iterators, 0, None, None, None)
-            .and_then(|exit| match exit {
-                InterpreterExit::Return(value) => Ok(value),
-                InterpreterExit::Yield { .. } => Err(RuntimeError::TypeError(
-                    "yield requires a generator function".into(),
-                )),
-                InterpreterExit::Suspend { .. } => unreachable!("only generator entry suspends"),
-                InterpreterExit::Await { .. } => {
-                    unreachable!("only module evaluation can suspend at await")
-                }
-            });
+            .and_then(root_interpreter_exit);
         if result.is_err() {
             if let Err(RuntimeError::Thrown(value)) = &result {
                 self.stack.push(value.clone());
@@ -1647,12 +1714,26 @@ impl Vm {
         &mut self,
         code: &Bytecode,
     ) -> Result<(), RuntimeError> {
+        // Reused captures can also be local eval vars. Their declaration
+        // initializer must recreate a binding it deletes, in this same
+        // VariableEnvironment rather than on the realm's global object.
+        for (slot, _) in code.captures.iter().enumerate() {
+            let name = &code.bindings[slot].name;
+            if self
+                .dynamic_eval_bindings
+                .get(name)
+                .is_some_and(|binding| self.cells.get(&slot) == Some(&binding.cell))
+            {
+                self.eval_dynamic_slots.insert(slot, name.clone());
+            }
+        }
         for &slot in &code.dynamic_eval_slots {
             let binding = &code.bindings[slot as usize];
-            // Without a variable environment object of its own, a function's
-            // static references to a captured name are redirected to the eval
-            // var that shadows it; with one, the name resolves through the
-            // environment before the captured binding.
+            // A function with a parameter/variable environment object resolves
+            // eval vars through that environment. Aliasing its outer cells
+            // would redirect references resolved before the declaration and
+            // captures of unrelated callees. Only the object-free path needs
+            // static-cell aliases for subsequent name resolution.
             let shadowed_cells: Vec<_> = code
                 .captures
                 .iter()
@@ -1664,37 +1745,30 @@ impl Vm {
                         .flatten()
                 })
                 .collect();
-            if !self.dynamic_eval_bindings.contains_key(&binding.name) {
-                let cell = self.with_roots(|heap| heap.alloc_object(None))?;
-                if let Some(env) = self.parameter_eval_env {
-                    // Closures made in this function's parameter list or
-                    // body reach the variable through the environment.
-                    self.stack.push(Value::Object(cell));
-                    let recorded = self.with_roots(|heap| {
-                        heap.set(env, binding.name.as_str(), Value::Object(cell))
-                    });
-                    self.stack.pop();
-                    recorded?;
-                }
-                self.dynamic_eval_bindings.insert(
-                    binding.name.clone(),
-                    DynamicEvalBinding {
-                        cell,
-                        shadowed_cells: shadowed_cells.clone(),
-                    },
-                );
-                if let Err(error) =
-                    self.with_roots(|heap| heap.set(cell, "value", Value::Undefined))
-                {
-                    self.dynamic_eval_bindings.remove(&binding.name);
-                    return Err(error);
-                }
-            } else if let Some(dynamic) = self.dynamic_eval_bindings.get_mut(&binding.name) {
-                for cell in shadowed_cells {
-                    if !dynamic.shadowed_cells.contains(&cell) {
-                        dynamic.shadowed_cells.push(cell);
-                    }
-                }
+            // compile_eval filters every existing VariableEnvironment name,
+            // including dynamic_eval_bindings, out of dynamic_eval_slots.
+            // Capturing the resulting code cannot execute JavaScript, so each
+            // slot still denotes a fresh declaration when it reaches here.
+            let cell = self.with_roots(|heap| heap.alloc_object(None))?;
+            if let Some(env) = self.parameter_eval_env {
+                // Closures made in this function's parameter list or
+                // body reach the variable through the environment.
+                self.stack.push(Value::Object(cell));
+                let recorded = self
+                    .with_roots(|heap| heap.set(env, binding.name.as_str(), Value::Object(cell)));
+                self.stack.pop();
+                recorded?;
+            }
+            self.dynamic_eval_bindings.insert(
+                binding.name.clone(),
+                DynamicEvalBinding {
+                    cell,
+                    shadowed_cells,
+                },
+            );
+            if let Err(error) = self.with_roots(|heap| heap.set(cell, "value", Value::Undefined)) {
+                self.dynamic_eval_bindings.remove(&binding.name);
+                return Err(error);
             }
             self.eval_dynamic_slots
                 .insert(slot as usize, binding.name.clone());
@@ -1749,7 +1823,7 @@ impl Vm {
             }
             let function = code.global_function_names.contains(&binding.name);
             if !self.global_bindings.contains_key(&binding.name) {
-                if self.global_var_is_accessor(global, binding, function)? {
+                if self.global_var_is_accessor(global, binding, function) {
                     continue;
                 }
                 self.create_global_binding(global, binding, function, true)?;
@@ -1765,6 +1839,10 @@ impl Vm {
     /// path). It deliberately gets fresh script bindings and global `this`,
     /// but preserves the caller frame and the remaining resource budget.
     pub(super) fn execute_nested_script(&mut self, code: &Bytecode) -> Result<Value, RuntimeError> {
+        // Global construction can refuse an allocation. Resolve it before
+        // displacing the caller's frame so an entry refusal cannot strand
+        // that frame in the nested execution state.
+        let global_this = self.global("globalThis")?;
         let base = self.stack.len();
         self.stack.extend(self.bindings.iter().flatten().cloned());
         self.stack
@@ -1783,7 +1861,6 @@ impl Vm {
         let with_objects = std::mem::take(&mut self.with_objects);
         let strict = std::mem::replace(&mut self.strict, code.strict);
         let top_level_module = std::mem::replace(&mut self.top_level_module, false);
-        let global_this = self.global("globalThis")?;
         let this = std::mem::replace(&mut self.this, global_this);
         let arguments = std::mem::take(&mut self.arguments);
         let new_target = std::mem::replace(&mut self.new_target, Value::Undefined);
@@ -1905,7 +1982,7 @@ impl Vm {
             return Ok(None);
         };
         let value = self.eval_aware_binding_value(slot, name)?;
-        if value.is_none() && self.eval_var_deleted(slot)? {
+        if value.is_none() && self.eval_var_deleted(slot) {
             return Ok(None);
         }
         Ok(Some(value))

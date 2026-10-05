@@ -4,6 +4,23 @@
 
 use super::*;
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum TypedArrayCallbackMethod {
+    Every,
+    ForEach,
+    Some,
+    Find,
+    FindIndex,
+    FindLast,
+    FindLastIndex,
+    Map,
+    Filter,
+}
+
+#[cfg(any(test, coverage))]
+#[path = "../../../tests/fixtures/typed_array_boundaries.rs"]
+mod boundary_tests;
+
 impl Vm {
     fn typed_array_method_receiver(
         &self,
@@ -33,10 +50,18 @@ impl Vm {
         kind: TypedArrayKind,
     ) -> Result<ObjectId, RuntimeError> {
         let buffer = self.new_typed_array_buffer(length, kind)?;
-        let prototype = self.buffer_prototype(kind.name())?;
-        self.with_roots(|heap| {
-            heap.alloc_typed_array(buffer, 0, length, false, kind, Some(prototype))
-        })
+        // A cold concrete constructor can allocate and collect before the
+        // view exists. Retain its backing through that lazy initialization.
+        let base = self.stack.len();
+        self.stack.push(Value::Object(buffer));
+        let result = (|| {
+            let prototype = self.buffer_prototype(kind.name())?;
+            self.with_roots(|heap| {
+                heap.alloc_typed_array(buffer, 0, length, false, kind, Some(prototype))
+            })
+        })();
+        self.stack.truncate(base);
+        result
     }
 
     /// TypedArraySpeciesCreate for algorithms which intentionally preserve a
@@ -198,15 +223,15 @@ impl Vm {
             .collect()
     }
 
-    fn typed_array_element(&self, object: ObjectId, index: usize) -> Result<Value, RuntimeError> {
+    fn typed_array_element(&self, object: ObjectId, index: usize) -> Value {
         // Indexed TypedArray iteration methods capture their iteration range
         // before invoking user callbacks. If a resizable backing buffer then
         // shrinks, each later missing integer-indexed element is observed as
         // `undefined`, rather than terminating that already-started loop.
-        Ok(self
-            .heap
-            .typed_array_index_value(object, index)?
-            .unwrap_or(Value::Undefined))
+        self.heap
+            .typed_array_index_value(object, index)
+            .expect("the validated and retained TypedArray owns its backing buffer")
+            .unwrap_or(Value::Undefined)
     }
 
     pub(super) fn typed_array_write_values(
@@ -243,7 +268,7 @@ impl Vm {
         &mut self,
         receiver: &Value,
         args: &[Value],
-        method: TypedArrayMethod,
+        method: TypedArrayCallbackMethod,
     ) -> Result<Value, RuntimeError> {
         let (object, length, kind) = self.typed_array_method_receiver(receiver)?;
         let callback = native::argument(args, 0);
@@ -256,38 +281,44 @@ impl Vm {
         let base = self.stack.len();
         self.stack.push(Value::Object(object));
         let result = (|| match method {
-            TypedArrayMethod::Every => {
+            TypedArrayCallbackMethod::Every => {
                 for index in 0..length {
-                    let value = self.typed_array_element(object, index)?;
+                    let value = self.typed_array_element(object, index);
                     let result =
                         self.typed_array_callback(callback, &this_arg, value, index, object)?;
-                    if !self.to_boolean(&result)? {
+                    if !self
+                        .to_boolean(&result)
+                        .expect("callback returns a value validated in this realm")
+                    {
                         return Ok(Value::Bool(false));
                     }
                 }
                 Ok(Value::Bool(true))
             }
-            TypedArrayMethod::ForEach => {
+            TypedArrayCallbackMethod::ForEach => {
                 for index in 0..length {
-                    let value = self.typed_array_element(object, index)?;
+                    let value = self.typed_array_element(object, index);
                     self.typed_array_callback(callback, &this_arg, value, index, object)?;
                 }
                 Ok(Value::Undefined)
             }
-            TypedArrayMethod::Some => {
+            TypedArrayCallbackMethod::Some => {
                 for index in 0..length {
-                    let value = self.typed_array_element(object, index)?;
+                    let value = self.typed_array_element(object, index);
                     let result =
                         self.typed_array_callback(callback, &this_arg, value, index, object)?;
-                    if self.to_boolean(&result)? {
+                    if self
+                        .to_boolean(&result)
+                        .expect("callback returns a value validated in this realm")
+                    {
                         return Ok(Value::Bool(true));
                     }
                 }
                 Ok(Value::Bool(false))
             }
-            TypedArrayMethod::Find | TypedArrayMethod::FindIndex => {
+            TypedArrayCallbackMethod::Find | TypedArrayCallbackMethod::FindIndex => {
                 for index in 0..length {
-                    let value = self.typed_array_element(object, index)?;
+                    let value = self.typed_array_element(object, index);
                     let result = self.typed_array_callback(
                         callback,
                         &this_arg,
@@ -295,23 +326,26 @@ impl Vm {
                         index,
                         object,
                     )?;
-                    if self.to_boolean(&result)? {
-                        return Ok(if method == TypedArrayMethod::Find {
+                    if self
+                        .to_boolean(&result)
+                        .expect("callback returns a value validated in this realm")
+                    {
+                        return Ok(if method == TypedArrayCallbackMethod::Find {
                             value
                         } else {
                             Value::Number(index as f64)
                         });
                     }
                 }
-                Ok(if method == TypedArrayMethod::Find {
+                Ok(if method == TypedArrayCallbackMethod::Find {
                     Value::Undefined
                 } else {
                     Value::Number(-1.0)
                 })
             }
-            TypedArrayMethod::FindLast | TypedArrayMethod::FindLastIndex => {
+            TypedArrayCallbackMethod::FindLast | TypedArrayCallbackMethod::FindLastIndex => {
                 for index in (0..length).rev() {
-                    let value = self.typed_array_element(object, index)?;
+                    let value = self.typed_array_element(object, index);
                     let result = self.typed_array_callback(
                         callback,
                         &this_arg,
@@ -319,36 +353,39 @@ impl Vm {
                         index,
                         object,
                     )?;
-                    if self.to_boolean(&result)? {
-                        return Ok(if method == TypedArrayMethod::FindLast {
+                    if self
+                        .to_boolean(&result)
+                        .expect("callback returns a value validated in this realm")
+                    {
+                        return Ok(if method == TypedArrayCallbackMethod::FindLast {
                             value
                         } else {
                             Value::Number(index as f64)
                         });
                     }
                 }
-                Ok(if method == TypedArrayMethod::FindLast {
+                Ok(if method == TypedArrayCallbackMethod::FindLast {
                     Value::Undefined
                 } else {
                     Value::Number(-1.0)
                 })
             }
-            TypedArrayMethod::Map => {
+            TypedArrayCallbackMethod::Map => {
                 let (target, target_kind) =
                     self.typed_array_species_create(receiver, length, kind)?;
                 self.stack.push(Value::Object(target));
                 for index in 0..length {
-                    let value = self.typed_array_element(object, index)?;
+                    let value = self.typed_array_element(object, index);
                     let value =
                         self.typed_array_callback(callback, &this_arg, value, index, object)?;
                     self.typed_array_write_values(target, target_kind, index, &[value])?;
                 }
                 Ok(Value::Object(target))
             }
-            TypedArrayMethod::Filter => {
+            TypedArrayCallbackMethod::Filter => {
                 let mut selected = Vec::new();
                 for index in 0..length {
-                    let value = self.typed_array_element(object, index)?;
+                    let value = self.typed_array_element(object, index);
                     let result = self.typed_array_callback(
                         callback,
                         &this_arg,
@@ -356,7 +393,10 @@ impl Vm {
                         index,
                         object,
                     )?;
-                    if self.to_boolean(&result)? {
+                    if self
+                        .to_boolean(&result)
+                        .expect("callback returns a value validated in this realm")
+                    {
                         selected.push(value);
                     }
                 }
@@ -366,7 +406,6 @@ impl Vm {
                 self.typed_array_write_values(target, target_kind, 0, &selected)?;
                 Ok(Value::Object(target))
             }
-            _ => unreachable!("only callback TypedArray methods use this helper"),
         })();
         self.stack.truncate(base);
         result
@@ -406,7 +445,12 @@ impl Vm {
         };
         loop {
             self.charge_step()?;
-            if self.heap.typed_array_index_value(object, index)? == Some(search.clone()) {
+            if self
+                .heap
+                .typed_array_index_value(object, index)
+                .expect("receiver validation retains the integer-indexed object")
+                == Some(search.clone())
+            {
                 return Ok(Value::Number(index as f64));
             }
             if index == 0 {
@@ -447,7 +491,7 @@ impl Vm {
         };
         for index in start..length {
             self.charge_step()?;
-            if equality(&self.typed_array_element(object, index)?, search) {
+            if equality(&self.typed_array_element(object, index), search) {
                 return Ok(Value::Bool(true));
             }
         }
@@ -484,7 +528,12 @@ impl Vm {
         };
         for index in start..length {
             self.charge_step()?;
-            if self.heap.typed_array_index_value(object, index)? == Some(search.clone()) {
+            if self
+                .heap
+                .typed_array_index_value(object, index)
+                .expect("receiver validation retains the integer-indexed object")
+                == Some(search.clone())
+            {
                 return Ok(Value::Number(index as f64));
             }
         }
@@ -508,7 +557,7 @@ impl Vm {
             if index > 0 {
                 native::append(&mut result, &separator, self.config.max_string_bytes)?;
             }
-            let value = self.typed_array_element(object, index)?;
+            let value = self.typed_array_element(object, index);
             if !matches!(value, Value::Undefined | Value::Null) {
                 let value = self.coerce_string(&value)?;
                 native::append(&mut result, &value, self.config.max_string_bytes)?;
@@ -539,10 +588,10 @@ impl Vm {
                 ));
             }
             index = 1;
-            self.typed_array_element(object, 0)?
+            self.typed_array_element(object, 0)
         };
         while index < length {
-            let value = self.typed_array_element(object, index)?;
+            let value = self.typed_array_element(object, index);
             accumulator = self.call_native(
                 callback.clone(),
                 Value::Undefined,
@@ -597,6 +646,9 @@ impl Vm {
             match self.test262_foreign_typed_array_info(constructed_id)? {
                 Some((_, target_kind)) => (true, target_kind),
                 None => {
+                    // A foreign constructor can return an ordinary object or
+                    // a detached facade. Validate its brand before treating
+                    // the result as a local TypedArray.
                     let (_, _, _, target_kind) = self.heap.typed_array_info(constructed_id)?;
                     (false, target_kind)
                 }
@@ -614,7 +666,10 @@ impl Vm {
         if copy_count == 0 {
             return Ok(constructed);
         }
-        let (source_buffer, source_offset, _, _) = self.heap.typed_array_info(object)?;
+        let (source_buffer, source_offset, _, _) = self
+            .heap
+            .typed_array_info(object)
+            .expect("validated TypedArray retains its backing");
         if is_live_foreign_target {
             if kind == target_kind {
                 let target_buffer = self
@@ -637,7 +692,7 @@ impl Vm {
                 let (realm_id, _, _, _) = self
                     .test262_foreign_reference(constructed_id)
                     .expect("foreign TypedArray construction retains its realm");
-                self.test262_sync_foreign_buffer_mirrors(realm_id)?;
+                self.test262_sync_foreign_buffer_mirrors(realm_id);
             } else {
                 let values = self.typed_array_read_values(object, start, copy_count)?;
                 let source = self.array_from(values)?;
@@ -694,8 +749,10 @@ impl Vm {
                     // what it sees, not the real parent object. `array_
                     // buffer_write` takes the *buffer* object's id, not the
                     // TypedArray view's own id -- resolve it first.
-                    let (local_buffer, local_offset, ..) =
-                        self.heap.typed_array_info(constructed_id)?;
+                    let (local_buffer, local_offset, ..) = self
+                        .heap
+                        .typed_array_info(constructed_id)
+                        .expect("local species results are validated or transported TypedArrays");
                     self.with_roots(|heap| {
                         heap.array_buffer_write(local_buffer, local_offset, &bytes)
                     })?;
@@ -717,7 +774,10 @@ impl Vm {
             return Ok(constructed);
         }
         let target = constructed_id;
-        let (target_buffer, target_offset, _, _) = self.heap.typed_array_info(target)?;
+        let (target_buffer, target_offset, _, _) = self
+            .heap
+            .typed_array_info(target)
+            .expect("species construction returned a validated TypedArray");
         if kind == target_kind && source_buffer != target_buffer {
             // §23.2.3.29 performs a raw byte copy for a same-element-type
             // destination. Going through Number would canonicalize NaN and
@@ -736,7 +796,7 @@ impl Vm {
         // observable forward byte-copy behavior when a species result shares
         // the source buffer at a different byte offset.
         for index in 0..copy_count {
-            let value = self.typed_array_element(object, start + index)?;
+            let value = self.typed_array_element(object, start + index);
             self.typed_array_write_values(target, target_kind, index, &[value])?;
         }
         Ok(Value::Object(target))
@@ -748,14 +808,14 @@ impl Vm {
         kind: TypedArrayKind,
     ) -> std::cmp::Ordering {
         if kind.bigint() {
-            let (Value::BigInt(left), Value::BigInt(right)) = (left, right) else {
-                unreachable!("BigInt typed array values are BigInt");
-            };
+            let left = left.as_bigint().expect("BigInt storage decodes as BigInt");
+            let right = right.as_bigint().expect("BigInt storage decodes as BigInt");
             return left.cmp(right);
         }
-        let (Value::Number(left), Value::Number(right)) = (left, right) else {
-            unreachable!("numeric typed array values are Number");
-        };
+        let left = left.as_number().expect("numeric storage decodes as Number");
+        let right = right
+            .as_number()
+            .expect("numeric storage decodes as Number");
         if left.is_nan() {
             return if right.is_nan() {
                 std::cmp::Ordering::Equal
@@ -766,14 +826,14 @@ impl Vm {
         if right.is_nan() {
             return std::cmp::Ordering::Less;
         }
-        if *left == 0.0 && *right == 0.0 {
+        if left == 0.0 && right == 0.0 {
             return match (left.is_sign_negative(), right.is_sign_negative()) {
                 (true, false) => std::cmp::Ordering::Less,
                 (false, true) => std::cmp::Ordering::Greater,
                 _ => std::cmp::Ordering::Equal,
             };
         }
-        left.partial_cmp(right)
+        left.partial_cmp(&right)
             .expect("non-NaN numbers are comparable")
     }
 
@@ -907,8 +967,15 @@ impl Vm {
         )?;
         let result = self.coerce_number(&result)?;
         if let Some(source) = source {
-            let (buffer, _, _, _) = self.heap.typed_array_info(source)?;
-            if self.heap.buffer_is_detached(buffer)? {
+            let (buffer, _, _, _) = self
+                .heap
+                .typed_array_info(source)
+                .expect("sort retains its validated source view");
+            if self
+                .heap
+                .buffer_is_detached(buffer)
+                .expect("source view retains its backing buffer")
+            {
                 return Ok(None);
             }
         }
@@ -923,10 +990,13 @@ impl Vm {
 
     fn typed_array_to_reversed(&mut self, receiver: &Value) -> Result<Value, RuntimeError> {
         let (object, length, kind) = self.typed_array_method_receiver(receiver)?;
-        let values = self.typed_array_read_values(object, 0, length)?;
+        let values = self
+            .typed_array_read_values(object, 0, length)
+            .expect("validated length bounds a snapshot without JavaScript");
         let target = self.typed_array_new_same_kind(length, kind)?;
         for (index, value) in values.into_iter().rev().enumerate() {
-            self.typed_array_write_values(target, kind, index, &[value])?;
+            self.typed_array_write_values(target, kind, index, &[value])
+                .expect("fresh mutable target accepts decoded values");
         }
         Ok(Value::Object(target))
     }
@@ -937,10 +1007,13 @@ impl Vm {
         compare: &Value,
     ) -> Result<Value, RuntimeError> {
         let (object, length, kind) = self.typed_array_method_receiver(receiver)?;
-        let mut values = self.typed_array_read_values(object, 0, length)?;
+        let mut values = self
+            .typed_array_read_values(object, 0, length)
+            .expect("validated length bounds a snapshot without JavaScript");
         self.typed_array_sort_values(&mut values, compare, kind, None)?;
         let target = self.typed_array_new_same_kind(length, kind)?;
-        self.typed_array_write_values(target, kind, 0, &values)?;
+        self.typed_array_write_values(target, kind, 0, &values)
+            .expect("fresh mutable target accepts decoded values");
         Ok(Value::Object(target))
     }
 
@@ -971,7 +1044,8 @@ impl Vm {
             || index > usize::MAX as f64
             || self
                 .heap
-                .typed_array_index_value(object, index as usize)?
+                .typed_array_index_value(object, index as usize)
+                .expect("value coercion retains the validated receiver")
                 .is_none()
         {
             return Err(RuntimeError::RangeError(
@@ -981,7 +1055,8 @@ impl Vm {
         let values = self.typed_array_read_values(object, 0, length)?;
         let target = self.typed_array_new_same_kind(length, kind)?;
         self.typed_array_write_values(target, kind, 0, &values)?;
-        self.typed_array_write_values(target, kind, index as usize, &[replacement])?;
+        self.typed_array_write_values(target, kind, index as usize, &[replacement])
+            .expect("with converted the replacement before allocating its mutable target");
         Ok(Value::Object(target))
     }
 
@@ -992,15 +1067,33 @@ impl Vm {
         method: TypedArrayMethod,
     ) -> Result<Value, RuntimeError> {
         match method {
-            TypedArrayMethod::Every
-            | TypedArrayMethod::ForEach
-            | TypedArrayMethod::Some
-            | TypedArrayMethod::Find
-            | TypedArrayMethod::FindIndex
-            | TypedArrayMethod::FindLast
-            | TypedArrayMethod::FindLastIndex
-            | TypedArrayMethod::Map
-            | TypedArrayMethod::Filter => self.typed_array_callback_method(receiver, args, method),
+            TypedArrayMethod::Every => {
+                self.typed_array_callback_method(receiver, args, TypedArrayCallbackMethod::Every)
+            }
+            TypedArrayMethod::ForEach => {
+                self.typed_array_callback_method(receiver, args, TypedArrayCallbackMethod::ForEach)
+            }
+            TypedArrayMethod::Some => {
+                self.typed_array_callback_method(receiver, args, TypedArrayCallbackMethod::Some)
+            }
+            TypedArrayMethod::Find => {
+                self.typed_array_callback_method(receiver, args, TypedArrayCallbackMethod::Find)
+            }
+            TypedArrayMethod::FindIndex => {
+                self.typed_array_callback_method(receiver, args, TypedArrayCallbackMethod::FindIndex)
+            }
+            TypedArrayMethod::FindLast => {
+                self.typed_array_callback_method(receiver, args, TypedArrayCallbackMethod::FindLast)
+            }
+            TypedArrayMethod::FindLastIndex => {
+                self.typed_array_callback_method(receiver, args, TypedArrayCallbackMethod::FindLastIndex)
+            }
+            TypedArrayMethod::Map => {
+                self.typed_array_callback_method(receiver, args, TypedArrayCallbackMethod::Map)
+            }
+            TypedArrayMethod::Filter => {
+                self.typed_array_callback_method(receiver, args, TypedArrayCallbackMethod::Filter)
+            }
             TypedArrayMethod::At => {
                 let (object, length, _) = self.typed_array_method_receiver(receiver)?;
                 let index = self.coerce_number(native::argument(args, 0))?;
@@ -1020,7 +1113,7 @@ impl Vm {
                 if index >= length {
                     return Ok(Value::Undefined);
                 }
-                self.typed_array_element(object, index)
+                Ok(self.typed_array_element(object, index))
             }
             TypedArrayMethod::LastIndexOf => self.typed_array_last_index_of(receiver, args),
             TypedArrayMethod::CopyWithin => {
@@ -1041,8 +1134,8 @@ impl Vm {
                     .min(length.saturating_sub(target))
                     .min(current_length.saturating_sub(target))
                     .min(current_length.saturating_sub(start));
-                let values = self.typed_array_read_values(object, start, count)?;
-                self.typed_array_write_values(object, kind, target, &values)?;
+                let values = self.typed_array_read_values(object, start, count).expect("copyWithin bounds the current readable overlap");
+                self.typed_array_write_values(object, kind, target, &values).expect("copyWithin validated mutable storage and decoded values");
                 Ok(receiver.clone())
             }
             TypedArrayMethod::Fill => {
@@ -1105,11 +1198,11 @@ impl Vm {
                         ));
                     }
                     index -= 1;
-                    self.typed_array_element(object, index)?
+                    self.typed_array_element(object, index)
                 };
                 while index > 0 {
                     index -= 1;
-                    let value = self.typed_array_element(object, index)?;
+                    let value = self.typed_array_element(object, index);
                     accumulator = self.call_native(
                         callback.clone(),
                         Value::Undefined,
@@ -1126,22 +1219,22 @@ impl Vm {
             }
             TypedArrayMethod::Reverse => {
                 let (object, length, kind) = self.typed_array_write_receiver(receiver)?;
-                let values = self.typed_array_read_values(object, 0, length)?;
+                let values = self.typed_array_read_values(object, 0, length).expect("validated length bounds the initial snapshot");
                 let reversed: Vec<_> = values.into_iter().rev().collect();
-                self.typed_array_write_values(object, kind, 0, &reversed)?;
+                self.typed_array_write_values(object, kind, 0, &reversed).expect("mutable source accepts decoded elements without JavaScript");
                 Ok(receiver.clone())
             }
             TypedArrayMethod::Slice => self.typed_array_slice(receiver, args),
             TypedArrayMethod::Sort => {
                 let (object, length, kind) = self.typed_array_write_receiver(receiver)?;
-                let mut values = self.typed_array_read_values(object, 0, length)?;
+                let mut values = self.typed_array_read_values(object, 0, length).expect("validated length bounds the initial snapshot");
                 if self.typed_array_sort_values(
                     &mut values,
                     native::argument(args, 0),
                     kind,
                     Some(object),
                 )? {
-                    self.typed_array_write_values(object, kind, 0, &values)?;
+                    self.typed_array_write_values(object, kind, 0, &values).expect("mutable, attached source accepts decoded elements");
                 }
                 Ok(receiver.clone())
             }

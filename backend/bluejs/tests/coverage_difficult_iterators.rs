@@ -33,6 +33,61 @@ fn run(source: &str, asynchronous: bool) {
 }
 
 #[test]
+fn iterator_prototype_setters_throw_independently_of_caller_strictness() {
+    run(
+        r#"
+        var sentinel = {}, checked = 0;
+        for (var key of ['constructor', Symbol.toStringTag]) {
+            var setter = Object.getOwnPropertyDescriptor(Iterator.prototype, key).set;
+            for (var invoke of [
+                (receiver, value) => setter.call(receiver, value),
+                function(receiver, value) {'use strict'; return setter.call(receiver, value);}
+            ]) {
+                var readonly = Object.defineProperty({}, key, {value: 7, writable:false});
+                var getterOnly = Object.defineProperty({}, key, {get() {return 7;}});
+                var refused = new Proxy({[key]:7}, {set() {return false;}});
+                var creationRefused = new Proxy({}, {defineProperty() {return false;}});
+                for (var receiver of [readonly, getterOnly, refused, creationRefused]) {
+                    try {invoke(receiver, 42); throw 'accepted refused write';}
+                    catch (error) {if (!(error instanceof TypeError)) throw error; checked++;}
+                }
+                var throwing = Object.defineProperty({}, key, {set() {throw sentinel;}});
+                var ownTrapThrowing = new Proxy({}, {getOwnPropertyDescriptor() {throw sentinel;}});
+                var defineTrapThrowing = new Proxy({}, {defineProperty() {throw sentinel;}});
+                for (var receiver of [throwing, ownTrapThrowing, defineTrapThrowing]) {
+                    try {invoke(receiver, 42); throw 'ignored accessor or trap throw';}
+                    catch (error) {if (error !== sentinel) throw error; checked++;}
+                }
+                var plain = {}, received;
+                if (invoke(plain, 42) !== undefined || plain[key] !== 42) throw 'creation failed';
+                var existing = Object.defineProperty({}, key, {set(value) {received = value;}});
+                if (invoke(existing, 42) !== undefined || received !== 42) throw 'setter failed';
+                checked += 2;
+                var log = [], target = {}, proxy = new Proxy(target, {
+                    getOwnPropertyDescriptor(object, property) {
+                        log.push('own'); return Reflect.getOwnPropertyDescriptor(object, property);
+                    },
+                    defineProperty(object, property, descriptor) {
+                        log.push('define');
+                        if (descriptor.value !== 42 || !descriptor.writable || !descriptor.enumerable || !descriptor.configurable)
+                            throw 'wrong creation descriptor';
+                        return Reflect.defineProperty(object, property, descriptor);
+                    }
+                });
+                if (invoke(proxy, 42) !== undefined || target[key] !== 42 || log.join() !== 'own,define')
+                    throw 'incorrect Proxy creation protocol';
+                checked++;
+            }
+        }
+        var locked = Object.defineProperty({}, 'answer', {value:7, writable:false});
+        locked.answer = 42;
+        checked === 40 && locked.answer === 7;
+        "#,
+        false,
+    );
+}
+
+#[test]
 fn from_async_next_failures_mark_done_without_closing() {
     run(
         r#"
@@ -130,6 +185,31 @@ fn async_dispose_ignores_fulfillment_values_and_preserves_rejection_identity() {
 }
 
 #[test]
+fn reduce_validates_its_callback_before_reading_next_and_only_invokes_it_for_values() {
+    run(
+        r#"
+        var events = [];
+        var revoked = Proxy.revocable(function(a, b) {return a + b;}, {});
+        var source = {get next() {
+            events.push('next-get'); revoked.revoke();
+            return function() {events.push('next-call'); return {done:true};};
+        }};
+        var answer = Iterator.prototype.reduce.call(source, revoked.proxy, 42);
+        if (answer !== 42 || events.join() !== 'next-get,next-call') throw 'empty reduction';
+        var closed = 0;
+        try {
+            Iterator.prototype.reduce.call({get next() {throw 'must not read';}, return() {closed++; return {}; }}, null, 0);
+            throw 'missing callback error';
+        } catch (error) {
+            if (!(error instanceof TypeError) || closed !== 1) throw 'callback validation order';
+        }
+        true
+    "#,
+        false,
+    );
+}
+
+#[test]
 fn zip_return_closes_all_sources_in_reverse_order_and_retains_the_first_error() {
     run(
         r#"
@@ -188,5 +268,87 @@ fn longest_zip_collects_and_closes_padding_then_reuses_its_values() {
             log.join() === 'open,padding,padding,close'
     "#,
         false,
+    );
+}
+
+#[test]
+fn callback_failures_close_single_source_helpers_once_and_preserve_identity() {
+    run(
+        r#"
+        var passed = 0;
+        for (var kind of ['map', 'filter', 'flatMap']) {
+            var sentinel = {}, closeError = {}, closes = 0;
+            var source = {next() {return {done:false, value:7};},
+                return() {closes++; throw closeError;}};
+            var helper = Iterator.from(source)[kind](() => {throw sentinel;});
+            var same = false;
+            try {helper.next();} catch (error) {same = error === sentinel;}
+            if (same && closes === 1 && helper.next().done && helper.return().done) passed++;
+        }
+        passed === 3
+    "#,
+        false,
+    );
+}
+
+#[test]
+fn flat_map_return_closes_inner_before_outer_even_when_both_throw() {
+    run(
+        r#"
+        var log = [], innerError = {}, outerError = {};
+        var source = {next() {return {done:false, value:7};},
+            return() {log.push('outer'); throw outerError;}};
+        var inner = {[Symbol.iterator]() {return this;},
+            next() {return {done:false, value:42};},
+            return() {log.push('inner'); throw innerError;}};
+        var helper = Iterator.from(source).flatMap(() => inner);
+        var first = helper.next(), same = false;
+        try {helper.return();} catch (error) {same = error === innerError;}
+        first.value === 42 && same && log.join() === 'inner,outer' && helper.next().done
+    "#,
+        false,
+    );
+}
+
+#[test]
+fn recursive_helper_requests_fail_without_consuming_the_outer_request() {
+    run(
+        r#"
+        var passed = 0;
+        for (var kind of ['map', 'filter', 'flatMap']) {
+            var errors = 0, helper;
+            helper = Iterator.from([7])[kind](value => {
+                for (var operation of [() => helper.next(), () => helper.return()]) {
+                    try {operation();} catch (error) {if (error instanceof TypeError) errors++;}
+                }
+                return kind === 'flatMap' ? [value] : kind === 'filter' ? true : value;
+            });
+            var first = helper.next();
+            if (errors === 2 && first.value === 7 && !first.done && helper.next().done) passed++;
+        }
+        passed === 3
+    "#,
+        false,
+    );
+}
+
+#[test]
+fn array_from_async_handles_reentrant_collection_and_constructor_failures() {
+    run(
+        r#"
+        var sentinel = {}, calls = 0;
+        function Throwing() {calls++; throw sentinel;}
+        for (var source of [[1,2], {length:1, 0:7}]) {
+            var same = false;
+            try {await Array.fromAsync.call(Throwing, source);} catch (error) {same = error === sentinel;}
+            check(same);
+        }
+        var values = await Array.fromAsync([1,2], async value => {
+            var nested = await Array.fromAsync([value + 10]);
+            return nested[0];
+        });
+        check(calls === 2 && values.join() === '11,12');
+    "#,
+        true,
     );
 }

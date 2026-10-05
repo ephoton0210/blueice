@@ -65,7 +65,6 @@ NO_COUNTER_REASONS = {
     "vm/temporal/plain_date.rs": "Declarations/re-exports only; no executable code",
     "vm/temporal/plain_date/tests.rs": "Test source; not a coverage target",
     "vm/temporal/zoned.rs": "Declarations/re-exports only; no executable code",
-    "vm/tests.rs": "Test source; not a coverage target",
 }
 
 
@@ -128,6 +127,55 @@ def checked_export(payload: dict) -> tuple[dict[Path, dict], dict]:
         if not 0 <= covered <= count:
             raise ValueError(f"invalid {metric} coverage totals")
     return files, totals
+
+
+def best_instantiation_gaps(payload: dict) -> dict[str, dict]:
+    """Explain LLVM's maximum-per-definition region summaries without unions.
+
+    LLVM merges a function's instantiations with separate maxima for covered
+    regions and region count. Covering complementary branches in different
+    closure types therefore does not complete the function's raw summary.
+    """
+    groups: dict[str, dict[tuple[int, ...], list[dict]]] = {}
+    for function in payload["data"][0]["functions"]:
+        for index, filename in enumerate(function["filenames"]):
+            path = Path(filename)
+            if not path.is_relative_to(SOURCE_ROOT):
+                continue
+            regions = [region for region in function["regions"]
+                       if region[5] == index and region[7] == 0]
+            if not regions:
+                continue
+            groups.setdefault(str(path.relative_to(SOURCE_ROOT)), {}).setdefault(
+                tuple(regions[0][:4]), []
+            ).append({"name": function["name"], "regions": regions,
+                      "covered": sum(region[4] > 0 for region in regions)})
+    report = {}
+    for item in payload["data"][0]["files"]:
+        path = Path(item["filename"])
+        if not path.is_relative_to(SOURCE_ROOT):
+            continue
+        relative = str(path.relative_to(SOURCE_ROOT))
+        definitions = groups.get(relative, {})
+        count = covered = 0
+        gaps = []
+        for definition, instances in sorted(definitions.items()):
+            best = max(instances, key=lambda row: (row["covered"], len(row["regions"])))
+            maximum = max(len(row["regions"]) for row in instances)
+            count += maximum
+            covered += best["covered"]
+            if best["covered"] != maximum:
+                gaps.append({"definition": list(definition), "total": maximum,
+                             "covered": best["covered"], "name": best["name"],
+                             "best_instance_region_count": len(best["regions"]),
+                             "missing": [{"location": region[:4]}
+                                         for region in best["regions"] if region[4] == 0]})
+        raw = item["summary"]["regions"]
+        if (count, covered) != (raw["count"], raw["covered"]):
+            raise ValueError(f"function instantiation maxima do not reconcile for {relative}")
+        report[relative] = {"computed": {"count": count, "covered": covered},
+                            "raw": raw, "functions": gaps}
+    return report
 
 
 def source_union_export(payload: dict, show_text: str) -> tuple[dict[Path, dict], dict]:

@@ -4,6 +4,10 @@
 
 use super::*;
 
+#[cfg(any(test, coverage))]
+#[path = "../../tests/fixtures/error_boundaries.rs"]
+mod boundary_tests;
+
 impl Vm {
     /// ECMAScript ToBoolean, including the host-defined Annex B IsHTMLDDA
     /// override. Ordinary objects remain truthy.
@@ -25,13 +29,14 @@ impl Vm {
                 .any(|bindings| bindings.contains_key(name))
         {
             return self
-                .dynamic_eval_binding_value(name)?
+                .dynamic_eval_binding_value(name).expect("published eval bindings retain their cells in the current or captured environment")
                 .map(Some)
                 .ok_or_else(|| RuntimeError::ReferenceError(name.into()));
         }
         if self.global_bindings.contains_key(name) {
             return self
-                .global_binding_value(name)?
+                .global_binding_value(name)
+                .expect("a published global binding permanently roots its cell")
                 .map(Some)
                 .ok_or_else(|| RuntimeError::ReferenceError(name.into()));
         }
@@ -71,27 +76,23 @@ impl Vm {
                 continue;
             }
             self.trigger_deferred_namespace(id, Some(key))?;
-            if let Some(numeric) = self.heap.typed_array_numeric_key(id, key)? {
+            if let Some(numeric) = self
+                .heap
+                .typed_array_numeric_key(id, key)
+                .expect("the proxy lookup validated the rooted object and its backing buffer")
+            {
                 return match numeric {
-                    crate::heap::TypedArrayNumericKey::Index(index) => {
-                        Ok(self.heap.typed_array_index_value(id, index)?.is_some())
-                    }
+                    crate::heap::TypedArrayNumericKey::Index(index) => Ok(self
+                        .heap
+                        .typed_array_index_value(id, index)
+                        .expect("the validated integer-indexed object retains its backing buffer")
+                        .is_some()),
                     crate::heap::TypedArrayNumericKey::Invalid => Ok(false),
                 };
             }
-            // A foreign/reverse facade is not a Proxy (that has its own,
-            // already-handled, complete [[HasProperty]] trap above): the
-            // real membrane target's [[HasProperty]] is ordinary, so only
-            // its own-property check needs forwarding here -- an absent
-            // own property still falls through to `object_get_prototype`
-            // below, which already forwards *that* step correctly.
-            if self.test262_foreign_reference(id).is_some() {
-                if self.test262_foreign_get_own_property(id, key)?.is_some() {
-                    return Ok(true);
-                }
-                current = self.object_get_prototype(id)?;
-                continue;
-            }
+            // Foreign facades were handled before integer-indexed objects.
+            // A reverse facade forwards its own-property check to its owner;
+            // absent properties continue through the owner's prototype.
             if self.test262_reverse_reference(id).is_some() {
                 if self.test262_reverse_get_own_property(id, key)?.is_some() {
                     return Ok(true);
@@ -99,18 +100,26 @@ impl Vm {
                 current = self.object_get_prototype(id)?;
                 continue;
             }
-            match self.heap.get_own_property_descriptor(id, key) {
-                Ok(Some(_)) | Err(HeapError::UninitializedModuleExport) => {
+            let descriptor = match self.heap.get_own_property_descriptor(id, key) {
+                Err(HeapError::UninitializedModuleExport) => {
                     // A namespace's [[HasProperty]] observes membership in
                     // [[Exports]], not the current value of that binding.
                     // An uninitialized export is therefore present even
                     // though [[Get]] and [[GetOwnProperty]] would throw.
                     return Ok(true);
                 }
-                Ok(None) => {}
-                Err(error) => return Err(error.into()),
+                result => result.expect("the preceding proxy lookup validated this rooted object"),
+            };
+            if descriptor.is_some() {
+                return Ok(true);
             }
-            current = self.object_get_prototype(id)?;
+            // All Proxy and membrane cases returned or continued above.
+            // An ordinary prototype lookup is pure and cannot fail after
+            // that validation; a namespace's prototype is also ordinary.
+            current = self
+                .heap
+                .prototype(id)
+                .expect("the checked ordinary object retains its prototype without collection");
         }
         Ok(false)
     }
@@ -121,11 +130,15 @@ impl Vm {
                 return Ok("undefined");
             }
         }
-        Ok(if self.is_callable(value)? {
-            "function"
-        } else {
-            primitive::type_name(value)
-        })
+        Ok(
+            if self.is_callable(value).expect(
+                "objects were validated by is_html_dda; primitive callability is infallible",
+            ) {
+                "function"
+            } else {
+                primitive::type_name(value)
+            },
+        )
     }
 
     pub(super) fn error_global(&mut self, name: &str) -> Result<Value, RuntimeError> {
@@ -144,14 +157,14 @@ impl Vm {
             "Test262Error" => "Test262Error",
             _ => "Error",
         };
-        let string = self.string_intrinsics()?.0;
-        let function_prototype = self.heap.prototype(string)?.unwrap();
+        let function_prototype = self.function_prototype()?;
         let parent = if name == "Error" || name == "Test262Error" {
             self.object_prototype
         } else {
             let error = self.error_global("Error")?;
             self.heap
-                .get(error.object_id().unwrap(), "prototype")?
+                .get(error.object_id().unwrap(), "prototype")
+                .expect("the cached Error constructor owns its nonconfigurable data prototype")
                 .object_id()
                 .unwrap()
         };
@@ -245,19 +258,15 @@ impl Vm {
                     NativeFunction::ErrorStackSetter,
                 )?;
             }
-            Ok(Value::Object(constructor))
-        })();
-        if result.is_err() {
-            self.heap.unroot(root)?;
-        } else {
-            self.globals.insert(name.into(), constructor);
-            // Error constructors are lazy globals just like ordinary native
-            // constructors. An unqualified lookup can use `globals`
-            // directly, but property access through a Test262 realm facade
-            // must observe the corresponding own property of globalThis.
             if let Some(&global) = self.globals.get("globalThis") {
                 self.define_data(global, name, Value::Object(constructor), true, false, true)?;
             }
+            Ok(Value::Object(constructor))
+        })();
+        if result.is_err() {
+            self.release_root(root);
+        } else {
+            self.globals.insert(name.into(), constructor);
         }
         result
     }
@@ -271,7 +280,8 @@ impl Vm {
         let constructor = self.error_global(name)?.object_id().unwrap();
         let default = self
             .heap
-            .get(constructor, "prototype")?
+            .get(constructor, "prototype")
+            .expect("the cached Error constructor owns its nonconfigurable data prototype")
             .object_id()
             .unwrap();
         let prototype = if construct {
@@ -394,7 +404,11 @@ impl Vm {
             let realm = self.test262_realms.get(&realm).ok_or_else(|| {
                 RuntimeError::TypeError("foreign Test262 realm is no longer available".into())
             })?;
-            return Ok(realm.vm.heap.is_error(target)?);
+            return Ok(realm
+                .vm
+                .heap
+                .is_error(target)
+                .expect("a published foreign facade retains its target's permanent root"));
         }
         Ok(self.heap.is_error(object)?)
     }
@@ -451,7 +465,10 @@ impl Vm {
                     _ => None,
                 });
             }
-            current = self.heap.prototype(id)?;
+            current = self
+                .heap
+                .prototype(id)
+                .expect("the preceding proxy lookup validated this object without collection");
         }
         Ok(None)
     }
@@ -475,7 +492,9 @@ impl Vm {
             ));
         }
         let error = self.error_global("Error")?;
-        let home = self.get_property(&error, &"prototype".into())?;
+        let home = self.get_property(&error, &"prototype".into()).expect(
+            "the native Error constructor retains its immutable own prototype data property",
+        );
         if home.object_id() == Some(*object) {
             return Err(RuntimeError::TypeError(
                 "cannot assign Error.prototype.stack".into(),

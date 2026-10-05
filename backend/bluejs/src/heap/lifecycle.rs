@@ -111,11 +111,11 @@ impl Heap {
         if proposed.is_none_or(|bytes| bytes >= self.next_major_bytes) {
             self.major_gc(protected);
         }
-        if self
-            .managed_bytes
-            .checked_add(additional)
-            .is_none_or(|bytes| bytes > self.config.max_heap_bytes)
-        {
+        let required = self.managed_bytes.checked_add(additional);
+        if required.is_none_or(|bytes| bytes > self.config.max_heap_bytes) {
+            #[cfg(any(test, coverage))]
+            self.first_failed_allocation
+                .get_or_insert(required.unwrap_or(usize::MAX));
             return Err(HeapError::HeapLimitExceeded {
                 limit: self.config.max_heap_bytes,
             });

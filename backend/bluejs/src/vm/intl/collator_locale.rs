@@ -34,15 +34,9 @@ impl Vm {
         }
         // Every Intl native was installed on the Function prototype, so the
         // String intrinsics it hangs off exist by now.
-        let constructor = self
-            .string_intrinsics()
-            .expect("the String intrinsics exist once an Intl object does")
-            .0;
         let prototype = self
-            .heap
-            .prototype(constructor)
-            .expect("the String constructor is a live object")
-            .unwrap();
+            .function_prototype()
+            .expect("the String intrinsics exist once an Intl object does");
         let target = self.with_roots(|heap| {
             heap.alloc_native_function(NativeFunction::CollatorCompare, "", prototype)
         })?;

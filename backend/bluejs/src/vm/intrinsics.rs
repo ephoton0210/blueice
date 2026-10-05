@@ -179,7 +179,10 @@ impl Vm {
                 self.install_native(prototype, function_prototype, name, length, method)?;
             }
             for (alias, original) in [("trimLeft", "trimStart"), ("trimRight", "trimEnd")] {
-                let function = self.heap.get(prototype, original)?;
+                let function = self
+                    .heap
+                    .get(prototype, original)
+                    .expect("the rooted String prototype owns its installed trim method");
                 self.define_data(prototype, alias, function, true, false, true)?;
             }
             self.install_symbol_native(
@@ -307,7 +310,10 @@ impl Vm {
             }
             // Array.prototype[Symbol.iterator] is the same function object
             // as Array.prototype.values.
-            let values = self.heap.get(self.array_prototype, "values")?;
+            let values = self
+                .heap
+                .get(self.array_prototype, "values")
+                .expect("the permanently rooted Array prototype owns its installed values method");
             self.define_data(
                 self.array_prototype,
                 JsSymbol::well_known("iterator"),
@@ -465,10 +471,15 @@ impl Vm {
                 NativeFunction::ArraySort,
             )?;
             self.install_array_unscopables()?;
+            // String.[[Prototype]] is writable through Object.setPrototypeOf.
+            // Retain the original realm intrinsic independently before
+            // publishing either cache, so lazy installers survive that change.
+            self.heap.root(function_prototype)?;
             Ok((constructor, prototype))
         })();
         match result {
             Ok(intrinsics) => {
+                self.function_intrinsic_prototype = Some(function_prototype);
                 self.string_intrinsics = Some(intrinsics);
                 Ok(intrinsics)
             }
@@ -528,9 +539,11 @@ impl Vm {
                         JsSymbol::well_known("iterator").into(),
                     ),
                 ] {
-                    self.heap.delete(owner, key)?;
+                    self.heap.delete(owner, key).expect(
+                        "bootstrap rollback deletes only from permanently rooted prototypes",
+                    );
                 }
-                self.heap.unroot(root)?;
+                self.release_root(root);
                 Err(error)
             }
         }

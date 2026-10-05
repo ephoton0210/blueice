@@ -252,13 +252,12 @@ impl Test262AgentHost {
     }
 
     fn shutdown(&self) -> Result<(), RuntimeError> {
-        let (controls, handles, errors) = {
+        let (controls, handles) = {
             let mut state = self.state.lock().expect("Test262 agent host lock poisoned");
             state.shutting_down = true;
             let controls = state.controls.clone();
             let handles = std::mem::take(&mut state.handles);
-            let errors = std::mem::take(&mut state.errors);
-            (controls, handles, errors)
+            (controls, handles)
         };
         for control in controls {
             control.broadcast_ready.notify_all();
@@ -266,6 +265,15 @@ impl Test262AgentHost {
         for handle in handles {
             let _ = handle.join();
         }
+        // A worker may report its final failure while shutdown is joining it.
+        // Drain only after every registered worker has finished reporting.
+        let errors = std::mem::take(
+            &mut self
+                .state
+                .lock()
+                .expect("Test262 agent host lock poisoned")
+                .errors,
+        );
         if let Some(error) = errors.into_iter().next() {
             return Err(RuntimeError::Test262(format!("agent failed: {error}")));
         }
@@ -414,8 +422,14 @@ impl Vm {
             RuntimeError::TypeError("agent.broadcast requires a SharedArrayBuffer".into())
         })?;
         let backing = self.heap.shared_buffer_backing(buffer)?;
-        let maximum = self.heap.buffer_max_byte_length(buffer)?;
-        let byte_length = self.heap.buffer_byte_length(buffer)?;
+        let maximum = self
+            .heap
+            .buffer_max_byte_length(buffer)
+            .expect("the preceding shared-backing lookup validated this buffer");
+        let byte_length = self
+            .heap
+            .buffer_byte_length(buffer)
+            .expect("the shared backing remains valid without intervening user code");
         self.agent_host().broadcast(Broadcast {
             backing,
             max_byte_length: (maximum != byte_length).then_some(maximum),
@@ -440,11 +454,10 @@ impl Vm {
         };
         let constructor = self.global("SharedArrayBuffer")?;
         let prototype = self
-            .get_property(&constructor, &"prototype".into())?
+            .get_property(&constructor, &"prototype".into())
+            .expect("the native constructor has an immutable own prototype data property")
             .object_id()
-            .ok_or_else(|| {
-                RuntimeError::TypeError("SharedArrayBuffer prototype is unavailable".into())
-            })?;
+            .expect("the native constructor initialized its prototype as an object");
         let buffer = self.with_roots(|heap| {
             heap.alloc_shared_array_buffer_backing(
                 broadcast.backing,
@@ -550,10 +563,10 @@ impl Vm {
                         crate::heap::SharedWaitResult::Ok => "ok",
                         crate::heap::SharedWaitResult::TimedOut => "timed-out",
                     };
-                    self.settle_promise(
+                    self.settle_tracked_promise(
                         promise,
                         PromiseStatus::Fulfilled(Value::String(value.into())),
-                    )?;
+                    );
                 }
                 AsyncHostEvent::Timer { callback, root } => {
                     let result = self.call_native(
@@ -562,7 +575,7 @@ impl Vm {
                         Vec::new(),
                         false,
                     );
-                    self.heap.unroot(root)?;
+                    self.release_root(root);
                     result?;
                 }
             }
@@ -600,6 +613,10 @@ impl Vm {
         host.shutdown()
     }
 }
+
+#[cfg(any(test, coverage))]
+#[path = "../../tests/fixtures/agent_host_boundaries.rs"]
+mod boundary_tests;
 
 #[cfg(test)]
 mod tests {

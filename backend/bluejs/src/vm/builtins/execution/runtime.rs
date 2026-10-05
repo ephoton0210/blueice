@@ -4,6 +4,17 @@
 
 use super::*;
 
+/// Helpers that share the single-source callback loop. Composite helpers
+/// retain their own state machines and never enter this dispatch type.
+#[derive(PartialEq)]
+enum SingleSourceHelperKind {
+    Map,
+    Filter,
+    Take,
+    Drop,
+    FlatMap,
+}
+
 impl Vm {
     pub(in super::super::super) fn iterator_helper_next(
         &mut self,
@@ -19,21 +30,25 @@ impl Vm {
                 "Iterator helper next requires an iterator helper".into(),
             ));
         };
-        if state.kind == IteratorHelperKind::Concat {
-            return self.iterator_concat_next(*helper, receiver, &state);
-        }
-        if matches!(
-            state.kind,
-            IteratorHelperKind::Zip | IteratorHelperKind::ZipKeyed
-        ) {
-            return self.iterator_zip_next(*helper, receiver, &state);
-        }
-        if state.kind == IteratorHelperKind::Chunks {
-            return self.iterator_chunks_next(*helper, receiver, &state);
-        }
-        if state.kind == IteratorHelperKind::Windows {
-            return self.iterator_windows_next(*helper, receiver, &state);
-        }
+        let kind = match state.kind {
+            IteratorHelperKind::Concat => {
+                return self.iterator_concat_next(*helper, receiver, &state)
+            }
+            IteratorHelperKind::Zip | IteratorHelperKind::ZipKeyed => {
+                return self.iterator_zip_next(*helper, receiver, &state)
+            }
+            IteratorHelperKind::Chunks => {
+                return self.iterator_chunks_next(*helper, receiver, &state)
+            }
+            IteratorHelperKind::Windows => {
+                return self.iterator_windows_next(*helper, receiver, &state)
+            }
+            IteratorHelperKind::Map => SingleSourceHelperKind::Map,
+            IteratorHelperKind::Filter => SingleSourceHelperKind::Filter,
+            IteratorHelperKind::Take => SingleSourceHelperKind::Take,
+            IteratorHelperKind::Drop => SingleSourceHelperKind::Drop,
+            IteratorHelperKind::FlatMap => SingleSourceHelperKind::FlatMap,
+        };
         if state.done {
             return self.iterator_result(Value::Undefined, true);
         }
@@ -42,20 +57,28 @@ impl Vm {
                 "Iterator helper is already executing".into(),
             ));
         }
+        let base = self.stack.len();
         self.stack.push(receiver.clone());
         self.stack.push(Value::Object(state.record));
         self.stack.push(state.callback.clone());
         let record = Value::Object(state.record);
         let result = (|| {
-            self.with_roots(|heap| heap.begin_iterator_helper(*helper))?;
+            self.heap
+                .begin_iterator_helper(*helper)
+                .expect("the validated, rooted iterator helper keeps its brand");
             loop {
-                if state.kind == IteratorHelperKind::Take && state.index == 0 {
-                    self.with_roots(|heap| heap.finish_iterator_helper(*helper))?;
+                if kind == SingleSourceHelperKind::Take && state.index == 0 {
+                    self.heap
+                        .finish_iterator_helper(*helper)
+                        .expect("the validated, rooted iterator helper keeps its brand");
                     self.iterator_close(&record)?;
                     return self.iterator_result(Value::Undefined, true);
                 }
-                if state.kind == IteratorHelperKind::FlatMap {
-                    let inner = self.heap.get_own(state.record, "flatMapInner")?;
+                if kind == SingleSourceHelperKind::FlatMap {
+                    let inner = self
+                        .heap
+                        .get_own(state.record, "flatMapInner")
+                        .expect("the rooted helper retains its private metadata");
                     if let Some(inner @ Value::Object(_)) = inner {
                         self.stack.push(inner.clone());
                         let next = self.iterator_step(&inner, true);
@@ -66,43 +89,38 @@ impl Vm {
                             self.stack.pop();
                             return result;
                         }
-                        self.with_roots(|heap| {
-                            heap.set(state.record, "flatMapInner", Value::Undefined)
-                        })?;
+                        self.heap
+                            .set(state.record, "flatMapInner", Value::Undefined)
+                            .expect("clearing private iterator storage requires no heap growth");
                     }
                 }
                 let Some(value) = self.iterator_step(&record, true)? else {
-                    self.with_roots(|heap| heap.finish_iterator_helper(*helper))?;
+                    self.heap
+                        .finish_iterator_helper(*helper)
+                        .expect("the validated, rooted iterator helper keeps its brand");
                     return self.iterator_result(Value::Undefined, true);
                 };
-                match state.kind {
-                    IteratorHelperKind::Concat => {
-                        unreachable!("concat has a dedicated state machine")
-                    }
-                    IteratorHelperKind::Zip | IteratorHelperKind::ZipKeyed => {
-                        unreachable!("zip has a dedicated state machine")
-                    }
-                    IteratorHelperKind::Chunks => {
-                        unreachable!("chunks has a dedicated state machine")
-                    }
-                    IteratorHelperKind::Windows => {
-                        unreachable!("windows has a dedicated state machine")
-                    }
-                    IteratorHelperKind::Take => {
-                        self.with_roots(|heap| heap.consume_iterator_helper_take(*helper))?;
+                match kind {
+                    SingleSourceHelperKind::Take => {
+                        self.heap
+                            .consume_iterator_helper_take(*helper)
+                            .expect("the validated, rooted iterator helper keeps its brand");
                         self.stack.push(value.clone());
                         let result = self.iterator_result(value, false);
                         self.stack.pop();
                         return result;
                     }
-                    IteratorHelperKind::Drop => {
+                    SingleSourceHelperKind::Drop => {
                         let remaining = self
                             .heap
-                            .iterator_helper(*helper)?
+                            .iterator_helper(*helper)
+                            .expect("the validated iterator helper remains rooted")
                             .expect("iterator helper state remains live")
                             .index;
                         if remaining > 0 {
-                            self.with_roots(|heap| heap.consume_iterator_helper_take(*helper))?;
+                            self.heap
+                                .consume_iterator_helper_take(*helper)
+                                .expect("the validated, rooted iterator helper keeps its brand");
                             continue;
                         }
                         self.stack.push(value.clone());
@@ -110,7 +128,7 @@ impl Vm {
                         self.stack.pop();
                         return result;
                     }
-                    IteratorHelperKind::Map => {
+                    SingleSourceHelperKind::Map => {
                         let callback_result = self.iterator_helper_callback(*helper, &value)?;
                         self.stack.pop();
                         self.stack.push(callback_result.clone());
@@ -118,15 +136,13 @@ impl Vm {
                         self.stack.pop();
                         return result;
                     }
-                    IteratorHelperKind::Filter => {
+                    SingleSourceHelperKind::Filter => {
                         let callback_result = self.iterator_helper_callback(*helper, &value)?;
-                        let selected = match self.to_boolean(&callback_result) {
-                            Ok(selected) => selected,
-                            Err(error) => {
-                                self.stack.pop();
-                                return Err(error);
-                            }
-                        };
+                        // ToBoolean is a pure read; the callback result is live
+                        // and conversion cannot invoke user code.
+                        let selected = self.to_boolean(&callback_result).expect(
+                            "ToBoolean cannot fail for the freshly returned callback value",
+                        );
                         if selected {
                             let result = self.iterator_result(value, false);
                             self.stack.pop();
@@ -134,7 +150,7 @@ impl Vm {
                         }
                         self.stack.pop();
                     }
-                    IteratorHelperKind::FlatMap => {
+                    SingleSourceHelperKind::FlatMap => {
                         let mapped = self.iterator_helper_callback(*helper, &value)?;
                         self.stack.pop();
                         self.stack.push(mapped.clone());
@@ -142,25 +158,32 @@ impl Vm {
                         self.stack.pop();
                         let inner = inner?;
                         self.stack.push(inner.clone());
-                        self.with_roots(|heap| heap.set(state.record, "flatMapInner", inner))?;
+                        self.heap.set(state.record, "flatMapInner", inner).expect(
+                            "replacing a private object-or-undefined slot requires no heap growth",
+                        );
                         self.stack.pop();
                     }
                 }
             }
         })();
         if result.is_err() {
-            self.with_roots(|heap| heap.finish_iterator_helper(*helper))?;
+            self.heap
+                .finish_iterator_helper(*helper)
+                .expect("the validated, rooted iterator helper keeps its brand");
         } else if !self
             .heap
-            .iterator_helper(*helper)?
+            .iterator_helper(*helper)
+            .expect("the validated iterator helper remains rooted")
             .is_some_and(|state| state.done)
         {
-            self.with_roots(|heap| heap.leave_iterator_helper(*helper))?;
+            self.heap
+                .leave_iterator_helper(*helper)
+                .expect("the validated, rooted iterator helper keeps its brand");
         }
-        self.stack.pop();
-        self.stack.pop();
-        self.stack.pop();
-        self.close_iterator_on_error(&record, result)
+        self.stack.truncate(base + 3);
+        let result = self.close_iterator_on_error(&record, result);
+        self.stack.truncate(base);
+        result
     }
 
     pub(in super::super::super) fn iterator_concat_next(
@@ -182,10 +205,14 @@ impl Vm {
         self.stack.push(receiver.clone());
         self.stack.push(metadata.clone());
         let outcome = (|| {
-            self.with_roots(|heap| heap.begin_iterator_helper(helper))?;
+            self.heap
+                .begin_iterator_helper(helper)
+                .expect("the validated, rooted iterator helper keeps its brand");
             loop {
-                if let Some(current @ Value::Object(_)) =
-                    self.heap.get_own(state.record, "concatCurrent")?
+                if let Some(current @ Value::Object(_)) = self
+                    .heap
+                    .get_own(state.record, "concatCurrent")
+                    .expect("the rooted helper retains its private metadata")
                 {
                     self.stack.push(current.clone());
                     let next = self.iterator_step(&current, true);
@@ -196,36 +223,39 @@ impl Vm {
                         self.stack.pop();
                         return result;
                     }
-                    self.with_roots(|heap| {
-                        heap.set(state.record, "concatCurrent", Value::Undefined)
-                    })?;
+                    self.heap
+                        .set(state.record, "concatCurrent", Value::Undefined)
+                        .expect("clearing private iterator storage requires no heap growth");
                     continue;
                 }
 
                 let current_state = self
                     .heap
-                    .iterator_helper(helper)?
+                    .iterator_helper(helper)
+                    .expect("the validated iterator helper remains rooted")
                     .expect("concat helper state remains live");
                 let length = self
                     .heap
-                    .get_own(state.record, "concatLength")?
-                    .and_then(|value| match value {
-                        Value::Number(value) => Some(value as u64),
-                        _ => None,
-                    })
+                    .get_own(state.record, "concatLength")
+                    .expect("the rooted helper retains its private metadata")
+                    .and_then(|value| value.as_number().map(|value| value as u64))
                     .expect("concat state stores its argument count");
                 if current_state.index >= length {
-                    self.with_roots(|heap| heap.finish_iterator_helper(helper))?;
+                    self.heap
+                        .finish_iterator_helper(helper)
+                        .expect("the validated, rooted iterator helper keeps its brand");
                     return self.iterator_result(Value::Undefined, true);
                 }
                 let index = current_state.index;
                 let iterable = self
                     .heap
-                    .get_own(state.record, format!("concatIterable{index}"))?
+                    .get_own(state.record, format!("concatIterable{index}"))
+                    .expect("the rooted helper retains its private metadata")
                     .expect("concat state stores every iterable");
                 let open = self
                     .heap
-                    .get_own(state.record, format!("concatOpen{index}"))?
+                    .get_own(state.record, format!("concatOpen{index}"))
+                    .expect("the rooted helper retains its private metadata")
                     .expect("concat state stores every iterator method");
                 self.stack.push(iterable.clone());
                 self.stack.push(open.clone());
@@ -241,8 +271,12 @@ impl Vm {
                 let direct = self.direct_iterator_record(&opened)?;
                 self.stack.pop();
                 self.stack.push(direct.clone());
-                self.with_roots(|heap| heap.set(state.record, "concatCurrent", direct))?;
-                self.with_roots(|heap| heap.advance_iterator_helper(helper))?;
+                self.heap
+                    .set(state.record, "concatCurrent", direct)
+                    .expect("replacing a private object-or-undefined slot requires no heap growth");
+                self.heap
+                    .advance_iterator_helper(helper)
+                    .expect("the validated, rooted iterator helper keeps its brand");
                 self.stack.pop();
             }
         })();
@@ -250,15 +284,20 @@ impl Vm {
             Ok(value) => {
                 if !self
                     .heap
-                    .iterator_helper(helper)?
+                    .iterator_helper(helper)
+                    .expect("the validated iterator helper remains rooted")
                     .is_some_and(|state| state.done)
                 {
-                    self.with_roots(|heap| heap.leave_iterator_helper(helper))?;
+                    self.heap
+                        .leave_iterator_helper(helper)
+                        .expect("the validated, rooted iterator helper keeps its brand");
                 }
                 Ok(value)
             }
             Err(error) => {
-                self.with_roots(|heap| heap.finish_iterator_helper(helper))?;
+                self.heap
+                    .finish_iterator_helper(helper)
+                    .expect("the validated, rooted iterator helper keeps its brand");
                 self.close_concat_on_error(&metadata, error)
             }
         };
@@ -285,24 +324,25 @@ impl Vm {
         self.stack.push(receiver.clone());
         self.stack.push(metadata.clone());
         let outcome = (|| {
-            self.with_roots(|heap| heap.begin_iterator_helper(helper))?;
+            self.heap
+                .begin_iterator_helper(helper)
+                .expect("the validated, rooted iterator helper keeps its brand");
             let count = self
                 .heap
-                .get_own(state.record, "zipCount")?
-                .and_then(|value| match value {
-                    Value::Number(value) => Some(value as u64),
-                    _ => None,
-                })
+                .get_own(state.record, "zipCount")
+                .expect("the rooted helper retains its private metadata")
+                .and_then(|value| value.as_number().map(|value| value as u64))
                 .expect("zip metadata stores its source count");
             let mode = self
                 .heap
-                .get_own(state.record, "zipMode")?
+                .get_own(state.record, "zipMode")
+                .expect("the rooted helper retains its private metadata")
                 .expect("zip metadata stores its mode");
-            let Value::String(mode) = mode else {
-                unreachable!("zip mode is a string")
-            };
+            let mode = mode.as_string().expect("zip mode is a string").clone();
             if count == 0 {
-                self.with_roots(|heap| heap.finish_iterator_helper(helper))?;
+                self.heap
+                    .finish_iterator_helper(helper)
+                    .expect("the validated, rooted iterator helper keeps its brand");
                 return self.iterator_result(Value::Undefined, true);
             }
             let values_base = self.stack.len();
@@ -313,7 +353,8 @@ impl Vm {
                 for index in 0..count {
                     let record = self
                         .heap
-                        .get_own(state.record, format!("zipRecord{index}"))?
+                        .get_own(state.record, format!("zipRecord{index}"))
+                        .expect("the rooted helper retains its private metadata")
                         .expect("zip metadata stores every source record");
                     self.stack.push(record.clone());
                     let step = self.iterator_step(&record, true);
@@ -328,7 +369,9 @@ impl Vm {
                             any_done = true;
                             if mode == "strict" {
                                 if index != 0 {
-                                    self.with_roots(|heap| heap.finish_iterator_helper(helper))?;
+                                    self.heap.finish_iterator_helper(helper).expect(
+                                        "the validated, rooted iterator helper keeps its brand",
+                                    );
                                     let _ = self.iterator_zip_close_records(state.record, count);
                                     return Err(RuntimeError::TypeError(
                                         "Iterator.zip strict sources have different lengths".into(),
@@ -337,15 +380,16 @@ impl Vm {
                                 for remaining in 1..count {
                                     let record = self
                                         .heap
-                                        .get_own(state.record, format!("zipRecord{remaining}"))?
+                                        .get_own(state.record, format!("zipRecord{remaining}"))
+                                        .expect("the rooted helper retains its private metadata")
                                         .expect("zip metadata stores every source record");
                                     self.stack.push(record.clone());
                                     let step = self.iterator_step(&record, true);
                                     self.stack.pop();
                                     if step?.is_some() {
-                                        self.with_roots(|heap| {
-                                            heap.finish_iterator_helper(helper)
-                                        })?;
+                                        self.heap
+                                            .finish_iterator_helper(helper)
+                                            .expect("the validated iterator helper remains rooted");
                                         let _ =
                                             self.iterator_zip_close_records(state.record, count);
                                         return Err(RuntimeError::TypeError(
@@ -354,7 +398,9 @@ impl Vm {
                                         ));
                                     }
                                 }
-                                self.with_roots(|heap| heap.finish_iterator_helper(helper))?;
+                                self.heap.finish_iterator_helper(helper).expect(
+                                    "the validated, rooted iterator helper keeps its brand",
+                                );
                                 return self.iterator_result(Value::Undefined, true);
                             }
                             values.push(None);
@@ -362,20 +408,25 @@ impl Vm {
                     }
                     if mode == "shortest" && any_done {
                         self.iterator_zip_close_records(state.record, count)?;
-                        self.with_roots(|heap| heap.finish_iterator_helper(helper))?;
+                        self.heap
+                            .finish_iterator_helper(helper)
+                            .expect("the validated, rooted iterator helper keeps its brand");
                         return self.iterator_result(Value::Undefined, true);
                     }
                 }
                 if mode == "longest" {
                     if all_done {
-                        self.with_roots(|heap| heap.finish_iterator_helper(helper))?;
+                        self.heap
+                            .finish_iterator_helper(helper)
+                            .expect("the validated, rooted iterator helper keeps its brand");
                         return self.iterator_result(Value::Undefined, true);
                     }
                     for (index, value) in values.iter_mut().enumerate() {
                         if value.is_none() {
                             let padding = self
                                 .heap
-                                .get_own(state.record, format!("zipPadding{index}"))?
+                                .get_own(state.record, format!("zipPadding{index}"))
+                                .expect("the rooted helper retains its private metadata")
                                 .expect("zip metadata stores every padding value");
                             self.stack.push(padding.clone());
                             *value = Some(padding);
@@ -392,8 +443,6 @@ impl Vm {
                     self.iterator_zip_keyed_results(state.record, values)?
                 };
                 // Adding the marker property grows the helper's state, which
-                // can run a major collection: root the result array first.
-                // Adding the marker property grows the helper's state, which
                 // can run a major collection: root the result first.
                 self.stack.push(values.clone());
                 self.with_roots(|heap| heap.set(state.record, "zipStarted", Value::Bool(true)))?;
@@ -408,10 +457,13 @@ impl Vm {
             Ok(value) => {
                 if !self
                     .heap
-                    .iterator_helper(helper)?
+                    .iterator_helper(helper)
+                    .expect("the validated iterator helper remains rooted")
                     .is_some_and(|state| state.done)
                 {
-                    self.with_roots(|heap| heap.leave_iterator_helper(helper))?;
+                    self.heap
+                        .leave_iterator_helper(helper)
+                        .expect("the validated, rooted iterator helper keeps its brand");
                 }
                 Ok(value)
             }
@@ -420,10 +472,13 @@ impl Vm {
                 // while finishing the helper and closing every source run
                 // JavaScript and may collect.
                 self.root_thrown(&error);
-                self.with_roots(|heap| heap.finish_iterator_helper(helper))?;
+                self.heap
+                    .finish_iterator_helper(helper)
+                    .expect("the validated, rooted iterator helper keeps its brand");
                 let _ = self.iterator_zip_close_records(
                     state.record,
-                    self.iterator_zip_count(state.record)?,
+                    self.iterator_zip_count(state.record)
+                        .expect("zip factories install a numeric source count"),
                 );
                 Err(error)
             }
@@ -444,21 +499,17 @@ impl Vm {
             for (index, value) in values.into_iter().enumerate() {
                 let key = self
                     .heap
-                    .get_own(metadata, format!("zipKey{index}"))?
+                    .get_own(metadata, format!("zipKey{index}"))
+                    .expect("the rooted zipKeyed helper retains its private metadata")
                     .expect("zipKeyed metadata stores every source key");
-                let key = self.coerce_property_key(&key)?;
+                let key = self
+                    .coerce_property_key(&key)
+                    .expect("a stored own property key is a String or Symbol");
                 self.stack.push(value.clone());
-                let defined = self.object_define_own_property(
-                    result,
-                    key,
-                    PropertyDescriptor::data(value, true, true, true),
-                )?;
+                // The unpublished result is a fresh ordinary object. Use the
+                // shared data-property installation and its allocation guard.
+                self.define_data(result, key, value, true, true, true)?;
                 self.stack.pop();
-                if !defined {
-                    return Err(RuntimeError::TypeError(
-                        "cannot define Iterator.zipKeyed result property".into(),
-                    ));
-                }
             }
             Ok(Value::Object(result))
         })();
@@ -472,10 +523,7 @@ impl Vm {
     ) -> Result<u64, RuntimeError> {
         self.heap
             .get_own(metadata, "zipCount")?
-            .and_then(|value| match value {
-                Value::Number(value) => Some(value as u64),
-                _ => None,
-            })
+            .and_then(|value| value.as_number().map(|value| value as u64))
             .ok_or_else(|| RuntimeError::TypeError("invalid Iterator.zip state".into()))
     }
 
@@ -489,7 +537,8 @@ impl Vm {
         for index in (0..count).rev() {
             let record = self
                 .heap
-                .get_own(metadata, format!("zipRecord{index}"))?
+                .get_own(metadata, format!("zipRecord{index}"))
+                .expect("zip cleanup retains its private metadata")
                 .expect("zip metadata stores every source record");
             self.stack.push(record.clone());
             let close = self.iterator_close(&record);
@@ -554,7 +603,9 @@ impl Vm {
         self.stack.push(receiver.clone());
         self.stack.push(record.clone());
         let outcome = (|| {
-            self.with_roots(|heap| heap.begin_iterator_helper(helper))?;
+            self.heap
+                .begin_iterator_helper(helper)
+                .expect("the validated, rooted iterator helper keeps its brand");
             let values_base = self.stack.len();
             let chunk = (|| {
                 let mut values = Vec::new();
@@ -572,7 +623,9 @@ impl Vm {
             })();
             self.stack.truncate(values_base);
             let Some(chunk) = chunk? else {
-                self.with_roots(|heap| heap.finish_iterator_helper(helper))?;
+                self.heap
+                    .finish_iterator_helper(helper)
+                    .expect("the validated, rooted iterator helper keeps its brand");
                 return self.iterator_result(Value::Undefined, true);
             };
             self.stack.push(chunk.clone());
@@ -584,15 +637,20 @@ impl Vm {
             Ok(value) => {
                 if !self
                     .heap
-                    .iterator_helper(helper)?
+                    .iterator_helper(helper)
+                    .expect("the validated iterator helper remains rooted")
                     .is_some_and(|state| state.done)
                 {
-                    self.with_roots(|heap| heap.leave_iterator_helper(helper))?;
+                    self.heap
+                        .leave_iterator_helper(helper)
+                        .expect("the validated, rooted iterator helper keeps its brand");
                 }
                 Ok(value)
             }
             Err(error) => {
-                self.with_roots(|heap| heap.finish_iterator_helper(helper))?;
+                self.heap
+                    .finish_iterator_helper(helper)
+                    .expect("the validated, rooted iterator helper keeps its brand");
                 self.close_iterator_on_error(&record, Err(error))
             }
         };
@@ -619,14 +677,21 @@ impl Vm {
         self.stack.push(receiver.clone());
         self.stack.push(record.clone());
         let outcome = (|| {
-            self.with_roots(|heap| heap.begin_iterator_helper(helper))?;
+            self.heap
+                .begin_iterator_helper(helper)
+                .expect("the validated, rooted iterator helper keeps its brand");
             let values_base = self.stack.len();
             let window = (|| {
                 let allow_partial = matches!(
-                    self.heap.get_own(state.record, "windowsAllowPartial")?,
+                    self.heap
+                        .get_own(state.record, "windowsAllowPartial")
+                        .expect("the rooted helper retains its private metadata"),
                     Some(Value::Bool(true))
                 );
-                let prior = self.heap.get_own(state.record, "windowsBuffer")?;
+                let prior = self
+                    .heap
+                    .get_own(state.record, "windowsBuffer")
+                    .expect("the rooted helper retains its private metadata");
                 let mut values = Vec::new();
                 if let Some(Value::Object(buffer)) = prior {
                     // A full prior window slides by one element. Its private
@@ -635,13 +700,16 @@ impl Vm {
                     for index in 1..state.index {
                         let value = self
                             .heap
-                            .get_own(buffer, index.to_string())?
+                            .get_own(buffer, index.to_string())
+                            .expect("the private window buffer is retained by the rooted helper")
                             .expect("window buffer has the requested length");
                         self.stack.push(value.clone());
                         values.push(value);
                     }
                     let Some(value) = self.iterator_step(&record, true)? else {
-                        self.with_roots(|heap| heap.finish_iterator_helper(helper))?;
+                        self.heap
+                            .finish_iterator_helper(helper)
+                            .expect("the validated, rooted iterator helper keeps its brand");
                         return Ok(None);
                     };
                     self.stack.push(value.clone());
@@ -649,7 +717,9 @@ impl Vm {
                 } else {
                     for _ in 0..state.index {
                         let Some(value) = self.iterator_step(&record, true)? else {
-                            self.with_roots(|heap| heap.finish_iterator_helper(helper))?;
+                            self.heap
+                                .finish_iterator_helper(helper)
+                                .expect("the validated, rooted iterator helper keeps its brand");
                             if allow_partial && !values.is_empty() {
                                 return self.array_from(values).map(Some);
                             }
@@ -663,7 +733,9 @@ impl Vm {
                 // buffer, while the caller receives a distinct Array.
                 let buffer = self.array_from(values.clone())?;
                 self.stack.push(buffer.clone());
-                self.with_roots(|heap| heap.set(state.record, "windowsBuffer", buffer))?;
+                self.heap
+                    .set(state.record, "windowsBuffer", buffer)
+                    .expect("replacing a private object-or-undefined slot requires no heap growth");
                 self.stack.pop();
                 self.array_from(values).map(Some)
             })();
@@ -681,15 +753,20 @@ impl Vm {
             Ok(value) => {
                 if !self
                     .heap
-                    .iterator_helper(helper)?
+                    .iterator_helper(helper)
+                    .expect("the validated iterator helper remains rooted")
                     .is_some_and(|state| state.done)
                 {
-                    self.with_roots(|heap| heap.leave_iterator_helper(helper))?;
+                    self.heap
+                        .leave_iterator_helper(helper)
+                        .expect("the validated, rooted iterator helper keeps its brand");
                 }
                 Ok(value)
             }
             Err(error) => {
-                self.with_roots(|heap| heap.finish_iterator_helper(helper))?;
+                self.heap
+                    .finish_iterator_helper(helper)
+                    .expect("the validated, rooted iterator helper keeps its brand");
                 self.close_iterator_on_error(&record, Err(error))
             }
         };
@@ -702,10 +779,13 @@ impl Vm {
         metadata: &Value,
         error: RuntimeError,
     ) -> Result<T, RuntimeError> {
-        let Value::Object(metadata) = metadata else {
-            unreachable!("concat metadata is an ordinary object")
-        };
-        let current = self.heap.get_own(*metadata, "concatCurrent")?;
+        let metadata = metadata
+            .object_id()
+            .expect("concat metadata is an ordinary object");
+        let current = self
+            .heap
+            .get_own(metadata, "concatCurrent")
+            .expect("concat cleanup retains its private metadata");
         if let Some(current @ Value::Object(_)) = current {
             self.stack.push(current.clone());
             let result = self.close_iterator_on_error(&current, Err(error));
@@ -723,13 +803,16 @@ impl Vm {
     ) -> Result<Value, RuntimeError> {
         let state = self
             .heap
-            .iterator_helper(helper)?
+            .iterator_helper(helper)
+            .expect("the validated iterator helper remains rooted")
             .expect("iterator helper state remains live");
         if state.index >= 9_007_199_254_740_991 {
             return Err(RuntimeError::RangeError(
                 "Iterator helper index exceeds the safe integer range".into(),
             ));
         }
+        let base = self.stack.len();
+        self.stack.push(Value::Object(helper));
         self.stack.push(value.clone());
         let callback_result = self.call_native(
             state.callback.clone(),
@@ -740,11 +823,14 @@ impl Vm {
         let callback_result = match callback_result {
             Ok(result) => result,
             Err(error) => {
-                self.stack.pop();
+                self.stack.truncate(base);
                 return Err(error);
             }
         };
-        self.with_roots(|heap| heap.advance_iterator_helper(helper))?;
+        self.heap
+            .advance_iterator_helper(helper)
+            .expect("the validated, rooted iterator helper keeps its brand");
+        self.stack.remove(base);
         Ok(callback_result)
     }
 
@@ -929,10 +1015,14 @@ impl Vm {
         self.stack.push(Value::Object(state.record));
         let record = Value::Object(state.record);
         let result = (|| {
-            self.with_roots(|heap| heap.begin_iterator_helper(*helper))?;
+            self.heap
+                .begin_iterator_helper(*helper)
+                .expect("the validated, rooted iterator helper keeps its brand");
             if state.kind == IteratorHelperKind::FlatMap {
-                if let Some(inner @ Value::Object(_)) =
-                    self.heap.get_own(state.record, "flatMapInner")?
+                if let Some(inner @ Value::Object(_)) = self
+                    .heap
+                    .get_own(state.record, "flatMapInner")
+                    .expect("the rooted helper retains its private metadata")
                 {
                     self.stack.push(inner.clone());
                     let inner_result = self.iterator_close(&inner);
@@ -945,7 +1035,9 @@ impl Vm {
             self.iterator_close(&record)?;
             self.iterator_result(Value::Undefined, true)
         })();
-        self.with_roots(|heap| heap.finish_iterator_helper(*helper))?;
+        self.heap
+            .finish_iterator_helper(*helper)
+            .expect("the validated, rooted iterator helper keeps its brand");
         self.stack.pop();
         self.stack.pop();
         result
@@ -970,9 +1062,13 @@ impl Vm {
         self.stack.push(receiver.clone());
         self.stack.push(metadata.clone());
         let result = (|| {
-            self.with_roots(|heap| heap.begin_iterator_helper(helper))?;
-            if let Some(current @ Value::Object(_)) =
-                self.heap.get_own(state.record, "concatCurrent")?
+            self.heap
+                .begin_iterator_helper(helper)
+                .expect("the validated, rooted iterator helper keeps its brand");
+            if let Some(current @ Value::Object(_)) = self
+                .heap
+                .get_own(state.record, "concatCurrent")
+                .expect("the rooted helper retains its private metadata")
             {
                 self.stack.push(current.clone());
                 let close = self.iterator_close(&current);
@@ -981,7 +1077,9 @@ impl Vm {
             }
             self.iterator_result(Value::Undefined, true)
         })();
-        self.with_roots(|heap| heap.finish_iterator_helper(helper))?;
+        self.heap
+            .finish_iterator_helper(helper)
+            .expect("the validated, rooted iterator helper keeps its brand");
         self.stack.truncate(base);
         result
     }
@@ -1006,31 +1104,41 @@ impl Vm {
         self.stack.push(metadata);
         let result = (|| {
             let started = matches!(
-                self.heap.get_own(state.record, "zipStarted")?,
+                self.heap
+                    .get_own(state.record, "zipStarted")
+                    .expect("the rooted helper retains its private metadata"),
                 Some(Value::Bool(true))
             );
             if started {
                 // Resuming a suspended yield runs the close handlers while
                 // the helper is executing, so their re-entrant `next`/return
                 // calls see the GeneratorValidate TypeError.
-                self.with_roots(|heap| heap.begin_iterator_helper(helper))?;
+                self.heap
+                    .begin_iterator_helper(helper)
+                    .expect("the validated, rooted iterator helper keeps its brand");
                 let close = self.iterator_zip_close_records(
                     state.record,
-                    self.iterator_zip_count(state.record)?,
+                    self.iterator_zip_count(state.record)
+                        .expect("zip factories install a numeric source count"),
                 );
                 if let Err(error) = &close {
                     self.root_thrown(error);
                 }
-                self.with_roots(|heap| heap.finish_iterator_helper(helper))?;
+                self.heap
+                    .finish_iterator_helper(helper)
+                    .expect("the validated, rooted iterator helper keeps its brand");
                 close?;
             } else {
                 // GeneratorClose from suspended-start completes the helper
                 // before the close handlers run. Re-entrant `next` therefore
                 // returns the completed iterator result.
-                self.with_roots(|heap| heap.finish_iterator_helper(helper))?;
+                self.heap
+                    .finish_iterator_helper(helper)
+                    .expect("the validated, rooted iterator helper keeps its brand");
                 self.iterator_zip_close_records(
                     state.record,
-                    self.iterator_zip_count(state.record)?,
+                    self.iterator_zip_count(state.record)
+                        .expect("zip factories install a numeric source count"),
                 )?;
             }
             self.iterator_result(Value::Undefined, true)
@@ -1129,7 +1237,10 @@ impl Vm {
             let mut index = 0_u64;
             while let Some(value) = self.iterator_step(&record, true)? {
                 let predicate = self.iterator_callback(callback, value, index)?;
-                if !self.to_boolean(&predicate)? {
+                if !self
+                    .to_boolean(&predicate)
+                    .expect("ToBoolean cannot fail for a freshly returned live value")
+                {
                     self.iterator_close(&record)?;
                     return Ok(Value::Bool(false));
                 }
@@ -1152,7 +1263,10 @@ impl Vm {
             let mut index = 0_u64;
             while let Some(value) = self.iterator_step(&record, true)? {
                 let predicate = self.iterator_callback(callback, value, index)?;
-                if self.to_boolean(&predicate)? {
+                if self
+                    .to_boolean(&predicate)
+                    .expect("ToBoolean cannot fail for a freshly returned live value")
+                {
                     self.iterator_close(&record)?;
                     return Ok(Value::Bool(true));
                 }
@@ -1175,7 +1289,10 @@ impl Vm {
             let mut index = 0_u64;
             while let Some(value) = self.iterator_step(&record, true)? {
                 let predicate = self.iterator_callback(callback, value.clone(), index)?;
-                if self.to_boolean(&predicate)? {
+                if self
+                    .to_boolean(&predicate)
+                    .expect("ToBoolean cannot fail for a freshly returned live value")
+                {
                     self.iterator_close(&record)?;
                     return Ok(value);
                 }
@@ -1196,11 +1313,8 @@ impl Vm {
         let record = self.callback_iterator_record(receiver, callback)?;
         self.stack.push(record.clone());
         let result = (|| {
-            if !self.is_callable(callback)? {
-                return Err(RuntimeError::TypeError(
-                    "Iterator helper callback must be callable".into(),
-                ));
-            }
+            // callback_iterator_record already validates the callback before
+            // reading the source's next method, as required by Iterator.reduce.
             let mut index = 0_u64;
             let mut accumulator = if args.len() > 1 {
                 args[1].clone()
@@ -1245,14 +1359,16 @@ impl Vm {
             ));
         }
         let key: PropertyName = JsSymbol::well_known("toStringTag").into();
-        if self
-            .heap
-            .get_own_property_descriptor(*receiver, &key)?
-            .is_none()
-        {
-            self.define_data(*receiver, key, value.clone(), true, true, true)?;
+        if self.object_get_own_property(*receiver, &key)?.is_none() {
+            if !self.object_define_own_property(
+                *receiver,
+                key,
+                PropertyDescriptor::data(value.clone(), true, true, true),
+            )? {
+                return Err(RuntimeError::TypeError("cannot define property".into()));
+            }
         } else {
-            self.set_property(&Value::Object(*receiver), &key, value)?;
+            self.object_set_or_throw(*receiver, &key, value)?;
         }
         Ok(Value::Undefined)
     }
@@ -1274,17 +1390,19 @@ impl Vm {
             ));
         }
         let key: PropertyName = "constructor".into();
-        if self
-            .heap
-            .get_own_property_descriptor(*receiver, &key)?
-            .is_none()
-        {
+        if self.object_get_own_property(*receiver, &key)?.is_none() {
             // SetterThatIgnoresPrototypeProperties creates an own data
             // property instead of recursively invoking the accessor found on
             // %Iterator.prototype%.
-            self.define_data(*receiver, key, value.clone(), true, true, true)?;
+            if !self.object_define_own_property(
+                *receiver,
+                key,
+                PropertyDescriptor::data(value.clone(), true, true, true),
+            )? {
+                return Err(RuntimeError::TypeError("cannot define property".into()));
+            }
         } else {
-            self.set_property(&Value::Object(*receiver), &key, value)?;
+            self.object_set_or_throw(*receiver, &key, value)?;
         }
         Ok(Value::Undefined)
     }
@@ -1321,13 +1439,23 @@ impl Vm {
             )?;
             for array in [&raw, &cooked] {
                 let id = array.object_id().unwrap();
-                for key in self.heap.own_property_keys(id)? {
-                    let mut desc = self.heap.get_own_property_descriptor(id, &key)?.unwrap();
+                for key in self
+                    .heap
+                    .own_property_keys(id)
+                    .expect("the unpublished template array remains rooted")
+                {
+                    let mut desc = self
+                        .heap
+                        .get_own_property_descriptor(id, &key)
+                        .expect("a fresh ordinary template array has no namespace export cells")
+                        .expect("the key came from this template array");
                     desc.writable = Some(false);
                     desc.configurable = Some(false);
                     self.with_roots(|heap| heap.define_own_property(id, key, desc))?;
                 }
-                self.heap.prevent_extensions(id)?;
+                self.heap
+                    .prevent_extensions(id)
+                    .expect("the unpublished template array remains rooted");
             }
             self.heap.root(cooked.object_id().unwrap())?;
             self.templates
@@ -1350,22 +1478,24 @@ impl Vm {
         value: &Value,
         method: Value,
     ) -> Result<Value, RuntimeError> {
-        let iterator = self.call_native(method, value.clone(), Vec::new(), false)?;
-        if !matches!(iterator, Value::Object(_)) {
-            return Err(RuntimeError::TypeError("iterator must be an object".into()));
-        }
-        self.stack.push(iterator.clone());
-        let next = self.get_property(&iterator, &"next".into())?;
-        self.stack.push(next.clone());
-        let record = self.with_roots(|heap| heap.alloc_object(None))?;
-        self.stack.push(Value::Object(record));
-        self.with_roots(|heap| heap.set(record, "iterator", iterator))?;
-        self.with_roots(|heap| heap.set(record, "next", next))?;
-        self.with_roots(|heap| heap.set(record, "done", Value::Bool(false)))?;
-        self.stack.pop();
-        self.stack.pop();
-        self.stack.pop();
-        Ok(Value::Object(record))
+        let base = self.stack.len();
+        let result = (|| {
+            let iterator = self.call_native(method, value.clone(), Vec::new(), false)?;
+            if !matches!(iterator, Value::Object(_)) {
+                return Err(RuntimeError::TypeError("iterator must be an object".into()));
+            }
+            self.stack.push(iterator.clone());
+            let next = self.get_property(&iterator, &"next".into())?;
+            self.stack.push(next.clone());
+            let record = self.with_roots(|heap| heap.alloc_object(None))?;
+            self.stack.push(Value::Object(record));
+            self.with_roots(|heap| heap.set(record, "iterator", iterator))?;
+            self.with_roots(|heap| heap.set(record, "next", next))?;
+            self.with_roots(|heap| heap.set(record, "done", Value::Bool(false)))?;
+            Ok(Value::Object(record))
+        })();
+        self.stack.truncate(base);
+        result
     }
 
     /// GetAsyncIterator first observes @@asyncIterator and uses the ordinary
@@ -1389,9 +1519,9 @@ impl Vm {
         &mut self,
         record: Value,
     ) -> Result<Value, RuntimeError> {
-        let Value::Object(record_id) = record else {
-            unreachable!("GetIterator creates an iterator record")
-        };
+        let record_id = record
+            .object_id()
+            .expect("GetIterator creates an iterator record");
         self.stack.push(Value::Object(record_id));
         let result =
             self.with_roots(|heap| heap.set(record_id, "asyncFromSync", Value::Bool(true)));
@@ -1406,24 +1536,26 @@ impl Vm {
         value: &Value,
         method: Value,
     ) -> Result<Value, RuntimeError> {
-        let iterator = self.call_native(method, value.clone(), Vec::new(), false)?;
-        if !matches!(iterator, Value::Object(_)) {
-            return Err(RuntimeError::TypeError(
-                "async iterator must be an object".into(),
-            ));
-        }
-        self.stack.push(iterator.clone());
-        let next = self.get_property(&iterator, &"next".into())?;
-        self.stack.push(next.clone());
-        let record = self.with_roots(|heap| heap.alloc_object(None))?;
-        self.stack.push(Value::Object(record));
-        self.with_roots(|heap| heap.set(record, "iterator", iterator))?;
-        self.with_roots(|heap| heap.set(record, "next", next))?;
-        self.with_roots(|heap| heap.set(record, "done", Value::Bool(false)))?;
-        self.stack.pop();
-        self.stack.pop();
-        self.stack.pop();
-        Ok(Value::Object(record))
+        let base = self.stack.len();
+        let result = (|| {
+            let iterator = self.call_native(method, value.clone(), Vec::new(), false)?;
+            if !matches!(iterator, Value::Object(_)) {
+                return Err(RuntimeError::TypeError(
+                    "async iterator must be an object".into(),
+                ));
+            }
+            self.stack.push(iterator.clone());
+            let next = self.get_property(&iterator, &"next".into())?;
+            self.stack.push(next.clone());
+            let record = self.with_roots(|heap| heap.alloc_object(None))?;
+            self.stack.push(Value::Object(record));
+            self.with_roots(|heap| heap.set(record, "iterator", iterator))?;
+            self.with_roots(|heap| heap.set(record, "next", next))?;
+            self.with_roots(|heap| heap.set(record, "done", Value::Bool(false)))?;
+            Ok(Value::Object(record))
+        })();
+        self.stack.truncate(base);
+        result
     }
 
     pub(in super::super::super) fn async_iterator_next(
@@ -1431,23 +1563,38 @@ impl Vm {
         record: &Value,
         argument: Option<Value>,
     ) -> Result<Value, RuntimeError> {
-        let Value::Object(record) = record else {
-            unreachable!("compiler only emits iterator records")
-        };
-        if matches!(self.heap.get_own(*record, "done")?, Some(Value::Bool(true))) {
+        let record = record
+            .object_id()
+            .expect("compiler only emits iterator records");
+        if matches!(
+            self.heap
+                .get_own(record, "done")
+                .expect("the caller retains this private ordinary iterator record"),
+            Some(Value::Bool(true))
+        ) {
             return self.iterator_result(Value::Undefined, true);
         }
-        let iterator = self.get_property(&Value::Object(*record), &"iterator".into())?;
-        let next = self.get_property(&Value::Object(*record), &"next".into())?;
+        let iterator = self
+            .heap
+            .get_own(record, "iterator")
+            .expect("the validated private iterator record remains live")
+            .unwrap_or(Value::Undefined);
+        let next = self
+            .heap
+            .get_own(record, "next")
+            .expect("the validated private iterator record remains live")
+            .unwrap_or(Value::Undefined);
         let result = self.call_native(next, iterator, argument.into_iter().collect(), false);
         if !matches!(
-            self.heap.get_own(*record, "asyncFromSync")?,
+            self.heap
+                .get_own(record, "asyncFromSync")
+                .expect("the validated private iterator record remains rooted"),
             Some(Value::Bool(true))
         ) {
             return result;
         }
         match result {
-            Ok(result) => self.async_from_sync_continue(*record, result, true),
+            Ok(result) => self.async_from_sync_continue(record, result, true),
             Err(error) => {
                 let error = self.error_value(error)?;
                 self.promise_reject(error)
@@ -1459,7 +1606,9 @@ impl Vm {
         &mut self,
         function: NativeFunction,
     ) -> Result<Value, RuntimeError> {
-        let prototype = self.function_prototype()?;
+        let prototype = self
+            .function_prototype()
+            .expect("the AsyncFromSync continuation already created a native Promise");
         let id = self.with_roots(|heap| heap.alloc_native_function(function, "", prototype))?;
         self.stack.push(Value::Object(id));
         let result = (|| {
@@ -1491,7 +1640,9 @@ impl Vm {
                 ));
             }
             let done = self.get_property(&result, &"done".into())?;
-            let done = self.to_boolean(&done)?;
+            let done = self
+                .to_boolean(&done)
+                .expect("ToBoolean cannot fail for a freshly returned live value");
             let value = self.get_property(&result, &"value".into())?;
             let close = close_on_rejection && !done;
             let value_wrapper = match self.promise_resolve(value) {
@@ -1532,12 +1683,8 @@ impl Vm {
             let wrapper = value_wrapper
                 .object_id()
                 .expect("PromiseResolve returns a promise object");
-            self.perform_promise_then(
-                wrapper,
-                fulfilled,
-                rejected,
-                ReactionTarget::Native(target),
-            )?;
+            self.perform_promise_then(wrapper, fulfilled, rejected, ReactionTarget::Native(target))
+                .expect("PromiseResolve returned a registered AsyncFromSync Promise");
             Ok(Value::Object(target))
         })();
         self.stack.truncate(base);
@@ -1558,14 +1705,27 @@ impl Vm {
         record: &Value,
         argument: Option<Value>,
     ) -> Result<Value, RuntimeError> {
-        let Value::Object(record) = record else {
-            unreachable!("compiler only emits iterator records")
-        };
-        if matches!(self.heap.get_own(*record, "done")?, Some(Value::Bool(true))) {
+        let record = record
+            .object_id()
+            .expect("compiler only emits iterator records");
+        if matches!(
+            self.heap
+                .get_own(record, "done")
+                .expect("the caller retains this private ordinary iterator record"),
+            Some(Value::Bool(true))
+        ) {
             return self.iterator_result(Value::Undefined, true);
         }
-        let iterator = self.get_property(&Value::Object(*record), &"iterator".into())?;
-        let next = self.get_property(&Value::Object(*record), &"next".into())?;
+        let iterator = self
+            .heap
+            .get_own(record, "iterator")
+            .expect("the validated private iterator record remains live")
+            .unwrap_or(Value::Undefined);
+        let next = self
+            .heap
+            .get_own(record, "next")
+            .expect("the validated private iterator record remains live")
+            .unwrap_or(Value::Undefined);
         self.call_native(next, iterator, argument.into_iter().collect(), false)
     }
 
@@ -1574,9 +1734,9 @@ impl Vm {
         record: &Value,
         result: &Value,
     ) -> Result<Option<Value>, RuntimeError> {
-        let Value::Object(record) = record else {
-            unreachable!("compiler only emits iterator records")
-        };
+        let record = record
+            .object_id()
+            .expect("compiler only emits iterator records");
         let outcome = (|| {
             if !matches!(result, Value::Object(_)) {
                 return Err(RuntimeError::TypeError(
@@ -1584,7 +1744,10 @@ impl Vm {
                 ));
             }
             let done = self.get_property(result, &"done".into())?;
-            if self.to_boolean(&done)? {
+            if self
+                .to_boolean(&done)
+                .expect("ToBoolean cannot fail for a freshly returned live value")
+            {
                 Ok(None)
             } else {
                 self.get_property(result, &"value".into()).map(Some)
@@ -1595,9 +1758,10 @@ impl Vm {
             if let Err(RuntimeError::Thrown(value)) = &outcome {
                 self.stack.push(value.clone());
             }
-            let marked = self.with_roots(|heap| heap.set(*record, "done", Value::Bool(true)));
+            self.heap
+                .set(record, "done", Value::Bool(true))
+                .expect("the private iterator record owns its existing Boolean done field");
             self.stack.truncate(base);
-            marked?;
         }
         outcome
     }
@@ -1609,18 +1773,35 @@ impl Vm {
         record: &Value,
         read_value: bool,
     ) -> Result<Option<Value>, RuntimeError> {
-        let Value::Object(record) = record else {
-            unreachable!("compiler only emits iterator records")
-        };
-        if matches!(self.heap.get_own(*record, "done")?, Some(Value::Bool(true))) {
+        let record = record
+            .object_id()
+            .expect("compiler only emits iterator records");
+        if matches!(
+            self.heap
+                .get_own(record, "done")
+                .expect("the caller retains this private ordinary iterator record"),
+            Some(Value::Bool(true))
+        ) {
             return Ok(None);
         }
-        if self.is_for_in_record(*record)? {
-            return self.for_in_step(*record);
+        if self
+            .is_for_in_record(record)
+            .expect("the record was validated by the preceding done-slot read")
+        {
+            return self.for_in_step(record);
         }
+        let base = self.stack.len();
         let outcome = (|| {
-            let iterator = self.get_property(&Value::Object(*record), &"iterator".into())?;
-            let next = self.get_property(&Value::Object(*record), &"next".into())?;
+            let iterator = self
+                .heap
+                .get_own(record, "iterator")
+                .expect("the validated private iterator record remains live")
+                .unwrap_or(Value::Undefined);
+            let next = self
+                .heap
+                .get_own(record, "next")
+                .expect("the validated private iterator record remains live")
+                .unwrap_or(Value::Undefined);
             let result = self.call_native(next, iterator, Vec::new(), false)?;
             if !matches!(result, Value::Object(_)) {
                 return Err(RuntimeError::TypeError(
@@ -1629,7 +1810,10 @@ impl Vm {
             }
             self.stack.push(result.clone());
             let done = self.get_property(&result, &"done".into())?;
-            let value = if self.to_boolean(&done)? {
+            let value = if self
+                .to_boolean(&done)
+                .expect("ToBoolean cannot fail for a freshly returned live value")
+            {
                 None
             } else if read_value {
                 Some(self.get_property(&result, &"value".into())?)
@@ -1639,14 +1823,18 @@ impl Vm {
             self.stack.pop();
             Ok(value)
         })();
+        // Get(done), ToBoolean(done), and Get(value) may throw after the
+        // result was placed on the stack. Release it on every completion.
+        self.stack.truncate(base);
         if !matches!(&outcome, Ok(Some(_))) {
             let base = self.stack.len();
             if let Err(RuntimeError::Thrown(value)) = &outcome {
                 self.stack.push(value.clone());
             }
-            let marked = self.with_roots(|heap| heap.set(*record, "done", Value::Bool(true)));
+            self.heap
+                .set(record, "done", Value::Bool(true))
+                .expect("the private iterator record owns its existing Boolean done field");
             self.stack.truncate(base);
-            marked?;
         }
         outcome
     }
@@ -1658,15 +1846,29 @@ impl Vm {
         let id = record
             .object_id()
             .expect("compiler only emits iterator records");
-        if matches!(self.heap.get_own(id, "done")?, Some(Value::Bool(true))) {
+        if matches!(
+            self.heap
+                .get_own(id, "done")
+                .expect("the caller retains this private ordinary iterator record"),
+            Some(Value::Bool(true))
+        ) {
             return Ok(());
         }
-        self.with_roots(|heap| heap.set(id, "done", Value::Bool(true)))?;
-        if self.is_for_in_record(id)? {
+        self.heap
+            .set(id, "done", Value::Bool(true))
+            .expect("the private iterator record owns its existing Boolean done field");
+        if self
+            .is_for_in_record(id)
+            .expect("the record was validated by the preceding done-slot read")
+        {
             // A for-in record has no ECMAScript iterator to return.
             return Ok(());
         }
-        let iterator = self.get_property(record, &"iterator".into())?;
+        let iterator = self
+            .heap
+            .get_own(id, "iterator")
+            .expect("the record remains rooted after marking it done")
+            .unwrap_or(Value::Undefined);
         let close = self.get_method(&iterator, &"return".into())?;
         if close != Value::Undefined {
             let result = self.call_native(close, iterator, Vec::new(), false)?;
@@ -1679,7 +1881,6 @@ impl Vm {
         Ok(())
     }
 }
-
 
 #[cfg(test)]
 mod tests {

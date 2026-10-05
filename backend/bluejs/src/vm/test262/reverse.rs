@@ -329,6 +329,67 @@ impl Vm {
         }))
     }
 
+    /// `[[DefineOwnProperty]]` changes the real parent object immediately.
+    /// Descriptor values and accessors are imported before invoking its
+    /// internal method, using the same active-parent discipline as Get.
+    pub(in super::super) fn test262_reverse_define_own_property(
+        &mut self,
+        wrapper: ObjectId,
+        key: PropertyName,
+        mut descriptor: PropertyDescriptor,
+    ) -> Result<bool, RuntimeError> {
+        let (home_heap, target, _, _) = self
+            .test262_reverse_reference(wrapper)
+            .expect("reverse defineOwnProperty has a membrane record");
+        let self_heap = self.object_prototype.heap;
+        let ptr = self.resolve_reverse_parent(home_heap)?;
+        let _guard = register_active(self);
+        // SAFETY: the child is suspended before borrowing its active parent;
+        // no access to self occurs below. See this module's Soundness note.
+        let parent = unsafe { &mut *ptr };
+        let child_realm_id = reverse_child_realm_id(parent, self_heap);
+        let base = parent.stack.len();
+        let result = (|| {
+            for field in [
+                &mut descriptor.value,
+                &mut descriptor.get,
+                &mut descriptor.set,
+            ] {
+                if let Some(value) = field.take() {
+                    let value = parent.test262_import_foreign_value(child_realm_id, value)?;
+                    parent.stack.push(value.clone());
+                    *field = Some(value);
+                }
+            }
+            parent.remaining_instructions = parent.config.instruction_budget;
+            parent.object_define_own_property(target, key, descriptor)
+        })();
+        parent.stack.truncate(base);
+        result.map_err(|error| test262_reverse_export_error(parent, child_realm_id, error))
+    }
+
+    /// `[[Delete]]` likewise delegates to the original object's internal
+    /// method, preserving Proxy traps, descriptor constraints and errors.
+    pub(in super::super) fn test262_reverse_delete(
+        &mut self,
+        wrapper: ObjectId,
+        key: &PropertyName,
+    ) -> Result<bool, RuntimeError> {
+        let (home_heap, target, _, _) = self
+            .test262_reverse_reference(wrapper)
+            .expect("reverse delete has a membrane record");
+        let self_heap = self.object_prototype.heap;
+        let ptr = self.resolve_reverse_parent(home_heap)?;
+        let _guard = register_active(self);
+        // SAFETY: no child access overlaps this nested active-parent call.
+        let parent = unsafe { &mut *ptr };
+        let child_realm_id = reverse_child_realm_id(parent, self_heap);
+        parent.remaining_instructions = parent.config.instruction_budget;
+        parent
+            .object_delete(target, key)
+            .map_err(|error| test262_reverse_export_error(parent, child_realm_id, error))
+    }
+
     /// `[[Set]]` on a reverse facade with an explicit receiver, mirroring
     /// `test262_foreign_set_with_receiver`.
     pub(in super::super) fn test262_reverse_set_with_receiver(

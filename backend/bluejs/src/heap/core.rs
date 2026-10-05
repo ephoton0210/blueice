@@ -6,17 +6,37 @@ use super::*;
 
 static NEXT_HEAP: AtomicU64 = AtomicU64::new(1);
 
-#[cfg(test)]
+#[cfg(any(test, coverage))]
+#[path = "../../tests/fixtures/heap_root_boundary.rs"]
+mod root_boundary;
+
+#[cfg(any(test, coverage))]
 impl Heap {
-    /// Test hook: from now on at most `extra` further bytes may be managed, and
-    /// no major collection runs to make room, so every later allocation counts
-    /// in full and each in turn is the first that no longer fits. Returns the
-    /// resulting limit.
+    /// Test hook: from now on at most `extra` further bytes may be managed.
+    /// Keep the production invariant that the major trigger does not exceed
+    /// the heap limit: the allocator's fast path relies on that invariant.
+    /// Allocation may collect normally before reporting exhaustion.
     pub(crate) fn allow_only(&mut self, extra: usize) -> usize {
         let limit = self.managed_bytes + extra;
         self.config.max_heap_bytes = limit;
-        self.next_major_bytes = usize::MAX;
+        self.next_major_bytes = limit;
+        self.first_failed_allocation = None;
         limit
+    }
+
+    /// Visit the next allocating step without retrying the same refusal for
+    /// every intermediate byte budget. The first refusal is recorded even
+    /// when abrupt cleanup subsequently encounters another resource error.
+    pub(crate) fn next_allocation_headroom(&self, current: usize) -> usize {
+        let baseline = self.config.max_heap_bytes - current;
+        let required = self
+            .first_failed_allocation
+            .expect("a failed allocation sweep records its first refused request");
+        // A refusal requires more than max_heap_bytes, so it also exceeds
+        // the baseline used to install the current budget.
+        let next = required - baseline;
+        assert!(next > current, "the next allocation boundary must advance");
+        next
     }
 }
 
@@ -52,6 +72,8 @@ impl Heap {
             scoped_roots: Vec::new(),
             managed_bytes: 0,
             next_major_bytes: config.major_threshold_bytes,
+            #[cfg(any(test, coverage))]
+            first_failed_allocation: None,
             minor_collections: 0,
             major_collections: 0,
             root_registrations: 0,

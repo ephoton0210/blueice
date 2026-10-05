@@ -12,10 +12,7 @@ impl Vm {
         let function_prototype = self.function_prototype()?;
         let object_prototype = self.object_prototype;
         let math = self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;
-        let root = self
-            .heap
-            .root(math)
-            .expect("a freshly allocated object can be rooted");
+        let root = self.heap.root(math)?;
         let result = (|| {
             for (name, value) in [
                 ("E", std::f64::consts::E),

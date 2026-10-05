@@ -27,12 +27,7 @@ impl Vm {
         value: &Value,
     ) -> Result<ObjectId, RuntimeError> {
         if let Some(id) = value.object_id() {
-            if self
-                .heap
-                .number_format(id)
-                ?
-                .is_some()
-            {
+            if self.heap.number_format(id)?.is_some() {
                 return Ok(id);
             }
         } else {
@@ -55,7 +50,7 @@ impl Vm {
         };
         self.heap
             .number_format(id)
-            ?
+            .expect("the fallback getter returned a live local value or membrane facade")
             .is_some()
             .then_some(id)
             .ok_or_else(|| RuntimeError::TypeError("receiver is not an Intl.NumberFormat".into()))
@@ -71,15 +66,9 @@ impl Vm {
         }
         // The receiver is a NumberFormat, which only the `Intl` global builds
         // and only after the string intrinsics exist.
-        let constructor = self
-            .string_intrinsics()
-            .expect("a NumberFormat exists, so the string intrinsics do")
-            .0;
         let prototype = self
-            .heap
-            .prototype(constructor)
-            ?
-            .unwrap();
+            .function_prototype()
+            .expect("a NumberFormat exists, so the string intrinsics do");
         let target = self.with_roots(|heap| {
             heap.alloc_native_function(NativeFunction::NumberFormatFormat, "", prototype)
         })?;
@@ -338,7 +327,7 @@ impl Vm {
         let data = self
             .heap
             .number_format(id)
-            ?
+            .expect("UnwrapNumberFormat validated this live heap handle")
             .expect("UnwrapNumberFormat returns a branded object");
         let resolved = data.resolved_options();
         let prototype = self.object_prototype;

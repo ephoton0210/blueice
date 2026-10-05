@@ -20,6 +20,38 @@ enum StraightLineExit {
     },
 }
 
+/// An ESM body may park at a debugger boundary or finish an interpreter turn.
+/// Once the parked case is consumed, terminal cleanup only sees return,
+/// await, or an error; it has no second suspension case to handle.
+enum ModuleRun {
+    Paused {
+        pc: usize,
+        iterators: Vec<Value>,
+        handlers: Vec<HandlerFrame>,
+    },
+    Completed(Result<StraightLineExit, RuntimeError>),
+}
+
+impl ModuleRun {
+    fn classify(outcome: Result<InterpreterExit, RuntimeError>) -> Self {
+        match outcome {
+            Ok(InterpreterExit::Suspend {
+                pc,
+                iterators,
+                handlers,
+            }) => Self::Paused {
+                pc,
+                iterators,
+                handlers,
+            },
+            outcome => Self::Completed(straight_line_exit(
+                outcome,
+                "yield requires a generator function",
+            )),
+        }
+    }
+}
+
 /// Narrows an interpreter exit to [`StraightLineExit`]; the two exits such
 /// code cannot produce are errors instead.
 fn straight_line_exit(
@@ -761,9 +793,14 @@ impl Vm {
                 .ok_or(RuntimeError::Unsupported(
                     "no debugger-paused root module is available",
                 ))?;
-        let mut graph = self.module_graph.take().ok_or(RuntimeError::Unsupported(
-            "debugger-paused module graph is unavailable",
-        ))?;
+        let Some(mut graph) = self.module_graph.take() else {
+            // Refusing a resume must retain the frame that still owns its
+            // execution state, so restoration of the graph can be retried.
+            self.debugger_module_continuation = Some(continuation);
+            return Err(RuntimeError::Unsupported(
+                "debugger-paused module graph is unavailable",
+            ));
+        };
         let ModuleDebuggerContinuation {
             module,
             code,
@@ -788,12 +825,12 @@ impl Vm {
             .evaluating_linked
             .take()
             .expect("paused module records return after the entry body runs");
-        let outcome = match outcome {
-            Ok(InterpreterExit::Suspend {
+        let outcome = match ModuleRun::classify(outcome) {
+            ModuleRun::Paused {
                 pc,
                 iterators,
                 handlers,
-            }) => {
+            } => {
                 let execution = self.suspend_module_execution();
                 let record = graph
                     .linked
@@ -817,13 +854,13 @@ impl Vm {
                         .expect("verified BlueJS module offsets fit the debugger wire range"),
                 });
             }
-            other => other,
+            ModuleRun::Completed(outcome) => outcome,
         };
         self.active_module_name = previous_module;
         let mut awaiting = false;
         let mut result = match outcome {
-            Ok(InterpreterExit::Return(value)) => Ok(value),
-            Ok(InterpreterExit::Await {
+            Ok(StraightLineExit::Return(value)) => Ok(value),
+            Ok(StraightLineExit::Await {
                 promise,
                 pc,
                 handlers,
@@ -852,12 +889,6 @@ impl Vm {
                     }
                     Err(error) => Err(error),
                 }
-            }
-            Ok(InterpreterExit::Yield { .. }) => Err(RuntimeError::TypeError(
-                "yield requires a generator function".into(),
-            )),
-            Ok(InterpreterExit::Suspend { .. }) => {
-                unreachable!("module debugger suspension was handled before terminal cleanup")
             }
             Err(error) => Err(error),
         };
@@ -1218,12 +1249,19 @@ impl Vm {
                         {
                             return Err(RuntimeError::Thrown(error));
                         }
-                        // The namespace already exists for an evaluated module;
-                        // nothing new is rooted through this scratch list.
-                        vm.module_namespace(&entry, false, &modules, linked, &mut Vec::new())
-                            .map(|namespace| {
-                                DynamicImportResult::Fulfilled(Value::Object(namespace))
-                            })
+                        // A dependency can finish without ever being an entry
+                        // or namespace import. Its namespace is then created
+                        // here, with permanent cache ownership and temporary
+                        // construction roots released after publication.
+                        let mut roots = Vec::new();
+                        let result =
+                            vm.module_namespace(&entry, false, &modules, linked, &mut roots);
+                        for root in roots {
+                            vm.release_root(root);
+                        }
+                        result.map(|namespace| {
+                            DynamicImportResult::Fulfilled(Value::Object(namespace))
+                        })
                     })
                     // The record of this module was just found in a graph, which
                     // is therefore available.
@@ -1421,8 +1459,8 @@ impl Vm {
     pub(super) fn root_suspended_module_execution(
         &mut self,
         execution: &SuspendedModuleExecution,
-    ) -> Result<Vec<RootId>, RuntimeError> {
-        Ok(self.root_suspended_execution(execution))
+    ) -> Vec<RootId> {
+        self.root_suspended_execution(execution)
     }
 
     /// Roots every heap edge of a displaced frame until the roots are handed
@@ -1506,7 +1544,9 @@ impl Vm {
             .take()
             .ok_or(RuntimeError::Unsupported("module graph continuation"))?;
         let outcome = straight_line_exit(outcome, "yield requires a generator function");
-        let result = match outcome {
+        // Keep the graph installed even if a later settlement, allocation,
+        // or continuation registration refuses this turn.
+        let result = (|| match outcome {
             Ok(StraightLineExit::Return(value)) => {
                 {
                     let record = graph
@@ -1521,7 +1561,7 @@ impl Vm {
                 }
                 self.keep_module_value_alive(&value);
                 let modules = self.module_registry.clone();
-                self.settle_dynamic_import_waiters(&module);
+                self.settle_dynamic_import_waiters(&module, &mut graph.linked)?;
                 self.settle_module_parents(module.clone(), &modules, &mut graph.linked)?;
                 Ok(value)
             }
@@ -1566,7 +1606,7 @@ impl Vm {
                 self.reject_module_and_parents(module.clone(), error, &mut graph.linked);
                 Ok(Value::Undefined)
             }
-        };
+        })();
         let error_root = graph
             .linked
             .get(&module)
@@ -1615,7 +1655,7 @@ impl Vm {
                 record.suspended = false;
                 self.evaluate_module_record(&parent, modules, linked)?;
                 if linked.get(&parent).is_some_and(|record| record.evaluated) {
-                    self.settle_dynamic_import_waiters(&parent);
+                    self.settle_dynamic_import_waiters(&parent, linked)?;
                     completed.push_back(parent);
                 }
             }
@@ -1658,10 +1698,28 @@ impl Vm {
         }
     }
 
-    /// Fulfills every `import()` promise that waited for `module` with its
-    /// namespace. Every such promise was made by this VM, which is all
-    /// settling one needs.
-    pub(super) fn settle_dynamic_import_waiters(&mut self, module: &str) {
+    /// Resolves every waiting `import()` with its namespace, observing an
+    /// exported `then` through the same Promise resolution as an eager import.
+    pub(super) fn settle_dynamic_import_waiters(
+        &mut self,
+        module: &str,
+        linked: &mut HashMap<String, LinkedModule>,
+    ) -> Result<(), RuntimeError> {
+        // Importing an already suspended dependency registers a waiter without
+        // executing a new graph entry. Such a module need not have a namespace
+        // yet. Allocate it before removing any waiter, retaining both queues if
+        // construction refuses memory or root registration.
+        let namespace = if self.module_import_waiters.contains_key(module) {
+            let modules = self.module_registry.clone();
+            let mut roots = Vec::new();
+            let result = self.module_namespace(module, false, &modules, linked, &mut roots);
+            for root in roots {
+                self.release_root(root);
+            }
+            Some(result?)
+        } else {
+            None
+        };
         // An `import.defer()` resolves once the last asynchronous dependency
         // it was waiting for has finished.
         let mut finished = Vec::new();
@@ -1676,22 +1734,17 @@ impl Vm {
                 true
             }
         });
+        if let Some(namespace) = namespace {
+            let waiters = self
+                .module_import_waiters
+                .remove(module)
+                .expect("namespace construction cannot remove the retained import waiters");
+            finished.extend(waiters.into_iter().map(|promise| (promise, namespace)));
+        }
         for (promise, namespace) in finished {
-            self.settle_promise(promise, PromiseStatus::Fulfilled(Value::Object(namespace)))
-                .expect("a waiting import promise is one of this VM's");
+            self.resolve_promise(promise, Value::Object(namespace))?;
         }
-        let Some(waiters) = self.module_import_waiters.remove(module) else {
-            return;
-        };
-        let namespace = self
-            .module_namespace_cache
-            .get(module)
-            .copied()
-            .expect("a module that finished has a namespace");
-        for promise in waiters {
-            self.settle_promise(promise, PromiseStatus::Fulfilled(Value::Object(namespace)))
-                .expect("a waiting import promise is one of this VM's");
-        }
+        Ok(())
     }
 
     /// Rejects every `import()` promise that waited for `module` with `error`.
@@ -1726,6 +1779,13 @@ impl Vm {
         continuation_state: ModuleContinuation,
         promise: ObjectId,
     ) -> Result<(), RuntimeError> {
+        // Validate before publishing a frame or consuming its serial.
+        let status = self
+            .promises
+            .get(&promise)
+            .ok_or(RuntimeError::TypeError("invalid await Promise".into()))?
+            .status
+            .clone_for_await();
         let continuation = self.next_module_continuation;
         self.next_module_continuation = self
             .next_module_continuation
@@ -1733,12 +1793,6 @@ impl Vm {
             .ok_or(RuntimeError::InstructionLimit)?;
         self.module_continuations
             .insert(continuation, continuation_state);
-        let status = self
-            .promises
-            .get(&promise)
-            .ok_or(RuntimeError::TypeError("invalid await Promise".into()))?
-            .status
-            .clone_for_await();
         match status {
             PromiseAwaitStatus::Pending => self
                 .promises
@@ -1765,8 +1819,8 @@ impl Vm {
     }
 
     /// Registers an ordinary async-function frame on the Promise it awaits
-    /// (see [`Self::suspend_async_frame`]). Registering cannot fail; the
-    /// `Result` is the shape callers in other modules already handle.
+    /// (see [`Self::suspend_async_frame`]). Promise validation and serial
+    /// reservation precede publication of the continuation.
     pub(super) fn suspend_async_await(
         &mut self,
         continuation_state: AsyncContinuation,
@@ -1783,6 +1837,13 @@ impl Vm {
         continuation_state: AsyncContinuation,
         promise: ObjectId,
     ) -> Result<(), RuntimeError> {
+        // Validate before publishing a frame or consuming its serial.
+        let status = self
+            .promises
+            .get(&promise)
+            .ok_or(RuntimeError::TypeError("invalid await Promise".into()))?
+            .status
+            .clone_for_await();
         let continuation = self.next_async_continuation;
         self.next_async_continuation = self
             .next_async_continuation
@@ -1790,12 +1851,6 @@ impl Vm {
             .ok_or(RuntimeError::InstructionLimit)?;
         self.async_continuations
             .insert(continuation, continuation_state);
-        let status = self
-            .promises
-            .get(&promise)
-            .ok_or(RuntimeError::TypeError("invalid await Promise".into()))?
-            .status
-            .clone_for_await();
         match status {
             PromiseAwaitStatus::Pending => self
                 .promises
@@ -1847,85 +1902,98 @@ impl Vm {
             handlers,
             call_depth,
         } = continuation;
-        if let Some(generator) = generator {
-            return self.resume_async_generator_await(
-                generator, target, code, pc, execution, iterators, handlers, call_depth, value,
-                fulfilled,
-            );
-        }
-        let mut ambient = self.suspend_module_execution();
-        let ambient_call_depth = std::mem::replace(&mut self.call_depth, call_depth);
-        self.restore_module_execution(execution);
-        let outcome = if fulfilled {
-            self.interpret(
-                &code,
-                &mut iterators,
-                pc,
-                Some(value),
-                None,
-                Some((handlers, 0)),
-            )
-        } else {
-            self.interpret_rejected_await(
-                &code,
-                &mut iterators,
-                pc,
-                handlers,
-                value,
-                "async function cannot tail recur across await",
-            )
-        };
-
-        let outcome = straight_line_exit(outcome, "yield requires an async generator function");
-        let result = match outcome {
-            Ok(StraightLineExit::Return(value)) => {
-                ambient.templates.extend(self.templates.clone());
-                self.restore_module_execution(ambient);
-                self.call_depth = ambient_call_depth;
-                self.resolve_promise(target, value)
+        let root_base = self.async_frame_roots.len();
+        self.async_frame_roots.extend(generator);
+        self.async_frame_roots.push(target);
+        self.async_frame_roots
+            .extend(Self::suspended_execution_references(&execution));
+        self.async_frame_roots
+            .extend(iterators.iter().filter_map(Value::object_id));
+        let result = (|| {
+            if let Some(generator) = generator {
+                return self.resume_async_generator_await(
+                    generator, target, code, pc, execution, iterators, handlers, call_depth, value,
+                    fulfilled,
+                );
             }
-            Ok(StraightLineExit::Await {
-                promise,
-                pc,
-                handlers,
-            }) => {
-                let execution = self.suspend_module_execution();
-                ambient.templates.extend(execution.templates.clone());
-                let state = AsyncContinuation {
-                    generator,
-                    target,
-                    code,
+            let mut ambient = self.suspend_module_execution();
+            self.async_frame_roots
+                .extend(Self::suspended_execution_references(&ambient));
+            let ambient_call_depth = std::mem::replace(&mut self.call_depth, call_depth);
+            self.restore_module_execution(execution);
+            let outcome = if fulfilled {
+                self.interpret(
+                    &code,
+                    &mut iterators,
                     pc,
-                    execution,
-                    iterators,
+                    Some(value),
+                    None,
+                    Some((handlers, 0)),
+                )
+            } else {
+                self.interpret_rejected_await(
+                    &code,
+                    &mut iterators,
+                    pc,
                     handlers,
-                    call_depth: self.call_depth,
-                };
-                self.restore_module_execution(ambient);
-                self.call_depth = ambient_call_depth;
-                self.suspend_async_frame(state, promise)?;
-                Ok(())
-            }
-            Err(error) => {
-                // Iterator records are part of the suspended frame rather
-                // than ordinary heap properties. Root them while abrupt
-                // cleanup invokes user-provided `return` methods.
-                let base = self.stack.len();
-                if let RuntimeError::Thrown(value) = &error {
-                    self.stack.push(value.clone());
+                    value,
+                    "async function cannot tail recur across await",
+                )
+            };
+
+            let outcome = straight_line_exit(outcome, "yield requires an async generator function");
+            let result = match outcome {
+                Ok(StraightLineExit::Return(value)) => {
+                    ambient.templates.extend(self.templates.clone());
+                    self.restore_module_execution(ambient);
+                    self.call_depth = ambient_call_depth;
+                    self.resolve_promise(target, value)
                 }
-                self.stack.extend(iterators.iter().cloned());
-                for record in iterators.into_iter().rev() {
-                    let _ = self.iterator_close(&record);
+                Ok(StraightLineExit::Await {
+                    promise,
+                    pc,
+                    handlers,
+                }) => {
+                    let execution = self.suspend_module_execution();
+                    ambient.templates.extend(execution.templates.clone());
+                    let state = AsyncContinuation {
+                        generator,
+                        target,
+                        code,
+                        pc,
+                        execution,
+                        iterators,
+                        handlers,
+                        call_depth: self.call_depth,
+                    };
+                    self.restore_module_execution(ambient);
+                    self.call_depth = ambient_call_depth;
+                    self.suspend_async_frame(state, promise)?;
+                    Ok(())
                 }
-                self.stack.truncate(base);
-                ambient.templates.extend(self.templates.clone());
-                self.restore_module_execution(ambient);
-                self.call_depth = ambient_call_depth;
-                let error = self.error_value(error)?;
-                self.settle_promise(target, PromiseStatus::Rejected(error))
-            }
-        };
+                Err(error) => {
+                    // Iterator records are part of the suspended frame rather
+                    // than ordinary heap properties. Root them while abrupt
+                    // cleanup invokes user-provided `return` methods.
+                    let base = self.stack.len();
+                    if let RuntimeError::Thrown(value) = &error {
+                        self.stack.push(value.clone());
+                    }
+                    self.stack.extend(iterators.iter().cloned());
+                    for record in iterators.into_iter().rev() {
+                        let _ = self.iterator_close(&record);
+                    }
+                    self.stack.truncate(base);
+                    ambient.templates.extend(self.templates.clone());
+                    self.restore_module_execution(ambient);
+                    self.call_depth = ambient_call_depth;
+                    let error = self.error_value(error)?;
+                    self.settle_promise(target, PromiseStatus::Rejected(error))
+                }
+            };
+            result
+        })();
+        self.async_frame_roots.truncate(root_base);
         result
     }
 
@@ -1946,48 +2014,59 @@ impl Vm {
         value: Value,
         fulfilled: bool,
     ) -> Result<(), RuntimeError> {
-        let mut ambient = self.suspend_module_execution();
+        let mut ambient = Some(self.suspend_module_execution());
+        self.async_frame_roots
+            .extend(Self::suspended_execution_references(
+                ambient
+                    .as_ref()
+                    .expect("the async job's displaced frame is present"),
+            ));
         let ambient_call_depth = std::mem::replace(&mut self.call_depth, call_depth);
         self.restore_module_execution(execution);
-        let outcome = if fulfilled {
-            self.interpret(
-                &code,
-                &mut iterators,
-                pc,
-                Some(value),
-                None,
-                Some((handlers, 0)),
-            )
-        } else {
-            self.interpret_rejected_await(
-                &code,
-                &mut iterators,
-                pc,
-                handlers,
-                value,
-                "async generator cannot tail recur across await",
-            )
-        };
+        let result = (|| {
+            let outcome = if fulfilled {
+                self.interpret(
+                    &code,
+                    &mut iterators,
+                    pc,
+                    Some(value),
+                    None,
+                    Some((handlers, 0)),
+                )
+            } else {
+                self.interpret_rejected_await(
+                    &code,
+                    &mut iterators,
+                    pc,
+                    handlers,
+                    value,
+                    "async generator cannot tail recur across await",
+                )
+            };
 
-        match async_generator_exit(outcome) {
-            Ok(AsyncGeneratorExit::Return(value)) => {
-                self.heap
-                    .set_generator_state(generator, GeneratorState::Done)?;
-                ambient.templates.extend(self.templates.clone());
-                self.restore_module_execution(ambient);
-                self.call_depth = ambient_call_depth;
-                let result = self.iterator_result(value, true)?;
-                self.finish_async_generator_run(generator, target, result)
-            }
-            Ok(AsyncGeneratorExit::Yield {
-                value,
-                pc,
-                iterators,
-                handlers,
-            }) => {
-                let stack = std::mem::take(&mut self.stack);
-                let async_delegate =
-                    code.async_yield_delegates
+            match async_generator_exit(outcome) {
+                Ok(AsyncGeneratorExit::Return(value)) => {
+                    self.heap
+                        .set_generator_state(generator, GeneratorState::Done)
+                        .expect("the resumed async frame retains its generator; Done cannot grow");
+                    let mut ambient = ambient
+                        .take()
+                        .expect("each async generator turn restores its displaced frame once");
+                    ambient.templates.extend(self.templates.clone());
+                    self.restore_module_execution(ambient);
+                    self.call_depth = ambient_call_depth;
+                    let result = self.iterator_result(value, true)?;
+                    self.finish_async_generator_run(generator, target, result)
+                }
+                Ok(AsyncGeneratorExit::Yield {
+                    value,
+                    pc,
+                    iterators,
+                    handlers,
+                }) => {
+                    let stack = std::mem::take(&mut self.stack);
+                    let async_delegate = code
+                        .async_yield_delegates
                         .iter()
                         .find(|(resume, _)| *resume as usize == pc)
                         .and_then(|(_, exit_pc)| {
@@ -1998,91 +2077,111 @@ impl Vm {
                                 }
                             })
                         });
-                let state = GeneratorState::Suspended {
-                    code,
-                    pc,
-                    stack,
-                    bindings: std::mem::take(&mut self.bindings),
-                    cells: std::mem::take(&mut self.cells).into_iter().collect(),
-                    this: std::mem::replace(&mut self.this, Value::Undefined),
-                    args: std::mem::take(&mut self.arguments),
-                    completion: std::mem::replace(&mut self.completion, Value::Undefined),
-                    completion_empty: std::mem::replace(&mut self.completion_empty, true),
-                    active_scopes: std::mem::take(&mut self.active_scopes),
-                    iterators,
-                    handlers,
-                    pending_completions: std::mem::take(&mut self.pending_completions)
-                        .into_iter()
-                        .map(|completion| {
-                            completion
-                                .into_generator_pending()
-                                .expect("only catchable completions can survive a generator yield")
-                        })
-                        .collect(),
-                    completion_saves: std::mem::take(&mut self.completion_saves),
-                    async_delegate,
-                    delegate: None,
-                    dynamic_bindings: std::mem::take(&mut self.dynamic_eval_bindings)
-                        .into_iter()
-                        .map(|(name, binding)| (name, binding.cell, binding.shadowed_cells))
-                        .collect(),
-                    home: std::mem::take(&mut self.home_object),
-                    callee: std::mem::replace(&mut self.callee, Value::Undefined),
-                    with_objects: std::mem::take(&mut self.with_objects),
-                };
-                self.heap.set_generator_state(generator, state)?;
-                ambient.templates.extend(self.templates.clone());
-                self.restore_module_execution(ambient);
-                self.call_depth = ambient_call_depth;
-                let result = self.iterator_result(value, false)?;
-                self.finish_async_generator_run(generator, target, result)
-            }
-            Ok(AsyncGeneratorExit::Await {
-                promise,
-                pc,
-                handlers,
-            }) => {
-                let execution = self.suspend_module_execution();
-                ambient.templates.extend(execution.templates.clone());
-                let state = AsyncContinuation {
-                    generator: Some(generator),
-                    target,
-                    code,
-                    pc,
-                    execution,
-                    iterators,
-                    handlers,
-                    call_depth: self.call_depth,
-                };
-                self.restore_module_execution(ambient);
-                self.call_depth = ambient_call_depth;
-                self.suspend_async_frame(state, promise)?;
-                Ok(())
-            }
-            Err(error) => {
-                let base = self.stack.len();
-                if let RuntimeError::Thrown(value) = &error {
-                    self.stack.push(value.clone());
+                    let state = GeneratorState::Suspended {
+                        code,
+                        pc,
+                        stack,
+                        bindings: std::mem::take(&mut self.bindings),
+                        cells: std::mem::take(&mut self.cells).into_iter().collect(),
+                        this: std::mem::replace(&mut self.this, Value::Undefined),
+                        args: std::mem::take(&mut self.arguments),
+                        completion: std::mem::replace(&mut self.completion, Value::Undefined),
+                        completion_empty: std::mem::replace(&mut self.completion_empty, true),
+                        active_scopes: std::mem::take(&mut self.active_scopes),
+                        iterators,
+                        handlers,
+                        pending_completions: std::mem::take(&mut self.pending_completions)
+                            .into_iter()
+                            .map(|completion| {
+                                completion.into_generator_pending().expect(
+                                    "only catchable completions can survive a generator yield",
+                                )
+                            })
+                            .collect(),
+                        completion_saves: std::mem::take(&mut self.completion_saves),
+                        async_delegate,
+                        delegate: None,
+                        dynamic_bindings: std::mem::take(&mut self.dynamic_eval_bindings)
+                            .into_iter()
+                            .map(|(name, binding)| (name, binding.cell, binding.shadowed_cells))
+                            .collect(),
+                        home: std::mem::take(&mut self.home_object),
+                        callee: std::mem::replace(&mut self.callee, Value::Undefined),
+                        with_objects: std::mem::take(&mut self.with_objects),
+                    };
+                    self.async_frame_roots.extend(value.object_id());
+                    self.with_roots(|heap| heap.set_generator_state(generator, state))?;
+                    let mut ambient = ambient
+                        .take()
+                        .expect("each async generator turn restores its displaced frame once");
+                    ambient.templates.extend(self.templates.clone());
+                    self.restore_module_execution(ambient);
+                    self.call_depth = ambient_call_depth;
+                    let result = self.iterator_result(value, false)?;
+                    self.finish_async_generator_run(generator, target, result)
                 }
-                self.stack.extend(iterators.iter().cloned());
-                for record in iterators.into_iter().rev() {
-                    let _ = self.iterator_close(&record);
+                Ok(AsyncGeneratorExit::Await {
+                    promise,
+                    pc,
+                    handlers,
+                }) => {
+                    let execution = self.suspend_module_execution();
+                    let mut ambient = ambient
+                        .take()
+                        .expect("each async generator turn restores its displaced frame once");
+                    ambient.templates.extend(execution.templates.clone());
+                    let state = AsyncContinuation {
+                        generator: Some(generator),
+                        target,
+                        code,
+                        pc,
+                        execution,
+                        iterators,
+                        handlers,
+                        call_depth: self.call_depth,
+                    };
+                    self.restore_module_execution(ambient);
+                    self.call_depth = ambient_call_depth;
+                    self.suspend_async_frame(state, promise)?;
+                    Ok(())
                 }
-                self.stack.truncate(base);
-                self.heap
-                    .set_generator_state(generator, GeneratorState::Done)?;
-                ambient.templates.extend(self.templates.clone());
-                self.restore_module_execution(ambient);
-                self.call_depth = ambient_call_depth;
-                let value = self.error_value(error)?;
-                self.complete_async_generator_request(
-                    generator,
-                    target,
-                    PromiseStatus::Rejected(value),
-                )?;
-                self.resume_async_generator_next(generator)
+                Err(error) => {
+                    let base = self.stack.len();
+                    if let RuntimeError::Thrown(value) = &error {
+                        self.stack.push(value.clone());
+                    }
+                    self.stack.extend(iterators.iter().cloned());
+                    for record in iterators.into_iter().rev() {
+                        let _ = self.iterator_close(&record);
+                    }
+                    self.stack.truncate(base);
+                    self.heap
+                        .set_generator_state(generator, GeneratorState::Done)
+                        .expect("the resumed async frame retains its generator; Done cannot grow");
+                    let mut ambient = ambient
+                        .take()
+                        .expect("each async generator turn restores its displaced frame once");
+                    ambient.templates.extend(self.templates.clone());
+                    self.restore_module_execution(ambient);
+                    self.call_depth = ambient_call_depth;
+                    let value = self.error_value(error)?;
+                    self.complete_async_generator_request(
+                        generator,
+                        target,
+                        PromiseStatus::Rejected(value),
+                    )?;
+                    self.resume_async_generator_next(generator)
+                }
             }
+        })();
+        // A failed frame store or iterator-result allocation must restore the
+        // caller just as a successful turn does.
+        if let Some(mut ambient) = ambient {
+            ambient.templates.extend(self.templates.clone());
+            self.restore_module_execution(ambient);
+            self.call_depth = ambient_call_depth;
         }
+        result
     }
 
     pub(super) fn enter_module_record(&mut self, code: &Bytecode, cells: HashMap<usize, ObjectId>) {
@@ -2298,8 +2397,8 @@ impl Vm {
                 .evaluating_linked
                 .take()
                 .expect("module records are restored after the module body ran");
-            match outcome {
-                Ok(InterpreterExit::Return(value)) => {
+            match ModuleRun::classify(outcome) {
+                ModuleRun::Completed(Ok(StraightLineExit::Return(value))) => {
                     self.active_module_name = previous_module;
                     let cells = std::mem::take(&mut self.cells);
                     let record = linked.get_mut(name).expect("checked module record exists");
@@ -2307,11 +2406,11 @@ impl Vm {
                     record.completion = Some(value.clone());
                     Ok(value)
                 }
-                Ok(InterpreterExit::Await {
+                ModuleRun::Completed(Ok(StraightLineExit::Await {
                     promise,
                     pc,
                     handlers,
-                }) => {
+                })) => {
                     // Move the realm frame out before another sibling module
                     // evaluates. The continuation is attached to the Await
                     // promise and resumes in its own Promise job turn.
@@ -2333,14 +2432,11 @@ impl Vm {
                     )?;
                     Ok(Value::Undefined)
                 }
-                Ok(InterpreterExit::Yield { .. }) => Err(RuntimeError::TypeError(
-                    "yield requires a generator function".into(),
-                )),
-                Ok(InterpreterExit::Suspend {
+                ModuleRun::Paused {
                     pc,
                     iterators,
                     handlers,
-                }) => {
+                } => {
                     let execution = self.suspend_module_execution();
                     let record = linked.get_mut(name).expect("checked module record exists");
                     record.cells = execution.cells.clone();
@@ -2357,7 +2453,7 @@ impl Vm {
                     });
                     Ok(Value::Undefined)
                 }
-                Err(error) => {
+                ModuleRun::Completed(Err(error)) => {
                     self.active_module_name = previous_module;
                     let cells = std::mem::take(&mut self.cells);
                     let record = linked.get_mut(name).expect("checked module record exists");
@@ -2402,332 +2498,6 @@ impl Vm {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn promise() -> ObjectId {
-        Vm::default().heap.alloc_object(None).unwrap()
-    }
-
-    fn yield_exit() -> InterpreterExit {
-        InterpreterExit::Yield {
-            value: Value::Undefined,
-            pc: 3,
-            iterators: Vec::new(),
-            handlers: Vec::new(),
-        }
-    }
-
-    fn suspend_exit(pc: usize) -> InterpreterExit {
-        InterpreterExit::Suspend {
-            pc,
-            iterators: Vec::new(),
-            handlers: Vec::new(),
-        }
-    }
-
-    fn await_exit() -> InterpreterExit {
-        InterpreterExit::Await {
-            promise: promise(),
-            pc: 5,
-            handlers: Vec::new(),
-        }
-    }
-
-    fn straight_line(outcome: Result<InterpreterExit, RuntimeError>) -> String {
-        match straight_line_exit(outcome, "no yield here") {
-            Ok(StraightLineExit::Return(value)) => format!("return {value:?}"),
-            Ok(StraightLineExit::Await { pc, .. }) => format!("await at {pc}"),
-            Err(error) => format!("error {error:?}"),
-        }
-    }
-
-    fn async_generator(outcome: Result<InterpreterExit, RuntimeError>) -> String {
-        match async_generator_exit(outcome) {
-            Ok(AsyncGeneratorExit::Return(value)) => format!("return {value:?}"),
-            Ok(AsyncGeneratorExit::Yield { pc, .. }) => format!("yield at {pc}"),
-            Ok(AsyncGeneratorExit::Await { pc, .. }) => format!("await at {pc}"),
-            Err(error) => format!("error {error:?}"),
-        }
-    }
-
-    #[test]
-    fn code_that_is_not_a_generator_only_returns_or_awaits() {
-        assert_eq!(
-            straight_line(Ok(InterpreterExit::Return(Value::Number(1.0)))),
-            "return Number(1.0)"
-        );
-        assert_eq!(straight_line(Ok(await_exit())), "await at 5");
-        assert_eq!(
-            straight_line(Ok(yield_exit())),
-            "error TypeError(\"no yield here\")"
-        );
-        assert_eq!(
-            straight_line(Ok(suspend_exit(0))),
-            "error TypeError(\"only a generator suspends at its entry\")"
-        );
-        assert_eq!(
-            straight_line(Err(RuntimeError::InstructionLimit)),
-            "error InstructionLimit"
-        );
-    }
-
-    #[test]
-    fn an_async_generator_resumption_returns_yields_or_awaits() {
-        assert_eq!(
-            async_generator(Ok(InterpreterExit::Return(Value::Null))),
-            "return Null"
-        );
-        assert_eq!(async_generator(Ok(yield_exit())), "yield at 3");
-        assert_eq!(async_generator(Ok(await_exit())), "await at 5");
-        assert_eq!(
-            async_generator(Ok(suspend_exit(0))),
-            "error TypeError(\"only a generator suspends at its entry\")"
-        );
-        assert_eq!(
-            async_generator(Err(RuntimeError::InstructionLimit)),
-            "error InstructionLimit"
-        );
-    }
-
-    #[test]
-    fn a_declaration_prefix_must_suspend_exactly_at_the_evaluation_entry() {
-        assert_eq!(expect_entry_suspend(suspend_exit(7), 7), Ok(()));
-        let unsupported = Err(RuntimeError::Unsupported(
-            "module declaration prefix did not suspend at its evaluation entry",
-        ));
-        assert_eq!(expect_entry_suspend(suspend_exit(6), 7), unsupported);
-        assert_eq!(
-            expect_entry_suspend(InterpreterExit::Return(Value::Undefined), 7),
-            unsupported
-        );
-    }
-
-    fn rejected(action: CompletionAction) -> String {
-        match rejected_await_step(action, 7, "no tail calls here") {
-            Ok(RejectedAwait::Resume(pc)) => format!("resume at {pc}"),
-            Ok(RejectedAwait::Return(value)) => format!("return {value:?}"),
-            Err(error) => format!("error {error:?}"),
-        }
-    }
-
-    #[test]
-    fn a_rejected_await_resumes_in_its_handler_returns_or_fails() {
-        assert_eq!(rejected(CompletionAction::Continue), "resume at 7");
-        assert_eq!(rejected(CompletionAction::Jump(9)), "resume at 9");
-        assert_eq!(
-            rejected(CompletionAction::Return(Value::Number(1.0))),
-            "return Number(1.0)"
-        );
-        for action in [
-            CompletionAction::TailRecur(Vec::new()),
-            CompletionAction::TailCall(Vec::new()),
-        ] {
-            assert_eq!(rejected(action), "error TypeError(\"no tail calls here\")");
-        }
-        assert_eq!(
-            rejected(CompletionAction::Throw(RuntimeError::Thrown(
-                Value::Number(2.0)
-            ))),
-            "error Thrown(Number(2.0))"
-        );
-    }
-
-    /// A module the host built by hand: the requests and exports it names,
-    /// and the offset of its evaluation entry (none for a broken one).
-    fn hand_built(
-        exports: Vec<ModuleExport>,
-        requests: &[(&str, bool)],
-        entry: Option<u32>,
-    ) -> Bytecode {
-        let mut code = Bytecode::empty();
-        code.module = true;
-        code.strict = true;
-        code.module_evaluate_entry = entry;
-        code.module_exports = exports;
-        code.module_requests = requests
-            .iter()
-            .map(|(request, deferred)| crate::bytecode::ModuleRequest {
-                module_request: (*request).to_string(),
-                module_type: ModuleType::JavaScript,
-                deferred: *deferred,
-            })
-            .collect();
-        code
-    }
-
-    fn compiled_module(source: &str) -> Bytecode {
-        crate::compile_module(&crate::parse_module(source).unwrap()).unwrap()
-    }
-
-    const ESCAPES: &str = "relative module request ../../x escapes its host root";
-
-    #[test]
-    fn imports_are_named_in_errors_the_way_they_are_spelled() {
-        assert_eq!(
-            imported_name_text(&ModuleImportName::Named("x".into())),
-            "x"
-        );
-        assert_eq!(imported_name_text(&ModuleImportName::Namespace), "*");
-        assert_eq!(
-            imported_name_text(&ModuleImportName::DeferredNamespace),
-            "*"
-        );
-        assert_eq!(imported_name_text(&ModuleImportName::Source), "source");
-    }
-
-    #[test]
-    fn a_frame_carries_on_as_its_thrown_value_was_resolved() {
-        let mut vm = Vm::default();
-        let mut resume = |action: Result<CompletionAction, RuntimeError>| {
-            straight_line(vm.interpret_after_throw(
-                &Bytecode::empty(),
-                &mut Vec::new(),
-                4,
-                Vec::new(),
-                action,
-                "no tails",
-            ))
-        };
-        assert_eq!(
-            resume(Ok(CompletionAction::Return(Value::Number(3.0)))),
-            "return Number(3.0)"
-        );
-        assert_eq!(
-            resume(Ok(CompletionAction::TailCall(Vec::new()))),
-            "error TypeError(\"no tails\")"
-        );
-        assert_eq!(
-            resume(Err(RuntimeError::InstructionLimit)),
-            "error InstructionLimit"
-        );
-    }
-
-    #[test]
-    fn a_module_only_counts_as_reachable_when_every_request_on_the_way_resolves() {
-        let modules = HashMap::from([
-            (
-                "t/a.js".to_string(),
-                hand_built(
-                    Vec::new(),
-                    &[("./done.js", true), ("./b.js", false), ("./c.js", false)],
-                    Some(0),
-                ),
-            ),
-            (
-                "t/b.js".to_string(),
-                hand_built(Vec::new(), &[("../../x", false)], Some(0)),
-            ),
-            (
-                "t/c.js".to_string(),
-                hand_built(Vec::new(), &[("./a.js", false)], Some(0)),
-            ),
-            (
-                "t/leaf.js".to_string(),
-                hand_built(Vec::new(), &[], Some(0)),
-            ),
-            (
-                "t/d.js".to_string(),
-                hand_built(Vec::new(), &[("./leaf.js", false)], Some(0)),
-            ),
-        ]);
-        let reaches =
-            |from: &str, goal: &str| Vm::module_reaches(from, goal, &modules, &mut HashSet::new());
-        assert_eq!(
-            reaches("t/nowhere.js", "t/goal.js"),
-            Err(RuntimeError::ModuleResolution(
-                "module t/nowhere.js was not linked".into()
-            ))
-        );
-        let escapes = Err(RuntimeError::ModuleResolution(ESCAPES.into()));
-        assert_eq!(reaches("t/b.js", "t/goal.js"), escapes);
-        assert_eq!(reaches("t/a.js", "t/goal.js"), escapes);
-        // A module reaches itself, and what its requests reach; a deferred
-        // request is no edge, and a module that is asked about twice while
-        // one walk is under way is only walked once.
-        assert_eq!(reaches("t/a.js", "t/a.js"), Ok(true));
-        assert_eq!(reaches("t/d.js", "t/leaf.js"), Ok(true));
-        assert_eq!(reaches("t/d.js", "t/a.js"), Ok(false));
-        let mut visited = HashSet::from(["t/leaf.js".to_string()]);
-        assert_eq!(
-            Vm::module_reaches("t/leaf.js", "t/a.js", &modules, &mut visited),
-            Ok(false)
-        );
-    }
-
-    fn record(evaluating: bool, suspended: bool) -> LinkedModule {
-        LinkedModule {
-            cells: HashMap::new(),
-            namespace: None,
-            deferred_namespace: None,
-            evaluated: false,
-            evaluating,
-            suspended,
-            completion: None,
-            error: None,
-        }
-    }
-
-    #[test]
-    fn the_cycle_root_of_a_dependency_is_the_waiting_parent_it_reaches() {
-        let modules = HashMap::from([
-            (
-                "t/dep.js".to_string(),
-                hand_built(Vec::new(), &[("./parent.js", false)], Some(0)),
-            ),
-            (
-                "t/parent.js".to_string(),
-                hand_built(Vec::new(), &[], Some(0)),
-            ),
-            (
-                "t/broken.js".to_string(),
-                hand_built(Vec::new(), &[("../../x", false)], Some(0)),
-            ),
-        ]);
-        let mut vm = Vm::default();
-        vm.module_async_parents.insert(
-            "t/dep.js".to_string(),
-            vec![
-                "t/gone.js".to_string(),
-                "t/idle.js".to_string(),
-                "t/parent.js".to_string(),
-            ],
-        );
-        vm.module_async_parents
-            .insert("t/broken.js".to_string(), vec!["t/parent.js".to_string()]);
-        let linked = HashMap::from([
-            ("t/idle.js".to_string(), record(false, false)),
-            ("t/parent.js".to_string(), record(true, false)),
-        ]);
-        // A parent that is unknown or idle is passed over; the one that waits
-        // and is reached from the dependency is its cycle root.
-        assert_eq!(
-            vm.async_dependency_root("t/dep.js", &modules, &linked),
-            Ok("t/parent.js".to_string())
-        );
-        // One that waits without being reachable leaves the dependency itself.
-        assert_eq!(
-            vm.async_dependency_root("t/parent.js", &modules, &linked),
-            Ok("t/parent.js".to_string())
-        );
-        assert_eq!(
-            vm.async_dependency_root("t/broken.js", &modules, &linked),
-            Err(RuntimeError::ModuleResolution(ESCAPES.into()))
-        );
-    }
-
-    #[test]
-    fn a_rejected_await_is_caught_where_the_frame_left_off() {
-        let modules = HashMap::from([(
-            "t/main.js".to_string(),
-            compiled_module(
-                "let seen; try { await Promise.reject(7) } catch (e) { seen = e } seen === 7",
-            ),
-        )]);
-        assert_eq!(
-            Vm::default().execute_module_graph("t/main.js", &modules),
-            Ok(Value::Bool(true))
-        );
-    }
-}
+#[cfg(any(test, coverage))]
+#[path = "../../tests/fixtures/module_linking_internal.rs"]
+mod tests;

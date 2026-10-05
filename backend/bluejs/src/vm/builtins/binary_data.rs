@@ -4,6 +4,31 @@
 
 use super::*;
 
+/// Arithmetic operations whose inputs have already been normalized to the
+/// element type. Loads, stores, exchanges and comparisons use separate paths.
+enum AtomicBinaryOperation {
+    Add,
+    And,
+    Or,
+    Sub,
+    Xor,
+}
+
+impl AtomicBinaryOperation {
+    fn from_operation(operation: AtomicOp) -> Option<Self> {
+        match operation {
+            AtomicOp::Add => Some(Self::Add),
+            AtomicOp::And => Some(Self::And),
+            AtomicOp::Or => Some(Self::Or),
+            AtomicOp::Sub => Some(Self::Sub),
+            AtomicOp::Xor => Some(Self::Xor),
+            AtomicOp::Load | AtomicOp::Store | AtomicOp::Exchange | AtomicOp::CompareExchange => {
+                None
+            }
+        }
+    }
+}
+
 impl Vm {
     pub(in super::super) fn buffer_prototype(
         &mut self,
@@ -153,7 +178,9 @@ impl Vm {
             }
             // The specified initial value is the exact same function object
             // as Array.prototype.toString, not a TypedArray-specific wrapper.
-            let array_to_string = self.heap.get(self.array_prototype, "toString")?;
+            let array_to_string = self.heap.get(self.array_prototype, "toString").expect(
+                "Array.prototype is a permanent VM root and this lookup cannot execute user code",
+            );
             self.define_data(
                 typed_prototype,
                 "toString",
@@ -211,7 +238,7 @@ impl Vm {
                 Ok(intrinsics)
             }
             Err(error) => {
-                self.heap.unroot(root)?;
+                self.release_root(root);
                 Err(error)
             }
         }
@@ -364,13 +391,21 @@ impl Vm {
         length: &Value,
     ) -> Result<Value, RuntimeError> {
         let buffer = self.array_buffer_receiver(receiver)?;
-        if self.heap.buffer_is_immutable(buffer)? {
+        if self
+            .heap
+            .buffer_is_immutable(buffer)
+            .expect("the validated buffer or view retains its brand while rooted")
+        {
             return Err(RuntimeError::TypeError(
                 "ArrayBuffer is immutable and cannot be resized".into(),
             ));
         }
         let length = self.buffer_index(length)?;
-        if !self.heap.buffer_resizable(buffer)? {
+        if !self
+            .heap
+            .buffer_resizable(buffer)
+            .expect("the validated buffer or view retains its brand while rooted")
+        {
             return Err(RuntimeError::TypeError(
                 "ArrayBuffer is not resizable".into(),
             ));
@@ -391,9 +426,15 @@ impl Vm {
     ) -> Result<Value, RuntimeError> {
         let (source, source_length, length) =
             self.array_buffer_copy_and_detach_source(receiver, args)?;
-        let resizable = !fixed_length && self.heap.buffer_resizable(source)?;
+        let resizable = !fixed_length
+            && self
+                .heap
+                .buffer_resizable(source)
+                .expect("the validated buffer or view retains its brand while rooted");
         let maximum = if resizable {
-            self.heap.buffer_max_byte_length(source)?
+            self.heap
+                .buffer_max_byte_length(source)
+                .expect("the validated buffer or view retains its brand while rooted")
         } else {
             length
         };
@@ -411,9 +452,16 @@ impl Vm {
             }
         })?;
         let copy_length = source_length.min(length);
-        let bytes = self.heap.array_buffer_copy(source, 0, copy_length)?;
-        self.with_roots(|heap| heap.array_buffer_write(target, 0, &bytes))?;
-        self.with_roots(|heap| heap.detach_array_buffer(source))?;
+        let bytes = self
+            .heap
+            .array_buffer_copy(source, 0, copy_length)
+            .expect("transfer copies a checked prefix before detaching its live source");
+        self.heap
+            .array_buffer_write(target, 0, &bytes)
+            .expect("the fresh mutable transfer target fits the checked prefix");
+        self.heap
+            .detach_array_buffer(source)
+            .expect("the validated mutable transfer source has not been detached");
         Ok(Value::Object(target))
     }
 
@@ -424,7 +472,11 @@ impl Vm {
     ) -> Result<Value, RuntimeError> {
         let buffer = self.shared_array_buffer_receiver(receiver)?;
         let length = self.buffer_index(length)?;
-        if !self.heap.buffer_growable(buffer)? {
+        if !self
+            .heap
+            .buffer_growable(buffer)
+            .expect("the validated buffer or view retains its brand while rooted")
+        {
             return Err(RuntimeError::TypeError(
                 "SharedArrayBuffer is not growable".into(),
             ));
@@ -450,7 +502,10 @@ impl Vm {
         if matches!(species, Value::Undefined | Value::Null) {
             return self.global("ArrayBuffer");
         }
-        if !self.is_constructor(&species)? {
+        if !self
+            .is_constructor(&species)
+            .expect("the freshly read species value is live in this realm")
+        {
             return Err(RuntimeError::TypeError(
                 "ArrayBuffer species must be a constructor".into(),
             ));
@@ -475,7 +530,10 @@ impl Vm {
         if matches!(species, Value::Undefined | Value::Null) {
             return self.global("SharedArrayBuffer");
         }
-        if !self.is_constructor(&species)? {
+        if !self
+            .is_constructor(&species)
+            .expect("the freshly read species value is live in this realm")
+        {
             return Err(RuntimeError::TypeError(
                 "SharedArrayBuffer species must be a constructor".into(),
             ));
@@ -489,7 +547,10 @@ impl Vm {
         args: &[Value],
     ) -> Result<Value, RuntimeError> {
         let buffer = self.array_buffer_receiver(receiver)?;
-        let length = self.heap.array_buffer_byte_length(buffer)?;
+        let length = self
+            .heap
+            .array_buffer_byte_length(buffer)
+            .expect("the validated buffer or view retains its brand while rooted");
         let start = self.relative_buffer_index(native::argument(args, 0), length)?;
         let end = if args.get(1).is_some_and(|value| *value != Value::Undefined) {
             self.relative_buffer_index(native::argument(args, 1), length)?
@@ -497,7 +558,11 @@ impl Vm {
             length
         };
         let width = end.saturating_sub(start);
-        if self.heap.array_buffer_is_detached(buffer)? {
+        if self
+            .heap
+            .array_buffer_is_detached(buffer)
+            .expect("the validated buffer or view retains its brand while rooted")
+        {
             return Err(RuntimeError::TypeError("ArrayBuffer is detached".into()));
         }
         let constructor = self.array_buffer_species_constructor(receiver)?;
@@ -516,7 +581,11 @@ impl Vm {
         // already does (`typed_arrays.rs`), write through the mirror, then
         // sync it into the real Realm-owned buffer.
         let (result_buffer, foreign_realm) = self.species_result_buffer(&result)?;
-        if self.heap.buffer_is_immutable(result_buffer)? {
+        if self
+            .heap
+            .buffer_is_immutable(result_buffer)
+            .expect("the validated buffer or view retains its brand while rooted")
+        {
             return Err(RuntimeError::TypeError(
                 "ArrayBuffer species returned an immutable buffer".into(),
             ));
@@ -526,20 +595,33 @@ impl Vm {
                 "ArrayBuffer species returned the source buffer".into(),
             ));
         }
-        if self.heap.array_buffer_is_detached(buffer)?
-            || self.heap.array_buffer_is_detached(result_buffer)?
+        if self
+            .heap
+            .array_buffer_is_detached(buffer)
+            .expect("the validated buffer or view retains its brand while rooted")
+            || self
+                .heap
+                .array_buffer_is_detached(result_buffer)
+                .expect("the validated buffer or view retains its brand while rooted")
         {
             return Err(RuntimeError::TypeError("ArrayBuffer is detached".into()));
         }
-        if self.heap.array_buffer_byte_length(result_buffer)? < width {
+        if self
+            .heap
+            .array_buffer_byte_length(result_buffer)
+            .expect("the validated buffer or view retains its brand while rooted")
+            < width
+        {
             return Err(RuntimeError::TypeError(
                 "ArrayBuffer species result is too small".into(),
             ));
         }
         let bytes = self.heap.array_buffer_copy(buffer, start, width)?;
-        self.with_roots(|heap| heap.array_buffer_write(result_buffer, 0, &bytes))?;
+        self.heap
+            .array_buffer_write(result_buffer, 0, &bytes)
+            .expect("the species buffer is live, mutable and large enough for this checked write");
         if let Some(realm_id) = foreign_realm {
-            self.test262_sync_foreign_buffer_mirrors(realm_id)?;
+            self.test262_sync_foreign_buffer_mirrors(realm_id);
         }
         Ok(result)
     }
@@ -563,6 +645,9 @@ impl Vm {
             let mirror = self
                 .test262_foreign_buffer_clone(object)?
                 .ok_or_else(invalid)?;
+            // The membrane clone accepts both ordinary and shared buffers;
+            // ArrayBuffer species requires the ordinary brand specifically.
+            let mirror = self.array_buffer_receiver(&Value::Object(mirror))?;
             return Ok((mirror, Some(realm_id)));
         }
         Ok((self.array_buffer_receiver(result)?, None))
@@ -574,7 +659,10 @@ impl Vm {
         args: &[Value],
     ) -> Result<Value, RuntimeError> {
         let buffer = self.shared_array_buffer_receiver(receiver)?;
-        let length = self.heap.buffer_byte_length(buffer)?;
+        let length = self
+            .heap
+            .buffer_byte_length(buffer)
+            .expect("the validated buffer or view retains its brand while rooted");
         let start = self.relative_buffer_index(native::argument(args, 0), length)?;
         let end = if args.get(1).is_some_and(|value| *value != Value::Undefined) {
             self.relative_buffer_index(native::argument(args, 1), length)?
@@ -601,13 +689,23 @@ impl Vm {
                 "SharedArrayBuffer species returned the source buffer".into(),
             ));
         }
-        if self.heap.buffer_byte_length(result_buffer)? < width {
+        if self
+            .heap
+            .buffer_byte_length(result_buffer)
+            .expect("the validated buffer or view retains its brand while rooted")
+            < width
+        {
             return Err(RuntimeError::TypeError(
                 "SharedArrayBuffer species result is too small".into(),
             ));
         }
-        let bytes = self.heap.array_buffer_copy(buffer, start, width)?;
-        self.with_roots(|heap| heap.array_buffer_write(result_buffer, 0, &bytes))?;
+        let bytes = self
+            .heap
+            .array_buffer_copy(buffer, start, width)
+            .expect("a checked shared-buffer prefix cannot shrink");
+        self.heap
+            .array_buffer_write(result_buffer, 0, &bytes)
+            .expect("the species buffer is live, mutable and large enough for this checked write");
         Ok(result)
     }
 
@@ -627,6 +725,7 @@ impl Vm {
             let mirror = self
                 .test262_foreign_buffer_clone(object)?
                 .ok_or_else(invalid)?;
+            let mirror = self.shared_array_buffer_receiver(&Value::Object(mirror))?;
             return Ok((mirror, Some(realm_id)));
         }
         Ok((self.shared_array_buffer_receiver(result)?, None))
@@ -687,12 +786,19 @@ impl Vm {
         } else {
             0
         };
-        if self.heap.buffer_is_detached(buffer)? {
+        if self
+            .heap
+            .buffer_is_detached(buffer)
+            .expect("the validated buffer or view retains its brand while rooted")
+        {
             return Err(RuntimeError::TypeError(
                 "DataView buffer is detached".into(),
             ));
         }
-        let total = self.heap.buffer_byte_length(buffer)?;
+        let total = self
+            .heap
+            .buffer_byte_length(buffer)
+            .expect("the validated buffer or view retains its brand while rooted");
         if offset > total {
             return Err(RuntimeError::RangeError(
                 "DataView offset is outside its buffer".into(),
@@ -715,12 +821,19 @@ impl Vm {
         // repeats the detached and range checks against the buffer's length as
         // it stands afterwards, and a length-tracking view takes that length.
         let prototype = self.constructed_buffer_prototype("DataView")?;
-        if self.heap.buffer_is_detached(buffer)? {
+        if self
+            .heap
+            .buffer_is_detached(buffer)
+            .expect("the validated buffer or view retains its brand while rooted")
+        {
             return Err(RuntimeError::TypeError(
                 "DataView buffer is detached".into(),
             ));
         }
-        let total = self.heap.buffer_byte_length(buffer)?;
+        let total = self
+            .heap
+            .buffer_byte_length(buffer)
+            .expect("the validated buffer or view retains its brand while rooted");
         if offset > total {
             return Err(RuntimeError::RangeError(
                 "DataView offset is outside its buffer".into(),
@@ -789,7 +902,10 @@ impl Vm {
             Some(value) => self.to_boolean(value)?,
             None => false,
         };
-        let bytes = self.heap.array_buffer_copy(buffer, offset + index, width)?;
+        let bytes = self
+            .heap
+            .array_buffer_copy(buffer, offset + index, width)
+            .expect("the live DataView bounds were checked without further user code");
         Ok(data_view_value(
             &bytes,
             signed,
@@ -809,7 +925,11 @@ impl Vm {
         bigint: bool,
     ) -> Result<Value, RuntimeError> {
         let (viewed_buffer, _, _) = self.data_view_raw_receiver(receiver)?;
-        if self.heap.buffer_is_immutable(viewed_buffer)? {
+        if self
+            .heap
+            .buffer_is_immutable(viewed_buffer)
+            .expect("the validated buffer or view retains its brand while rooted")
+        {
             return Err(RuntimeError::TypeError(
                 "DataView is backed by an immutable ArrayBuffer".into(),
             ));
@@ -838,7 +958,9 @@ impl Vm {
             None => false,
         };
         let bytes = data_view_bytes(&value, width, signed, floating, little_endian, bigint);
-        self.with_roots(|heap| heap.array_buffer_write(buffer, offset + index, &bytes))?;
+        self.heap
+            .array_buffer_write(buffer, offset + index, &bytes)
+            .expect("the mutable DataView bounds were checked without further user code");
         Ok(Value::Undefined)
     }
 
@@ -862,13 +984,20 @@ impl Vm {
                 "Atomics requires an integer TypedArray".into(),
             ));
         }
-        let (_, _, length, kind) = self.heap.typed_array_info(object)?;
+        let (_, _, length, kind) = self
+            .heap
+            .typed_array_info(object)
+            .expect("the integer TypedArray brand check verified this live view");
         if !kind.atomic() || (waitable && !kind.waitable()) {
             return Err(RuntimeError::TypeError(
                 "Atomics requires an integer TypedArray of the correct kind".into(),
             ));
         }
-        if self.heap.typed_array_is_out_of_bounds(object)? {
+        if self
+            .heap
+            .typed_array_is_out_of_bounds(object)
+            .expect("the branded view and its backing remain live before index coercion")
+        {
             return Err(RuntimeError::TypeError(
                 "TypedArray is out of bounds".into(),
             ));
@@ -902,17 +1031,23 @@ impl Vm {
                 "Atomics requires an integer TypedArray".into(),
             ));
         }
-        let (buffer, _, length, kind) = self.heap.typed_array_info(object)?;
-        if !kind.waitable() || !self.heap.buffer_is_shared(buffer)? {
+        let (buffer, _, length, kind) = self
+            .heap
+            .typed_array_info(object)
+            .expect("the integer TypedArray brand check verified this live view");
+        if !kind.waitable()
+            || !self
+                .heap
+                .buffer_is_shared(buffer)
+                .expect("a live TypedArray retains a valid backing buffer")
+        {
             return Err(RuntimeError::TypeError(
                 "Atomics.wait requires a shared Int32Array or BigInt64Array".into(),
             ));
         }
-        if self.heap.typed_array_is_out_of_bounds(object)? {
-            return Err(RuntimeError::TypeError(
-                "TypedArray is out of bounds".into(),
-            ));
-        }
+        // Shared buffers cannot detach or shrink. The view's constructor
+        // validated its initial bounds, and the backing store can only grow,
+        // so a branded view that passed the shared-buffer check stays in bounds.
         let index = self.buffer_index(native::argument(args, 1))?;
         if index >= length {
             return Err(RuntimeError::RangeError(
@@ -931,8 +1066,15 @@ impl Vm {
         modify: impl FnOnce(Value) -> (Option<Value>, T),
     ) -> Result<T, RuntimeError> {
         self.atomics_revalidate(object, index)?;
-        let (buffer, _, _, _) = self.heap.typed_array_info(object)?;
-        if self.heap.buffer_is_shared(buffer)? {
+        let (buffer, _, _, _) = self
+            .heap
+            .typed_array_info(object)
+            .expect("atomic revalidation retained the same live view");
+        if self
+            .heap
+            .buffer_is_shared(buffer)
+            .expect("the revalidated view retains its backing buffer")
+        {
             self.heap
                 .shared_typed_array_atomic_modify(object, index, modify)
                 .map_err(Into::into)
@@ -952,7 +1094,10 @@ impl Vm {
                 "TypedArray is out of bounds".into(),
             ));
         }
-        let (_, _, length, _) = self.heap.typed_array_info(object)?;
+        let (_, _, length, _) = self
+            .heap
+            .typed_array_info(object)
+            .expect("the bounds check verified the same live TypedArray");
         if index >= length {
             return Err(RuntimeError::RangeError(
                 "Atomics index is outside TypedArray".into(),
@@ -980,32 +1125,35 @@ impl Vm {
         kind: TypedArrayKind,
         old: &Value,
         value: &Value,
-        operation: AtomicOp,
+        operation: AtomicBinaryOperation,
     ) -> Value {
         if kind.bigint() {
-            let (Value::BigInt(old), Value::BigInt(value)) = (old, value) else {
-                unreachable!("BigInt atomic operations have BigInt operands");
-            };
+            let old = old
+                .as_bigint()
+                .expect("BigInt atomic operations have BigInt operands");
+            let value = value
+                .as_bigint()
+                .expect("BigInt atomic operations have BigInt operands");
             return Value::BigInt(match operation {
-                AtomicOp::Add => old + value,
-                AtomicOp::And => old & value,
-                AtomicOp::Or => old | value,
-                AtomicOp::Sub => old - value,
-                AtomicOp::Xor => old ^ value,
-                _ => unreachable!("only read-modify-write operations reach this helper"),
+                AtomicBinaryOperation::Add => old + value,
+                AtomicBinaryOperation::And => old & value,
+                AtomicBinaryOperation::Or => old | value,
+                AtomicBinaryOperation::Sub => old - value,
+                AtomicBinaryOperation::Xor => old ^ value,
             });
         }
-        let (Value::Number(old), Value::Number(value)) = (old, value) else {
-            unreachable!("numeric atomic operations have Number operands");
-        };
-        let (old, value) = (*old as i64, *value as i64);
+        let old = old
+            .as_number()
+            .expect("numeric atomic operations have Number operands") as i64;
+        let value = value
+            .as_number()
+            .expect("numeric atomic operations have Number operands") as i64;
         Value::Number(match operation {
-            AtomicOp::Add => old.wrapping_add(value),
-            AtomicOp::And => old & value,
-            AtomicOp::Or => old | value,
-            AtomicOp::Sub => old.wrapping_sub(value),
-            AtomicOp::Xor => old ^ value,
-            _ => unreachable!("only read-modify-write operations reach this helper"),
+            AtomicBinaryOperation::Add => old.wrapping_add(value),
+            AtomicBinaryOperation::And => old & value,
+            AtomicBinaryOperation::Or => old | value,
+            AtomicBinaryOperation::Sub => old.wrapping_sub(value),
+            AtomicBinaryOperation::Xor => old ^ value,
         } as f64)
     }
 
@@ -1018,6 +1166,7 @@ impl Vm {
             self.reject_immutable_typed_array(native::argument(args, 0))?;
         }
         let (object, index, kind) = self.atomics_access(args, false)?;
+        let binary_operation = AtomicBinaryOperation::from_operation(operation);
         let result = match operation {
             AtomicOp::Load => self.atomics_modify(object, index, |old| (None, old)),
             AtomicOp::Store => {
@@ -1045,7 +1194,12 @@ impl Vm {
             AtomicOp::Add | AtomicOp::And | AtomicOp::Or | AtomicOp::Sub | AtomicOp::Xor => {
                 let value = self.atomics_element_value(kind, native::argument(args, 2))?;
                 self.atomics_modify(object, index, move |old| {
-                    let next = Self::atomics_binary_value(kind, &old, &value, operation);
+                    let next = Self::atomics_binary_value(
+                        kind,
+                        &old,
+                        &value,
+                        binary_operation.expect("arithmetic operation selected by dispatch"),
+                    );
                     (Some(next), old)
                 })
             }
@@ -1073,7 +1227,10 @@ impl Vm {
 
     pub(super) fn atomics_notify(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
         let (object, index, kind) = self.atomics_access(args, true)?;
-        let (buffer, byte_offset, _, _) = self.heap.typed_array_info(object)?;
+        let (buffer, byte_offset, _, _) = self
+            .heap
+            .typed_array_info(object)
+            .expect("atomic access verified the retained TypedArray argument");
         let count = if args.len() < 3 || args[2] == Value::Undefined {
             usize::MAX
         } else {
@@ -1086,10 +1243,17 @@ impl Vm {
                 count.trunc() as usize
             }
         };
-        if !self.heap.buffer_is_shared(buffer)? {
+        if !self
+            .heap
+            .buffer_is_shared(buffer)
+            .expect("the retained TypedArray owns its backing buffer")
+        {
             return Ok(Value::Number(0.0));
         }
-        let backing = self.heap.shared_buffer_backing(buffer)?;
+        let backing = self
+            .heap
+            .shared_buffer_backing(buffer)
+            .expect("the backing just passed its shared-buffer check");
         let position = byte_offset + index * kind.byte_width();
         Ok(Value::Number(backing.notify(position, count) as f64))
     }
@@ -1097,7 +1261,9 @@ impl Vm {
     fn atomics_wait_status(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
         let (object, index, kind) = self.atomics_wait_access(args)?;
         let expected = self.atomics_element_value(kind, native::argument(args, 2))?;
-        let observed = self.atomics_read(object, index)?;
+        let observed = self
+            .atomics_read(object, index)
+            .expect("a checked shared view cannot detach or shrink during operand coercion");
         if observed != expected {
             return Ok(Value::String("not-equal".into()));
         }
@@ -1111,8 +1277,14 @@ impl Vm {
                 Some(std::time::Duration::from_secs_f64(timeout / 1_000.0))
             })
         })?;
-        let (buffer, byte_offset, _, _) = self.heap.typed_array_info(object)?;
-        let backing = self.heap.shared_buffer_backing(buffer)?;
+        let (buffer, byte_offset, _, _) = self
+            .heap
+            .typed_array_info(object)
+            .expect("the wait argument retains the same shared TypedArray");
+        let backing = self
+            .heap
+            .shared_buffer_backing(buffer)
+            .expect("a shared wait backing cannot change its brand during timeout coercion");
         let position = byte_offset + index * kind.byte_width();
         Ok(Value::String(
             match backing.wait(position, timeout) {
@@ -1130,7 +1302,9 @@ impl Vm {
     pub(super) fn atomics_wait_async(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
         let (object, index, kind) = self.atomics_wait_access(args)?;
         let expected = self.atomics_element_value(kind, native::argument(args, 2))?;
-        let observed = self.atomics_read(object, index)?;
+        let observed = self
+            .atomics_read(object, index)
+            .expect("a checked shared view cannot detach or shrink during operand coercion");
         let prototype = self.object_prototype;
         let result = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
         // The result record is held nowhere else while its properties are
@@ -1172,9 +1346,15 @@ impl Vm {
                 )?;
                 return Ok(());
             }
-            let (buffer, byte_offset, _, _) = self.heap.typed_array_info(object)?;
+            let (buffer, byte_offset, _, _) = self
+                .heap
+                .typed_array_info(object)
+                .expect("the async wait argument retains the same shared TypedArray");
             let position = byte_offset + index * kind.byte_width();
-            let backing = self.heap.shared_buffer_backing(buffer)?;
+            let backing = self
+                .heap
+                .shared_buffer_backing(buffer)
+                .expect("a shared wait backing cannot change its brand during timeout coercion");
             let promise = self.new_promise()?;
             self.stack.push(Value::Object(promise));
             self.schedule_test262_async_wait(backing, position, timeout, promise);
@@ -1220,7 +1400,10 @@ impl Vm {
                     self.test262_foreign_buffer_clone(*buffer)?
                 };
                 if let Some(source_buffer) = source_buffer {
-                    let bytes = self.heap.buffer_byte_length(source_buffer)?;
+                    let bytes = self
+                        .heap
+                        .buffer_byte_length(source_buffer)
+                        .expect("the validated buffer or view retains its brand while rooted");
                     let offset = if args.len() > 1 {
                         self.buffer_index(native::argument(args, 1))?
                     } else {
@@ -1239,7 +1422,11 @@ impl Vm {
                     let requested_length = (!length_tracking)
                         .then(|| self.buffer_index(native::argument(args, 2)))
                         .transpose()?;
-                    if self.heap.buffer_is_detached(source_buffer)? {
+                    if self
+                        .heap
+                        .buffer_is_detached(source_buffer)
+                        .expect("the validated buffer or view retains its brand while rooted")
+                    {
                         return Err(RuntimeError::TypeError(
                             "TypedArray buffer is detached".into(),
                         ));
@@ -1258,9 +1445,13 @@ impl Vm {
                         // partial trailing element is permitted and may
                         // become complete after a later grow. Ordinary fixed
                         // buffers retain the alignment requirement.
-                        let auto_length = self.heap.buffer_resizable(source_buffer)?
-                            || self.heap.buffer_growable(source_buffer)?;
-                        if remaining % kind.byte_width() != 0 && !auto_length {
+                        let auto_length =
+                            self.heap.buffer_resizable(source_buffer).expect(
+                                "the validated buffer or view retains its brand while rooted",
+                            ) || self.heap.buffer_growable(source_buffer).expect(
+                                "the validated buffer or view retains its brand while rooted",
+                            );
+                        if !remaining.is_multiple_of(kind.byte_width()) && !auto_length {
                             return Err(RuntimeError::RangeError(
                                 "invalid TypedArray buffer length".into(),
                             ));
@@ -1268,17 +1459,31 @@ impl Vm {
                         remaining / kind.byte_width()
                     };
                     (source_buffer, offset, length, length_tracking, None)
-                } else if self.heap.is_typed_array(*buffer)? {
-                    let (source_buffer, _, source_length, _) =
-                        self.heap.typed_array_info(*buffer)?;
-                    if self.heap.buffer_is_detached(source_buffer)?
-                        || self.heap.typed_array_is_out_of_bounds(*buffer)?
+                } else if self
+                    .heap
+                    .is_typed_array(*buffer)
+                    .expect("the validated buffer or view retains its brand while rooted")
+                {
+                    let (source_buffer, _, source_length, _) = self
+                        .heap
+                        .typed_array_info(*buffer)
+                        .expect("the validated buffer or view retains its brand while rooted");
+                    if self
+                        .heap
+                        .buffer_is_detached(source_buffer)
+                        .expect("the validated buffer or view retains its brand while rooted")
+                        || self
+                            .heap
+                            .typed_array_is_out_of_bounds(*buffer)
+                            .expect("the validated buffer or view retains its brand while rooted")
                     {
                         return Err(RuntimeError::TypeError(
                             "TypedArray source is detached or out of bounds".into(),
                         ));
                     }
-                    let values = self.typed_array_values(*buffer, source_length)?;
+                    let values = self
+                        .typed_array_values(*buffer, source_length)
+                        .expect("the checked attached TypedArray snapshot runs no user code");
                     let result = self.new_typed_array_buffer(source_length, kind)?;
                     (result, 0, source_length, false, Some(values))
                 } else {
@@ -1655,7 +1860,11 @@ impl Vm {
                         "source does not fit in TypedArray".into(),
                     ));
                 }
-                let values = self.typed_array_read_values(source_object, 0, source_length)?;
+                let values = self
+                    .typed_array_read_values(source_object, 0, source_length)
+                    .expect(
+                        "the checked attached source and range cannot change without user code",
+                    );
                 self.typed_array_write_values(target, kind, target_offset, &values)?;
                 return Ok(Value::Undefined);
             }
@@ -1689,9 +1898,8 @@ impl Vm {
                 // generic-source loop: IntegerIndexedElementSet simply skips
                 // a now-invalid indexed write, while later source Gets remain
                 // observable.
-                self.with_roots(|heap| {
-                    heap.typed_array_set_index(target, target_offset + index, &value)
-                })?;
+                self.heap.typed_array_set_index(target, target_offset + index, &value)
+                    .expect("the rooted mutable view receives a normalized primitive; invalid indices are skipped");
             }
             Ok(Value::Undefined)
         })();
@@ -1722,15 +1930,28 @@ impl Vm {
             length
         };
         let length_tracking = args.get(1).is_none_or(|value| *value == Value::Undefined)
-            && self.heap.typed_array_is_length_tracking(source)?
-            && (self.heap.buffer_resizable(buffer)? || self.heap.buffer_growable(buffer)?);
+            && self
+                .heap
+                .typed_array_is_length_tracking(source)
+                .expect("the rooted source retains its validated TypedArray brand")
+            && (self
+                .heap
+                .buffer_resizable(buffer)
+                .expect("the rooted view owns its validated backing buffer")
+                || self
+                    .heap
+                    .buffer_growable(buffer)
+                    .expect("the rooted view owns its validated backing buffer"));
         let view_length = end.saturating_sub(start);
-        let view_offset = byte_offset
-            .checked_add(start * kind.byte_width())
-            .ok_or_else(|| RuntimeError::RangeError("TypedArray offset is too large".into()))?;
+        // `start <= length`; the offset and that length came from one valid
+        // heap view, whose span already fits its allocated backing store.
+        let view_offset = byte_offset + start * kind.byte_width();
         let fallback = self.global(kind.name())?;
         let constructor = self.typed_array_species_constructor(receiver, fallback)?;
-        if !self.is_constructor(&constructor)? {
+        if !self
+            .is_constructor(&constructor)
+            .expect("SpeciesConstructor returned a live value in this realm")
+        {
             return Err(RuntimeError::TypeError(
                 "TypedArray constructor must be a constructor".into(),
             ));
@@ -1751,71 +1972,6 @@ impl Vm {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn number(value: f64) -> Value {
-        Value::Number(value)
-    }
-
-    fn bigint(value: i64) -> Value {
-        Value::BigInt(value.into())
-    }
-
-    #[test]
-    fn numeric_atomic_operations_wrap_at_the_element_width() {
-        let apply = |operation| {
-            Vm::atomics_binary_value(
-                TypedArrayKind::Int32,
-                &number(12.0),
-                &number(10.0),
-                operation,
-            )
-        };
-        assert_eq!(apply(AtomicOp::Add), number(22.0));
-        assert_eq!(apply(AtomicOp::And), number(8.0));
-        assert_eq!(apply(AtomicOp::Or), number(14.0));
-        assert_eq!(apply(AtomicOp::Sub), number(2.0));
-        assert_eq!(apply(AtomicOp::Xor), number(6.0));
-    }
-
-    #[test]
-    fn bigint_atomic_operations_are_exact() {
-        let apply = |operation| {
-            Vm::atomics_binary_value(
-                TypedArrayKind::BigInt64,
-                &bigint(12),
-                &bigint(10),
-                operation,
-            )
-        };
-        assert_eq!(apply(AtomicOp::Add), bigint(22));
-        assert_eq!(apply(AtomicOp::And), bigint(8));
-        assert_eq!(apply(AtomicOp::Or), bigint(14));
-        assert_eq!(apply(AtomicOp::Sub), bigint(2));
-        assert_eq!(apply(AtomicOp::Xor), bigint(6));
-    }
-
-    #[test]
-    #[should_panic(expected = "BigInt atomic operations have BigInt operands")]
-    fn a_bigint_element_never_meets_a_number_operand() {
-        Vm::atomics_binary_value(
-            TypedArrayKind::BigInt64,
-            &bigint(1),
-            &number(1.0),
-            AtomicOp::Add,
-        );
-    }
-
-    #[test]
-    #[should_panic(expected = "numeric atomic operations have Number operands")]
-    fn a_numeric_element_never_meets_a_bigint_operand() {
-        Vm::atomics_binary_value(
-            TypedArrayKind::Int32,
-            &number(1.0),
-            &bigint(1),
-            AtomicOp::Add,
-        );
-    }
-}
+#[cfg(any(test, coverage))]
+#[path = "../../../tests/fixtures/binary_data_internal.rs"]
+mod tests;

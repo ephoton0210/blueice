@@ -27,8 +27,8 @@ mod typed_arrays;
 mod uint8array;
 use crate::heap::{
     f16_bits_to_f64, f64_to_f16_bits, same_value, ArrayIteratorKind, AsyncGeneratorCompletion,
-    AsyncGeneratorDelegate, AsyncGeneratorRequest, AsyncGeneratorStatus, GeneratorState,
-    IteratorHelperKind, IteratorHelperState, TypedArrayKind, TypedArrayNumericKey,
+    AsyncGeneratorRequest, AsyncGeneratorStatus, GeneratorState, IteratorHelperKind,
+    IteratorHelperState, TypedArrayKind, TypedArrayNumericKey,
 };
 use crate::native::{
     AtomicOp, MapMethod, MathMethod, NumberMethod, ObjectMethod, PatternMethod, SetMethod,

@@ -112,16 +112,11 @@ impl Vm {
         if let Some(function) = self.throw_type_error {
             return Ok(function);
         }
-        let constructor = self.string_intrinsics()?.0;
-        let prototype = self
-            .heap
-            .prototype(constructor)
-            .expect("the String constructor is a live object")
-            .expect("String constructor has Function.prototype");
+        let prototype = self.function_prototype()?;
         let function = self.with_roots(|heap| {
             heap.alloc_native_function(NativeFunction::ThrowTypeError, "", prototype)
         })?;
-        let root = self.root_new_object(function);
+        let root = self.heap.root(function)?;
         let result = (|| {
             // %ThrowTypeError% is frozen: `length` then `name`, both
             // non-configurable, and the function is not extensible.
@@ -180,12 +175,7 @@ impl Vm {
         if let Some(getters) = self.legacy_function_getters {
             return Ok(getters);
         }
-        let constructor = self.string_intrinsics()?.0;
-        let prototype = self
-            .heap
-            .prototype(constructor)
-            .expect("the String constructor is a live object")
-            .expect("String constructor has Function.prototype");
+        let prototype = self.function_prototype()?;
         let mut created = Vec::new();
         let result = (|| {
             for native in [
@@ -194,7 +184,7 @@ impl Vm {
             ] {
                 let function =
                     self.with_roots(|heap| heap.alloc_native_function(native, "", prototype))?;
-                created.push((function, self.root_new_object(function)));
+                created.push((function, self.heap.root(function)?));
                 self.define_data(
                     function,
                     "name",
@@ -309,7 +299,34 @@ impl Vm {
         let source = crate::source_encoding::encode(source);
         let program = crate::parse_eval(&source, self.strict)
             .map_err(|error| RuntimeError::SyntaxError(error.message))?;
-        let visible = self.eval_visible_bindings();
+        let mut visible = self.eval_visible_bindings();
+        let mut dynamic_captures = HashMap::new();
+        if self.parameter_eval_env.is_some() {
+            for (name, binding, slot) in &mut visible {
+                // An active local/catch/block binding sits inside the eval
+                // variable environment and must keep its original cell.
+                if self
+                    .active_scope_slots
+                    .iter()
+                    .any(|scope| scope.contains(slot))
+                {
+                    continue;
+                }
+                if let Some(dynamic) = self.dynamic_eval_bindings.get(name) {
+                    // A repeated eval's var initializer stores to a captured
+                    // slot directly. Capture the local dynamic var, with its
+                    // mutable metadata, rather than its shadowed outer cell.
+                    // Caller references already resolved to that outer cell
+                    // and unrelated closures remain unchanged.
+                    binding.mutable = true;
+                    binding.strict_immutable = false;
+                    binding.lexical = false;
+                    binding.catch_parameter = false;
+                    binding.eval_var = true;
+                    dynamic_captures.insert(*slot, dynamic.cell);
+                }
+            }
+        }
         // Only the derived constructor itself, or an arrow function or eval
         // code inside it, has the constructor binding `super()` needs.
         let derived_constructor = visible
@@ -373,7 +390,10 @@ impl Vm {
         let captures = code
             .captures
             .iter()
-            .map(|slot| self.capture(*slot as usize))
+            .map(|slot| match dynamic_captures.get(slot) {
+                Some(&cell) => Ok(cell),
+                None => self.capture(*slot as usize),
+            })
             .collect::<Result<Vec<_>, _>>()?;
         // A sloppy direct eval inherits the caller's VariableEnvironment.
         // The absence of a current function identifies the realm's global
@@ -468,15 +488,10 @@ impl Vm {
         if let Some(prototype) = self.array_iterator_prototype {
             return Ok(prototype);
         }
-        let constructor = self.string_intrinsics()?.0;
-        let function_prototype = self
-            .heap
-            .prototype(constructor)
-            .expect("the String constructor is a live object")
-            .unwrap();
+        let function_prototype = self.function_prototype()?;
         let base = self.base_iterator_prototype()?;
         let prototype = self.with_roots(|heap| heap.alloc_object(Some(base)))?;
-        let root = self.root_new_object(prototype);
+        let root = self.heap.root(prototype)?;
         let result = (|| {
             self.install_native(
                 prototype,
@@ -585,7 +600,7 @@ impl Vm {
             .function_prototype()
             .expect("the String intrinsics exist");
         let prototype = self.with_roots(|heap| heap.alloc_object(Some(function_prototype)))?;
-        let root = self.root_new_object(prototype);
+        let root = self.heap.root(prototype)?;
         let base = self.stack.len();
         self.stack.push(Value::Object(prototype));
         let result = (|| {
@@ -662,18 +677,12 @@ impl Vm {
     ) -> Result<(ObjectId, crate::heap::RootId), RuntimeError> {
         // The function prototype was built just before, by
         // `build_generator_function_prototype`.
-        let constructor = self
-            .string_intrinsics()
-            .expect("the String intrinsics exist")
-            .0;
         let function_prototype = self
-            .heap
-            .prototype(constructor)
-            .expect("the String constructor is a live object")
-            .unwrap();
+            .function_prototype()
+            .expect("the String intrinsics exist");
         let base = self.base_iterator_prototype()?;
         let prototype = self.with_roots(|heap| heap.alloc_object(Some(base)))?;
-        let root = self.root_new_object(prototype);
+        let root = self.heap.root(prototype)?;
         let result = (|| {
             self.install_native(
                 prototype,
@@ -725,7 +734,7 @@ impl Vm {
         let object_prototype = self.object_prototype;
         let function_prototype = self.function_prototype()?;
         let prototype = self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;
-        let root = self.root_new_object(prototype);
+        let root = self.heap.root(prototype)?;
         let result = self
             .install_symbol_native(
                 prototype,
@@ -764,7 +773,7 @@ impl Vm {
             .function_prototype()
             .expect("the String intrinsics exist");
         let prototype = self.with_roots(|heap| heap.alloc_object(Some(base)))?;
-        let root = self.root_new_object(prototype);
+        let root = self.heap.root(prototype)?;
         let result = (|| {
             self.install_native(
                 prototype,
@@ -826,7 +835,7 @@ impl Vm {
             .object_id()
             .expect("Function is callable");
         let prototype = self.with_roots(|heap| heap.alloc_object(Some(function_prototype)))?;
-        let root = self.root_new_object(prototype);
+        let root = self.heap.root(prototype)?;
         let base = self.stack.len();
         self.stack.push(Value::Object(prototype));
         let result: Result<(), RuntimeError> = (|| {
@@ -927,7 +936,7 @@ impl Vm {
             .function_prototype()
             .expect("the String intrinsics exist");
         let prototype = self.with_roots(|heap| heap.alloc_object(Some(function_prototype)))?;
-        let root = self.root_new_object(prototype);
+        let root = self.heap.root(prototype)?;
         let base = self.stack.len();
         self.stack.push(Value::Object(prototype));
         let result: Result<(), RuntimeError> = (|| {

@@ -21,6 +21,40 @@ pub(super) enum DateTimeFormatValue {
     Temporal(TemporalValue),
 }
 
+/// Temporal kinds accepted by DateTimeFormat after its value-side validation.
+#[derive(Clone, Copy)]
+enum DateTimeTemporalKind {
+    Date,
+    DateTime,
+    MonthDay,
+    Time,
+    YearMonth,
+    Instant,
+}
+
+impl DateTimeTemporalKind {
+    fn from_temporal(kind: TemporalKind) -> Result<Self, RuntimeError> {
+        Ok(match kind {
+            TemporalKind::PlainDate => Self::Date,
+            TemporalKind::PlainDateTime => Self::DateTime,
+            TemporalKind::PlainMonthDay => Self::MonthDay,
+            TemporalKind::PlainTime => Self::Time,
+            TemporalKind::PlainYearMonth => Self::YearMonth,
+            TemporalKind::Instant => Self::Instant,
+            TemporalKind::Duration => {
+                return Err(RuntimeError::TypeError(
+                    "Intl.DateTimeFormat does not support Temporal.Duration".into(),
+                ))
+            }
+            TemporalKind::ZonedDateTime => {
+                return Err(RuntimeError::TypeError(
+                    "Intl.DateTimeFormat does not support Temporal.ZonedDateTime".into(),
+                ))
+            }
+        })
+    }
+}
+
 /// The VM-side `ToIntlMathematicalValue` result. This is intentionally kept
 /// separate from `ToNumber`: NumberFormat must preserve exact decimal strings
 /// and BigInts through `format`, `formatToParts`, and both range operations.
@@ -132,17 +166,16 @@ fn apply_temporal_partial_date_style(
 
 fn temporal_default_components(
     options: &mut blueice_ecma402::DateTimeFormatOptions,
-    kind: TemporalKind,
+    kind: DateTimeTemporalKind,
 ) {
     use blueice_ecma402::DateTimeWidth::Numeric;
     match kind {
-        TemporalKind::Duration => unreachable!("Temporal.Duration is not date-time formattable"),
         // Leaving the components absent selects DateTimeFormat's legacy
         // default numeric-date pattern. That matters for interval patterns:
         // en-US repeats both default-date endpoints rather than collapsing a
         // shared year.
-        TemporalKind::PlainDate => {}
-        TemporalKind::PlainDateTime => {
+        DateTimeTemporalKind::Date => {}
+        DateTimeTemporalKind::DateTime | DateTimeTemporalKind::Instant => {
             options.year = Some(Numeric);
             options.month = Some(Numeric);
             options.day = Some(Numeric);
@@ -150,28 +183,19 @@ fn temporal_default_components(
             options.minute = Some(Numeric);
             options.second = Some(Numeric);
         }
-        TemporalKind::PlainMonthDay => {
+        DateTimeTemporalKind::MonthDay => {
             options.month = Some(Numeric);
             options.day = Some(Numeric);
         }
-        TemporalKind::PlainTime => {
+        DateTimeTemporalKind::Time => {
             options.hour = Some(Numeric);
             options.minute = Some(Numeric);
             options.second = Some(Numeric);
         }
-        TemporalKind::PlainYearMonth => {
+        DateTimeTemporalKind::YearMonth => {
             options.year = Some(Numeric);
             options.month = Some(Numeric);
         }
-        TemporalKind::Instant => {
-            options.year = Some(Numeric);
-            options.month = Some(Numeric);
-            options.day = Some(Numeric);
-            options.hour = Some(Numeric);
-            options.minute = Some(Numeric);
-            options.second = Some(Numeric);
-        }
-        TemporalKind::ZonedDateTime => {}
     }
 }
 
@@ -180,12 +204,12 @@ impl Vm {
         if let Some(&id) = self.globals.get("Intl") {
             return Ok(Value::Object(id));
         }
-        let string = self.string_intrinsics()?.0;
-        let function_prototype = self.heap.prototype(string)?.unwrap();
+        let function_prototype = self.function_prototype()?;
         let object_prototype = self.object_prototype;
         let namespace = self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;
         let root = self.heap.root(namespace)?;
-        let mut constructor_root = None;
+        let base = self.stack.len();
+        let mut constructors = Vec::new();
         let result = (|| {
             self.define_data(
                 namespace,
@@ -216,8 +240,12 @@ impl Vm {
                 0,
                 NativeFunction::Collator,
             )?;
-            let constructor = self.heap.get(namespace, "Collator")?.object_id().unwrap();
-            constructor_root = Some(self.heap.root(constructor)?);
+            let constructor = self
+                .heap
+                .get(namespace, "Collator")
+                .expect("the rooted namespace retains the freshly installed constructor")
+                .object_id()
+                .unwrap();
             let prototype = self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;
             self.define_data(
                 constructor,
@@ -264,7 +292,7 @@ impl Vm {
                 "get compare",
                 NativeFunction::CollatorCompareGetter,
             )?;
-            self.globals.insert("%Intl.Collator%".into(), constructor);
+            constructors.push(("%Intl.Collator%".into(), constructor));
             // NumberFormat and DateTimeFormat are mandatory service
             // constructors. Their locale data and formatting algorithms live
             // in the host-neutral blueice-ecma402 crate.
@@ -289,7 +317,12 @@ impl Vm {
                     },
                     NativeFunction::IntlService(service),
                 )?;
-                let constructor = self.heap.get(namespace, name)?.object_id().unwrap();
+                let constructor = self
+                    .heap
+                    .get(namespace, name)
+                    .expect("the rooted namespace retains the freshly installed constructor")
+                    .object_id()
+                    .unwrap();
                 let prototype =
                     self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;
                 self.stack.push(Value::Object(prototype));
@@ -361,8 +394,7 @@ impl Vm {
                             2,
                             NativeFunction::NumberFormatFormatRangeToParts,
                         )?;
-                        self.globals
-                            .insert("%Intl.NumberFormat%".into(), constructor);
+                        constructors.push(("%Intl.NumberFormat%".into(), constructor));
                     } else if service == native::IntlService::DateTime {
                         self.define_data(
                             prototype,
@@ -414,8 +446,7 @@ impl Vm {
                             2,
                             NativeFunction::DateTimeFormatFormatRangeToParts,
                         )?;
-                        self.globals
-                            .insert("%Intl.DateTimeFormat%".into(), constructor);
+                        constructors.push(("%Intl.DateTimeFormat%".into(), constructor));
                     } else if service == native::IntlService::DisplayNames {
                         self.define_data(
                             prototype,
@@ -446,8 +477,7 @@ impl Vm {
                             1,
                             NativeFunction::DisplayNamesOf,
                         )?;
-                        self.globals
-                            .insert("%Intl.DisplayNames%".into(), constructor);
+                        constructors.push(("%Intl.DisplayNames%".into(), constructor));
                     } else if service == native::IntlService::Duration {
                         self.define_data(
                             prototype,
@@ -485,8 +515,7 @@ impl Vm {
                             1,
                             NativeFunction::DurationFormatFormatToParts,
                         )?;
-                        self.globals
-                            .insert("%Intl.DurationFormat%".into(), constructor);
+                        constructors.push(("%Intl.DurationFormat%".into(), constructor));
                     } else if service == native::IntlService::List {
                         self.define_data(
                             prototype,
@@ -524,7 +553,7 @@ impl Vm {
                             1,
                             NativeFunction::ListFormatFormatToParts,
                         )?;
-                        self.globals.insert("%Intl.ListFormat%".into(), constructor);
+                        constructors.push(("%Intl.ListFormat%".into(), constructor));
                     } else if service == native::IntlService::Plural {
                         self.define_data(
                             prototype,
@@ -562,8 +591,7 @@ impl Vm {
                             2,
                             NativeFunction::PluralRulesSelectRange,
                         )?;
-                        self.globals
-                            .insert("%Intl.PluralRules%".into(), constructor);
+                        constructors.push(("%Intl.PluralRules%".into(), constructor));
                     } else if service == native::IntlService::RelativeTime {
                         self.define_data(
                             prototype,
@@ -601,9 +629,10 @@ impl Vm {
                             2,
                             NativeFunction::RelativeTimeFormatFormatToParts,
                         )?;
-                        self.globals
-                            .insert("%Intl.RelativeTimeFormat%".into(), constructor);
-                    } else if service == native::IntlService::Segmenter {
+                        constructors.push(("%Intl.RelativeTimeFormat%".into(), constructor));
+                    } else {
+                        // The closed constructor inventory above exhausts all
+                        // seven other IntlService variants before Segmenter.
                         self.define_data(
                             prototype,
                             JsSymbol::well_known("toStringTag"),
@@ -633,7 +662,7 @@ impl Vm {
                             1,
                             NativeFunction::SegmenterSegment,
                         )?;
-                        self.globals.insert("%Intl.Segmenter%".into(), constructor);
+                        constructors.push(("%Intl.Segmenter%".into(), constructor));
                     }
                     Ok(())
                 })();
@@ -647,7 +676,12 @@ impl Vm {
                 1,
                 NativeFunction::Locale,
             )?;
-            let constructor = self.heap.get(namespace, "Locale")?.object_id().unwrap();
+            let constructor = self
+                .heap
+                .get(namespace, "Locale")
+                .expect("the rooted namespace retains the freshly installed constructor")
+                .object_id()
+                .unwrap();
             let prototype = self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;
             self.define_data(
                 constructor,
@@ -733,25 +767,19 @@ impl Vm {
                     NativeFunction::LocaleGetter(getter),
                 )?;
             }
-            self.globals.insert("%Intl.Locale%".into(), constructor);
+            constructors.push(("%Intl.Locale%".into(), constructor));
+            if let Some(&global) = self.globals.get("globalThis") {
+                self.define_data(global, "Intl", Value::Object(namespace), true, false, true)?;
+            }
+            self.globals.extend(constructors);
             self.globals.insert("Intl".into(), namespace);
             Ok(Value::Object(namespace))
         })();
-        match result {
-            Ok(value) => {
-                if let Some(&global) = self.globals.get("globalThis") {
-                    self.define_data(global, "Intl", Value::Object(namespace), true, false, true)?;
-                }
-                Ok(value)
-            }
-            Err(error) => {
-                self.heap.unroot(root)?;
-                if let Some(root) = constructor_root {
-                    self.heap.unroot(root)?;
-                }
-                Err(error)
-            }
+        self.stack.truncate(base);
+        if result.is_err() {
+            self.release_root(root);
         }
+        result
     }
 }
 

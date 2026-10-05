@@ -132,6 +132,16 @@ impl Vm {
                 "nested debugger pause requires a direct synchronous closure call",
             ));
         }
+        // Reject serial exhaustion before replacing the caller's bindings,
+        // stack and execution context. An early error in the nested body path
+        // would otherwise skip the common frame restoration below.
+        let next_debugger_frame_serial = if nested_debugger_target.is_some() {
+            Some(self.next_debugger_frame_serial.checked_add(1).ok_or(
+                RuntimeError::Unsupported("nested debugger frame serial exhausted"),
+            )?)
+        } else {
+            None
+        };
         if code.class_constructor && !construct {
             // §10.2.1.1's class-constructor rejection is created in the
             // function's Realm. Materialize it before a Test262 membrane can
@@ -264,6 +274,10 @@ impl Vm {
             .extend(self.cells.values().copied().map(Value::Object));
         self.stack.push(self.completion.clone());
         self.stack.push(self.this.clone());
+        // A resumed async/generator caller is absent from call_stack. Its
+        // function must survive while the callee replaces Vm::callee and
+        // allocates, so restoring the caller cannot publish a collected ID.
+        self.stack.push(self.callee.clone());
         self.stack.extend(self.arguments.iter().cloned());
         // The callee sees only the with objects it closed over, not the
         // caller's; keep the caller's rooted on the stack meanwhile.
@@ -389,28 +403,27 @@ impl Vm {
             }
         } else if let Some((target_offset, target_ordinal)) = nested_debugger_target {
             let frame_serial = self.next_debugger_frame_serial;
-            let next_frame_serial =
-                frame_serial
-                    .checked_add(1)
-                    .ok_or(RuntimeError::Unsupported(
-                        "nested debugger frame serial exhausted",
-                    ))?;
+            let next_frame_serial = next_debugger_frame_serial
+                .expect("nested invocation reserved its serial before installing the frame");
             let pending_base = self.pending_completions.len();
             let save_base = self.completion_saves.len();
             let mut iterators = Vec::new();
-            let result = match self.interpret(
-                &code,
-                &mut iterators,
-                0,
-                None,
-                Some(InterpreterSuspensionPoint::Offset(target_offset)),
-                None,
+            let result = match DebuggerInterpreterExit::classify(
+                self.interpret(
+                    &code,
+                    &mut iterators,
+                    0,
+                    None,
+                    Some(InterpreterSuspensionPoint::Offset(target_offset)),
+                    None,
+                ),
+                DebuggerFrameKind::NestedEntry,
             ) {
-                Ok(InterpreterExit::Suspend {
+                DebuggerInterpreterExit::Suspended {
                     pc,
                     iterators,
                     handlers,
-                }) => {
+                } => {
                     let stack = self.stack.split_off(frame_base);
                     let mut execution = self.suspend_module_execution();
                     let parent_stack = std::mem::replace(&mut execution.stack, stack);
@@ -427,11 +440,7 @@ impl Vm {
                     suspended_parent_stack = Some(parent_stack);
                     Ok(Value::Undefined)
                 }
-                Ok(InterpreterExit::Return(value)) => Ok(value),
-                Ok(InterpreterExit::Yield { .. } | InterpreterExit::Await { .. }) => Err(
-                    RuntimeError::Unsupported("nested debugger target cannot yield or await"),
-                ),
-                Err(error) => Err(error),
+                DebuggerInterpreterExit::Completed(result) => result,
             };
             if result.is_err() {
                 let base = self.stack.len();
@@ -563,70 +572,6 @@ const GENERATOR_INTRINSICS: &str = "a generator function's prototypes are alread
 /// property, so reading it can neither throw nor allocate.
 const GENERATOR_PROTOTYPE: &str = "a generator function's prototype is a data property";
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn message(body: AsyncBody) -> String {
-        match body {
-            AsyncBody::Failed(RuntimeError::TypeError(message)) => message,
-            AsyncBody::Failed(other) => format!("{other:?}"),
-            AsyncBody::Returned(_) => "returned".into(),
-            AsyncBody::Awaiting { pc, handlers, .. } => {
-                format!("awaiting at {pc} with {} handlers", handlers.len())
-            }
-        }
-    }
-
-    #[test]
-    fn an_async_function_body_can_only_return_await_or_fail() {
-        assert_eq!(
-            message(AsyncBody::classify(Ok(InterpreterExit::Return(
-                Value::Undefined
-            )))),
-            "returned"
-        );
-        assert_eq!(
-            message(AsyncBody::classify(Ok(InterpreterExit::Await {
-                promise: ObjectId { heap: 0, serial: 0 },
-                pc: 7,
-                handlers: Vec::new(),
-            }))),
-            "awaiting at 7 with 0 handlers"
-        );
-        assert_eq!(
-            message(AsyncBody::classify(Err(RuntimeError::RangeError(
-                "r".into()
-            )))),
-            "RangeError(\"r\")"
-        );
-        assert_eq!(
-            message(AsyncBody::classify(Ok(InterpreterExit::Yield {
-                value: Value::Undefined,
-                pc: 0,
-                iterators: Vec::new(),
-                handlers: Vec::new(),
-            }))),
-            "yield requires an async generator function"
-        );
-        assert_eq!(
-            message(AsyncBody::classify(Ok(InterpreterExit::Suspend {
-                pc: 0,
-                iterators: Vec::new(),
-                handlers: Vec::new(),
-            }))),
-            "an ordinary async function has no entry suspend"
-        );
-    }
-
-    #[test]
-    fn an_async_function_fails_its_first_await_when_continuation_ids_run_out() {
-        let mut vm = Vm {
-            next_async_continuation: u64::MAX,
-            ..Vm::default()
-        };
-        let code =
-            crate::compile(&crate::parse("(async function () { await 1; })()").unwrap()).unwrap();
-        assert_eq!(vm.execute(&code), Err(RuntimeError::InstructionLimit));
-    }
-}
+#[cfg(any(test, coverage))]
+#[path = "../../../../tests/fixtures/closure_execution_internal.rs"]
+mod tests;

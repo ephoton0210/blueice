@@ -5,7 +5,46 @@
 use super::*;
 use crate::heap::TemporalKind;
 
-#[test]
+#[cfg_attr(test, test)]
+fn calls_materialize_their_own_errors_while_a_native_acts_for_another_realm() {
+    let mut vm = Vm::default();
+    vm.install_test262_harness().unwrap();
+    vm.execute_script(&crate::compile(&crate::parse("$262.createRealm();").unwrap()).unwrap())
+        .unwrap();
+    let realm = *vm.test262_realms.keys().next().unwrap();
+    let callback = vm
+        .execute_script(
+            &crate::compile(
+                &crate::parse(
+                    "Object.getOwnPropertyDescriptor(ArrayBuffer.prototype, 'byteLength').get",
+                )
+                .unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+    let callback_root = vm.heap.root(callback.object_id().unwrap()).unwrap();
+    vm.remaining_instructions = vm.config.instruction_budget;
+    vm.acting_realm = Some(realm);
+    let Err(RuntimeError::Thrown(error)) =
+        vm.call_native(callback, Value::Undefined, Vec::new(), false)
+    else {
+        panic!("the callback error must be a value in its own realm");
+    };
+    assert_eq!(vm.error_is_error(&error), Ok(Value::Bool(true)));
+    assert_eq!(error.object_id().unwrap().heap, vm.object_prototype.heap);
+    assert_eq!(vm.acting_realm, Some(realm));
+    assert_eq!(vm.call_depth, 0);
+    assert!(vm.stack.is_empty());
+    vm.acting_realm = None;
+    assert_eq!(
+        vm.execute_script(&crate::compile(&crate::parse("21 + 21").unwrap()).unwrap()),
+        Ok(Value::Number(42.0))
+    );
+    vm.heap.unroot(callback_root).unwrap();
+}
+
+#[cfg_attr(test, test)]
 fn internal_array_append_propagates_length_overflow_and_preserves_prior_writes() {
     for nursery_capacity in [VmConfig::default().heap.nursery_capacity, 1] {
         for kind in [0, 1] {
@@ -61,7 +100,7 @@ fn internal_array_append_propagates_length_overflow_and_preserves_prior_writes()
     }
 }
 
-#[test]
+#[cfg_attr(test, test)]
 fn collection_and_array_helpers_reject_foreign_heap_handles() {
     let mut vm = Vm::default();
     let mut other = Vm::default();
@@ -86,7 +125,7 @@ fn collection_and_array_helpers_reject_foreign_heap_handles() {
     ));
 }
 
-#[test]
+#[cfg_attr(test, test)]
 fn temporal_zone_helpers_reject_foreign_handles_and_invalid_stored_zones() {
     let mut vm = Vm::default();
     let mut other = Vm::default();
@@ -124,7 +163,7 @@ fn temporal_zone_helpers_reject_foreign_handles_and_invalid_stored_zones() {
     ));
 }
 
-#[test]
+#[cfg_attr(test, test)]
 fn temporal_zone_helpers_complete_the_valid_instant_and_current_clock_paths() {
     let mut vm = Vm::default();
     let utc = Value::String("UTC".into());
@@ -154,7 +193,7 @@ fn temporal_zone_helpers_complete_the_valid_instant_and_current_clock_paths() {
     assert_eq!(stored.epoch_nanoseconds, BigInt::from(0));
 }
 
-#[test]
+#[cfg_attr(test, test)]
 fn bound_function_and_instanceof_report_invalid_handles_and_instruction_limits() {
     let mut vm = Vm::default();
     let mut other = Vm::default();
@@ -187,7 +226,7 @@ fn bound_function_and_instanceof_report_invalid_handles_and_instruction_limits()
     );
 }
 
-#[test]
+#[cfg_attr(test, test)]
 fn native_uri_helpers_enforce_limits_for_each_decoded_output_shape() {
     let limited = |result: Result<JsString, native::UriCodingError>, limit| {
         assert_eq!(result, Err(native::UriCodingError::StringLimit { limit }));
@@ -202,7 +241,7 @@ fn native_uri_helpers_enforce_limits_for_each_decoded_output_shape() {
     limited(native::unescape(&"A".into(), 1), 1);
 }
 
-#[test]
+#[cfg_attr(test, test)]
 fn native_string_helpers_propagate_conversion_and_output_errors() {
     use native::StringMethod;
 
@@ -306,7 +345,7 @@ fn native_string_helpers_propagate_conversion_and_output_errors() {
     }
 }
 
-#[test]
+#[cfg_attr(test, test)]
 fn vm_construction_reports_a_limit_that_cannot_hold_both_prototypes() {
     let mut probe = Heap::new(HeapConfig::default()).unwrap();
     probe.alloc_object(None).unwrap();
@@ -325,7 +364,7 @@ fn vm_construction_reports_a_limit_that_cannot_hold_both_prototypes() {
     ));
 }
 
-#[test]
+#[cfg_attr(test, test)]
 fn temporal_receiver_checks_propagate_invalid_object_handles() {
     let mut vm = Vm::default();
     let mut other_vm = Vm::default();
@@ -359,7 +398,7 @@ fn temporal_receiver_checks_propagate_invalid_object_handles() {
     );
 }
 
-#[test]
+#[cfg_attr(test, test)]
 fn an_import_that_joins_a_running_graph_leaves_its_roots_with_that_graph() {
     // While module code runs, its graph's records are parked in
     // `evaluating_linked` and its root list lives in the evaluation's own
@@ -399,7 +438,7 @@ fn an_import_that_joins_a_running_graph_leaves_its_roots_with_that_graph() {
     assert!(vm.module_graph.as_ref().unwrap().roots.len() >= 3);
 }
 
-#[test]
+#[cfg_attr(test, test)]
 fn interpreter_converts_catchable_errors_and_rejects_a_top_level_yield() {
     let mut vm = Vm::default();
     vm.install_test262_harness().unwrap();
@@ -430,7 +469,7 @@ fn interpreter_converts_catchable_errors_and_rejects_a_top_level_yield() {
     );
 }
 
-#[test]
+#[cfg_attr(test, test)]
 fn with_lookup_uses_the_object_then_reports_an_unbound_name() {
     let mut vm = Vm::default();
     let object = vm.heap.alloc_object(None).unwrap();
@@ -443,7 +482,7 @@ fn with_lookup_uses_the_object_then_reports_an_unbound_name() {
     );
 }
 
-#[test]
+#[cfg_attr(test, test)]
 fn class_definition_opcodes_assign_home_objects_to_closures() {
     let mut vm = Vm::default();
     let target = vm.heap.alloc_object(None).unwrap();
@@ -503,7 +542,7 @@ fn class_definition_opcodes_assign_home_objects_to_closures() {
     ));
 }
 
-#[test]
+#[cfg_attr(test, test)]
 fn super_assignment_reports_a_non_extensible_receiver() {
     let mut vm = Vm::default();
     let base = vm.heap.alloc_object(None).unwrap();
@@ -544,7 +583,7 @@ fn super_assignment_reports_a_non_extensible_receiver() {
     );
 }
 
-#[test]
+#[cfg_attr(test, test)]
 fn super_and_eval_context_errors_describe_missing_internal_context() {
     let mut vm = Vm::default();
     assert_eq!(
@@ -587,7 +626,7 @@ fn super_and_eval_context_errors_describe_missing_internal_context() {
     );
 }
 
-#[test]
+#[cfg_attr(test, test)]
 fn compiler_owned_bytecode_invariants_fail_loudly() {
     let no_handler = Bytecode::empty();
     let mut vm = Vm::default();
@@ -612,7 +651,7 @@ fn compiler_owned_bytecode_invariants_fail_loudly() {
     );
 }
 
-#[test]
+#[cfg_attr(test, test)]
 fn host_object_methods_are_realm_local_callable_globals() {
     let mut vm = Vm::default();
     vm.install_host_function("double", 1, |args: &[HostValue]| {
@@ -649,7 +688,7 @@ fn host_object_methods_are_realm_local_callable_globals() {
     ));
 }
 
-#[test]
+#[cfg_attr(test, test)]
 fn opaque_host_object_factory_roots_identity_without_exposing_its_key() {
     let mut vm = Vm::default();
     let family = vm.create_host_object_family().unwrap();
@@ -697,7 +736,7 @@ fn opaque_host_object_factory_roots_identity_without_exposing_its_key() {
     ));
 }
 
-#[test]
+#[cfg_attr(test, test)]
 fn opaque_host_object_methods_require_an_exact_live_wrapper_receiver() {
     let mut vm = Vm::default();
     let family = vm.create_host_object_family().unwrap();
@@ -756,7 +795,7 @@ fn opaque_host_object_methods_require_an_exact_live_wrapper_receiver() {
     ));
 }
 
-#[test]
+#[cfg_attr(test, test)]
 fn host_document_factory_and_node_accessor_verify_both_receivers() {
     use std::cell::RefCell;
     use std::rc::Rc;
@@ -830,7 +869,7 @@ fn host_document_factory_and_node_accessor_verify_both_receivers() {
     assert_eq!(&*text.borrow(), "after");
 }
 
-#[test]
+#[cfg_attr(test, test)]
 fn host_pair_method_requires_two_exact_minted_wrappers_and_returns_the_child() {
     use std::cell::RefCell;
     use std::rc::Rc;
@@ -897,7 +936,7 @@ fn host_pair_method_requires_two_exact_minted_wrappers_and_returns_the_child() {
     assert_eq!(calls.borrow().len(), 1);
 }
 
-#[test]
+#[cfg_attr(test, test)]
 fn host_click_listeners_are_vm_rooted_and_prevent_default_only_during_dispatch() {
     let mut vm = Vm::default();
     let family = vm.create_host_object_family().unwrap();
@@ -941,7 +980,7 @@ fn host_click_listeners_are_vm_rooted_and_prevent_default_only_during_dispatch()
     ));
 }
 
-#[test]
+#[cfg_attr(test, test)]
 fn host_click_listener_exceptions_preserve_cancellation_and_later_listeners() {
     let mut vm = Vm::default();
     let family = vm.create_host_object_family().unwrap();
@@ -975,7 +1014,7 @@ fn host_click_listener_exceptions_preserve_cancellation_and_later_listeners() {
     );
 }
 
-#[test]
+#[cfg_attr(test, test)]
 fn host_click_microtask_checkpoint_has_a_fixed_job_limit() {
     let mut vm = Vm::default();
     vm.execute_script(
@@ -995,7 +1034,7 @@ fn host_click_microtask_checkpoint_has_a_fixed_job_limit() {
     assert_eq!(vm.execute_script(&read_jobs).unwrap(), Value::Number(2.0));
 }
 
-#[test]
+#[cfg_attr(test, test)]
 fn host_click_listener_removal_and_receiver_checks_are_exact() {
     let mut vm = Vm::default();
     let family = vm.create_host_object_family().unwrap();
@@ -1056,7 +1095,7 @@ fn host_click_listener_removal_and_receiver_checks_are_exact() {
     assert_eq!(vm.execute_script(&read_calls).unwrap(), Value::Number(1.0));
 }
 
-#[test]
+#[cfg_attr(test, test)]
 fn opaque_host_object_family_has_a_fixed_root_limit() {
     let mut vm = Vm::default();
     let family = vm.create_host_object_family().unwrap();
@@ -1088,7 +1127,7 @@ fn opaque_host_object_family_has_a_fixed_root_limit() {
     ));
 }
 
-#[test]
+#[cfg_attr(test, test)]
 fn host_objects_and_methods_reject_collisions_and_construction() {
     let mut vm = Vm::default();
     let code = crate::compile(&crate::parse("globalThis.reserved = undefined;").unwrap()).unwrap();
@@ -1127,7 +1166,7 @@ fn host_objects_and_methods_reject_collisions_and_construction() {
     ));
 }
 
-#[test]
+#[cfg_attr(test, test)]
 fn a_call_is_refused_exactly_when_the_native_stack_falls_below_the_red_zone() {
     use super::completion::CALL_STACK_RED_ZONE;
     // The depth is irrelevant once the thread's stack can be measured: only
@@ -1141,7 +1180,7 @@ fn a_call_is_refused_exactly_when_the_native_stack_falls_below_the_red_zone() {
     }
 }
 
-#[test]
+#[cfg_attr(test, test)]
 fn an_unmeasurable_stack_falls_back_to_the_conservative_frame_count() {
     use super::completion::UNMEASURED_STACK_MAX_CALL_DEPTH;
     assert!(!call_stack_exhausted(None, 0));
@@ -1153,7 +1192,7 @@ fn an_unmeasurable_stack_falls_back_to_the_conservative_frame_count() {
     assert!(call_stack_exhausted(None, usize::MAX));
 }
 
-#[test]
+#[cfg_attr(test, test)]
 fn host_values_convert_both_ways_for_every_primitive_and_refuse_objects() {
     let primitives = [
         (Value::Undefined, HostValue::Undefined),
@@ -1179,7 +1218,7 @@ fn host_values_convert_both_ways_for_every_primitive_and_refuse_objects() {
     );
 }
 
-#[test]
+#[cfg_attr(test, test)]
 fn every_runtime_error_renders_and_only_a_heap_error_has_a_source() {
     let rendered = [
         (
@@ -1227,7 +1266,7 @@ fn every_runtime_error_renders_and_only_a_heap_error_has_a_source() {
     }
 }
 
-#[test]
+#[cfg_attr(test, test)]
 fn heap_errors_map_to_the_language_error_they_stand_for() {
     let object = ObjectId { heap: 0, serial: 0 };
     assert!(matches!(
@@ -1259,14 +1298,25 @@ fn heap_errors_map_to_the_language_error_they_stand_for() {
     );
 }
 
-#[test]
+#[cfg_attr(test, test)]
 fn host_function_installation_walks_every_branch_with_one_callback_type() {
     let mut vm = Vm::default();
     // One callback type for every call, so each installer's single
     // monomorphised instance takes every branch below.
     let noop = |_args: &[HostValue]| Ok(HostValue::Undefined);
 
+    let mut cold = Vm::default();
+    let limit = cold.heap.allow_only(0);
+    assert_eq!(
+        cold.install_host_function("callback", 0, noop),
+        Err(RuntimeError::Heap(HeapError::HeapLimitExceeded { limit }))
+    );
+    assert!(cold.stack.is_empty() && cold.host_functions.is_empty());
+    cold.heap.allow_only(16 * 1024 * 1024);
+    cold.install_host_function("callback", 0, noop).unwrap();
+
     vm.install_host_function("taken", 0, noop).unwrap();
+    vm.install_host_function("aZ09_$", 0, noop).unwrap();
     for name in ["", "has space", "1leading", "taken"] {
         assert!(
             matches!(
@@ -1304,7 +1354,7 @@ fn host_function_installation_walks_every_branch_with_one_callback_type() {
     ));
 }
 
-#[test]
+#[cfg_attr(test, test)]
 fn a_host_function_reached_directly_refuses_construction_and_unknown_indexes() {
     let mut vm = Vm::default();
     vm.install_host_function("callable", 0, |_args: &[HostValue]| Ok(HostValue::Null))
@@ -1324,18 +1374,17 @@ fn a_host_function_reached_directly_refuses_construction_and_unknown_indexes() {
     );
 }
 
-#[test]
-fn the_function_prototype_is_reported_missing_when_string_lost_its_prototype() {
+#[cfg_attr(test, test)]
+fn the_original_function_prototype_survives_string_prototype_mutation() {
     let mut vm = Vm::default();
+    let expected = vm.function_prototype().unwrap();
     let script = crate::compile(&crate::parse("Object.setPrototypeOf(String, null);").unwrap());
     vm.execute_script(&script.unwrap()).unwrap();
-    assert!(matches!(
-        vm.function_prototype(),
-        Err(RuntimeError::TypeError(message)) if message == "Function prototype is unavailable"
-    ));
+    assert_eq!(vm.function_prototype(), Ok(expected));
+    assert!(vm.heap.contains(expected));
 }
 
-#[test]
+#[cfg_attr(test, test)]
 fn the_lazy_object_prototype_methods_are_left_alone_when_a_script_defined_them() {
     let mut vm = Vm::default();
     // Touching either name already installs the built-in (and records that),
@@ -1391,20 +1440,40 @@ fn vm_with_heap_headroom(extra: usize) -> Option<Vm> {
 /// runs hit the limit.
 fn heap_limit_failures(mut operation: impl FnMut(&mut Vm) -> Result<(), RuntimeError>) -> usize {
     let mut failures = 0;
+    let reuse = crate::compile(&crate::parse("21 + 21").unwrap()).unwrap();
     for extra in (0..6144).step_by(8) {
         let Some(mut vm) = vm_with_heap_headroom(extra) else {
             continue;
         };
+        let caller_operand = Value::Object(vm.object_prototype);
+        vm.stack.push(caller_operand.clone());
         match operation(&mut vm) {
             Ok(()) => {}
             Err(RuntimeError::Heap(HeapError::HeapLimitExceeded { .. })) => failures += 1,
             Err(other) => panic!("headroom {extra}: {other:?}"),
         }
+        assert_eq!(
+            vm.stack,
+            [caller_operand],
+            "headroom {extra}: installer changed caller operands"
+        );
+        vm.stack.clear();
+        vm.heap.allow_only(16 * 1024 * 1024);
+        vm.with_roots(|heap| {
+            heap.collect_major();
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(
+            vm.execute_script(&reuse),
+            Ok(Value::Number(42.0)),
+            "headroom {extra}: installer left the VM unusable"
+        );
     }
     failures
 }
 
-#[test]
+#[cfg_attr(test, test)]
 fn installing_a_host_function_survives_running_out_of_heap_at_each_step() {
     let failures = heap_limit_failures(|vm| {
         vm.install_host_function("probe", 2, |_args: &[HostValue]| Ok(HostValue::Undefined))
@@ -1412,7 +1481,7 @@ fn installing_a_host_function_survives_running_out_of_heap_at_each_step() {
     assert!(failures > 3, "only {failures} failing points were reached");
 }
 
-#[test]
+#[cfg_attr(test, test)]
 fn installing_native_getters_and_accessors_survives_running_out_of_heap() {
     let object_method = || NativeFunction::ObjectMethod(native::ObjectMethod::HasOwn);
     for (label, failures) in [
@@ -1451,7 +1520,7 @@ fn installing_native_getters_and_accessors_survives_running_out_of_heap() {
     }
 }
 
-#[test]
+#[cfg_attr(test, test)]
 fn installing_the_lazy_object_prototype_methods_survives_running_out_of_heap() {
     let failures = heap_limit_failures(|vm| vm.property_is_enumerable_intrinsic());
     assert!(failures > 0, "propertyIsEnumerable: {failures}");
@@ -1459,7 +1528,7 @@ fn installing_the_lazy_object_prototype_methods_survives_running_out_of_heap() {
     assert!(failures > 0, "hasOwnProperty: {failures}");
 }
 
-#[test]
+#[cfg_attr(test, test)]
 fn initializing_string_and_array_intrinsics_survives_heap_limits() {
     let initial = Vm::default().heap.stats().managed_bytes;
     let mut probe = Vm::default();
@@ -1489,7 +1558,7 @@ fn initializing_string_and_array_intrinsics_survives_heap_limits() {
     assert!(completed > 0 && exhausted > 0);
 }
 
-#[test]
+#[cfg_attr(test, test)]
 fn a_native_accessor_cannot_replace_a_non_configurable_property() {
     let mut vm = Vm::default();
     let prototype = vm.function_prototype().unwrap();
@@ -1503,7 +1572,7 @@ fn a_native_accessor_cannot_replace_a_non_configurable_property() {
     ));
 }
 
-#[test]
+#[cfg_attr(test, test)]
 fn temporal_duration_receiver_rejects_invalid_internal_values() {
     let vm = Vm::default();
     let invalid = Value::Undefined;
@@ -1511,4 +1580,54 @@ fn temporal_duration_receiver_rejects_invalid_internal_values() {
         vm.temporal_duration_receiver(&invalid),
         Err(RuntimeError::TypeError(_))
     ));
+}
+
+impl crate::Vm {
+    /// Runs retained VM contracts in unit and coverage builds.
+    #[doc(hidden)]
+    pub fn verify_retained_vm_contracts() {
+        calls_materialize_their_own_errors_while_a_native_acts_for_another_realm();
+        internal_array_append_propagates_length_overflow_and_preserves_prior_writes();
+        collection_and_array_helpers_reject_foreign_heap_handles();
+        temporal_zone_helpers_reject_foreign_handles_and_invalid_stored_zones();
+        temporal_zone_helpers_complete_the_valid_instant_and_current_clock_paths();
+        bound_function_and_instanceof_report_invalid_handles_and_instruction_limits();
+        native_uri_helpers_enforce_limits_for_each_decoded_output_shape();
+        native_string_helpers_propagate_conversion_and_output_errors();
+        vm_construction_reports_a_limit_that_cannot_hold_both_prototypes();
+        temporal_receiver_checks_propagate_invalid_object_handles();
+        an_import_that_joins_a_running_graph_leaves_its_roots_with_that_graph();
+        interpreter_converts_catchable_errors_and_rejects_a_top_level_yield();
+        with_lookup_uses_the_object_then_reports_an_unbound_name();
+        class_definition_opcodes_assign_home_objects_to_closures();
+        super_assignment_reports_a_non_extensible_receiver();
+        super_and_eval_context_errors_describe_missing_internal_context();
+        compiler_owned_bytecode_invariants_fail_loudly();
+        host_object_methods_are_realm_local_callable_globals();
+        opaque_host_object_factory_roots_identity_without_exposing_its_key();
+        opaque_host_object_methods_require_an_exact_live_wrapper_receiver();
+        host_document_factory_and_node_accessor_verify_both_receivers();
+        host_pair_method_requires_two_exact_minted_wrappers_and_returns_the_child();
+        host_click_listeners_are_vm_rooted_and_prevent_default_only_during_dispatch();
+        host_click_listener_exceptions_preserve_cancellation_and_later_listeners();
+        host_click_microtask_checkpoint_has_a_fixed_job_limit();
+        host_click_listener_removal_and_receiver_checks_are_exact();
+        opaque_host_object_family_has_a_fixed_root_limit();
+        host_objects_and_methods_reject_collisions_and_construction();
+        a_call_is_refused_exactly_when_the_native_stack_falls_below_the_red_zone();
+        an_unmeasurable_stack_falls_back_to_the_conservative_frame_count();
+        host_values_convert_both_ways_for_every_primitive_and_refuse_objects();
+        every_runtime_error_renders_and_only_a_heap_error_has_a_source();
+        heap_errors_map_to_the_language_error_they_stand_for();
+        host_function_installation_walks_every_branch_with_one_callback_type();
+        a_host_function_reached_directly_refuses_construction_and_unknown_indexes();
+        the_original_function_prototype_survives_string_prototype_mutation();
+        the_lazy_object_prototype_methods_are_left_alone_when_a_script_defined_them();
+        installing_a_host_function_survives_running_out_of_heap_at_each_step();
+        installing_native_getters_and_accessors_survives_running_out_of_heap();
+        installing_the_lazy_object_prototype_methods_survives_running_out_of_heap();
+        initializing_string_and_array_intrinsics_survives_heap_limits();
+        a_native_accessor_cannot_replace_a_non_configurable_property();
+        temporal_duration_receiver_rejects_invalid_internal_values();
+    }
 }

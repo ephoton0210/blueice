@@ -14,6 +14,10 @@ use super::*;
 
 const MAX_SAFE_INTEGER: f64 = 9_007_199_254_740_991.0;
 
+#[cfg(any(test, coverage))]
+#[path = "../../../tests/fixtures/array_from_async_boundaries.rs"]
+mod boundary_tests;
+
 /// What the pending Await is waiting for.
 #[derive(Clone, Copy, PartialEq)]
 enum Phase {
@@ -42,29 +46,43 @@ impl Phase {
     }
 }
 
+/// A private state record checked once at the asynchronous native entry.
+/// Every allocating operation retains this record on the VM stack, and
+/// JavaScript never receives its identity or can change its object kind.
+#[derive(Clone, Copy)]
+struct FaState(ObjectId);
+
 impl Vm {
-    fn fa_get(&self, state: ObjectId, name: &str) -> Result<Value, RuntimeError> {
-        Ok(self.heap.get_own(state, name)?.unwrap_or(Value::Undefined))
+    fn fa_state(&self, state: ObjectId) -> Result<FaState, RuntimeError> {
+        self.heap.get_own(state, "phase")?;
+        Ok(FaState(state))
     }
 
-    fn fa_set(&mut self, state: ObjectId, name: &str, value: Value) -> Result<(), RuntimeError> {
+    fn fa_get(&self, state: FaState, name: &str) -> Value {
+        self.heap
+            .get_own(state.0, name)
+            .expect("the private fromAsync state remains rooted for this turn")
+            .unwrap_or(Value::Undefined)
+    }
+
+    fn fa_set(&mut self, state: FaState, name: &str, value: Value) -> Result<(), RuntimeError> {
         // Storing a property can allocate; keep the value reachable meanwhile.
         self.stack.push(value.clone());
-        let stored = self.with_roots(|heap| heap.set(state, name, value));
+        let stored = self.with_roots(|heap| heap.set(state.0, name, value));
         self.stack.pop();
         stored?;
         Ok(())
     }
 
-    fn fa_number(&self, state: ObjectId, name: &str) -> Result<f64, RuntimeError> {
-        match self.fa_get(state, name)? {
-            Value::Number(number) => Ok(number),
-            _ => Ok(0.0),
+    fn fa_number(&self, state: FaState, name: &str) -> f64 {
+        match self.fa_get(state, name) {
+            Value::Number(number) => number,
+            _ => 0.0,
         }
     }
 
-    fn fa_promise(&self, state: ObjectId) -> Result<ObjectId, RuntimeError> {
-        self.fa_get(state, "promise")?
+    fn fa_promise(&self, state: FaState) -> Result<ObjectId, RuntimeError> {
+        self.fa_get(state, "promise")
             .object_id()
             .ok_or_else(|| RuntimeError::TypeError("fromAsync state lost its promise".into()))
     }
@@ -84,7 +102,8 @@ impl Vm {
         self.stack.truncate(base);
         if let Err(error) = outcome {
             let error = self.error_value(error)?;
-            self.settle_promise(promise, PromiseStatus::Rejected(error))?;
+            self.settle_promise(promise, PromiseStatus::Rejected(error))
+                .expect("the fresh Promise remains registered and rejection cannot allocate");
         }
         Ok(Value::Object(promise))
     }
@@ -99,7 +118,11 @@ impl Vm {
         let items = native::argument(args, 0).clone();
         let mapper = native::argument(args, 1).clone();
         let this_arg = native::argument(args, 2).clone();
-        if mapper != Value::Undefined && !self.is_callable(&mapper)? {
+        if mapper != Value::Undefined
+            && !self
+                .is_callable(&mapper)
+                .expect("the fromAsync arguments are live in the current realm")
+        {
             return Err(RuntimeError::TypeError(
                 "Array.fromAsync mapper must be callable".into(),
             ));
@@ -111,7 +134,9 @@ impl Vm {
         } else {
             Value::Undefined
         };
-        let constructor = self.is_constructor(receiver)?;
+        let constructor = self
+            .is_constructor(receiver)
+            .expect("the fromAsync receiver is rooted by its native call");
         self.stack.push(using_sync.clone());
         // GetIteratorFromMethod (calling the chosen iterator method) precedes
         // Construct(C), unlike the synchronous Array.from.
@@ -135,6 +160,7 @@ impl Vm {
         }
         let state = self.with_roots(|heap| heap.alloc_object(None))?;
         self.stack.push(Value::Object(state));
+        let state = FaState(state);
         self.fa_set(state, "promise", Value::Object(promise))?;
         self.fa_set(state, "mapper", mapper)?;
         self.fa_set(state, "thisArg", this_arg)?;
@@ -159,22 +185,22 @@ impl Vm {
     }
 
     /// Steps 1-4 of one iterator-loop iteration: call `next` and await it.
-    fn fa_iterator_next(&mut self, state: ObjectId) -> Result<(), RuntimeError> {
-        if self.fa_number(state, "k")? >= MAX_SAFE_INTEGER {
+    fn fa_iterator_next(&mut self, state: FaState) -> Result<(), RuntimeError> {
+        if self.fa_number(state, "k") >= MAX_SAFE_INTEGER {
             let error = self.error_object(
                 "TypeError",
                 "Array.fromAsync result length is too large".into(),
             )?;
             return self.fa_close_and_reject(state, error);
         }
-        let record = self.fa_get(state, "record")?;
+        let record = self.fa_get(state, "record");
         let result = match self.async_iterator_next(&record, None) {
             Ok(result) => result,
             Err(error) => {
                 let error = self.error_value(error)?;
-                // Marking the record done stores a property and can collect.
+                // Retain the abrupt value until rejection has been published.
                 self.stack.push(error.clone());
-                self.fa_mark_done(state)?;
+                self.fa_mark_done(state);
                 return self.fa_reject(state, error);
             }
         };
@@ -182,10 +208,10 @@ impl Vm {
     }
 
     /// One array-like iteration: read `Pk` and await it, or finish.
-    fn fa_element_next(&mut self, state: ObjectId) -> Result<(), RuntimeError> {
-        let k = self.fa_number(state, "k")?;
-        let length = self.fa_number(state, "length")?;
-        let array = self.fa_get(state, "array")?;
+    fn fa_element_next(&mut self, state: FaState) -> Result<(), RuntimeError> {
+        let k = self.fa_number(state, "k");
+        let length = self.fa_number(state, "length");
+        let array = self.fa_get(state, "array");
         if k >= length {
             self.array_set_or_throw(
                 array.object_id().expect("result array"),
@@ -195,19 +221,14 @@ impl Vm {
             return self.fa_resolve(state, array);
         }
         self.charge_step()?;
-        let source = self.fa_get(state, "source")?;
+        let source = self.fa_get(state, "source");
         let value = self.get_property(&source, &(k as u64).to_string().into())?;
         self.fa_await(state, Phase::ElementValue, value)
     }
 
     /// `Await(value)`: PromiseResolve, then a reaction that resumes the run.
     /// A PromiseResolve failure is the Await's own throw completion.
-    fn fa_await(
-        &mut self,
-        state: ObjectId,
-        phase: Phase,
-        value: Value,
-    ) -> Result<(), RuntimeError> {
+    fn fa_await(&mut self, state: FaState, phase: Phase, value: Value) -> Result<(), RuntimeError> {
         let base = self.stack.len();
         self.stack.push(value.clone());
         let result = self.fa_await_rooted(state, phase, value);
@@ -217,7 +238,7 @@ impl Vm {
 
     fn fa_await_rooted(
         &mut self,
-        state: ObjectId,
+        state: FaState,
         phase: Phase,
         value: Value,
     ) -> Result<(), RuntimeError> {
@@ -233,12 +254,12 @@ impl Vm {
         self.stack.push(awaited.clone());
         let handlers = (|| {
             let fulfilled = self.async_from_sync_handler(NativeFunction::ArrayFromAsyncResume {
-                state,
+                state: state.0,
                 rejected: false,
             })?;
             self.stack.push(fulfilled.clone());
             let rejected = self.async_from_sync_handler(NativeFunction::ArrayFromAsyncResume {
-                state,
+                state: state.0,
                 rejected: true,
             })?;
             self.stack.push(rejected.clone());
@@ -261,37 +282,38 @@ impl Vm {
         rejected: bool,
     ) -> Result<(), RuntimeError> {
         let base = self.stack.len();
-        self.stack.push(Value::Object(state));
+        let state = self.fa_state(state)?;
+        self.stack.push(Value::Object(state.0));
         self.stack.push(value.clone());
         let outcome = self.fa_step(state, value, rejected);
-        self.stack.truncate(base);
-        match outcome {
+        let result = match outcome {
             Ok(()) => Ok(()),
-            Err(error) => {
-                let error = self.error_value(error)?;
-                self.fa_reject(state, error)
-            }
-        }
+            Err(error) => self
+                .error_value(error)
+                .and_then(|error| self.fa_reject(state, error)),
+        };
+        self.stack.truncate(base);
+        result
     }
 
     fn fa_step(
         &mut self,
-        state: ObjectId,
+        state: FaState,
         value: Value,
         rejected: bool,
     ) -> Result<(), RuntimeError> {
-        let phase = Phase::from_number(self.fa_number(state, "phase")?);
+        let phase = Phase::from_number(self.fa_number(state, "phase"));
         match phase {
             Phase::Closing => {
-                let error = self.fa_get(state, "error")?;
+                let error = self.fa_get(state, "error");
                 self.fa_reject(state, error)
             }
             Phase::IteratorResult => {
                 if rejected {
-                    self.fa_mark_done(state)?;
+                    self.fa_mark_done(state);
                     return self.fa_reject(state, value);
                 }
-                let record = self.fa_get(state, "record")?;
+                let record = self.fa_get(state, "record");
                 let next = match self.async_iterator_step(&record, &value) {
                     Ok(next) => next,
                     Err(error) => {
@@ -300,8 +322,8 @@ impl Vm {
                     }
                 };
                 let Some(next_value) = next else {
-                    let k = self.fa_number(state, "k")?;
-                    let array = self.fa_get(state, "array")?;
+                    let k = self.fa_number(state, "k");
+                    let array = self.fa_get(state, "array");
                     self.array_set_or_throw(
                         array.object_id().expect("result array"),
                         "length".into(),
@@ -310,12 +332,12 @@ impl Vm {
                     return self.fa_resolve(state, array);
                 };
                 self.stack.push(next_value.clone());
-                let mapper = self.fa_get(state, "mapper")?;
+                let mapper = self.fa_get(state, "mapper");
                 if mapper == Value::Undefined {
                     return self.fa_define_and_continue(state, next_value, true);
                 }
-                let k = self.fa_number(state, "k")?;
-                let this_arg = self.fa_get(state, "thisArg")?;
+                let k = self.fa_number(state, "k");
+                let this_arg = self.fa_get(state, "thisArg");
                 match self.call_native(mapper, this_arg, vec![next_value, Value::Number(k)], false)
                 {
                     Ok(mapped) => self.fa_await(state, Phase::IteratorMapped, mapped),
@@ -335,12 +357,12 @@ impl Vm {
                 if rejected {
                     return self.fa_reject(state, value);
                 }
-                let mapper = self.fa_get(state, "mapper")?;
+                let mapper = self.fa_get(state, "mapper");
                 if mapper == Value::Undefined {
                     return self.fa_define_and_continue(state, value, false);
                 }
-                let k = self.fa_number(state, "k")?;
-                let this_arg = self.fa_get(state, "thisArg")?;
+                let k = self.fa_number(state, "k");
+                let this_arg = self.fa_get(state, "thisArg");
                 let mapped =
                     self.call_native(mapper, this_arg, vec![value, Value::Number(k)], false)?;
                 self.fa_await(state, Phase::ElementMapped, mapped)
@@ -358,13 +380,13 @@ impl Vm {
     /// next iteration. A failed definition closes an iterator (`iterating`).
     fn fa_define_and_continue(
         &mut self,
-        state: ObjectId,
+        state: FaState,
         mapped: Value,
         iterating: bool,
     ) -> Result<(), RuntimeError> {
-        let k = self.fa_number(state, "k")?;
+        let k = self.fa_number(state, "k");
         let array = self
-            .fa_get(state, "array")?
+            .fa_get(state, "array")
             .object_id()
             .expect("result array");
         self.stack.push(mapped.clone());
@@ -378,7 +400,9 @@ impl Vm {
                 self.fa_reject(state, error)
             };
         }
-        self.fa_set(state, "k", Value::Number(k + 1.0))?;
+        self.heap
+            .set(state.0, "k", Value::Number(k + 1.0))
+            .expect("the private fromAsync state already owns its Number index field");
         if iterating {
             self.fa_iterator_next(state)
         } else {
@@ -386,56 +410,73 @@ impl Vm {
         }
     }
 
-    fn fa_mark_done(&mut self, state: ObjectId) -> Result<(), RuntimeError> {
-        if let Some(record) = self.fa_get(state, "record")?.object_id() {
-            self.with_roots(|heap| heap.set(record, "done", Value::Bool(true)))?;
+    fn fa_mark_done(&mut self, state: FaState) {
+        if let Some(record) = self.fa_get(state, "record").object_id() {
+            self.heap
+                .set(record, "done", Value::Bool(true))
+                .expect("the private iterator record already owns its boolean done field");
         }
-        Ok(())
     }
 
     /// `AsyncIteratorClose(iteratorRecord, throwCompletion)`: call `return`
     /// (any failure is discarded), await its result, then reject with the
     /// original error.
-    fn fa_close_and_reject(&mut self, state: ObjectId, error: Value) -> Result<(), RuntimeError> {
-        self.stack.push(error.clone());
-        let record = self.fa_get(state, "record")?;
-        let already_done = record
-            .object_id()
-            .map(|id| matches!(self.heap.get_own(id, "done"), Ok(Some(Value::Bool(true)))))
-            .unwrap_or(true);
-        if already_done {
-            return self.fa_reject(state, error);
-        }
-        self.fa_mark_done(state)?;
-        let closing = (|| {
-            let iterator = self.get_property(&record, &"iterator".into())?;
-            self.stack.push(iterator.clone());
-            let close = self.get_method(&iterator, &"return".into())?;
-            if close == Value::Undefined {
-                return Ok(None);
-            }
-            self.call_native(close, iterator, Vec::new(), false)
-                .map(Some)
-        })();
-        match closing {
-            Ok(Some(result)) => {
-                self.fa_set(state, "error", error)?;
-                self.fa_await(state, Phase::Closing, result)
-            }
-            Ok(None) | Err(_) => self.fa_reject(state, error),
-        }
-    }
-
-    fn fa_reject(&mut self, state: ObjectId, error: Value) -> Result<(), RuntimeError> {
+    fn fa_close_and_reject(&mut self, state: FaState, error: Value) -> Result<(), RuntimeError> {
         let base = self.stack.len();
         self.stack.push(error.clone());
-        let promise = self.fa_promise(state)?;
-        let result = self.settle_promise(promise, PromiseStatus::Rejected(error));
+        let result = (|| {
+            let record = self.fa_get(state, "record");
+            let already_done = record
+                .object_id()
+                .map(|id| matches!(self.heap.get_own(id, "done"), Ok(Some(Value::Bool(true)))))
+                .unwrap_or(true);
+            if already_done {
+                return self.fa_reject(state, error);
+            }
+            self.fa_mark_done(state);
+            let closing = (|| {
+                let iterator = self
+                    .heap
+                    .get_own(
+                        record
+                            .object_id()
+                            .expect("the state retains its iterator record"),
+                        "iterator",
+                    )
+                    .expect("the private ordinary iterator record remains rooted")
+                    .expect("GetIterator initialized the iterator field");
+                self.stack.push(iterator.clone());
+                let close = self.get_method(&iterator, &"return".into())?;
+                if close == Value::Undefined {
+                    return Ok(None);
+                }
+                self.call_native(close, iterator, Vec::new(), false)
+                    .map(Some)
+            })();
+            match closing {
+                Ok(Some(result)) => {
+                    self.fa_set(state, "error", error)?;
+                    self.fa_await(state, Phase::Closing, result)
+                }
+                Ok(None) | Err(_) => self.fa_reject(state, error),
+            }
+        })();
         self.stack.truncate(base);
         result
     }
 
-    fn fa_resolve(&mut self, state: ObjectId, value: Value) -> Result<(), RuntimeError> {
+    fn fa_reject(&mut self, state: FaState, error: Value) -> Result<(), RuntimeError> {
+        let base = self.stack.len();
+        self.stack.push(error.clone());
+        let result = (|| {
+            let promise = self.fa_promise(state)?;
+            self.settle_promise(promise, PromiseStatus::Rejected(error))
+        })();
+        self.stack.truncate(base);
+        result
+    }
+
+    fn fa_resolve(&mut self, state: FaState, value: Value) -> Result<(), RuntimeError> {
         let promise = self.fa_promise(state)?;
         self.resolve_promise(promise, value)
     }

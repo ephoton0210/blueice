@@ -1014,7 +1014,6 @@ impl Compiler {
         // outside never does.
         let body_eval = crate::ast::body_contains_direct_eval(&function.body);
         let parameter_eval_scope = !child.bytecode.strict
-            && !function.is_async
             && (body_eval || crate::ast::params_contain_direct_eval(&function.params));
         if parameter_eval_scope {
             child.with_depth += 1;

@@ -22,15 +22,9 @@ impl Vm {
         let result = (|| {
             let host = self.test262_host()?;
             // Creating the host already made the String intrinsics.
-            let string = self
-                .string_intrinsics()
-                .expect("the String intrinsics exist by now")
-                .0;
             let function_prototype = self
-                .heap
-                .prototype(string)
-                .expect("the String constructor is live")
-                .unwrap();
+                .function_prototype()
+                .expect("the String intrinsics exist by now");
             let value = self.with_roots(|heap| {
                 heap.alloc_html_dda_object(NativeFunction::Test262("IsHTMLDDA"), function_prototype)
             })?;
@@ -89,15 +83,9 @@ impl Vm {
         self.json_global()?;
         // The error and global functions installed above create the String
         // intrinsics, so this only reads them.
-        let string = self
-            .string_intrinsics()
-            .expect("the String intrinsics exist by now")
-            .0;
         let prototype = self
-            .heap
-            .prototype(string)
-            .expect("the String constructor is live")
-            .unwrap();
+            .function_prototype()
+            .expect("the String intrinsics exist by now");
         let host = self.test262_host()?;
         self.install_native(
             host,

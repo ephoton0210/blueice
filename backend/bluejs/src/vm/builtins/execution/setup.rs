@@ -32,18 +32,10 @@ impl Vm {
         if let Some(prototype) = self.iterator_base {
             return Ok(prototype);
         }
-        let constructor = self.string_intrinsics()?.0;
-        let function_prototype = self
-            .heap
-            .prototype(constructor)
-            .expect("the String constructor is live")
-            .unwrap();
+        let function_prototype = self.function_prototype()?;
         let object_prototype = self.object_prototype;
         let prototype = self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;
-        let root = self
-            .heap
-            .root(prototype)
-            .expect("the prototype was just allocated");
+        let root = self.heap.root(prototype)?;
         let result = (|| {
             self.install_symbol_native(
                 prototype,
@@ -231,10 +223,7 @@ impl Vm {
             .function_prototype()
             .expect("base_iterator_prototype built the String intrinsics");
         let prototype = self.with_roots(|heap| heap.alloc_object(Some(base)))?;
-        let root = self
-            .heap
-            .root(prototype)
-            .expect("the prototype was just allocated");
+        let root = self.heap.root(prototype)?;
         let result = (|| {
             self.install_native(
                 prototype,
@@ -273,10 +262,7 @@ impl Vm {
             .function_prototype()
             .expect("base_iterator_prototype built the String intrinsics");
         let prototype = self.with_roots(|heap| heap.alloc_object(Some(base)))?;
-        let root = self
-            .heap
-            .root(prototype)
-            .expect("the prototype was just allocated");
+        let root = self.heap.root(prototype)?;
         let result = (|| {
             self.install_native(
                 prototype,
@@ -465,12 +451,14 @@ impl Vm {
                     unwrap,
                     Value::Undefined,
                     ReactionTarget::Native(promise),
-                )?;
+                )
+                .expect("PromiseResolve returned a registered disposal Promise");
                 Ok(())
             })();
             if let Err(error) = outcome {
                 let reason = self.error_value(error)?;
-                self.settle_promise(promise, PromiseStatus::Rejected(reason))?;
+                self.settle_promise(promise, PromiseStatus::Rejected(reason))
+                    .expect("the fresh disposal Promise remains registered for rejection");
             }
             Ok(Value::Object(promise))
         })();
@@ -643,6 +631,11 @@ impl Vm {
         self.stack.push(Value::Object(metadata));
         self.stack.push(iterables.clone());
         let result = (|| {
+            // Initialize the private configuration before opening iterators.
+            // The final count update then replaces an existing Number and
+            // cannot introduce a collection after the outer record is closed.
+            self.with_roots(|heap| heap.set(metadata, "zipCount", Value::Number(0.0)))?;
+            self.with_roots(|heap| heap.set(metadata, "zipMode", Value::String(mode.into())))?;
             let outer_method =
                 self.get_method(iterables, &JsSymbol::well_known("iterator").into())?;
             if outer_method == Value::Undefined {
@@ -704,8 +697,9 @@ impl Vm {
                     return Err(error);
                 }
             }
-            self.with_roots(|heap| heap.set(metadata, "zipCount", Value::Number(count as f64)))?;
-            self.with_roots(|heap| heap.set(metadata, "zipMode", Value::String(mode.into())))?;
+            self.heap
+                .set(metadata, "zipCount", Value::Number(count as f64))
+                .expect("the private zip metadata replaces its initialized Number without growing");
             let prototype = self.iterator_helper_prototype()?;
             self.with_roots(|heap| {
                 heap.alloc_iterator_helper(
@@ -855,25 +849,30 @@ impl Vm {
         count: u64,
         padding_option: &Value,
     ) -> Result<(), RuntimeError> {
-        for index in 0..count {
-            let value = if *padding_option == Value::Undefined {
-                Value::Undefined
-            } else {
-                let key = self
-                    .heap
-                    .get_own(metadata, format!("zipKey{index}"))
-                    .expect("the zipKeyed metadata object is live")
-                    .expect("zipKeyed metadata stores every source key");
-                let key = self
-                    .coerce_property_key(&key)
-                    .expect("a stored own property key is a String or Symbol");
-                self.get_property(padding_option, &key)?
-            };
-            self.stack.push(value.clone());
-            self.with_roots(|heap| heap.set(metadata, format!("zipPadding{index}"), value))?;
-            self.stack.pop();
-        }
-        Ok(())
+        let base = self.stack.len();
+        let result = (|| {
+            for index in 0..count {
+                let value = if *padding_option == Value::Undefined {
+                    Value::Undefined
+                } else {
+                    let key = self
+                        .heap
+                        .get_own(metadata, format!("zipKey{index}"))
+                        .expect("the zipKeyed metadata object is live")
+                        .expect("zipKeyed metadata stores every source key");
+                    let key = self
+                        .coerce_property_key(&key)
+                        .expect("a stored own property key is a String or Symbol");
+                    self.get_property(padding_option, &key)?
+                };
+                self.stack.push(value.clone());
+                self.with_roots(|heap| heap.set(metadata, format!("zipPadding{index}"), value))?;
+                self.stack.pop();
+            }
+            Ok(())
+        })();
+        self.stack.truncate(base);
+        result
     }
 
     pub(in super::super::super) fn iterator_zip_collect_padding(
@@ -890,6 +889,7 @@ impl Vm {
             }
             return Ok(());
         }
+        let base = self.stack.len();
         self.stack.push(padding_option.clone());
         let result = (|| {
             let method =
@@ -931,7 +931,7 @@ impl Vm {
             self.stack.pop();
             Ok(())
         })();
-        self.stack.pop();
+        self.stack.truncate(base);
         result
     }
 

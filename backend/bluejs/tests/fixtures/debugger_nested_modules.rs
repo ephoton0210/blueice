@@ -4,7 +4,7 @@
 
 use super::*;
 
-#[test]
+#[cfg_attr(test, test)]
 fn nested_module_pause_retains_its_entry_graph_after_dependency_evaluation() {
     let entry = "pages/entry.mjs";
     let dependency = "pages/dep.mjs";
@@ -107,7 +107,7 @@ fn nested_module_pause_retains_its_entry_graph_after_dependency_evaluation() {
     );
 }
 
-#[test]
+#[cfg_attr(test, test)]
 fn linked_module_nested_pause_preserves_each_frame_generation() {
     let entry = "pages/linked-entry.mjs";
     let dependency = "pages/linked-dep.mjs";
@@ -225,7 +225,7 @@ fn linked_module_nested_pause_preserves_each_frame_generation() {
     assert!(vm.debugger_linked_stack_snapshot(1, 2, 256).is_err());
 }
 
-#[test]
+#[cfg_attr(test, test)]
 fn linked_module_nested_pause_rejects_stale_or_unreachable_programs() {
     let entry = "pages/linked-entry.mjs";
     let dependency = "pages/linked-dep.mjs";
@@ -309,7 +309,7 @@ fn linked_module_nested_pause_rejects_stale_or_unreachable_programs() {
     ));
 }
 
-#[test]
+#[cfg_attr(test, test)]
 fn unhandled_nested_module_throw_releases_both_debugger_frames() {
     let entry = "pages/throwing.mjs";
     let mut registry = BlueJsProgramRegistry::default();
@@ -359,7 +359,7 @@ fn unhandled_nested_module_throw_releases_both_debugger_frames() {
     );
 }
 
-#[test]
+#[cfg_attr(test, test)]
 fn nested_module_throw_resumes_its_original_catch_and_finally() {
     let entry = "pages/catching.mjs";
     let mut registry = BlueJsProgramRegistry::default();
@@ -412,7 +412,7 @@ fn nested_module_throw_resumes_its_original_catch_and_finally() {
     );
 }
 
-#[test]
+#[cfg_attr(test, test)]
 fn nested_module_step_preserves_async_dependency_and_entry_await() {
     let entry = "async-nested/entry.mjs";
     let dependency = "async-nested/dep.mjs";
@@ -492,7 +492,7 @@ fn nested_module_step_preserves_async_dependency_and_entry_await() {
     }
 }
 
-#[test]
+#[cfg_attr(test, test)]
 fn nested_module_step_budget_failure_clears_frames_without_completion() {
     let entry = "budget/entry.mjs";
     let mut registry = BlueJsProgramRegistry::default();
@@ -541,7 +541,7 @@ fn nested_module_step_budget_failure_clears_frames_without_completion() {
     );
 }
 
-#[test]
+#[cfg_attr(test, test)]
 fn root_safe_point_preserves_operand_and_global_state_until_resume() {
     let program = code("globalThis.before = 1; globalThis.after = 2;");
     let offset = non_entry_root_offset(&program);
@@ -582,7 +582,7 @@ fn root_safe_point_preserves_operand_and_global_state_until_resume() {
     );
 }
 
-#[test]
+#[cfg_attr(test, test)]
 fn rejects_non_boundary_and_double_resume_without_destroying_a_realm() {
     let code = code("globalThis.value = 1;");
     let mut vm = Vm::default();
@@ -615,7 +615,7 @@ fn rejects_non_boundary_and_double_resume_without_destroying_a_realm() {
     ));
 }
 
-#[test]
+#[cfg_attr(test, test)]
 fn root_step_preserves_one_continuation_across_branches_and_loop_hits() {
     let program =
         code("let index = 0; while (index < 2) { index++; } globalThis.steppedResult = index;");
@@ -680,7 +680,7 @@ fn root_step_preserves_one_continuation_across_branches_and_loop_hits() {
     ));
 }
 
-#[test]
+#[cfg_attr(test, test)]
 fn root_step_can_resume_to_completion_without_restarting_the_script() {
     let program = code("globalThis.once = (globalThis.once || 0) + 1;");
     let mut vm = Vm::default();
@@ -702,7 +702,7 @@ fn root_step_can_resume_to_completion_without_restarting_the_script() {
     );
 }
 
-#[test]
+#[cfg_attr(test, test)]
 fn paused_module_entry_resumes_a_linked_graph_without_replaying_dependencies() {
     let entry = "pages/entry.mjs";
     let dependency = "pages/dependency.mjs";
@@ -774,7 +774,7 @@ fn paused_module_entry_resumes_a_linked_graph_without_replaying_dependencies() {
     );
 }
 
-#[test]
+#[cfg_attr(test, test)]
 fn paused_module_rejects_concurrent_entry_points_and_recovers_after_throw() {
     let entry = "throwing/main.mjs";
     let program = module_code(
@@ -815,7 +815,7 @@ fn paused_module_rejects_concurrent_entry_points_and_recovers_after_throw() {
     );
 }
 
-#[test]
+#[cfg_attr(test, test)]
 fn paused_module_resumes_through_top_level_await_and_cleans_up() {
     let entry = "awaiting/main.mjs";
     let program = module_code("globalThis.beforeAwait = 1; await Promise.resolve(42); globalThis.afterAwait = 1; export const answer = 42;");
@@ -840,7 +840,7 @@ fn paused_module_resumes_through_top_level_await_and_cleans_up() {
     );
 }
 
-#[test]
+#[cfg_attr(test, test)]
 fn paused_module_preserves_async_dependency_order_and_rejection() {
     let entry = "async/entry.mjs";
     let dependency = "async/dependency.mjs";
@@ -896,7 +896,7 @@ fn paused_module_preserves_async_dependency_order_and_rejection() {
     );
 }
 
-#[test]
+#[cfg_attr(test, test)]
 fn module_root_step_retains_the_frame_across_branches_until_completion() {
     let entry = "stepping/entry.mjs";
     let program = module_code("let index = 0; while (index < 2) { index++; } globalThis.moduleStepped = index; export const answer = index;");
@@ -951,7 +951,7 @@ fn module_root_step_retains_the_frame_across_branches_until_completion() {
     ));
 }
 
-#[test]
+#[cfg_attr(test, test)]
 fn paused_continuation_iterator_edges_are_roots_at_gc_safepoints() {
     let mut vm = Vm::default();
     let iterator_record = vm.heap.alloc_object(None).unwrap();
@@ -971,4 +971,105 @@ fn paused_continuation_iterator_edges_are_roots_at_gc_safepoints() {
         vm.heap.contains(iterator_record),
         "a paused iterator record must remain alive across a VM GC safepoint"
     );
+}
+
+#[cfg_attr(test, test)]
+fn a_module_resume_refusal_preserves_its_continuation_until_the_graph_returns() {
+    let entry = "restore/main.mjs";
+    let program = module_code(
+        "globalThis.bodyRuns = (globalThis.bodyRuns || 0) + 1; export const answer = 42;",
+    );
+    let offset = module_entry_offset(&program);
+    let modules = HashMap::from([(entry.to_string(), program)]);
+    let mut vm = Vm::default();
+    vm.execute_module_graph_until_debugger_pause(entry, &modules, offset)
+        .unwrap();
+    // Displace only the retained host graph; its registered roots and all
+    // compiled bytecode and objects remain valid. No VM code runs meanwhile.
+    let graph = vm.module_graph.take().unwrap();
+    let pc = vm.debugger_module_continuation.as_ref().unwrap().pc;
+    assert_eq!(
+        vm.resume_debugger_module_execution(),
+        Err(RuntimeError::Unsupported(
+            "debugger-paused module graph is unavailable"
+        ))
+    );
+    assert_eq!(vm.debugger_module_continuation.as_ref().unwrap().pc, pc);
+    assert!(matches!(
+        vm.execute_script(&code("21 + 21")),
+        Err(RuntimeError::Unsupported(_))
+    ));
+    vm.module_graph = Some(graph);
+    assert_eq!(
+        vm.resume_debugger_module_execution(),
+        Ok(VmDebuggerExecutionState::Completed)
+    );
+    assert_eq!(vm.execute_script(&code("bodyRuns")), Ok(Value::Number(1.0)));
+}
+
+pub(super) fn verify_nested_module_contracts() {
+    resumed_module_root_exhaustion_restores_terminal_state_and_retains_replayable_objects();
+    a_module_resume_refusal_preserves_its_continuation_until_the_graph_returns();
+    nested_module_pause_retains_its_entry_graph_after_dependency_evaluation();
+    linked_module_nested_pause_preserves_each_frame_generation();
+    linked_module_nested_pause_rejects_stale_or_unreachable_programs();
+    unhandled_nested_module_throw_releases_both_debugger_frames();
+    nested_module_throw_resumes_its_original_catch_and_finally();
+    nested_module_step_preserves_async_dependency_and_entry_await();
+    nested_module_step_budget_failure_clears_frames_without_completion();
+    root_safe_point_preserves_operand_and_global_state_until_resume();
+    rejects_non_boundary_and_double_resume_without_destroying_a_realm();
+    root_step_preserves_one_continuation_across_branches_and_loop_hits();
+    root_step_can_resume_to_completion_without_restarting_the_script();
+    paused_module_entry_resumes_a_linked_graph_without_replaying_dependencies();
+    paused_module_rejects_concurrent_entry_points_and_recovers_after_throw();
+    paused_module_resumes_through_top_level_await_and_cleans_up();
+    paused_module_preserves_async_dependency_order_and_rejection();
+    module_root_step_retains_the_frame_across_branches_until_completion();
+    paused_continuation_iterator_edges_are_roots_at_gc_safepoints();
+}
+
+#[cfg_attr(test, test)]
+fn resumed_module_root_exhaustion_restores_terminal_state_and_retains_replayable_objects() {
+    for throws in [false, true] {
+        let entry = "root-limits/main.mjs";
+        let program = module_code(if throws {
+            "throw globalThis.retained;"
+        } else {
+            "globalThis.retained;"
+        });
+        let offset = module_entry_offset(&program);
+        let modules = HashMap::from([(entry.to_string(), program)]);
+        let required = if throws { 2 } else { 4 };
+        for remaining in 0..=required {
+            let mut vm = Vm::default();
+            vm.execute_script(&code("globalThis.retained = {answer:42};"))
+                .unwrap();
+            let retained = vm
+                .lookup_global_name("retained")
+                .unwrap()
+                .unwrap()
+                .object_id()
+                .unwrap();
+            vm.execute_module_graph_until_debugger_pause(entry, &modules, offset)
+                .unwrap();
+            vm.heap.allow_root_registrations(remaining);
+            let result = vm.resume_debugger_module_execution();
+            if remaining < required {
+                assert_eq!(
+                    result,
+                    Err(RuntimeError::Heap(crate::heap::HeapError::IdExhausted))
+                );
+            } else if throws {
+                assert_eq!(result, Err(RuntimeError::Thrown(Value::Object(retained))));
+            } else {
+                assert_eq!(result, Ok(VmDebuggerExecutionState::Completed));
+            }
+            assert!(vm.debugger_module_continuation.is_none());
+            assert!(vm.stack.is_empty() && vm.bindings.is_empty() && vm.cells.is_empty());
+            assert!(!vm.linked_record(entry).unwrap().suspended);
+            assert!(vm.heap.contains(retained));
+            assert_eq!(vm.execute_script(&code("21 + 21")), Ok(Value::Number(42.0)));
+        }
+    }
 }

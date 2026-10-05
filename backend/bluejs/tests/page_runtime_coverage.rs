@@ -17,6 +17,77 @@ fn source(name: &str) -> BlueJsSourceIdentity {
 }
 
 #[test]
+fn module_discard_and_uncaught_generation_checks_preserve_page_ownership() {
+    let mut runtime = BlueJsPageRuntime::default();
+    runtime.open_realm(7, origin()).unwrap();
+    let throwing = runtime
+        .install_program(
+            7,
+            &origin(),
+            source("page:///throw.mjs"),
+            &BlueJsProgramV1::Module(parse_module("throw 7;").unwrap()),
+        )
+        .unwrap();
+    let other = runtime
+        .install_program(
+            7,
+            &origin(),
+            source("page:///other.mjs"),
+            &BlueJsProgramV1::Module(parse_module("export const answer = 42;").unwrap()),
+        )
+        .unwrap();
+    assert!(matches!(
+        runtime.execute_module_graph(7, throwing, [throwing]),
+        Err(BlueJsPageRuntimeError::Runtime(RuntimeError::Thrown(
+            Value::Number(7.0)
+        )))
+    ));
+    let site = runtime
+        .debugger_uncaught_throw_site(7, throwing)
+        .unwrap()
+        .unwrap();
+    assert_eq!(site.program_generation, throwing.generation().as_u64());
+    assert_eq!(runtime.debugger_uncaught_throw_site(7, other), Ok(None));
+    runtime.discard_program(7, throwing).unwrap();
+    assert_eq!(runtime.realm_stats(7).unwrap().program_count, 1);
+    assert!(runtime.execute_module_graph(7, other, [other]).is_ok());
+    runtime.discard_program(7, other).unwrap();
+    assert_eq!(runtime.realm_stats(7).unwrap().program_count, 0);
+    assert_eq!(
+        runtime.install_program(
+            7,
+            &origin(),
+            source("page:///throw.mjs"),
+            &BlueJsProgramV1::Module(parse_module("export const answer = 42;").unwrap()),
+        ),
+        Err(BlueJsPageRuntimeError::DuplicateModuleIdentity(
+            "page:///throw.mjs".into()
+        ))
+    );
+    let unexecuted = runtime
+        .install_program(
+            7,
+            &origin(),
+            source("page:///unexecuted.mjs"),
+            &BlueJsProgramV1::Module(parse_module("export const answer = 42;").unwrap()),
+        )
+        .unwrap();
+    runtime.discard_program(7, unexecuted).unwrap();
+    assert_eq!(runtime.realm_stats(7).unwrap().program_count, 0);
+    let replacement = runtime
+        .install_program(
+            7,
+            &origin(),
+            source("page:///unexecuted.mjs"),
+            &BlueJsProgramV1::Module(parse_module("export const answer = 42;").unwrap()),
+        )
+        .unwrap();
+    assert!(runtime
+        .execute_module_graph(7, replacement, [replacement])
+        .is_ok());
+}
+
+#[test]
 fn page_origin_validation_preserves_the_authorized_identity() {
     assert_eq!(
         BlueJsPageOrigin::new(""),

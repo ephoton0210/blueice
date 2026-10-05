@@ -38,6 +38,58 @@ fn graph_true(sources: &[(&str, &str)]) {
 }
 
 #[test]
+fn error_headers_propagate_uninitialized_namespace_fields() {
+    graph_true(&[
+        ("main.mjs", "import './observe.mjs'; export let name = 'ready'; export let message = 'ready'; globalThis.checked === 2"),
+        ("observe.mjs", r#"
+            import * as pending from './main.mjs';
+            var getter = Object.getOwnPropertyDescriptor(Error.prototype, 'stack').get;
+            globalThis.checked = 0;
+            for (var ownName of [false, true]) {
+                var error = new Error();
+                if (ownName) Object.defineProperty(error, 'name', {value:'own'});
+                Object.setPrototypeOf(error, pending);
+                try {getter.call(error); throw 'accepted uninitialized header';}
+                catch(error) {if (!(error instanceof ReferenceError)) throw error; checked++;}
+            }
+        "#),
+    ]);
+}
+
+#[test]
+fn proxy_invariant_checks_preserve_namespace_tdz_errors() {
+    graph_true(&[
+        (
+            "main.mjs",
+            r#"
+            import './observe.mjs';
+            export const value = 42;
+            globalThis.checked === 7
+        "#,
+        ),
+        (
+            "observe.mjs",
+            r#"
+            import * as ns from './main.mjs';
+            globalThis.checked = 0;
+            for (const operation of [
+                () => new Proxy(ns, {get() {return 7;}}).value,
+                () => 'value' in new Proxy(ns, {has() {return false;}}),
+                () => Reflect.set(new Proxy(ns, {set() {return true;}}), 'value', 7),
+                () => Reflect.deleteProperty(new Proxy(ns, {deleteProperty() {return true;}}), 'value'),
+                () => Reflect.ownKeys(new Proxy(ns, {ownKeys() {return ['value'];}})),
+                () => Object.getOwnPropertyDescriptor(new Proxy(ns, {getOwnPropertyDescriptor() {return undefined;}}), 'value'),
+                () => Reflect.defineProperty(new Proxy(ns, {defineProperty() {return true;}}), 'value', {value:7}),
+            ]) {
+                try {operation(); throw 'accepted uninitialized export';}
+                catch (error) {if (!(error instanceof ReferenceError)) throw error; globalThis.checked++;}
+            }
+        "#,
+        ),
+    ]);
+}
+
+#[test]
 fn namespaces_reuse_identity_across_star_cycles_and_omit_ambiguous_exports() {
     graph_true(&[
         ("main.mjs", "import * as ns from './hub.mjs'; import {self} from './hub.mjs'; ns === self && !('conflict' in ns) && ns.first === 1 && ns.second === 2"),
@@ -102,6 +154,46 @@ fn source_import_without_a_referrer_uses_the_classic_script_host_context() {
 }
 
 #[test]
+fn source_import_resolves_inherited_then_and_rejects_a_throwing_then_getter() {
+    let source = r#"
+        (async () => {
+            const first = await import.source('./mod.wasm');
+            const prototype = Object.getPrototypeOf(first);
+            let calls = 0;
+            prototype.then = function(resolve) {
+                if (this !== first) throw new Error('source identity changed');
+                calls++;
+                resolve(42);
+            };
+            const value = await import.source('./mod.wasm');
+            delete prototype.then;
+            const sentinel = {};
+            Object.defineProperty(prototype, 'then', {
+                get() {throw sentinel;}, configurable: true
+            });
+            let rejected = false;
+            try { await import.source('./mod.wasm'); }
+            catch (error) { rejected = error === sentinel; }
+            delete prototype.then;
+            const again = await import.source('./mod.wasm');
+            if (value !== 42 || calls !== 1 || !rejected || again !== first)
+                throw new Error('source Promise resolution changed');
+        })().then(() => $DONE(), $DONE);
+    "#;
+    let code = compile(&parse(source).unwrap()).unwrap();
+    for nursery_capacity in [1, VmConfig::default().heap.nursery_capacity] {
+        let mut config = VmConfig::default();
+        config.heap.nursery_capacity = nursery_capacity;
+        let mut vm = Vm::new(config).unwrap();
+        vm.install_test262_done().unwrap();
+        vm.set_module_source_loader_context(vec!["mod.wasm".to_string()]);
+        vm.execute_script(&code).unwrap();
+        vm.run_promise_jobs().unwrap();
+        assert_eq!(vm.take_test262_done(), Some(Ok(())));
+    }
+}
+
+#[test]
 fn paused_module_rejection_preserves_the_reason_and_allows_a_later_script() {
     let origin = BlueJsPageOrigin::new("https://example.test").unwrap();
     let mut runtime = BlueJsPageRuntime::default();
@@ -136,4 +228,114 @@ fn paused_module_rejection_preserves_the_reason_and_allows_a_later_script() {
         )
         .unwrap();
     assert_eq!(runtime.execute_program(7, reader), Ok(Value::Number(42.0)));
+}
+
+#[test]
+fn deferred_cycle_access_rejects_while_an_async_dependency_is_evaluating() {
+    graph_true(&[
+        ("main.mjs", "import defer * as ns from './dep.mjs'; import {blocked} from './async.mjs'; blocked && ns.value === 42"),
+        ("dep.mjs", "import './async.mjs'; export const value = 42;"),
+        ("async.mjs", "import defer * as ns from './dep.mjs'; await 1; export let blocked = false; try { ns.value; } catch (error) { blocked = error instanceof TypeError; }"),
+    ]);
+}
+
+#[test]
+fn deferred_namespace_omits_then_and_keeps_the_body_idle_until_value_access() {
+    graph_true(&[
+        ("main.mjs", "const ns = await import.defer('./dep.mjs'); const idle = globalThis.bodyRuns === undefined; const descriptor = Object.getOwnPropertyDescriptor(ns, 'then'); idle && descriptor === undefined && !('then' in ns) && ns.value === 42 && globalThis.bodyRuns === 1"),
+        ("dep.mjs", "globalThis.bodyRuns = (globalThis.bodyRuns || 0) + 1; export const then = 7; export const value = 42;"),
+    ]);
+}
+
+#[test]
+fn eager_and_awaited_dynamic_imports_assimilate_exported_then_functions() {
+    graph_true(&[
+        (
+            "main.mjs",
+            r#"
+            globalThis.importEvents = [];
+            globalThis.importSentinel = {};
+            const eager = import('./eager.mjs');
+            importEvents.push('before');
+            const first = await eager;
+            const order = importEvents.join(',') === 'before,then';
+            const again = await import('./eager.mjs');
+            const awaited = await import('./awaited.mjs');
+            let rejected = false;
+            try { await import('./rejected.mjs'); }
+            catch (error) { rejected = error === importSentinel; }
+            const plain = await import('./plain.mjs');
+            first === 7 && again === 7 && awaited === 42 && order &&
+                rejected && plain.then === 19 && plain.value === 42;
+        "#,
+        ),
+        (
+            "eager.mjs",
+            "export function then(resolve) {importEvents.push('then'); resolve(7);}",
+        ),
+        (
+            "awaited.mjs",
+            "await 0; export function then(resolve) {resolve(42);}",
+        ),
+        (
+            "rejected.mjs",
+            "export function then() {throw importSentinel;}",
+        ),
+        (
+            "plain.mjs",
+            "export const then = 19; export const value = 42;",
+        ),
+    ]);
+}
+
+#[test]
+fn namespace_live_cells_keep_identity_after_module_debugger_resume() {
+    let origin = BlueJsPageOrigin::new("https://example.test").unwrap();
+    let mut runtime = BlueJsPageRuntime::default();
+    runtime.open_realm(7, origin.clone()).unwrap();
+    let mut handles = Vec::new();
+    for (name, source) in [
+        (
+            "main.mjs",
+            "import * as ns from './dep.mjs'; globalThis.namespace = ns;",
+        ),
+        ("dep.mjs", "export let value = 41; value++;"),
+    ] {
+        handles.push(
+            runtime
+                .install_program(
+                    7,
+                    &origin,
+                    BlueJsSourceIdentity::new(format!("graph/{name}"), format!("sha256:{name}"))
+                        .unwrap(),
+                    &BlueJsProgramV1::Module(parse_module(source).unwrap()),
+                )
+                .unwrap(),
+        );
+    }
+    let point = runtime
+        .module_evaluate_entry_safe_point(7, handles[0])
+        .unwrap();
+    assert_eq!(
+        runtime.execute_module_graph_until_debugger_pause(7, handles[0], handles.clone(), point),
+        Ok(BlueJsPageDebuggerExecutionState::Paused {
+            bytecode_offset: point.bytecode_offset
+        })
+    );
+    assert_eq!(
+        runtime.resume_debugger_module_execution(7),
+        Ok(BlueJsPageDebuggerExecutionState::Completed)
+    );
+    let reader = runtime
+        .install_program(
+            7,
+            &origin,
+            BlueJsSourceIdentity::new("graph/reader.js", "sha256:namespace-reader").unwrap(),
+            &BlueJsProgramV1::Script(
+                parse("namespace.value === 42 && Object.getPrototypeOf(namespace) === null")
+                    .unwrap(),
+            ),
+        )
+        .unwrap();
+    assert_eq!(runtime.execute_program(7, reader), Ok(Value::Bool(true)));
 }
