@@ -3991,3 +3991,17 @@ changing protocol or runtime authority. All 26 compiler IPC boundary tests
 pass in the Linux disk-budget runner. Format/check and engine all-target
 Clippy with `-D warnings` also pass. The M6 gate remains unchecked pending
 the complete CI replay on the corrected revision.
+
+
+### M6 workspace replay: native package-resolution paths
+
+CI run [37375485614](https://github.com/ephoton0210/blueice/actions/runs/37375485614)
+on `8167eb82a` passes the Linux workspace tests and the workspace 90% line
+coverage step. Its Windows 11 arm64 job exposes thirteen package-resolution
+tests comparing native backslash path text with hard-coded forward slashes.
+The resolver returns the correct files; the shared test helper now retains
+`PathBuf`, and all 26 path expectations compare native path components.
+Production resolution, canonical-root confinement and fingerprints are unchanged.
+All 33 package-resolution tests, format/check and both crates' all-target
+Clippy with `-D warnings` pass in the Linux runner. The complete M6 replay
+on the corrected revision remains required before checking the milestone.

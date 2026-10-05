@@ -109,8 +109,8 @@ fn resolve(
     resolver(fs, resolution).resolve(Path::new("/project/src"), specifier, mode)
 }
 
-fn path_of(result: Result<ResolvedPackageFile, ResolveError>) -> String {
-    result.unwrap().path.to_string_lossy().into_owned()
+fn path_of(result: Result<ResolvedPackageFile, ResolveError>) -> PathBuf {
+    result.unwrap().path
 }
 
 #[test]
@@ -142,10 +142,13 @@ fn node10_reads_types_then_typings_then_main_then_index() {
             ImportMode::Import,
         ))
     };
-    assert_eq!(at("a"), "/project/node_modules/a/t/a.d.ts");
-    assert_eq!(at("b"), "/project/node_modules/b/lib/main.ts");
-    assert_eq!(at("c"), "/project/node_modules/c/index.d.ts");
-    assert_eq!(at("d"), "/project/node_modules/d/x.d.ts");
+    assert_eq!(at("a"), PathBuf::from("/project/node_modules/a/t/a.d.ts"));
+    assert_eq!(
+        at("b"),
+        PathBuf::from("/project/node_modules/b/lib/main.ts")
+    );
+    assert_eq!(at("c"), PathBuf::from("/project/node_modules/c/index.d.ts"));
+    assert_eq!(at("d"), PathBuf::from("/project/node_modules/d/x.d.ts"));
 }
 
 #[test]
@@ -186,10 +189,22 @@ fn subpaths_resolve_as_files_then_directories() {
             ImportMode::Import,
         ))
     };
-    assert_eq!(at("a/util"), "/project/node_modules/a/util.d.ts");
-    assert_eq!(at("a/util.js"), "/project/node_modules/a/util.d.ts");
-    assert_eq!(at("a/lib"), "/project/node_modules/a/lib/index.ts");
-    assert_eq!(at("a/sub"), "/project/node_modules/a/sub/entry.d.ts");
+    assert_eq!(
+        at("a/util"),
+        PathBuf::from("/project/node_modules/a/util.d.ts")
+    );
+    assert_eq!(
+        at("a/util.js"),
+        PathBuf::from("/project/node_modules/a/util.d.ts")
+    );
+    assert_eq!(
+        at("a/lib"),
+        PathBuf::from("/project/node_modules/a/lib/index.ts")
+    );
+    assert_eq!(
+        at("a/sub"),
+        PathBuf::from("/project/node_modules/a/sub/entry.d.ts")
+    );
 }
 
 #[test]
@@ -207,7 +222,7 @@ fn types_packages_are_found_and_scoped_names_are_mangled() {
             "@scope/pkg",
             ImportMode::Import
         )),
-        "/project/node_modules/@types/scope__pkg/index.d.ts"
+        PathBuf::from("/project/node_modules/@types/scope__pkg/index.d.ts")
     );
     assert_eq!(types_package_name("@scope/pkg"), "@types/scope__pkg");
     assert_eq!(types_package_name("pkg"), "@types/pkg");
@@ -226,7 +241,7 @@ fn the_package_itself_wins_over_its_types_package_in_the_same_node_modules() {
             "a",
             ImportMode::Import
         )),
-        "/project/node_modules/a/index.d.ts"
+        PathBuf::from("/project/node_modules/a/index.d.ts")
     );
 }
 
@@ -244,7 +259,7 @@ fn the_nearest_node_modules_wins_and_a_farther_one_is_the_fallback() {
             "a",
             ImportMode::Import
         )),
-        "/project/src/node_modules/a/index.d.ts"
+        PathBuf::from("/project/src/node_modules/a/index.d.ts")
     );
     assert_eq!(
         path_of(resolve(
@@ -253,7 +268,7 @@ fn the_nearest_node_modules_wins_and_a_farther_one_is_the_fallback() {
             "b",
             ImportMode::Import
         )),
-        "/project/node_modules/b/index.d.ts"
+        PathBuf::from("/project/node_modules/b/index.d.ts")
     );
 }
 
@@ -304,7 +319,7 @@ fn node10_ignores_exports() {
             "a",
             ImportMode::Import
         )),
-        "/project/node_modules/a/real.d.ts"
+        PathBuf::from("/project/node_modules/a/real.d.ts")
     );
 }
 
@@ -345,7 +360,7 @@ fn exports_conditions_pick_types_first_and_follow_the_first_matching_key() {
     for mode in [ImportMode::Import, ImportMode::Require] {
         assert_eq!(
             path_of(resolve(&fs, ModuleResolution::Node16, "a", mode)),
-            "/project/node_modules/a/types/index.d.ts"
+            PathBuf::from("/project/node_modules/a/types/index.d.ts")
         );
     }
 }
@@ -367,7 +382,7 @@ fn the_import_mode_selects_import_or_require_when_there_is_no_types_condition() 
             "a",
             ImportMode::Import
         )),
-        "/project/node_modules/a/m.d.ts"
+        PathBuf::from("/project/node_modules/a/m.d.ts")
     );
     assert_eq!(
         path_of(resolve(
@@ -376,7 +391,7 @@ fn the_import_mode_selects_import_or_require_when_there_is_no_types_condition() 
             "a",
             ImportMode::Require
         )),
-        "/project/node_modules/a/c.d.ts"
+        PathBuf::from("/project/node_modules/a/c.d.ts")
     );
 }
 
@@ -390,7 +405,7 @@ fn node16_has_the_node_condition_and_bundler_does_not() {
             "a/feature",
             ImportMode::Import
         )),
-        "/project/node_modules/a/node/feature.d.ts"
+        PathBuf::from("/project/node_modules/a/node/feature.d.ts")
     );
     assert_eq!(
         path_of(resolve(
@@ -399,7 +414,7 @@ fn node16_has_the_node_condition_and_bundler_does_not() {
             "a/feature",
             ImportMode::Import
         )),
-        "/project/node_modules/a/feature.d.ts"
+        PathBuf::from("/project/node_modules/a/feature.d.ts")
     );
 }
 
@@ -436,13 +451,16 @@ fn exports_patterns_null_blocks_and_array_fallbacks() {
     let at = |name| resolve(&fs, ModuleResolution::Node16, name, ImportMode::Import);
     assert_eq!(
         path_of(at("a/lib/x")),
-        "/project/node_modules/a/dist/x.d.ts"
+        PathBuf::from("/project/node_modules/a/dist/x.d.ts")
     );
     assert_eq!(
         path_of(at("a/data/config.json")),
-        "/project/node_modules/a/data/config.d.ts"
+        PathBuf::from("/project/node_modules/a/data/config.d.ts")
     );
-    assert_eq!(path_of(at("a/list")), "/project/node_modules/a/list.d.ts");
+    assert_eq!(
+        path_of(at("a/list")),
+        PathBuf::from("/project/node_modules/a/list.d.ts")
+    );
     assert!(matches!(
         at("a/internal/x"),
         Err(ResolveError::ExportsNotDefined { .. })
@@ -504,7 +522,7 @@ fn exports_with_a_shorthand_string_and_with_escaping_targets() {
             "a",
             ImportMode::Import
         )),
-        "/project/node_modules/a/main.d.ts"
+        PathBuf::from("/project/node_modules/a/main.d.ts")
     );
     assert!(matches!(
         resolve(&fs, ModuleResolution::Node16, "b", ImportMode::Import),
@@ -524,9 +542,18 @@ fn package_imports_resolve_within_the_nearest_package() {
         ("/project/node_modules/a/index.d.ts", ""),
     ]);
     let at = |name| resolve(&fs, ModuleResolution::Bundler, name, ImportMode::Import);
-    assert_eq!(path_of(at("#internal")), "/project/src/internal.ts");
-    assert_eq!(path_of(at("#cond/thing")), "/project/src/thing.d.ts");
-    assert_eq!(path_of(at("#dep")), "/project/node_modules/a/index.d.ts");
+    assert_eq!(
+        path_of(at("#internal")),
+        PathBuf::from("/project/src/internal.ts")
+    );
+    assert_eq!(
+        path_of(at("#cond/thing")),
+        PathBuf::from("/project/src/thing.d.ts")
+    );
+    assert_eq!(
+        path_of(at("#dep")),
+        PathBuf::from("/project/node_modules/a/index.d.ts")
+    );
     assert!(matches!(
         at("#missing"),
         Err(ResolveError::ImportsNotDefined { .. })
@@ -968,6 +995,6 @@ fn exports_edge_shapes_are_resolved_or_refused_precisely() {
     // The pattern with the longer prefix wins.
     assert_eq!(
         path_of(at("pat/a/b/c")),
-        "/project/node_modules/pat/y/c.d.ts"
+        PathBuf::from("/project/node_modules/pat/y/c.d.ts")
     );
 }
