@@ -792,20 +792,23 @@ fn class_method_declared_returns_use_original_spans() {
             "return 'bad';",
         ),
     ] {
-        let compilation = compile_with_helper(source);
-        assert!(compilation.output.is_none());
-        let failures = compilation
-            .diagnostics
-            .iter()
-            .filter(|diagnostic| diagnostic.code != DiagnosticCode::UnsupportedSyntax)
-            .collect::<Vec<_>>();
-        assert!(!failures.is_empty(), "{source}");
-        assert_eq!(failures[0].code, code, "{failures:#?}");
-        assert_eq!(
-            &source[failures[0].span.start..failures[0].span.end],
-            expected_span,
-            "{failures:#?}"
-        );
+        for newline in ["\n", "\r\n"] {
+            let source = source.replace("\r\n", "\n").replace('\n', newline);
+            let compilation = compile_with_helper(&source);
+            assert!(compilation.output.is_none());
+            let failures = compilation
+                .diagnostics
+                .iter()
+                .filter(|diagnostic| diagnostic.code != DiagnosticCode::UnsupportedSyntax)
+                .collect::<Vec<_>>();
+            assert!(!failures.is_empty(), "{source}");
+            assert_eq!(failures[0].code, code, "{failures:#?}");
+            assert_eq!(
+                &source[failures[0].span.start..failures[0].span.end],
+                expected_span.replace('\n', newline),
+                "{failures:#?}"
+            );
+        }
     }
 }
 

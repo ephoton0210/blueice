@@ -4005,3 +4005,20 @@ Production resolution, canonical-root confinement and fingerprints are unchanged
 All 33 package-resolution tests, format/check and both crates' all-target
 Clippy with `-D warnings` pass in the Linux runner. The complete M6 replay
 on the corrected revision remains required before checking the milestone.
+
+
+### M6 workspace replay: original LF and CRLF spans
+
+The Windows Server 2022 job of CI run [37379358433](https://github.com/ephoton0210/blueice/actions/runs/37379358433)
+on `290ce28ce` passes native package-path tests and reaches the frontend suite.
+Its fall-through-method test expects LF text even though a Windows checkout
+embeds CRLF fixtures. The diagnostic's original byte range is correct.
+The test now compiles both LF and CRLF variants and compares the exact source
+slice with the expected text in that variant's newline format. No diagnostic
+range, parser or checker behavior is changed.
+
+All 123 frontend tests pass with the ordinary LF fixture snapshot and again
+with every TypeScript-oracle fixture converted to CRLF in the isolated Linux
+copy. That copy is restored before format/check and both crates' all-target
+Clippy with `-D warnings`, which also pass. The M6 gate remains unchecked
+until the complete CI run on the corrected revision passes.
