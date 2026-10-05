@@ -168,6 +168,10 @@ from another module is typed `unknown`, and a `const` is not protected from reas
    that reads files (K.2, K.9, K.12) goes through the canonical-root and fingerprint rules of J.4.3.
 7. **One commit per leaf**, English message citing the ID, then a short PLAN.md section (`### K.n …`)
    recording design, evidence and recorded gaps, as J.3 to J.6 did.
+8. **Track source size.** Review a production source at 1,200 lines. When it approaches or exceeds
+   1,300 lines, finish the current change's tests, commit and push the verified change, then record
+   and execute a focused split before adding more responsibilities to that file. Refactoring gets
+   its own tested commit and push; preserve behavior and source provenance.
 
 ### Execution order and dependencies
 
@@ -245,6 +249,21 @@ and import rules.
     `Promise`, generator `Generator<Y,R,N>`), literal freshness and widening rules, recursion guard.
   - *Done when:* `infer-return-*` matrix, plus declaration output for functions without annotations
     equal to `tsc`'s.
+
+#### K.1 source refactoring queue
+
+- [ ] **K.1.R.1 Split existing near-limit compiler/runtime sources after the K.1.2 gate.**
+  The 2026-10-05 baseline audit found the production sources below. Split them by the listed
+  responsibilities, preserve behavior, run K.0's two-crate gate, then commit and push before K.1.3.
+
+  | Source | Lines before K.1.2 | Planned split |
+  | --- | ---: | --- |
+  | `backend/bluets/src/checker/module/binding.rs` | 1205 | Import and export binding |
+  | `backend/bluets/src/checker/module/binding/classes.rs` | 1520 | Constructor/body checks and class type helpers |
+  | `backend/bluets/src/checker/module/binding/classes/overrides.rs` | 1487 | Inheritance and signature compatibility helpers |
+  | `backend/bluets/src/bin/bluetsc.rs` | 1693 | Command/options/config parsing |
+  | `backend/bluets-bluejs/src/expression.rs` | 1234 | Call/construction and assignment lowering |
+  | `backend/bluets-bluejs/src/lowering.rs` | 1340 | Class and module lowering helpers |
 
 ### K.2 Read real project configuration — M7 — gaps G-M2, G-C2
 
