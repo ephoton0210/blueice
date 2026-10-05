@@ -17,6 +17,7 @@ use std::collections::{BTreeMap, BTreeSet, HashSet};
 pub use crate::parser::Type;
 
 mod properties;
+mod scopes;
 mod type_relations;
 use properties::{property_type, PropertyType, TypeExpansionBudget};
 pub(crate) use type_relations::type_label;
@@ -204,7 +205,9 @@ pub(crate) fn check_incremental(
         );
         checker.bind();
         if policy.enforce_types {
+            checker.check_names();
             checker.check_types();
+            checker.dedupe_name_diagnostics();
         }
         let exported_namespaces = checker.exported_namespaces();
         diagnostics.extend(checker.diagnostics);

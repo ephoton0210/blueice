@@ -253,8 +253,8 @@ impl ModuleChecker<'_> {
             if declared_later {
                 self.type_error(
                     span,
-                    format!("class {base_name} is used before its declaration"),
-                    DiagnosticCode::TypeMismatch,
+                    format!("TS2449: class {base_name} is used before its declaration"),
+                    DiagnosticCode::UsedBeforeDeclaration,
                 );
             }
             return;

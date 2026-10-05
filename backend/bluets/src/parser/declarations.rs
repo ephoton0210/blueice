@@ -29,6 +29,8 @@ impl Parser {
             edits: Vec::new(),
             generic_call_type_arguments: BTreeMap::new(),
             nested_functions: BTreeMap::new(),
+            type_references: Vec::new(),
+            expression_variable_types: BTreeMap::new(),
             diagnostics: Vec::new(),
             max_type_depth,
             type_depth: 0,
@@ -67,6 +69,8 @@ impl Parser {
                 edits: self.edits,
                 generic_call_type_arguments: self.generic_call_type_arguments,
                 nested_functions: self.nested_functions,
+                type_references: self.type_references,
+                expression_variable_types: self.expression_variable_types,
             })
         } else {
             Err(self.diagnostics)

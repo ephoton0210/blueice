@@ -714,7 +714,9 @@ fn type_to_ts(value: &Type) -> String {
         Type::Number => "number".to_string(),
         Type::String => "string".to_string(),
         Type::Literal(value) => value.clone(),
-        Type::Named { name, arguments } if arguments.is_empty() => name.clone(),
+        Type::Named { name, arguments } if arguments.is_empty() => {
+            crate::parser::source_type_name(name).to_string()
+        }
         Type::Named { name, arguments } => format!(
             "{name}<{}>",
             arguments

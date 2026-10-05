@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: K.1.1.** Sections A to J are complete (summarized below); J.6 closed in its
+**Current leaf: K.1.2.** Sections A to J are complete (summarized below); J.6 closed in its
 measured form (`COMPATIBILITY_INVENTORY.md`). Section K closes the gaps that inventory lists.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
@@ -199,8 +199,8 @@ Sizes: S about a day, M a few days, L about a week or more, XL a multi-week piec
 *Why it is first:* after K.1 a program the checker accepts is one `tsc` accepts for the name, mutation
 and import rules.
 
-- [ ] **K.1.1 Undeclared identifiers (L).**
-  - *Today:* an unknown name in a value or type position is accepted unless a page profile enables
+- [x] **K.1.1 Undeclared identifiers (L).**
+  - *Initial gap:* an unknown name in a value or type position was accepted unless a page profile enabled
     `require_declared_global_calls` (calls only). `PLAN.md` records it as a known gap.
   - *Work:* build a scope model shared by the checker passes (module scope, function/block scope,
     parameters, catch bindings, class members via `this`, namespace bodies, imports, ambient host
@@ -208,8 +208,8 @@ and import rules.
     in annotations; hoisting (`var`, function declarations), the temporal dead zone for `let`/`const`/
     class (TS2448, TS2449), `typeof x` in types, shadowing; globals come from K.1.4's library set and
     owner declarations.
-  - *Risk:* false positives on valid programs. Mitigate by running the whole existing corpus (994
-    fixture directories, 19 suites) and requiring zero new rejections of an accepted entry.
+  - *Risk:* false positives on valid programs. Mitigate by running the whole corpus (1090
+    fixture directories, 20 suites) and requiring zero new rejections of an accepted entry.
   - *Done when:* a 40+ form accepted/rejected matrix (`unknown-name-*`) agrees with `tsc` and the
     existing suites are unchanged.
 - [ ] **K.1.2 Mutation of immutables (M).**

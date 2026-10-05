@@ -26,10 +26,11 @@ test files (`grep -rl '#\[ignore' backend/bluets*/tests`), section 4 is
 | `jsx_checker_matrix.rs`, `jsx_oracle.rs` | accept/reject of JSX against the declared `JSX` namespace (53 entries); every `jsx` mode, factory, pragma and runtime option run under Node | 53 entries, 11 programs |
 | `decorators_checker_matrix.rs`, `decorators_oracle.rs` | standard decorators: accept/reject (32); evaluation/application order, contexts, metadata, class replacement, errors at class definition, run under Node | 32 entries, 20 programs |
 | `legacy_decorators_checker_matrix.rs`, `legacy_decorators_oracle.rs` | `experimentalDecorators`/`emitDecoratorMetadata`: accept/reject (19); `__decorate`/`__param`/metadata call order and values, ES2022 and ES2020, ESM and CommonJS | 19 entries, 18 programs |
+| `unknown_name_checker_matrix.rs` | accept/reject through `check` and `build` for lexical value/type names, hoisting, TDZ, imports, namespaces and shadowing; one program compares Node output and declarations | 108 entries, 1 program |
 | `option_combinations_oracle.rs` | one program over every combination of `target`, module system, `useDefineForClassFields`, `preserveConstEnums`, `isolatedModules` | 48 combinations |
 | `bluets-bluejs/tests/namespace_parity.rs`, `jsx_direct.rs`, `decorators_direct.rs` | the direct runtime (BlueJS) against Node running `tsc`'s output | 7 + 7 + 6 programs |
 
-The fixture corpus under `tests/fixtures/typescript_oracle/` has 994 directories; each is an
+The fixture corpus under `tests/fixtures/typescript_oracle/` has 1090 top-level directories; each is an
 entry whose verdict was recorded from the pinned compiler by an ignored test
 (`BLUEICE_WRITE_*_MATRIX=1`), and the ordinary (non-ignored) tests replay the recorded verdicts offline.
 
@@ -39,13 +40,14 @@ code (`BTSnnnn`), not by TypeScript's `TSnnnn` number or text; source maps are l
 by running it (and, for declarations, by text where TypeScript's output is deterministic), not by
 whitespace.
 
-### Measured pass rate (2026-10-02, macOS 26 / Apple silicon, pinned `typescript@5.9.3`, Node 26)
+### Measured pass rate (2026-10-05, macOS 26 / Apple silicon, pinned `typescript@5.9.3`, Node 26)
 
 Every differential suite of section 1 was run against the pinned compiler with none skipped:
-**19 of 19 suites pass, 0 failures.** The versioned case list is the repository itself at the commit that
-carries this file: 760 recorded accepted/rejected verdicts (class 523, namespace 76, enum 57, JSX 53,
-decorators 32, legacy decorators 19), 109 core-subset cases in `typescript_oracle.rs`, and the emit-and-run
-programs (JSX 11, standard decorators 20, legacy decorators 18, CommonJS 6, option combinations 48,
+**20 of 20 suites pass, 102 ignored oracle tests pass, 0 failures.** The versioned case list is the
+repository itself at the commit that carries this file: 868 recorded accepted/rejected verdicts (class
+523, namespace 76, enum 57, JSX 53, decorators 32, legacy decorators 19, unknown names 108), 109 core-subset
+cases in `typescript_oracle.rs`, and the emit-and-run programs (JSX 11, standard decorators 20,
+legacy decorators 18, CommonJS 6, unknown names 1, option combinations 48,
 namespace/enum/class downlevel under both targets, direct-runtime parity 20). The same suites run in CI on
 Ubuntu 24.04 and macOS 15; Windows is not covered (G-M3). The percentage means only: *of the forms inside
 the subset, every one agrees with `tsc`*. It says nothing about the forms in section 3, which are refused.
@@ -58,7 +60,7 @@ generators); ES module and CommonJS emit; classes (fields, accessors, visibility
 names, parameter properties, class+interface merging); enums and `const enum`; namespaces (nested, merged
 with classes, enums, functions); `.tsx` JSX in every `jsx` mode; standard and legacy decorators; installed
 packages through `node10`/`node16`/`bundler` resolution inside owner-authorized roots; pinned remote
-declarations. The precise per-feature descriptions, with their recorded gaps, are the `J.x` sections of
+declarations. The precise per-feature descriptions, with their recorded gaps, are the `J.x` and `K.1.1` sections of
 `PLAN.md`.
 
 ## 3. Open gaps against `tsc` 5.9.3
@@ -78,7 +80,7 @@ suite entry, then removing the row.
 | G-T4 | Overload resolution in full (call and construct signatures, contextual signature selection), optional chaining and non-null assertion typing in all positions. |
 | G-T5 | Index signatures, `readonly` arrays/tuples, `unique symbol`, `bigint`, `symbol`, `never`/`unknown` flow rules, `satisfies`, `as const`, enum-like literal inference. |
 | G-T6 | Structural-compatibility details: excess-property checks in every position, weak types, optional/exactOptional rules, `strictFunctionTypes` and method bivariance, `exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`. |
-| G-T7 | `lib.d.ts`: there is no standard library declaration set; host types come from the owner-supplied declarations, so ECMAScript/DOM globals are not typed as in `tsc`. Unknown identifiers are not diagnosed (`PLAN.md`, recorded gap). |
+| G-T7 | `lib.d.ts`: there is no standard library declaration set; host types come from the owner-supplied declarations, so ECMAScript/DOM globals are not typed as in `tsc`. K.1.1 resolves undeclared value/type names and recognizes a finite name-only ECMAScript/console compatibility list; the versioned, typed library remains K.1.4. |
 | G-T8 | Inferred return types of declarations without annotations (getters, methods, exported functions in `.d.ts` emit), widening and literal freshness in all positions. |
 | G-T9 | `abstract` classes, `implements` clauses, generic classes and heritage, class expressions, computed class member names, `declare` fields, `override`/`noImplicitOverride`, index-signature members. |
 | G-T10 | `import type`/`export type` forms beyond the supported ones, `export default <expression>`, value re-exports (`export * from`, `export { x } from`), import attributes, `export as namespace`, `declare module` augmentation and ambient module declarations, global augmentation, triple-slash directives, `unique` declaration merging beyond class+interface+namespace. |
@@ -133,9 +135,9 @@ excluded). A refusal is never silent: the program is rejected with this text.
 
 ### checker (22)
 
-- `backend/bluets/src/checker/module/binding.rs:531` — `export =` cannot be used when the module system is ECMAScript; use `--module commonjs`
-- `backend/bluets/src/checker/module/binding.rs:523` — `import x = require()` cannot be used when the module system is ECMAScript; use `--module commonjs`
-- `backend/bluets/src/checker/module/binding.rs:226` — a class member other than a constructor, method, field or accessor \ (a computed, generator or `accessor` member) is not supported yet
+- `backend/bluets/src/checker/module/binding.rs:533` — `export =` cannot be used when the module system is ECMAScript; use `--module commonjs`
+- `backend/bluets/src/checker/module/binding.rs:525` — `import x = require()` cannot be used when the module system is ECMAScript; use `--module commonjs`
+- `backend/bluets/src/checker/module/binding.rs:228` — a class member other than a constructor, method, field or accessor \ (a computed, generator or `accessor` member) is not supported yet
 - `backend/bluets/src/checker/module/binding/enums.rs:214` — a computed initializer that refers to the member `{}` must write it \ as `{}.{}`
 - `backend/bluets/src/checker/module/decorators.rs:116` — a decorator can only decorate a method implementation, not an overload
 - `backend/bluets/src/checker/module/binding/classes/fields.rs:318` — a field initializer that refers to a later field inside a nested \ function is not supported yet
@@ -144,17 +146,17 @@ excluded). A refusal is never silent: the program is rejected with this text.
 - `backend/bluets/src/checker/module/binding/classes/visibility.rs:544` — cannot prove that access to `{}` is permitted for this receiver
 - `backend/bluets/src/checker/module/binding/classes/fields.rs:104` — class field `{}` needs a type annotation unless its initializer \ or default is a number, string or boolean literal
 - `backend/bluets/src/checker/module/binding/classes.rs:621` — class tuple rest annotation cannot be specialized within the type budget
-- `backend/bluets/src/checker/module/binding.rs:1249` — cyclic tuple spread cannot be resolved
+- `backend/bluets/src/checker/module/binding/names.rs:145` — cyclic tuple spread cannot be resolved
 - `backend/bluets/src/checker/module/binding/classes/fields.rs:371` — definite assignment of `{}` through a branch is not supported yet
 - `backend/bluets/src/checker/module/binding/classes/fields.rs:426` — field `{}` redeclares a member of an imported base class, which is not supported yet
 - `backend/bluets/src/checker/module/binding/classes/accessors.rs:125` — getter `{}` needs a return type annotation; inferring it from the \ body is not supported yet
-- `backend/bluets/src/checker/module/binding.rs:1026` — interface heritage {name} must name an interface declaration
-- `backend/bluets/src/checker/module/binding/namespaces.rs:1038` — namespace `{source}` has no run-time members; import it with `import type`
+- `backend/bluets/src/checker/module/binding.rs:1028` — interface heritage {name} must name an interface declaration
+- `backend/bluets/src/checker/module/binding/namespaces.rs:1040` — namespace `{source}` has no run-time members; import it with `import type`
 - `backend/bluets/src/checker/module/binding/classes/accessors.rs:346` — redeclaring `{name}` as an accessor over a member of an \ imported base class is not supported yet
 - `backend/bluets/src/checker/module/binding/classes/visibility.rs:302` — redeclaring the protected member `{name}` of an imported base \ class is not supported yet
 - `backend/bluets/src/checker/module/binding/classes/accessors.rs:177` — the getter and setter of `{name}` have different types, \ which is not supported yet
-- `backend/bluets/src/checker/module/binding.rs:1253` — tuple spread names an unresolved type
-- `backend/bluets/src/checker/module/binding.rs:1257` — tuple spread requires one concrete tuple or array type
+- `backend/bluets/src/checker/module/binding/names.rs:149` — tuple spread names an unresolved type
+- `backend/bluets/src/checker/module/binding/names.rs:153` — tuple spread requires one concrete tuple or array type
 
 ### emitter (37)
 
@@ -289,20 +291,20 @@ excluded). A refusal is never silent: the program is rejected with this text.
 ### parser (28)
 
 - `backend/bluets/src/parser/declarations/erasure_audit.rs:83` — TypeScript annotations on functions nested in expressions are not supported yet
-- `backend/bluets/src/parser/declarations.rs:397` — TypeScript assertions outside a supported declaration are not in the initial BlueTS matrix
-- `backend/bluets/src/parser/declarations.rs:218` — `abstract` declarations are not in the initial BlueTS matrix
-- `backend/bluets/src/parser/declarations.rs:306` — `{}` is not in the initial BlueTS matrix
-- `backend/bluets/src/parser/declarations.rs:253` — an async enum is not valid
-- `backend/bluets/src/parser/declarations.rs:265` — an async enum is not valid
-- `backend/bluets/src/parser/declarations/typed_declarations.rs:204` — an async generator is not supported yet
-- `backend/bluets/src/parser/declarations.rs:290` — an async namespace is not valid
+- `backend/bluets/src/parser/declarations.rs:401` — TypeScript assertions outside a supported declaration are not in the initial BlueTS matrix
+- `backend/bluets/src/parser/declarations.rs:222` — `abstract` declarations are not in the initial BlueTS matrix
+- `backend/bluets/src/parser/declarations.rs:310` — `{}` is not in the initial BlueTS matrix
+- `backend/bluets/src/parser/declarations.rs:257` — an async enum is not valid
+- `backend/bluets/src/parser/declarations.rs:269` — an async enum is not valid
+- `backend/bluets/src/parser/declarations/typed_declarations.rs:205` — an async generator is not supported yet
+- `backend/bluets/src/parser/declarations.rs:294` — an async namespace is not valid
 - `backend/bluets/src/parser/declarations/enums.rs:53` — an enum member name with an escape sequence is not supported yet
-- `backend/bluets/src/parser/declarations.rs:146` — an import, `export default`, `export =`, `export *` or export list inside a namespace body is not supported
-- `backend/bluets/src/parser/declarations.rs:160` — anonymous default function exports are not in the initial BlueTS matrix
-- `backend/bluets/src/parser/declarations.rs:238` — declared and async classes are not in the first class form
-- `backend/bluets/src/parser/declarations.rs:321` — decorators and TSX/JSX are not in the initial BlueTS matrix
+- `backend/bluets/src/parser/declarations.rs:150` — an import, `export default`, `export =`, `export *` or export list inside a namespace body is not supported
+- `backend/bluets/src/parser/declarations.rs:164` — anonymous default function exports are not in the initial BlueTS matrix
+- `backend/bluets/src/parser/declarations.rs:242` — declared and async classes are not in the first class form
+- `backend/bluets/src/parser/declarations.rs:325` — decorators and TSX/JSX are not in the initial BlueTS matrix
 - `backend/bluets/src/parser/declarations/imports_exports.rs:285` — default aliases in named value exports are not in the initial BlueTS matrix
-- `backend/bluets/src/parser/declarations.rs:179` — default export expressions are not in the initial BlueTS matrix
+- `backend/bluets/src/parser/declarations.rs:183` — default export expressions are not in the initial BlueTS matrix
 - `backend/bluets/src/parser/declarations/class.rs:49` — generic, computed, and implemented class heritage is not in the first class form
 - `backend/bluets/src/parser/declarations/typed_declarations.rs:49` — interface heritage supports only named interface types
 - `backend/bluets/src/parser/declarations/imports_exports.rs:143` — mixed value/type imports are not in the initial BlueTS matrix; use a separate `import type` declaration
@@ -310,10 +312,10 @@ excluded). A refusal is never silent: the program is rejected with this text.
 - `backend/bluets/src/parser/declarations/imports_exports.rs:27` — only `import name = require("module")` is supported as an `import =` form
 - `backend/bluets/src/parser/declarations/typed_declarations.rs:129` — optional variables are not valid TypeScript declarations
 - `backend/bluets/src/parser/type_syntax.rs:17` — rest parameters in method signatures are not supported
-- `backend/bluets/src/parser/declarations/typed_declarations.rs:369` — this destructuring pattern is not supported yet
+- `backend/bluets/src/parser/declarations/typed_declarations.rs:370` — this destructuring pattern is not supported yet
 - `backend/bluets/src/parser/type_syntax.rs:194` — tuple rest element must have an array or named tuple annotation
 - `backend/bluets/src/parser/declarations/imports_exports.rs:270` — type-only bindings in a value export are not in the initial BlueTS matrix; use `export type`
-- `backend/bluets/src/parser/declarations/source_edits.rs:52` — typed arrow parameters are not in the initial BlueTS matrix
-- `backend/bluets/src/parser/declarations.rs:192` — value re-exports from another module are not in the initial BlueTS matrix
+- `backend/bluets/src/parser/declarations/source_edits.rs:85` — typed arrow parameters are not in the initial BlueTS matrix
+- `backend/bluets/src/parser/declarations.rs:196` — value re-exports from another module are not in the initial BlueTS matrix
 - `backend/bluets/src/parser/declarations/imports_exports.rs:301` — value re-exports from another module are not in the initial BlueTS matrix
 

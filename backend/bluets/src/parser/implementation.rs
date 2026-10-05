@@ -15,6 +15,8 @@ pub(super) struct Parser {
     edits: Vec<TextEdit>,
     generic_call_type_arguments: BTreeMap<usize, Vec<Type>>,
     nested_functions: BTreeMap<usize, NestedFunction>,
+    type_references: Vec<TypeReference>,
+    expression_variable_types: BTreeMap<usize, Type>,
     diagnostics: Vec<Diagnostic>,
     max_type_depth: usize,
     type_depth: usize,

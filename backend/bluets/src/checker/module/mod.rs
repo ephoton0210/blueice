@@ -36,6 +36,7 @@ pub(crate) struct CheckerPolicy {
 
 pub(super) struct ModuleChecker<'a> {
     project: &'a Project,
+    scopes: Option<scopes::ScopeModel<'a>>,
     module: &'a Module,
     exports: &'a ProjectExports,
     ambient: Option<&'a AmbientDeclarations>,

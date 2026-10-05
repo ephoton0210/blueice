@@ -44,6 +44,17 @@ pub struct Module {
     /// Their annotations are erased through `edits`; the checker reads
     /// parameters, result type and body from here.
     pub(crate) nested_functions: BTreeMap<usize, NestedFunction>,
+    /// Named type uses, including erased assertions, at their original tokens.
+    pub(crate) type_references: Vec<TypeReference>,
+    /// Annotations on declarations retained inside opaque control flow.
+    pub(crate) expression_variable_types: BTreeMap<usize, Type>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct TypeReference {
+    pub(crate) name: String,
+    pub(crate) value_query: bool,
+    pub(crate) span: SourceSpan,
 }
 
 /// An arrow function or function expression parsed inside a runtime
@@ -880,6 +891,20 @@ pub(crate) fn require_tuple_positions_before_suffix(elements: &mut [TupleTypeEle
         }
         required_suffix |= !element.optional && !element.rest;
     }
+}
+
+/// A value query's internal identity includes its source position, because
+/// two queries with the same spelling can resolve different shadowed values.
+/// Diagnostics and declaration output retain the source spelling.
+pub(crate) fn source_type_name(name: &str) -> &str {
+    if name.starts_with("typeof ") {
+        if let Some((source, position)) = name.rsplit_once('@') {
+            if position.parse::<usize>().is_ok() {
+                return source;
+            }
+        }
+    }
+    name
 }
 
 /// The supported, reifiable portion of the TypeScript type grammar.

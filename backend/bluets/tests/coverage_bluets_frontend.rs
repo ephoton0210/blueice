@@ -544,7 +544,7 @@ fn class_constructor_groups_and_parameters_are_checked_at_source_spans() {
             "unknown parameter type",
             include_str!("fixtures/typescript_oracle/class-constructor-unknown-type/main.ts"),
             DiagnosticCode::UnknownType,
-            "value: Missing",
+            "Missing",
         ),
         (
             "invalid default",
@@ -711,7 +711,7 @@ fn class_method_parameters_and_bodies_use_typed_scopes_on_both_sides() {
         (
             include_str!("fixtures/typescript_oracle/class-method-body-unknown-parameter/main.ts"),
             DiagnosticCode::UnknownType,
-            "value: Missing",
+            "Missing",
         ),
         (
             include_str!("fixtures/typescript_oracle/class-method-body-invalid-default/main.ts"),
@@ -1074,7 +1074,7 @@ fn named_class_heritage_validates_base_names_and_declaration_order() {
         ),
         (
             include_str!("fixtures/typescript_oracle/class-heritage-forward-base/main.ts"),
-            DiagnosticCode::TypeMismatch,
+            DiagnosticCode::UsedBeforeDeclaration,
             "Base",
         ),
     ] {
@@ -1122,9 +1122,17 @@ fn local_class_heritage_cycles_diagnose_cycle_members_only() {
         .collect::<Vec<_>>();
     failures.sort_by_key(|diagnostic| diagnostic.span.start);
     assert_eq!(failures.len(), 3, "{failures:#?}");
-    assert!(failures
-        .iter()
-        .all(|diagnostic| diagnostic.code == DiagnosticCode::TypeMismatch));
+    assert_eq!(
+        failures
+            .iter()
+            .map(|diagnostic| diagnostic.code)
+            .collect::<Vec<_>>(),
+        vec![
+            DiagnosticCode::TypeMismatch,
+            DiagnosticCode::UsedBeforeDeclaration,
+            DiagnosticCode::TypeMismatch
+        ]
+    );
     assert_eq!(
         failures
             .iter()
@@ -2071,7 +2079,7 @@ fn class_parameters_accept_fixed_tuple_rest_annotations() {
         (
             include_str!("fixtures/typescript_oracle/class-tuple-rest-unknown-element/main.ts"),
             DiagnosticCode::UnknownType,
-            "...parts: [Missing, string]",
+            "Missing",
         ),
     ] {
         let compilation = compile(
@@ -3742,8 +3750,8 @@ fn first_typeof_guard_does_not_narrow_mutable_or_parameter_bindings() {
 fn first_typeof_guard_does_not_claim_later_or_repeated_guards() {
     assert_rejected(
         "function takesString(value: string): void {} function f(input: string | number): void { if (typeof value === 'string') { takesString(value); } const value: string | number = input; }",
-        "BTS3003",
-        "argument 1 has type `string | number`",
+        "BTS3005",
+        "used before its declaration",
     );
     assert_rejected(
         "function takesString(value: string): void {} function f(input: string | number): void { const value: string | number = input; if (typeof value === 'string') { 0; } if (typeof value === 'string') { takesString(value); } }",
@@ -4423,8 +4431,8 @@ fn supported_programs_are_accepted() {
         "const x: number = 1 as number;",
         "function f<T>(a: T): T { return a; } const x = f<number>(1);",
         "function f<T>(a: T): T { return a; } const x = f<number,>(1);",
-        "const x = y!;",
-        "const x = y!.z;",
+        "declare const y: { z: number }; const x = y!;",
+        "declare const y: { z: number }; const x = y!.z;",
         "const keywords = { class: 1, enum: 2, namespace: 3, module: 4 };",
         "interface Box<T> { value: T } const box: Box<Box<number>> = { value: { value: 1 } };",
         "let a = 1, b = 2;",

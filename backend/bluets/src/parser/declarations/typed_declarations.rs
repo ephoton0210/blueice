@@ -148,6 +148,7 @@ impl Parser {
             let initializer_start = self.index;
             let initializer = self.collect_until_statement_end();
             self.collect_expression_type_edits(initializer_start, self.index);
+            self.collect_following_variable_types(initializer_start, self.index);
             initializer
         } else {
             Vec::new()

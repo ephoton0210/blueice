@@ -3598,3 +3598,50 @@ not fixed). Coverage of `blueice-bluets` and `blueice-bluets-bluejs`, the crates
 `cargo llvm-cov --fail-under-lines 90` passes with 92.23% lines, 94.83% functions and 92.17% regions
 (the 2026-10-02 run needed `LLVM_COV`/`LLVM_PROFDATA` set to the pinned 1.95.0 toolchain's tools because
 cargo-llvm-cov looked in the Homebrew toolchain). The workspace-wide aggregate was not re-measured: the other crates are unchanged.
+
+
+### K.1.1 Lexical names, hoisting and initialization order
+
+The checker now builds one lexical scope tree before resolving uses. Module, function,
+parameter, block, loop, catch, class, static-block, namespace and enum scopes share value/type
+lookup; declaration names and property keys are distinguished from references. `var` and
+function declarations hoist to their declaration boundary. `let`, `const` and class references
+before initialization report `BTS3005` with TS2448/TS2449 in the message. An execution identity
+allows a deferred function to capture a later outer binding, while immediate initializers and
+parameter defaults retain their declaration order. A default parameter cannot see body locals.
+
+The parser records original spans for named types in annotations and erased assertions, plus
+`typeof` value queries. Query aliases carry source positions internally so shadowed parameters
+and outer variables keep distinct types; declaration text retains the source spelling. Namespace
+exports are shared across merged bodies in both directions, private members remain local to one
+body, and private nested namespaces retain separate identities. A namespace is a qualifier for
+its member types, not a standalone type; a type-only body supplies no value for `typeof`. A
+namespace merged into a class retains that class's initialization point. Import value/type meanings
+come from the sealed project graph and existing owner declarations. Source-offset indexes keep type
+lookup and erased-token exclusion bounded by the parsed source instead of scanning all scopes
+or edits for each identifier. Contextual keywords such as `any` and `of` also participate in
+value lookup; the for-of separator, labels and property names retain their syntactic roles.
+Named-type validation lives in `checker/module/binding/names.rs`; new scope sources are split by
+construction and expression traversal.
+
+Evidence is `unknown_name_checker_matrix.rs`: 108 pinned TypeScript 5.9.3 verdicts replayed through
+both public CLI commands, including rejection without output, plus execution and exact `.d.ts`
+comparison under Node. `tests/names.rs` checks original identifier spans, shadowed query types,
+parameter/body separation, contextual keywords used as values, owner call-policy enforcement and
+the explicit unchecked `TranspileOnly` route. Existing diagnostic tests now expect the identifier
+token for unknown types and the initialization-order code for a forward class base; formerly undeclared assertion
+examples receive an explicit ambient declaration while preserving their expression assertions.
+
+The K.0 gate passed on 2026-10-05: `cargo fmt --all -- --check`, all-target Clippy for
+`blueice-bluets` and `blueice-bluets-bluejs` with `-D warnings`, and
+`BLUEICE_BLUETSC_ORACLE=<tsc 5.9.3> FORCE_COLOR=0 cargo test -p blueice-bluets
+-p blueice-bluets-bluejs -j 4 --no-fail-fast -- --include-ignored --test-threads=4`.
+The two-crate run passed 993 tests, including all 102 ignored oracle tests in 20 suite files,
+with no failures, ignored tests or filtered tests. No accepted entry in the existing matrices
+became a new refusal. The refusal inventory was regenerated from the final source.
+
+Recorded boundaries: the finite ECMAScript/console list recognizes static names only; K.1.4 still
+owns a versioned standard library and its types. It adds no DOM name and no runtime or host grant,
+and `require_declared_global_calls` still requires the owner's declarations. Imported value
+inference, immutable assignment enforcement, broader query/operator typing and TypeScript
+numeric diagnostic parity remain K.1.3, K.1.2, K.4 and K.3 respectively. Full parity stays off.

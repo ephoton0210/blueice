@@ -698,6 +698,8 @@ fn render_members(
                 edits: Vec::new(),
                 generic_call_type_arguments: BTreeMap::new(),
                 nested_functions: BTreeMap::new(),
+                type_references: Vec::new(),
+                expression_variable_types: BTreeMap::new(),
             };
             let text = super::emit_declaration(&synthetic)?;
             let hidden_names: BTreeSet<&str> = chunk

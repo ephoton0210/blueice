@@ -740,7 +740,7 @@ pub(crate) fn type_label(value: &Type) -> String {
         Type::Number => "number".to_string(),
         Type::String => "string".to_string(),
         Type::Literal(value) => value.clone(),
-        Type::Named { name, .. } => name.clone(),
+        Type::Named { name, .. } => crate::parser::source_type_name(name).to_string(),
         Type::Array(value) => value.array_element_text(type_label),
         Type::Tuple(values) => format!(
             "[{}]",

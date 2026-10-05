@@ -289,11 +289,45 @@ impl Parser {
             Type::Null
         } else if self.consume("undefined") {
             Type::Undefined
+        } else if self.consume("typeof") {
+            let start = self.current().start;
+            let mut name = self.consume_identifier_or_keyword().unwrap_or_else(|| {
+                self.error_here(
+                    DiagnosticCode::ParseError,
+                    "expected a value name after `typeof`",
+                );
+                String::new()
+            });
+            while self.consume(".") {
+                name.push('.');
+                name.push_str(&self.require_identifier("expected a qualified value name"));
+            }
+            self.type_references.push(TypeReference {
+                name: name.clone(),
+                value_query: true,
+                span: SourceSpan::new(&self.id, start, self.previous().end),
+            });
+            Type::Named {
+                name: format!("typeof {name}@{start}"),
+                arguments: Vec::new(),
+            }
         } else if let Some(mut name) = self.consume_identifier_or_keyword() {
+            let name_start = self.previous().start;
             while self.consume(".") {
                 let member = self.require_identifier("expected a qualified type name");
                 name.push('.');
                 name.push_str(&member);
+            }
+            let name_end = self.previous().end;
+            if !matches!(
+                name.as_str(),
+                "any" | "unknown" | "never" | "void" | "boolean" | "number" | "string"
+            ) {
+                self.type_references.push(TypeReference {
+                    name: name.clone(),
+                    value_query: false,
+                    span: SourceSpan::new(&self.id, name_start, name_end),
+                });
             }
             let mut arguments = Vec::new();
             if self.consume("<") {

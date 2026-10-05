@@ -11,6 +11,7 @@ mod enums;
 mod functions;
 mod generators;
 pub(in crate::checker::module) use generators::GeneratorContext;
+mod names;
 mod namespaces;
 pub(in crate::checker::module) use functions::promise_value_type;
 pub(crate) use namespaces::{NamespaceExport, NamespaceMembers};
@@ -48,6 +49,7 @@ impl<'a> ModuleChecker<'a> {
     ) -> Self {
         Self {
             project,
+            scopes: None,
             module,
             exports,
             ambient,
@@ -1094,7 +1096,7 @@ impl<'a> ModuleChecker<'a> {
             return;
         };
         self.check_type(annotation, &variable.span);
-        if variable.initializer.is_empty() || variable.declared {
+        if variable.initializer.is_empty() || variable.declared || !self.type_is_bound(annotation) {
             return;
         }
         let inferred = self.infer_in_context(&variable.initializer, scope, annotation);
@@ -1199,207 +1201,5 @@ impl<'a> ModuleChecker<'a> {
         self.check_const_enum_uses(tokens, scope, span);
         self.check_type_only_enum_value_uses(tokens, scope, span);
         self.check_arithmetic_operators(tokens, scope, span);
-    }
-
-    pub(super) fn check_type(&mut self, value: &Type, span: &SourceSpan) {
-        match value {
-            Type::Named { name, arguments } => {
-                if self.refuse_hidden_namespace_type(name, span) {
-                    return;
-                }
-                if let Some(definition) = self.types.get(name).cloned() {
-                    self.check_type_arguments(name, arguments, &definition, span);
-                } else if !self.type_parameters.contains(name) {
-                    self.type_error(
-                        span,
-                        format!("cannot find type `{name}`"),
-                        DiagnosticCode::UnknownType,
-                    );
-                }
-            }
-            Type::Array(value) => self.check_type(value, span),
-            Type::Tuple(values) => {
-                for value in values {
-                    self.check_type(&value.annotation, span);
-                }
-                if values
-                    .iter()
-                    .any(|element| element.rest && matches!(element.annotation, Type::Named { .. }))
-                {
-                    let specialized = substitute_type(
-                        &Type::Tuple(values.clone()),
-                        &self.allowed_tuple_spread_parameters,
-                    );
-                    let Type::Tuple(specialized) = specialized else {
-                        unreachable!("tuple substitution retains a tuple")
-                    };
-                    let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
-                    if let Err(error) = expand_concrete_tuple_spreads(
-                        &specialized,
-                        &self.types,
-                        &mut HashSet::new(),
-                        &mut budget,
-                    ) {
-                        let (code, message) = match error {
-                            TupleSpreadError::Exhausted => (
-                                DiagnosticCode::ResourceLimit,
-                                "tuple spread exceeds the generic-expansion limit",
-                            ),
-                            TupleSpreadError::Cyclic => (
-                                DiagnosticCode::UnsupportedSyntax,
-                                "cyclic tuple spread cannot be resolved",
-                            ),
-                            TupleSpreadError::Unresolved => (
-                                DiagnosticCode::UnsupportedSyntax,
-                                "tuple spread names an unresolved type",
-                            ),
-                            TupleSpreadError::Unsupported => (
-                                DiagnosticCode::UnsupportedSyntax,
-                                "tuple spread requires one concrete tuple or array type",
-                            ),
-                        };
-                        self.type_error(span, message.to_string(), code);
-                    }
-                }
-            }
-            Type::Union(values) | Type::Intersection(values) => {
-                for value in values {
-                    self.check_type(value, span);
-                }
-            }
-            Type::Record(fields) => {
-                for field in fields {
-                    self.check_type(&field.value, &field.span);
-                }
-            }
-            Type::Function { parameters, result } => {
-                for parameter in parameters {
-                    if let Some(annotation) = &parameter.annotation {
-                        self.check_type(annotation, &parameter.span);
-                    }
-                }
-                self.check_type(result, span);
-            }
-            _ => {}
-        }
-    }
-
-    pub(super) fn check_type_parameters(&mut self, parameters: &[TypeParameter]) {
-        let mut saw_default = false;
-        for parameter in parameters {
-            if !self.type_parameters.insert(parameter.name.clone()) {
-                self.type_error(
-                    &parameter.span,
-                    format!("duplicate type parameter `{}`", parameter.name),
-                    DiagnosticCode::DuplicateDeclaration,
-                );
-            }
-            if saw_default && parameter.default.is_none() {
-                self.type_error(
-                    &parameter.span,
-                    format!(
-                        "required type parameter `{}` cannot follow a defaulted type parameter",
-                        parameter.name
-                    ),
-                    DiagnosticCode::TypeMismatch,
-                );
-            }
-            if parameter.default.is_some() {
-                saw_default = true;
-            }
-            if let Some(constraint) = &parameter.constraint {
-                self.check_type(constraint, &parameter.span);
-            }
-            if let Some(default) = &parameter.default {
-                self.check_type(default, &parameter.span);
-                if let Some(constraint) = &parameter.constraint {
-                    if !self.is_assignable_bounded(default, constraint, &parameter.span) {
-                        self.type_error(
-                            &parameter.span,
-                            format!(
-                                "default type `{}` does not satisfy constraint `{}` for `{}`",
-                                type_label(default),
-                                type_label(constraint),
-                                parameter.name,
-                            ),
-                            DiagnosticCode::TypeMismatch,
-                        );
-                    }
-                }
-            }
-        }
-    }
-
-    pub(super) fn check_type_arguments(
-        &mut self,
-        name: &str,
-        arguments: &[Type],
-        definition: &TypeDefinition,
-        span: &SourceSpan,
-    ) {
-        let required = definition
-            .parameters
-            .iter()
-            .filter(|parameter| parameter.default.is_none())
-            .count();
-        if arguments.len() < required || arguments.len() > definition.parameters.len() {
-            self.type_error(
-                span,
-                format!(
-                    "type `{name}` requires {required} to {} type argument(s), got {}",
-                    definition.parameters.len(),
-                    arguments.len(),
-                ),
-                DiagnosticCode::TypeMismatch,
-            );
-        }
-        for argument in arguments {
-            self.check_type(argument, span);
-        }
-        let Some(arguments) = complete_type_arguments(&definition.parameters, arguments) else {
-            return;
-        };
-        let substitutions = definition
-            .parameters
-            .iter()
-            .map(|parameter| parameter.name.clone())
-            .zip(arguments)
-            .collect::<BTreeMap<_, _>>();
-        for parameter in &definition.parameters {
-            let Some(constraint) = &parameter.constraint else {
-                continue;
-            };
-            let actual = substitutions
-                .get(&parameter.name)
-                .expect("completed generic arguments contain every parameter");
-            let expected = substitute_type(constraint, &substitutions);
-            let actual_bound = match actual {
-                Type::Named { name, arguments } if arguments.is_empty() => self
-                    .allowed_tuple_spread_parameters
-                    .get(name)
-                    .cloned()
-                    .unwrap_or_else(|| actual.clone()),
-                _ => actual.clone(),
-            };
-            if !self.is_assignable_bounded(&actual_bound, &expected, span) {
-                self.type_error(
-                    span,
-                    format!(
-                        "type argument `{}` does not satisfy constraint `{}` for `{}`",
-                        type_label(actual),
-                        type_label(&expected),
-                        parameter.name,
-                    ),
-                    DiagnosticCode::TypeMismatch,
-                );
-            }
-        }
-    }
-
-    pub(super) fn type_error(&mut self, span: &SourceSpan, message: String, code: DiagnosticCode) {
-        if self.enforce_types {
-            self.diagnostics
-                .push(Diagnostic::error(code, span.clone(), message));
-        }
     }
 }
