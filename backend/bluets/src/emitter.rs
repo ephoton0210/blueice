@@ -22,6 +22,7 @@ mod classes;
 mod commonjs;
 mod decorators;
 mod enums;
+mod inferred_declarations;
 mod jsx;
 mod legacy_decorators;
 mod namespaces;
@@ -131,7 +132,14 @@ pub(crate) fn emit(
                 .then(|| source_map(id, &checked_module.module.source, &emitted));
             let declaration = options
                 .declaration
-                .then(|| emit_declaration(&checked_module.module))
+                .then(|| {
+                    let context = inferred_declarations::Context::new(checked_module, project)?;
+                    emit_declaration(
+                        &checked_module.module,
+                        &checked_module.symbols,
+                        Some(&context),
+                    )
+                })
                 .transpose()?;
             Ok((
                 id.clone(),
@@ -461,7 +469,11 @@ fn apply_edits(source: &str, mut edits: Vec<TextEdit>) -> EmittedJavaScript {
     emitted.finish()
 }
 
-fn emit_declaration(module: &Module) -> Result<String, Diagnostic> {
+fn emit_declaration(
+    module: &Module,
+    symbols: &[crate::checker::Symbol],
+    inferred: Option<&inferred_declarations::Context<'_>>,
+) -> Result<String, Diagnostic> {
     let mut output = String::new();
     let enum_evaluations = crate::enum_eval::evaluate_enums(module);
     let mut enum_position = 0usize;
@@ -475,6 +487,11 @@ fn emit_declaration(module: &Module) -> Result<String, Diagnostic> {
                 output.push_str(&module.source[import.span.start..import.span.end]);
                 if !output.ends_with('\n') {
                     output.push('\n');
+                }
+            }
+            Declaration::Import(import) => {
+                if let Some(text) = inferred.and_then(|context| context.import(import)) {
+                    output.push_str(&text);
                 }
             }
             Declaration::TypeAlias(alias) if alias.exported => {
@@ -534,11 +551,35 @@ fn emit_declaration(module: &Module) -> Result<String, Diagnostic> {
                 output.push_str(variable.kind.as_str());
                 output.push(' ');
                 output.push_str(&variable.name);
-                output.push_str(": ");
+                if variable.annotation.is_none() {
+                    if let Some((text, initializer)) =
+                        inferred.and_then(|context| context.variable(&variable.name))
+                    {
+                        output.push_str(if *initializer { " = " } else { ": " });
+                        output.push_str(text);
+                        output.push_str(";\n");
+                        continue;
+                    }
+                }
+                let inferred = symbols
+                    .iter()
+                    .find(|symbol| {
+                        symbol.kind == crate::checker::SymbolKind::Variable
+                            && symbol.name == variable.name
+                            && symbol.span == variable.span
+                    })
+                    .and_then(|symbol| symbol.value_type.as_ref());
+                let value_type = variable.annotation.as_ref().or(inferred);
+                if variable.annotation.is_none()
+                    && variable.kind == crate::parser::VariableKind::Const
+                    && matches!(value_type, Some(Type::Literal(_)))
+                {
+                    output.push_str(" = ");
+                } else {
+                    output.push_str(": ");
+                }
                 output.push_str(
-                    &variable
-                        .annotation
-                        .as_ref()
+                    &value_type
                         .map(type_to_ts)
                         .unwrap_or_else(|| "unknown".to_string()),
                 );

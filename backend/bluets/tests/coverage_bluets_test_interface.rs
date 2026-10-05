@@ -121,7 +121,7 @@ fn artifact_flags_are_reported_per_module() {
 }
 
 #[test]
-fn each_diagnostic_code_maps_to_a_stable_phase_and_kind() {
+fn reachable_diagnostics_map_to_a_stable_phase_and_kind() {
     let cases: Vec<(Value, &str, &str, &str)> = vec![
         (
             json!({"source": "const = ;"}),
@@ -140,18 +140,6 @@ fn each_diagnostic_code_maps_to_a_stable_phase_and_kind() {
             "SyntaxError",
             "resolution",
             "BTS2000",
-        ),
-        (
-            json!({
-                "source": "import './b.ts'; export const a: number = 1;",
-                "module_path": "a.ts",
-                "module_sources": {
-                    "b.ts": "import './a.ts'; export const b: number = 2;",
-                },
-            }),
-            "SyntaxError",
-            "resolution",
-            "BTS2001",
         ),
         (
             json!({
@@ -208,6 +196,32 @@ fn each_diagnostic_code_maps_to_a_stable_phase_and_kind() {
             "{reply}"
         );
     }
+}
+
+#[test]
+fn annotated_cycles_compile_and_inferred_cycles_report_type_errors() {
+    let reply = one(json!({
+        "source": "import './b.ts'; export const a: number = 1;",
+        "module_path": "a.ts",
+        "module_sources": {
+            "b.ts": "import './a.ts'; export const b: number = 2;",
+        },
+    }));
+    assert_eq!(reply["kind"], "ok", "{reply}");
+    assert_eq!(reply["artifacts"].as_array().unwrap().len(), 2);
+
+    let reply = one(json!({
+        "source": "import { b } from './b.ts'; export const a = b;",
+        "module_path": "a.ts",
+        "module_sources": {
+            "b.ts": "import { a } from './a.ts'; export const b = a;",
+        },
+    }));
+    assert_eq!(reply["kind"], "TypeError", "{reply}");
+    assert_eq!(reply["phase"], "type");
+    assert_eq!(reply["code"], "BTS3003");
+    assert!(reply["message"].as_str().unwrap().contains("TS7022"));
+    assert!(reply.get("artifacts").is_none());
 }
 
 #[test]

@@ -55,7 +55,7 @@ Replies retain BlueJS's `kind` and `phase` conventions while preserving the stab
 | successful compile | `ok` | `compile` (`parse` with `parse_only`) |
 | parser diagnostic | `SyntaxError` | `parse` |
 | unsupported syntax | `unsupported` | `parse` |
-| module resolution/cycle diagnostic | `SyntaxError` | `resolution` |
+| module resolution diagnostic | `SyntaxError` | `resolution` |
 | binding/checker/declaration diagnostic | `TypeError` | `type` |
 | bounded-resource diagnostic | `resource_error` | `compile` |
 | invalid request/transport JSON | `harness_error` | omitted |
@@ -63,6 +63,11 @@ Replies retain BlueJS's `kind` and `phase` conventions while preserving the stab
 A successful reply contains `language_version`, the deterministic compiler `fingerprint`, and an `artifacts` summary. The summary names only canonical module IDs and whether a JavaScript artifact has Source Map or declaration output; it never returns source text. A failure also includes `code` (for example `BTS3003`), message, and a half-open source span in UTF-8 bytes.
 
 Immutable binding writes report `BTS3006` as `TypeError` in the `type` phase, with the written identifier's byte span. Readonly member writes retain `BTS3003`; resource exhaustion reports `resource_error` and produces no artifact.
+
+Static module cycles are accepted when their value types can be checked. Circular inferred
+initializers that need an annotation report a TS7022-family message with `BTS3003` as
+`TypeError` in the `type` phase and produce no artifact. `BTS2001` remains a reserved
+public diagnostic code; the project builder no longer rejects a graph solely for a cycle.
 
 Example:
 

@@ -17,7 +17,7 @@ mod names;
 use modules::specialize_imported_class_type;
 mod namespaces;
 pub(in crate::checker::module) use functions::promise_value_type;
-pub(crate) use namespaces::{NamespaceExport, NamespaceMembers};
+pub(crate) use namespaces::{ExportedValue, NamespaceExport, NamespaceMembers};
 pub(in crate::checker::module) use nested_functions::async_result;
 mod nested_functions;
 pub(in crate::checker) use classes::{class_export, class_instance_type};
@@ -46,6 +46,8 @@ impl<'a> ModuleChecker<'a> {
             exports,
             ambient,
             namespace_exports,
+            pending_imports: BTreeSet::new(),
+            module_namespace_imports: BTreeSet::new(),
             enforce_types: policy.enforce_types,
             require_declared_global_calls: policy.require_declared_global_calls,
             define_class_fields: policy.define_class_fields,
@@ -627,8 +629,11 @@ impl<'a> ModuleChecker<'a> {
         let scope = self.values.clone();
         self.check_variable_in_scope(variable, &scope);
         if variable.annotation.is_none() && !variable.initializer.is_empty() && !variable.declared {
-            let inferred = self.infer_expression(&variable.initializer, &scope);
-            self.values.insert(variable.name.clone(), inferred);
+            let inferred = self
+                .alias_function_signatures(variable, &scope)
+                .unwrap_or_else(|| self.infer_variable_type(variable, &scope));
+            self.values.insert(variable.name.clone(), inferred.clone());
+            self.refresh_variable_symbol(variable, inferred);
         }
     }
 

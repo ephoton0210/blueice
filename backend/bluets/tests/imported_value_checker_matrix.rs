@@ -175,18 +175,15 @@ fn recorded_verdicts_match_pinned_typescript() {
     }
 }
 
-#[test]
-#[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler and Node"]
-fn imported_values_preserve_execution_and_declarations() {
-    let tsc = pinned_tsc();
+fn compare_runtime_program(name: &str, tsc: &Path) {
     let root = env::temp_dir().join(format!(
-        "bluets-imported-type-runtime-{}",
+        "bluets-imported-type-runtime-{name}-{}",
         std::process::id()
     ));
     let _ = fs::remove_dir_all(&root);
     fs::create_dir_all(&root).unwrap();
     fs::write(root.join("package.json"), "{\"type\":\"module\"}").unwrap();
-    let entry = fixtures().join("imported-type-runtime/main.ts");
+    let entry = fixtures().join(format!("imported-type-{name}/main.ts"));
     let blue = root.join("blue");
     let reference = root.join("reference");
     let built = Command::new(env!("CARGO_BIN_EXE_bluetsc"))
@@ -234,13 +231,38 @@ fn imported_values_preserve_execution_and_declarations() {
 }
 
 #[test]
+#[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler and Node"]
+fn imported_values_preserve_execution_and_declarations() {
+    let tsc = pinned_tsc();
+    for name in ["runtime", "cycle-runtime"] {
+        compare_runtime_program(name, &tsc);
+    }
+}
+
+#[test]
 #[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
 fn inferred_import_declarations_match_typescript() {
     let tsc = pinned_tsc();
     let root = env::temp_dir().join(format!("bluets-import-declarations-{}", std::process::id()));
     let _ = fs::remove_dir_all(&root);
     let mut failures = Vec::new();
-    for name in ["named", "default", "star", "cjs"] {
+    for name in [
+        "named",
+        "default",
+        "star",
+        "cjs",
+        "object",
+        "function",
+        "instance",
+        "literal",
+        "annotated-literal",
+        "member-group",
+        "public-type",
+        "private-error",
+        "callable-type",
+        "tuple-type",
+        "private-tuple-error",
+    ] {
         let path = format!("import-decl-{name}/main.ts");
         let entry = fixtures().join(&path);
         let blue = root.join(name).join("blue");
@@ -254,7 +276,7 @@ fn inferred_import_declarations_match_typescript() {
             .arg(&blue)
             .output()
             .unwrap();
-        assert!(built.status.success(), "{path}: {}", report(&built));
+        let blue_built = built;
         let built = Command::new(&tsc)
             .args([
                 "--target",
@@ -273,6 +295,24 @@ fn inferred_import_declarations_match_typescript() {
             .arg(entry)
             .output()
             .unwrap();
+        if name.starts_with("private-") && name.ends_with("-error") {
+            assert!(
+                !built.status.success(),
+                "TypeScript must reject the unnameable private type"
+            );
+            assert!(report(&built).contains("TS4023"));
+            if blue_built.status.success() || blue.exists() {
+                failures.push(format!(
+                    "{path}: BlueTSC must refuse declaration emission without output"
+                ));
+            }
+            continue;
+        }
+        assert!(
+            blue_built.status.success(),
+            "{path}: {}",
+            report(&blue_built)
+        );
         assert!(built.status.success(), "{path}: {}", report(&built));
         let actual = fs::read_to_string(blue.join("main.d.ts")).unwrap();
         let expected = fs::read_to_string(reference.join("main.d.ts")).unwrap();

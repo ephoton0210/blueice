@@ -28,10 +28,11 @@ test files (`grep -rl '#\[ignore' backend/bluets*/tests`), section 4 is
 | `legacy_decorators_checker_matrix.rs`, `legacy_decorators_oracle.rs` | `experimentalDecorators`/`emitDecoratorMetadata`: accept/reject (19); `__decorate`/`__param`/metadata call order and values, ES2022 and ES2020, ESM and CommonJS | 19 entries, 18 programs |
 | `unknown_name_checker_matrix.rs` | accept/reject through `check` and `build` for lexical value/type names, hoisting, TDZ, imports, namespaces and shadowing; one program compares Node output and declarations | 108 entries, 1 program |
 | `immutable_checker_matrix.rs` | accept/reject through `check` and `build` for const/import rebinding, compound/update/pattern/iteration writes, shadowing and readonly members; one program compares Node output and declarations | 173 entries, 1 program |
+| `imported_value_checker_matrix.rs` | accept/reject through `check` and `build` for named/default/namespace and CommonJS imports, retained checked value surfaces, private type identities and circular inference; linked Node programs and exact inferred declarations | 81 entries, 2 programs, 15 declaration cases |
 | `option_combinations_oracle.rs` | one program over every combination of `target`, module system, `useDefineForClassFields`, `preserveConstEnums`, `isolatedModules` | 48 combinations |
 | `bluets-bluejs/tests/namespace_parity.rs`, `jsx_direct.rs`, `decorators_direct.rs` | the direct runtime (BlueJS) against Node running `tsc`'s output | 7 + 7 + 6 programs |
 
-The fixture corpus under `tests/fixtures/typescript_oracle/` has 1263 top-level directories; each is an
+The fixture corpus under `tests/fixtures/typescript_oracle/` has 1359 top-level directories; each is an
 entry whose verdict was recorded from the pinned compiler by an ignored test
 (`BLUEICE_WRITE_*_MATRIX=1`), and the ordinary (non-ignored) tests replay the recorded verdicts offline.
 
@@ -41,14 +42,14 @@ code (`BTSnnnn`), not by TypeScript's `TSnnnn` number or text; source maps are l
 by running it (and, for declarations, by text where TypeScript's output is deterministic), not by
 whitespace.
 
-### Measured pass rate (2026-10-05, macOS 26 / Apple silicon, pinned `typescript@5.9.3`, Node 26)
+### Measured pass rate (2026-10-06, macOS 26 / Apple silicon, pinned `typescript@5.9.3`, Node 26)
 
 Every differential suite of section 1 was run against the pinned compiler with none skipped:
-**21 of 21 suites pass, 104 ignored oracle tests pass, 0 failures.** The versioned case list is the
-repository itself at the commit that carries this file: 1041 recorded accepted/rejected verdicts (class
-523, namespace 76, enum 57, JSX 53, decorators 32, legacy decorators 19, unknown names 108, immutables 173), 109 core-subset
+**22 of 22 suites pass, 107 ignored oracle tests pass, 0 failures.** The versioned case list is the
+repository itself at the commit that carries this file: 1122 recorded accepted/rejected verdicts (class
+523, namespace 76, enum 57, JSX 53, decorators 32, legacy decorators 19, unknown names 108, immutables 173, imported values 81), 109 core-subset
 cases in `typescript_oracle.rs`, and the emit-and-run programs (JSX 11, standard decorators 20,
-legacy decorators 18, CommonJS 6, unknown names 1, immutables 1, option combinations 48,
+legacy decorators 18, CommonJS 6, unknown names 1, immutables 1, imported values 2, option combinations 48,
 namespace/enum/class downlevel under both targets, direct-runtime parity 20). The same suites run in CI on
 Ubuntu 24.04 and macOS 15; Windows is not covered (G-M3). The percentage means only: *of the forms inside
 the subset, every one agrees with `tsc`*. It says nothing about the forms in section 3, which are refused.
@@ -61,7 +62,7 @@ generators); ES module and CommonJS emit; classes (fields, accessors, visibility
 names, parameter properties, class+interface merging); enums and `const enum`; namespaces (nested, merged
 with classes, enums, functions); `.tsx` JSX in every `jsx` mode; standard and legacy decorators; installed
 packages through `node10`/`node16`/`bundler` resolution inside owner-authorized roots; pinned remote
-declarations. The precise per-feature descriptions, with their recorded gaps, are the `J.x`, `K.1.1` and `K.1.2` sections of
+declarations. The precise per-feature descriptions, with their recorded gaps, are the `J.x`, `K.1.1`, `K.1.2` and `K.1.3` sections of
 `PLAN.md`.
 
 ## 3. Open gaps against `tsc` 5.9.3
@@ -84,7 +85,7 @@ suite entry, then removing the row.
 | G-T7 | `lib.d.ts`: there is no standard library declaration set; host types come from the owner-supplied declarations, so ECMAScript/DOM globals are not typed as in `tsc`. K.1.1 resolves undeclared value/type names and recognizes a finite name-only ECMAScript/console compatibility list; the versioned, typed library remains K.1.4. |
 | G-T8 | Inferred return types of declarations without annotations (getters, methods, exported functions in `.d.ts` emit), widening and literal freshness in all positions. |
 | G-T9 | `abstract` classes, `implements` clauses, generic classes and heritage, class expressions, computed class member names, `declare` fields, `override`/`noImplicitOverride`, index-signature members. |
-| G-T10 | Ordinary imported values remain `unknown` apart from dedicated class/enum/namespace bindings (K.1.3). `import type`/`export type` forms beyond the supported ones, `export default <expression>`, value re-exports (`export * from`, `export { x } from`), import attributes, `export as namespace`, `declare module` augmentation and ambient module declarations, global augmentation, triple-slash directives, `unique` declaration merging beyond class+interface+namespace. |
+| G-T10 | K.1.3 supplies checked value types for the tested named/default/namespace and CommonJS import forms, with inferred variable declarations and module-owned type identities. Remaining: imported-type query parsing; `import type`/`export type` forms beyond the supported ones, `export default <expression>`, value re-exports (`export * from`, `export { x } from`), import attributes, `export as namespace`, `declare module` augmentation and ambient module declarations, global augmentation, triple-slash directives, `unique` declaration merging beyond class+interface+namespace. |
 
 ### 3.2 Emit
 
@@ -100,7 +101,7 @@ suite entry, then removing the row.
 
 | ID | Gap |
 | --- | --- |
-| G-D1 | `.d.ts` emit requires explicit types where `tsc` infers them (section 4, `emitter`); generic declarations, overloads of arbitrary shape, `declare module`, namespaces with merged symbols in every shape, `export =` of non-trivial forms. |
+| G-D1 | K.1.3 compares inferred imported variable declarations, including nested callable/tuple types and unnameable external types. Wider inferred declarations still need explicit types where `tsc` infers them (section 4, `emitter`); generic declarations, overloads of arbitrary shape, `declare module`, namespaces with merged symbols in every shape, `export =` of non-trivial forms. |
 | G-D2 | Declaration emit options (`declarationDir`, `emitDeclarationOnly`, `declarationMap`, `stripInternal`). |
 
 ### 3.4 Modules, packages, projects
@@ -136,9 +137,9 @@ excluded). A refusal is never silent: the program is rejected with this text.
 
 ### checker (22)
 
-- `backend/bluets/src/checker/module/binding/modules.rs:167` — `export =` cannot be used when the module system is ECMAScript; use `--module commonjs`
-- `backend/bluets/src/checker/module/binding/modules.rs:159` — `import x = require()` cannot be used when the module system is ECMAScript; use `--module commonjs`
-- `backend/bluets/src/checker/module/binding.rs:220` — a class member other than a constructor, method, field or accessor \ (a computed, generator or `accessor` member) is not supported yet
+- `backend/bluets/src/checker/module/binding/modules.rs:174` — `export =` cannot be used when the module system is ECMAScript; use `--module commonjs`
+- `backend/bluets/src/checker/module/binding/modules.rs:166` — `import x = require()` cannot be used when the module system is ECMAScript; use `--module commonjs`
+- `backend/bluets/src/checker/module/binding.rs:222` — a class member other than a constructor, method, field or accessor \ (a computed, generator or `accessor` member) is not supported yet
 - `backend/bluets/src/checker/module/binding/enums.rs:214` — a computed initializer that refers to the member `{}` must write it \ as `{}.{}`
 - `backend/bluets/src/checker/module/decorators.rs:116` — a decorator can only decorate a method implementation, not an overload
 - `backend/bluets/src/checker/module/binding/classes/fields.rs:318` — a field initializer that refers to a later field inside a nested \ function is not supported yet
@@ -151,8 +152,8 @@ excluded). A refusal is never silent: the program is rejected with this text.
 - `backend/bluets/src/checker/module/binding/classes/fields.rs:371` — definite assignment of `{}` through a branch is not supported yet
 - `backend/bluets/src/checker/module/binding/classes/fields.rs:426` — field `{}` redeclares a member of an imported base class, which is not supported yet
 - `backend/bluets/src/checker/module/binding/classes/accessors.rs:125` — getter `{}` needs a return type annotation; inferring it from the \ body is not supported yet
-- `backend/bluets/src/checker/module/binding.rs:576` — interface heritage {name} must name an interface declaration
-- `backend/bluets/src/checker/module/binding/namespaces.rs:1040` — namespace `{source}` has no run-time members; import it with `import type`
+- `backend/bluets/src/checker/module/binding.rs:578` — interface heritage {name} must name an interface declaration
+- `backend/bluets/src/checker/module/binding/namespaces.rs:1057` — namespace `{source}` has no run-time members; import it with `import type`
 - `backend/bluets/src/checker/module/binding/classes/accessors.rs:346` — redeclaring `{name}` as an accessor over a member of an \ imported base class is not supported yet
 - `backend/bluets/src/checker/module/binding/classes/visibility.rs:302` — redeclaring the protected member `{name}` of an imported base \ class is not supported yet
 - `backend/bluets/src/checker/module/binding/classes/accessors.rs:177` — the getter and setter of `{name}` have different types, \ which is not supported yet

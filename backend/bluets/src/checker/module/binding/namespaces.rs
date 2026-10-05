@@ -20,6 +20,9 @@
 use super::*;
 use crate::parser::NamespaceDeclaration;
 
+mod values;
+pub(crate) use values::ExportedValue;
+
 /// What one namespace (all its blocks) exports.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct NamespaceMembers {
@@ -369,6 +372,8 @@ impl ModuleChecker<'_> {
             self.max_type_expansions,
         );
         sub.namespace_path = path.to_string();
+        sub.pending_imports = self.pending_imports.clone();
+        sub.module_namespace_imports = self.module_namespace_imports.clone();
         sub.namespaces = self.namespaces.clone();
         sub.type_only_namespaces = self.type_only_namespaces.clone();
         sub.types = self.types.clone();
@@ -852,7 +857,7 @@ impl ModuleChecker<'_> {
             .collect()
     }
 
-    fn namespace_export_of(&self, source: &str) -> NamespaceExport {
+    pub(super) fn namespace_export_of(&self, source: &str) -> NamespaceExport {
         let nested = format!("{source}.");
         let object = format!("typeof {source}");
         let object_nested = format!("typeof {source}.");
@@ -1033,9 +1038,21 @@ impl ModuleChecker<'_> {
         with_value: bool,
         merged: bool,
     ) {
+        self.bind_imported_surface(local, export, span, with_value, merged, true);
+    }
+
+    fn bind_imported_surface(
+        &mut self,
+        local: &str,
+        export: &NamespaceExport,
+        span: &SourceSpan,
+        with_value: bool,
+        merged: bool,
+        namespace_object: bool,
+    ) {
         let source = export.source_name.as_str();
         let mut with_value = with_value;
-        if with_value && !export.has_values && !merged {
+        if namespace_object && with_value && !export.has_values && !merged {
             self.diagnostics.push(Diagnostic::error(
                 DiagnosticCode::UnsupportedSyntax,
                 span.clone(),
@@ -1115,7 +1132,7 @@ impl ModuleChecker<'_> {
         if merged {
             return;
         }
-        if with_value {
+        if with_value && namespace_object {
             self.values.insert(
                 local.to_string(),
                 Type::Named {
@@ -1123,7 +1140,7 @@ impl ModuleChecker<'_> {
                     arguments: Vec::new(),
                 },
             );
-        } else {
+        } else if !with_value {
             self.type_only_namespaces.insert(local.to_string());
         }
     }

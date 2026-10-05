@@ -16,6 +16,8 @@ use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 pub use crate::parser::Type;
 
+mod checking;
+pub(crate) use checking::check_incremental;
 mod properties;
 mod scopes;
 mod type_relations;
@@ -63,6 +65,8 @@ pub struct CheckedModule {
     pub symbols: Vec<Symbol>,
     /// The namespaces the module exports, as an importer binds them.
     pub(crate) namespace_exports: BTreeMap<String, NamespaceExport>,
+    /// Checked runtime bindings, retained for incremental importers.
+    pub(crate) value_exports: BTreeMap<String, module::ExportedValue>,
 }
 
 #[derive(Debug, Clone)]
@@ -141,6 +145,7 @@ pub(crate) fn exported_enums(
 }
 
 struct ProjectExports {
+    values: BTreeMap<String, BTreeMap<String, module::ExportedValue>>,
     /// The names each module exports (and whether more may be re-exported), to
     /// check what is imported.
     exported_names: BTreeMap<String, (BTreeSet<String>, bool)>,
@@ -161,99 +166,6 @@ struct AmbientDeclarations {
     values: BTreeMap<String, Type>,
     functions: BTreeMap<String, Vec<FunctionSignature>>,
     binding_kinds: BTreeMap<String, scopes::BindingKind>,
-}
-
-/// Rechecks the requested modules while retaining checker output for modules
-/// that the incremental project graph proved unaffected. The caller must only
-/// supply a previous project checked under the same compiler policy and must
-/// include every reverse dependency of a changed module in `rechecked`.
-pub(crate) fn check_incremental(
-    project: &Project,
-    policy: module::CheckerPolicy,
-    previous: Option<&CheckedProject>,
-    rechecked: &BTreeSet<String>,
-    max_type_expansions: usize,
-) -> (CheckedProject, Vec<Diagnostic>) {
-    let mut diagnostics = project::declaration_module_diagnostics(project);
-    let (ambient, mut ambient_diagnostics) = ambient_declarations(project);
-    diagnostics.append(&mut ambient_diagnostics);
-    let exports = ProjectExports {
-        types: project::exported_types(project),
-        classes: project::exported_classes(project, max_type_expansions),
-        enums: project::exported_enums(project),
-        exported_names: project::exported_names(project),
-    };
-    let mut checked_modules: BTreeMap<String, CheckedModule> = BTreeMap::new();
-    // What each checked module exports as a namespace, for the modules that
-    // import it; modules are checked after the modules they import.
-    let mut namespace_exports: NamespaceExports = BTreeMap::new();
-
-    for module_id in dependency_order(project) {
-        let module = &project.modules[&module_id];
-        let module_id = &module_id;
-        if !rechecked.contains(module_id) {
-            if let Some(previous) = previous.and_then(|previous| previous.modules.get(module_id)) {
-                namespace_exports.insert(module_id.clone(), previous.namespace_exports.clone());
-                checked_modules.insert(module_id.clone(), previous.clone());
-                continue;
-            }
-        }
-        let mut checker = module::ModuleChecker::new(
-            project,
-            module,
-            &exports,
-            (!project.ambient_declaration_modules.contains(module_id)).then_some(&ambient),
-            &namespace_exports,
-            policy.clone(),
-            max_type_expansions,
-        );
-        checker.bind();
-        if policy.enforce_types {
-            checker.check_names();
-            checker.check_types();
-            checker.dedupe_name_diagnostics();
-        }
-        let exported_namespaces = checker.exported_namespaces();
-        diagnostics.extend(checker.diagnostics);
-        let symbols = checker.symbols;
-        namespace_exports.insert(module_id.clone(), exported_namespaces.clone());
-        checked_modules.insert(
-            module_id.clone(),
-            CheckedModule {
-                module: module.clone(),
-                symbols,
-                namespace_exports: exported_namespaces,
-            },
-        );
-    }
-    (
-        CheckedProject {
-            modules: checked_modules,
-        },
-        diagnostics,
-    )
-}
-
-/// The modules of a project with every module after the ones it imports (a
-/// cycle is broken where it is first entered).
-fn dependency_order(project: &Project) -> Vec<String> {
-    fn visit(project: &Project, id: &str, seen: &mut BTreeSet<String>, order: &mut Vec<String>) {
-        if !project.modules.contains_key(id) || !seen.insert(id.to_string()) {
-            return;
-        }
-        for ((from, _), resolved) in &project.resolutions {
-            if from == id {
-                visit(project, resolved, seen, order);
-            }
-        }
-        order.push(id.to_string());
-    }
-    let mut order = Vec::new();
-    let mut seen = BTreeSet::new();
-    for id in project.modules.keys() {
-        visit(project, id, &mut seen, &mut order);
-    }
-    order
 }
 
 fn ambient_declarations(project: &Project) -> (AmbientDeclarations, Vec<Diagnostic>) {
@@ -725,19 +637,40 @@ fn direct_call_parts(tokens: &[Token]) -> Option<DirectCall<'_>> {
     })
 }
 
-fn constructor_call_parts(tokens: &[Token]) -> Option<DirectCall<'_>> {
+struct ConstructorCall<'a> {
+    callee: Token,
+    arguments: &'a [Token],
+    receiver: Option<&'a Token>,
+}
+
+fn constructor_call_parts(tokens: &[Token]) -> Option<ConstructorCall<'_>> {
     let tokens = strip_outer_parentheses(tokens);
-    let [keyword, callee, opening, arguments @ ..] = tokens else {
+    let keyword = tokens.first()?;
+    let first = tokens.get(1)?;
+    if !keyword.is("new") || first.kind != TokenKind::Identifier {
         return None;
-    };
-    (keyword.is("new")
-        && callee.kind == TokenKind::Identifier
-        && opening.is("(")
-        && split_call_arguments(arguments).is_some())
-    .then_some(DirectCall {
+    }
+    let mut callee = first.clone();
+    let mut index = 2;
+    while tokens.get(index).is_some_and(|token| token.is(".")) {
+        let member = tokens.get(index + 1)?;
+        if member.kind != TokenKind::Identifier {
+            return None;
+        }
+        callee.text.push('.');
+        callee.text.push_str(&member.text);
+        callee.end = member.end;
+        index += 2;
+    }
+    if !tokens.get(index).is_some_and(|token| token.is("(")) {
+        return None;
+    }
+    let arguments = &tokens[index + 1..];
+    split_call_arguments(arguments)?;
+    Some(ConstructorCall {
         callee,
         arguments,
-        generic: false,
+        receiver: (index > 2).then_some(first),
     })
 }
 

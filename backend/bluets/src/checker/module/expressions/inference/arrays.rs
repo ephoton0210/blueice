@@ -33,6 +33,30 @@ impl<'a> ModuleChecker<'a> {
             contextual = expanded;
         }
         match &contextual {
+            Type::Literal(expected) => {
+                if let [literal] = strip_outer_parentheses(tokens) {
+                    if literal.kind == TokenKind::String {
+                        let expected_token = Token {
+                            kind: TokenKind::String,
+                            text: expected.clone(),
+                            start: 0,
+                            end: expected.len(),
+                        };
+                        if crate::syntax::string_contents(literal)
+                            == crate::syntax::string_contents(&expected_token)
+                        {
+                            return Type::Literal(expected.clone());
+                        }
+                        return Type::Literal(literal.text.clone());
+                    }
+                    if literal.kind == TokenKind::Number
+                        || literal.is("true")
+                        || literal.is("false")
+                    {
+                        return Type::Literal(literal.text.clone());
+                    }
+                }
+            }
             Type::Tuple(elements) => {
                 if let Some(literal) = self.infer_contextual_tuple_literal(tokens, scope, elements)
                 {

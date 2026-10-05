@@ -41,6 +41,8 @@ pub(super) struct ModuleChecker<'a> {
     exports: &'a ProjectExports,
     ambient: Option<&'a AmbientDeclarations>,
     namespace_exports: &'a NamespaceExports,
+    pending_imports: BTreeSet<String>,
+    module_namespace_imports: BTreeSet<String>,
     enforce_types: bool,
     require_declared_global_calls: bool,
     define_class_fields: bool,
@@ -110,5 +112,5 @@ mod binding;
 mod decorators;
 mod expressions;
 mod jsx;
-pub(crate) use binding::NamespaceExport;
 pub(in crate::checker) use binding::{class_export, class_instance_type};
+pub(crate) use binding::{ExportedValue, NamespaceExport};

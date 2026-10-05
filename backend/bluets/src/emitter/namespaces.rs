@@ -701,7 +701,7 @@ fn render_members(
                 type_references: Vec::new(),
                 expression_variable_types: BTreeMap::new(),
             };
-            let text = super::emit_declaration(&synthetic)?;
+            let text = super::emit_declaration(&synthetic, &[], None)?;
             let hidden_names: BTreeSet<&str> = chunk
                 .iter()
                 .filter(|(index, _)| hidden.contains(index))

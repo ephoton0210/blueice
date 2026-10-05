@@ -3761,3 +3761,57 @@ Public compiler tests require inferred import/variable symbol metadata, exporter
 private-type identity, dependency-surface reuse/invalidation and the explicit
 unchecked transpile policy. These are failing tests for the implementation that follows;
 K.1.3 remains unchecked until its full K.0 gate passes.
+
+
+### K.1.3 Checked value surfaces and declarations
+
+Dependency-ordered checking publishes each exported value together with its function
+signatures, constructor bindings and the module-owned type definitions it references.
+The existing namespace surface retains private type identities rather than resolving
+them against an importer's equally named local type. An initial binding pass supplies
+declared types to cycles; inferred variables from an unfinished module retain a pending
+marker and circular inference requires an annotation with a TS7022-family message.
+Successful incremental results retain these value surfaces alongside namespace exports.
+The dependency/check/publication coordinator is now `checker/checking.rs`.
+
+Named, default and namespace imports consume the checked surfaces, including function
+overloads and generic signatures retained through variable alias chains. Namespace objects
+expose readonly ESM export slots; a CommonJS `import = require` of a module retains writable
+`let` slots and readonly `const` slots. `export =` objects also expose typed named members.
+Qualified constructors use the class construction checker, and known imported values without
+a construct signature are rejected. Default class/enum identifiers and named default functions
+retain their public names. The closed project builder accepts static ESM cycles as well as
+CommonJS cycles; source/edge/depth budgets and canonical owner resolution remain in force.
+A hoisted-function ESM cycle is compared under Node, while unannotated circular value inference
+is rejected before output.
+
+Inferred variable symbols now retain their checked types for importers and debugger metadata.
+Declaration emission consumes that metadata; `emitter/inferred_declarations.rs` retains required
+imports, function `typeof` names, class/enum names, public external type queries, record formatting,
+recursive callable/tuple type naming and fresh versus explicitly annotated literal declarations.
+An external private type that cannot
+be named is refused with a TS4023-family message, with no published artifacts. This adds no loader,
+network or runtime grant; owner ambient declarations and `TranspileOnly` keep their existing policy.
+
+Evidence: 81 pinned TypeScript 5.9.3 verdicts (39 accepted, 42 rejected), replayed
+through `check` and `build`; 15 declaration cases (13 exact accepted comparisons and two TS4023
+rejections); two linked Node programs including the ESM cycle; four public-boundary tests for
+symbol types, private type identities, incremental reuse/invalidation and unchecked transpilation.
+Three additional declaration cases reproduced the emission of internal `Shape@dep.ts` names
+inside callable/tuple types and the acceptance of an unnameable private tuple type before the fix.
+The declaration replay now includes 15 cases (13 accepted, two TS4023 rejections). The process
+adapter's old cycle-rejection expectation was replaced with acceptance of annotated cycles and
+a TS7022-family type error, without artifacts, for circular inferred initializers; the exact
+requests were replayed through the built adapter before rerunning its tests.
+Additional cases were recorded and shown to fail before their fixes.
+
+The final K.1.3 gate passed on 2026-10-06: `cargo fmt --all -- --check`, all-target Clippy
+for both crates with `-D warnings`, and `BLUEICE_BLUETSC_ORACLE=<tsc 5.9.3> FORCE_COLOR=0
+cargo test -p blueice-bluets -p blueice-bluets-bluejs -j 4 --no-fail-fast --
+--include-ignored --test-threads=4`. All 53 targets passed 1014 tests, including all
+107 ignored oracle tests in 22 suite files, with no failures, ignored tests or filtered tests.
+The refusal inventory was regenerated, and all production Rust sources in both crates
+remain below 1200 lines. The workspace and coverage milestone gate remains M6 after K.1.5.
+Standard-library typing, inferred function/getter returns and wider inference rules remain
+K.1.4/K.1.5/K.4; value re-export syntax and imported-type query parsing remain inventory gaps.
+Full parity stays off.

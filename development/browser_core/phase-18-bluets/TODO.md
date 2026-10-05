@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: K.1.3.** Sections A to J are complete (summarized below); J.6 closed in its
+**Current leaf: K.1.4.** Sections A to J are complete (summarized below); J.6 closed in its
 measured form (`COMPATIBILITY_INVENTORY.md`). Section K closes the gaps that inventory lists.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
@@ -223,7 +223,7 @@ and import rules.
     destructuring targets, `for…of`/`for…in` heads, and the same inside nested functions and class
     members.
   - *Done when:* `immutable-*` matrix agrees with `tsc`.
-- [ ] **K.1.3 Types of imported values (M).**
+- [x] **K.1.3 Types of imported values (M).**
   - *Today:* `import { x } from "./m"` types a value `x` as `unknown`; `.d.ts` output prints `unknown`.
   - *Work:* export the checked type of every exported variable, function, class and enum from the
     module checker (the project is already checked in dependency order), bind it at the import site for

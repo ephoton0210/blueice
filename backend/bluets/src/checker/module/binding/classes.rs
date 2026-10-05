@@ -751,7 +751,30 @@ impl ModuleChecker<'_> {
         let Some(call) = constructor_call_parts(tokens) else {
             return;
         };
+        if call
+            .receiver
+            .is_some_and(|receiver| scope.get(&receiver.text) != self.values.get(&receiver.text))
+        {
+            return;
+        }
         if !self.is_bound_class_constructor_value(&call.callee.text, scope) {
+            if self
+                .symbols
+                .iter()
+                .any(|symbol| symbol.kind == SymbolKind::Import && symbol.name == call.callee.text)
+                && scope
+                    .get(&call.callee.text)
+                    .is_some_and(|value| !matches!(value, Type::Any | Type::Unknown))
+            {
+                self.type_error(
+                    &call.callee.span(&span.module),
+                    format!(
+                        "imported value `{}` has no construct signature",
+                        call.callee.text
+                    ),
+                    DiagnosticCode::TypeMismatch,
+                );
+            }
             return;
         }
         let Some(binding) = self.class_constructors.get(&call.callee.text) else {
@@ -848,14 +871,21 @@ impl ModuleChecker<'_> {
         }
         let mut checked = 0usize;
         for start in 0..tokens.len().saturating_sub(2) {
-            if !tokens[start].is("new")
-                || tokens[start + 1].kind != TokenKind::Identifier
-                || !tokens[start + 2].is("(")
-                || !self.is_bound_class_constructor_value(&tokens[start + 1].text, scope)
-            {
+            if !tokens[start].is("new") || tokens[start + 1].kind != TokenKind::Identifier {
                 continue;
             }
-            let Some(end) = closes[start + 2] else {
+            let mut opening = start + 2;
+            while tokens.get(opening).is_some_and(|token| token.is("."))
+                && tokens
+                    .get(opening + 1)
+                    .is_some_and(|token| token.kind == TokenKind::Identifier)
+            {
+                opening += 2;
+            }
+            if !tokens.get(opening).is_some_and(|token| token.is("(")) {
+                continue;
+            }
+            let Some(end) = closes[opening] else {
                 continue;
             };
             checked += 1;

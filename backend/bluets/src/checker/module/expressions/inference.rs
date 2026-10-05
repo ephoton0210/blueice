@@ -122,7 +122,11 @@ impl<'a> ModuleChecker<'a> {
         }
         let tokens = strip_outer_parentheses(tokens);
         if let Some(call) = constructor_call_parts(tokens) {
-            if self.is_bound_class_constructor_value(&call.callee.text, scope) {
+            if call
+                .receiver
+                .is_none_or(|receiver| scope.get(&receiver.text) == self.values.get(&receiver.text))
+                && self.is_bound_class_constructor_value(&call.callee.text, scope)
+            {
                 return Type::Named {
                     name: call.callee.text.clone(),
                     arguments: Vec::new(),
@@ -178,6 +182,11 @@ impl<'a> ModuleChecker<'a> {
             return Type::Number;
         }
         if let Some(call) = member_call_parts(tokens) {
+            if let Some(signatures) =
+                self.module_member_signatures(call.receiver, &call.member.text, scope)
+            {
+                return self.infer_function_call(&signatures, call.arguments, scope, None);
+            }
             let base = self.infer_expression(call.receiver, scope);
             let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
             let found = property_type(

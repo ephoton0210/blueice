@@ -452,12 +452,7 @@ fn compile_with_cache(
     cached: Option<&CachedCompilation>,
 ) -> IncrementalResult {
     let previous_project = cached.map(|cached| &cached.compilation.project);
-    let mut builder = ProjectBuilder::new(
-        loader,
-        previous_project,
-        options.limits.clone(),
-        options.module_kind == ModuleKind::CommonJs,
-    );
+    let mut builder = ProjectBuilder::new(loader, previous_project, options.limits.clone());
     builder.visit(entry, 0);
     for declaration in &options.ambient_declaration_modules {
         builder.visit_ambient_declaration(declaration);
@@ -614,7 +609,6 @@ fn affected_modules(
 }
 
 struct ProjectBuilder<'a> {
-    allow_cycles: bool,
     loader: &'a dyn ModuleLoader,
     previous: Option<&'a Project>,
     project: Project,
@@ -637,10 +631,8 @@ impl<'a> ProjectBuilder<'a> {
         loader: &'a dyn ModuleLoader,
         previous: Option<&'a Project>,
         limits: CompilerLimits,
-        allow_cycles: bool,
     ) -> Self {
         Self {
-            allow_cycles,
             loader,
             previous,
             project: Project::empty(""),
@@ -659,18 +651,11 @@ impl<'a> ProjectBuilder<'a> {
         }
         match self.state.get(module_id) {
             Some(VisitState::Done) => return,
-            // CommonJS runs a cycle (`require` returns the partial exports of a
-            // module still loading), so a cycle is a valid graph there; an
-            // ECMAScript module graph keeps refusing it.
-            Some(VisitState::Visiting) if self.allow_cycles => return,
-            Some(VisitState::Visiting) => {
-                self.diagnostics.push(Diagnostic::error(
-                    DiagnosticCode::CircularModuleDependency,
-                    SourceSpan::new(module_id, 0, 0),
-                    format!("cyclic dependency includes `{module_id}`"),
-                ));
-                return;
-            }
+            // A closed cycle is a valid static module graph. Declared import
+            // types seed checking; unannotated circular inference is diagnosed
+            // by the checker. Emitted execution retains the module system's TDZ
+            // or partial-export behavior without reading any additional source.
+            Some(VisitState::Visiting) => return,
             None => {}
         }
         if depth > self.limits.max_module_depth {

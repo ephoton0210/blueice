@@ -25,6 +25,10 @@ impl<'a> ModuleChecker<'a> {
             }
         }
         for start in 0..tokens.len().saturating_sub(3) {
+            // Constructor validation owns `new receiver.Type(...)`.
+            if start > 0 && tokens[start - 1].is("new") {
+                continue;
+            }
             if tokens[start].kind != TokenKind::Identifier
                 && !tokens[start].is("this")
                 && !tokens[start].is("super")
@@ -62,6 +66,31 @@ impl<'a> ModuleChecker<'a> {
         let Some(call) = member_call_parts(tokens) else {
             return;
         };
+        if let Some(signatures) =
+            self.module_member_signatures(call.receiver, &call.member.text, scope)
+        {
+            let callee = Token {
+                kind: TokenKind::Identifier,
+                text: format!("{}.{}", call.receiver[0].text, call.member.text),
+                start: call.receiver[0].start,
+                end: call.member.end,
+            };
+            let mut qualified = vec![
+                callee,
+                Token {
+                    kind: TokenKind::Punct,
+                    text: "(".to_string(),
+                    start: call.member.end,
+                    end: call.member.end,
+                },
+            ];
+            qualified.extend_from_slice(call.arguments);
+            // The qualified binding retains generic parameters and every overload.
+            debug_assert!(!signatures.is_empty());
+            self.check_function_call(&qualified, scope, span);
+            return;
+        }
+
         if self.require_declared_global_calls
             && call.receiver.first().is_some_and(|base| {
                 base.kind == TokenKind::Identifier && !scope.contains_key(&base.text)

@@ -60,6 +60,13 @@ impl<'a> ModuleChecker<'a> {
                         Declaration::Function(function) => {
                             function.name == export.name && !function.declared && !function.overload
                         }
+                        Declaration::Class(class) => class.name == export.name,
+                        Declaration::Enum(item) => item.name == export.name && !item.declared,
+                        Declaration::Namespace(item) => {
+                            item.name == export.name
+                                && !item.declared
+                                && namespaces::body_has_values(&item.body)
+                        }
                         _ => false,
                     });
             if !has_local_runtime_binding {
@@ -375,9 +382,28 @@ impl<'a> ModuleChecker<'a> {
                     false,
                 );
             } else {
+                // An export assignment's public object properties are named exports.
+                let requires_namespace = import.equals_require
+                    && !self
+                        .exports
+                        .exported_names
+                        .get(resolved)
+                        .is_some_and(|(names, _)| names.contains("export="));
+                if binding.imported != "*"
+                    && binding.imported != "export="
+                    && binding.imported != "default"
+                    && self.bind_export_assignment_member(
+                        &binding.local,
+                        &binding.imported,
+                        resolved,
+                        &import.span,
+                    )
+                {
+                    continue;
+                }
                 // A value import must name something the module exports.
                 if binding.imported != "*"
-                    && binding.imported != "default"
+                    && !requires_namespace
                     && !is_declaration_module(resolved)
                     && self
                         .exports
@@ -431,13 +457,37 @@ impl<'a> ModuleChecker<'a> {
                     self.bind_imported_enum(&binding.local, &enum_, &import.span, true);
                     continue;
                 }
-                self.insert_value(
-                    &binding.local,
-                    Type::Unknown,
-                    import.span.clone(),
-                    SymbolKind::Import,
-                    false,
-                );
+                if binding.imported == "*"
+                    || (import.equals_require
+                        && !self
+                            .exports
+                            .exported_names
+                            .get(resolved)
+                            .is_some_and(|(names, _)| names.contains("export=")))
+                {
+                    self.bind_module_namespace(
+                        &binding.local,
+                        resolved,
+                        &import.span,
+                        !import.equals_require,
+                    );
+                } else if let Some(value) = self
+                    .exports
+                    .values
+                    .get(resolved)
+                    .and_then(|values| values.get(&binding.imported))
+                    .cloned()
+                {
+                    self.bind_imported_value(&binding.local, &value, &import.span);
+                } else {
+                    self.insert_value(
+                        &binding.local,
+                        Type::Unknown,
+                        import.span.clone(),
+                        SymbolKind::Import,
+                        false,
+                    );
+                }
             }
         }
         for (local, namespace, with_value) in merged_namespaces {

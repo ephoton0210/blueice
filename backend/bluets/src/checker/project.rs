@@ -543,7 +543,9 @@ pub(super) fn exported_names(project: &Project) -> BTreeMap<String, (BTreeSet<St
                 Declaration::Variable(variable) if variable.exported => {
                     names.insert(variable.name.clone());
                 }
-                Declaration::Function(function) if function.exported => {
+                Declaration::Function(function)
+                    if function.exported && !function.default_export =>
+                {
                     names.insert(function.name.clone());
                 }
                 Declaration::Class(class) if class.exported => {
