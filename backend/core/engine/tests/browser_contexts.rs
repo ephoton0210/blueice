@@ -176,6 +176,9 @@ mod wire {
     }
     impl Browser {
         fn new() -> Self {
+            Self::with_editor(None)
+        }
+        fn with_editor(html: Option<&'static str>) -> Self {
             static NEXT: AtomicU64 = AtomicU64::new(0);
             let root = std::env::temp_dir().join(format!(
                 "blueice-context-{}-{}",
@@ -190,6 +193,11 @@ mod wire {
             let directory = root.clone();
             let worker = std::thread::spawn(move || {
                 let mut tabs = TabManager::new(300.0, 200.0);
+                if let Some(html) = html {
+                    tabs.get_mut(tabs.default_tab())
+                        .unwrap()
+                        .load_html_str(html, None);
+                }
                 run_session(
                     &mut tabs,
                     &mut server,
@@ -272,6 +280,61 @@ mod wire {
             let _ = std::fs::remove_dir_all(&self.root);
         }
     }
+    #[test]
+    fn accessibility_text_queries_preserve_context_and_window_ownership() {
+        use blueice_ipc::accessibility::{
+            AccessibilityTextAction, AccessibilityTextContext, AccessibilityTextResult,
+        };
+        let mut b = Browser::with_editor(Some("<input aria-label='Editor' value='owned'>"));
+        let ServerMessage::TextInputState(state) =
+            b.request(Some(1), ClientMessage::GetTextInputState)
+        else {
+            panic!("input state")
+        };
+        let ServerMessage::Representation(snapshot) =
+            b.request(Some(1), ClientMessage::GetRepresentation)
+        else {
+            panic!("snapshot")
+        };
+        let node = snapshot
+            .nodes
+            .iter()
+            .find(|n| n.name.as_deref() == Some("Editor"))
+            .unwrap()
+            .id;
+        let message = ClientMessage::AccessibilityText {
+            context: AccessibilityTextContext {
+                version: 1,
+                frame_source: state.frame_source,
+                document_generation: state.document_generation,
+                frame_generation: state.frame_generation,
+                node_id: node,
+            },
+            action: AccessibilityTextAction::Inspect,
+        };
+        let wrapped = |window| {
+            ClientMessage::Window(WindowAction::Command {
+                window_id: window,
+                message: Box::new(message.clone()),
+            })
+        };
+        let ServerMessage::AccessibilityTextState(reply) = b.scoped(1, Some(1), wrapped(1)) else {
+            panic!("owned AX query")
+        };
+        let AccessibilityTextResult::State(text) = reply.result else {
+            panic!("text")
+        };
+        assert_eq!(text.text.as_deref(), Some("owned"));
+        assert!(matches!(
+            b.scoped(2, Some(1), wrapped(1)),
+            ServerMessage::Error { .. }
+        ));
+        assert!(matches!(
+            b.scoped(1, Some(1), wrapped(2)),
+            ServerMessage::Error { .. }
+        ));
+    }
+
     #[test]
     fn scoped_commands_and_legacy_mutations_cannot_cross_context_membership() {
         let mut b = Browser::new();

@@ -214,6 +214,15 @@ final class HTTPFixture: @unchecked Sendable {
                     <select disabled aria-label="Disabled choices" style="display:block;width:260px;height:32px"><option>Unavailable</option></select>
                     </form></body></html>
                     """
+                case "/accessibility-text": body = """
+                    <html><body><h1>Accessible text controls</h1>
+                    <input aria-label="Unicode editor" value="A😀é👨‍👩‍👧‍👦B" style="display:block;width:300px;height:36px">
+                    <input aria-label="Long editor" value="\(String(repeating: "x", count: 1500))尾😀" style="display:block;width:180px;height:36px">
+                    <textarea aria-label="Scrollable notes" style="display:block;width:200px;height:60px">\(String(repeating: "row\n", count: 50))</textarea>
+                    <input aria-label="Readonly" readonly value="locked" style="display:block;width:300px;height:36px">
+                    <input aria-label="Secret" type="password" value="private-fixture-secret" style="display:block;width:300px;height:36px">
+                    </body></html>
+                    """
                 case "/editing": body = """
                     <html><body><h1>Native editing fixture</h1>
                     <input aria-label="Editor" value="A😀B" style="display:block;width:300px;height:36px">

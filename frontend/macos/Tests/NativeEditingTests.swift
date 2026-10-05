@@ -7,6 +7,139 @@ import XCTest
 
 @MainActor
 final class NativeEditingTests: XCTestCase {
+    func testAccessibilityTextWireRejectsPasswordLeaksAndMalformedRanges() throws {
+        let context: [String: Any] = ["version": 1, "frame_source": 9, "document_generation": 3, "frame_generation": 8, "node_id": 7]
+        let range: [String: Any] = ["location": 0, "length": 4]
+        let state: [String: Any] = ["text": "safe", "text_length": 4, "protected": false, "writable": true,
+            "multiline": false, "focused": false, "selection": NSNull(), "marked": NSNull(), "visible_range": range,
+            "insertion_line": NSNull(), "line_count": 1, "style": ["font_size_px": 16, "bold": false, "italic": false, "color": [0, 0, 0, 255]]]
+        func decode(_ context: [String: Any], _ result: [String: Any]) throws -> BrowserMessage {
+            let data = try JSONSerialization.data(withJSONObject: ["message": ["AccessibilityTextState": ["context": context, "result": result]]])
+            return try JSONDecoder().decode(IncomingEnvelope.self, from: data).message
+        }
+        if case .accessibilityTextState = try decode(context, ["State": state]) {} else { XCTFail("Valid state must decode") }
+        for (key, value) in [("protected", true as Any), ("text_length", 65_537 as Any), ("visible_range", ["location": 4, "length": 1] as Any),
+            ("selection", range as Any), ("line_count", 0 as Any)] {
+            var invalid = state; invalid[key] = value
+            if case .unknown = try decode(context, ["State": invalid]) {} else { XCTFail("Malformed state must fail soft") }
+        }
+        var unsupported = context; unsupported["version"] = 2
+        if case .unknown = try decode(unsupported, ["State": state]) {} else { XCTFail("Unsupported version must fail soft") }
+        if case .unknown = try decode(context, ["Range": ["location": UInt32.max, "length": 1]]) {} else { XCTFail("Overflow range must fail soft") }
+        let command = BrowserCommand.accessibilityText(AccessibilityTextContext(version: 1, frame_source: 9, document_generation: 3, frame_generation: 8, node_id: 7), .select(TextRange(NSRange(location: 1, length: 2))))
+        let data = try BrowserWire.encode(command, tab: 2, request: 7)
+        let root = try XCTUnwrap(JSONSerialization.jsonObject(with: data.dropFirst(4)) as? [String: Any])
+        let body = try XCTUnwrap((root["message"] as? [String: Any])?["AccessibilityText"] as? [String: Any])
+        XCTAssertNotNil((body["action"] as? [String: Any])?["Select"])
+    }
+
+    func testAccessibilityLongRangeScrollUsesCoreGeometryAndPreservesFocus() async throws {
+        let (model, view, fixture) = try await start(path: "/accessibility-text")
+        defer { fixture.stop(); Task { await model.stop() } }
+        let window = NSWindow(contentRect: view.frame, styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = view
+        defer { window.contentView = nil; window.close() }
+        func refresh() async {
+            await wait { model.representation?.generation == model.generation && model.textInputState?.frame_generation == model.generation
+                && model.displayState?.width == view.bounds.width && model.displayState?.height == view.bounds.height && !model.textInputBusy }
+            view.accessibilityTree.update(model.representation, epoch: model.accessibilityEpoch, imageSize: model.cssViewportSize ?? .zero)
+        }
+        await refresh()
+        let snapshot = try XCTUnwrap(model.representation)
+        func element(_ name: String) throws -> PageAccessibilityElement {
+            try XCTUnwrap(view.accessibilityTree.elements[try XCTUnwrap(snapshot.nodes.first { $0.name == name }).id])
+        }
+        let long = try element("Long editor")
+        XCTAssertEqual(long.accessibilityNumberOfCharacters(), 1503)
+        XCTAssertEqual(long.accessibilityRange(for: 1502), NSRange(location: 1501, length: 2))
+        let range = NSRange(location: 1500, length: 3)
+        XCTAssertEqual(long.accessibilityFrame(for: range), .zero)
+        long.setAccessibilityVisibleCharacterRange(range)
+        let generation = model.generation
+        await wait { model.generation > generation }
+        await refresh()
+        XCTAssertNil(model.textInputState?.focused)
+        XCTAssertGreaterThan(long.accessibilityVisibleCharacterRange().location, 1000)
+        let rect = long.accessibilityFrame(for: range)
+        XCTAssertGreaterThan(rect.width, 0)
+        XCTAssertTrue(long.accessibilityFrame().contains(rect))
+        XCTAssertEqual(long.accessibilityString(for: range), "尾😀")
+        let notes = try element("Scrollable notes")
+        notes.setAccessibilitySelectedTextRanges([NSValue(range: NSRange(location: 180, length: 3))])
+        await wait { model.textInputState?.focused?.selection.nsRange == NSRange(location: 180, length: 3) }
+        await refresh()
+        XCTAssertEqual(notes.accessibilitySelectedText(), "row")
+        XCTAssertGreaterThan(notes.accessibilityVisibleCharacterRange().location, 0)
+        XCTAssertTrue(notes.accessibilityFrame().contains(notes.accessibilityFrame(for: NSRange(location: 180, length: 3))))
+        let old = try XCTUnwrap(model.representation)
+        model.reload()
+        await wait { model.representation?.generation != old.generation && model.representation?.url == fixture.origin + "/accessibility-text" }
+        long.setAccessibilityValue("stale")
+        XCTAssertEqual(model.representation?.nodes.first { $0.name == "Long editor" }?.state.value, String(repeating: "x", count: 1500) + "尾😀")
+        await model.stop()
+    }
+
+    func testAccessibilityTextParametersAndWritesThroughRealCore() async throws {
+        let (model, view, fixture) = try await start()
+        defer { fixture.stop(); Task { await model.stop() } }
+        let window = NSWindow(contentRect: view.frame, styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = view
+        defer { window.contentView = nil; window.close() }
+        func refresh() async {
+            await wait { model.representation?.generation == model.generation && model.textInputState?.frame_generation == model.generation
+                && model.displayState?.width == view.bounds.width && model.displayState?.height == view.bounds.height && !model.textInputBusy }
+            view.accessibilityTree.update(model.representation, epoch: model.accessibilityEpoch, imageSize: model.cssViewportSize ?? .zero)
+        }
+        await refresh()
+        let snapshot = try XCTUnwrap(model.representation)
+        func element(_ name: String) throws -> PageAccessibilityElement {
+            try XCTUnwrap(view.accessibilityTree.elements[try XCTUnwrap(snapshot.nodes.first { $0.name == name }).id])
+        }
+        let editor = try element("Editor")
+        XCTAssertEqual(editor.accessibilityNumberOfCharacters(), 4)
+        XCTAssertEqual(editor.accessibilityString(for: NSRange(location: 1, length: 2)), "😀")
+        XCTAssertNil(editor.accessibilityString(for: NSRange(location: 2, length: 1)))
+        XCTAssertEqual(editor.accessibilityRange(for: 2), NSRange(location: 1, length: 2))
+        XCTAssertEqual(editor.accessibilityRange(for: 4).location, NSNotFound)
+        XCTAssertNil(model.textInputState?.focused, "Accessibility reads must preserve focus")
+        editor.setAccessibilitySelectedTextRange(NSRange(location: 1, length: 2))
+        await wait { model.textInputState?.focused?.selection.nsRange == NSRange(location: 1, length: 2) }
+        await refresh()
+        XCTAssertEqual(editor.accessibilitySelectedText(), "😀")
+        let rect = editor.accessibilityFrame(for: NSRange(location: 1, length: 2))
+        XCTAssertGreaterThan(rect.width, 0)
+        XCTAssertTrue(editor.accessibilityFrame().intersects(rect))
+        XCTAssertEqual(editor.accessibilityRange(for: NSPoint(x: rect.minX + 0.1, y: rect.midY)), NSRange(location: 1, length: 2))
+        editor.setAccessibilitySelectedText("中文")
+        await wait { model.textInputState?.focused?.text == "A中文B" }
+        await refresh()
+        model.textInput(.undo)
+        await wait { model.textInputState?.focused?.text == "A😀B" && !model.textInputBusy }
+        await refresh()
+        let notes = try element("Notes")
+        XCTAssertEqual(notes.accessibilityRange(forLine: 0), NSRange(location: 0, length: 6))
+        XCTAssertEqual(notes.accessibilityLine(for: 7), 1)
+        let readonly = try element("Readonly")
+        XCTAssertFalse(readonly.isAccessibilitySelectorAllowed(#selector(NSAccessibilityElement.setAccessibilityValue(_:))))
+        readonly.setAccessibilityValue("bad")
+        XCTAssertEqual(readonly.accessibilityValue() as? String, "locked")
+        let secret = try element("Secret")
+        XCTAssertNil(secret.accessibilityValue())
+        XCTAssertNil(secret.accessibilityString(for: NSRange(location: 0, length: 2)))
+        XCTAssertNil(secret.accessibilityAttributedString(for: NSRange(location: 0, length: 2)))
+        XCTAssertNil(secret.accessibilityRTF(for: NSRange(location: 0, length: 2)))
+        secret.setAccessibilityValue("new-private-secret")
+        await wait { model.textInputState?.focused?.protected == true && model.textInputState?.focused?.text_length == 18 }
+        XCTAssertNil(model.textInputState?.focused?.text)
+        await refresh()
+        view.accessibilityTree.update(nil, epoch: model.accessibilityEpoch, imageSize: .zero)
+        editor.setAccessibilityValue("stale")
+        XCTAssertNil(editor.accessibilityString(for: NSRange(location: 0, length: 1)))
+        await model.stop()
+    }
+
     func testNativeSelectAccessibilitySelectionWritesScrollAndInvalidatedElements() async throws {
         let (model, view, fixture) = try await start(path: "/select")
         defer { fixture.stop(); Task { await model.stop() } }
@@ -112,7 +245,8 @@ final class NativeEditingTests: XCTestCase {
         await wait { selected() == ["Topic Alpha", "Topic Beta", "Topic Gamma"] && !model.textInputBusy }
         model.textInput(.key(.end, true))
         await wait { selected() == ["Topic Beta", "Topic Gamma", "Topic Delta", "Topic Emoji 😀"] && !model.textInputBusy }
-        await wait { model.representation?.nodes.first { $0.name == "Topic Emoji 😀" }?.bounds.height ?? 0 > 0 }
+        await wait { model.representation?.generation == model.generation && model.textInputState?.frame_generation == model.generation
+            && model.representation?.nodes.first { $0.name == "Topic Emoji 😀" }?.bounds.height ?? 0 > 0 }
         let snapshot = try XCTUnwrap(model.representation)
         view.accessibilityTree.update(snapshot, epoch: model.accessibilityEpoch, imageSize: model.cssViewportSize ?? .zero)
         let list = try XCTUnwrap(view.accessibilityTree.elements[try XCTUnwrap(model.textInputState?.select?.node_id)])
@@ -124,6 +258,8 @@ final class NativeEditingTests: XCTestCase {
         XCTAssertEqual(selected(), ["Topic Alpha", "Topic Gamma"])
         model.textInput(.key(.down, true))
         await wait { selected() == ["Topic Alpha", "Topic Beta"] && !model.textInputBusy }
+        await wait { model.representation?.generation == model.generation && model.textInputState?.frame_generation == model.generation
+            && model.representation?.nodes.contains { $0.name == "Send choices POST" } == true }
         let current = try XCTUnwrap(model.representation)
         let post = try XCTUnwrap(current.nodes.first { $0.name == "Send choices POST" })
         XCTAssertTrue(model.accessibilityAction(current, epoch: model.accessibilityEpoch, node: post))
@@ -770,6 +906,7 @@ final class NativeEditingTests: XCTestCase {
         defer { fixture.stop(); Task { await model.stop() } }
         try await focus("Editor", model: model, view: view)
         let window = NSWindow(contentRect: CGRect(x: 200, y: 200, width: 500, height: 300), styleMask: [.borderless], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
         window.contentView = view
         model.textInput(.select(TextRange(NSRange(location: 1, length: 2))))
         await wait { model.textInputState?.focused?.selection.nsRange == NSRange(location: 1, length: 2) && !model.textInputBusy }
@@ -803,6 +940,7 @@ final class NativeEditingTests: XCTestCase {
         let (model, view, fixture) = try await start()
         defer { fixture.stop(); Task { await model.stop() } }
         let window = NSWindow(contentRect: CGRect(x: 200, y: 200, width: 500, height: 300), styleMask: [.borderless], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
         window.contentView = view
         try await focus("Notes", model: model, view: view)
         view.selectAll(nil)

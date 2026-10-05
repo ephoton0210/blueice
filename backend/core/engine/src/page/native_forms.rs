@@ -72,6 +72,7 @@ impl Page {
         }
         for node in nodes {
             self.native_undo.forget(node);
+            self.native_text_scroll.remove(&node);
             if tag(&self.doc, node) == "select" {
                 for option in self.native_options(node) {
                     self.restore_native_form_default(option);

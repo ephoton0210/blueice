@@ -34,6 +34,7 @@ use std::io::{self, Read, Write};
 /// to make us allocate an unbounded buffer for it.
 pub const MAX_FRAME_BYTES: usize = 8 * 1024 * 1024;
 
+pub mod accessibility;
 pub mod ai;
 pub mod assistant;
 pub mod assistant_page;
@@ -90,6 +91,10 @@ pub enum ChromeCommand {
 /// Sent by a client (`frontend` today; `extension`/AI later) to `core`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ClientMessage {
+    AccessibilityText {
+        context: accessibility::AccessibilityTextContext,
+        action: accessibility::AccessibilityTextAction,
+    },
     FileInput(file_input::FileInputAction),
     /// Create, render, or release a core-owned frozen print document.
     Print(printing::PrintAction),
@@ -387,6 +392,7 @@ pub enum AssistantTaskKind {
 /// Sent by `core` to a client.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ServerMessage {
+    AccessibilityTextState(accessibility::AccessibilityTextReply),
     FileInputState(file_input::FileInputState),
     PrintState(printing::PrintReply),
     /// A form request has started; carries no POST body or field metadata.

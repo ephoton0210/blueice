@@ -1589,3 +1589,503 @@ fn select_presentation_is_bounded_without_losing_keyboard_access_to_later_option
         Some("1024")
     );
 }
+
+impl Browser {
+    fn accessibility_context(
+        &mut self,
+        name: &str,
+    ) -> blueice_ipc::accessibility::AccessibilityTextContext {
+        blueice_ipc::accessibility::AccessibilityTextContext {
+            version: 1,
+            frame_source: self.state.frame_source,
+            document_generation: self.state.document_generation,
+            frame_generation: self.state.frame_generation,
+            node_id: self
+                .snapshot()
+                .nodes
+                .iter()
+                .find(|n| n.name.as_deref() == Some(name))
+                .unwrap()
+                .id,
+        }
+    }
+    fn accessibility(
+        &mut self,
+        context: blueice_ipc::accessibility::AccessibilityTextContext,
+        action: blueice_ipc::accessibility::AccessibilityTextAction,
+    ) -> Result<blueice_ipc::accessibility::AccessibilityTextReply, String> {
+        blueice_ipc::write_client_message_with_ids(
+            &mut self.stream,
+            Some(1),
+            Some(95),
+            &ClientMessage::AccessibilityText { context, action },
+        )
+        .unwrap();
+        let result = loop {
+            let (tab, request, message) =
+                blueice_ipc::read_server_message_with_ids(&mut self.stream).unwrap();
+            assert_eq!((tab, request), (Some(1), Some(95)));
+            match message {
+                ServerMessage::FrameReady { shm_path, .. } => {
+                    self.pixels = blueice_ipc::shm::map_frame(std::path::Path::new(&shm_path))
+                        .unwrap()
+                        .to_vec()
+                }
+                ServerMessage::AccessibilityTextState(reply) => break Ok(reply),
+                ServerMessage::Error { message } => break Err(message),
+                other => panic!("unexpected {other:?}"),
+            }
+        };
+        blueice_ipc::write_client_message_with_ids(
+            &mut self.stream,
+            Some(1),
+            Some(96),
+            &ClientMessage::GetTextInputState,
+        )
+        .unwrap();
+        let (tab, request, reply) =
+            blueice_ipc::read_server_message_with_ids(&mut self.stream).unwrap();
+        assert_eq!((tab, request), (Some(1), Some(96)));
+        if let ServerMessage::TextInputState(state) = reply {
+            self.state = state;
+        } else {
+            panic!("unexpected {reply:?}");
+        }
+        result
+    }
+}
+
+#[test]
+fn accessibility_text_ranges_use_utf16_graphemes_and_core_geometry_without_read_side_effects() {
+    use blueice_ipc::accessibility::{
+        AccessibilityTextAction as Action, AccessibilityTextResult as Result,
+    };
+    use blueice_ipc::input::TextRange;
+    let mut browser = Browser::new("<input aria-label='Editor' value='A😀B' style='width:180px;height:32px'><textarea aria-label='Notes' style='width:200px;height:80px'>first\n中文😀\nlast</textarea>");
+    let context = browser.accessibility_context("Editor");
+    let reply = browser.accessibility(context, Action::Inspect).unwrap();
+    let Result::State(state) = reply.result else {
+        panic!("text state expected")
+    };
+    assert_eq!(state.text.as_deref(), Some("A😀B"));
+    assert_eq!(state.text_length, 4);
+    assert!(!state.focused);
+    assert!(state.selection.is_none());
+    assert!(browser.state.focused_node.is_none());
+    let glyph = browser
+        .accessibility(context, Action::RangeForIndex { index: 2 })
+        .unwrap();
+    assert_eq!(
+        glyph.result,
+        Result::Range(Some(TextRange {
+            location: 1,
+            length: 2
+        }))
+    );
+    browser
+        .accessibility(
+            context,
+            Action::Select {
+                range: TextRange {
+                    location: 1,
+                    length: 2,
+                },
+            },
+        )
+        .unwrap();
+    let context = browser.accessibility_context("Editor");
+    let before = browser.pixels.clone();
+    let focus = browser.state.focus_generation;
+    let reply = browser
+        .accessibility(
+            context,
+            Action::Bounds {
+                range: TextRange {
+                    location: 1,
+                    length: 2,
+                },
+            },
+        )
+        .unwrap();
+    let Result::Bounds(Some(bounds)) = reply.result else {
+        panic!("range bounds expected")
+    };
+    assert!(bounds.width > 1.0 && bounds.height > 0.0);
+    let point = browser
+        .accessibility(
+            context,
+            Action::RangeForPosition {
+                x: bounds.x + 0.1,
+                y: bounds.y + bounds.height / 2.0,
+            },
+        )
+        .unwrap();
+    assert_eq!(
+        point.result,
+        Result::Range(Some(TextRange {
+            location: 1,
+            length: 2
+        }))
+    );
+    assert_eq!(browser.pixels, before);
+    assert_eq!(browser.state.focus_generation, focus);
+    assert!(browser
+        .accessibility(
+            context,
+            Action::Select {
+                range: TextRange {
+                    location: 2,
+                    length: 0
+                }
+            }
+        )
+        .is_err());
+    assert_eq!(
+        browser.state.focused.as_ref().unwrap().selection,
+        TextRange {
+            location: 1,
+            length: 2
+        }
+    );
+    let notes = browser.accessibility_context("Notes");
+    assert_eq!(
+        browser
+            .accessibility(notes, Action::LineForIndex { index: 7 })
+            .unwrap()
+            .result,
+        Result::Index(Some(1))
+    );
+    let line = browser
+        .accessibility(notes, Action::RangeForLine { line: 1 })
+        .unwrap();
+    assert_eq!(
+        line.result,
+        Result::Range(Some(TextRange {
+            location: 6,
+            length: 5
+        }))
+    );
+    assert_eq!(
+        browser.focused_name(),
+        "Editor",
+        "Range queries cannot move focus"
+    );
+}
+
+#[test]
+fn accessibility_text_writes_are_atomic_undoable_private_readonly_and_frame_fenced() {
+    use blueice_ipc::accessibility::{
+        AccessibilityTextAction as Action, AccessibilityTextResult as Result,
+    };
+    use blueice_ipc::input::TextRange;
+    let mut browser = Browser::new("<input aria-label='Editor' value='A😀B'><input aria-label='Secret' type='password' value='fixture-secret'><input aria-label='Readonly' readonly value='locked'><input aria-label='Disabled' disabled value='disabled'>");
+    let old = browser.accessibility_context("Editor");
+    browser
+        .accessibility(
+            old,
+            Action::Select {
+                range: TextRange {
+                    location: 1,
+                    length: 2,
+                },
+            },
+        )
+        .unwrap();
+    assert!(browser
+        .accessibility(
+            old,
+            Action::SetValue {
+                text: "late".into()
+            }
+        )
+        .is_err());
+    let context = browser.accessibility_context("Editor");
+    browser
+        .accessibility(
+            context,
+            Action::ReplaceSelection {
+                text: "中文".into(),
+            },
+        )
+        .unwrap();
+    assert_eq!(
+        browser.state.focused.as_ref().unwrap().text.as_deref(),
+        Some("A中文B")
+    );
+    browser
+        .input(browser.context(), TextInputAction::Undo)
+        .unwrap();
+    assert_eq!(
+        browser.state.focused.as_ref().unwrap().text.as_deref(),
+        Some("A😀B")
+    );
+    let secret = browser.accessibility_context("Secret");
+    let reply = browser
+        .accessibility(
+            secret,
+            Action::SetValue {
+                text: "new-private-secret".into(),
+            },
+        )
+        .unwrap();
+    let json = serde_json::to_string(&reply).unwrap();
+    assert!(!json.contains("fixture-secret") && !json.contains("new-private-secret"));
+    let Result::State(state) = reply.result else {
+        panic!("text state expected")
+    };
+    assert!(state.protected);
+    assert!(state.text.is_none());
+    let readonly = browser.accessibility_context("Readonly");
+    let focus = browser.state.focused_node;
+    assert!(browser
+        .accessibility(readonly, Action::SetValue { text: "bad".into() })
+        .is_err());
+    assert_eq!(
+        browser.state.focused_node, focus,
+        "Rejected writes cannot change focus"
+    );
+    browser
+        .accessibility(
+            readonly,
+            Action::Select {
+                range: TextRange {
+                    location: 0,
+                    length: 3,
+                },
+            },
+        )
+        .unwrap();
+    assert_eq!(
+        browser.state.focused.as_ref().unwrap().text.as_deref(),
+        Some("locked")
+    );
+    let disabled = browser.accessibility_context("Disabled");
+    assert!(browser.accessibility(disabled, Action::Inspect).is_err());
+}
+
+#[test]
+fn accessibility_text_scroll_reveals_long_ranges_without_changing_focus_or_selection() {
+    use blueice_ipc::accessibility::{
+        AccessibilityTextAction as Action, AccessibilityTextResult as Result,
+    };
+    use blueice_ipc::input::TextRange;
+    let text = format!("{}尾😀", "x".repeat(1500));
+    let mut browser = Browser::new(&format!("<input aria-label='Long' style='width:120px;height:32px' value='{text}'><textarea aria-label='Notes' style='width:160px;height:60px'>{}</textarea>", "row\n".repeat(50)));
+    let context = browser.accessibility_context("Long");
+    let before_scroll = browser.pixels.clone();
+    let range = TextRange {
+        location: 1500,
+        length: 3,
+    };
+    browser
+        .accessibility(context, Action::ScrollToRange { range })
+        .unwrap();
+    assert_ne!(
+        browser.pixels, before_scroll,
+        "Revealing the tail must update the rendered text"
+    );
+    assert!(browser.state.focused_node.is_none());
+    let context = browser.accessibility_context("Long");
+    let reply = browser
+        .accessibility(context, Action::Bounds { range })
+        .unwrap();
+    let Result::Bounds(Some(bounds)) = reply.result else {
+        panic!("visible long-text bounds expected")
+    };
+    let control = browser
+        .snapshot()
+        .nodes
+        .iter()
+        .find(|n| n.name.as_deref() == Some("Long"))
+        .unwrap()
+        .bounds;
+    assert!(bounds.x >= control.x && bounds.x + bounds.width <= control.x + control.width);
+    let reply = browser.accessibility(context, Action::Inspect).unwrap();
+    let Result::State(state) = reply.result else {
+        panic!("text state expected")
+    };
+    assert!(state.visible_range.location > 1000);
+    assert!(state.selection.is_none());
+    let notes = browser.accessibility_context("Notes");
+    browser
+        .accessibility(
+            notes,
+            Action::Select {
+                range: TextRange {
+                    location: 180,
+                    length: 3,
+                },
+            },
+        )
+        .unwrap();
+    let notes = browser.accessibility_context("Notes");
+    let reply = browser
+        .accessibility(
+            notes,
+            Action::Bounds {
+                range: TextRange {
+                    location: 180,
+                    length: 3,
+                },
+            },
+        )
+        .unwrap();
+    let Result::Bounds(Some(bounds)) = reply.result else {
+        panic!("visible textarea bounds expected")
+    };
+    let control = browser
+        .snapshot()
+        .nodes
+        .iter()
+        .find(|n| n.name.as_deref() == Some("Notes"))
+        .unwrap()
+        .bounds;
+    assert!(bounds.y >= control.y && bounds.y + bounds.height <= control.y + control.height);
+    assert_eq!(
+        browser.state.focused.as_ref().unwrap().selection,
+        TextRange {
+            location: 180,
+            length: 3
+        }
+    );
+}
+
+#[test]
+fn accessibility_text_rejects_invalid_identity_ranges_and_oversize_edits_before_focus_changes() {
+    use blueice_ipc::accessibility::AccessibilityTextAction as Action;
+    use blueice_ipc::input::TextRange;
+    let mut browser = Browser::new(
+        "<input aria-label='First' value='safe'><input aria-label='Other' value='other'>",
+    );
+    browser.key(PageKey::Tab, false);
+    let context = browser.accessibility_context("Other");
+    let before = browser.pixels.clone();
+    let focus = browser.state.focus_generation;
+    for invalid in [
+        blueice_ipc::accessibility::AccessibilityTextContext {
+            version: 2,
+            ..context
+        },
+        blueice_ipc::accessibility::AccessibilityTextContext {
+            frame_source: context.frame_source.wrapping_add(1),
+            ..context
+        },
+        blueice_ipc::accessibility::AccessibilityTextContext {
+            document_generation: context.document_generation + 1,
+            ..context
+        },
+        blueice_ipc::accessibility::AccessibilityTextContext {
+            node_id: u64::MAX,
+            ..context
+        },
+    ] {
+        assert!(browser
+            .accessibility(
+                invalid,
+                Action::SetValue {
+                    text: "wrong".into()
+                }
+            )
+            .is_err());
+    }
+    for action in [
+        Action::Select {
+            range: TextRange {
+                location: u32::MAX,
+                length: 3,
+            },
+        },
+        Action::Bounds {
+            range: TextRange {
+                location: 4,
+                length: u32::MAX,
+            },
+        },
+        Action::ReplaceSelection {
+            text: "x".repeat(65_536),
+        },
+        Action::SetValue {
+            text: "x".repeat(65_537),
+        },
+    ] {
+        assert!(browser.accessibility(context, action).is_err());
+    }
+    assert_eq!(browser.state.focus_generation, focus);
+    assert_eq!(browser.focused_name(), "First");
+    assert_eq!(
+        browser.state.focused.as_ref().unwrap().text.as_deref(),
+        Some("safe")
+    );
+    assert_eq!(browser.pixels, before);
+}
+
+#[test]
+fn accessibility_text_composed_graphemes_and_marked_text_replacements_keep_atomic_undo() {
+    use blueice_ipc::accessibility::{
+        AccessibilityTextAction as Action, AccessibilityTextResult as Result,
+    };
+    use blueice_ipc::input::TextRange;
+    let mut browser = Browser::new("<input aria-label='Editor' value='a👨‍👩‍👧‍👦é'>");
+    let context = browser.accessibility_context("Editor");
+    assert_eq!(
+        browser
+            .accessibility(context, Action::RangeForIndex { index: 6 })
+            .unwrap()
+            .result,
+        Result::Range(Some(TextRange {
+            location: 1,
+            length: 11
+        }))
+    );
+    assert_eq!(
+        browser
+            .accessibility(context, Action::RangeForIndex { index: 13 })
+            .unwrap()
+            .result,
+        Result::Range(Some(TextRange {
+            location: 12,
+            length: 2
+        }))
+    );
+    browser.key(PageKey::Tab, false);
+    browser
+        .input(browser.context(), TextInputAction::SelectAll)
+        .unwrap();
+    browser
+        .input(
+            browser.context(),
+            TextInputAction::Compose {
+                text: "注音".into(),
+                selection: TextRange {
+                    location: 2,
+                    length: 0,
+                },
+                replacement: None,
+            },
+        )
+        .unwrap();
+    let context = browser.accessibility_context("Editor");
+    browser
+        .accessibility(
+            context,
+            Action::SetValue {
+                text: "committed".into(),
+            },
+        )
+        .unwrap();
+    assert!(browser.state.focused.as_ref().unwrap().marked.is_none());
+    browser
+        .input(browser.context(), TextInputAction::Undo)
+        .unwrap();
+    assert_eq!(
+        browser.state.focused.as_ref().unwrap().text.as_deref(),
+        Some("注音")
+    );
+    browser
+        .input(browser.context(), TextInputAction::Undo)
+        .unwrap();
+    assert_eq!(
+        browser.state.focused.as_ref().unwrap().text.as_deref(),
+        Some("a👨‍👩‍👧‍👦é")
+    );
+}

@@ -203,3 +203,14 @@ pub struct SelectControlState {
     pub active_option: Option<u64>,
     pub options: Vec<SelectChoice>,
 }
+
+impl TextInputState {
+    pub fn context(&self) -> TextInputContext {
+        TextInputContext {
+            version: self.version,
+            frame_source: self.frame_source,
+            document_generation: self.document_generation,
+            focus_generation: self.focus_generation,
+        }
+    }
+}

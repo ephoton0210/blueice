@@ -332,6 +332,10 @@ File > Print (Command-P) captures the current core document and opens the native
 AppKit print panel. Paper size, orientation and scaling reflow the frozen DOM
 using print media; the live page, viewport, editor, find state and history stay
 unchanged. PDF uses the system Save dialog and the selected native destination.
+The panel is a document-modal sheet. Its asynchronous completion releases the
+captured job after saving or cancelling and restores the Print command.
+Private print and Accessibility connections close after their synchronous
+exchange, so a waiting native panel does not accumulate unread broker broadcasts.
 Print previews recover when a numeric control passes through an unsupported
 intermediate value. Replaced/closed/transferred source documents invalidate the
 job, and unsupported final settings cancel the operation with a visible error.
@@ -424,15 +428,20 @@ See [assistant page results](../../development/browser_core/phase-22-browser-she
 Frame refresh temporarily suspends semantic actions until the representation
 matches the current tab, source, generation and URL. Native element identities
 survive a refresh within one document; reload, navigation and tab changes
-invalidate old elements. The accessibility bridge does not expose writable
-AXValue, accessibility text ranges, live-region announcements or rotor search.
-Native editing geometry is currently available through `NSTextInputClient`,
-independently of those AX text APIs. Actual OS IME verification is pending
+invalidate old elements. Native text controls expose core-owned UTF-16 lengths,
+selection/visible ranges, composed-character and line queries, substrings,
+clipped screen geometry and supported AX value/selection writes. A private
+synchronous broker preserves the core boundary without waiting for the main
+browser reader. Read-only fields permit selection but reject value changes;
+password contents remain redacted. The existing `NSTextInputClient` and AX
+queries share layout, inner scrolling and Undo/Redo. Live-region announcements,
+document paragraph selection, rich font attributes and rotor search remain pending.
+See [accessibility text results](../../development/browser_core/phase-22-browser-shell-accessibility/MACOS_ACCESSIBILITY_TEXT_RESULTS.md).
+Actual OS IME verification is pending
 runner Accessibility permission on the recorded host. JavaScript
 keyboard/beforeinput/input/composition event dispatch, complete
 bidirectional shaping and caret blink remain open, as do full form event/validity behavior,
-select popup/typeahead/multiple-selection interaction, complete toolbar Tab
-traversal, image/media context actions, page-text selection/copy, drag/drop,
+complete toolbar Tab traversal, image/media context actions, page-text selection/copy, drag/drop,
 full file API/events, automatic attachment downloads, remaining trusted panels and localization. Automated checks cover the recorded features; an
 interactive VoiceOver session remains unvalidated.
 

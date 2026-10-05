@@ -99,7 +99,7 @@ private final class PrintReadDeadline: @unchecked Sendable {
 // A separate broker connection permits synchronous AppKit preview callbacks
 // without waiting for the GUI's MainActor browser reader. It owns no service.
 final class BrowserPrintSession: @unchecked Sendable {
-    private let connection: BrowserConnection
+    private let socketPath: String
     private let root: URL
     private let tab: UInt64
     private let context: UInt64
@@ -113,11 +113,8 @@ final class BrowserPrintSession: @unchecked Sendable {
     private(set) var revision: UInt64 = 0
     init(runtime: URL,tab: UInt64,context: UInt64,window: UInt64,source: UInt64,document: UInt64) throws {
         root = runtime.appendingPathComponent("frames"); self.tab = tab; self.context = context; self.window = window
-        connection = try BrowserConnection(socketPath: runtime.appendingPathComponent("browser.sock").path)
+        socketPath = runtime.appendingPathComponent("browser.sock").path
         do {
-            guard case .hello(BrowserWire.version) = try exchange(.values("Hello",["protocol_version": .unsigned(UInt64(BrowserWire.version))]),scoped: false) else {
-                throw BrowserFailure.invalid("Print connection did not complete the browser handshake.")
-            }
             guard case .printState(.begun(let ticket,let document)) = try exchange(.printAction(.begin(source,document))) else {
                 throw BrowserFailure.invalid("Core did not capture the print document.")
             }
@@ -128,30 +125,41 @@ final class BrowserPrintSession: @unchecked Sendable {
     private func closeConnection() {
         guard !closed else { return }
         closed = true
-        connection.interrupt(); connection.close()
     }
-    private func exchange(_ command: BrowserCommand, scoped: Bool = true) throws -> BrowserMessage {
-        request += 1
-        let wrapped = scoped ? BrowserCommand.browserContext(.command(context,.window(.command(window,command)))) : command
+    private func exchange(_ command: BrowserCommand) throws -> BrowserMessage {
+        guard !closed else { throw BrowserFailure.invalid("Print connection is closed.") }
+        // The broker broadcasts to all connections. Close each exchange before
+        // a native panel waits, so unrelated AX traffic cannot fill an idle
+        // socket and cause the broker to prune the captured print job's reader.
+        let connection = try BrowserConnection(socketPath: socketPath)
+        defer { connection.interrupt(); connection.close() }
         // Bound the entire exchange, including a partial/flooded reply. Once
         // interrupted the connection is discarded; mutations are never retried.
         let deadline = PrintReadDeadline(connection)
         let timeout = DispatchWorkItem { deadline.expire() }
         DispatchQueue.global().asyncAfter(deadline: .now() + 10,execute: timeout)
         defer { deadline.cancel(); timeout.cancel() }
-        try connection.output.write(contentsOf: BrowserWire.encode(wrapped,tab: scoped ? tab : nil,request: request))
-        while true {
-            let reply = try BrowserWire.read { count in
-                var bytes = [UInt8](repeating: 0,count: count)
-                let read = Darwin.read(self.connection.input.fileDescriptor,&bytes,count)
-                guard read >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
-                return Data(bytes.prefix(read))
+        func roundTrip(_ command: BrowserCommand, scoped: Bool) throws -> BrowserMessage {
+            request += 1
+            let wrapped = scoped ? BrowserCommand.browserContext(.command(context,.window(.command(window,command)))) : command
+            try connection.output.write(contentsOf: BrowserWire.encode(wrapped,tab: scoped ? tab : nil,request: request))
+            while true {
+                let reply = try BrowserWire.read { count in
+                    var bytes = [UInt8](repeating: 0,count: count)
+                    let read = Darwin.read(connection.input.fileDescriptor,&bytes,count)
+                    guard read >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+                    return Data(bytes.prefix(read))
+                }
+                guard reply.requestID == request else { continue }
+                guard !scoped || reply.tabID == tab else { throw BrowserFailure.invalid("Print reply belongs to another tab.") }
+                if case .error(let message) = reply.message { throw BrowserFailure.invalid(message) }
+                return reply.message
             }
-            guard reply.requestID == request else { continue }
-            guard !scoped || reply.tabID == tab else { throw BrowserFailure.invalid("Print reply belongs to another tab.") }
-            if case .error(let message) = reply.message { throw BrowserFailure.invalid(message) }
-            return reply.message
         }
+        guard case .hello(BrowserWire.version) = try roundTrip(.values("Hello",["protocol_version": .unsigned(UInt64(BrowserWire.version))]),scoped: false) else {
+            throw BrowserFailure.invalid("Print connection did not complete the browser handshake.")
+        }
+        return try roundTrip(command,scoped: true)
     }
     func render(_ profile: PrintProfile) throws -> PrintImages {
         guard let ticket, profile.valid else { throw BrowserFailure.invalid("Print document is closed or the page size is invalid.") }
@@ -185,11 +193,31 @@ struct PrintImages: @unchecked Sendable {
     let pages: [Page]
 }
 
+// Yield the MainActor while AppKit owns the document-modal panel and release
+// the captured job only after its native completion callback.
+@MainActor
+final class BrowserPrintCompletion: NSObject {
+    private var continuation: CheckedContinuation<Bool, Never>?
+    func run(_ operation: NSPrintOperation, for window: NSWindow) async -> Bool {
+        await withCheckedContinuation { continuation in
+            self.continuation = continuation
+            operation.runModal(for: window, delegate: self,
+                didRun: #selector(finished(_:success:contextInfo:)), contextInfo: nil)
+        }
+    }
+    @objc private func finished(_ operation: NSPrintOperation, success: Bool, contextInfo: UnsafeMutableRawPointer?) {
+        let pending = continuation
+        continuation = nil
+        pending?.resume(returning: success)
+    }
+}
+
 @MainActor
 final class BrowserPrintView: NSView {
     private let session: BrowserPrintSession
     private(set) var output: PrintImages
     private(set) var failure: Error?
+    weak var operation: NSPrintOperation?
     override var isFlipped: Bool { true }
     init(session: BrowserPrintSession,output: PrintImages) {
         self.session = session; self.output = output
@@ -199,7 +227,7 @@ final class BrowserPrintView: NSView {
     override func knowsPageRange(_ range: NSRangePointer) -> Bool {
         do {
             try session.validate()
-            if let info = NSPrintOperation.current?.printInfo {
+            if let info = operation?.printInfo ?? NSPrintOperation.current?.printInfo {
                 let profile = try PrintProfile.from(info)
                 if profile != output.profile { output = try session.render(profile) }
             }
@@ -210,7 +238,7 @@ final class BrowserPrintView: NSView {
             range.pointee = NSRange(location: 1,length: output.pages.count)
         } catch {
             failure = error
-            NSPrintOperation.current?.printInfo.jobDisposition = .cancel
+            (operation?.printInfo ?? NSPrintOperation.current?.printInfo)?.jobDisposition = .cancel
             range.pointee = NSRange(location: 1,length: 0)
         }
         return true
@@ -219,9 +247,9 @@ final class BrowserPrintView: NSView {
         do {
             try session.validate()
             if let failure { throw failure }
-            if let info = NSPrintOperation.current?.printInfo { _ = try PrintProfile.from(info) }
+            if let info = operation?.printInfo ?? NSPrintOperation.current?.printInfo { _ = try PrintProfile.from(info) }
         }
-        catch { failure = error; NSPrintOperation.current?.printInfo.jobDisposition = .cancel }
+        catch { failure = error; (operation?.printInfo ?? NSPrintOperation.current?.printInfo)?.jobDisposition = .cancel }
         super.beginDocument()
     }
     override func rectForPage(_ page: Int) -> NSRect {

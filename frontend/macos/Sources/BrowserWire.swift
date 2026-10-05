@@ -26,6 +26,7 @@ enum JSONValue: Encodable, Sendable {
 enum BrowserCommand: Encodable, Sendable {
     case unit(String), values(String, [String: JSONValue])
     case textInput(TextInputContext, TextInputAction)
+    case accessibilityText(AccessibilityTextContext, AccessibilityTextAction)
     case find(UInt64, TextInputContext, FindAction)
     case contextMenuLink(PageMenuContext, PageMenuLinkAction)
     case viewport(Double, Double, Double, backingScale: Double? = nil)
@@ -39,6 +40,10 @@ enum BrowserCommand: Encodable, Sendable {
     case navigationSession(NavigationSessionAction)
     func encode(to encoder: Encoder) throws {
         switch self {
+        case .accessibilityText(let context, let action):
+            var root = encoder.container(keyedBy: MessageKey.self)
+            var box = root.nestedContainer(keyedBy: MessageKey.self, forKey: MessageKey("AccessibilityText"))
+            try box.encode(context, forKey: MessageKey("context")); try box.encode(action, forKey: MessageKey("action"))
         case .navigationSession(let action):
             var root = encoder.container(keyedBy: MessageKey.self)
             try root.encode(action, forKey: MessageKey("NavigationSession"))
@@ -290,6 +295,7 @@ struct FormResubmission: Decodable, Sendable {
 }
 
 enum BrowserMessage: Decodable, Sendable {
+    case accessibilityTextState(AccessibilityTextReply)
     case navigationSessionState(NavigationSessionState), sessionUnavailable
     case assistantResult(AssistantPageResult), assistantUnavailable, translation(TranslationState), translationUnavailable
     case fileInputState(FileInputState)
@@ -332,6 +338,9 @@ enum BrowserMessage: Decodable, Sendable {
         case "FormResubmissionResolved":
             struct Resolution: Decodable { let confirmation_id: UInt64 }
             self = .formResubmissionResolved(try object.decode(Resolution.self, forKey: key).confirmation_id)
+        case "AccessibilityTextState":
+            if let reply = try? object.decode(AccessibilityTextReply.self, forKey: key), reply.valid { self = .accessibilityTextState(reply) }
+            else { self = .unknown }
         case "PrintState": self = .printState(try object.decode(PrintReply.self,forKey: key))
         case "FileInputState": self = .fileInputState(try object.decode(FileInputState.self,forKey: key))
         case "Hello": self = .hello(try object.decode(Hello.self, forKey: key).protocol_version)

@@ -352,6 +352,7 @@ impl Page {
                 }
             }
             self.native_focus_at(next);
+            self.reveal_native_text_focus();
             if next.is_none() {
                 self.native_focus_generation = self.native_focus_generation.wrapping_add(1);
                 self.native_focus_exit = Some(if shift {

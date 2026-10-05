@@ -113,9 +113,12 @@ final class PrintingTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: file) }
         info.jobDisposition = .save; info.dictionary()[NSPrintInfo.AttributeKey.jobSavingURL] = file
         let operation = NSPrintOperation(view: view,printInfo: info); operation.showsPrintPanel = false; operation.showsProgressPanel = false
+        view.operation = operation
         let previous = NSPrintOperation.current
         defer { NSPrintOperation.current = previous }
-        NSPrintOperation.current = operation
+        // Document-modal callbacks must retain the owning job's settings even
+        // when AppKit has cleared its thread-local current operation.
+        NSPrintOperation.current = nil
         operation.printInfo.scalingFactor = 0.01
         var range = NSRange(location: 0,length: 99)
         XCTAssertTrue(view.knowsPageRange(&range)); XCTAssertEqual(range.length,0); XCTAssertNotNil(view.failure)
@@ -140,5 +143,39 @@ final class PrintingTests: XCTestCase {
         let info = BrowserPrintView.info(); info.scalingFactor = 0.01
         XCTAssertThrowsError(try PrintProfile.from(info))
         XCTAssertFalse(PrintProfile(width_points: .infinity,height_points: 100).valid)
+    }
+
+    func testAccessibilityBroadcastsWhilePrintPanelWaitsPreserveCapturedJob() async throws {
+        let fixture = try HTTPFixture(); defer { fixture.stop() }
+        let launcher = Bundle(for: Self.self).bundleURL.deletingLastPathComponent().appendingPathComponent("BlueIce.app/Contents/MacOS/blueice-launcher")
+        let workspace = BrowserWorkspace(); await workspace.start(launcher: launcher)
+        defer { Task { await workspace.stop() } }
+        let model = try XCTUnwrap(workspace.models[1]); model.address = fixture.origin + "/printing"; model.navigateAddress()
+        await wait { model.canPrint && model.representation?.url == fixture.origin + "/printing" }
+        let page = try XCTUnwrap(model.representation)
+        let node = try XCTUnwrap(page.nodes.first { $0.role == .textBox })
+        let document = try XCTUnwrap(model.textInputState?.document_generation)
+        let printer = try BrowserPrintSession(runtime: workspace.session.runtimeDirectory,tab: 1,context: 1,window: 1,source: page.frameSource,document: document)
+        defer { printer.end() }
+        let info = BrowserPrintView.info(); let profile = try PrintProfile.from(info)
+        let output = try printer.render(profile)
+        // An open native panel may wait while assistive technology reads the
+        // page. Its unrelated broadcasts must not prune the print connection.
+        for _ in 0..<1_000 {
+            guard case .state = model.accessibilityText(page,epoch: model.accessibilityEpoch,node: node,action: .inspect) else {
+                XCTFail("The live native text query must remain available"); return
+            }
+        }
+        try await Task.sleep(for: .seconds(6))
+        try printer.validate()
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent("bi-print-broadcast-" + UUID().uuidString + ".pdf")
+        defer { try? FileManager.default.removeItem(at: file) }
+        info.jobDisposition = .save; info.dictionary()[NSPrintInfo.AttributeKey.jobSavingURL] = file
+        let view = BrowserPrintView(session: printer,output: output)
+        let operation = NSPrintOperation(view: view,printInfo: info); view.operation = operation
+        operation.showsPrintPanel = false; operation.showsProgressPanel = false
+        XCTAssertTrue(operation.run()); XCTAssertNil(view.failure)
+        XCTAssertEqual(try XCTUnwrap(CGPDFDocument(file as CFURL)).numberOfPages,output.pages.count)
+        await workspace.stop()
     }
 }

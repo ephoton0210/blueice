@@ -15,6 +15,24 @@ fn go_back_uses_the_same_navigation_completion_barrier_and_returns_restored_stat
                 reply_tab(
                     s,
                     7,
+                    &ServerMessage::AccessibilityTextState(
+                        blueice_ipc::accessibility::AccessibilityTextReply {
+                            context: blueice_ipc::accessibility::AccessibilityTextContext {
+                                version: 1,
+                                frame_source: 9,
+                                document_generation: 3,
+                                frame_generation: 8,
+                                node_id: 7,
+                            },
+                            result: blueice_ipc::accessibility::AccessibilityTextResult::Index(
+                                None,
+                            ),
+                        },
+                    ),
+                );
+                reply_tab(
+                    s,
+                    7,
                     &ServerMessage::PrintState(blueice_ipc::printing::PrintReply::Ended {
                         ticket: "a".repeat(32),
                     }),

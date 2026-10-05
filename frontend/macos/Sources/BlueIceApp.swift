@@ -97,6 +97,7 @@ final class BrowserAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
         if initial { cascadePoint = NSPoint(x: window.frame.minX + 32, y: window.frame.maxY - 32) }
         else { cascadePoint = window.cascadeTopLeft(from: cascadePoint) }
         browserWindows[model.windowID] = window
+        model.nativeWindow = window
         window.makeKeyAndOrderFront(nil)
     }
     func windowDidBecomeKey(_ notification: Notification) {

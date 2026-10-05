@@ -18,7 +18,35 @@ pushed to the current tracked branch as authorized by the owner.
 | Downloads and printing | Actual download manager/shelf, progress/cancel/open/reveal, print/PDF media output and native panel tests | Native manager panel and linked-file downloads committed and pushed `b62b38aa7`, see [download results](MACOS_DOWNLOAD_RESULTS.md); core print-media pagination and native print/PDF committed and pushed `0d2e3ea58`, acceptance recorded in [print results](MACOS_PRINT_RESULTS.md); automatic response downloads, destination/credential UI, quarantine, vector PDF and physical-printer acceptance pending |
 | Trusted browser panels | Assistant results and human permission decisions using the private owner boundary, policy-denial and no-AI-grant tests | Native installed-extension permission child and two-step one-shot confirmation committed and pushed `f83c94152`, see [permission results](MACOS_PERMISSION_RESULTS.md). Native assistant settings and proposal decisions committed and pushed `b53a91111`, see [assistant settings results](MACOS_ASSISTANT_SETTINGS_RESULTS.md). Native assistant result/sidebar and translation surfaces implemented and accepted, see [assistant page results](MACOS_ASSISTANT_PAGE_RESULTS.md). Remaining permission UI pending |
 | macOS display and system integration | DPI/multi-monitor, zoom, theme/high contrast/reduced motion, fullscreen, localization and native menu/shortcut tests | Retina/CSS viewport, per-tab zoom and native fullscreen committed and pushed `91f2dd78c`, see [viewport results](MACOS_VIEWPORT_RESULTS.md); persistent appearance/contrast/motion and CSS media committed and pushed `0609c8a81`, recorded in [display results](MACOS_DISPLAY_PREFERENCES_RESULTS.md); physical system/monitor transitions and localization pending |
-| Full accessibility and final audit | Text ranges/live regions and supported rotor operations; actual screen-reader action; final integration, design/UI acceptance and documented remaining core limitations | Pending |
+| Full accessibility and final audit | Text ranges/live regions and supported rotor operations; actual screen-reader action; final integration, design/UI acceptance and documented remaining core limitations | Native text-control ranges, geometry, selection and editing implemented and accepted, see [accessibility text results](MACOS_ACCESSIBILITY_TEXT_RESULTS.md). Document text selection, live regions, rotors and physical VoiceOver remain pending |
+
+## Native accessibility text-control contract
+
+AppKit parameterized text callbacks use a private synchronous broker connection
+with a bounded whole-exchange deadline. Context/window/tab membership and the
+exact frame source, document generation, frame generation and node fence every
+request. Core owns text, UTF-16 scalar-boundary validation, extended grapheme
+ranges, visual lines, geometry, native focus, scroll offsets and transactions.
+The frontend only maps CSS document coordinates to/from its native screen view.
+Read queries preserve focus, selection and pixels. Frame/viewport notifications
+precede a mutation's AX reply and remain owned by the normal browser reader.
+Timed-out writes are discarded without retry.
+
+Editable text inputs and textarea support AXValue and selected-text writes;
+read-only fields support selection and reject edits before focus changes.
+Disabled, stale or unsupported controls cannot edit through this boundary.
+Password plaintext is absent from replies, values, substring/attributed/RTF
+queries and selected text. Visible-range writes scroll inside the control
+without moving focus or selection. Selection/editing shares native Undo/Redo
+and ends existing marked composition before recording an atomic edit.
+Paragraph text selection, rich font attributes, live regions, rotors and
+physical VoiceOver remain separate delivery work.
+
+Complete acceptance passed: 166 native tests with one physical Zhuyin skip and
+7,233 Rust workspace tests with 69 ignored. Print/AX exchanges no longer keep
+idle broker readers while AppKit panels wait. The dated result and distinct
+frozen input scopes are recorded in
+[accessibility text results](MACOS_ACCESSIBILITY_TEXT_RESULTS.md).
 
 ## Native editing contract
 
@@ -399,9 +427,15 @@ request/tab/ticket/revision checks distinguish the job's replies. Tickets name
 read-only jobs and confer no private owner or human authority. Job pixels use a
 private subdirectory, separate from screen generations and frame retention.
 Release, invalidation, timeout expiry and core teardown remove the print files.
+Each print exchange handshakes on its own connection and closes it before the
+panel waits; unrelated Accessibility broadcasts cannot fill an idle print reader.
 
 The AppKit panel supplies paper size, orientation, scale and page selection.
-Its PDF destination uses the actual system Save dialog. Numeric controls can
+Its PDF destination uses the actual system Save dialog.
+The document-modal panel yields the MainActor until AppKit's completion callback;
+both Save PDF and Cancel release the captured job and permit another invocation.
+Preview callbacks read the owning operation's settings even without a current
+thread-local operation. Numeric controls can
 publish intermediate values (8 while entering 80); a valid later profile clears
 preview failure, while an invalid source or final profile cancels delivery.
 Printable default names remove path separators/control characters. Actual UI

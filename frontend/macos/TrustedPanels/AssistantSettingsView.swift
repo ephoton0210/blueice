@@ -71,6 +71,7 @@ struct AssistantSettingsView: View {
                     else { Text("Settings unavailable. Refresh to inspect the owned launcher.") }
                 }.frame(maxWidth: .infinity, alignment: .leading)
             }
+            .accessibilityIdentifier("assistant-settings-editor")
             // Keep the decisive controls outside scrolling model metadata.
             // The complete bounded differences remain scrollable above them.
             if let confirmation = model.confirmation, let state = model.state {

@@ -10,6 +10,26 @@ import Darwin
 
 @MainActor
 final class BrowserUITests: XCTestCase {
+    private var printPanel: XCUIElement { app.sheets.containing(.menuButton,identifier: "PDF").firstMatch }
+    private func positionWindowForUnobstructedSheet(_ window: XCUIElement) {
+        // Keep owned sheets clear of the host's existing Local Network prompt.
+        // Move only BlueIce; the system prompt and its permissions remain untouched.
+        if window.frame.width > 900 {
+            let corner = window.coordinate(withNormalizedOffset: CGVector(dx: 1, dy: 1))
+                .withOffset(CGVector(dx: -2, dy: -2))
+            corner.click(forDuration: 0.2, thenDragTo: corner.withOffset(
+                CGVector(dx: 900 - window.frame.width, dy: 0)))
+            XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+                abs(window.frame.width - 900) < 3
+            }, object: window)], timeout: 10), .completed)
+        }
+        let titleBar = window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.02))
+        titleBar.click(forDuration: 0.1, thenDragTo: titleBar.withOffset(
+            CGVector(dx: 40 - window.frame.minX, dy: 40 - window.frame.minY)))
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            abs(window.frame.minX - 40) < 3 && abs(window.frame.minY - 40) < 3
+        }, object: window)], timeout: 10), .completed)
+    }
     private func configureAssistant(_ model: AssistantModelFixture) throws {
         let settings: [String: Any] = ["version": 1, "backend": "loopback", "idle_timeout_secs": 600,
             "nice": 10, "max_resident_mb": 2048, "candle": NSNull(),
@@ -134,7 +154,14 @@ final class BrowserUITests: XCTestCase {
     }
     private func editAssistantField(_ panels: XCUIApplication, _ identifier: String, _ text: String) {
         let field = panels.textFields[identifier]
-        XCTAssertTrue(field.waitForExistence(timeout: 5)); field.click()
+        let editor = panels.scrollViews["assistant-settings-editor"]
+        for _ in 0..<4 {
+            if field.exists && field.isHittable { break }
+            let delta: CGFloat = field.exists && field.frame.minY < editor.frame.minY ? 220 : -220
+            editor.scroll(byDeltaX: 0,deltaY: delta)
+        }
+        XCTAssertTrue(field.waitForExistence(timeout: 5),panels.debugDescription)
+        XCTAssertTrue(field.isHittable,panels.debugDescription); field.click()
         field.typeKey("a", modifierFlags: .command); field.typeText(text)
     }
     func testNativeAssistantSettingsReviewCancelApplyAndRelaunch() throws {
@@ -203,6 +230,7 @@ final class BrowserUITests: XCTestCase {
         launch()
         let panels = openAssistantSettings()
         panels.popUpButtons["assistant-backend"].click(); panels.menuItems["Loopback server"].click()
+        waitPermissionValue(panels.popUpButtons["assistant-backend"],"Loopback server")
         editAssistantField(panels, "assistant-model", "local-model")
         editAssistantField(panels, "assistant-base-url", "http://example.com:11434/v1/")
         panels.buttons["assistant-settings-review"].click()
@@ -220,6 +248,7 @@ final class BrowserUITests: XCTestCase {
         XCTAssertFalse(panels.buttons["assistant-settings-confirm"].exists)
         XCTAssertFalse(FileManager.default.fileExists(atPath: assistantSettingsFile.path))
         panels.popUpButtons["assistant-backend"].click(); panels.menuItems["Loopback server"].click()
+        waitPermissionValue(panels.popUpButtons["assistant-backend"],"Loopback server")
         editAssistantField(panels, "assistant-model", "local-model")
         panels.buttons["assistant-settings-review"].click(); panels.buttons["assistant-settings-confirm"].click()
         waitPermissionValue(panels.staticTexts["assistant-settings-notice"], "Assistant settings applied.")
@@ -518,7 +547,7 @@ final class BrowserUITests: XCTestCase {
         waitValue(app.staticTexts["status"],"Ready")
         let requests = fixture.requests
         app.typeKey("p",modifierFlags: .command)
-        let panel = app.dialogs["Print"]
+        let panel = printPanel
         XCTAssertTrue(panel.buttons["Cancel"].waitForExistence(timeout: 15),app.debugDescription)
         let landscape = panel.radioButtons[" Landscape"]
         XCTAssertTrue(landscape.exists,panel.debugDescription); landscape.click()
@@ -551,9 +580,20 @@ final class BrowserUITests: XCTestCase {
         folder.click(); folder.typeKey("a",modifierFlags: .command); NSPasteboard.general.clearContents(); NSPasteboard.general.setString(root.path,forType: .string); folder.typeKey("v",modifierFlags: .command); folder.typeKey(.return,modifierFlags: [])
         save.buttons["Save"].click()
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"),object: panel)],timeout: 15),.completed)
-        app.menuBars.menuBarItems["File"].click()
-        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == true"),object: app.menuItems["Print…"])],timeout: 15),.completed)
-        app.typeKey(.escape,modifierFlags: [])
+        // Saving can hide the panel before NSPrintOperation finishes. Menu
+        // validation follows user events; do not hold a stale menu snapshot
+        // open while waiting for the print operation's completion.
+        let printableAgain = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            self.app.typeKey(.escape,modifierFlags: [])
+            self.app.menuBars.menuBarItems["File"].click()
+            return self.app.menuItems["Print…"].isEnabled
+        },object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [printableAgain],timeout: 15),.completed,app.debugDescription)
+        app.menuItems["Print…"].click()
+        let secondCancel = printPanel.buttons["Cancel"]
+        XCTAssertTrue(secondCancel.waitForExistence(timeout: 15),app.debugDescription)
+        secondCancel.click()
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"),object: panel)],timeout: 15),.completed)
         XCTAssertTrue(app.groups["page"].textFields["Print editor"].waitForExistence(timeout: 15))
         let document = try XCTUnwrap(CGPDFDocument(file as CFURL))
         let pdfAttachment = XCTAttachment(data: try Data(contentsOf: file),uniformTypeIdentifier: "com.adobe.pdf"); pdfAttachment.name = "macos-core-print.pdf"; pdfAttachment.lifetime = .keepAlways; add(pdfAttachment)
@@ -587,7 +627,7 @@ final class BrowserUITests: XCTestCase {
         XCTAssertTrue(editor.waitForExistence(timeout: 15)); paste("Print retained 中文",into: editor); waitValue(editor,"Print retained 中文")
         let requests = fixture.requests
         app.menuBars.menuBarItems["File"].click(); app.menuItems["Print…"].click()
-        let cancel = app.dialogs["Print"].buttons["Cancel"]
+        let cancel = printPanel.buttons["Cancel"]
         XCTAssertTrue(cancel.waitForExistence(timeout: 15),app.debugDescription)
         let attachment = XCTAttachment(screenshot: app.screenshot()); attachment.name = "macos-native-print-panel"; attachment.lifetime = .keepAlways; add(attachment)
         cancel.click()
@@ -607,6 +647,7 @@ final class BrowserUITests: XCTestCase {
         app.launchArguments += ["--downloads-directory",files.path,"--downloads-data-directory",root.appendingPathComponent("data").path]
         let saved = saveClipboard(); defer { NSPasteboard.general.clearContents(); NSPasteboard.general.writeObjects(saved) }
         launch()
+        positionWindowForUnobstructedSheet(app.windows["browser-window"])
         XCTAssertFalse(FileManager.default.fileExists(atPath: files.path))
         app.menuBars.menuBarItems["File"].click(); app.menuItems["Downloads…"].click()
         XCTAssertTrue(app.staticTexts["downloads-empty"].waitForExistence(timeout: 10))
@@ -655,10 +696,13 @@ final class BrowserUITests: XCTestCase {
         app.buttons["download-remove-4"].click()
         startDownload(fixture.origin + "/large-exit.txt",name: "exit.txt"); waitDownload(5,"Downloading")
         app.buttons["downloads-close"].click()
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "exists == false"), object: app.buttons["downloads-close"])], timeout: 10), .completed)
         app.windows["browser-window"].buttons[XCUIIdentifierCloseWindow].click()
         XCTAssertTrue(app.wait(for: .notRunning,timeout: 15))
         let before = fixture.requests.count
-        launch(); app.buttons["downloads"].click(); waitDownload(5,"Paused")
+        launch(); positionWindowForUnobstructedSheet(app.windows["browser-window"])
+        app.buttons["downloads"].click(); waitDownload(5,"Paused")
         XCTAssertEqual(fixture.requests.count,before,"Reopening the catalog must not restart a transfer")
         waitDownload(1,"Completed")
         XCTAssertFalse(app.staticTexts["download-state-2"].exists)
@@ -787,11 +831,12 @@ final class BrowserUITests: XCTestCase {
         let second = app.windows["browser-window-2"]
         XCTAssertTrue(second.waitForExistence(timeout: 15)); enter(fixture.origin + "/editing", in: second)
         XCTAssertTrue(second.textFields["Editor"].waitForExistence(timeout: 15)); paste("unsaved-form-content", into: second.textFields["Editor"])
+        positionWindowForUnobstructedSheet(second)
         app.menuBars.menuBarItems["Profiles"].click(); app.menuItems["New Profile…"].click()
         XCTAssertTrue(app.textFields["profile-name"].waitForExistence(timeout: 10)); paste("Work", into: app.textFields["profile-name"])
         app.buttons["profile-save"].click()
         let third = app.windows["browser-window-3"]
-        XCTAssertTrue(third.waitForExistence(timeout: 15)); enter(fixture.origin + "/appearance", in: third)
+        XCTAssertTrue(third.waitForExistence(timeout: 15), app.debugDescription); enter(fixture.origin + "/appearance", in: third)
         waitValue(third.textFields["address"], fixture.origin + "/appearance")
         let settings = preferenceWindow(); try enableSessionRestoration(settings, windows: 3, tabs: 4)
         settings.buttons[XCUIIdentifierCloseWindow].click(); activateWindow(3)
@@ -961,8 +1006,22 @@ final class BrowserUITests: XCTestCase {
         secret.click(); secret.typeKey("a", modifierFlags: .command); secret.typeKey("v", modifierFlags: .command)
         app.menuBars.menuBarItems["Edit"].click(); XCTAssertTrue(app.menuItems["Undo"].isEnabled); app.menuItems["Undo"].click()
         app.menuBars.menuBarItems["Edit"].click(); XCTAssertTrue(app.menuItems["Redo"].isEnabled); app.menuItems["Redo"].click()
+        // AppKit's idle state does not acknowledge the core's queued Redo.
+        // Revalidate the native menu until that edit has consumed its redo
+        // entry before starting a new pointer focus transition.
+        let redoFinished = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            self.app.typeKey(.escape,modifierFlags: [])
+            self.app.menuBars.menuBarItems["Edit"].click()
+            return self.app.menuItems["Undo"].isEnabled && !self.app.menuItems["Redo"].isEnabled
+        },object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [redoFinished],timeout: 15),.completed,app.debugDescription)
+        app.typeKey(.escape,modifierFlags: [])
         XCTAssertFalse(app.debugDescription.contains("temporary-secret")); XCTAssertFalse(app.debugDescription.contains("private-fixture-secret"))
         let readonly = page.textFields["Readonly"]; readonly.click()
+        let readonlyFocused = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            readonly.debugDescription.components(separatedBy: "\n").first?.contains("Keyboard Focused") == true
+        },object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [readonlyFocused],timeout: 15),.completed,app.debugDescription)
         app.menuBars.menuBarItems["Edit"].click(); XCTAssertFalse(app.menuItems["Undo"].isEnabled); XCTAssertFalse(app.menuItems["Redo"].isEnabled); app.typeKey(.escape, modifierFlags: [])
         readonly.typeKey("z", modifierFlags: .command); waitValue(readonly, "locked")
         XCTAssertEqual(fixture.requests, ["/editing"])
@@ -1032,8 +1091,8 @@ final class BrowserUITests: XCTestCase {
             if app.sheets["GoToWindow"].exists { app.typeKey(.escape,modifierFlags: []) }
             if app.sheets["save-panel"].buttons["CancelButton"].exists { app.sheets["save-panel"].buttons["CancelButton"].click() }
             if app.sheets["alert"].buttons["OK"].exists { app.sheets["alert"].buttons["OK"].click() }
-            if app.dialogs["Print"].menus.firstMatch.exists { app.typeKey(.escape,modifierFlags: []) }
-            if app.dialogs["Print"].buttons["Cancel"].exists { app.dialogs["Print"].buttons["Cancel"].click() }
+            if printPanel.menus.firstMatch.exists { app.typeKey(.escape,modifierFlags: []) }
+            if printPanel.buttons["Cancel"].exists { printPanel.buttons["Cancel"].click() }
             if app.buttons["downloads-close"].exists { app.buttons["downloads-close"].click() }
             let deadline = Date().addingTimeInterval(15)
             while app.state != .notRunning, Date() < deadline {
@@ -1828,6 +1887,34 @@ final class BrowserUITests: XCTestCase {
         add(attachment)
     }
 
+    func testAccessibleUnicodeTextControlsEditingScrollingAndReload() throws {
+        let fixture = try HTTPFixture(); defer { fixture.stop() }
+        launch(); enter(fixture.origin + "/accessibility-text")
+        let page = app.groups["page"]
+        let editor = page.textFields["Unicode editor"]
+        waitValue(editor, "A😀é👨‍👩‍👧‍👦B")
+        editor.click(); editor.typeKey("a", modifierFlags: .command); editor.typeText("x")
+        waitValue(editor, "x")
+        editor.typeKey("z", modifierFlags: .command)
+        waitValue(editor, "A😀é👨‍👩‍👧‍👦B")
+        let long = page.textFields["Long editor"]
+        XCTAssertTrue(long.exists)
+        long.click(); long.typeKey(.rightArrow, modifierFlags: .command); long.typeKey(.delete, modifierFlags: [])
+        waitValue(long, String(repeating: "x", count: 1500) + "尾")
+        long.typeText("visible")
+        waitValue(long, String(repeating: "x", count: 1500) + "尾visible")
+        let notes = page.textFields["Scrollable notes"]
+        notes.click(); notes.typeKey(.downArrow, modifierFlags: .command); notes.typeText("end")
+        waitValue(notes, String(repeating: "row\n", count: 50) + "end")
+        waitValue(page.textFields["Readonly"], "locked")
+        XCTAssertFalse(app.debugDescription.contains("private-fixture-secret"))
+        let attachment = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
+        attachment.name = "macos-accessibility-text"; attachment.lifetime = .keepAlways; add(attachment)
+        app.buttons["reload"].click()
+        waitValue(editor, "A😀é👨‍👩‍👧‍👦B")
+        waitValue(long, String(repeating: "x", count: 1500) + "尾😀")
+    }
+
     func testAccessibleLinkNavigationDropsOldDocumentElements() throws {
         let fixture = try HTTPFixture()
         defer { fixture.stop() }
@@ -2022,7 +2109,16 @@ final class BrowserUITests: XCTestCase {
         app.buttons["tab-1"].click()
         waitValue(page.textFields["Name"], "first tab")
         waitValue(page.textFields["External"], "first outside")
-        page.buttons["Disabled reset"].coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
+        let disabledReset = page.buttons["Disabled reset"], window = app.windows["browser-window"]
+        XCTAssertFalse(disabledReset.isEnabled)
+        let disabledFrame = disabledReset.frame
+        XCTAssertGreaterThan(disabledFrame.width, 0); XCTAssertGreaterThan(disabledFrame.height, 0)
+        XCTAssertTrue(window.frame.contains(disabledFrame))
+        // A coordinate based on a disabled element can fall back to the window
+        // center. Anchor its actual frame to the enabled window instead.
+        window.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(
+            dx: disabledFrame.midX - window.frame.minX,
+            dy: disabledFrame.midY - window.frame.minY)).click()
         waitValue(page.textFields["Name"], "first tab")
         XCTAssertTrue(page.buttons["Reset external"].exists, app.debugDescription)
         page.buttons["Reset external"].click()

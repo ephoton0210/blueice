@@ -101,7 +101,9 @@ final class CorePageView: NSView, NSTextInputClient, NSUserInterfaceValidations 
     var image: CGImage?
     var pageFocusSerial: UInt64 = 0
     private let filePicker = BrowserFilePicker()
-    lazy var accessibilityTree = PageAccessibilityTree(view: self) { [weak self] snapshot, epoch, node, action in
+    lazy var accessibilityTree = PageAccessibilityTree(view: self, text: { [weak self] snapshot, epoch, node, action in
+        self?.model?.accessibilityText(snapshot, epoch: epoch, node: node, action: action)
+    }) { [weak self] snapshot, epoch, node, action in
         if let self, action == .press, node.state.fileInput, let model = self.model, let window = self.window,
            model.selected == snapshot.tabID, model.accessibilityEpoch == epoch,
            model.representation?.generation == snapshot.generation {

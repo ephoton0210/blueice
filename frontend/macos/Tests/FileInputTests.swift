@@ -38,11 +38,20 @@ final class FileInputTests: XCTestCase {
         let workspace = BrowserWorkspace(); await workspace.start(launcher: launcher)
         defer { Task { await workspace.stop() } }
         let model = try XCTUnwrap(workspace.models[1]); model.address = fixture.origin + "/file-input"; model.navigateAddress()
-        let deadline = Date().addingTimeInterval(15)
-        while model.representation?.url != fixture.origin + "/file-input" || model.textInputState == nil {
-            guard Date() < deadline else { XCTFail("File document did not load"); return }
-            try await Task.sleep(for: .milliseconds(20))
+        func waitForFileDocument(value: String? = nil) async throws {
+            let deadline = Date().addingTimeInterval(15)
+            func current() -> Bool {
+                guard let page = model.representation, page.url == fixture.origin + "/file-input",
+                      page.generation == model.generation, model.textInputState?.frame_generation == page.generation,
+                      let file = page.nodes.first(where: { $0.name == "Upload files" }) else { return false }
+                return value.map { file.state.value == $0 } ?? true
+            }
+            while !current() {
+                guard Date() < deadline else { XCTFail("File document did not finish refreshing"); return }
+                try await Task.sleep(for: .milliseconds(20))
+            }
         }
+        try await waitForFileDocument()
         let node = try XCTUnwrap(model.representation?.nodes.first(where: { $0.name == "Upload files" }))
         XCTAssertEqual(node.role,.button); XCTAssertTrue(node.state.fileInput)
         let sheets = NSApp.windows.filter { $0.sheetParent != nil }.count
@@ -52,6 +61,7 @@ final class FileInputTests: XCTestCase {
         XCTAssertEqual(NSApp.windows.filter { $0.sheetParent != nil }.count,sheets)
         let applied = await model.setFileInput(state.context,files: [SelectedFile(name:"selected.bin",media_type:"application/octet-stream",bytes:[0,255,7])],tab: 1)
         XCTAssertTrue(applied)
+        try await waitForFileDocument(value: "selected.bin")
         let next = await model.prepareFileInput(node.id)
         let updated = try XCTUnwrap(next)
         XCTAssertEqual(updated.names,["selected.bin"])

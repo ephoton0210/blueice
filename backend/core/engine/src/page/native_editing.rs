@@ -12,6 +12,7 @@ use blueice_ipc::input::{
 };
 use unicode_segmentation::UnicodeSegmentation;
 
+mod accessibility;
 mod geometry;
 #[cfg(test)]
 mod tests;
@@ -551,22 +552,24 @@ impl Page {
         }
     }
 
+    pub(super) fn reveal_native_text_focus(&mut self) {
+        if let Some((editor, _)) = self.live_editor() {
+            self.native_editor = Some(editor);
+            self.relayout();
+        }
+    }
+
     pub(super) fn adjust_native_editor_scroll(&mut self) {
-        let Some((editor, info)) = self.live_editor() else {
-            return;
-        };
-        let Some(geometry) = geometry::Geometry::new(self, &editor, info) else {
-            return;
-        };
-        let caret = geometry.caret(editor.cursor);
-        let right = geometry.clip.x + geometry.clip.width - 1.0;
-        let bottom = geometry.clip.y + geometry.clip.height;
-        let dx = (caret.x + caret.width - right).max(0.0);
-        let dy = if info.multiline {
-            (caret.y + caret.height - bottom).max(0.0)
-        } else {
-            0.0
-        };
+        fn controls(fragment: &Fragment, nodes: &mut Vec<NodeId>) {
+            if let blueice_layout::FragmentKind::NativeControl { form: None, .. } = fragment.kind {
+                if let Some(node) = fragment.node {
+                    nodes.push(node);
+                }
+            }
+            for child in &fragment.children {
+                controls(child, nodes);
+            }
+        }
         fn translate(fragment: &mut Fragment, node: NodeId, dx: f64, dy: f64) {
             if fragment.node == Some(node)
                 && matches!(
@@ -584,7 +587,51 @@ impl Page {
                 translate(child, node, dx, dy);
             }
         }
-        translate(&mut self.fragment, editor.node, dx, dy);
+        let target = self.native_text_scroll_target.take();
+        let mut nodes = Vec::new();
+        controls(&self.fragment, &mut nodes);
+        self.native_text_scroll
+            .retain(|node, _| nodes.contains(node));
+        for node in nodes {
+            let Some(info) = control_info(&self.doc, node) else {
+                continue;
+            };
+            let value = control_value(&self.doc, node, info);
+            if length(&value) as usize > MAX_EDIT_TEXT_UTF16 {
+                continue;
+            }
+            let editor = self
+                .native_editor
+                .as_ref()
+                .filter(|e| e.node == node && e.observed == value)
+                .cloned()
+                .unwrap_or_else(|| EditorSession::new(node, value));
+            let Some(geometry) = geometry::Geometry::new(self, &editor, info) else {
+                continue;
+            };
+            let old = self
+                .native_text_scroll
+                .get(&node)
+                .copied()
+                .unwrap_or((0.0, 0.0));
+            let requested = target
+                .filter(|(id, _)| *id == node)
+                .map(|(_, range)| range)
+                .or_else(|| {
+                    (self.focused == Some(node)
+                        && self
+                            .native_editor
+                            .as_ref()
+                            .is_some_and(|e| e.node == node && e.observed == editor.observed))
+                    .then_some(TextRange {
+                        location: editor.cursor,
+                        length: 0,
+                    })
+                });
+            let (dx, dy) = geometry.scroll_offsets(old, requested, info.multiline);
+            self.native_text_scroll.insert(node, (dx, dy));
+            translate(&mut self.fragment, node, dx, dy);
+        }
     }
 
     pub(super) fn paint_native_editor(&self, frame: &mut Frame) {

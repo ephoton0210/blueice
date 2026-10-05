@@ -1845,6 +1845,7 @@ mod unix {
                     | ServerMessage::ViewportState(_)
                     | ServerMessage::FileInputState(_)
                     | ServerMessage::PrintState(_)
+                    | ServerMessage::AccessibilityTextState(_)
                     | ServerMessage::DisplayPreferencesState(_)
                     | ServerMessage::ContextMenu(_)
                     | ServerMessage::ContextMenuLink { .. }

@@ -888,6 +888,30 @@ pub(super) fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
                             }
                         }
                     }
+                    ClientMessage::AccessibilityText { context, action } => {
+                        let source = blueice_ipc::shm::frame_source_id(frame_dir);
+                        let Some(page) = tabs.get_mut(target) else {
+                            write_unknown_tab_error(stream, request_id, target)?;
+                            continue;
+                        };
+                        match page.accessibility_text(&context, source, action) {
+                            Ok((changed, result)) => {
+                                if changed {
+                                    send_frame(
+                                        page, stream, frame_dir, generation, reply_tab, request_id,
+                                    )?;
+                                }
+                                let reply = page.accessibility_text_reply(context, result);
+                                blueice_ipc::write_server_message_with_ids(
+                                    stream,
+                                    reply_tab,
+                                    request_id,
+                                    &ServerMessage::AccessibilityTextState(reply),
+                                )?;
+                            }
+                            Err(message) => write_error(stream, reply_tab, request_id, message)?,
+                        }
+                    }
                     ClientMessage::Print(action) => {
                         match print_jobs.handle(tabs, target, frame_dir, action) {
                             Ok(state) => blueice_ipc::write_server_message_with_ids(

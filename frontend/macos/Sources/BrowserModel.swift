@@ -122,12 +122,13 @@ final class BrowserModel: ObservableObject {
     @Published private(set) var printBusy = false
     @Published var printErrorPresented = false
     private(set) var printError = ""
+    weak var nativeWindow: NSWindow?
     var canPrint: Bool {
         ready && !printBusy && generation > 0 && status != "Loading…" && selected != nil
             && representation?.tabID == selected && textInputState?.tab_id == selected
     }
     func printCurrentPage() async {
-        guard canPrint, let tab = selected, let document = textInputState?.document_generation else { return }
+        guard canPrint, let nativeWindow, let tab = selected, let document = textInputState?.document_generation else { return }
         printBusy = true
         defer { printBusy = false }
         let runtime = session.runtimeDirectory
@@ -146,10 +147,12 @@ final class BrowserModel: ObservableObject {
             guard ready, selected == tab, contextID == context else { return }
             let view = BrowserPrintView(session: printer,output: output)
             let operation = NSPrintOperation(view: view,printInfo: info)
+            view.operation = operation
             operation.jobTitle = BrowserPrintView.jobTitle(representation)
             operation.showsPrintPanel = true; operation.showsProgressPanel = true
             operation.printPanel.options = [.showsCopies,.showsPageRange,.showsPaperSize,.showsOrientation,.showsScaling,.showsPreview]
-            _ = operation.run()
+            let completion = BrowserPrintCompletion()
+            _ = await completion.run(operation, for: nativeWindow)
             if let failure = view.failure { throw failure }
         } catch {
             printError = error.localizedDescription; printErrorPresented = true
@@ -885,6 +888,31 @@ final class BrowserModel: ObservableObject {
         guard ready, representationRequests[tab] == nil, let frame = frames[tab] else { return }
         representationRequests[tab] = (documentEpochs[tab, default: 0], frame.generation)
         Task { await send(.unit("GetRepresentation"), tab: tab) }
+    }
+
+    func accessibilityText(_ snapshot: PageRepresentation, epoch: UInt64, node: PageNode, action: AccessibilityTextAction) -> AccessibilityTextResult? {
+        guard ready, selected == snapshot.tabID, accessibilityEpoch == epoch, !textInputBusy,
+              let input = textInputState, input.tab_id == snapshot.tabID,
+              input.frame_generation == snapshot.generation, generation == snapshot.generation,
+              representation?.generation == snapshot.generation,
+              snapshot.frameSource == PageRepresentation.frameSource(directory: session.frameDirectory.path),
+              input.frame_source == snapshot.frameSource, !node.state.disabled, !node.occluded,
+              node.role == .textBox, !node.state.fileInput,
+              node.state.nativeTextInput || node.state.nativeFocusable else { return nil }
+        do {
+            let broker = try BrowserAccessibilityTextSession(runtime: session.runtimeDirectory, tab: snapshot.tabID, context: contextID, window: windowID)
+            // No idle broadcast reader survives a synchronous AX callback.
+            defer { broker.close() }
+            let context = AccessibilityTextContext(version: 1, frame_source: snapshot.frameSource,
+                document_generation: input.document_generation, frame_generation: snapshot.generation, node_id: node.id)
+            let result = try broker.perform(context, action: action)
+            if case .state(let state) = result, state.protected != node.state.protected {
+                throw BrowserFailure.invalid("Accessibility text privacy metadata changed.")
+            }
+            return result
+        } catch {
+            return nil
+        }
     }
 
     func accessibilityAction(_ snapshot: PageRepresentation, epoch: UInt64, node: PageNode, toggleSelect: Bool = false, focusOnly: Bool = false) -> Bool {

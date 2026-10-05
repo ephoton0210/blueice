@@ -67,6 +67,8 @@ pub struct Page {
     hovered: Option<NodeId>,
     focused: Option<NodeId>,
     native_editor: Option<native_editing::EditorSession>,
+    native_text_scroll: HashMap<NodeId, (f64, f64)>,
+    native_text_scroll_target: Option<(NodeId, blueice_ipc::input::TextRange)>,
     native_select: native_select::SelectSession,
     native_undo: native_editing::undo::UndoHistory,
     native_focus_generation: u64,
@@ -136,6 +138,8 @@ impl Page {
             hovered: None,
             focused: None,
             native_editor: None,
+            native_text_scroll: HashMap::new(),
+            native_text_scroll_target: None,
             native_select: native_select::SelectSession::default(),
             native_undo: native_editing::undo::UndoHistory::default(),
             native_focus_generation: 0,
@@ -187,6 +191,8 @@ impl Page {
         self.native_form_defaults.clear();
         self.native_select = native_select::SelectSession::default();
         self.native_undo.clear();
+        self.native_text_scroll.clear();
+        self.native_text_scroll_target = None;
         self.native_files.clear();
         self.native_file_revision = self.native_file_revision.wrapping_add(1);
         self.last_navigation = None;
@@ -694,6 +700,8 @@ impl Page {
                 }
                 self.focused = Some(id);
                 self.native_focus_start = Some(id);
+                self.relayout();
+                self.reveal_native_text_focus();
                 None
             }
             NodeAction::SetValue(value) => {
@@ -1083,6 +1091,8 @@ impl Page {
     pub(crate) fn continue_tab_generations_from(&mut self, previous: &Page) {
         self.native_undo.clear();
         self.native_select = native_select::SelectSession::default();
+        self.native_text_scroll.clear();
+        self.native_text_scroll_target = None;
         self.frame_generation = previous.frame_generation;
         self.document_generation = previous.document_generation.wrapping_add(1);
         self.display_viewport = previous.display_viewport;
