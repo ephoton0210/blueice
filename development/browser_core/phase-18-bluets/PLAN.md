@@ -3900,3 +3900,23 @@ and write invalidation; it does not claim general control-flow narrowing.
 The original generator-runtime fixture now checks without modification. The library
 matrix totals 123 cases (61 accepted and 62 rejected); the final K.0 gate passed
 on a frozen Linux snapshot with Rust 1.95, Node 26.7 and TypeScript 5.9.3.
+
+
+### K.1.5 Return-inference oracle before implementation
+
+The pinned TypeScript 5.9.3 compiler records 83 `infer-return-*` verdicts
+(51 accepted, 32 rejected), using strict ES2022 with the same ES2022 library.
+The fixtures cover primitive and union returns, fall-through, void/undefined/null,
+freshness and widening, local/branch scopes, forward and generic calls, recursion,
+async wrapping and awaiting, generator yield/return/next types, accessors and methods,
+arrow/function-expression bodies, namespaces and imported checked signatures.
+Fourteen declaration programs compare exact `.d.ts` output; one linked Node
+program compares runtime output. Three public compiler tests cover emitted signatures,
+importers and recursive inference.
+
+Before implementation the oracle replay and matrix coverage tests pass, while the
+check/build replay, declaration comparison, Node program and all three public tests
+fail. The public declaration still prints `unknown`; an importer accepts an invalid
+string assignment, and recursive return inference lacks its annotation diagnostic.
+This failing replay is committed before the implementation. K.1.5 remains unchecked
+until the complete K.0 gate passes; workspace and coverage remain the M6 milestone.
