@@ -3978,3 +3978,16 @@ review threshold or needs another queued split. The completed K.1.R.1 split is
 retained in the refactoring queue. K.1.5 is checked; the M6 workspace/coverage
 milestone is next. Broader literal freshness, contextual inference, control flow
 and declaration precision remain in K.4/K.8; full TypeScript parity stays off.
+
+
+### M6 workspace replay: imported-type metadata expectation
+
+The first M6 CI run [37373793823](https://github.com/ephoton0210/blueice/actions/runs/37373793823)
+on `930bbb9a1` found an obsolete engine IPC assertion: the imported, annotated
+`answer` binding was still expected to display `unknown`. K.1.3 retains its
+checked `number` type, so the generation-bound, source-free metadata query now
+correctly returns `number`. The assertion and its comment are updated without
+changing protocol or runtime authority. All 26 compiler IPC boundary tests
+pass in the Linux disk-budget runner. Format/check and engine all-target
+Clippy with `-D warnings` also pass. The M6 gate remains unchecked pending
+the complete CI replay on the corrected revision.
