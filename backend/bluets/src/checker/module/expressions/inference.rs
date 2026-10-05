@@ -181,7 +181,9 @@ impl<'a> ModuleChecker<'a> {
         {
             return Type::Number;
         }
-        if let Some(call) = member_call_parts(tokens) {
+        if let Some(call) = member_call_parts(tokens, |start| {
+            self.module.generic_call_type_arguments.contains_key(&start)
+        }) {
             if let Some(signatures) =
                 self.module_member_signatures(call.receiver, &call.member.text, scope)
             {
@@ -451,6 +453,11 @@ impl<'a> ModuleChecker<'a> {
                 // A value in scope (a parameter, a local, a catch binding)
                 // shadows a module function of the same name.
                 if tokens.len() == 1 {
+                    if let Some(value @ Type::Intersection(parts)) = scope.get(&first.text) {
+                        if parts.iter().any(|part| matches!(part, Type::Record(_))) {
+                            return value.clone();
+                        }
+                    }
                     if let Some(signature) =
                         self.functions.get(&first.text).and_then(|set| set.first())
                     {

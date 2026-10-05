@@ -166,6 +166,7 @@ struct CompileSummary {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct BuildMetadata {
+    standard_library: blueice_bluets::standard_library::Identity,
     language_version: &'static str,
     fingerprint: String,
     target: &'static str,
@@ -410,6 +411,7 @@ fn build_metadata(
         .collect();
     let declaration_modules = summary.declaration_modules.keys().cloned().collect();
     BuildMetadata {
+        standard_library: blueice_bluets::standard_library::identity(invocation.options.target),
         language_version: blueice_bluets::LANGUAGE_VERSION,
         fingerprint: summary.fingerprint.clone(),
         target: invocation.options.target.as_str(),

@@ -152,6 +152,53 @@ pub(super) fn is_assignable(
     if actual == expected {
         return true;
     }
+    // Array syntax and the original Array/ReadonlyArray declarations describe
+    // the same elements. Owner replacements retain ordinary structural rules.
+    let library_arguments = |value: &Type, names: &[&str]| match value {
+        Type::Named { name, arguments }
+            if names.contains(&name.as_str())
+                && arguments.len() == 1
+                && aliases.get(name).is_some_and(|definition| {
+                    definition.kind == TypeDefinitionKind::LibraryInterface
+                }) =>
+        {
+            Some(arguments[0].clone())
+        }
+        _ => None,
+    };
+    if let Some(element) = library_arguments(expected, &["Array", "ReadonlyArray"]) {
+        match actual {
+            Type::Array(actual) => {
+                return is_assignable(actual, &element, aliases, visited, budget)
+            }
+            Type::Tuple(actual) => {
+                return actual.iter().all(|part| {
+                    is_assignable(
+                        &part.indexed_type(),
+                        &element,
+                        aliases,
+                        &mut visited.clone(),
+                        budget,
+                    )
+                })
+            }
+            _ => {}
+        }
+    }
+    if let (Some(element), Type::Array(expected)) =
+        (library_arguments(actual, &["Array"]), expected)
+    {
+        return is_assignable(&element, expected, aliases, visited, budget);
+    }
+    if let (Some(actual), Some(expected)) = (
+        library_arguments(actual, &["Iterable"]),
+        library_arguments(expected, &["Iterable"]),
+    ) {
+        if !budget.consume() {
+            return false;
+        }
+        return is_assignable(&actual, &expected, aliases, visited, budget);
+    }
     if let Some(result) = enum_assignability(actual, expected, aliases) {
         return result;
     }
@@ -248,7 +295,9 @@ pub(super) fn is_assignable(
                 parameters: expected_parameters,
                 result: expected_result,
             },
-        ) if actual_parameters.len() == expected_parameters.len() => {
+        ) if actual_parameters.len() <= expected_parameters.len() => {
+            // A callback may ignore trailing arguments supplied by its caller.
+            // Every parameter it does consume must still be compatible.
             expected_parameters
                 .iter()
                 .zip(actual_parameters)

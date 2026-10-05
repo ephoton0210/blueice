@@ -53,7 +53,12 @@ impl<'a> Context<'a> {
                 })
                 .and_then(|symbol| symbol.value_type.as_ref())
                 .unwrap_or(&Type::Unknown);
-            let value = if let Some(name) = context.function_initializer(variable) {
+            let value = if variable.kind == VariableKind::Const
+                && matches!(value, Type::Named { name, arguments } if name == "symbol" && arguments.is_empty())
+                && context.fresh_symbol_initializer(variable)
+            {
+                "unique symbol".to_string()
+            } else if let Some(name) = context.function_initializer(variable) {
                 context.retain(&name);
                 format!("typeof {name}")
             } else {
@@ -136,6 +141,23 @@ impl<'a> Context<'a> {
 
     pub(super) fn variable(&self, name: &str) -> Option<&(String, bool)> {
         self.variables.get(name)
+    }
+
+    fn fresh_symbol_initializer(&self, variable: &VariableDeclaration) -> bool {
+        let tokens = &variable.initializer;
+        let direct = tokens.first().is_some_and(|token| token.is("Symbol"))
+            && (tokens.get(1).is_some_and(|token| token.is("("))
+                || tokens.get(1).is_some_and(|token| token.is("."))
+                    && tokens.get(2).is_some_and(|token| token.is("for"))
+                    && tokens.get(3).is_some_and(|token| token.is("(")));
+        direct
+            && !declares_symbol_value(self.module)
+            && !self.project.ambient_declaration_modules.iter().any(|id| {
+                self.project
+                    .modules
+                    .get(id)
+                    .is_some_and(declares_symbol_value)
+            })
     }
 
     fn retain(&mut self, name: &str) {
@@ -561,4 +583,22 @@ fn fresh_variable(
         }
     }
     false
+}
+
+fn declares_symbol_value(module: &Module) -> bool {
+    module
+        .declarations
+        .iter()
+        .any(|declaration| match declaration {
+            Declaration::Variable(value) => value.name == "Symbol",
+            Declaration::Function(value) => value.name == "Symbol",
+            Declaration::Class(value) => value.name == "Symbol",
+            Declaration::Enum(value) => value.name == "Symbol",
+            Declaration::Namespace(value) => value.name == "Symbol",
+            Declaration::Import(value) => value
+                .bindings
+                .iter()
+                .any(|binding| binding.local == "Symbol"),
+            _ => false,
+        })
 }

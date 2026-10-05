@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-declare const console: { log(...values: any[]): void };
+declare const console: { log(a: any, b: any, c: any, d: any, e: any): void };
 const values: number[] = [1, 2];
 const label: string = "blue";
 const pattern: RegExp = new RegExp("b");

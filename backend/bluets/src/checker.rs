@@ -18,6 +18,8 @@ pub use crate::parser::Type;
 
 mod checking;
 pub(crate) use checking::check_incremental;
+mod member_calls;
+use member_calls::{member_call_parts, member_call_ranges};
 mod properties;
 mod scopes;
 mod type_relations;
@@ -89,6 +91,8 @@ struct TypeDefinition {
 enum TypeDefinitionKind {
     Alias,
     Interface,
+    /// An original library interface; owner/source replacements use Interface.
+    LibraryInterface,
     Class,
     /// An enum type: the union of its member types.
     Enum,
@@ -572,43 +576,6 @@ struct DirectCall<'a> {
     callee: &'a Token,
     arguments: &'a [Token],
     generic: bool,
-}
-
-struct MemberCall<'a> {
-    receiver: &'a [Token],
-    member: &'a Token,
-    arguments: &'a [Token],
-}
-
-fn member_call_parts(tokens: &[Token]) -> Option<MemberCall<'_>> {
-    let mut depth = 0usize;
-    let mut top_level_dot = None;
-    for (index, token) in tokens.iter().enumerate() {
-        if token.is("(") {
-            depth = depth.checked_add(1)?;
-        } else if token.is(")") {
-            depth = depth.checked_sub(1)?;
-        } else if token.is(".") && depth == 0 {
-            top_level_dot = Some(index);
-        }
-    }
-    if depth != 0 {
-        return None;
-    }
-    let dot = top_level_dot?;
-    let receiver = tokens.get(..dot)?;
-    let member = tokens.get(dot + 1)?;
-    let open = tokens.get(dot + 2)?;
-    let arguments = tokens.get(dot + 3..)?;
-    (!receiver.is_empty()
-        && member.kind == TokenKind::Identifier
-        && open.is("(")
-        && split_call_arguments(arguments).is_some())
-    .then_some(MemberCall {
-        receiver,
-        member,
-        arguments,
-    })
 }
 
 fn direct_call_parts(tokens: &[Token]) -> Option<DirectCall<'_>> {

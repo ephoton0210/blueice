@@ -3832,3 +3832,71 @@ arguments and results, unselected target members, and missing manifest identity.
 compiler tests require static library types to stay out of the source graph and artifacts,
 local/owner declaration replacement, the existing page binding policy, and target selection.
 These tests precede the implementation; K.1.4 remains unchecked until its full K.0 gate passes.
+
+
+### K.1.4 Original standard declarations
+
+The embedded `blue-ts-ecma-lib-v1` set selects original base and ES2022 additions,
+parses them with BlueTS and caches their immutable ASTs by target. Its identity includes
+the version, target, source names and exact content digest in the project fingerprint
+and CLI manifest. No library source joins the owner's module graph or emitted output.
+Local and ambient owner names take precedence, and page profiles retain their requirement
+for owner/local runtime call bindings. Name recognition now comes from the selected
+declarations, with the existing console compatibility and language-level undefined.
+
+The checker uses those interfaces for primitive/array members, preserves library array
+element compatibility and Iterable generic compatibility, and checks keyword-named
+methods such as Map.get and Generator.return. Parsed constructor descriptors feed the
+existing new checker without admitting declare-class or construct-signature syntax.
+The factory const spelling of unique symbol is compared separately from aliases,
+function results, annotations, let and a local Symbol shadow; callable factories retain
+their static registry members. Existing decorator programs' Object operations have
+parsed signatures too. Omitted shapes and precision are listed in STANDARD_LIBRARY.md.
+
+Focused validation passed 123 pinned TypeScript 5.9.3 target/lib verdicts (61 accepted,
+62 rejected), replayed through check and build; five exact declaration comparisons;
+one Node program; CLI identity/output isolation and five public compiler boundaries.
+The extra Symbol factory case reproduced acceptance of Symbol(true) before its fix;
+the pinned declaration probe established the const-factory freshness rule before the
+emitter change. The runtime fixture uses a fixed log signature within the existing
+declaration subset rather than a refused rest-method signature.
+
+The final K.1.4 gate passed on 2026-10-06: format/check, both crates' all-target Clippy
+with `-D warnings`, and the complete two-crate test command from K.0 with the pinned
+oracle and `--include-ignored`. All 55 targets passed 1026 tests, including all
+110 ignored oracle tests in 23 suite files, with no failures, skipped or filtered tests.
+The refusal inventory was regenerated. All production sources remain below 1200 lines.
+The workspace/coverage M6 gate follows K.1.5. The minimum library's recorded omissions
+remain visible in STANDARD_LIBRARY.md and the compatibility inventory; full parity stays off.
+
+The full replay exposed two regressions before completion: implicit readonly
+library constants polluted the pre-existing opaque-receiver safety check, and
+Array.map callbacks were required to consume all three supplied arguments.
+The readonly fix distinguishes lexical library bindings from source/owner
+shadows and preserves explicit library flows and alias initializers. Six
+additional pinned target/lib cases establish zero-to-three callback parameters
+as accepted, and a fourth required parameter or wrong parameter type as rejected;
+three accepted cases failed against BlueTSC before the compatibility fix. A fifth
+public boundary covers implicit constants, explicit flows, aliases, local parameter
+and namespace shadows, and owner declarations. The complete final replay passed after both regression fixes.
+
+Library method signatures also exposed the old receiver scan treating an entire
+binary-expression prefix as the receiver of its final method. Twelve pinned
+cases cover left/right operands, nested arguments, generic call results and
+unary operators: six accepted and six rejected. The pre-fix replay showed both
+false rejections and missed invalid arguments/results. A separate postfix-range
+module now shares receiver boundaries between validation and inference, retains
+keyword-named members and non-null assertions, and checks each nested call.
+The full recorded class matrix and all 98 library cases pass the offline check/build
+replay; the final K.0 gate passed on the same frozen source snapshot.
+
+The complete regression corpus required selected Array.sort/filter and JSON
+replacer/spacing declarations, including stringify's pinned `string` result,
+and enum-member property boxing without changing nominal assignment. Eighteen
+additional pinned cases cover these forms. Seven iterator-loop cases cover the
+yield projection, unguarded access, reassignment, shadowing and following statements.
+The adapter uses parsed boolean discriminator fields, lexical binding identities,
+and write invalidation; it does not claim general control-flow narrowing.
+The original generator-runtime fixture now checks without modification. The library
+matrix totals 123 cases (61 accepted and 62 rejected); the final K.0 gate passed
+on a frozen Linux snapshot with Rust 1.95, Node 26.7 and TypeScript 5.9.3.

@@ -36,7 +36,16 @@ impl ModuleChecker<'_> {
             return Ok(false);
         }
         let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
-        for value in scope.values() {
+        for (name, value) in scope {
+            if self.library_values.contains(name)
+                && receiver.first().is_some_and(|token| {
+                    self.scopes
+                        .as_ref()
+                        .is_some_and(|scopes| scopes.unused_library_value(name, token.start))
+                })
+            {
+                continue;
+            }
             if deep_contains_readonly(value, &self.types, &mut budget, 0)? {
                 return Ok(true);
             }

@@ -248,7 +248,13 @@ fn library_calls_preserve_node_execution() {
 fn library_inferred_declarations_match_typescript() {
     let tsc = pinned_tsc();
     let root = temporary("declarations");
-    for name in ["methods", "instances", "collections"] {
+    for name in [
+        "methods",
+        "instances",
+        "collections",
+        "symbols",
+        "shadowed-symbol",
+    ] {
         let entry = fixtures().join(format!("stdlib-decl-{name}/main.ts"));
         let blue = root.join(name).join("blue");
         let reference = root.join(name).join("reference");

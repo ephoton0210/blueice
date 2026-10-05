@@ -288,6 +288,7 @@ impl Qualifier<'_> {
 impl ModuleChecker<'_> {
     fn policy(&self) -> CheckerPolicy {
         CheckerPolicy {
+            target: self.target,
             enforce_types: self.enforce_types,
             require_declared_global_calls: self.require_declared_global_calls,
             define_class_fields: self.define_class_fields,
@@ -378,6 +379,7 @@ impl ModuleChecker<'_> {
         sub.type_only_namespaces = self.type_only_namespaces.clone();
         sub.types = self.types.clone();
         sub.values = self.values.clone();
+        sub.library_values = self.library_values.clone();
         sub.functions = self.functions.clone();
         sub.class_constructors = self.class_constructors.clone();
         sub.type_only_classes = self.type_only_classes.clone();
@@ -419,6 +421,7 @@ impl ModuleChecker<'_> {
     /// not a redeclaration of the enclosing scope's.
     fn forget_name(&mut self, name: &str) {
         self.values.remove(name);
+        self.library_values.remove(name);
         self.functions.remove(name);
         self.class_constructors.remove(name);
         self.type_only_classes.remove(name);

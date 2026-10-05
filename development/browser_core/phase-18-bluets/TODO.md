@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: K.1.4.** Sections A to J are complete (summarized below); J.6 closed in its
+**Current leaf: K.1.5.** Sections A to J are complete (summarized below); J.6 closed in its
 measured form (`COMPATIBILITY_INVENTORY.md`). Section K closes the gaps that inventory lists.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
@@ -231,7 +231,7 @@ and import rules.
     (a binding used before its module finishes gets its declared type or the annotation requirement
     `tsc` reports as TS7022-style circularity).
   - *Done when:* `imported-type-*` matrix and a declaration comparison (`import-decl-*`) agree with `tsc`.
-- [ ] **K.1.4 Minimal standard library (L).**
+- [x] **K.1.4 Minimal standard library (L).**
   - *Today:* no `lib.d.ts`; host types come only from owner declarations.
   - *Work:* write, from the specified ECMAScript surface and not by copying `lib.*.d.ts`, a versioned
     declaration set (`Array`, `ReadonlyArray`, `String`, `Number`, `Boolean`, `Object`, `Function`,

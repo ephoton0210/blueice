@@ -8,9 +8,9 @@ use super::expressions::is_value_name;
 use super::*;
 
 pub(super) struct MutationUse {
-    scope: ScopeId,
-    target: Vec<Token>,
-    operator: Token,
+    pub(super) scope: ScopeId,
+    pub(super) target: Vec<Token>,
+    pub(super) operator: Token,
     pattern: bool,
 }
 

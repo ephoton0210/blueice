@@ -16,6 +16,7 @@ enum RecordSpreadFailure {
 /// Per-project checking policy shared by every module checker.
 #[derive(Clone)]
 pub(crate) struct CheckerPolicy {
+    pub(crate) target: crate::compiler::EcmaTarget,
     pub(crate) enforce_types: bool,
     pub(crate) require_declared_global_calls: bool,
     /// Class fields are defined, not assigned, so a derived redeclaration
@@ -35,6 +36,7 @@ pub(crate) struct CheckerPolicy {
 }
 
 pub(super) struct ModuleChecker<'a> {
+    target: crate::compiler::EcmaTarget,
     project: &'a Project,
     scopes: Option<scopes::ScopeModel<'a>>,
     module: &'a Module,
@@ -94,6 +96,8 @@ pub(super) struct ModuleChecker<'a> {
     pub(super) symbols: Vec<Symbol>,
     types: BTreeMap<String, TypeDefinition>,
     values: BTreeMap<String, Type>,
+    /// Library bindings are defaults; source and owner bindings retain priority.
+    library_values: BTreeSet<String>,
     functions: BTreeMap<String, Vec<FunctionSignature>>,
     class_constructors: BTreeMap<String, ClassConstructorBinding>,
     type_only_classes: BTreeSet<String>,

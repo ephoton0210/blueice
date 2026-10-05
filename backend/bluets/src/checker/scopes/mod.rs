@@ -34,6 +34,7 @@ struct Binding {
     kind: BindingKind,
     namespace: Option<String>,
     initializer: Option<(usize, usize)>,
+    library: bool,
 }
 
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
@@ -109,6 +110,7 @@ impl<'a> ScopeModel<'a> {
         values: &BTreeMap<String, Type>,
         types: &BTreeMap<String, TypeDefinition>,
         ambient: Option<&AmbientDeclarations>,
+        target: crate::compiler::EcmaTarget,
         max_type_expansions: usize,
     ) -> Self {
         let tokens = crate::syntax::lex_with_limits(
@@ -146,73 +148,33 @@ impl<'a> ScopeModel<'a> {
             true,
             false,
         );
-        // Preserve the already supported ECMAScript/console names until K.1.4
-        // replaces this explicit compatibility list with versioned declarations.
-        // These are static names; they confer no runtime or host authority.
-        for name in [
-            "undefined",
-            "NaN",
-            "Infinity",
-            "globalThis",
-            "console",
-            "Object",
-            "Function",
-            "Boolean",
-            "Number",
-            "String",
-            "Array",
-            "Promise",
-            "Symbol",
-            "BigInt",
-            "Math",
-            "JSON",
-            "Reflect",
-            "Date",
-            "RegExp",
-            "Map",
-            "Set",
-            "WeakMap",
-            "WeakSet",
-            "Error",
-            "EvalError",
-            "RangeError",
-            "ReferenceError",
-            "SyntaxError",
-            "TypeError",
-            "URIError",
-            "AggregateError",
-            "ArrayBuffer",
-            "SharedArrayBuffer",
-            "DataView",
-            "Int8Array",
-            "Uint8Array",
-            "Uint8ClampedArray",
-            "Int16Array",
-            "Uint16Array",
-            "Int32Array",
-            "Uint32Array",
-            "Float32Array",
-            "Float64Array",
-            "BigInt64Array",
-            "BigUint64Array",
-            "Atomics",
-            "Intl",
-            "parseInt",
-            "parseFloat",
-            "isNaN",
-            "isFinite",
-            "decodeURI",
-            "decodeURIComponent",
-            "encodeURI",
-            "encodeURIComponent",
-            "eval",
-        ] {
-            model.value(0, name, 0, false, false, Type::Unknown);
+        // Library name recognition is static even when the page call policy
+        // withholds its value/function bindings. Console remains the explicit
+        // compatibility name; DOM and other host names require owner declarations.
+        model.value(0, "console", 0, false, false, Type::Unknown);
+        model.value(0, "undefined", 0, false, false, Type::Undefined);
+        for module in crate::standard_library::modules(target) {
+            for declaration in &module.declarations {
+                let name = match declaration {
+                    Declaration::Variable(value) => &value.name,
+                    Declaration::Function(value) => &value.name,
+                    Declaration::Class(value) => &value.name,
+                    Declaration::Namespace(value) => &value.name,
+                    _ => continue,
+                };
+                model.value(0, name, 0, false, false, Type::Unknown);
+                model.scopes[0].values.get_mut(name).unwrap().library = true;
+            }
         }
         // Bound imports and owner ambient declarations supply exact names.
         // Local AST declarations below replace these entries with lifetimes.
         for (name, value) in values {
+            let library = model.scopes[0]
+                .values
+                .get(name)
+                .is_some_and(|binding| binding.library);
             model.value(0, name, 0, false, false, value.clone());
+            model.scopes[0].values.get_mut(name).unwrap().library = library;
         }
         model.scopes[0].types.extend(types.keys().cloned());
         if let Some(ambient) = ambient {
@@ -313,6 +275,7 @@ impl<'a> ScopeModel<'a> {
                 kind: BindingKind::Mutable,
                 namespace: None,
                 initializer: None,
+                library: false,
             },
         );
     }
@@ -525,6 +488,48 @@ impl<'a> ScopeModel<'a> {
             }
         }
         Some(value)
+    }
+
+    /// An implicit library default is irrelevant to opaque writes until source
+    /// code actually references it. Resolve identities to preserve local/owner
+    /// shadows, and retain references inside alias initializers and closures.
+    pub(super) fn unused_library_value(&self, name: &str, offset: usize) -> bool {
+        let Some((_, Some(binding))) = self.resolve(self.scope_at(offset), name, Meaning::Value)
+        else {
+            return false;
+        };
+        binding.library
+            && !self.references.iter().any(|reference| {
+                reference.name == name
+                    && reference.meaning == Meaning::Value
+                    && self
+                        .resolve(reference.scope, name, Meaning::Value)
+                        .is_some_and(|(_, binding)| binding.is_some_and(|binding| binding.library))
+            })
+    }
+
+    /// A guard applies to the same lexical value until a write may change it.
+    pub(super) fn value_guard_holds(
+        &self,
+        name: &str,
+        guard: usize,
+        body: usize,
+        usage: usize,
+    ) -> bool {
+        let identity = |scope| {
+            self.resolve(scope, name, Meaning::Value)
+                .and_then(|(scope, binding)| binding.map(|_| scope))
+        };
+        let Some(guard_scope) = identity(self.scope_at(guard)) else {
+            return false;
+        };
+        identity(self.scope_at(usage)) == Some(guard_scope)
+            && !self.mutations.iter().any(|mutation| {
+                body <= mutation.operator.start
+                    && mutation.operator.start < usage
+                    && identity(mutation.scope) == Some(guard_scope)
+                    && mutation.target.iter().any(|token| token.text == name)
+            })
     }
 
     fn reference(&mut self, scope: ScopeId, token: &Token) {

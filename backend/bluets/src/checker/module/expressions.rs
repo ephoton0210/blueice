@@ -8,6 +8,7 @@ use super::*;
 
 mod indexing;
 mod inference;
+mod iterator_guards;
 mod method_overloads;
 mod optional_property;
 mod readonly;

@@ -30,6 +30,7 @@ mod namespace_analysis;
 pub mod package_resolution;
 mod parser;
 pub mod remote_declarations;
+pub mod standard_library;
 mod strict_boundaries;
 mod syntax;
 

@@ -23,61 +23,7 @@ pub(in crate::checker::module) struct GeneratorContext {
     pub(in crate::checker::module) next_type: Type,
 }
 
-const ITERATION_TYPES: &str = "\
-interface IteratorYieldResult<T> { done?: false; value: T }
-interface IteratorReturnResult<R> { done: true; value: R }
-type IteratorResult<T, R = any> = IteratorYieldResult<T> | IteratorReturnResult<R>;
-interface Iterator<T, R = any, N = any> {
-    next(value?: N): IteratorResult<T, R>;
-    return(value?: R): IteratorResult<T, R>;
-    throw(error?: any): IteratorResult<T, R>;
-}
-interface Generator<T = unknown, R = any, N = any> {
-    next(value?: N): IteratorResult<T, R>;
-    return(value: R): IteratorResult<T, R>;
-    throw(error: any): IteratorResult<T, R>;
-}
-interface IterableIterator<T, R = any, N = any> {
-    next(value?: N): IteratorResult<T, R>;
-    return(value?: R): IteratorResult<T, R>;
-    throw(error?: any): IteratorResult<T, R>;
-}
-interface Iterable<T> { }
-";
-
 impl ModuleChecker<'_> {
-    /// The iteration protocol types, unless a declaration already defines them.
-    pub(super) fn bind_builtin_iteration_types(&mut self) {
-        let Ok(module) = crate::parser::parse_module("<builtin>", ITERATION_TYPES) else {
-            return;
-        };
-        for declaration in &module.declarations {
-            match declaration {
-                Declaration::Interface(interface) if !self.types.contains_key(&interface.name) => {
-                    self.types.insert(
-                        interface.name.clone(),
-                        TypeDefinition {
-                            kind: TypeDefinitionKind::Interface,
-                            parameters: interface.type_parameters.clone(),
-                            value: interface_value(interface),
-                        },
-                    );
-                }
-                Declaration::TypeAlias(alias) if !self.types.contains_key(&alias.name) => {
-                    self.types.insert(
-                        alias.name.clone(),
-                        TypeDefinition {
-                            kind: TypeDefinitionKind::Alias,
-                            parameters: alias.type_parameters.clone(),
-                            value: alias.value.clone(),
-                        },
-                    );
-                }
-                _ => {}
-            }
-        }
-    }
-
     /// The context of a generator function: read from its return annotation,
     /// which must be a generator-like type, or open when there is none.
     pub(in crate::checker::module) fn generator_context_for(

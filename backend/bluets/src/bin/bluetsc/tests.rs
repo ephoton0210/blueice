@@ -239,6 +239,7 @@ fn configured_strict_boundary_is_confined_and_keeps_exact_source_span() {
 
 fn test_metadata() -> BuildMetadata {
     BuildMetadata {
+        standard_library: blueice_bluets::standard_library::identity(EcmaTarget::Es2022),
         language_version: "blue-ts-test",
         fingerprint: "bts-project-test".to_string(),
         target: "es2022",

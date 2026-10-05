@@ -490,6 +490,7 @@ fn compile_with_cache(
     let (checked, checker_diagnostics) = checker::check_incremental(
         &project,
         checker::CheckerPolicy {
+            target: options.target,
             enforce_types: !matches!(options.runtime_policy, RuntimePolicy::TranspileOnly),
             require_declared_global_calls: options.require_declared_global_calls,
             define_class_fields: options.defines_class_fields(),
@@ -940,6 +941,8 @@ pub(crate) fn fingerprint(project: &Project, options: &CompilerOptions) -> Strin
         hash = hash.wrapping_mul(0x100000001b3);
     };
     add(LANGUAGE_VERSION);
+    add(crate::standard_library::VERSION);
+    add(&crate::standard_library::identity(options.target).source_fingerprint);
     add(options.target.as_str());
     add(if options.defines_class_fields() {
         "define-class-fields"

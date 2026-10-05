@@ -96,3 +96,45 @@ fn target_controls_new_members_and_fingerprints() {
     assert!(!new.has_errors(), "{:#?}", new.diagnostics);
     assert_ne!(old.project_fingerprint, new.project_fingerprint);
 }
+
+#[test]
+fn implicit_library_constants_do_not_pollute_opaque_readonly_checks() {
+    let pick = "declare function pick(value: unknown): unknown;";
+    for source in [
+        format!("{pick} function write(count: number): void {{ pick(count).total = 1; }}"),
+        format!("{pick} function write(Math: {{ PI: number }}): void {{ pick(1).total = 1; }}"),
+    ] {
+        let result = checked(&source, CompilerOptions::default());
+        assert!(!result.has_errors(), "{source}\n{:#?}", result.diagnostics);
+    }
+    // Explicit library flow, aliases, source bindings and owner bindings retain
+    // the existing conservative protection for an unmodeled receiver.
+    for source in [
+        format!("{pick} pick(Math).PI = 1;"),
+        format!("{pick} const chosen = pick(Math); chosen.PI = 1;"),
+        format!("{pick} declare const Math: {{ readonly PI: number }}; pick(1).total = 1;"),
+        format!("{pick} function write(Math: {{ readonly PI: number }}): void {{ pick(1).total = 1; }}"),
+        format!("{pick} namespace Area {{ declare const Math: {{ readonly PI: number }}; function write(): void {{ pick(1).total = 1; }} }}"),
+    ] {
+        let result = checked(&source, CompilerOptions::default());
+        assert!(result.diagnostics.iter().any(|diagnostic| diagnostic.message.contains("cannot prove")), "{source}\n{:#?}", result.diagnostics);
+    }
+    let owner = checked(
+        &format!("{pick} pick(1).total = 1;"),
+        CompilerOptions {
+            ambient_declaration_modules: vec![ModuleSource::new(
+                "memory:///owner.d.ts",
+                "declare const Math: { readonly PI: number };",
+            )],
+            ..CompilerOptions::default()
+        },
+    );
+    assert!(
+        owner
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.message.contains("cannot prove")),
+        "{:#?}",
+        owner.diagnostics
+    );
+}

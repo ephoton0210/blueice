@@ -14,6 +14,7 @@ impl ModuleChecker<'_> {
             &self.values,
             &self.types,
             self.ambient,
+            self.target,
             self.max_type_expansions,
         );
         self.diagnostics.extend(scopes.diagnostics());

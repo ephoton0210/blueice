@@ -13,41 +13,18 @@ impl<'a> ModuleChecker<'a> {
         scope: &BTreeMap<String, Type>,
         span: &SourceSpan,
     ) {
-        let mut open = Vec::new();
-        let mut closes = vec![None; tokens.len()];
-        for (index, token) in tokens.iter().enumerate() {
-            if token.is("(") {
-                open.push(index);
-            } else if token.is(")") {
-                if let Some(start) = open.pop() {
-                    closes[start] = Some(index);
-                }
-            }
-        }
-        for start in 0..tokens.len().saturating_sub(3) {
+        let guard = self.iterator_loop_guard(tokens, scope);
+        for range in member_call_ranges(tokens, |start| {
+            self.module.generic_call_type_arguments.contains_key(&start)
+        }) {
             // Constructor validation owns `new receiver.Type(...)`.
-            if start > 0 && tokens[start - 1].is("new") {
-                continue;
+            let call = &tokens[range];
+            if constructor_call_parts(call).is_none() {
+                let narrowed = guard
+                    .as_ref()
+                    .and_then(|guard| guard.scope_for(self, call[0].start, scope));
+                self.check_member_call(call, narrowed.as_ref().unwrap_or(scope), span);
             }
-            if tokens[start].kind != TokenKind::Identifier
-                && !tokens[start].is("this")
-                && !tokens[start].is("super")
-                || !tokens[start + 1].is(".")
-                || tokens[start + 2].kind != TokenKind::Identifier
-                || !tokens[start + 3].is("(")
-            {
-                continue;
-            }
-            if let Some(end) = closes[start + 3] {
-                self.check_member_call(&tokens[start..=end], scope, span);
-            }
-        }
-        // A method on a call result has no identifier immediately before its
-        // final dot (for example `document.getElementById('x')!.appendChild(y)`).
-        // The direct-call scan above checks the inner call; check the complete
-        // chain once for the outer receiver and its arguments.
-        if member_call_parts(tokens).is_some_and(|call| call.receiver.len() > 1) {
-            self.check_member_call(tokens, scope, span);
         }
     }
 
@@ -63,7 +40,9 @@ impl<'a> ModuleChecker<'a> {
         } else {
             tokens
         };
-        let Some(call) = member_call_parts(tokens) else {
+        let Some(call) = member_call_parts(tokens, |start| {
+            self.module.generic_call_type_arguments.contains_key(&start)
+        }) else {
             return;
         };
         if let Some(signatures) =
@@ -115,17 +94,6 @@ impl<'a> ModuleChecker<'a> {
         );
         let member_type = match member_type {
             PropertyType::Found { value, .. } => value,
-            PropertyType::Missing
-                if matches!(
-                    base,
-                    Type::String | Type::Number | Type::Boolean | Type::Array(_) | Type::Tuple(_)
-                ) =>
-            {
-                // BlueTS does not yet model the JavaScript built-in method
-                // catalogs. Preserve their runtime semantics while still
-                // rejecting missing members on declared host interfaces.
-                return;
-            }
             PropertyType::Missing if self.hidden_member(&base, &call.member.text).is_some() => {
                 // Diagnosed, with its accessibility, by the restricted-member
                 // scan over the whole expression.

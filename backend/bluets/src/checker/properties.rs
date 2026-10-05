@@ -4,7 +4,7 @@
 
 //! Bounded property lookup shared by expression inference and mutation checks.
 
-use super::{instantiate_named, Type, TypeDefinition};
+use super::{instantiate_named, Type, TypeDefinition, TypeDefinitionKind};
 use std::collections::{BTreeMap, HashSet};
 
 pub(super) struct TypeExpansionBudget {
@@ -50,6 +50,53 @@ pub(super) fn property_type(
     visited: &mut HashSet<String>,
     budget: &mut TypeExpansionBudget,
 ) -> PropertyType {
+    // Enum literals retain nominal identity for assignment. Property lookup
+    // uses their underlying primitive without changing that identity.
+    if let Type::Literal(name) = value {
+        if let Some(definition) = aliases
+            .get(name)
+            .filter(|definition| definition.kind == TypeDefinitionKind::EnumMember)
+        {
+            if !budget.consume() {
+                return PropertyType::Exhausted;
+            }
+            return property_type(&definition.value, property, aliases, visited, budget);
+        }
+    }
+    let boxed = match value {
+        Type::String => Some(("String", Vec::new())),
+        Type::Number => Some(("Number", Vec::new())),
+        Type::Boolean => Some(("Boolean", Vec::new())),
+        Type::Function { .. } => Some(("Function", Vec::new())),
+        Type::Literal(text) if text.starts_with(['\'', '"', '`']) => Some(("String", Vec::new())),
+        Type::Literal(text) if text.parse::<f64>().is_ok() => Some(("Number", Vec::new())),
+        Type::Literal(text) if matches!(text.as_str(), "true" | "false") => {
+            Some(("Boolean", Vec::new()))
+        }
+        Type::Array(element) => Some(("Array", vec![(**element).clone()])),
+        Type::Tuple(elements) => Some((
+            "Array",
+            vec![Type::Union(
+                elements
+                    .iter()
+                    .map(|element| element.indexed_type())
+                    .collect(),
+            )],
+        )),
+        _ => None,
+    };
+    if let Some((name, arguments)) = boxed.filter(|(name, _)| aliases.contains_key(*name)) {
+        return property_type(
+            &Type::Named {
+                name: name.to_string(),
+                arguments,
+            },
+            property,
+            aliases,
+            visited,
+            budget,
+        );
+    }
     match value {
         Type::Record(fields) => {
             let mut values = Vec::new();
