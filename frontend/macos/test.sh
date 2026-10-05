@@ -6,6 +6,7 @@
 set -euo pipefail
 frontend_dir=$(cd "$(dirname "$0")" && pwd)
 repo_root=$(cd "$frontend_dir/../.." && pwd)
+python3 "$frontend_dir/TestSupport/test-signed-runner.py"
 "$frontend_dir/build.sh" Debug
 core_target=${CARGO_TARGET_DIR:-$frontend_dir/.build/core-target}
 case "$core_target" in /*) ;; *) core_target="$repo_root/$core_target" ;; esac

@@ -20,6 +20,16 @@ struct AccessibilityTextContext: Codable, Equatable, Sendable {
     let node_id: UInt64
 }
 
+struct AccessibilityRevealReply: Decodable, Sendable {
+    let context: AccessibilityTextContext
+    let bounds: PageNode.Bounds
+    var valid: Bool {
+        context.version == 1 && context.node_id > 0 && context.document_generation > 0 && context.frame_generation > 0
+            && [bounds.x, bounds.y, bounds.width, bounds.height].allSatisfy { $0.isFinite && abs($0) <= 1e9 }
+            && bounds.width > 0 && bounds.height > 0
+    }
+}
+
 enum AccessibilityTextAction: Encodable, Sendable {
     case inspect, bounds(TextRange), lineForIndex(UInt32), rangeForLine(UInt32), rangeForIndex(UInt32)
     case rangeForPosition(Double, Double), select(TextRange), replaceSelection(String), setValue(String), scrollToRange(TextRange)
@@ -171,15 +181,25 @@ final class BrowserAccessibilityTextSession {
             // Mutations broadcast their new frame before the AX reply. These
             // notifications belong to the normal reader, not this exchange.
             if scoped {
-                guard case .accessibilityTextState = reply.message else {
-                    switch reply.message {
-                    case .frame, .viewportState, .displayPreferences: continue
-                    default: throw BrowserFailure.invalid("Unexpected accessibility text reply.")
-                    }
+                switch reply.message {
+                case .accessibilityTextState, .accessibilityRevealed: break
+                case .frame, .viewportState, .displayPreferences: continue
+                default: throw BrowserFailure.invalid("Unexpected accessibility reply.")
                 }
             }
             return reply.message
         }
+    }
+    func reveal(_ context: AccessibilityTextContext) throws -> PageNode.Bounds {
+        do {
+            guard case .accessibilityRevealed(let reply) = try exchange(.accessibilityReveal(context)),
+                  reply.valid, reply.context.version == context.version, reply.context.node_id == context.node_id,
+                  reply.context.frame_source == context.frame_source, reply.context.document_generation == context.document_generation,
+                  reply.context.frame_generation > context.frame_generation else {
+                throw BrowserFailure.invalid("Stale accessibility navigation reply.")
+            }
+            return reply.bounds
+        } catch { close(); throw error }
     }
     func perform(_ textContext: AccessibilityTextContext, action: AccessibilityTextAction) throws -> AccessibilityTextResult {
         do {

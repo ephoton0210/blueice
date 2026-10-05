@@ -57,6 +57,11 @@ pub fn wait_for(path: &Path) -> bool {
 
 /// Serves `PAGE` to every request, on a fresh loopback port.
 pub fn web_server() -> String {
+    web_server_with_html(PAGE)
+}
+
+pub fn web_server_with_html(html: &str) -> String {
+    let html = html.to_owned();
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let addr = listener.local_addr().unwrap();
     thread::spawn(move || {
@@ -66,8 +71,8 @@ pub fn web_server() -> String {
             let _ = stream.read(&mut buf);
             let _ = stream.write_all(
                 format!(
-                    "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{PAGE}",
-                    PAGE.len()
+                    "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{html}",
+                    html.len()
                 )
                 .as_bytes(),
             );

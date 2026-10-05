@@ -150,6 +150,7 @@ pub(super) fn scoped_command(
         | ClientMessage::Find { .. }
         | ClientMessage::GetFindState
         | ClientMessage::Print(_)
+        | ClientMessage::AccessibilityReveal { .. }
         | ClientMessage::AccessibilityText { .. }
         | ClientMessage::GetContextMenu { .. }
         | ClientMessage::ContextMenuLink { .. }

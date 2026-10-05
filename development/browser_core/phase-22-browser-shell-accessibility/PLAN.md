@@ -274,3 +274,12 @@ completed files through macOS. The restart revision counter preserves monotonic
 updates so recovered controls remain live. Acceptance is recorded in
 [MACOS_DOWNLOAD_RESULTS.md](MACOS_DOWNLOAD_RESULTS.md); automatic response
 downloads, native destination/credential UI, quarantine and print/PDF remain open.
+
+The macOS live-region/rotor increment adds bounded core-owned announcements,
+privacy-safe native names, and document/frame-fenced reading-target reveal.
+AppKit advertises directional filtered rotors while retaining editor focus and
+rejecting stale/foreign items. Full native acceptance and host-prepared Rust
+verification, including unsuccessful default-runner startup attempts, are
+recorded in [MACOS_LIVE_REGION_ROTOR_RESULTS.md](MACOS_LIVE_REGION_ROTOR_RESULTS.md).
+Retained announcement delivery, document text selection, complete ARIA semantics
+and physical VoiceOver remain open in the macOS delivery plan.

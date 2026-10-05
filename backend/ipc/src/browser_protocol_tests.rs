@@ -492,6 +492,7 @@ fn server_message_round_trips_through_the_wire_format() {
             can_go_forward: false,
         },
         ServerMessage::Representation(AiSnapshot {
+            accessibility: None,
             frame_source: 0,
             generation: 42,
             tab_id: 1,
@@ -750,6 +751,7 @@ fn a_request_id_round_trips_for_both_a_unit_and_a_struct_variant() {
 
     let mut buf = Vec::new();
     let reply = ServerMessage::Representation(AiSnapshot {
+        accessibility: None,
         frame_source: 0,
         generation: 1,
         tab_id: 1,

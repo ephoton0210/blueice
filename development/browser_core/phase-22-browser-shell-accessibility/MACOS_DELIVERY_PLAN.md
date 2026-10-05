@@ -18,7 +18,7 @@ pushed to the current tracked branch as authorized by the owner.
 | Downloads and printing | Actual download manager/shelf, progress/cancel/open/reveal, print/PDF media output and native panel tests | Native manager panel and linked-file downloads committed and pushed `b62b38aa7`, see [download results](MACOS_DOWNLOAD_RESULTS.md); core print-media pagination and native print/PDF committed and pushed `0d2e3ea58`, acceptance recorded in [print results](MACOS_PRINT_RESULTS.md); automatic response downloads, destination/credential UI, quarantine, vector PDF and physical-printer acceptance pending |
 | Trusted browser panels | Assistant results and human permission decisions using the private owner boundary, policy-denial and no-AI-grant tests | Native installed-extension permission child and two-step one-shot confirmation committed and pushed `f83c94152`, see [permission results](MACOS_PERMISSION_RESULTS.md). Native assistant settings and proposal decisions committed and pushed `b53a91111`, see [assistant settings results](MACOS_ASSISTANT_SETTINGS_RESULTS.md). Native assistant result/sidebar and translation surfaces implemented and accepted, see [assistant page results](MACOS_ASSISTANT_PAGE_RESULTS.md). Remaining permission UI pending |
 | macOS display and system integration | DPI/multi-monitor, zoom, theme/high contrast/reduced motion, fullscreen, localization and native menu/shortcut tests | Retina/CSS viewport, per-tab zoom and native fullscreen committed and pushed `91f2dd78c`, see [viewport results](MACOS_VIEWPORT_RESULTS.md); persistent appearance/contrast/motion and CSS media committed and pushed `0609c8a81`, recorded in [display results](MACOS_DISPLAY_PREFERENCES_RESULTS.md); physical system/monitor transitions and localization pending |
-| Full accessibility and final audit | Text ranges/live regions and supported rotor operations; actual screen-reader action; final integration, design/UI acceptance and documented remaining core limitations | Native text-control ranges, geometry, selection and editing implemented and accepted, see [accessibility text results](MACOS_ACCESSIBILITY_TEXT_RESULTS.md). Document text selection, live regions, rotors and physical VoiceOver remain pending |
+| Full accessibility and final audit | Text ranges/live regions and supported rotor operations; actual screen-reader action; final integration, design/UI acceptance and documented remaining core limitations | Native text-control ranges, geometry, selection and editing implemented and accepted, see [accessibility text results](MACOS_ACCESSIBILITY_TEXT_RESULTS.md). Bounded live-region announcements and supported native rotors implemented and accepted, see [live-region/rotor results](MACOS_LIVE_REGION_ROTOR_RESULTS.md); Rust acceptance requires the recorded post-Cargo host readiness condition. Document text selection, retained announcement delivery, additional rotors and physical VoiceOver remain pending |
 
 ## Native accessibility text-control contract
 
@@ -39,14 +39,49 @@ Password plaintext is absent from replies, values, substring/attributed/RTF
 queries and selected text. Visible-range writes scroll inside the control
 without moving focus or selection. Selection/editing shares native Undo/Redo
 and ends existing marked composition before recording an atomic edit.
-Paragraph text selection, rich font attributes, live regions, rotors and
-physical VoiceOver remain separate delivery work.
+Paragraph text selection, rich font attributes and physical VoiceOver remain
+separate delivery work. The subsequent live-region/rotor increment below records
+the bounded support and remaining announcement delivery limitations.
 
-Complete acceptance passed: 166 native tests with one physical Zhuyin skip and
+The earlier text-control acceptance passed: 166 native tests with one physical Zhuyin skip and
 7,233 Rust workspace tests with 69 ignored. Print/AX exchanges no longer keep
 idle broker readers while AppKit panels wait. The dated result and distinct
 frozen input scopes are recorded in
 [accessibility text results](MACOS_ACCESSIBILITY_TEXT_RESULTS.md).
+
+## Native live-region and rotor increment
+
+Core publishes an optional document/revision-fenced native overlay, with live
+region announcements, hidden node IDs and privacy-safe name corrections. Polite,
+assertive and off behavior, status/alert/log defaults, atomic/relevant inheritance,
+busy coalescing, nested ownership and privacy transitions have regression tests.
+Limits and the latest-layout-batch delivery condition are explicit in
+[MACOS_LIVE_REGION_ROTOR_CONTRACT.md](MACOS_LIVE_REGION_ROTOR_CONTRACT.md).
+
+AppKit advertises heading/level, link, image, list and button rotors with document
+order, directional filtered search and offscreen targets. Searching does not
+mutate the page. Reading focus invokes the source/document/frame/node-fenced
+core reveal operation, preserving DOM focus and editor selection. Stale/foreign
+items fail closed; same-document frame gaps preserve element identity while
+suspending readable focus. The announcement bridge baselines documents and
+drops background updates without replay. Actual-service XCTest and native-window
+XCUITest cover privacy, editor focus, offscreen reveal, tab state and reload.
+
+Complete native acceptance passed 173 cases with one physical Zhuyin skip.
+Host-prepared Rust workspace acceptance passed 7,249 cases with
+69 ignored; build, strict Clippy, formatting, eight signatures
+and owned native process cleanup passed. Existing default-runner subprocess
+startup failures are retained separately. A temporary runner checks eight
+service binaries after Cargo materialization and before the first test
+executable, without modifying sources, signatures or original test deadlines.
+This host readiness condition does not establish clean default-runner cold-start
+acceptance. The measured result and reproducible wrapper are recorded in
+[MACOS_LIVE_REGION_ROTOR_RESULTS.md](MACOS_LIVE_REGION_ROTOR_RESULTS.md).
+
+Retained announcement delivery/acknowledgement, initial alert creation,
+descendant-scoped atomic/relevant overrides, complete ARIA/name computation,
+additional rotor kinds, document paragraph selection and physical VoiceOver
+remain pending. This increment does not complete the full browser design.
 
 ## Native editing contract
 

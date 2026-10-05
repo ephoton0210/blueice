@@ -104,6 +104,11 @@ final class CorePageView: NSView, NSTextInputClient, NSUserInterfaceValidations 
     lazy var accessibilityTree = PageAccessibilityTree(view: self, text: { [weak self] snapshot, epoch, node, action in
         self?.model?.accessibilityText(snapshot, epoch: epoch, node: node, action: action)
     }) { [weak self] snapshot, epoch, node, action in
+        if action == .reveal {
+            guard let self, self.model?.accessibilityReveal(snapshot, epoch: epoch, node: node) == true else { return false }
+            self.window?.makeFirstResponder(self)
+            return true
+        }
         if let self, action == .press, node.state.fileInput, let model = self.model, let window = self.window,
            model.selected == snapshot.tabID, model.accessibilityEpoch == epoch,
            model.representation?.generation == snapshot.generation {
@@ -187,11 +192,13 @@ final class CorePageView: NSView, NSTextInputClient, NSUserInterfaceValidations 
     override func accessibilityHitTest(_ point: NSPoint) -> Any? {
         accessibilityTree.hitTest(point) ?? self
     }
+    override func accessibilityCustomRotors() -> [NSAccessibilityCustomRotor] { accessibilityTree.rotors }
     override var accessibilityFocusedUIElement: Any? {
         accessibilityTree.focusedElement() ?? self
     }
 
     override func mouseDown(with event: NSEvent) {
+        accessibilityTree.clearReadingFocus()
         if event.modifierFlags.contains(.control) { rightMouseDown(with: event); return }
         guard let size = model?.cssViewportSize, bounds.width > 0, bounds.height > 0 else { return }
         window?.makeFirstResponder(self)
@@ -367,6 +374,7 @@ final class CorePageView: NSView, NSTextInputClient, NSUserInterfaceValidations 
     }
 
     override func keyDown(with event: NSEvent) {
+        accessibilityTree.clearReadingFocus()
         if event.keyCode == 109, event.modifierFlags.intersection([.command, .control, .option, .shift]) == .shift,
            accessibilityPerformShowMenu() { return }
         if entryTabEvent === event { entryTabEvent = nil; return }

@@ -11,12 +11,57 @@ use serde::{Deserialize, Serialize};
 pub const ACCESSIBILITY_TEXT_VERSION: u32 = 1;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub struct AccessibilityTextContext {
+pub struct AccessibilityContext {
     pub version: u32,
     pub frame_source: u64,
     pub document_generation: u64,
     pub frame_generation: u64,
     pub node_id: u64,
+}
+
+pub type AccessibilityTextContext = AccessibilityContext;
+
+/// Revealing an AT reading target never activates it or changes DOM focus.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AccessibilityRevealReply {
+    pub context: AccessibilityContext,
+    pub bounds: Bounds,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum LivePoliteness {
+    Polite,
+    Assertive,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AccessibilityAnnouncement {
+    pub sequence: u64,
+    pub region_id: u64,
+    pub text: String,
+    pub politeness: LivePoliteness,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AccessibilityName {
+    pub node_id: u64,
+    pub name: Option<String>,
+}
+
+/// Announcements from the latest layout mutation, never a retained private
+/// text history. Repeated reads have the same revision. Initial content is a
+/// baseline; platform clients must also baseline a newly selected document.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AccessibilitySnapshot {
+    pub document_generation: u64,
+    pub revision: u64,
+    pub announcements: Vec<AccessibilityAnnouncement>,
+    #[serde(default)]
+    pub hidden_nodes: Vec<u64>,
+    #[serde(default)]
+    pub names: Vec<AccessibilityName>,
+    #[serde(default)]
+    pub truncated: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

@@ -43,6 +43,8 @@ pub struct AiSnapshot {
     pub url: Option<String>,
     pub scroll_y: f64,
     pub nodes: Vec<AiNode>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub accessibility: Option<crate::accessibility::AccessibilitySnapshot>,
 }
 
 /// One semantically-relevant node. Purely decorative/non-semantic

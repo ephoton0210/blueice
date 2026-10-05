@@ -81,6 +81,7 @@ pub struct Page {
     native_file_revision: u64,
     highlighted: Option<NodeId>,
     find: find::FindSession,
+    live_regions: accessibility::LiveRegions,
     /// The most recent raster frame for this one tab. Another tab rendering
     /// must not invalidate this tab's frame/representation pairing.
     frame_generation: u64,
@@ -153,6 +154,7 @@ impl Page {
             submission_pending: false,
             highlighted: None,
             find: find::FindSession::default(),
+            live_regions: accessibility::LiveRegions::default(),
             frame_generation: 0,
             downloads: None,
             gatekeeper_settings: None,
@@ -213,6 +215,7 @@ impl Page {
         self.native_focus_start = None;
         self.highlighted = None;
         self.find = find::FindSession::default();
+        self.live_regions = accessibility::LiveRegions::default();
         self.restyle_and_relayout();
     }
 
@@ -241,6 +244,7 @@ impl Page {
         let max_scroll = (self.fragment.height - self.viewport_height).max(0.0);
         self.scroll_y = self.scroll_y.min(max_scroll);
         self.rebuild_find();
+        self.refresh_accessibility();
     }
 
     fn recascade(&mut self) {
@@ -1095,6 +1099,8 @@ impl Page {
         self.native_text_scroll_target = None;
         self.frame_generation = previous.frame_generation;
         self.document_generation = previous.document_generation.wrapping_add(1);
+        self.live_regions = accessibility::LiveRegions::default();
+        self.refresh_accessibility();
         self.display_viewport = previous.display_viewport;
         self.page_zoom = previous.page_zoom;
         let media_changed = self.display_preferences != previous.display_preferences;
@@ -1266,6 +1272,7 @@ impl Page {
     }
 }
 
+mod accessibility;
 mod context_menu;
 mod dom_helpers;
 mod dom_write;

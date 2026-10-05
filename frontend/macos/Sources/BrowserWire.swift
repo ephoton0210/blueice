@@ -27,6 +27,7 @@ enum BrowserCommand: Encodable, Sendable {
     case unit(String), values(String, [String: JSONValue])
     case textInput(TextInputContext, TextInputAction)
     case accessibilityText(AccessibilityTextContext, AccessibilityTextAction)
+    case accessibilityReveal(AccessibilityTextContext)
     case find(UInt64, TextInputContext, FindAction)
     case contextMenuLink(PageMenuContext, PageMenuLinkAction)
     case viewport(Double, Double, Double, backingScale: Double? = nil)
@@ -40,6 +41,10 @@ enum BrowserCommand: Encodable, Sendable {
     case navigationSession(NavigationSessionAction)
     func encode(to encoder: Encoder) throws {
         switch self {
+        case .accessibilityReveal(let context):
+            var root = encoder.container(keyedBy: MessageKey.self)
+            var box = root.nestedContainer(keyedBy: MessageKey.self, forKey: MessageKey("AccessibilityReveal"))
+            try box.encode(context, forKey: MessageKey("context"))
         case .accessibilityText(let context, let action):
             var root = encoder.container(keyedBy: MessageKey.self)
             var box = root.nestedContainer(keyedBy: MessageKey.self, forKey: MessageKey("AccessibilityText"))
@@ -295,6 +300,7 @@ struct FormResubmission: Decodable, Sendable {
 }
 
 enum BrowserMessage: Decodable, Sendable {
+    case accessibilityRevealed(AccessibilityRevealReply)
     case accessibilityTextState(AccessibilityTextReply)
     case navigationSessionState(NavigationSessionState), sessionUnavailable
     case assistantResult(AssistantPageResult), assistantUnavailable, translation(TranslationState), translationUnavailable
@@ -338,6 +344,9 @@ enum BrowserMessage: Decodable, Sendable {
         case "FormResubmissionResolved":
             struct Resolution: Decodable { let confirmation_id: UInt64 }
             self = .formResubmissionResolved(try object.decode(Resolution.self, forKey: key).confirmation_id)
+        case "AccessibilityRevealed":
+            if let reply = try? object.decode(AccessibilityRevealReply.self, forKey: key), reply.valid { self = .accessibilityRevealed(reply) }
+            else { self = .unknown }
         case "AccessibilityTextState":
             if let reply = try? object.decode(AccessibilityTextReply.self, forKey: key), reply.valid { self = .accessibilityTextState(reply) }
             else { self = .unknown }

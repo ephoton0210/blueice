@@ -48,6 +48,7 @@ pub(crate) fn build(page: &Page, generation: u64, tab_id: u64) -> AiSnapshot {
     collect(page, doc, doc.root(), None, &mut nodes);
     link_children(&mut nodes);
     compute_occlusion(&mut nodes);
+    let accessibility = Some(page.accessibility_snapshot(&nodes));
     AiSnapshot {
         frame_source: 0, // the session fills this from its live frame directory
         generation,
@@ -55,6 +56,7 @@ pub(crate) fn build(page: &Page, generation: u64, tab_id: u64) -> AiSnapshot {
         url: page.url().map(str::to_string),
         scroll_y: page.scroll_y(),
         nodes,
+        accessibility,
     }
 }
 
@@ -104,12 +106,12 @@ fn to_ai_node(page: &Page, doc: &Document, node: NodeId, parent: Option<u64>) ->
     };
     let role = infer_role(tag_name, attributes)?;
     let bounds = find_fragment_bounds(page.fragment(), node, 0.0, 0.0)?;
-    let (name, name_from) = compute_name(doc, node, tag_name, attributes, None);
+    let (name, name_from) = compute_name(doc, node, tag_name, attributes, None, None);
     // Only a content-derived name can differ from the page's own words:
     // attributes (`aria-label`, `alt`, `placeholder`, `title`) are never
     // translated. The original is offered only while a translation is showing.
     let original_name = if page.translation_shown() && name_from == Some(NameFrom::Contents) {
-        compute_name(doc, node, tag_name, attributes, Some(page))
+        compute_name(doc, node, tag_name, attributes, Some(page), None)
             .0
             .filter(|original| Some(original) != name.as_ref())
     } else {
@@ -131,6 +133,19 @@ fn to_ai_node(page: &Page, doc: &Document, node: NodeId, parent: Option<u64>) ->
         occluded_by: None,
         occluded_fraction: 0.0,
     })
+}
+
+/// The platform name excludes hidden and protected descendant text while the
+/// inspection representation retains its existing source-observability contract.
+pub(crate) fn native_name(page: &Page, node: NodeId) -> Option<String> {
+    let NodeData::Element {
+        tag_name,
+        attributes,
+    } = page.doc().data(node)
+    else {
+        return None;
+    };
+    compute_name(page.doc(), node, tag_name, attributes, None, Some(page)).0
 }
 
 fn attr<'a>(attributes: &'a [(String, String)], name: &str) -> Option<&'a str> {
@@ -189,6 +204,7 @@ fn compute_name(
     tag: &str,
     attributes: &[(String, String)],
     originals: Option<&Page>,
+    native: Option<&Page>,
 ) -> (Option<String>, Option<NameFrom>) {
     if let Some(label) = attr(attributes, "aria-label") {
         return (
@@ -228,7 +244,7 @@ fn compute_name(
             );
         }
         if let Some(id_attr) = attr(attributes, "id") {
-            if let Some(label_text) = find_label_text_for(doc, id_attr, originals) {
+            if let Some(label_text) = find_label_text_for(doc, id_attr, originals, native) {
                 return (Some(label_text), Some(NameFrom::Contents));
             }
         }
@@ -240,7 +256,7 @@ fn compute_name(
     if let Some(title) = attr(attributes, "title") {
         return (Some(title.to_string()), Some(NameFrom::Title));
     }
-    let text = text_content(doc, node, originals);
+    let text = text_content(doc, node, originals, native);
     if text.is_empty() {
         (None, None)
     } else {
@@ -251,29 +267,38 @@ fn compute_name(
 /// Scans the whole document for a `<label for="id_attr">` -- one input
 /// at a time is fine at MVP page sizes; a document-wide index would
 /// only pay for itself on pages with many labeled inputs.
-fn find_label_text_for(doc: &Document, id_attr: &str, originals: Option<&Page>) -> Option<String> {
+fn find_label_text_for(
+    doc: &Document,
+    id_attr: &str,
+    originals: Option<&Page>,
+    native: Option<&Page>,
+) -> Option<String> {
     fn walk(
         doc: &Document,
         node: NodeId,
         id_attr: &str,
         originals: Option<&Page>,
+        native: Option<&Page>,
     ) -> Option<String> {
+        if native.is_some_and(|page| !page.accessibility_exposed(node)) {
+            return None;
+        }
         if let NodeData::Element {
             tag_name,
             attributes,
         } = doc.data(node)
         {
             if tag_name == "label" && attributes.iter().any(|(k, v)| k == "for" && v == id_attr) {
-                let text = text_content(doc, node, originals);
+                let text = text_content(doc, node, originals, native);
                 if !text.is_empty() {
                     return Some(text);
                 }
             }
         }
         doc.children(node)
-            .find_map(|child| walk(doc, child, id_attr, originals))
+            .find_map(|child| walk(doc, child, id_attr, originals, native))
     }
-    walk(doc, doc.root(), id_attr, originals)
+    walk(doc, doc.root(), id_attr, originals, native)
 }
 
 /// `node`'s own text, for computing its name "from contents" -- stops
@@ -285,9 +310,14 @@ fn find_label_text_for(doc: &Document, id_attr: &str, originals: Option<&Page>) 
 /// real accessibility tree nor an agent reading this one wants --
 /// `<li>` correctly gets no name of its own here, since its entire
 /// content is delegated to the separately-represented `<p>`.
-fn text_content(doc: &Document, node: NodeId, originals: Option<&Page>) -> String {
+fn text_content(
+    doc: &Document,
+    node: NodeId,
+    originals: Option<&Page>,
+    native: Option<&Page>,
+) -> String {
     let mut raw = String::new();
-    collect_text(doc, node, &mut raw, true, originals);
+    collect_text(doc, node, &mut raw, true, originals, native);
     raw.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
@@ -297,7 +327,11 @@ fn collect_text(
     out: &mut String,
     is_root: bool,
     originals: Option<&Page>,
+    native: Option<&Page>,
 ) {
+    if native.is_some_and(|page| !page.accessibility_safe_content(node)) {
+        return;
+    }
     match doc.data(node) {
         NodeData::Text { data } => {
             out.push_str(
@@ -315,7 +349,7 @@ fn collect_text(
         _ => {}
     }
     for child in doc.children(node) {
-        collect_text(doc, child, out, false, originals);
+        collect_text(doc, child, out, false, originals, native);
     }
 }
 

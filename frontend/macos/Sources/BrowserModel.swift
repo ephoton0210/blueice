@@ -915,6 +915,24 @@ final class BrowserModel: ObservableObject {
         }
     }
 
+    func accessibilityReveal(_ snapshot: PageRepresentation, epoch: UInt64, node: PageNode) -> Bool {
+        guard ready, selected == snapshot.tabID, accessibilityEpoch == epoch, !textInputBusy,
+              let input = textInputState, input.tab_id == snapshot.tabID,
+              input.frame_generation == snapshot.generation, generation == snapshot.generation,
+              representation?.generation == snapshot.generation,
+              snapshot.accessibility?.document_generation == input.document_generation,
+              snapshot.frameSource == input.frame_source,
+              snapshot.frameSource == PageRepresentation.frameSource(directory: session.frameDirectory.path),
+              snapshot.accessibility?.hidden_nodes.contains(node.id) != true else { return false }
+        do {
+            let broker = try BrowserAccessibilityTextSession(runtime: session.runtimeDirectory, tab: snapshot.tabID, context: contextID, window: windowID)
+            defer { broker.close() }
+            _ = try broker.reveal(AccessibilityTextContext(version: 1, frame_source: snapshot.frameSource,
+                document_generation: input.document_generation, frame_generation: snapshot.generation, node_id: node.id))
+            return true
+        } catch { return false }
+    }
+
     func accessibilityAction(_ snapshot: PageRepresentation, epoch: UInt64, node: PageNode, toggleSelect: Bool = false, focusOnly: Bool = false) -> Bool {
         guard ready, selected == snapshot.tabID, documentEpochs[snapshot.tabID, default: 0] == epoch,
               let frame = frames[snapshot.tabID], representation?.generation == snapshot.generation,

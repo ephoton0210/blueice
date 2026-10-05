@@ -1887,6 +1887,27 @@ final class BrowserUITests: XCTestCase {
         add(attachment)
     }
 
+    func testNativeLiveRegionEditorPrivacyAndDocumentReload() throws {
+        let fixture = try HTTPFixture(); defer { fixture.stop() }
+        let saved = saveClipboard(); defer { NSPasteboard.general.clearContents(); NSPasteboard.general.writeObjects(saved) }
+        launch(); enter(fixture.origin + "/accessibility-live")
+        let page = app.groups["page"]
+        let editor = page.textFields["Status editor"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 15))
+        waitValue(editor, "1"); paste("完成 😀", into: editor); waitValue(editor, "完成 😀")
+        let secret = page.secureTextFields["Live secret"]
+        XCTAssertTrue(secret.exists)
+        XCTAssertFalse(app.debugDescription.contains("private-live-secret"))
+        XCTAssertFalse(app.debugDescription.contains("hidden-live-secret"))
+        app.buttons["add-tab"].click(); waitValue(app.textFields["address"], "about:credits")
+        XCTAssertFalse(page.textFields["Status editor"].exists)
+        app.buttons["tab-1"].click(); waitValue(page.textFields["Status editor"], "完成 😀")
+        let attachment = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
+        attachment.name = "macos-accessibility-live-rotors"; attachment.lifetime = .keepAlways; add(attachment)
+        app.buttons["reload"].click(); waitValue(page.textFields["Status editor"], "1")
+        XCTAssertEqual(fixture.requests, ["/accessibility-live", "/accessibility-live"])
+    }
+
     func testAccessibleUnicodeTextControlsEditingScrollingAndReload() throws {
         let fixture = try HTTPFixture(); defer { fixture.stop() }
         launch(); enter(fixture.origin + "/accessibility-text")

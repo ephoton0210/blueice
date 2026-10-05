@@ -11,6 +11,7 @@ use std::time::Duration;
 
 fn sample_snapshot(generation: u64) -> AiSnapshot {
     AiSnapshot {
+        accessibility: None,
         frame_source: 0,
         generation,
         tab_id: 1,

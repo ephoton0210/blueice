@@ -18,6 +18,7 @@ fn no_pause(_: Duration) {}
 fn snapshot_with_nodes(n: usize) -> blueice_ipc::AiSnapshot {
     use blueice_ipc::{AiNode, Bounds, NodeState, Role};
     blueice_ipc::AiSnapshot {
+        accessibility: None,
         frame_source: 0,
         generation: 1,
         tab_id: 1,

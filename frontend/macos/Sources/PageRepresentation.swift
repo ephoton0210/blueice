@@ -5,6 +5,34 @@
 import CoreGraphics
 import Foundation
 
+enum LivePoliteness: String, Decodable, Sendable { case polite = "Polite", assertive = "Assertive" }
+
+struct AccessibilitySnapshot: Decodable, Sendable {
+    struct Name: Decodable, Sendable { let node_id: UInt64; let name: String? }
+    struct Announcement: Decodable, Sendable {
+        let sequence: UInt64
+        let region_id: UInt64
+        let text: String
+        let politeness: LivePoliteness
+    }
+    let document_generation: UInt64
+    let revision: UInt64
+    let announcements: [Announcement]
+    let hidden_nodes: [UInt64]
+    let names: [Name]
+    let truncated: Bool
+    enum CodingKeys: CodingKey { case document_generation, revision, announcements, hidden_nodes, names, truncated }
+    init(from decoder: Decoder) throws {
+        let value = try decoder.container(keyedBy: CodingKeys.self)
+        document_generation = try value.decode(UInt64.self, forKey: .document_generation)
+        revision = try value.decode(UInt64.self, forKey: .revision)
+        announcements = try value.decode([Announcement].self, forKey: .announcements)
+        hidden_nodes = try value.decodeIfPresent([UInt64].self, forKey: .hidden_nodes) ?? []
+        names = try value.decodeIfPresent([Name].self, forKey: .names) ?? []
+        truncated = try value.decodeIfPresent(Bool.self, forKey: .truncated) ?? false
+    }
+}
+
 enum PageRole: Equatable, Decodable, Sendable {
     case heading(UInt8), link, button, textBox, checkBox, slider, comboBox, option, list, listItem, paragraph, image, generic
 
@@ -84,7 +112,7 @@ struct PageNode: Decodable, Sendable {
     let parent: UInt64?
     let children: [UInt64]
     let role: PageRole
-    let name: String?
+    var name: String?
     let state: State
     let bounds: Bounds
     let opacity: Double
@@ -103,9 +131,10 @@ struct PageRepresentation: Decodable, Sendable {
     let url: String?
     let scrollY: Double
     let nodes: [PageNode]
+    let accessibility: AccessibilitySnapshot?
     enum CodingKeys: String, CodingKey {
         case frameSource = "frame_source", tabID = "tab_id", scrollY = "scroll_y"
-        case generation, url, nodes
+        case generation, url, nodes, accessibility
     }
 
     init(from decoder: Decoder) throws {
@@ -116,6 +145,7 @@ struct PageRepresentation: Decodable, Sendable {
         url = try value.decodeIfPresent(String.self, forKey: .url)
         scrollY = try value.decode(Double.self, forKey: .scrollY)
         nodes = try value.decode([PageNode].self, forKey: .nodes)
+        accessibility = try value.decodeIfPresent(AccessibilitySnapshot.self, forKey: .accessibility)
         try validate()
     }
 
@@ -130,6 +160,21 @@ struct PageRepresentation: Decodable, Sendable {
                   node.occludedFraction.isFinite, (0...1).contains(node.occludedFraction),
                   Set(node.children).count == node.children.count else { throw invalid() }
             byID[node.id] = node
+        }
+        if let accessibility {
+            guard accessibility.document_generation > 0 || nodes.isEmpty && accessibility.revision == 0,
+                  accessibility.announcements.count <= 64, Set(accessibility.hidden_nodes).count == accessibility.hidden_nodes.count,
+                  accessibility.hidden_nodes.allSatisfy({ byID[$0] != nil }) else { throw invalid() }
+            let hidden = Set(accessibility.hidden_nodes)
+            guard accessibility.hidden_nodes.allSatisfy({ byID[$0]?.children.allSatisfy(hidden.contains) == true }),
+                  Set(accessibility.names.map(\.node_id)).count == accessibility.names.count,
+                  accessibility.names.allSatisfy({ byID[$0.node_id] != nil && $0.name.map { $0.utf16.count <= 65_536 } != false }) else { throw invalid() }
+            var previous: UInt64 = 0
+            for announcement in accessibility.announcements {
+                guard announcement.sequence > previous, announcement.sequence <= accessibility.revision,
+                      announcement.region_id > 0, !announcement.text.isEmpty, announcement.text.utf16.count <= 8192 else { throw invalid() }
+                previous = announcement.sequence
+            }
         }
         for node in nodes {
             if let parent = node.parent, byID[parent]?.children.contains(node.id) != true { throw invalid() }
