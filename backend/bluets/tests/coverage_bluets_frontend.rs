@@ -5429,7 +5429,7 @@ fn class_output_stays_atomic_and_refuses_unstructured_classes() {
         ENTRY,
         &MapLoader::from([ModuleSource::new(
             ENTRY,
-            "class A { get value() { return 1; } }",
+            "class A { ['value'](): number { return 1; } }",
         )]),
         emit_all_artifacts_options(),
     );
@@ -5439,7 +5439,7 @@ fn class_output_stays_atomic_and_refuses_unstructured_classes() {
         .iter()
         .any(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax));
 
-    // Declaration output needs a stated result type for every method.
+    // Structured methods infer their declaration result from the body.
     let untyped = compile(
         ENTRY,
         &MapLoader::from([ModuleSource::new(
@@ -5448,7 +5448,12 @@ fn class_output_stays_atomic_and_refuses_unstructured_classes() {
         )]),
         emit_all_artifacts_options(),
     );
-    assert!(untyped.output.is_none());
+    assert!(!untyped.has_errors(), "{:#?}", untyped.diagnostics);
+    assert!(untyped.output.unwrap().artifacts[ENTRY]
+        .declaration
+        .as_ref()
+        .unwrap()
+        .contains("m(): number;"));
 }
 
 #[test]

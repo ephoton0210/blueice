@@ -14,6 +14,8 @@ pub(super) struct Context<'a> {
     project: &'a Project,
     used_imports: BTreeSet<String>,
     variables: BTreeMap<String, (String, bool)>,
+    return_types: BTreeMap<usize, String>,
+    parameter_types: BTreeMap<usize, String>,
 }
 
 impl<'a> Context<'a> {
@@ -27,6 +29,8 @@ impl<'a> Context<'a> {
             project,
             used_imports: BTreeSet::new(),
             variables: BTreeMap::new(),
+            return_types: BTreeMap::new(),
+            parameter_types: BTreeMap::new(),
         };
         for declaration in &module.declarations {
             let Declaration::Variable(variable) = declaration else {
@@ -94,10 +98,20 @@ impl<'a> Context<'a> {
                     for parameter in &function.parameters {
                         if let Some(value) = &parameter.annotation {
                             context.references(value);
+                            if matches!(value, Type::Record(_)) {
+                                let rendered = context.render(value, 0, &parameter.span)?;
+                                context
+                                    .parameter_types
+                                    .insert(parameter.span.start, rendered);
+                            }
                         }
                     }
                     if let Some(value) = &function.return_type {
                         context.references(value);
+                    } else if let Some(value) = checked.inferred_returns.get(&function.span.start) {
+                        let value = super::inferred_returns::canonical(value);
+                        let rendered = context.render(&value, 0, &function.span)?;
+                        context.return_types.insert(function.span.start, rendered);
                     }
                 }
                 Declaration::Class(class)
@@ -122,6 +136,10 @@ impl<'a> Context<'a> {
                             }
                             if let Some(value) = &method.return_type {
                                 context.references(value);
+                            } else if let Some(value) =
+                                checked.inferred_returns.get(&method.span.start)
+                            {
+                                context.references(value);
                             }
                         }
                     }
@@ -141,6 +159,14 @@ impl<'a> Context<'a> {
 
     pub(super) fn variable(&self, name: &str) -> Option<&(String, bool)> {
         self.variables.get(name)
+    }
+
+    pub(super) fn return_type(&self, start: usize) -> Option<&str> {
+        self.return_types.get(&start).map(String::as_str)
+    }
+
+    pub(super) fn parameter_type(&self, start: usize) -> Option<&str> {
+        self.parameter_types.get(&start).map(String::as_str)
     }
 
     fn fresh_symbol_initializer(&self, variable: &VariableDeclaration) -> bool {

@@ -65,6 +65,9 @@ pub struct Symbol {
 pub struct CheckedModule {
     pub module: Module,
     pub symbols: Vec<Symbol>,
+    /// Return types inferred without changing source annotations or runtime policy.
+    pub(crate) inferred_returns: BTreeMap<usize, Type>,
+    pub(crate) inferred_parameters: BTreeMap<usize, Type>,
     /// The namespaces the module exports, as an importer binds them.
     pub(crate) namespace_exports: BTreeMap<String, NamespaceExport>,
     /// Checked runtime bindings, retained for incremental importers.

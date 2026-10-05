@@ -63,7 +63,10 @@ fn discovered_entries() -> BTreeSet<String> {
     for directory in fs::read_dir(fixtures()).unwrap() {
         let directory = directory.unwrap();
         let name = directory.file_name().into_string().unwrap();
-        if !name.contains("class") || !directory.path().is_dir() {
+        if !name.contains("class")
+            || name.starts_with("infer-return-")
+            || !directory.path().is_dir()
+        {
             continue;
         }
         if directory.path().join("main.ts").is_file() {

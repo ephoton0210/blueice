@@ -124,7 +124,7 @@ pub(super) fn class_method_fields(class: &ClassDeclaration, is_static: bool) -> 
     fields
 }
 
-pub(super) fn class_constructor_side_type(class: &ClassDeclaration) -> Type {
+pub(in crate::checker::module) fn class_constructor_side_type(class: &ClassDeclaration) -> Type {
     let mut fields = vec![TypeField {
         name: "prototype".to_string(),
         readonly: true,

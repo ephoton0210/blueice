@@ -201,23 +201,11 @@ impl ModuleChecker<'_> {
         if arrow.span.end != last.end {
             return None;
         }
-        let result = match (&arrow.return_type, &arrow.body) {
-            (Some(return_type), _) => return_type.clone(),
-            (None, NestedFunctionBody::Expression(body)) => {
-                let mut inner = scope.clone();
-                for parameter in &arrow.parameters {
-                    inner.insert(
-                        parameter.name.clone(),
-                        parameter.annotation.clone().unwrap_or(Type::Unknown),
-                    );
-                }
-                self.infer_expression(body, &inner)
-            }
-            (None, NestedFunctionBody::Block { .. }) => Type::Unknown,
-        };
+        let result = self.inferred_nested_result(arrow, scope);
+        let parameters = self.return_parameters(&arrow.parameters, scope);
         Some(erased_function_type(
-            &arrow.parameters,
-            async_result(result, arrow.async_function && arrow.return_type.is_none()),
+            &parameters,
+            result,
             &arrow.type_parameters,
         ))
     }

@@ -80,6 +80,8 @@ pub(crate) fn check_incremental(
         }
         let exported_namespaces = checker.exported_namespaces();
         let value_exports = checker.exported_values(false);
+        let inferred_returns = checker.inferred_return_types();
+        let inferred_parameters = checker.inferred_parameter_types();
         diagnostics.extend(checker.diagnostics);
         let symbols = checker.symbols;
         namespace_exports.insert(module_id.clone(), exported_namespaces.clone());
@@ -91,6 +93,8 @@ pub(crate) fn check_incremental(
             CheckedModule {
                 module: module.clone(),
                 symbols,
+                inferred_returns,
+                inferred_parameters,
                 namespace_exports: exported_namespaces,
                 value_exports,
             },

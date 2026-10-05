@@ -12,6 +12,7 @@ mod accessors;
 mod bodies;
 mod types;
 
+pub(in crate::checker::module) use types::class_constructor_side_type;
 pub(in crate::checker::module) use types::class_is_fully_structured;
 use types::*;
 mod fields;
@@ -315,14 +316,18 @@ impl ModuleChecker<'_> {
     }
 
     pub(super) fn bind_inherited_class_instance_methods(&mut self) {
-        let local_classes = self
+        let classes = self
             .module
             .declarations
             .iter()
             .filter_map(|declaration| match declaration {
-                Declaration::Class(class) => Some((class.name.as_str(), class)),
+                Declaration::Class(class) => Some(class.clone()),
                 _ => None,
             })
+            .collect::<Vec<_>>();
+        let local_classes = classes
+            .iter()
+            .map(|class| (class.name.clone(), self.class_with_inferred_returns(class)))
             .collect::<BTreeMap<_, _>>();
         let mut surfaces = Vec::new();
         for class in local_classes.values() {
@@ -379,14 +384,18 @@ impl ModuleChecker<'_> {
     }
 
     pub(super) fn bind_inherited_class_static_methods(&mut self) {
-        let local_classes = self
+        let classes = self
             .module
             .declarations
             .iter()
             .filter_map(|declaration| match declaration {
-                Declaration::Class(class) => Some((class.name.as_str(), class)),
+                Declaration::Class(class) => Some(class.clone()),
                 _ => None,
             })
+            .collect::<Vec<_>>();
+        let local_classes = classes
+            .iter()
+            .map(|class| (class.name.clone(), self.class_with_inferred_returns(class)))
             .collect::<BTreeMap<_, _>>();
         let mut surfaces = Vec::new();
         for class in local_classes.values() {

@@ -11,6 +11,7 @@ pub(super) struct MemberCall<'a> {
     pub(super) receiver: &'a [Token],
     pub(super) member: &'a Token,
     pub(super) arguments: &'a [Token],
+    pub(super) generic: bool,
 }
 
 fn postfix_starts(tokens: &[Token], is_generic: impl Fn(usize) -> bool) -> Vec<usize> {
@@ -135,7 +136,7 @@ pub(super) fn member_call_ranges(
     tokens: &[Token],
     is_generic: impl Fn(usize) -> bool,
 ) -> Vec<Range<usize>> {
-    let starts = postfix_starts(tokens, is_generic);
+    let starts = postfix_starts(tokens, &is_generic);
     let mut open = Vec::new();
     let mut closes = vec![None; tokens.len()];
     for (index, token) in tokens.iter().enumerate() {
@@ -149,13 +150,20 @@ pub(super) fn member_call_ranges(
     }
     (0..tokens.len().saturating_sub(2))
         .filter_map(|dot| {
+            let open = if tokens.get(dot + 2).is_some_and(|token| token.is("(")) {
+                Some(dot + 2)
+            } else if is_generic(tokens[dot + 1].start) {
+                explicit_generic_call_close(tokens, dot + 1).map(|close| close + 1)
+            } else {
+                None
+            };
             (tokens[dot].is(".")
                 && matches!(
                     tokens[dot + 1].kind,
                     TokenKind::Identifier | TokenKind::Keyword
                 )
-                && tokens[dot + 2].is("("))
-            .then(|| closes[dot + 2].map(|end| starts[dot]..end + 1))
+                && open.is_some())
+            .then(|| closes[open.unwrap()].map(|end| starts[dot]..end + 1))
             .flatten()
         })
         .collect()
@@ -179,18 +187,24 @@ pub(super) fn member_call_parts(
         return None;
     }
     let dot = dot?;
-    if dot == 0 || postfix_starts(tokens, is_generic)[dot] != 0 {
+    if dot == 0 || postfix_starts(tokens, &is_generic)[dot] != 0 {
         return None;
     }
     let member = tokens.get(dot + 1)?;
-    let open = tokens.get(dot + 2)?;
-    let arguments = tokens.get(dot + 3..)?;
+    let generic = tokens.get(dot + 2)?.is("<");
+    let open = if generic && is_generic(member.start) {
+        explicit_generic_call_close(tokens, dot + 1)? + 1
+    } else {
+        dot + 2
+    };
+    let arguments = tokens.get(open + 1..)?;
     (matches!(member.kind, TokenKind::Identifier | TokenKind::Keyword)
-        && open.is("(")
+        && tokens[open].is("(")
         && split_call_arguments(arguments).is_some())
     .then_some(MemberCall {
         receiver: &tokens[..dot],
         member,
         arguments,
+        generic,
     })
 }

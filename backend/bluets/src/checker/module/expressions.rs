@@ -13,7 +13,8 @@ mod method_overloads;
 mod optional_property;
 mod readonly;
 
-use indexing::{canonical_index_key, indexed_value_type, tuple_indexed_candidates};
+pub(super) use indexing::indexed_value_type;
+use indexing::{canonical_index_key, tuple_indexed_candidates};
 use method_overloads::{
     select_callback_method_overload, supports_callback_method_receiver, MethodOverloadError,
 };

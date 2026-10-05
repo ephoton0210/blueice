@@ -4,3 +4,4 @@
 
 export function entry() { return { value: 1 }; }
 export function values() { return [1, 2]; }
+export function literal(value: 'yes') { return { value }; }

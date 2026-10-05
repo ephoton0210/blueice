@@ -51,7 +51,11 @@ impl<'a> ModuleChecker<'a> {
             let callee = Token {
                 kind: TokenKind::Identifier,
                 text: format!("{}.{}", call.receiver[0].text, call.member.text),
-                start: call.receiver[0].start,
+                start: if call.generic {
+                    call.member.start
+                } else {
+                    call.receiver[0].start
+                },
                 end: call.member.end,
             };
             let mut qualified = vec![
@@ -63,6 +67,14 @@ impl<'a> ModuleChecker<'a> {
                     end: call.member.end,
                 },
             ];
+            if call.generic {
+                let member = tokens
+                    .iter()
+                    .position(|token| token.start == call.member.start)
+                    .unwrap();
+                let close = explicit_generic_call_close(tokens, member).unwrap();
+                qualified.splice(1..2, tokens[member + 1..=close + 1].iter().cloned());
+            }
             qualified.extend_from_slice(call.arguments);
             // The qualified binding retains generic parameters and every overload.
             debug_assert!(!signatures.is_empty());

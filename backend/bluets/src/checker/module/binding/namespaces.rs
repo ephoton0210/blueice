@@ -112,6 +112,8 @@ struct BodyRun {
     diagnostics: Vec<Diagnostic>,
     symbols: Vec<Symbol>,
     published: Published,
+    inferred_returns: BTreeMap<usize, Type>,
+    inferred_parameters: BTreeMap<usize, Type>,
 }
 
 /// What a body declares, and which of it the namespace exports.
@@ -308,6 +310,14 @@ impl ModuleChecker<'_> {
         }
         let path = join(&self.namespace_path, &namespace.name);
         let run = self.run_namespace_body(namespace, &path, false);
+        self.return_inference
+            .results
+            .borrow_mut()
+            .extend(run.inferred_returns);
+        self.return_inference
+            .parameters
+            .borrow_mut()
+            .extend(run.inferred_parameters);
         self.diagnostics.extend(run.diagnostics);
         for mut symbol in run.symbols {
             symbol.name = join(&path, &symbol.name);
@@ -320,6 +330,14 @@ impl ModuleChecker<'_> {
     pub(super) fn check_namespace(&mut self, namespace: &NamespaceDeclaration) {
         let path = join(&self.namespace_path, &namespace.name);
         let run = self.run_namespace_body(namespace, &path, true);
+        self.return_inference
+            .results
+            .borrow_mut()
+            .extend(run.inferred_returns);
+        self.return_inference
+            .parameters
+            .borrow_mut()
+            .extend(run.inferred_parameters);
         self.diagnostics.extend(run.diagnostics);
         self.publish_namespace(namespace, &path, run.published);
     }
@@ -397,6 +415,7 @@ impl ModuleChecker<'_> {
         }
         sub.expose_earlier_blocks(self, path);
         sub.bind_declarations();
+        sub.infer_module_return_signatures();
         sub.validate_function_overloads();
         let skip = sub.diagnostics.len();
         if check {
@@ -414,6 +433,8 @@ impl ModuleChecker<'_> {
             diagnostics,
             symbols,
             published,
+            inferred_returns: sub.inferred_return_types(),
+            inferred_parameters: sub.inferred_parameter_types(),
         }
     }
 

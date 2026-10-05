@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: K.1.5.** Sections A to J are complete (summarized below); J.6 closed in its
+**Current leaf: M6 workspace/coverage gate for K.1.** Sections A to J are complete (summarized below); J.6 closed in its
 measured form (`COMPATIBILITY_INVENTORY.md`). Section K closes the gaps that inventory lists.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
@@ -242,7 +242,7 @@ and import rules.
     record each omission).
   - *Done when:* programs using only these types have verdicts equal to `tsc` with `--lib` set to the
     same subset (`lib-*` matrix); the set's version is in the fingerprint and manifest.
-- [ ] **K.1.5 Inferred return types (M).**
+- [x] **K.1.5 Inferred return types (M).**
   - *Today:* getters, methods and exported functions without a return annotation are refused where the
     type is needed (declaration output, accessor pairs); inference exists only for some expression forms.
   - *Work:* infer from `return` expressions (union of returns, `void`, `never`, async wrapping in
@@ -264,6 +264,14 @@ and import rules.
   | `backend/bluets/src/bin/bluetsc.rs` | 1693 | Command/options/config parsing |
   | `backend/bluets-bluejs/src/expression.rs` | 1234 | Call/construction and assignment lowering |
   | `backend/bluets-bluejs/src/lowering.rs` | 1340 | Class and module lowering helpers |
+
+#### M6 milestone gate
+
+- [ ] **M6 Close K.1 with the complete workspace and coverage gates.**
+  K.1.1 to K.1.5 and K.1.R.1 are implemented and passed their two-crate gates.
+  Run the existing CI workflow on the pushed K.1.5 commit, including full workspace
+  build/test/lint, every pinned oracle, workspace line coverage at least 90%, and
+  the independent BlueJS 88% line floor. Record the exact revision and run in PLAN.md.
 
 ### K.2 Read real project configuration — M7 — gaps G-M2, G-C2
 

@@ -379,7 +379,9 @@ impl<'a> ModuleChecker<'a> {
         }
     }
 
-    pub(super) fn function_body_termination(items: &[FunctionBodyItem]) -> StructuredTermination {
+    pub(in crate::checker::module) fn function_body_termination(
+        items: &[FunctionBodyItem],
+    ) -> StructuredTermination {
         for item in items {
             match item {
                 FunctionBodyItem::Return { .. } | FunctionBodyItem::Throw { .. } => {

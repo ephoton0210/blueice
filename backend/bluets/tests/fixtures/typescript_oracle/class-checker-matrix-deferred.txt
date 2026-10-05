@@ -1,5 +1,4 @@
 class-visibility-imported/redeclare-protected-valid.ts
 class-param-property-base-super-in-branch/main.ts
-class-accessor-getter-unannotated/main.ts
 class-accessor-unrelated-types/main.ts
 class-interface-merge-heritage/main.ts

@@ -13,6 +13,7 @@ mod generators;
 pub(in crate::checker::module) use generators::GeneratorContext;
 mod modules;
 mod names;
+mod return_types;
 mod standard_library;
 
 use modules::specialize_imported_class_type;
@@ -24,7 +25,7 @@ mod nested_functions;
 pub(in crate::checker) use classes::{class_export, class_instance_type};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum StructuredTermination {
+pub(super) enum StructuredTermination {
     Terminates,
     FallsThrough,
     Opaque,
@@ -91,6 +92,7 @@ impl<'a> ModuleChecker<'a> {
             max_type_expansions,
             strict_catch_unknown: false,
             record_spread_inference_failure: Cell::new(None),
+            return_inference: Default::default(),
         }
     }
 
@@ -98,6 +100,7 @@ impl<'a> ModuleChecker<'a> {
         self.bind_declarations();
         self.bind_ambient_declarations();
         self.bind_standard_library();
+        self.infer_module_return_signatures();
         self.validate_function_overloads();
         self.validate_default_exports();
         self.validate_value_exports();
@@ -443,7 +446,9 @@ impl<'a> ModuleChecker<'a> {
                 }
                 Declaration::Variable(variable) => self.check_variable(variable),
                 Declaration::Function(function) => self.check_function(function),
-                Declaration::Class(class) => {
+                Declaration::Class(original) => {
+                    let inferred = self.class_with_inferred_returns(original);
+                    let class = &inferred;
                     self.validate_class_heritage_name(class);
                     self.validate_class_constructor_group(class);
                     self.validate_class_method_groups(class);
@@ -469,6 +474,7 @@ impl<'a> ModuleChecker<'a> {
                 }
             }
         }
+        self.report_return_inference_failures();
         if let Some((start, end, failure)) = self.record_spread_inference_failure.take() {
             let (message, code) = match failure {
                 RecordSpreadFailure::ResourceLimit => (

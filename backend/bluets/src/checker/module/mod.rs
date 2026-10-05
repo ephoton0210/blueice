@@ -110,11 +110,13 @@ pub(super) struct ModuleChecker<'a> {
     strict_catch_unknown: bool,
     /// Inference uses `&self`; checked validation emits its first failure.
     record_spread_inference_failure: Cell<Option<(usize, usize, RecordSpreadFailure)>>,
+    return_inference: return_inference::ReturnInference,
 }
 
 mod binding;
 mod decorators;
 mod expressions;
 mod jsx;
+mod return_inference;
 pub(in crate::checker) use binding::{class_export, class_instance_type};
 pub(crate) use binding::{ExportedValue, NamespaceExport};

@@ -23,6 +23,7 @@ mod commonjs;
 mod decorators;
 mod enums;
 mod inferred_declarations;
+mod inferred_returns;
 mod jsx;
 mod legacy_decorators;
 mod namespaces;
@@ -135,7 +136,7 @@ pub(crate) fn emit(
                 .then(|| {
                     let context = inferred_declarations::Context::new(checked_module, project)?;
                     emit_declaration(
-                        &checked_module.module,
+                        &inferred_returns::declaration_module(checked_module),
                         &checked_module.symbols,
                         Some(&context),
                     )
@@ -618,20 +619,30 @@ fn emit_declaration(
                     }
                     output.push_str(": ");
                     output.push_str(
-                        &parameter
-                            .annotation
-                            .as_ref()
-                            .map(type_to_ts)
-                            .unwrap_or_else(|| "unknown".to_string()),
+                        &inferred
+                            .and_then(|context| context.parameter_type(parameter.span.start))
+                            .map(str::to_owned)
+                            .unwrap_or_else(|| {
+                                parameter
+                                    .annotation
+                                    .as_ref()
+                                    .map(type_to_ts)
+                                    .unwrap_or_else(|| "unknown".to_string())
+                            }),
                     );
                 }
                 output.push_str("): ");
                 output.push_str(
-                    &function
-                        .return_type
-                        .as_ref()
-                        .map(type_to_ts)
-                        .unwrap_or_else(|| "unknown".to_string()),
+                    &inferred
+                        .and_then(|context| context.return_type(function.span.start))
+                        .map(str::to_owned)
+                        .unwrap_or_else(|| {
+                            function
+                                .return_type
+                                .as_ref()
+                                .map(type_to_ts)
+                                .unwrap_or_else(|| "unknown".to_string())
+                        }),
                 );
                 output.push_str(";\n");
             }

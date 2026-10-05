@@ -9,7 +9,7 @@ use super::*;
 /// Preserve every declared possibility rather than losing readonly types in
 /// an inferred local alias. A canonical index selects one tuple element;
 /// otherwise a heterogeneous container yields a union of its value types.
-pub(super) fn indexed_value_type(
+pub(in crate::checker::module) fn indexed_value_type(
     value: &Type,
     index: Option<usize>,
     aliases: &BTreeMap<String, TypeDefinition>,

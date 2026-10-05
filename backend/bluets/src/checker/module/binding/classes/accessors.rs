@@ -109,6 +109,24 @@ impl ModuleChecker<'_> {
             .iter()
             .filter_map(|member| member.accessor.as_ref())
         {
+            if accessor.getter && !super::super::super::return_inference::has_return(&accessor.body)
+            {
+                let mut scope = self.values.clone();
+                scope.insert(
+                    "this".to_string(),
+                    Type::Named {
+                        name: class.name.clone(),
+                        arguments: Vec::new(),
+                    },
+                );
+                if self.inference_body_completes(&accessor.body, &scope) {
+                    self.type_error(
+                        &accessor.name_span,
+                        "a getter must return a value".to_string(),
+                        DiagnosticCode::TypeMismatch,
+                    );
+                }
+            }
             if accessor.getter && accessor.return_type.is_none() {
                 let setter_annotated = class
                     .members

@@ -167,12 +167,8 @@ fn the_accessor_grammar_is_enforced() {
 }
 
 #[test]
-fn a_getter_needs_an_annotation_and_a_pair_needs_one_type_and_one_accessibility() {
-    assert_rejected(
-        "class A { get v() { return 1; } }",
-        DiagnosticCode::UnsupportedSyntax,
-        "needs a return type annotation",
-    );
+fn getters_infer_their_body_and_pairs_need_compatible_types_and_accessibility() {
+    assert_accepted("class A { get v() { return 1; } }");
     // The setter's parameter annotation supplies it.
     assert_accepted("class A { get v() { return 1; } set v(value: number) {} }");
     assert_rejected(

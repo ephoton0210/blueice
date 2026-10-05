@@ -212,6 +212,15 @@ fn inferred_return_declarations_match_typescript() {
     let tsc = pinned_tsc();
     let root = temporary("declarations");
     for name in [
+        "method-default",
+        "escaped-literals",
+        "getter-completion",
+        "completion",
+        "unknown-getter",
+        "inferred-setter",
+        "recursion",
+        "default",
+        "pattern",
         "primitives",
         "unions",
         "empty",
@@ -262,6 +271,58 @@ fn inferred_return_declarations_match_typescript() {
             fs::read_to_string(reference.join("main.d.ts")).unwrap(),
             "{name}"
         );
+    }
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+#[ignore = "requires the pinned TypeScript compiler"]
+fn union_declarations_have_the_same_types_despite_literal_intern_order() {
+    let tsc = pinned_tsc();
+    let root = temporary("union-declarations");
+    for name in ["unreachable", "finally"] {
+        let entry = fixtures().join(format!("infer-return-decl-{name}/main.ts"));
+        let blue = root.join(name).join("blue");
+        let reference = root.join(name).join("reference");
+        let built = Command::new(env!("CARGO_BIN_EXE_bluetsc"))
+            .arg("build")
+            .arg(&entry)
+            .args(["--declaration", "--out-dir"])
+            .arg(&blue)
+            .output()
+            .unwrap();
+        assert!(built.status.success(), "{}", report(&built));
+        let built = Command::new(&tsc)
+            .args([
+                "--target",
+                "ES2022",
+                "--lib",
+                "ES2022",
+                "--module",
+                "ES2022",
+                "--strict",
+                "--pretty",
+                "false",
+                "--declaration",
+                "--emitDeclarationOnly",
+                "--outDir",
+            ])
+            .arg(&reference)
+            .arg(entry)
+            .output()
+            .unwrap();
+        assert!(built.status.success(), "{}", report(&built));
+        let consumer = root.join(name).join("consumer.ts");
+        fs::write(&consumer, "import type * as Blue from './blue/main';\nimport type * as Reference from './reference/main';\ntype Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B ? 1 : 2) ? true : false;\nconst equal: Equal<typeof Blue.count, typeof Reference.count> = true;\n").unwrap();
+        let checked = Command::new(&tsc)
+            .args([
+                "--target", "ES2022", "--lib", "ES2022", "--module", "ES2022", "--strict",
+                "--pretty", "false", "--noEmit",
+            ])
+            .arg(consumer)
+            .output()
+            .unwrap();
+        assert!(checked.status.success(), "{name}: {}", report(&checked));
     }
     fs::remove_dir_all(root).unwrap();
 }

@@ -3920,3 +3920,61 @@ fail. The public declaration still prints `unknown`; an importer accepts an inva
 string assignment, and recursive return inference lacks its annotation diagnostic.
 This failing replay is committed before the implementation. K.1.5 remains unchecked
 until the complete K.0 gate passes; workspace and coverage remain the M6 milestone.
+
+
+### K.1.5 Inferred return signatures
+
+A separate return-inference module collects expressions in structured lexical
+bodies, preserving branch scopes and excluding nested functions' returns.
+It joins multiple returns, adds implicit undefined on a completing value-return
+path, distinguishes bare/no-value returns, and widens a single fresh literal.
+Annotated literal values retain their type. Async results flatten Promise values;
+generators retain yield, return and contextual next types. Return inference shares
+the configured expansion budget and records a diagnostic instead of recursing
+without a bound.
+
+The additional pinned recursion probe distinguishes direct tail self-calls
+(`never`, or a widened base return) from mutual or embedded cycles that require
+an annotation. The original public recursive fixture was corrected to the
+record-expression cycle after that probe; its previous bare self-call is accepted
+by pinned TypeScript and remains in the matrix as `recursive-tail-valid`.
+
+Inferred signatures are retained for imports, including generic parameters.
+Class access uses the existing private/protected visibility view; default and
+destructured parameters contribute to the same lexical inference. Return and
+default-parameter types are recorded separately from the original AST. Only
+declaration output applies those annotations, preserving JavaScript emission
+and runtime boundary policy.
+
+The expanded matrix records 121 verdicts (77 accepted, 44 rejected), twenty-three
+exact declaration comparisons and one Node program. Two additional declaration
+programs use a pinned TypeScript type-equality consumer to compare unions whose
+member printing order differs with literal interning; their types agree, while
+that text-order difference remains explicit. Four public tests cover
+callers/declarations, imports, recursion, the expansion limit and preservation
+of the source AST. All 121 check/build verdicts, declaration comparisons and
+public/runtime tests pass in the focused replay.
+
+Additional pinned completion probes cover nonreturning calls, infinite loops,
+getter bodies returning a value or completing without one, declared unknown
+values and setter parameters inferred from a getter. Completion analysis is
+kept in its own module. Record parameter formatting and nested inferred literal
+spelling were compared against pinned declaration output before their fixes.
+The first full replay exposed three stale assertions/discovery rules for the
+now-supported getters and methods. Their obsolete refusal expectations and
+class-matrix deferred entry were removed; the focused regression replay passes.
+A final public-interface probe reproduced a method-default-parameter panic
+and an inferred declaration that doubled string escapes. Four further pinned
+fixtures cover those regressions: method defaults now contribute parameter
+types to checked class signatures and declaration copies, while inferred string
+literals use the existing JavaScript string decoder before canonical quoting.
+The final K.1.5 gate passed on 2026-10-06 on a frozen Linux aarch64 snapshot
+with Rust 1.95, Node 26.7 and TypeScript 5.9.3. Format/check, both crates'
+all-target Clippy with `-D warnings`, and all 57 test targets passed: 1036 tests,
+including all 114 ignored oracle tests across 24 suite files, with no failures,
+skipped or filtered tests. The refusal inventory was regenerated. The largest
+production source is 1171 lines; no production source reaches the 1200-line
+review threshold or needs another queued split. The completed K.1.R.1 split is
+retained in the refactoring queue. K.1.5 is checked; the M6 workspace/coverage
+milestone is next. Broader literal freshness, contextual inference, control flow
+and declaration precision remain in K.4/K.8; full TypeScript parity stays off.

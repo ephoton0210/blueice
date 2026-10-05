@@ -187,7 +187,10 @@ impl<'a> ModuleChecker<'a> {
             if let Some(signatures) =
                 self.module_member_signatures(call.receiver, &call.member.text, scope)
             {
-                return self.infer_function_call(&signatures, call.arguments, scope, None);
+                let explicit = call.generic.then(|| {
+                    self.module.generic_call_type_arguments[&call.member.start].as_slice()
+                });
+                return self.infer_function_call(&signatures, call.arguments, scope, explicit);
             }
             let base = self.infer_expression(call.receiver, scope);
             let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
@@ -241,6 +244,14 @@ impl<'a> ModuleChecker<'a> {
         if let Some(call) =
             direct_call_parts(tokens).filter(|call| split_call_arguments(call.arguments).is_some())
         {
+            if let Some(signatures) =
+                self.inferred_call_signatures(&call.callee.text, call.callee.start, scope)
+            {
+                let explicit = call.generic.then(|| {
+                    self.module.generic_call_type_arguments[&call.callee.start].as_slice()
+                });
+                return self.infer_function_call(&signatures, call.arguments, scope, explicit);
+            }
             if let Some(signature) = self.function_value_signature(&call.callee.text, scope) {
                 return self.infer_function_call(&[signature], call.arguments, scope, None);
             }
