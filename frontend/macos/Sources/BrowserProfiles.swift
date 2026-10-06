@@ -53,7 +53,7 @@ struct BrowserProfileMenu: View {
     var body: some View {
         Menu { ProfileMenuItems(model: model, workspace: workspace) } label: { Image(systemName: "person.crop.circle").frame(width: 24, height: 24) }
             .accessibilityLabel(BrowserStrings.text("Profiles")).accessibilityValue(model.profileName).accessibilityIdentifier("profile-menu")
-            .help(model.profileName).disabled(!workspace.canManageContexts || workspace.busy)
+            .help(model.profileName).chromeFocusable("profile-menu").disabled(!workspace.canManageContexts || workspace.busy)
     }
 }
 

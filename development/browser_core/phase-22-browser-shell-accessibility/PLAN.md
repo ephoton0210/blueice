@@ -4,6 +4,13 @@
 
 **Status**: In progress — the Unix reference frontend, an initial Windows WinUI 3 shell and a macOS SwiftUI/AppKit shell present the core's pixels. macOS includes supervised navigation, an initial page NSAccessibility bridge and core-owned native text editing. Actual OS IME verification, complete browser-shell behavior and full operating-system page accessibility remain open. The [macOS delivery milestones](MACOS_DELIVERY_PLAN.md) track scoped commits and remaining work.
 
+The macOS chrome keyboard increment adds a rendered enabled-control loop,
+native activation/focus indicators, directional core-page handoff and bounded
+window/modal/readiness-fenced input. Complete native acceptance passed 210
+methods with one existing physical Zhuyin skip; fresh core/static and final
+source/product/process gates passed. See
+[the focus results](MACOS_CHROME_FOCUS_RESULTS.md).
+
 ## Windows first slice (2026-10-02)
 
 [`frontend/winui`](../../../frontend/winui/README.md) implements an unpackaged,

@@ -15,16 +15,20 @@ struct BrowserAssistantView: View {
                 Spacer()
                 Button { model.assistantPresented = false } label: { Image(systemName: "xmark") }
                     .accessibilityLabel(BrowserStrings.text("Close assistant")).accessibilityIdentifier("assistant-close")
+                    .chromeFocusable("assistant-close", activate: { model.assistantPresented = false })
             }
             if let tab = model.selected, let page = assistant.page(tab) {
                 Text(page.url).font(.caption).lineLimit(2).textSelection(.enabled).accessibilityIdentifier("assistant-source")
                 GroupBox(BrowserStrings.text("Page tools")) {
                     VStack(alignment: .leading, spacing: 8) {
                         Button(BrowserStrings.text("Summarize page")) { model.askAssistant() }
+                            .chromeFocusable("assistant-summarize", activate: { model.askAssistant() })
                             .disabled(!model.canAskAssistant || page.pending != nil).accessibilityIdentifier("assistant-summarize")
                         TextField(BrowserStrings.text("Organize instruction"), text: Binding(get: { page.instruction }, set: { assistant.setInstruction($0, tab: tab) }))
                             .textFieldStyle(.roundedBorder).accessibilityIdentifier("assistant-instruction")
+                            .chromeFocusable("assistant-instruction", field: true)
                         Button(BrowserStrings.text("Organize page")) { model.askAssistant(organize: true) }
+                            .chromeFocusable("assistant-organize", activate: { model.askAssistant(organize: true) })
                             .disabled(!model.canAskAssistant || page.pending != nil).accessibilityIdentifier("assistant-organize")
                         if page.pending != nil {
                             HStack {
@@ -32,6 +36,7 @@ struct BrowserAssistantView: View {
                                 Text(BrowserStrings.text("Working…")).accessibilityIdentifier("assistant-working")
                                 Spacer()
                                 Button(BrowserStrings.text("Stop waiting")) { assistant.stopWaiting(tab) }.accessibilityIdentifier("assistant-stop")
+                                    .chromeFocusable("assistant-stop", activate: { assistant.stopWaiting(tab) })
                             }
                         }
                     }.frame(maxWidth: .infinity, alignment: .leading)
@@ -42,14 +47,19 @@ struct BrowserAssistantView: View {
                         HStack {
                             TextField(BrowserStrings.text("Language tag"), text: $assistant.languageDraft).textFieldStyle(.roundedBorder)
                                 .accessibilityIdentifier("assistant-language")
+                                .chromeFocusable("assistant-language", field: true)
                             Button(BrowserStrings.text("Apply")) { model.changeTranslation(.language(assistant.languageDraft)) }.accessibilityIdentifier("assistant-language-apply")
+                                .chromeFocusable("assistant-language-apply", activate: { model.changeTranslation(.language(assistant.languageDraft)) })
                             Button(BrowserStrings.text("Off")) { model.changeTranslation(.language(nil)) }.accessibilityIdentifier("assistant-language-off")
+                                .chromeFocusable("assistant-language-off", activate: { model.changeTranslation(.language(nil)) })
                         }
                         Text(BrowserStrings.format("Target: %@", page.translation?.language ?? BrowserStrings.text("Off"))).font(.caption).accessibilityIdentifier("assistant-language-state")
                         Toggle(BrowserStrings.text("Show translated page"), isOn: Binding(get: { page.translation?.shown == true }, set: { model.changeTranslation(.show($0)) }))
+                            .chromeFocusable("assistant-show-translation", activate: { model.changeTranslation(.show(page.translation?.shown != true)) })
                             .disabled(page.translation?.available != true).accessibilityIdentifier("assistant-show-translation")
                         if page.translation?.available == false { Text(BrowserStrings.text("This page has no translation.")).font(.caption) }
                         Button(BrowserStrings.text("Refresh translation state")) { model.refreshAssistantTranslation() }.accessibilityIdentifier("assistant-translation-refresh")
+                            .chromeFocusable("assistant-translation-refresh", activate: { model.refreshAssistantTranslation() })
                     }.frame(maxWidth: .infinity, alignment: .leading).disabled(!model.ready || page.translating != nil || model.status == "Loading…")
                 }
                 if let notice = page.notice { Text(verbatim: BrowserStrings.text(notice)).font(.caption).textSelection(.enabled).accessibilityIdentifier("assistant-notice") }
@@ -63,6 +73,7 @@ struct BrowserAssistantView: View {
                 } else { Spacer(minLength: 0) }
             } else { Text(BrowserStrings.text("Waiting for the current document…")).foregroundStyle(.secondary); Spacer() }
             Button(BrowserStrings.text("Model settings and permissions…")) { model.openPermissions() }.accessibilityIdentifier("assistant-settings")
+                .chromeFocusable("assistant-settings", activate: { model.openPermissions() })
         }.padding(14).frame(minWidth: 280, idealWidth: 320, maxWidth: 460, maxHeight: .infinity)
             .accessibilityElement(children: .contain).accessibilityIdentifier("assistant-panel")
     }

@@ -10,6 +10,7 @@ pushed to the current tracked branch as authorized by the owner.
 | Milestone | Delivery and required evidence | State |
 | --- | --- | --- |
 | Native window and chrome | SwiftUI/AppKit address/tabs/history/settings, visible real-core pixels, startup/close/resize XCUITest | Committed `c762b53a9` |
+| Browser chrome keyboard focus | Enabled rendered control loop, native field/button/menu activation, page boundary handoff, scrolling and window/modal/service lifecycle fences | Implemented and accepted, see [focus results](MACOS_CHROME_FOCUS_RESULTS.md) |
 | Owned service stack | Bundled launcher/core/gatekeeper, reviewed external navigation, fail-closed review, normal/forced cleanup | Committed `32fa07f6b` |
 | Page accessibility | Core semantic tree mapped into NSAccessibility, native actions, privacy, stale-element and tab isolation tests | Committed and pushed `41952a803` |
 | Native text editing | Core-owned UTF-16 selection, grapheme movement/deletion, IME composition/update/commit/cancel, caret/candidate geometry, text/password/textarea editing, clipboard policy and native UI tests | Foundation committed and pushed `8b80c3c53`; bounded native Undo/Redo implemented and accepted, see [Undo/Redo results](MACOS_UNDO_REDO_RESULTS.md); physical OS IME and remaining editing behavior pending, see [foundation results](MACOS_NATIVE_EDITING_RESULTS.md) |
@@ -19,6 +20,26 @@ pushed to the current tracked branch as authorized by the owner.
 | Trusted browser panels | Assistant results and human permission decisions using the private owner boundary, policy-denial and no-AI-grant tests | Native installed-extension permission child and two-step one-shot confirmation committed and pushed `f83c94152`, see [permission results](MACOS_PERMISSION_RESULTS.md). Native assistant settings and proposal decisions committed and pushed `b53a91111`, see [assistant settings results](MACOS_ASSISTANT_SETTINGS_RESULTS.md). Native assistant result/sidebar and translation surfaces implemented and accepted, see [assistant page results](MACOS_ASSISTANT_PAGE_RESULTS.md). Remaining permission UI pending |
 | macOS display and system integration | DPI/multi-monitor, zoom, theme/high contrast/reduced motion, fullscreen, localization and native menu/shortcut tests | Retina/CSS viewport, per-tab zoom and native fullscreen committed and pushed `91f2dd78c`, see [viewport results](MACOS_VIEWPORT_RESULTS.md); persistent appearance/contrast/motion and CSS media committed and pushed `0609c8a81`, recorded in [display results](MACOS_DISPLAY_PREFERENCES_RESULTS.md); English/Traditional Chinese native interface localization implemented and accepted, see [localization results](MACOS_LOCALIZATION_RESULTS.md); physical system/monitor transitions pending |
 | Full accessibility and final audit | Text ranges/live regions and supported rotor operations; actual screen-reader action; final integration, design/UI acceptance and documented remaining core limitations | Native text-control ranges, geometry, selection and editing implemented and accepted, see [accessibility text results](MACOS_ACCESSIBILITY_TEXT_RESULTS.md). Bounded live-region announcements and supported native rotors implemented and accepted, see [live-region/rotor results](MACOS_LIVE_REGION_ROTOR_RESULTS.md); that earlier Rust acceptance used the recorded post-Cargo host readiness condition. Retained announcement delivery/consumption ACK is now implemented and accepted, see [delivery results](MACOS_ANNOUNCEMENT_DELIVERY_RESULTS.md). Descendant atomic/relevant settings and public author labels are implemented and accepted, see [descendant results](MACOS_DESCENDANT_LIVE_RESULTS.md). Document text selection and read-only AX text access implemented and accepted, see [document-selection results](MACOS_DOCUMENT_SELECTION_RESULTS.md). Additional rotors and physical VoiceOver remain pending |
+
+## Browser chrome keyboard focus increment
+
+Tab/Shift-Tab follow enabled rendered controls and wrap in both directions.
+Actual view lifecycle excludes disabled/collapsed members and recovers at a
+surviving neighbor when a pane or tab disappears. Focused tabs scroll into view;
+buttons and toggles share their normal actions. Native menus, fields, sheets and
+the private permission child retain native behavior. Core still owns DOM order.
+
+Queued keys retain model/tab/document/readiness/window ownership. Service
+readiness changes discard pending input, while enabled notices remain operable
+with the core unavailable. The [focus contract](MACOS_CHROME_FOCUS_CONTRACT.md)
+and [dated results](MACOS_CHROME_FOCUS_RESULTS.md) record the increment. Complete
+native acceptance passed 210 methods with one existing physical Zhuyin skip;
+fresh gates passed 1,004 engine/IPC cases, formatting, strict Clippy and the
+all-targets build. All gates share 1,804 unchanged inputs; eight signatures,
+universal app architectures, product consistency and owned-process cleanup
+passed. The unchanged Rust backend retains the accepted workspace baseline
+from `c4070298c`; no new full workspace execution is claimed.
+Physical IME/VoiceOver and the remaining browser requirements stay open.
 
 ## Native tab placement increment
 

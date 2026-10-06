@@ -9,7 +9,8 @@ struct BrowserView: View {
     @ObservedObject private var localization = BrowserLocalization.shared
     @ObservedObject var model: BrowserModel
     @ObservedObject private var appearance: BrowserAppearance
-    @FocusState private var addressFocused: Bool
+    @FocusState private var chromeFocused: String?
+    @StateObject private var chromeFocus = BrowserChromeFocus()
     init(model: BrowserModel) { self.model = model; self.appearance = model.appearance }
 
     var body: some View {
@@ -33,11 +34,11 @@ struct BrowserView: View {
                 button("arrow.clockwise", "Reload", "reload") { model.reload() }
                     .keyboardShortcut("r", modifiers: .command)
                 TextField(BrowserStrings.text("Search or enter address"), text: $model.address)
-                    .focused($addressFocused)
+                    .chromeFocusable("address", field: true)
                     .textFieldStyle(.roundedBorder)
                     .accessibilityLabel(BrowserStrings.text("Address"))
                     .accessibilityIdentifier("address")
-                    .onSubmit { addressFocused = false; model.navigateAddress() }
+                    .onSubmit { chromeFocused = nil; model.navigateAddress() }
                 button("arrow.right", "Go", "go") { model.navigateAddress() }
                 button("sparkles", "Local assistant", "assistant") { model.toggleAssistant() }
                 button("gearshape", "Settings", "settings") {
@@ -59,10 +60,12 @@ struct BrowserView: View {
                 HStack(spacing: 10) {
                     Image(systemName: "magnifyingglass").accessibilityHidden(true)
                     FindField(model: model).frame(minWidth: 150, maxWidth: 300)
+                        .chromeTarget("find-query")
                     Text(model.findSummary).font(.caption).accessibilityLabel(model.findSummary).accessibilityIdentifier("find-results")
                     Spacer()
                     Toggle(BrowserStrings.text("Match case"), isOn: Binding(get: { model.findCaseSensitive }, set: model.setFindCaseSensitive))
                         .toggleStyle(.checkbox).accessibilityIdentifier("find-case")
+                        .chromeFocusable("find-case", activate: { model.setFindCaseSensitive(!model.findCaseSensitive) })
                     button("chevron.up", "Previous match", "find-previous") { model.findNext(backwards: true) }
                         .disabled(model.findResult?.matchCount ?? 0 == 0)
                     button("chevron.down", "Next match", "find-next") { model.findNext() }
@@ -76,6 +79,7 @@ struct BrowserView: View {
             HSplitView {
                 ZStack {
                     PageViewport(model: model)
+                        .chromeTarget("page").disabled(!model.ready || model.selected == nil)
                     if model.image == nil {
                         Text(BrowserStrings.text(model.selected == nil ? "Open a new tab" : "Waiting for page…"))
                             .foregroundStyle(.secondary)
@@ -95,6 +99,7 @@ struct BrowserView: View {
                     .accessibilityValue("\(model.zoomPercent)%")
                     .accessibilityIdentifier("page-zoom")
                     .help(BrowserStrings.text("Reset page zoom"))
+                    .chromeFocusable("page-zoom", activate: { model.setZoom(1) })
                     .disabled(!model.ready || model.selected == nil)
             }
             .font(.caption).foregroundStyle(appearance.resolved.highContrast ? .primary : .secondary).padding(.horizontal, 12).padding(.vertical, 6)
@@ -117,20 +122,29 @@ struct BrowserView: View {
         .buttonStyle(.plain)
         .transaction { if appearance.resolved.reducedMotion { $0.animation = nil; $0.disablesAnimations = true } }
         .background(AppearanceWindow(settings: appearance).frame(width: 0, height: 0).accessibilityHidden(true))
+        .background(BrowserChromeWindow(navigation: chromeFocus, model: model, binding: $chromeFocused)
+            .frame(width: 0, height: 0).accessibilityHidden(true))
+        .environment(\.browserChromeBinding, $chromeFocused)
+        .environment(\.browserChromeNavigation, chromeFocus)
+        .environmentObject(chromeFocus)
+        .onPreferenceChange(BrowserChromeTargets.self) { chromeFocus.updateTargets($0) }
         .frame(minWidth: 720, minHeight: 480)
-        .onChange(of: model.addressFocusSerial) { _, _ in addressFocused = true }
-        .onChange(of: model.findFocusSerial) { _, _ in addressFocused = false }
+        .onChange(of: model.chromeFocusIntent) { _, intent in
+            if let intent { chromeFocus.command(intent) }
+        }
     }
 
     private func button(_ symbol: String, _ label: String, _ identifier: String, action: @escaping () -> Void) -> some View {
         Button(action: action) { Image(systemName: symbol).frame(width: 24, height: 24) }
             .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(appearance.resolved.highContrast ? Color.primary : Color.clear, lineWidth: 1).allowsHitTesting(false).accessibilityHidden(true))
             .help(BrowserStrings.text(label)).accessibilityLabel(BrowserStrings.text(label)).accessibilityIdentifier(identifier)
+            .chromeFocusable(identifier, activate: action)
     }
 }
 
 private struct FindField: NSViewRepresentable {
     @ObservedObject var model: BrowserModel
+    @EnvironmentObject private var chromeFocus: BrowserChromeFocus
     func makeCoordinator() -> Coordinator { Coordinator(model) }
     func makeNSView(context: Context) -> NSSearchField {
         let field = NSSearchField()
@@ -139,6 +153,7 @@ private struct FindField: NSViewRepresentable {
         field.setAccessibilityIdentifier("find-query")
         field.delegate = context.coordinator
         field.sendsSearchStringImmediately = true
+        chromeFocus.findField = field
         return field
     }
     func updateNSView(_ field: NSSearchField, context: Context) {
@@ -162,6 +177,10 @@ private struct FindField: NSViewRepresentable {
         Task { @MainActor [weak field, weak model] in
             await Task.yield()
             guard let field, let model, model.findVisible, model.selected == tab, model.findFocusSerial == serial else { return }
+            if let window = field.window as? BrowserWindow, let navigation = window.chromeFocus,
+               let intent = model.chromeFocusIntent {
+                navigation.command(intent); return
+            }
             field.window?.makeFirstResponder(field)
             field.selectText(nil)
         }

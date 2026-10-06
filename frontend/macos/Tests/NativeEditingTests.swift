@@ -4,10 +4,72 @@
 
 import AppKit
 import Combine
+import SwiftUI
 import XCTest
 
 @MainActor
 final class NativeEditingTests: XCTestCase {
+    func testChromeFindPreservesNativeMarkedTextAcrossRepaintAndCommitsOnce() async throws {
+        let (model, _, fixture) = try await start(path: "/editing")
+        defer { fixture.stop(); Task { await model.stop() } }
+        let window = BrowserWindow(contentRect: NSRect(x: 0, y: 0, width: 1000, height: 700),
+                                   styleMask: [.titled, .closable], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = NSHostingView(rootView: BrowserView(model: model).environmentObject(NativeEditingMenu()))
+        defer { window.contentView = nil; window.close() }
+        model.showFind()
+        await wait { window.chromeFocus?.findField != nil }
+        let field = try XCTUnwrap(window.chromeFocus?.findField)
+        XCTAssertTrue(window.makeFirstResponder(field))
+        let editor = try XCTUnwrap(field.currentEditor() as? NSTextView)
+        editor.setMarkedText("ㄓ", selectedRange: NSRange(location: 1, length: 0), replacementRange: NSRange(location: NSNotFound, length: 0))
+        XCTAssertTrue(editor.hasMarkedText()); XCTAssertEqual(model.findQuery, "")
+        model.setZoom(1.25); model.setFindCaseSensitive(true)
+        await wait { model.zoomPercent == 125 && model.findResult != nil }
+        XCTAssertTrue(editor.hasMarkedText()); XCTAssertEqual(editor.string, "ㄓ")
+        XCTAssertEqual(model.findQuery, "", "An AppKit marked sequence must not be published as a committed find query")
+        editor.insertText("中", replacementRange: NSRange(location: NSNotFound, length: 0))
+        await wait { model.findQuery == "中" }
+        XCTAssertFalse(editor.hasMarkedText()); XCTAssertEqual(model.findQuery, "中")
+    }
+
+    func testChromeFocusTargetsFollowRenderedAvailabilityAndCollapsedGroups() async throws {
+        let (model, _, fixture) = try await start(path: "/editing")
+        defer { fixture.stop(); Task { await model.stop() } }
+        let window = BrowserWindow(contentRect: NSRect(x: 0, y: 0, width: 1000, height: 700),
+                                   styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = NSHostingView(rootView: BrowserView(model: model).environmentObject(NativeEditingMenu()))
+        window.makeKeyAndOrderFront(nil)
+        defer { window.contentView = nil; window.close() }
+        await wait { window.chromeFocus?.targets.contains("go") == true }
+        let navigation = try XCTUnwrap(window.chromeFocus)
+        XCTAssertTrue(navigation.targets.contains("page")); XCTAssertFalse(navigation.targets.contains("forward"))
+        XCTAssertFalse(navigation.targets.contains("find-query")); XCTAssertFalse(navigation.targets.contains("profile-menu"))
+        model.showFind(); model.setFindQuery("no-such-visible-match")
+        await wait { model.findResult?.matchCount == 0 && navigation.targets.contains("find-close") }
+        XCTAssertTrue(navigation.targets.contains("find-query")); XCTAssertTrue(navigation.targets.contains("find-case"))
+        XCTAssertFalse(navigation.targets.contains("find-previous")); XCTAssertFalse(navigation.targets.contains("find-next"))
+        model.closeFind(); await wait { !navigation.targets.contains("find-query") }
+        let tab = try XCTUnwrap(model.selected)
+        let created = await model.createTabGroup(name: "Keyboard group", color: "#4477cc", tab: tab)
+        let group = try XCTUnwrap(created)
+        let collapsed = await model.setTabGroupCollapsed(group, collapsed: true)
+        XCTAssertTrue(collapsed)
+        await wait { navigation.targets.contains("tab-group-\(group)") && !navigation.targets.contains("tab-\(tab)") }
+        XCTAssertFalse(navigation.targets.contains("close-tab-\(tab)"))
+        let expanded = await model.setTabGroupCollapsed(group, collapsed: false)
+        XCTAssertTrue(expanded)
+        await wait { navigation.targets.contains("tab-\(tab)") }
+        XCTAssertTrue(navigation.targets.contains("close-tab-\(tab)"))
+        model.toggleAssistant()
+        await wait { navigation.targets.contains("assistant-instruction") }
+        model.toggleAssistant()
+        await wait { !navigation.targets.contains(where: { $0.hasPrefix("assistant-") }) }
+        XCTAssertTrue(navigation.targets.contains("page-zoom"))
+        await model.stop(); await wait { navigation.targets.isEmpty }
+    }
+
     func testDocumentTextWireSupportsLongReadonlyTextAndKeepsControlBounds() throws {
         let text = String(repeating: "a", count: 70_000)
         var state: [String: Any] = ["document": true, "text": text, "text_length": text.utf16.count, "protected": false, "writable": false,

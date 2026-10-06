@@ -223,12 +223,20 @@ final class BrowserModel: ObservableObject {
     @Published var permissionsErrorPresented = false
 
     func openPermissions() {
+        (nativeWindow as? BrowserWindow)?.chromeFocus?.discardQueuedInput()
         if !session.openPermissions() { permissionsErrorPresented = true }
     }
     @Published private(set) var resubmission: FormResubmission?
     @Published var resubmissionPresented = false
     private var resubmissions: [UInt64: FormResubmission] = [:]
-    @Published private(set) var ready = false
+    @Published private(set) var ready = false {
+        didSet {
+            guard ready != oldValue else { return }
+            let window = nativeWindow as? BrowserWindow
+            window?.pageInput?.supersedeKeyboardFocus()
+            window?.chromeFocus?.discardQueuedInput()
+        }
+    }
     @Published private(set) var image: CGImage?
     @Published private(set) var generation: UInt64 = 0
     @Published private(set) var displayState: ViewportState?
@@ -270,14 +278,20 @@ final class BrowserModel: ObservableObject {
     @Published private(set) var accessibilityEpoch: UInt64 = 0
     @Published private(set) var textInputState: TextInputState?
     @Published private(set) var textInputBusy = false
-    @Published private(set) var pageFocusSerial: UInt64 = 0
-    @Published private(set) var addressFocusSerial: UInt64 = 0
+    @Published private(set) var pageFocusSerial: UInt64 = 0 { didSet { requestChromeFocus("page") } }
+    @Published private(set) var addressFocusSerial: UInt64 = 0 { didSet { requestChromeFocus("address") } }
+    @Published private(set) var chromeFocusIntent: BrowserChromeIntent?
+    private func requestChromeFocus(_ target: String) {
+        let intent = BrowserChromeIntent(serial: (chromeFocusIntent?.serial ?? 0) &+ 1, target: target)
+        chromeFocusIntent = intent
+        (nativeWindow as? BrowserWindow)?.chromeFocus?.command(intent)
+    }
     func requestAddressFocus() { addressFocusSerial &+= 1 }
     @Published private(set) var findVisible = false
     @Published private(set) var findQuery = ""
     @Published private(set) var findCaseSensitive = false
     @Published private(set) var findResult: FindState?
-    @Published private(set) var findFocusSerial: UInt64 = 0
+    @Published private(set) var findFocusSerial: UInt64 = 0 { didSet { requestChromeFocus("find-query") } }
     private struct FindPanel {
         var shown = false
         var query = ""

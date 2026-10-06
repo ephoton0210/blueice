@@ -8,6 +8,7 @@ import SwiftUI
 
 final class BrowserWindow: NSWindow {
     weak var pageInput: CorePageView?
+    weak var chromeFocus: BrowserChromeFocus?
     private(set) var dispatchingKey: NSEvent?
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
@@ -20,12 +21,26 @@ final class BrowserWindow: NSWindow {
     }
 
     override func sendEvent(_ event: NSEvent) {
-        if event.type == .keyDown, pageInput?.window === self,
-           pageInput?.bufferWindowKey(event) == true { return }
+        if event.type == .leftMouseDown || event.type == .rightMouseDown { chromeFocus?.keyboardFocusVisible = false }
+        let focusCommand = event.type == .keyDown
+            && event.modifierFlags.intersection([.command, .control, .option, .shift]) == .command
+            && ["l", "f"].contains(event.charactersIgnoringModifiers?.lowercased() ?? "")
+        if focusCommand {
+            pageInput?.supersedeKeyboardFocus(); chromeFocus?.cancelPending()
+        } else {
+            if event.type == .keyDown, pageInput?.window === self,
+               pageInput?.bufferWindowKey(event) == true { return }
+            if event.type == .keyDown, chromeFocus?.buffer(event) == true { return }
+        }
         let previous = dispatchingKey
         dispatchingKey = event.type == .keyDown ? event : nil
         defer { dispatchingKey = previous }
+        if event.type == .keyDown, chromeFocus?.tab(event) == true { return }
         super.sendEvent(event)
+    }
+    override func close() { pageInput?.supersedeKeyboardFocus(); chromeFocus?.detach(); super.close() }
+    override func resignKey() {
+        pageInput?.supersedeKeyboardFocus(); chromeFocus?.discardQueuedInput(); super.resignKey()
     }
 }
 
@@ -65,6 +80,10 @@ struct PageViewport: NSViewRepresentable {
                 await Task.yield()
                 guard let view, let model, model.pageFocusSerial == serial,
                       model.addressFocusSerial == addressSerial, model.findFocusSerial == findSerial else { return }
+                if let navigation = (view.window as? BrowserWindow)?.chromeFocus,
+                   let intent = model.chromeFocusIntent {
+                    navigation.command(intent); return
+                }
                 view.window?.makeFirstResponder(view)
             }
         }
@@ -108,6 +127,7 @@ final class CorePageView: NSView, NSTextInputClient, NSUserInterfaceValidations 
     private var pointerTransition: PointerTransition?
     private var pendingKeys: [NSEvent] = []
     private var entryTabEvent: NSEvent?
+    private var enteringFromChrome = false
     weak var editingMenu: NativeEditingMenu?
     var image: CGImage?
     var pageFocusSerial: UInt64 = 0
@@ -215,7 +235,7 @@ final class CorePageView: NSView, NSTextInputClient, NSUserInterfaceValidations 
         let accepted = super.becomeFirstResponder()
         if accepted {
             editingMenu?.focus(self)
-            if let event = (window as? BrowserWindow)?.dispatchingKey ?? NSApp.currentEvent,
+            if !enteringFromChrome, let event = (window as? BrowserWindow)?.dispatchingKey ?? NSApp.currentEvent,
                event.type == .keyDown, event.keyCode == 48 {
                 entryTabEvent = event
                 beginTabTransition(shift: event.modifierFlags.contains(.shift))
@@ -223,6 +243,17 @@ final class CorePageView: NSView, NSTextInputClient, NSUserInterfaceValidations 
             NSAccessibility.post(element: accessibilityTree.focusedElement() ?? self, notification: .focusedUIElementChanged)
         }
         return accepted
+    }
+
+    func enterFromChrome(_ event: NSEvent) -> Bool {
+        guard let window, model?.ready == true, model?.selected != nil else { return false }
+        enteringFromChrome = true
+        let accepted = window.makeFirstResponder(self)
+        enteringFromChrome = false
+        guard accepted else { return false }
+        entryTabEvent = event
+        beginTabTransition(shift: event.modifierFlags.contains(.shift))
+        return true
     }
 
     override func accessibilityHitTest(_ point: NSPoint) -> Any? {
@@ -575,12 +606,17 @@ final class CorePageView: NSView, NSTextInputClient, NSUserInterfaceValidations 
     }
 
     func bufferWindowKey(_ event: NSEvent) -> Bool {
+        guard model?.ready == true else { supersedeKeyboardFocus(); return false }
         if isPageInputKey(event), pendingMouseGesture != nil { return bufferMouseEvent(event) }
         if pointerTransition != nil { replayPendingKeys() }
         if tabTransition == nil && !isPageInputKey(event) { return false }
         guard tabTransition != nil || pointerTransition != nil else { return false }
         if pendingKeys.count < 512 { pendingKeys.append(event) }
         return true
+    }
+    func supersedeKeyboardFocus() {
+        tabTransition = nil; pointerTransition = nil; entryTabEvent = nil; pendingKeys.removeAll()
+        pendingMouseTask?.cancel(); pendingMouseTask = nil; pendingMouseGesture = nil
     }
     private func isPageInputKey(_ event: NSEvent) -> Bool {
         !event.modifierFlags.contains(.command)
@@ -622,9 +658,12 @@ final class CorePageView: NSView, NSTextInputClient, NSUserInterfaceValidations 
         if let state = model?.textInputState, state.focus_exit != nil,
            handledFocusExit != state.context, window?.firstResponder === self {
             handledFocusExit = state.context
-            Task { @MainActor [weak model] in
+            Task { @MainActor [weak self, weak model] in
                 await Task.yield()
-                guard model?.textInputState?.context == state.context else { return }
+                guard let self, model?.textInputState?.context == state.context,
+                      self.window?.firstResponder === self else { return }
+                if let direction = state.focus_exit,
+                   (self.window as? BrowserWindow)?.chromeFocus?.leavePage(direction) == true { return }
                 model?.requestAddressFocus()
             }
         }
@@ -679,10 +718,17 @@ final class CorePageView: NSView, NSTextInputClient, NSUserInterfaceValidations 
         }
         if state.focus_exit != nil {
             guard let window, window.isKeyWindow, let responder = window.firstResponder,
-                  responder !== self, responder is NSTextView || responder is NSTextField else { return }
+                  responder !== self,
+                  (window as? BrowserWindow)?.chromeFocus?.isSettled == true
+                    || responder is NSTextView || responder is NSTextField else { return }
             tabTransition = nil
             let keys = pendingKeys; pendingKeys.removeAll()
-            for event in keys { window.sendEvent(event) }
+            for event in keys {
+                guard window.isKeyWindow, window.attachedSheet == nil,
+                      (window as? BrowserWindow)?.chromeFocus?.acceptsInput != false,
+                      model.selected == transition.tab, model.accessibilityEpoch == transition.epoch else { return }
+                window.sendEvent(event)
+            }
         } else {
             if let window, window.firstResponder !== self { tabTransition = nil; pendingKeys.removeAll(); return }
             tabTransition = nil

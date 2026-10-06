@@ -20,6 +20,7 @@ private func groupColor(_ hex: String) -> Color {
 }
 
 struct BrowserTabStrip: View {
+    @Environment(\.browserChromeBinding) private var chromeBinding
     @ObservedObject private var localization = BrowserLocalization.shared
     @ObservedObject var model: BrowserModel
     @ObservedObject private var appearance: BrowserAppearance
@@ -32,53 +33,63 @@ struct BrowserTabStrip: View {
     }
     var body: some View {
         HStack(spacing: 8) {
-            ScrollView(.horizontal) {
-                HStack(spacing: 4) {
-                    ForEach(ungrouped) { tab in tabView(tab) }
-                    ForEach(model.groups) { group in
-                        HStack(spacing: 4) {
-                            let members = model.tabs.filter { $0.groupID == group.id }
-                            Button { Task { await model.setTabGroupCollapsed(group.id, collapsed: !group.collapsed) } } label: {
-                                HStack(spacing: 4) {
-                                    Image(systemName: group.collapsed ? "chevron.right" : "chevron.down").font(.caption2)
-                                    Circle().fill(groupColor(group.color)).frame(width: 10, height: 10).accessibilityHidden(true)
-                                    Text(group.name).lineLimit(1)
-                                    Text("\(members.count)").font(.caption).accessibilityHidden(true)
-                                }.padding(6)
-                            }
-                            .background(groupColor(group.color).opacity(0.15))
-                            .clipShape(RoundedRectangle(cornerRadius: 6))
-                            .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(appearance.resolved.highContrast ? Color.primary : Color.clear, lineWidth: 1).allowsHitTesting(false).accessibilityHidden(true))
-                            .accessibilityIdentifier("tab-group-\(group.id)")
-                            .accessibilityLabel(group.name)
-                            .accessibilityValue(BrowserStrings.format("%@, %llu tabs%@", BrowserStrings.text(group.collapsed ? "Collapsed" : "Expanded"),
-                                UInt64(members.count), members.contains { $0.id == model.selected } ? BrowserStrings.text(", contains selected tab") : ""))
-                            .help(group.name)
-                            .disabled(model.groupBusy || !model.groupsAvailable)
-                            .contextMenu {
-                                Button(BrowserStrings.text("Edit Group…")) { model.beginTabGroupEditor(group: group.id) }
-                                Button(BrowserStrings.text(group.collapsed ? "Expand Group" : "Collapse Group")) {
-                                    Task { await model.setTabGroupCollapsed(group.id, collapsed: !group.collapsed) }
+            ScrollViewReader { proxy in
+                ScrollView(.horizontal) {
+                    HStack(spacing: 4) {
+                        ForEach(ungrouped) { tab in tabView(tab) }
+                        ForEach(model.groups) { group in
+                            HStack(spacing: 4) {
+                                let members = model.tabs.filter { $0.groupID == group.id }
+                                Button { Task { await model.setTabGroupCollapsed(group.id, collapsed: !group.collapsed) } } label: {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: group.collapsed ? "chevron.right" : "chevron.down").font(.caption2)
+                                        Circle().fill(groupColor(group.color)).frame(width: 10, height: 10).accessibilityHidden(true)
+                                        Text(group.name).lineLimit(1)
+                                        Text("\(members.count)").font(.caption).accessibilityHidden(true)
+                                    }.padding(6)
                                 }
-                                Divider()
-                                Button(BrowserStrings.text("Ungroup and Remove Group")) { Task { await model.removeTabGroup(group.id) } }
+                                .background(groupColor(group.color).opacity(0.15))
+                                .clipShape(RoundedRectangle(cornerRadius: 6))
+                                .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(appearance.resolved.highContrast ? Color.primary : Color.clear, lineWidth: 1).allowsHitTesting(false).accessibilityHidden(true))
+                                .accessibilityIdentifier("tab-group-\(group.id)")
+                                .accessibilityLabel(group.name)
+                                .accessibilityValue(BrowserStrings.format("%@, %llu tabs%@", BrowserStrings.text(group.collapsed ? "Collapsed" : "Expanded"),
+                                    UInt64(members.count), members.contains { $0.id == model.selected } ? BrowserStrings.text(", contains selected tab") : ""))
+                                .help(group.name)
+                                .chromeFocusable("tab-group-\(group.id)", activate: { Task { await model.setTabGroupCollapsed(group.id, collapsed: !group.collapsed) } })
+                                .id("tab-group-\(group.id)")
+                                .disabled(model.groupBusy || !model.groupsAvailable)
+                                .contextMenu {
+                                    Button(BrowserStrings.text("Edit Group…")) { model.beginTabGroupEditor(group: group.id) }
+                                    Button(BrowserStrings.text(group.collapsed ? "Expand Group" : "Collapse Group")) {
+                                        Task { await model.setTabGroupCollapsed(group.id, collapsed: !group.collapsed) }
+                                    }
+                                    Divider()
+                                    Button(BrowserStrings.text("Ungroup and Remove Group")) { Task { await model.removeTabGroup(group.id) } }
+                                }
+                                .modifier(BrowserTabDropArea(model: model, target: .group(group.id)))
+                                if !group.collapsed { ForEach(members) { tab in tabView(tab) } }
                             }
-                            .modifier(BrowserTabDropArea(model: model, target: .group(group.id)))
-                            if !group.collapsed { ForEach(members) { tab in tabView(tab) } }
                         }
                     }
-                }
-            }.accessibilityIdentifier("tab-strip").frame(height: 28)
+                }.accessibilityIdentifier("tab-strip").frame(height: 28)
+                    .onChange(of: chromeBinding?.wrappedValue) { _, target in
+                        guard let target, target.hasPrefix("tab-") || target.hasPrefix("close-tab-") else { return }
+                        proxy.scrollTo(target)
+                    }
+            }
             Button { model.beginTabGroupEditor() } label: {
                 Image(systemName: "rectangle.3.group").frame(width: 24, height: 24)
             }
             .accessibilityLabel(BrowserStrings.text("New tab group")).accessibilityIdentifier("new-tab-group").help(BrowserStrings.text("New tab group"))
+            .chromeFocusable("new-tab-group", activate: { model.beginTabGroupEditor() })
             .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(appearance.resolved.highContrast ? Color.primary : Color.clear, lineWidth: 1).allowsHitTesting(false).accessibilityHidden(true))
             .disabled(!model.groupsAvailable || model.groupBusy)
             Button { model.action(.values("OpenTab", ["url": .null])) } label: {
                 Image(systemName: "plus").frame(width: 24, height: 24)
             }
             .accessibilityLabel(BrowserStrings.text("New tab")).accessibilityIdentifier("add-tab").help(BrowserStrings.text("New tab"))
+            .chromeFocusable("add-tab", activate: { model.action(.values("OpenTab", ["url": .null])) })
             .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(appearance.resolved.highContrast ? Color.primary : Color.clear, lineWidth: 1).allowsHitTesting(false).accessibilityHidden(true))
             .keyboardShortcut("t", modifiers: .command)
             .modifier(BrowserTabDropArea(model: model, target: .ungroupedEnd))
@@ -90,9 +101,13 @@ struct BrowserTabStrip: View {
                 .buttonStyle(.plain).contentShape(Rectangle())
                 .accessibilityIdentifier("tab-\(tab.id)").accessibilityLabel(tab.url ?? BrowserStrings.text("New tab"))
                 .accessibilityValue(model.selected == tab.id ? BrowserStrings.text("Selected") : "")
+                .chromeFocusable("tab-\(tab.id)", activate: { model.select(tab.id) })
+                .id("tab-\(tab.id)")
                 .modifier(BrowserTabDragSource(model: model, tab: tab.id))
             Button { model.action(.unit("CloseTab"), tab: tab.id) } label: { Image(systemName: "xmark").font(.caption) }
                 .accessibilityLabel(BrowserStrings.text("Close tab")).accessibilityIdentifier("close-tab-\(tab.id)")
+                .chromeFocusable("close-tab-\(tab.id)", activate: { model.action(.unit("CloseTab"), tab: tab.id) })
+                .id("close-tab-\(tab.id)")
         }
         .padding(6)
         .background(model.selected == tab.id ? Color.accentColor.opacity(0.15) : Color.clear)

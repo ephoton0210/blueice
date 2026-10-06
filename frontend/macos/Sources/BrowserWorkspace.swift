@@ -628,9 +628,10 @@ struct BrowserWorkspaceNotice: View {
             HStack {
                 Text(BrowserStrings.text(notice)).accessibilityIdentifier("window-notice")
                 Spacer()
-                if !workspace.canManageWindows { Button(BrowserStrings.text("Retry")) { Task { await workspace.refreshWindows() } }.accessibilityIdentifier("retry-windows") }
+                if !workspace.canManageWindows { Button(BrowserStrings.text("Retry")) { Task { await workspace.refreshWindows() } }.accessibilityIdentifier("retry-windows").chromeFocusable("retry-windows", activate: { Task { await workspace.refreshWindows() } }) }
                 Button { workspace.dismissNotice() } label: { Image(systemName: "xmark") }
                     .accessibilityLabel(BrowserStrings.text("Dismiss window notice")).accessibilityIdentifier("dismiss-window-notice")
+                    .chromeFocusable("dismiss-window-notice", activate: { workspace.dismissNotice() })
             }.font(.caption).padding(.horizontal, 12).padding(.vertical, 6)
             Divider()
         }

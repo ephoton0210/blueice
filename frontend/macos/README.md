@@ -461,9 +461,28 @@ Actual OS IME verification is pending
 runner Accessibility permission on the recorded host. JavaScript
 keyboard/beforeinput/input/composition event dispatch, complete
 bidirectional shaping and caret blink remain open, as do full form event/validity behavior,
-complete toolbar Tab traversal, image/media context actions, drag/drop,
+image/media context actions, general page/OS drag/drop,
 full file API/events, automatic attachment downloads and remaining trusted panels. Automated checks cover the recorded features; an
 interactive VoiceOver session remains unvalidated.
+
+## Browser chrome keyboard focus
+
+Tab and Shift-Tab traverse the enabled rendered browser controls in both
+directions: notices, tabs/groups, navigation and address controls, profile menu,
+downloads/permissions, optional find, the core page, optional assistant and zoom.
+The loop wraps, reveals focused tabs in the horizontal strip and recovers at a
+surviving neighbor when a control disappears. Disabled controls and collapsed
+group members are excluded using their actual view state and lifecycle.
+Space/Return activate focused controls; keyboard focus has an accent outline.
+Native menus, sheets and the private permission child keep their own key loops.
+
+The core retains DOM focus order and reports a directional exit to the shell.
+Cmd-L/Cmd-F supersede an older pending move. Later keys wait for the focus
+transition and retain model/tab/document/window ownership; losing the key window,
+opening a modal or changing ownership discards obsolete input. Native find marked
+text survives repaint and updates the query only after commit.
+See the [focus contract](../../development/browser_core/phase-22-browser-shell-accessibility/MACOS_CHROME_FOCUS_CONTRACT.md)
+and [dated validation results](../../development/browser_core/phase-22-browser-shell-accessibility/MACOS_CHROME_FOCUS_RESULTS.md).
 
 ## Interface language
 

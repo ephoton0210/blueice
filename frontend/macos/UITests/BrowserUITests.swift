@@ -92,14 +92,22 @@ final class BrowserUITests: XCTestCase {
         let origin = try HTTPFixture(); defer { origin.stop() }
         let model = try AssistantModelFixture(); defer { model.stop() }; try configureAssistant(model)
         launch(); openAssistant()
-        app.buttons["assistant-language-apply"].click()
+        app.textFields["assistant-language"].click()
+        app.typeKey(.tab, modifierFlags: []); app.typeKey(.return, modifierFlags: [])
         waitAssistantText(app.staticTexts["assistant-language-state"], "Target: zh-TW")
         enter(origin.origin + "/assistant")
         XCTAssertTrue(app.groups["page"].staticTexts["你好"].waitForExistence(timeout: 15), app.debugDescription)
         let toggle = app.checkBoxes["assistant-show-translation"]
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == true"), object: toggle)], timeout: 10), .completed)
-        toggle.click(); XCTAssertTrue(app.groups["page"].staticTexts["Hello"].waitForExistence(timeout: 10))
-        toggle.click(); XCTAssertTrue(app.groups["page"].staticTexts["你好"].waitForExistence(timeout: 10))
+        app.textFields["assistant-language"].click()
+        app.typeText("\t\t\t ")
+        XCTAssertTrue(app.groups["page"].staticTexts["Hello"].waitForExistence(timeout: 10))
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == true"), object: toggle)], timeout: 10), .completed)
+        // While the core applies translation, this group is disabled and focus
+        // recovers at Settings. Return through Refresh to the enabled checkbox.
+        app.typeKey(.tab, modifierFlags: .shift); app.typeKey(.tab, modifierFlags: .shift)
+        app.typeKey(" ", modifierFlags: [])
+        XCTAssertTrue(app.groups["page"].staticTexts["你好"].waitForExistence(timeout: 10))
         XCTAssertEqual(origin.requests, ["/assistant"])
         app.windows["browser-window"].buttons[XCUIIdentifierCloseWindow].click()
         XCTAssertTrue(app.wait(for: .notRunning, timeout: 15))
@@ -399,15 +407,33 @@ final class BrowserUITests: XCTestCase {
         waitPermissionValue(panels.staticTexts["permission-state-storage"], "Not allowed")
     }
     func testNativePermissionChildExitClosesTheOwnedServiceConnection() throws {
+        let started = Date()
+        app.launchArguments += ["-browser.contexts", "malformed-profile-fixture"]
         launch()
+        let notice = app.staticTexts["window-notice"]
+        XCTAssertTrue(notice.waitForExistence(timeout: 10))
         let panels = openPermissionPanel()
         XCTAssertTrue(panels.staticTexts["permissions-empty"].waitForExistence(timeout: 10))
+        app.activate(); app.groups["page"].click()
         // This companion is launcher-owned, so XCTest's terminate/reap path
         // races the launcher's own waitpid. Kill only the uniquely identified
         // child and observe both applications through their ordinary UI.
         let ownedPanels = NSRunningApplication.runningApplications(withBundleIdentifier: "cc.blueice.BlueIcePanels")
-        XCTAssertEqual(ownedPanels.count, 1, "Identify this test's permission child before terminating it")
+        let applications = NSRunningApplication.runningApplications(withBundleIdentifier: "cc.blueice.BlueIce")
+        guard ownedPanels.count == 1, applications.count == 1,
+              let application = applications.first,
+              application.launchDate.map({ $0 >= started.addingTimeInterval(-2) }) == true else {
+            XCTFail("Identify this test's application and permission child before terminating a process"); return
+        }
         let child = try XCTUnwrap(ownedPanels.first)
+        let launcher = getpgid(child.processIdentifier)
+        guard launcher > 0 else { XCTFail("The permission child must belong to an owned launcher group"); return }
+        var launcherInfo = proc_bsdinfo()
+        let infoSize = Int32(MemoryLayout<proc_bsdinfo>.stride)
+        guard proc_pidinfo(launcher, PROC_PIDTBSDINFO, 0, &launcherInfo, infoSize) == infoSize,
+              launcherInfo.pbi_ppid == UInt32(application.processIdentifier) else {
+            XCTFail("The child's launcher must be a direct child of this test's BlueIce application"); return
+        }
         XCTAssertEqual(kill(child.processIdentifier, SIGKILL), 0)
         XCTAssertTrue(panels.wait(for: .notRunning, timeout: 10))
         let status = app.staticTexts["status"]
@@ -416,6 +442,16 @@ final class BrowserUITests: XCTestCase {
         XCTAssertFalse(app.textFields["address"].isEnabled)
         XCTAssertFalse(app.buttons["permissions"].isEnabled)
         XCTAssertTrue(app.windows["browser-window"].exists)
+        app.activate()
+        XCTAssertFalse(app.buttons["reload"].isEnabled)
+        XCTAssertTrue(app.buttons["retry-windows"].waitForExistence(timeout: 5))
+        app.typeKey(.tab, modifierFlags: [])
+        app.typeKey(.tab, modifierFlags: [])
+        app.typeKey(" ", modifierFlags: [])
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "exists == false"), object: notice)], timeout: 5), .completed,
+                       "The surviving notice controls must accept Tab and Space after the core becomes unavailable")
+        XCTAssertFalse(app.buttons["reload"].isEnabled)
     }
     func testNativeOneShotLongURLKeepsConfirmationReachable() throws {
         let fixture = try HTTPFixture(); defer { fixture.stop() }
@@ -2358,6 +2394,203 @@ final class BrowserUITests: XCTestCase {
         XCTAssertEqual(request.method, "POST"); XCTAssertEqual(String(data: request.body, encoding: .utf8), "region=a&topic=a&topic=b")
     }
 
+    func testChromeTabFromAddressActivatesGoWithSpace() throws {
+        let fixture = try HTTPFixture(); defer { fixture.stop() }
+        launch(); enter(fixture.origin + "/editing")
+        XCTAssertTrue(app.groups["page"].textFields["Editor"].waitForExistence(timeout: 15))
+        paste("about:settings", into: app.textFields["address"])
+        app.typeKey(.tab, modifierFlags: [])
+        app.typeKey(" ", modifierFlags: [])
+        let navigated = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", "about:settings"),
+                                                  object: app.buttons["tab-1"])
+        XCTAssertEqual(XCTWaiter.wait(for: [navigated], timeout: 15), .completed,
+                       "Tab must focus Go and Space must navigate the actual selected core tab")
+        XCTAssertFalse(app.groups["page"].textFields["Editor"].exists)
+        XCTAssertEqual(fixture.requests, ["/editing"])
+    }
+
+    func testChromeKeyboardOpensProfileMenuAndDownloadsSheet() {
+        launch()
+        app.typeKey("l", modifierFlags: .command)
+        for _ in 0..<4 { app.typeKey(.tab, modifierFlags: []) }
+        app.typeKey(" ", modifierFlags: [])
+        XCTAssertTrue(app.menuItems["New Profile…"].waitForExistence(timeout: 5),
+                      "A focused profile control must open its actual native menu with Space")
+        app.typeKey(.escape, modifierFlags: [])
+        app.typeKey(.tab, modifierFlags: [])
+        app.typeKey(.return, modifierFlags: [])
+        XCTAssertTrue(app.buttons["downloads-close"].waitForExistence(timeout: 5))
+        app.typeKey(.escape, modifierFlags: [])
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "exists == false"), object: app.buttons["downloads-close"])], timeout: 5), .completed)
+        app.typeKey(.tab, modifierFlags: .shift)
+        app.typeKey(.return, modifierFlags: [])
+        XCTAssertTrue(app.menuItems["New Profile…"].waitForExistence(timeout: 5))
+        app.typeKey(.escape, modifierFlags: [])
+    }
+
+    func testChromeFindControlsHandOffToPageInBothDirections() throws {
+        let fixture = try HTTPFixture(); defer { fixture.stop() }
+        launch(); enter(fixture.origin + "/keyboard")
+        let page = app.groups["page"]
+        XCTAssertTrue(page.textFields["Name"].waitForExistence(timeout: 15))
+        app.typeKey("f", modifierFlags: .command)
+        app.typeText("no-such-visible-match")
+        waitValue(app.searchFields["find-query"], "no-such-visible-match")
+        app.typeKey(.tab, modifierFlags: [])
+        app.typeKey(" ", modifierFlags: [])
+        waitChecked(app.checkBoxes["find-case"], true)
+        // No-match controls are disabled; the next two targets are Close and page.
+        app.typeKey(.tab, modifierFlags: [])
+        app.typeKey(.tab, modifierFlags: [])
+        app.typeText("Alice")
+        waitValue(page.textFields["Name"], "Alice")
+        app.typeKey(.tab, modifierFlags: .shift)
+        app.typeKey(" ", modifierFlags: [])
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "exists == false"), object: app.searchFields["find-query"])], timeout: 5), .completed,
+                       "A backward page exit must reach Close find rather than the address")
+        XCTAssertEqual(fixture.requests, ["/keyboard"])
+    }
+
+    func testChromeReverseTabSkipsDisabledHistoryAndActivatesReload() throws {
+        let fixture = try HTTPFixture(); defer { fixture.stop() }
+        launch(); enter(fixture.origin + "/keyboard")
+        XCTAssertTrue(app.groups["page"].textFields["Name"].waitForExistence(timeout: 15))
+        XCTAssertFalse(app.buttons["forward"].isEnabled)
+        app.typeKey("l", modifierFlags: .command)
+        app.typeKey(.tab, modifierFlags: .shift)
+        app.typeKey(.return, modifierFlags: [])
+        let deadline = Date().addingTimeInterval(10)
+        while fixture.requests.count < 2, Date() < deadline { RunLoop.current.run(until: Date().addingTimeInterval(0.05)) }
+        XCTAssertEqual(fixture.requests, ["/keyboard", "/keyboard"])
+    }
+
+    func testChromeRapidTabsPreservePageAndAssistantTextThenRecoverAfterClose() throws {
+        let fixture = try HTTPFixture(); defer { fixture.stop() }
+        launch(); enter(fixture.origin + "/keyboard")
+        let page = app.groups["page"]
+        XCTAssertTrue(page.textFields["Name"].waitForExistence(timeout: 15))
+        app.buttons["assistant"].click()
+        XCTAssertTrue(app.textFields["assistant-instruction"].waitForExistence(timeout: 10))
+        app.typeKey("l", modifierFlags: .command)
+        // One event stream crosses seven chrome controls into the core loop.
+        app.typeText(String(repeating: "\t", count: 7) + "Alice")
+        waitValue(page.textFields["Name"], "Alice")
+        // Core owns seven further moves through its controls and final exit.
+        app.typeText(String(repeating: "\t", count: 7))
+        app.typeKey(.tab, modifierFlags: [])
+        if app.buttons["assistant-summarize"].isEnabled { app.typeKey(.tab, modifierFlags: []) }
+        app.typeText("Keyboard note")
+        waitValue(app.textFields["assistant-instruction"], "Keyboard note")
+        app.typeKey(.tab, modifierFlags: .shift)
+        if app.buttons["assistant-summarize"].isEnabled { app.typeKey(.tab, modifierFlags: .shift) }
+        let attachment = XCTAttachment(screenshot: app.windows["browser-window"].screenshot())
+        attachment.name = "macos-chrome-keyboard-focus"; attachment.lifetime = .keepAlways; add(attachment)
+        app.typeKey(" ", modifierFlags: [])
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "exists == false"), object: app.textFields["assistant-instruction"])], timeout: 5), .completed)
+        // The removed assistant control recovers at Zoom, then wraps to tab 1.
+        app.typeKey(.tab, modifierFlags: [])
+        app.typeKey(.tab, modifierFlags: [])
+        app.typeKey(" ", modifierFlags: [])
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "exists == false"), object: app.buttons["tab-1"])], timeout: 10), .completed)
+        XCTAssertEqual(fixture.requests, ["/keyboard"])
+    }
+
+    func testChromeRapidAddressTabAndSpaceNavigateExactlyOnce() throws {
+        let fixture = try HTTPFixture(); defer { fixture.stop() }
+        launch(); enter(fixture.origin + "/keyboard")
+        XCTAssertTrue(app.groups["page"].textFields["Name"].waitForExistence(timeout: 15))
+        app.typeKey("l", modifierFlags: .command)
+        app.typeText(fixture.origin + "/destination\t ")
+        waitValue(app.textFields["address"], fixture.origin + "/destination")
+        let navigated = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", fixture.origin + "/destination"),
+                                                  object: app.buttons["tab-1"])
+        XCTAssertEqual(XCTWaiter.wait(for: [navigated], timeout: 15), .completed)
+        XCTAssertEqual(fixture.requests, ["/keyboard", "/destination"])
+    }
+
+    func testChromeKeyboardHistoryUsesOnlyEnabledDirections() throws {
+        let fixture = try HTTPFixture(); defer { fixture.stop() }
+        launch(); enter(fixture.origin + "/first"); enter(fixture.origin + "/second")
+        app.typeKey("l", modifierFlags: .command)
+        app.typeText("\t") // Go is reachable in the forward direction.
+        app.typeKey(.tab, modifierFlags: .shift)
+        app.typeKey(.tab, modifierFlags: .shift) // Reload.
+        app.typeKey(.tab, modifierFlags: .shift) // Back; disabled Forward is skipped.
+        app.typeKey(" ", modifierFlags: [])
+        waitValue(app.textFields["address"], fixture.origin + "/first")
+        app.typeKey("l", modifierFlags: .command)
+        app.typeKey(.tab, modifierFlags: .shift) // Reload.
+        app.typeKey(.tab, modifierFlags: .shift) // Enabled Forward.
+        app.typeKey(.return, modifierFlags: [])
+        waitValue(app.textFields["address"], fixture.origin + "/second")
+        XCTAssertEqual(fixture.requests, ["/first", "/second", "/first", "/second"])
+    }
+
+    func testChromeFocusScrollsTabsAndRecoversAfterClosingSelectedTab() throws {
+        let fixture = try HTTPFixture(); defer { fixture.stop() }
+        launch()
+        for index in 1...7 {
+            if index > 1 { app.typeKey("t", modifierFlags: .command) }
+            paste(fixture.origin + "/editing", into: app.textFields["address"])
+            app.typeKey(.return, modifierFlags: [])
+            XCTAssertTrue(app.groups["page"].textFields["Editor"].waitForExistence(timeout: 15))
+        }
+        app.typeKey("l", modifierFlags: .command)
+        app.typeKey(.tab, modifierFlags: .shift) // Reload.
+        if app.buttons["back"].isEnabled { app.typeKey(.tab, modifierFlags: .shift) }
+        for _ in 0..<3 { app.typeKey(.tab, modifierFlags: .shift) } // Add, New Group, Close tab 7.
+        let close = app.buttons["close-tab-7"]
+        XCTAssertTrue(close.isHittable, "Keyboard focus must reveal an offscreen tab in the strip")
+        let attachment = XCTAttachment(screenshot: app.windows["browser-window"].screenshot())
+        attachment.name = "macos-chrome-scrolled-tab-focus"; attachment.lifetime = .keepAlways; add(attachment)
+        app.typeKey(" ", modifierFlags: [])
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "exists == false"), object: close)], timeout: 10), .completed)
+        // Closing the selected tab changes core ownership; the surviving next
+        // chrome control is still New Group and opens the real native sheet.
+        app.typeKey(.return, modifierFlags: [])
+        XCTAssertTrue(app.textFields["group-name"].waitForExistence(timeout: 5))
+        app.typeKey(.escape, modifierFlags: [])
+        app.typeKey(.tab, modifierFlags: .shift)
+        XCTAssertTrue(app.buttons["close-tab-6"].isHittable)
+        app.typeKey(" ", modifierFlags: [])
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "exists == false"), object: app.buttons["close-tab-6"])], timeout: 10), .completed)
+        XCTAssertEqual(fixture.requests, Array(repeating: "/editing", count: 7))
+    }
+
+    func testChromeKeyboardActionsStayInActiveWindowAndOpenOwnedPermissions() throws {
+        let fixture = try HTTPFixture(); defer { fixture.stop() }
+        launch(); let first = app.windows["browser-window"]
+        enter(fixture.origin + "/editing", in: first)
+        app.typeKey("n", modifierFlags: .command)
+        let second = app.windows["browser-window-2"]
+        XCTAssertTrue(second.waitForExistence(timeout: 15))
+        enter(fixture.origin + "/keyboard", in: second)
+        activateWindow(1); app.typeKey("l", modifierFlags: .command)
+        app.typeText("\t\t ")
+        XCTAssertTrue(first.textFields["assistant-instruction"].waitForExistence(timeout: 5))
+        XCTAssertFalse(second.textFields["assistant-instruction"].exists)
+        activateWindow(2); app.typeKey("l", modifierFlags: .command)
+        app.typeText(String(repeating: "\t", count: 6))
+        app.typeKey(.return, modifierFlags: [])
+        let panels = XCUIApplication(bundleIdentifier: "cc.blueice.BlueIcePanels")
+        XCTAssertTrue(panels.windows["permissions-window"].waitForExistence(timeout: 10))
+        XCTAssertTrue(panels.staticTexts["permissions-empty"].waitForExistence(timeout: 10))
+        XCTAssertEqual(panels.state, .runningForeground)
+        app.activate(); second.buttons[XCUIIdentifierCloseWindow].click()
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "exists == false"), object: second)], timeout: 10), .completed)
+        app.typeKey("l", modifierFlags: .command); app.typeText("\t\t ")
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "exists == false"), object: first.textFields["assistant-instruction"])], timeout: 5), .completed)
+        XCTAssertEqual(fixture.requests, ["/editing", "/keyboard"])
+    }
+
     func testKeyboardOnlyNativeControlsAndLinkActivation() throws {
         let fixture = try HTTPFixture()
         defer { fixture.stop() }
@@ -2502,7 +2735,7 @@ final class BrowserUITests: XCTestCase {
         XCTAssertEqual(fixture.requests, ["/reset", "/reset", "/reset"])
     }
 
-    func testReverseTabAndPageBoundaryReturnToNativeAddressEditing() throws {
+    func testReverseTabAndPageBoundaryTraverseChromeToNativeAddressEditing() throws {
         let fixture = try HTTPFixture()
         defer { fixture.stop() }
         launch()
@@ -2520,11 +2753,14 @@ final class BrowserUITests: XCTestCase {
             app.typeText("B")
             waitValue(page.textFields["Name"], "AB")
             app.typeKey(.tab, modifierFlags: .shift)
+            // The confirmed backward core exit reaches Permissions. Traverse
+            // the enabled toolbar in reverse before editing the address.
+            for _ in 0..<6 { app.typeKey(.tab, modifierFlags: .shift) }
             app.typeText("chrome-probe")
             let address = app.textFields["address"]
             let chrome = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value CONTAINS 'chrome-probe'"), object: address)
             XCTAssertEqual(XCTWaiter.wait(for: [chrome], timeout: 15), .completed,
-                           "Reverse Tab must reach native address editing; received \(String(describing: address.value))")
+                           "Reverse Tab through chrome must reach native address editing; received \(String(describing: address.value))")
         }
         app.typeKey("l", modifierFlags: .command)
         app.typeKey("a", modifierFlags: .command)
