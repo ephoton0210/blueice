@@ -45,6 +45,19 @@ console.log(new LocalDerived().name, new LocalDerived().kind, d.id, d.tag, d.not
 console.log(Object.keys(d).join(","), Object.getOwnPropertyNames(Derived).sort().join(","));
 "#;
 
+const OPTIONS_MATRIX: &str =
+    include_str!("fixtures/option_combinations/options-checker-matrix.tsv");
+
+#[test]
+fn recorded_matrix_covers_the_required_cartesian_product() {
+    assert_eq!(OPTIONS_MATRIX.lines().count(), 768);
+    assert_eq!(
+        combinations().len(),
+        768,
+        "K.2.4 requires the new project options in the Cartesian oracle"
+    );
+}
+
 struct Combination {
     target: &'static str,
     module: &'static str,
@@ -196,4 +209,61 @@ fn every_emit_option_combination_prints_what_typescript_prints() {
         );
     }
     let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+#[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to pinned TypeScript 5.9.3"]
+fn new_option_matrix_matches_pinned_typescript() {
+    let tsc = env::var_os("BLUEICE_BLUETSC_ORACLE").expect("set BLUEICE_BLUETSC_ORACLE");
+    let root = env::temp_dir().join(format!("bluets-options-record-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&root);
+    fs::create_dir_all(root.join("src")).unwrap();
+    fs::write(root.join("src/main.ts"), MAIN).unwrap();
+    fs::write(root.join("src/lib.ts"), LIB).unwrap();
+    fs::write(
+        root.join("cases.json"),
+        include_str!("fixtures/option_combinations/cases.json"),
+    )
+    .unwrap();
+    let script = r#"
+const path = require('path'), fs = require('fs');
+const ts = require(path.resolve(process.argv[1], '../../lib/typescript.js'));
+if (ts.version !== '5.9.3') throw Error(ts.version);
+let lines = [];
+let previous;
+for (const row of JSON.parse(fs.readFileSync('cases.json', 'utf8'))) {
+ const converted = ts.convertCompilerOptionsFromJson(row.options, process.cwd());
+ const program = ts.createProgram([path.resolve('src/main.ts')], converted.options, undefined, previous);
+ previous = program;
+ const diagnostics = [...converted.errors,...ts.getPreEmitDiagnostics(program)];
+ lines.push(row.name + '\t' + (diagnostics.length ? 'reject' : 'accept'));
+}
+fs.writeFileSync('matrix.tsv', lines.sort().join('\n')+'\n');
+"#;
+    let output = Command::new("node")
+        .current_dir(&root)
+        .args(["-e", script])
+        .arg(tsc)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let text = fs::read_to_string(root.join("matrix.tsv")).unwrap();
+    if env::var_os("BLUEICE_WRITE_OPTIONS_MATRIX").is_some() {
+        fs::write(
+            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("tests/fixtures/option_combinations/options-checker-matrix.tsv"),
+            text,
+        )
+        .unwrap();
+    } else {
+        assert_eq!(
+            text.lines().collect::<std::collections::BTreeSet<_>>(),
+            OPTIONS_MATRIX.lines().collect()
+        );
+    }
+    fs::remove_dir_all(root).unwrap();
 }

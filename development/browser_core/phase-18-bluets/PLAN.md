@@ -4223,3 +4223,18 @@ groups, including all 122 ignored oracle tests in 28 suite files. No
 failures, ignored or filtered tests remain. The production source maximum is
 1,172 lines, below the 1,200-line review threshold. K.2.4 follows; the final
 workspace and coverage gate remains due after it. Full `tsc` parity stays unclaimed.
+
+### K.2.4 Pinned option-combination baseline
+
+TypeScript 5.9.3 accepts all 768 recorded configurations of the existing linked
+multi-feature program. The original 48-case product is multiplied by source maps,
+declarations, no-emission and strict checking on/off. Canonical configuration
+metadata and `options-checker-matrix.tsv` are separate fixtures, with unique
+`options-*` names. The ignored recorder reproduces pinned verdicts and supports
+`BLUEICE_WRITE_OPTIONS_MATRIX=1`.
+
+The ordinary Cartesian coverage replay fails before implementation: the current
+oracle still enumerates 48 cases rather than the required 768. The original Node
+oracle remains unchanged in this baseline. It is committed before expanding the
+project replay, no-emission inventory, source-map and exact declaration checks.
+K.2.4 remains unchecked until its complete K.0 gate succeeds.
