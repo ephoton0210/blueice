@@ -266,8 +266,7 @@ fn every_emit_option_combination_prints_what_typescript_prints() {
     fs::write(root.join("cases.json"), serde_json::to_vec(&rows).unwrap()).unwrap();
     let script = r#"
 const path = require('path'), fs = require('fs');
-const ts = require(path.resolve(process.argv[1], '../../lib/typescript.js'));
-if (ts.version !== '5.9.3') throw Error(ts.version);
+const ts = require(process.argv[2])(process.argv[1]);
 const results = [];
 let previous;
 for (const row of JSON.parse(fs.readFileSync('cases.json', 'utf8'))) {
@@ -287,6 +286,10 @@ fs.writeFileSync('verdicts.json',JSON.stringify(results));
         .env("FORCE_COLOR", "0")
         .args(["-e", script])
         .arg(&tsc)
+        .arg(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/fixtures/oracle_support/load_typescript.cjs"
+        ))
         .output()
         .unwrap();
     assert!(

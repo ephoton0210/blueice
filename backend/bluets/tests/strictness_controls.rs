@@ -293,8 +293,7 @@ fn boundary_controls_match_pinned_typescript() {
     let cases = ORACLE_CASES.with_borrow_mut(|cases| cases.take().unwrap());
     let tsc = env::var_os("BLUEICE_BLUETSC_ORACLE").expect("set BLUEICE_BLUETSC_ORACLE");
     let script = r#"
-const ts = require(require('path').resolve(process.argv[1], '../../lib/typescript.js'));
-if (ts.version !== '5.9.3') throw Error(ts.version);
+const ts = require(process.argv[3])(process.argv[1]);
 for (const row of JSON.parse(process.argv[2])) {
  const converted = ts.convertCompilerOptionsFromJson(row.options, process.cwd());
  const options = converted.options, file = require('path').join(process.cwd(), 'control.ts');
@@ -310,6 +309,10 @@ for (const row of JSON.parse(process.argv[2])) {
         .arg(script)
         .arg(tsc)
         .arg(serde_json::to_string(&cases).unwrap())
+        .arg(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/fixtures/oracle_support/load_typescript.cjs"
+        ))
         .output()
         .unwrap();
     assert!(

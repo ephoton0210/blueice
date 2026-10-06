@@ -4268,3 +4268,22 @@ compiler authority. The production source maximum remains 1,172 lines, below
 the 1,200-line review threshold. K.2.1 through K.2.4 are delivered; the final workspace
 and coverage gate is recorded separately after it succeeds. K.3 remains necessary
 for M7, and full TypeScript parity is not claimed.
+
+### K.2 Oracle executable names in CI
+
+The final CI environment names the pinned compiler `tsc` on PATH. The two new
+TypeScript API oracles previously derived `lib/typescript.js` directly from that
+argument, which worked for the absolute path used by the local K.0 gates but failed
+for the committed CI executable-name setting. The committed strictness oracle
+reproduced `MODULE_NOT_FOUND` under that exact environment before this correction.
+
+A shared test fixture now finds executable names on PATH, resolves symlinks to the
+compiler installation and verifies TypeScript 5.9.3 before loading its API. Absolute
+paths, PATH names and symlinks are checked. Both affected suites pass all 11 tests,
+including the 768-case Node/declaration oracle and 39 checking boundary controls,
+with `BLUEICE_BLUETSC_ORACLE=tsc`. Formatting and both-crate all-target Clippy pass
+with warnings denied. Compiler source, matrix verdicts,
+feature coverage and the version pin are unchanged. The superseded CI run
+37416832111 was cancelled; final workspace and coverage evidence will come from the
+corrected commit's replacement CI run. The complete local K.0 gate recorded above
+used the absolute oracle path and remains the feature verification evidence.
