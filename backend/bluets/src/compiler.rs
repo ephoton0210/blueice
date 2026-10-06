@@ -152,6 +152,9 @@ impl RuntimePolicy {
 /// persist this alongside build artifacts and cache keys.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CompilerOptions {
+    /// Independent diagnostic selection. `None` retains the legacy checking
+    /// surface; explicit options never select JavaScript emit or runtime grants.
+    pub checking: Option<crate::CheckingOptions>,
     pub target: EcmaTarget,
     /// TypeScript's `useDefineForClassFields`: `Some(true)` defines class
     /// fields (native ES2022 fields, or `Object.defineProperty` below it),
@@ -231,6 +234,7 @@ impl Default for CompilerOptions {
     fn default() -> Self {
         Self {
             target: EcmaTarget::Es2022,
+            checking: None,
             use_define_for_class_fields: None,
             preserve_const_enums: false,
             isolated_modules: false,
@@ -491,6 +495,7 @@ fn compile_with_cache(
         &project,
         checker::CheckerPolicy {
             target: options.target,
+            checking: options.checking,
             enforce_types: !matches!(options.runtime_policy, RuntimePolicy::TranspileOnly),
             require_declared_global_calls: options.require_declared_global_calls,
             define_class_fields: options.defines_class_fields(),
@@ -992,6 +997,9 @@ pub(crate) fn fingerprint(project: &Project, options: &CompilerOptions) -> Strin
         "no-es-module-interop"
     });
     add(options.runtime_policy.as_str());
+    if let Some(checking) = options.checking {
+        add(&format!("checking-v1:{checking:?}"));
+    }
     add(&options.resolver_fingerprint);
     add(&options.require_declared_global_calls.to_string());
     for boundary in &options.strict_runtime_boundaries {

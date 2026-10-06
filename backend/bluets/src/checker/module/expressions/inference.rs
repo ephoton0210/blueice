@@ -192,6 +192,11 @@ impl<'a> ModuleChecker<'a> {
                 });
                 return self.infer_function_call(&signatures, call.arguments, scope, explicit);
             }
+            if let Some(value) =
+                self.function_method_result(call.receiver, &call.member.text, call.arguments, scope)
+            {
+                return value;
+            }
             let base = self.infer_expression(call.receiver, scope);
             let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
             let found = property_type(
@@ -423,6 +428,7 @@ impl<'a> ModuleChecker<'a> {
                 // same property policy as a direct receiver. A literal index
                 // also selects the exact member of a heterogeneous tuple.
                 let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
+                budget.checking = self.checking;
                 let indexed = indexed_value_type(
                     &owner,
                     index,

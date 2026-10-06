@@ -44,6 +44,7 @@ impl<'a> ModuleChecker<'a> {
             })
             .collect();
         self.check_type_parameters(&function.type_parameters);
+        self.check_function_flags(function, &scope);
         for (index, parameter) in function.parameters.iter().enumerate() {
             if parameter.rest && index + 1 != function.parameters.len() {
                 self.type_error(
@@ -101,6 +102,18 @@ impl<'a> ModuleChecker<'a> {
                         annotation.clone()
                     }
                 }
+                None if self.explicit_checking => self
+                    .return_inference
+                    .parameters
+                    .borrow()
+                    .get(&parameter.span.start)
+                    .cloned()
+                    .unwrap_or_else(|| {
+                        parameter
+                            .default
+                            .as_ref()
+                            .map_or(Type::Any, |default| self.infer_expression(default, &scope))
+                    }),
                 None => Type::Unknown,
             };
             match &parameter.pattern {
@@ -513,7 +526,7 @@ impl<'a> ModuleChecker<'a> {
                         None,
                     );
                     if let Some(handler) = &statement.handler {
-                        let catch_scope = Self::catch_binding_scope(&current_scope, handler);
+                        let catch_scope = self.catch_binding_scope(&current_scope, handler);
                         let previous_strictness = self.strict_catch_unknown;
                         self.strict_catch_unknown = true;
                         self.check_function_body_returns(
@@ -633,13 +646,16 @@ impl<'a> ModuleChecker<'a> {
     }
 
     pub(in crate::checker::module) fn catch_binding_scope(
+        &self,
         scope: &BTreeMap<String, Type>,
         handler: &FunctionCatchClause,
     ) -> BTreeMap<String, Type> {
         let mut catch_scope = scope.clone();
         let binding_type = match handler.annotation {
             Some(Type::Any) => Type::Any,
-            _ => Type::Unknown,
+            Some(Type::Unknown) => Type::Unknown,
+            _ if self.checking.use_unknown_in_catch_variables => Type::Unknown,
+            _ => Type::Any,
         };
         catch_scope.insert(handler.binding.clone(), binding_type);
         catch_scope
@@ -685,7 +701,7 @@ impl<'a> ModuleChecker<'a> {
                 FunctionBodyItem::Try(statement) => {
                     self.check_function_body_expressions(&statement.block, &current_scope, None);
                     if let Some(handler) = &statement.handler {
-                        let catch_scope = Self::catch_binding_scope(&current_scope, handler);
+                        let catch_scope = self.catch_binding_scope(&current_scope, handler);
                         let previous_strictness = self.strict_catch_unknown;
                         self.strict_catch_unknown = true;
                         self.check_function_body_expressions(&handler.body, &catch_scope, None);

@@ -208,6 +208,12 @@ pub(super) fn is_assignable(
     if let Some(expanded) = instantiate_named(expected, aliases, visited, budget, "expected") {
         return is_assignable(actual, &expanded, aliases, visited, budget);
     }
+    if !budget.checking.strict_null_checks
+        && matches!(actual, Type::Null | Type::Undefined)
+        && !matches!(expected, Type::Never)
+    {
+        return true;
+    }
     if let Type::Union(options) = actual {
         return options
             .iter()
@@ -302,14 +308,22 @@ pub(super) fn is_assignable(
                 .iter()
                 .zip(actual_parameters)
                 .all(|(expected, actual)| {
-                    expected.optional == actual.optional
-                        && is_assignable(
+                    (expected.optional == actual.optional
+                        || !budget.checking.strict_function_types)
+                        && (is_assignable(
                             expected.annotation.as_ref().unwrap_or(&Type::Unknown),
                             actual.annotation.as_ref().unwrap_or(&Type::Unknown),
                             aliases,
                             &mut visited.clone(),
                             budget,
-                        )
+                        ) || (!budget.checking.strict_function_types
+                            && is_assignable(
+                                actual.annotation.as_ref().unwrap_or(&Type::Unknown),
+                                expected.annotation.as_ref().unwrap_or(&Type::Unknown),
+                                aliases,
+                                &mut visited.clone(),
+                                budget,
+                            )))
                 })
                 // A function type whose result is `void` accepts a function that
                 // returns anything: its result is simply ignored.
@@ -354,10 +368,17 @@ pub(super) fn is_assignable(
                 .iter()
                 .find(|actual_field| actual_field.name == expected_field.name)
                 .map(|actual_field| {
+                    let expected_type = if expected_field.optional
+                        && !budget.checking.exact_optional_property_types
+                    {
+                        Type::Union(vec![expected_field.value.clone(), Type::Undefined])
+                    } else {
+                        expected_field.value.clone()
+                    };
                     (actual_field.optional == expected_field.optional || expected_field.optional)
                         && is_assignable(
                             &actual_field.value,
-                            &expected_field.value,
+                            &expected_type,
                             aliases,
                             &mut visited.clone(),
                             budget,

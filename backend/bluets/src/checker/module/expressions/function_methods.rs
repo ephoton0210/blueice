@@ -1,0 +1,187 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+//! Typed call/apply/bind adapters for bound function values.
+
+use super::*;
+
+impl ModuleChecker<'_> {
+    fn method_signature(
+        &self,
+        receiver: &[Token],
+        member: &str,
+        scope: &BTreeMap<String, Type>,
+    ) -> Option<FunctionSignature> {
+        if !self.explicit_checking || !matches!(member, "call" | "apply" | "bind") {
+            return None;
+        }
+        if let [name] = receiver {
+            if let Some(signature) = self.function_value_signature(&name.text, scope) {
+                return Some(signature);
+            }
+            if self.values.get(&name.text) == scope.get(&name.text) {
+                if let Some(signatures) = self.functions.get(&name.text) {
+                    return signatures.last().cloned();
+                }
+            }
+        }
+        match self.infer_expression(receiver, scope) {
+            Type::Function { parameters, result } => Some(FunctionSignature {
+                parameters,
+                type_parameters: Vec::new(),
+                return_type: *result,
+            }),
+            _ => None,
+        }
+    }
+
+    pub(super) fn function_method_result(
+        &self,
+        receiver: &[Token],
+        member: &str,
+        arguments: &[Token],
+        scope: &BTreeMap<String, Type>,
+    ) -> Option<Type> {
+        let signature = self.method_signature(receiver, member, scope)?;
+        if !self.checking.strict_bind_call_apply {
+            return Some(Type::Any);
+        }
+        if member == "bind" {
+            let count = split_call_arguments(arguments)?.len().saturating_sub(1);
+            return Some(Type::Function {
+                parameters: signature
+                    .parameters
+                    .into_iter()
+                    .filter(|p| p.name != "this")
+                    .skip(count)
+                    .collect(),
+                result: Box::new(signature.return_type),
+            });
+        }
+        Some(signature.return_type)
+    }
+
+    pub(super) fn check_function_method(
+        &mut self,
+        receiver: &[Token],
+        member: &str,
+        arguments: &[Token],
+        scope: &BTreeMap<String, Type>,
+        span: &SourceSpan,
+    ) -> bool {
+        let Some(signature) = self.method_signature(receiver, member, scope) else {
+            return false;
+        };
+        let Some(arguments) = split_call_arguments(arguments) else {
+            return true;
+        };
+        if !self.checking.strict_bind_call_apply {
+            return true;
+        }
+        let Some((this_arg, arguments)) = arguments.split_first() else {
+            self.type_error(
+                span,
+                format!("{member} requires a this argument"),
+                DiagnosticCode::TypeMismatch,
+            );
+            return true;
+        };
+        if let Some(parameter) = signature.parameters.iter().find(|p| p.name == "this") {
+            let actual = self.infer_expression(this_arg, scope);
+            if parameter
+                .annotation
+                .as_ref()
+                .is_some_and(|expected| !self.is_assignable_bounded(&actual, expected, span))
+            {
+                self.type_error(
+                    span,
+                    "this argument has an incompatible type".to_string(),
+                    DiagnosticCode::TypeMismatch,
+                );
+            }
+        }
+        let parameters = signature
+            .parameters
+            .iter()
+            .filter(|p| p.name != "this")
+            .collect::<Vec<_>>();
+        let actuals = if member == "apply" {
+            if arguments.len() != 1 {
+                self.type_error(
+                    span,
+                    "apply requires one tuple of arguments".to_string(),
+                    DiagnosticCode::TypeMismatch,
+                );
+                return true;
+            }
+            let actual = self.infer_expression(arguments[0], scope);
+            match actual {
+                Type::Tuple(elements) => elements.into_iter().map(|e| e.annotation).collect(),
+                Type::Array(element) if parameters.iter().all(|p| p.rest) => vec![*element],
+                Type::Any => return true,
+                _ => {
+                    let tokens = strip_outer_parentheses(arguments[0]);
+                    if tokens.first().is_some_and(|t| t.is("["))
+                        && tokens.last().is_some_and(|t| t.is("]"))
+                    {
+                        let mut items = tokens[1..].to_vec();
+                        items.last_mut().expect("array has closing bracket").text = ")".to_string();
+                        split_call_arguments(&items)
+                            .unwrap_or_default()
+                            .iter()
+                            .map(|a| self.infer_expression(a, scope))
+                            .collect()
+                    } else {
+                        self.type_error(
+                            span,
+                            "apply arguments must be a fixed-length tuple".to_string(),
+                            DiagnosticCode::TypeMismatch,
+                        );
+                        return true;
+                    }
+                }
+            }
+        } else {
+            arguments
+                .iter()
+                .map(|a| self.infer_expression(a, scope))
+                .collect::<Vec<_>>()
+        };
+        let required = parameters.iter().filter(|p| !p.optional && !p.rest).count();
+        if (member != "bind" && actuals.len() < required)
+            || (actuals.len() > parameters.len() && !parameters.last().is_some_and(|p| p.rest))
+        {
+            self.type_error(
+                span,
+                format!("{member} argument count does not match the function"),
+                DiagnosticCode::TypeMismatch,
+            );
+        }
+        for (index, actual) in actuals.iter().enumerate() {
+            if let Some(parameter) = parameters
+                .get(index)
+                .or_else(|| parameters.last().filter(|p| p.rest))
+            {
+                if let Some(expected) = &parameter.annotation {
+                    let expected = if parameter.rest {
+                        match expected {
+                            Type::Array(element) => &**element,
+                            _ => expected,
+                        }
+                    } else {
+                        expected
+                    };
+                    if !self.is_assignable_bounded(actual, expected, span) {
+                        self.type_error(
+                            span,
+                            format!("{member} argument {} has an incompatible type", index + 1),
+                            DiagnosticCode::TypeMismatch,
+                        );
+                    }
+                }
+            }
+        }
+        true
+    }
+}

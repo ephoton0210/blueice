@@ -49,6 +49,14 @@ impl ModuleChecker<'_> {
             .iter()
             .map(|parameter| {
                 let mut inferred = parameter.clone();
+                if inferred.annotation.is_none() && self.explicit_checking {
+                    inferred.annotation = self
+                        .return_inference
+                        .parameters
+                        .borrow()
+                        .get(&parameter.span.start)
+                        .cloned();
+                }
                 if inferred.annotation.is_none() {
                     if let Some(default) = &parameter.default {
                         let value = widen(self.infer_expression(default, scope));

@@ -33,6 +33,30 @@ impl<'a> ModuleChecker<'a> {
             contextual = expanded;
         }
         match &contextual {
+            Type::Function { parameters, .. } if self.explicit_checking => {
+                let tokens = strip_outer_parentheses(tokens);
+                if let Some(function) = tokens
+                    .first()
+                    .and_then(|t| self.module.nested_functions.get(&t.start))
+                    .filter(|f| tokens.last().is_some_and(|t| t.end == f.span.end))
+                {
+                    for (actual, expected) in function.parameters.iter().zip(parameters) {
+                        if actual.annotation.is_none() {
+                            if let Some(annotation) = &expected.annotation {
+                                self.return_inference
+                                    .parameters
+                                    .borrow_mut()
+                                    .insert(actual.span.start, annotation.clone());
+                            }
+                        }
+                    }
+                    self.return_inference
+                        .results
+                        .borrow_mut()
+                        .remove(&function.span.start);
+                    return self.infer_expression(tokens, scope);
+                }
+            }
             Type::Literal(expected) => {
                 if let [literal] = strip_outer_parentheses(tokens) {
                     if literal.kind == TokenKind::String {
@@ -79,6 +103,7 @@ impl<'a> ModuleChecker<'a> {
                 for option in options {
                     let candidate = self.infer_in_context(tokens, scope, option);
                     let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
+                    budget.checking = self.checking;
                     if is_assignable(
                         &candidate,
                         option,

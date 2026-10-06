@@ -328,7 +328,7 @@ impl ModuleChecker<'_> {
                 FunctionBodyItem::Try(statement) => {
                     self.check_class_body_items(&statement.block, &scope, return_rule);
                     if let Some(handler) = &statement.handler {
-                        let catch_scope = Self::catch_binding_scope(&scope, handler);
+                        let catch_scope = self.catch_binding_scope(&scope, handler);
                         self.check_class_body_items(&handler.body, &catch_scope, return_rule);
                     }
                     if let Some(finalizer) = &statement.finalizer {

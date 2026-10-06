@@ -6,6 +6,7 @@
 
 use super::*;
 
+mod function_methods;
 mod indexing;
 mod inference;
 mod iterator_guards;
@@ -385,6 +386,7 @@ impl<'a> ModuleChecker<'a> {
             let expected = call_parameter_expected_type(parameter, &BTreeMap::new());
             let actual = self.infer_in_context(argument, scope, &expected);
             let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
+            budget.checking = self.checking;
             if is_assignable(
                 &actual,
                 &expected,
@@ -438,6 +440,7 @@ impl<'a> ModuleChecker<'a> {
                 explicit_type_arguments,
                 &self.types,
                 self.max_type_expansions,
+                self.checking,
             )? {
                 return Ok(Some(signature));
             }
@@ -452,6 +455,7 @@ impl<'a> ModuleChecker<'a> {
         span: &SourceSpan,
     ) -> bool {
         let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
+        budget.checking = self.checking;
         let assignable = if self.strict_catch_unknown && matches!(actual, Type::Unknown) {
             accepts_strict_unknown(expected, &self.types, &mut HashSet::new(), &mut budget)
         } else {

@@ -113,7 +113,18 @@ pub(super) fn resolve(path: &Path, owner_path: Option<&Path>) -> Result<Invocati
                 | "jsxFragmentFactory"
                 | "jsxImportSource"
                 | "moduleResolution"
-        ) {
+        ) || options::STRICT.contains(&key.as_str())
+            || matches!(
+                key.as_str(),
+                "strict"
+                    | "noUnusedLocals"
+                    | "noUnusedParameters"
+                    | "noImplicitReturns"
+                    | "noFallthroughCasesInSwitch"
+                    | "exactOptionalPropertyTypes"
+                    | "noUncheckedIndexedAccess"
+            )
+        {
             owner_compiler.insert(key.clone(), value.clone());
         }
     }
@@ -213,6 +224,7 @@ pub(super) fn prepare(invocation: &mut Invocation) -> Result<(), String> {
     let Some(project) = &invocation.project_config else {
         return Ok(());
     };
+    invocation.options.checking = Some(options::checking(&project.options)?);
     if project
         .options
         .get("target")

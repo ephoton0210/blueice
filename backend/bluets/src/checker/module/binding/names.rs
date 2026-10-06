@@ -18,6 +18,10 @@ impl ModuleChecker<'_> {
             self.max_type_expansions,
         );
         self.diagnostics.extend(scopes.diagnostics());
+        if self.explicit_checking {
+            self.diagnostics
+                .extend(scopes.checking_diagnostics(self.checking));
+        }
         for (name, value) in scopes.query_types() {
             self.types.insert(
                 name,

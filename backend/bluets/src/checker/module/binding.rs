@@ -6,6 +6,7 @@
 
 use super::*;
 
+mod checking_flags;
 mod classes;
 mod enums;
 mod functions;
@@ -42,6 +43,10 @@ impl<'a> ModuleChecker<'a> {
         max_type_expansions: usize,
     ) -> Self {
         Self {
+            checking: policy
+                .checking
+                .unwrap_or_else(crate::CheckingOptions::legacy),
+            explicit_checking: policy.checking.is_some(),
             target: policy.target,
             project,
             scopes: None,
@@ -590,6 +595,11 @@ impl<'a> ModuleChecker<'a> {
         variable: &crate::parser::VariableDeclaration,
         scope: &BTreeMap<String, Type>,
     ) {
+        if self.explicit_checking {
+            if let Some(annotation) = &variable.annotation {
+                self.infer_in_context(&variable.initializer, scope, annotation);
+            }
+        }
         if !variable.initializer.is_empty() && !variable.declared {
             self.check_direct_runtime_expression(&variable.initializer, scope, &variable.span);
         }
@@ -627,6 +637,7 @@ impl<'a> ModuleChecker<'a> {
         self.check_jsx_elements(tokens, scope);
         self.check_yield_expressions(tokens, scope, span);
         let before_arrows = self.diagnostics.len();
+        self.contextualize_call_arguments(tokens, scope);
         self.check_nested_functions_in(tokens, scope);
         self.dedupe_diagnostics_since(before_arrows);
         self.check_await_context(tokens, span);

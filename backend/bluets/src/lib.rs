@@ -19,6 +19,7 @@
 
 mod authorized_loader;
 mod checker;
+mod checking_options;
 mod compiler;
 mod contracts;
 mod debug_info;
@@ -39,6 +40,7 @@ pub use authorized_loader::{
     AuthorizedModuleResolution,
 };
 pub use checker::{CheckedModule, CheckedProject, Symbol, SymbolKind, Type};
+pub use checking_options::CheckingOptions;
 pub use compiler::{
     compile, is_external_library_module, CompilerLimits, CompilerOptions, EcmaTarget,
     IncrementalCompiler, IncrementalResult, JsxMode, MapLoader, ModuleKind, ModuleLoader,

@@ -32,6 +32,7 @@ test files (`grep -rl '#\[ignore' backend/bluets*/tests`), section 4 is
 | `standard_library_checker_matrix.rs` | selected ECMAScript types and methods, matching target/lib, owner/runtime policy and versioned manifest; exact inferred declarations and linked Node execution | 123 entries, 1 program, 5 declaration cases |
 | `inferred_return_checker_matrix.rs` | unannotated function/member return signatures, freshness, recursion and completion, async/generators, lexical/default/pattern scopes and importers; exact declarations and Node execution | 121 entries, 1 program, 23 exact declaration cases, 2 union type-equality cases |
 | `project_config.rs` | JSONC inheritance, normalized compiler options and selected files; owner overlays and confinement; exact declarations and Node runtime, including strict-helper relocation | 69 configurations (59 accept, 10 reject), 2 linked programs |
+| `strictness_flags.rs`, `strictness_controls.rs` | independent parent/strict-family and additional diagnostics, lexical/return/call/index boundaries, unchanged valid JavaScript and cache policy identity; pinned Node execution and exact declarations | 32 configurations (16 accept, 16 reject), 39 boundary controls, 1 program in 2 policies |
 | `option_combinations_oracle.rs` | one program over every combination of `target`, module system, `useDefineForClassFields`, `preserveConstEnums`, `isolatedModules` | 48 combinations |
 | `bluets-bluejs/tests/namespace_parity.rs`, `jsx_direct.rs`, `decorators_direct.rs` | the direct runtime (BlueJS) against Node running `tsc`'s output | 7 + 7 + 6 programs |
 
@@ -48,9 +49,9 @@ whitespace.
 ### Measured pass rate (2026-10-06, Linux aarch64 in Colima on Apple silicon, pinned `typescript@5.9.3`, Node 26)
 
 Every differential suite of section 1 was run against the pinned compiler with none skipped:
-**25 of 25 suites pass, 117 ignored oracle tests pass, 0 failures.** The versioned case list is the
+**27 of 27 suites pass, 120 ignored oracle tests pass, 0 failures.** The versioned case list is the
 repository itself at the commit that carries this file: 69 project configurations
-(59 accept, 10 reject), separately from 1366 recorded accepted/rejected verdicts (class
+(59 accept, 10 reject), 32 strictness configurations (16 accept, 16 reject) and 39 checking boundary controls, separately from 1366 recorded accepted/rejected verdicts (class
 523, namespace 76, enum 57, JSX 53, decorators 32, legacy decorators 19, unknown names 108, immutables 173, imported values 81, standard library 123, inferred returns 121), 109 core-subset
 cases in `typescript_oracle.rs`, and the emit-and-run programs (JSX 11, standard decorators 20,
 legacy decorators 18, CommonJS 6, unknown names 1, immutables 1, imported values 2, standard library 1, inferred returns 1, option combinations 48,
@@ -126,7 +127,7 @@ suite entry, then removing the row.
 | ID | Gap |
 | --- | --- |
 | G-C1 | Diagnostic parity: BlueTSC reports `BTSnnnn` with its own wording and spans; TypeScript's `TSnnnn` codes, messages, related information and suggestions, `--pretty`, `--diagnostics`, `--explainFiles`, and the full `tsc` command line are not provided. |
-| G-C2 | Strictness flags are fixed (the strict family is on): `strict`, `noImplicitAny`, `strictNullChecks`, `noUnusedLocals`/`Parameters`, `noImplicitReturns`, `noFallthroughCasesInSwitch`, `useUnknownInCatchVariables` and the rest are not independently selectable. |
+| G-C2 | Closed for the compared subset by K.2.2: parent `strict`, its nine family flags, unused locals/parameters, implicit returns, switch fallthrough, exact optional properties and unchecked indexed reads are independently selectable through projects and `CheckingOptions`. Thirty-two on/off configurations and 39 boundary controls agree with pinned TypeScript; valid JavaScript stays identical and legacy API defaults remain unchanged. Broader type-system behavior remains in G-T1/G-T2 and the other open rows; full `tsc` parity is not claimed. |
 | G-C3 | JSX: `jsx` type options `jsxImportSource` runtime typing (the automatic runtime's `JSX` namespace is not read from the package), `JSX.ElementType`, `LibraryManagedAttributes`, `defaultProps`, generic components and type arguments on tags (section 4 and `PLAN.md` J.5.1). |
 
 ### 3.6 Direct runtime (BlueJS) profile
@@ -148,26 +149,26 @@ excluded). A refusal is never silent: the program is rejected with this text.
 
 - `backend/bluets/src/checker/module/binding/modules.rs:174` — `export =` cannot be used when the module system is ECMAScript; use `--module commonjs`
 - `backend/bluets/src/checker/module/binding/modules.rs:166` — `import x = require()` cannot be used when the module system is ECMAScript; use `--module commonjs`
-- `backend/bluets/src/checker/module/binding.rs:227` — a class member other than a constructor, method, field or accessor \ (a computed, generator or `accessor` member) is not supported yet
+- `backend/bluets/src/checker/module/binding.rs:232` — a class member other than a constructor, method, field or accessor \ (a computed, generator or `accessor` member) is not supported yet
 - `backend/bluets/src/checker/module/binding/enums.rs:214` — a computed initializer that refers to the member `{}` must write it \ as `{}.{}`
 - `backend/bluets/src/checker/module/decorators.rs:116` — a decorator can only decorate a method implementation, not an overload
-- `backend/bluets/src/checker/module/binding/classes/fields.rs:318` — a field initializer that refers to a later field inside a nested \ function is not supported yet
-- `backend/bluets/src/checker/module/binding/classes/fields.rs:249` — a static block that refers to a later static field inside a nested \ function is not supported yet
+- `backend/bluets/src/checker/module/binding/classes/fields.rs:321` — a field initializer that refers to a later field inside a nested \ function is not supported yet
+- `backend/bluets/src/checker/module/binding/classes/fields.rs:252` — a static block that refers to a later static field inside a nested \ function is not supported yet
 - `backend/bluets/src/checker/module/binding/classes/visibility.rs:490` — cannot prove that access to `{}` is permitted for this receiver
 - `backend/bluets/src/checker/module/binding/classes/visibility.rs:544` — cannot prove that access to `{}` is permitted for this receiver
-- `backend/bluets/src/checker/module/binding/classes/fields.rs:104` — class field `{}` needs a type annotation unless its initializer \ or default is a number, string or boolean literal
+- `backend/bluets/src/checker/module/binding/classes/fields.rs:107` — class field `{}` needs a type annotation unless its initializer \ or default is a number, string or boolean literal
 - `backend/bluets/src/checker/module/binding/classes.rs:619` — class tuple rest annotation cannot be specialized within the type budget
-- `backend/bluets/src/checker/module/binding/names.rs:146` — cyclic tuple spread cannot be resolved
-- `backend/bluets/src/checker/module/binding/classes/fields.rs:371` — definite assignment of `{}` through a branch is not supported yet
-- `backend/bluets/src/checker/module/binding/classes/fields.rs:426` — field `{}` redeclares a member of an imported base class, which is not supported yet
+- `backend/bluets/src/checker/module/binding/names.rs:150` — cyclic tuple spread cannot be resolved
+- `backend/bluets/src/checker/module/binding/classes/fields.rs:377` — definite assignment of `{}` through a branch is not supported yet
+- `backend/bluets/src/checker/module/binding/classes/fields.rs:432` — field `{}` redeclares a member of an imported base class, which is not supported yet
 - `backend/bluets/src/checker/module/binding/classes/accessors.rs:143` — getter `{}` needs a return type annotation; inferring it from the \ body is not supported yet
-- `backend/bluets/src/checker/module/binding.rs:526` — interface heritage {name} must name an interface declaration
-- `backend/bluets/src/checker/module/binding/namespaces.rs:1081` — namespace `{source}` has no run-time members; import it with `import type`
+- `backend/bluets/src/checker/module/binding.rs:531` — interface heritage {name} must name an interface declaration
+- `backend/bluets/src/checker/module/binding/namespaces.rs:1082` — namespace `{source}` has no run-time members; import it with `import type`
 - `backend/bluets/src/checker/module/binding/classes/accessors.rs:364` — redeclaring `{name}` as an accessor over a member of an \ imported base class is not supported yet
 - `backend/bluets/src/checker/module/binding/classes/visibility.rs:302` — redeclaring the protected member `{name}` of an imported base \ class is not supported yet
 - `backend/bluets/src/checker/module/binding/classes/accessors.rs:195` — the getter and setter of `{name}` have different types, \ which is not supported yet
-- `backend/bluets/src/checker/module/binding/names.rs:150` — tuple spread names an unresolved type
-- `backend/bluets/src/checker/module/binding/names.rs:154` — tuple spread requires one concrete tuple or array type
+- `backend/bluets/src/checker/module/binding/names.rs:154` — tuple spread names an unresolved type
+- `backend/bluets/src/checker/module/binding/names.rs:158` — tuple spread requires one concrete tuple or array type
 
 ### emitter (37)
 

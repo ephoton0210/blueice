@@ -8,6 +8,7 @@ use super::{instantiate_named, Type, TypeDefinition, TypeDefinitionKind};
 use std::collections::{BTreeMap, HashSet};
 
 pub(super) struct TypeExpansionBudget {
+    pub(super) checking: crate::CheckingOptions,
     remaining: usize,
     pub(super) exhausted: bool,
 }
@@ -15,6 +16,7 @@ pub(super) struct TypeExpansionBudget {
 impl TypeExpansionBudget {
     pub(super) fn new(limit: usize) -> Self {
         Self {
+            checking: crate::CheckingOptions::legacy(),
             remaining: limit,
             exhausted: false,
         }

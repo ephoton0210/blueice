@@ -11,6 +11,22 @@ impl ScopeModel<'_> {
     pub(super) fn declarations(&mut self, declarations: &[Declaration], scope: ScopeId) {
         let cyclic = cyclic_classes(declarations);
         for declaration in declarations {
+            let name = match declaration {
+                Declaration::Function(d) => Some(&d.name),
+                Declaration::Class(d) => Some(&d.name),
+                Declaration::Enum(d) => Some(&d.name),
+                Declaration::Namespace(d) => Some(&d.name),
+                _ => None,
+            };
+            if let Some(name) = name {
+                if let Some(token) = self
+                    .tokens_in(declaration.span())
+                    .iter()
+                    .find(|t| t.text == *name)
+                {
+                    self.declaration_names.insert(token.start);
+                }
+            }
             match declaration {
                 Declaration::Variable(variable) => self.variable(variable, scope),
                 Declaration::Function(function) => {
@@ -26,11 +42,19 @@ impl ScopeModel<'_> {
                     self.function(function, scope);
                 }
                 Declaration::TypeAlias(alias) => {
+                    self.type_declarations.insert(
+                        (scope, alias.name.clone()),
+                        (alias.span.clone(), alias.exported),
+                    );
                     self.scopes[scope].types.insert(alias.name.clone());
                     let inner = self.generic_scope(scope, &alias.span, &alias.type_parameters);
                     self.type_scopes(&alias.value, &alias.span, inner);
                 }
                 Declaration::Interface(interface) => {
+                    self.type_declarations.insert(
+                        (scope, interface.name.clone()),
+                        (interface.span.clone(), interface.exported),
+                    );
                     self.scopes[scope].types.insert(interface.name.clone());
                     let inner =
                         self.generic_scope(scope, &interface.span, &interface.type_parameters);
@@ -40,6 +64,14 @@ impl ScopeModel<'_> {
                 }
                 Declaration::Import(import) => {
                     for binding in &import.bindings {
+                        if let Some(token) = self
+                            .tokens_in(&import.span)
+                            .iter()
+                            .rev()
+                            .find(|t| t.text == binding.local)
+                        {
+                            self.declaration_names.insert(token.start);
+                        }
                         let source = self
                             .project
                             .resolutions
@@ -224,6 +256,10 @@ impl ScopeModel<'_> {
 
     pub(super) fn parameters(&mut self, parameters: &[Parameter], scope: ScopeId) {
         for parameter in parameters {
+            if parameter.pattern.is_none() {
+                self.parameters
+                    .insert((scope, parameter.name.clone()), parameter.span.clone());
+            }
             let value = parameter.annotation.clone().unwrap_or(Type::Unknown);
             if let Some(annotation) = &parameter.annotation {
                 self.type_scopes(annotation, &parameter.span, scope);

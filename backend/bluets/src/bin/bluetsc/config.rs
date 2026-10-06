@@ -494,6 +494,7 @@ pub(super) fn resolve_config_document(
     }
     let options_module_kind = parse_module_kind(config.module.as_deref())?;
     let options = CompilerOptions {
+        checking: None,
         target: parse_target(config.target.as_deref())?,
         use_define_for_class_fields: config.use_define_for_class_fields,
         preserve_const_enums: config.preserve_const_enums,

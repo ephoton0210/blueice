@@ -16,7 +16,37 @@ impl ModuleChecker<'_> {
                     Declaration::Interface(interface)
                         if !protected_types.contains(&interface.name) =>
                     {
-                        let value = interface_value(interface);
+                        let mut value = interface_value(interface);
+                        if self.explicit_checking
+                            && interface.name == "Array"
+                            && !self.types.contains_key("Array")
+                        {
+                            if let Type::Record(fields) = &mut value {
+                                fields.push(TypeField {
+                                    name: "values".to_string(),
+                                    readonly: false,
+                                    optional: false,
+                                    span: interface.span.clone(),
+                                    value: Type::Function {
+                                        parameters: Vec::new(),
+                                        result: Box::new(Type::Named {
+                                            name: "IterableIterator".to_string(),
+                                            arguments: vec![
+                                                Type::Named {
+                                                    name: "T".to_string(),
+                                                    arguments: Vec::new(),
+                                                },
+                                                if self.checking.strict_builtin_iterator_return {
+                                                    Type::Undefined
+                                                } else {
+                                                    Type::Any
+                                                },
+                                            ],
+                                        }),
+                                    },
+                                });
+                            }
+                        }
                         if let Some(existing) = self.types.get_mut(&interface.name) {
                             merge_records(&mut existing.value, value);
                         } else {

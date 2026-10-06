@@ -17,7 +17,13 @@ pub(in crate::checker::module) fn indexed_value_type(
     budget: &mut TypeExpansionBudget,
 ) -> Type {
     match value {
-        Type::Array(element) => (**element).clone(),
+        Type::Array(element) => {
+            if budget.checking.no_unchecked_indexed_access {
+                Type::Union(vec![(**element).clone(), Type::Undefined])
+            } else {
+                (**element).clone()
+            }
+        }
         Type::Tuple(values) => {
             if values.iter().any(|element| {
                 element.rest && matches!(element.annotation, Type::Named { .. } | Type::Tuple(_))

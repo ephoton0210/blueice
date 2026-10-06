@@ -81,6 +81,15 @@ impl<'a> ModuleChecker<'a> {
             self.check_function_call(&qualified, scope, span);
             return;
         }
+        if self.check_function_method(
+            call.receiver,
+            &call.member.text,
+            call.arguments,
+            scope,
+            span,
+        ) {
+            return;
+        }
 
         if self.require_declared_global_calls
             && call.receiver.first().is_some_and(|base| {

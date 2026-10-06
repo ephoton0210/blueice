@@ -9,9 +9,11 @@
 use super::*;
 use crate::parser::{NestedFunctionBody, VariableDeclaration, VariableKind};
 
+mod checking_flags;
 mod expressions;
 mod mutations;
 mod private;
+mod switches;
 mod targets;
 mod walk;
 
@@ -101,6 +103,9 @@ pub(super) struct ScopeModel<'a> {
     mutation_error: Option<Diagnostic>,
     constructor_fields: BTreeMap<ScopeId, BTreeSet<String>>,
     private_classes: BTreeMap<ScopeId, private::PrivateClass>,
+    parameters: BTreeMap<(ScopeId, String), SourceSpan>,
+    catch_bindings: BTreeMap<(ScopeId, String), bool>,
+    type_declarations: BTreeMap<(ScopeId, String), (SourceSpan, bool)>,
 }
 
 impl<'a> ScopeModel<'a> {
@@ -141,6 +146,9 @@ impl<'a> ScopeModel<'a> {
             mutation_error: None,
             constructor_fields: BTreeMap::new(),
             private_classes: BTreeMap::new(),
+            parameters: BTreeMap::new(),
+            catch_bindings: BTreeMap::new(),
+            type_declarations: BTreeMap::new(),
         };
         model.child(
             None,

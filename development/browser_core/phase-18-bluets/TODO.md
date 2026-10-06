@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: K.2.2.** Sections A to J are complete (summarized below); J.6 closed in its
+**Current leaf: K.2.3.** Sections A to J are complete (summarized below); J.6 closed in its
 measured form (`COMPATIBILITY_INVENTORY.md`). Section K closes the gaps that inventory lists.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
@@ -288,7 +288,8 @@ and import rules.
     package roots, remote declarations, strict boundaries) and is merged on top.
   - *Done when:* a corpus of 25+ real-world-shaped configs (`config-*` directories) produces the same file
     set and option interpretation as `tsc --showConfig`, compared as normalized JSON.
-- [ ] **K.2.2 Independent strictness flags (L).**
+- [x] **K.2.2 Independent strictness flags (L).**
+  - *Verified (2026-10-06):* 32 pinned on/off configurations (16 accept, 16 reject), plus 39 boundary controls and Node/declaration parity. Diagnostic settings change cache identity without changing valid JavaScript. Legacy suites remain unchanged. K.0: format and Clippy pass; 1,060 tests across 60 target/doctest groups pass, including all 120 ignored oracles. Largest production source: 1,172 lines.
   - *Work:* `strict` family flags individually selectable; each flag changes diagnostics only (never
     emit); `noImplicitAny` and `strictNullChecks` are the large ones because the checker currently
     assumes both. Add `noUnusedLocals`/`noUnusedParameters`/`noImplicitReturns`/

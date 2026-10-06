@@ -4136,3 +4136,36 @@ and `blueice-k22-baseline.log` in the Linux validation logs. This failing baseli
 is committed before diagnostic selection is implemented. K.2.2 remains unchecked
 until all flags and the complete K.0 gate pass; default legacy behavior must stay
 unchanged and the diagnostic flags must not change JavaScript or runtime grants.
+
+
+### K.2.2 Independent checking policies delivered
+
+`CheckingOptions` selects the nine strict-family rules and six additional diagnostic
+rules. TypeScript projects resolve the parent `strict` default and each explicit
+override; invalid strict-null prerequisites are named. The public API preserves
+legacy behavior when `CompilerOptions.checking` is absent. Explicit selections enter
+checker cache identity and never select JavaScript emit or runtime grants.
+
+The selected policy reaches function variance and call arguments, null assignment,
+optional properties, array index reads, field initialization and implicit field types.
+Independent modules handle implicit parameters/this, return completion, lexical unused
+bindings, strict binding names, raw catch assignments and switch case completion.
+Contextual/defaulted parameters remain typed; catch `any`/`unknown` annotations remain
+explicit. Trusted Array iterator signatures retain owner replacement precedence;
+bound function call/apply/bind adapters check arguments and results without granting
+new runtime names. Existing unsupported syntax refusals stay in place.
+
+All 32 pinned configurations now agree with TypeScript 5.9.3. The 39 public API
+boundary controls also agree, including lexical shadowing, exports and script globals,
+contextual parameters, explicit returns, catch annotations, typed methods, index writes
+and conditional/nested breaks. Valid JavaScript is byte-identical across flag selections;
+unrelated type errors remain errors. Strict/relaxed Node execution and exact declarations
+agree. G-C2 closes for these compared subset rules; broader type-system gaps and full
+TypeScript diagnostic text/code/span parity remain open.
+
+The frozen-source K.0 gate (`blueice-k22-final2-*`) passed formatting, both crates'
+all-target Clippy with `-D warnings`, and 1,060 tests across 60 target/doctest groups,
+including every one of 120 ignored oracle tests in 27 suite files. No failures
+or ignored tests remain in that run. The production source audit has a maximum of
+1,172 lines, below the 1,200-line review threshold. K.2.3 is next; final workspace and
+coverage checks remain due after K.2.4. Full `tsc` parity is not claimed.

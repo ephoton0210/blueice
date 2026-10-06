@@ -16,6 +16,7 @@ enum RecordSpreadFailure {
 /// Per-project checking policy shared by every module checker.
 #[derive(Clone)]
 pub(crate) struct CheckerPolicy {
+    pub(crate) checking: Option<crate::CheckingOptions>,
     pub(crate) target: crate::compiler::EcmaTarget,
     pub(crate) enforce_types: bool,
     pub(crate) require_declared_global_calls: bool,
@@ -36,6 +37,8 @@ pub(crate) struct CheckerPolicy {
 }
 
 pub(super) struct ModuleChecker<'a> {
+    checking: crate::CheckingOptions,
+    explicit_checking: bool,
     target: crate::compiler::EcmaTarget,
     project: &'a Project,
     scopes: Option<scopes::ScopeModel<'a>>,

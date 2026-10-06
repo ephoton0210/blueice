@@ -94,6 +94,9 @@ impl ModuleChecker<'_> {
             }
             if field.annotation.is_none() && class_field_type(field).is_none() {
                 if field.initializer.is_none() && !field.from_default {
+                    if !self.checking.no_implicit_any {
+                        continue;
+                    }
                     self.type_error(
                         &field.name_span,
                         format!("class field `{}` implicitly has an `any` type", field.name),
@@ -335,6 +338,9 @@ impl ModuleChecker<'_> {
     /// at the top level of the constructor. An assignment only inside a
     /// branch is not modeled and is refused as unsupported syntax.
     fn check_definite_assignment(&mut self, class: &ClassDeclaration, fields: &[&ClassField]) {
+        if !self.checking.strict_property_initialization {
+            return;
+        }
         let constructor_bodies: Vec<&[FunctionBodyItem]> = class
             .members
             .iter()

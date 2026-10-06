@@ -380,6 +380,11 @@ impl ScopeModel<'_> {
                         false,
                     );
                     self.value(catch, &name.text, 0, false, false, Type::Unknown);
+                    self.catch_bindings.insert(
+                        (catch, name.text.clone()),
+                        tokens.get(index + 3).is_some_and(|t| t.is(":"))
+                            && tokens.get(index + 4).is_some_and(|t| t.is("unknown")),
+                    );
                     current = catch;
                     statement_scopes.insert(catch);
                     index += 3;
@@ -461,7 +466,12 @@ pub(super) fn is_value_name(token: &Token) -> bool {
                 )))
 }
 
-fn matching_end(tokens: &[Token], start: usize, open: &str, close: &str) -> Option<usize> {
+pub(super) fn matching_end(
+    tokens: &[Token],
+    start: usize,
+    open: &str,
+    close: &str,
+) -> Option<usize> {
     let mut depth = 0usize;
     for (index, token) in tokens.iter().enumerate().skip(start) {
         if token.is(open) {

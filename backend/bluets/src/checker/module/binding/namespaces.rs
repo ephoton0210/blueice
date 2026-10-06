@@ -290,6 +290,7 @@ impl Qualifier<'_> {
 impl ModuleChecker<'_> {
     fn policy(&self) -> CheckerPolicy {
         CheckerPolicy {
+            checking: self.explicit_checking.then_some(self.checking),
             target: self.target,
             enforce_types: self.enforce_types,
             require_declared_global_calls: self.require_declared_global_calls,

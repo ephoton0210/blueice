@@ -378,6 +378,7 @@ fn function_signature_matches(
     explicit_type_arguments: Option<&[Type]>,
     aliases: &BTreeMap<String, TypeDefinition>,
     max_type_expansions: usize,
+    checking: crate::CheckingOptions,
 ) -> Result<bool, ()> {
     if !function_signature_accepts_argument_count(signature, actuals.len()) {
         return Ok(false);
@@ -388,6 +389,7 @@ fn function_signature_matches(
         return Ok(false);
     };
     let mut budget = TypeExpansionBudget::new(max_type_expansions);
+    budget.checking = checking;
     for parameter in &signature.type_parameters {
         let Some(constraint) = &parameter.constraint else {
             continue;

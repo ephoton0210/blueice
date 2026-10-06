@@ -155,6 +155,43 @@ fn enumeration(name: &str, value: &str, allowed: &[&str]) -> Result<Value, Strin
     }
 }
 
+pub(super) fn checking(
+    raw: &Map<String, Value>,
+) -> Result<blueice_bluets::CheckingOptions, String> {
+    let strict = raw.get("strict").and_then(Value::as_bool).unwrap_or(false);
+    let flag = |name: &str| {
+        raw.get(name)
+            .and_then(Value::as_bool)
+            .unwrap_or(STRICT.contains(&name) && strict)
+    };
+    let options = blueice_bluets::CheckingOptions {
+        no_implicit_any: flag("noImplicitAny"),
+        no_implicit_this: flag("noImplicitThis"),
+        strict_null_checks: flag("strictNullChecks"),
+        strict_function_types: flag("strictFunctionTypes"),
+        strict_bind_call_apply: flag("strictBindCallApply"),
+        strict_property_initialization: flag("strictPropertyInitialization"),
+        strict_builtin_iterator_return: flag("strictBuiltinIteratorReturn"),
+        always_strict: flag("alwaysStrict"),
+        use_unknown_in_catch_variables: flag("useUnknownInCatchVariables"),
+        no_unused_locals: flag("noUnusedLocals"),
+        no_unused_parameters: flag("noUnusedParameters"),
+        no_implicit_returns: flag("noImplicitReturns"),
+        no_fallthrough_cases_in_switch: flag("noFallthroughCasesInSwitch"),
+        exact_optional_property_types: flag("exactOptionalPropertyTypes"),
+        no_unchecked_indexed_access: flag("noUncheckedIndexedAccess"),
+    };
+    if !options.strict_null_checks
+        && (options.strict_property_initialization || options.exact_optional_property_types)
+    {
+        return Err(
+            "strictPropertyInitialization and exactOptionalPropertyTypes require strictNullChecks"
+                .to_string(),
+        );
+    }
+    Ok(options)
+}
+
 pub(super) fn effective(raw: &Map<String, Value>, directory: &Path) -> Map<String, Value> {
     let mut values = raw
         .iter()

@@ -190,7 +190,7 @@ impl<'a> ModuleChecker<'a> {
     ) -> Props {
         if jsx::is_intrinsic_name(&name.text) {
             let Some(fields) = self.jsx_interface_fields("IntrinsicElements") else {
-                if self.jsx_key("IntrinsicElements").is_some() {
+                if self.jsx_key("IntrinsicElements").is_some() || !self.checking.no_implicit_any {
                     return Props::Open;
                 }
                 self.type_error(
