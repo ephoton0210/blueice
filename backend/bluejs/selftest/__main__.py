@@ -20,13 +20,13 @@ from .server import Application, make_server
 def main(argv=None):
     parser = argparse.ArgumentParser(description="BlueJS test impact graph and local self-test dashboard")
     commands = parser.add_subparsers(dest="action", required=True)
-    for name in ("index", "plan", "run", "serve", "publish"):
+    for name in ("index", "plan", "partitions", "run", "serve", "publish"):
         command = commands.add_parser(name)
         command.add_argument("--root", type=Path, default=ROOT)
         command.add_argument("--state", type=Path, default=DEFAULT_STATE)
         if name == "index":
             command.add_argument("--baseline", type=Path)
-        if name in ("plan", "run"):
+        if name in ("plan", "partitions", "run"):
             command.add_argument("--files", nargs="*")
             command.add_argument("--base")
         if name in ("run", "serve"):
@@ -35,7 +35,7 @@ def main(argv=None):
             command.add_argument("--test-threads", type=int, default=4)
             command.add_argument("--workspace", action="store_true")
         if name == "run":
-            command.add_argument("--mode", choices=("impact", "full", "pipeline"), default="impact")
+            command.add_argument("--mode", choices=("impact", "full", "pipeline", "partition"), default="partition")
         if name == "serve":
             command.add_argument("--port", type=int, default=8765)
             command.add_argument("--no-open", action="store_true")
@@ -47,13 +47,17 @@ def main(argv=None):
             def progress(message, done, total):
                 if done % 20 == 0 or done == total:
                     print(f"{message}: {done}/{total}", flush=True)
-            graph = import_baseline(args.baseline or latest_baseline(args.root), args.state, args.root, progress)
+            graph = import_baseline(args.baseline or latest_baseline(args.root, args.state), args.state, args.root, progress)
             print(json.dumps({"observed_targets": len(graph["observed_targets"]), "edges": len(graph["edges"]), "warnings": graph["warnings"]}, indent=2))
             return 0
         manager = Manager(args.root, args.state, getattr(args, "corpus", DEFAULT_CORPUS),
                           getattr(args, "jobs", 4), getattr(args, "test_threads", 4), getattr(args, "workspace", False))
         if args.action == "plan":
             print(json.dumps(plan(manager.graph(), args.files, args.root, args.base), indent=2))
+            return 0
+        if args.action == "partitions":
+            from .partitions import partition_plan
+            print(json.dumps(partition_plan(manager, args.files, args.base), indent=2))
             return 0
         if args.action == "publish":
             print(publish_report(manager, args.run))

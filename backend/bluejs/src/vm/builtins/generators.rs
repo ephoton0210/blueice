@@ -380,6 +380,11 @@ impl Vm {
                 "Generator next requires a generator".into(),
             ));
         };
+        if self.active_generator_delegations.contains(generator) {
+            return Err(RuntimeError::TypeError(
+                "Generator is already running".into(),
+            ));
+        }
         let state = self.heap.take_generator_state(*generator)?;
         let (
             code,
@@ -937,7 +942,7 @@ impl Vm {
         self.stack.extend(finished.iter().cloned());
         let stored = self.with_roots(|heap| heap.set_generator_state(generator, state));
         self.stack.truncate(base);
-        stored?;
+        stored.expect("finishing delegation removes iterator and delegate edges from the retained frame; its replacement value adds at most one edge");
         let record = finished.ok_or(RuntimeError::Unsupported(
             "lost synchronous yield* delegation state",
         ))?;
@@ -963,6 +968,11 @@ impl Vm {
         let generator = receiver.object_id().ok_or_else(|| {
             RuntimeError::TypeError("Generator return requires a generator".into())
         })?;
+        if self.active_generator_delegations.contains(&generator) {
+            return Err(RuntimeError::TypeError(
+                "Generator is already running".into(),
+            ));
+        }
         let state = self.heap.take_generator_state(generator)?;
         let Some((record, _)) = Self::sync_yield_star_delegate(&state) else {
             self.heap
@@ -975,6 +985,7 @@ impl Vm {
             .expect("restoring the unchanged, verified generator frame cannot allocate");
         let base = self.stack.len();
         self.stack.push(value.clone());
+        self.active_generator_delegations.insert(generator);
         let step = (|| {
             let iterator = self
                 .heap
@@ -992,6 +1003,7 @@ impl Vm {
             let result = self.call_native(method, iterator, vec![value.clone()], false)?;
             self.sync_delegate_step(result).map(Some)
         })();
+        self.active_generator_delegations.remove(&generator);
         self.stack.truncate(base);
         Ok(match step {
             Ok(None) => {
@@ -1008,7 +1020,10 @@ impl Vm {
             Ok(Some(SyncDelegateStep::Yield(result))) => Some(Ok(result)),
             Ok(Some(SyncDelegateStep::Done(inner))) => {
                 self.stack.push(inner.clone());
-                self.finish_sync_delegation(generator, inner.clone())?;
+                self.finish_sync_delegation(generator, inner.clone())
+                    .expect(
+                        "the executing delegate callback cannot resume or replace its saved frame",
+                    );
                 let result =
                     self.generator_resume(receiver, None, None, Some(Completion::Return(inner)));
                 self.stack.pop();
@@ -1051,6 +1066,11 @@ impl Vm {
         let generator = receiver.object_id().ok_or_else(|| {
             RuntimeError::TypeError("Generator throw requires a generator".into())
         })?;
+        if self.active_generator_delegations.contains(&generator) {
+            return Err(RuntimeError::TypeError(
+                "Generator is already running".into(),
+            ));
+        }
         let state = self.heap.take_generator_state(generator)?;
         let Some((record, _)) = Self::sync_yield_star_delegate(&state) else {
             self.heap
@@ -1068,6 +1088,7 @@ impl Vm {
             .expect("restoring the unchanged, verified generator frame cannot allocate");
         let base = self.stack.len();
         self.stack.push(value.clone());
+        self.active_generator_delegations.insert(generator);
         let step = (|| {
             let iterator = self
                 .heap
@@ -1090,12 +1111,15 @@ impl Vm {
             let result = self.call_native(method, iterator, vec![value.clone()], false)?;
             self.sync_delegate_step(result)
         })();
+        self.active_generator_delegations.remove(&generator);
         self.stack.truncate(base);
         match step {
             Ok(SyncDelegateStep::Yield(result)) => Ok(result),
             Ok(SyncDelegateStep::Done(inner)) => {
                 self.stack.push(inner.clone());
-                self.finish_sync_delegation(generator, inner)?;
+                self.finish_sync_delegation(generator, inner).expect(
+                    "the executing delegate callback cannot resume or replace its saved frame",
+                );
                 let result = self.generator_next(receiver, None, None);
                 self.stack.pop();
                 result
@@ -1485,6 +1509,11 @@ impl Vm {
             // operand whose PromiseResolve throws does so at once.
             let completion = match AsyncGeneratorRequestTurn::classify(request.completion) {
                 AsyncGeneratorRequestTurn::AwaitReturn(value) => {
+                    // PromiseResolve can run a constructor getter which queues
+                    // another request. Keep that request behind the current
+                    // head until its await has been installed or refused.
+                    self.set_async_generator_status(generator, AsyncGeneratorStatus::Executing)
+                        .expect("the scheduler retains its validated queue head");
                     match self.start_async_generator_await(
                         generator,
                         request.target,
@@ -1498,6 +1527,11 @@ impl Vm {
                             );
                         }
                         Err(error) => {
+                            self.set_async_generator_status(
+                                generator,
+                                AsyncGeneratorStatus::SuspendedYield,
+                            )
+                            .expect("restoring the retained scheduler status cannot allocate");
                             let reason = self.error_value(error)?;
                             self.replace_async_generator_request(
                                 generator,
@@ -1913,7 +1947,8 @@ impl Vm {
         fulfilled: bool,
     ) -> Result<(), RuntimeError> {
         if !fulfilled {
-            self.close_async_generator(generator)?;
+            self.close_async_generator(generator)
+                .expect("AsyncGeneratorYield reactions here originate from a completed FIFO request; its retained Done frame cannot allocate or close user iterators");
             self.complete_async_generator_request(
                 generator,
                 target,
@@ -2010,7 +2045,8 @@ impl Vm {
             .expect("the scheduler completes the retained FIFO head and its tracked promise");
             return self.resume_async_generator_next(generator);
         }
-        self.finish_async_delegation(generator, value.clone())?;
+        self.finish_async_delegation(generator, value.clone())
+            .expect("this FIFO reaction owns the outstanding async delegation; its completion only shrinks the frame");
         let result = if returning {
             // Preserve the original return through any enclosing finally.
             self.generator_resume(
@@ -2065,7 +2101,8 @@ impl Vm {
                 .is_some(),
             _ => false,
         };
-        self.with_roots(|heap| heap.set_generator_state(generator, state))?;
+        self.with_roots(|heap| heap.set_generator_state(generator, state))
+            .expect("finishing async delegation only shrinks the retained frame and replaces one stack value");
         if finished {
             Ok(())
         } else {
@@ -2085,7 +2122,8 @@ impl Vm {
         target: ObjectId,
         error: Value,
     ) -> Result<(), RuntimeError> {
-        self.finish_async_delegation(generator, Value::Undefined)?;
+        self.finish_async_delegation(generator, Value::Undefined)
+            .expect("the scheduler throws at the exit of its outstanding async delegation");
         let result = self.generator_resume(
             &Value::Object(generator),
             None,

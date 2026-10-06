@@ -1013,7 +1013,9 @@ impl crate::Vm {
     /// Runs retained unit contracts in unit and coverage builds.
     #[doc(hidden)]
     pub fn verify_module_linking_contracts() {
+        debugger_resume_preserves_an_unsettled_top_level_await();
         paused_and_awaited_modules_preserve_error_materialization_refusals();
+        deferred_namespace_imports_preserve_lazy_evaluation_and_allocation_refusals();
         deferred_namespace_reflection_preserves_the_real_evaluation_error();
         source_import_resolution_preserves_real_getter_allocation_errors();
         changed_host_registry_errors_preserve_deferred_records_and_observer_roots();
@@ -1300,6 +1302,20 @@ fn continuation_exhaustion_at_actual_second_await_restores_ambient_execution() {
     assert_eq!(vm.execute_script(&reuse), Ok(Value::Number(42.0)));
 
     let graph = HashMap::from([(
+        "second.mjs".to_string(),
+        compiled_module("await gate.promise; await Promise.resolve(); export const answer = 42;"),
+    )]);
+    let mut vm = Vm::default();
+    vm.execute_script(&script("globalThis.gate = Promise.withResolvers();"))
+        .unwrap();
+    vm.execute_module_graph("second.mjs", &graph).unwrap();
+    vm.next_module_continuation = u64::MAX;
+    vm.execute_script(&script("gate.resolve();")).unwrap();
+    assert_eq!(vm.run_promise_jobs(), Err(RuntimeError::InstructionLimit));
+    assert!(vm.module_graph.is_some() && vm.stack.is_empty());
+    assert_eq!(vm.execute_script(&reuse), Ok(Value::Number(42.0)));
+
+    let graph = HashMap::from([(
         "entry.mjs".to_string(),
         crate::compile_module(&crate::parse_module("await gate.promise; throw sentinel;").unwrap())
             .unwrap(),
@@ -1419,4 +1435,139 @@ fn dependency_namespace_settlement_refusals_preserve_the_retained_module_graph()
         }
         assert!(completed && failures > 0);
     }
+}
+
+#[cfg_attr(test, test)]
+fn deferred_namespace_imports_preserve_lazy_evaluation_and_allocation_refusals() {
+    let script = |source: &str| crate::compile(&crate::parse(source).unwrap()).unwrap();
+    for delayed in [false, true] {
+        let mut modules = HashMap::from([(
+            "refused/root.mjs".to_string(),
+            compiled_module(if delayed {
+                "import './dep.mjs'; throw 7; export const answer = 42; export const then = undefined;"
+            } else {
+                "throw 7; export const answer = 42; export const then = undefined;"
+            }),
+        )]);
+        if delayed {
+            modules.insert(
+                "refused/dep.mjs".into(),
+                compiled_module("await gate.promise; export const answer = 42;"),
+            );
+        }
+        let operation = script("import.defer('./root.mjs')");
+        let mut next_extra = 0;
+        let mut completed = false;
+        let mut refused = 0;
+        while next_extra <= 16 * 1024 * 1024 {
+            let extra = next_extra;
+            let mut vm = Vm::default();
+            vm.execute_script(&script(
+                "TypeError; globalThis.gate = Promise.withResolvers();",
+            ))
+            .unwrap();
+            vm.set_module_loader_context("refused/caller.mjs", modules.clone());
+            let promise = vm.execute_script(&operation).unwrap().object_id().unwrap();
+            let root = vm.heap.root(promise).unwrap();
+            if delayed {
+                vm.run_promise_jobs().unwrap();
+                assert!(matches!(
+                    vm.promises[&promise].status,
+                    PromiseStatus::Pending
+                ));
+                vm.execute_script(&script("gate.resolve();")).unwrap();
+            }
+            vm.with_roots(|heap| {
+                heap.collect_major();
+                Ok(())
+            })
+            .unwrap();
+            let limit = vm.heap.allow_only(extra);
+            match vm.run_promise_jobs() {
+                Ok(()) => {
+                    let PromiseStatus::Fulfilled(namespace) = &vm.promises[&promise].status else {
+                        panic!("deferred import evaluated a body before namespace access");
+                    };
+                    let namespace = namespace.clone();
+                    vm.heap.allow_only(16 * 1024 * 1024);
+                    assert_eq!(
+                        vm.get_property(&namespace, &"then".into()),
+                        Ok(Value::Undefined)
+                    );
+                    assert!(vm
+                        .linked_record("refused/root.mjs")
+                        .unwrap()
+                        .error
+                        .is_none());
+                    assert_eq!(
+                        vm.get_property(&namespace, &"answer".into()),
+                        Err(RuntimeError::Thrown(Value::Number(7.0)))
+                    );
+                    completed = true;
+                }
+                Err(RuntimeError::Heap(HeapError::HeapLimitExceeded { limit: actual })) => {
+                    assert_eq!(actual, limit);
+                    refused += 1;
+                    next_extra = vm.heap.next_allocation_headroom(extra);
+                }
+                Err(error) => {
+                    panic!("deferred resolution delayed={delayed}, headroom={extra}: {error:?}")
+                }
+            }
+            assert!(vm.stack.is_empty());
+            vm.heap.allow_only(16 * 1024 * 1024);
+            assert_eq!(
+                vm.execute_script(&script("21 + 21")),
+                Ok(Value::Number(42.0))
+            );
+            vm.heap.unroot(root).unwrap();
+            if completed {
+                break;
+            }
+        }
+        assert!(completed && refused > 0);
+    }
+}
+
+#[cfg_attr(test, test)]
+fn debugger_resume_preserves_an_unsettled_top_level_await() {
+    let script = |source: &str| crate::compile(&crate::parse(source).unwrap()).unwrap();
+    let mut vm = Vm::default();
+    vm.execute_script(&script("globalThis.gate = Promise.withResolvers();"))
+        .unwrap();
+    let module = compiled_module("await gate.promise; export const answer = 42;");
+    let offset = module
+        .instructions()
+        .find(|instruction| instruction.offset >= module.module_evaluate_entry.unwrap() as usize)
+        .unwrap()
+        .offset as u32;
+    let graph = HashMap::from([("pending/entry.mjs".into(), module)]);
+    assert!(matches!(
+        vm.execute_module_graph_until_debugger_pause("pending/entry.mjs", &graph, offset),
+        Ok(VmDebuggerExecutionState::Paused { .. })
+    ));
+    assert_eq!(
+        vm.resume_debugger_module_execution(),
+        Ok(VmDebuggerExecutionState::Completed)
+    );
+    let record = vm.linked_record("pending/entry.mjs").unwrap();
+    assert!(record.error.is_none() && record.completion.is_none());
+    assert!(!vm.module_continuations.is_empty());
+    assert!(vm.stack.is_empty());
+    vm.execute_script(&script("gate.resolve();")).unwrap();
+    vm.run_promise_jobs().unwrap();
+    let slot = graph["pending/entry.mjs"]
+        .bindings
+        .iter()
+        .position(|binding| binding.name == "answer")
+        .unwrap();
+    let cell = vm.linked_record("pending/entry.mjs").unwrap().cells[&slot];
+    assert_eq!(
+        vm.heap.get_own(cell, "value").unwrap(),
+        Some(Value::Number(42.0))
+    );
+    assert_eq!(
+        vm.execute_script(&script("21 + 21")),
+        Ok(Value::Number(42.0))
+    );
 }

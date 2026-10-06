@@ -236,6 +236,8 @@ fn temporal_styles_reject_disjoint_components_before_range_formatting() {
 impl Vm {
     #[doc(hidden)]
     pub fn verify_error_boundary_contracts() {
+        aggregate_error_array_creation_and_publication_preserve_resource_refusals();
+        foreign_error_options_preserve_reverse_descriptor_exceptions();
         cold_stack_setter_and_global_lookup_preserve_real_failures();
         error_and_intl_receivers_reject_another_live_heaps_handle();
         error_headers_ignore_getters_non_strings_and_exotic_prototypes();
@@ -244,6 +246,14 @@ impl Vm {
         global_name_lookup_preserves_uninitialized_binding_errors();
         temporal_styles_reject_disjoint_components_before_range_formatting();
     }
+}
+
+#[cfg_attr(test, test)]
+fn aggregate_error_array_creation_and_publication_preserve_resource_refusals() {
+    Vm::verify_script_allocation_boundary(
+        "AggregateError; globalThis.payload = 'x'.repeat(8192); globalThis.values = [payload,payload];",
+        "var result = new AggregateError(values); result.errors.length === 2 && result.errors[0] === payload && result.errors[1] === payload ? 42 : 0",
+    );
 }
 
 #[cfg_attr(test, test)]
@@ -276,6 +286,24 @@ fn cold_stack_setter_and_global_lookup_preserve_real_failures() {
         vm.lookup_global_name("absent"),
         Err(RuntimeError::Thrown(Value::Number(7.0)))
     );
+    assert!(vm.stack.is_empty());
+    assert_eq!(execute(&mut vm, "21 + 21"), Value::Number(42.0));
+}
+
+#[cfg_attr(test, test)]
+fn foreign_error_options_preserve_reverse_descriptor_exceptions() {
+    let mut vm = Vm::default();
+    vm.install_test262_harness().unwrap();
+    let source = r#"
+        var child = $262.createRealm().global;
+        child.eval('globalThis.makeError = options => new Error("message", options)');
+        var observed = 0;
+        var options = new Proxy({}, {getOwnPropertyDescriptor() {observed++; throw 7;}});
+        var caught = false;
+        try {child.makeError(options);} catch (error) {caught = error === 7;}
+        caught && observed === 1 ? 42 : 0;
+    "#;
+    assert_eq!(execute(&mut vm, source), Value::Number(42.0));
     assert!(vm.stack.is_empty());
     assert_eq!(execute(&mut vm, "21 + 21"), Value::Number(42.0));
 }

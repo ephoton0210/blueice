@@ -2702,6 +2702,7 @@ fn foreign_snapshot_allocation_failures_preserve_both_realms_and_source_identity
         ("Reflect; globalThis.child = $262.createRealm().global; child.ArrayBuffer; globalThis.Target = function() {}; Target.prototype = 7;", "Reflect.construct(child.ArrayBuffer, [8], Target).byteLength === 8 ? 42 : 0"),
         ("Reflect; globalThis.child = $262.createRealm().global; child.ArrayBuffer; globalThis.Target = new Proxy(function(){}, {get(target,key){if(key === 'prototype') return {answer:42}; return Reflect.get(target,key);}});", "Object.getPrototypeOf(Reflect.construct(child.ArrayBuffer, [8], Target)).answer"),
         ("globalThis.child = $262.createRealm().global; child.eval('globalThis.read = values => values[0].answer'); globalThis.values = [{answer:42}];", "child.read(values)"),
+        ("globalThis.child = $262.createRealm().global; globalThis.Base = child.eval('(class {constructor() {this.answer = 42;}})'); globalThis.Derived = class extends Base {constructor() {globalThis.readThis = () => this; super();}};", "new Derived().answer"),
         ("Reflect; globalThis.child = $262.createRealm().global; child.eval('globalThis.target = new Uint8Array(8);'); child.TypeError;", "try {Reflect.defineProperty(child.target, '0', {value:Symbol(7)}); 0;} catch(error) {error instanceof child.TypeError ? 42 : 0;}"),
     ] {
         let setup_source = setup;
@@ -2988,7 +2989,14 @@ impl Vm {
     /// Runs internal boundary contracts only in unit and coverage builds.
     #[doc(hidden)]
     pub fn verify_execution_boundary_contracts() {
+        paused_rest_instructions_preserve_real_array_refusals();
+        compiled_eval_with_references_use_real_dynamic_environments();
+        compiled_eval_deletion_keeps_cold_global_refusals();
         compiled_eval_captures_use_owned_dynamic_cells_and_preserve_outer_storage();
+        staged_interpreter_name_and_reference_errors_preserve_vm_reuse();
+        with_references_preserve_the_resolved_global_environment();
+        compiled_source_keys_are_coerced_once_before_target_evaluation();
+        cold_regexp_constructor_identity_preserves_initialization_refusal();
         existing_string_values_and_cold_this_preserve_interpreter_limits();
         collected_weak_targets_and_queued_job_refusals_preserve_vm_state();
         late_global_publication_and_eval_recreation_preserve_owned_state();
@@ -3148,8 +3156,246 @@ impl Vm {
 }
 
 #[cfg_attr(test, test)]
+fn compiled_eval_deletion_keeps_cold_global_refusals() {
+    let parent = compile(&parse("42").unwrap()).unwrap();
+    let operation = crate::compiler::compile_eval(
+        &parse("var undefined = 7; delete undefined; delete undefined; 42").unwrap(),
+        &[],
+        &[],
+        &[],
+        crate::compiler::EvalContext::default(),
+        crate::CompileLimits::default(),
+    )
+    .unwrap();
+    let mut extra = 0;
+    let mut completed = false;
+    let mut refusals = 0;
+    while extra <= 16 * 1024 * 1024 {
+        let mut vm = Vm::default();
+        vm.prepare_root_execution(&parent, false).unwrap();
+        vm.with_roots(|heap| {
+            heap.collect_major();
+            Ok(())
+        })
+        .unwrap();
+        let limit = vm.heap.allow_only(extra);
+        let result = vm.execute_eval(&operation, Vec::new(), false);
+        match &result {
+            Ok(value) => {
+                assert_eq!(*value, Value::Number(42.0));
+                completed = true;
+            }
+            Err(RuntimeError::Heap(HeapError::HeapLimitExceeded { limit: actual })) => {
+                assert_eq!(*actual, limit);
+                refusals += 1;
+                extra = vm.heap.next_allocation_headroom(extra);
+            }
+            result => panic!("headroom {extra}: {result:?}"),
+        }
+        let _ = vm.finish_root_execution(result);
+        assert!(vm.stack.is_empty());
+        vm.heap.allow_only(16 * 1024 * 1024);
+        assert_eq!(vm.execute_script(&parent), Ok(Value::Number(42.0)));
+        if completed {
+            break;
+        }
+    }
+    assert!(completed && refusals > 0);
+}
+
+#[cfg_attr(test, test)]
+fn paused_rest_instructions_preserve_real_array_refusals() {
+    use crate::bytecode::Opcode;
+    use crate::vm::debugger::VmDebuggerExecutionState;
+    for (source, opcode) in [
+        ("var [...rest] = values; rest.length === 2 && rest[1] === payload ? 42 : 0", Opcode::IteratorRest),
+        ("[target.first,...target.rest] = values; target.first === payload && target.rest[0] === payload ? 42 : 0", Opcode::IteratorRestReference),
+    ] {
+        // Retain each next result before the budget is imposed. Collecting
+        // an ephemeral iterator result must not fund the later array write
+        // and hide the refusal at IteratorRest's array_push boundary.
+        let setup = compile(&parse("globalThis.payload = 'x'.repeat(8192); globalThis.results = [{done:false,value:payload},{done:false,value:payload},{done:true}]; globalThis.cursor = 0; globalThis.values = {[Symbol.iterator]() {return this;}, next() {return results[cursor++];}}; globalThis.target = {};").unwrap()).unwrap();
+        let operation = compile(&parse(source).unwrap()).unwrap();
+        let offset = operation.instructions().find(|instruction| instruction.opcode == opcode).unwrap().offset as u32;
+        let check = compile(&parse(if opcode == Opcode::IteratorRest {
+            "rest.length === 2 && rest[0] === payload && rest[1] === payload ? 42 : 0"
+        } else {
+            "target.first === payload && target.rest.length === 1 && target.rest[0] === payload ? 42 : 0"
+        }).unwrap()).unwrap();
+        let mut extra = 0;
+        let mut completed = false;
+        let mut refusals = 0;
+        while extra <= 16 * 1024 * 1024 {
+            let mut vm = Vm::default();
+            vm.execute_script(&setup).unwrap();
+            assert_eq!(vm.execute_script_until_debugger_pause(&operation, offset), Ok(VmDebuggerExecutionState::Paused {bytecode_offset:offset}));
+            vm.with_roots(|heap| {heap.collect_major(); Ok(())}).unwrap();
+            let limit = vm.heap.allow_only(extra);
+            match vm.resume_debugger_execution() {
+                Ok(VmDebuggerExecutionState::Completed) => completed = true,
+                Err(RuntimeError::Heap(HeapError::HeapLimitExceeded {limit:actual})) => {assert_eq!(actual, limit); refusals += 1; extra = vm.heap.next_allocation_headroom(extra);}
+                result => panic!("{source}, headroom {extra}: {result:?}"),
+            }
+            assert!(vm.stack.is_empty());
+            vm.heap.allow_only(16 * 1024 * 1024);
+            if completed {assert_eq!(vm.execute_script(&check), Ok(Value::Number(42.0)));}
+            assert_eq!(vm.execute_script(&compile(&parse("21 + 21").unwrap()).unwrap()), Ok(Value::Number(42.0)));
+            if completed {break;}
+        }
+        assert!(completed && refusals > 0, "{source}");
+    }
+}
+
+#[cfg_attr(test, test)]
+fn compiled_eval_with_references_use_real_dynamic_environments() {
+    use crate::bytecode::Opcode;
+    let eval_code = crate::compiler::compile_eval(
+        &parse("var dynamicValue = 40;").unwrap(),
+        &[],
+        &[],
+        &[],
+        crate::compiler::EvalContext::default(),
+        crate::CompileLimits::default(),
+    )
+    .unwrap();
+    for nursery_capacity in [1, HeapConfig::default().nursery_capacity] {
+        for source in [
+            "with ({}) {dynamicValue += 2;}",
+            "function update() {with ({}) {dynamicValue += 2;} return 42;} update();",
+        ] {
+            let parent = compile(&parse(source).unwrap()).unwrap();
+            let mut vm = Vm::new(VmConfig {
+                heap: HeapConfig {
+                    nursery_capacity,
+                    ..HeapConfig::default()
+                },
+                ..VmConfig::default()
+            })
+            .unwrap();
+            vm.prepare_root_execution(&parent, false).unwrap();
+            vm.prepare_global_declarations(&parent).unwrap();
+            // The compiled-eval ingress creates an actual owned dynamic cell
+            // that is absent from the previously compiled parent's slots.
+            vm.execute_eval(&eval_code, Vec::new(), false).unwrap();
+            assert_eq!(
+                vm.dynamic_eval_binding_value("dynamicValue"),
+                Ok(Some(Value::Number(40.0)))
+            );
+            vm.with_roots(|heap| {
+                heap.collect_major();
+                Ok(())
+            })
+            .unwrap();
+            let result = vm.run(&parent);
+            assert_eq!(result, Ok(Value::Number(42.0)), "{source}");
+            assert_eq!(
+                vm.dynamic_eval_binding_value("dynamicValue"),
+                Ok(Some(Value::Number(42.0)))
+            );
+            vm.finish_root_execution(result).unwrap();
+            assert!(vm.stack.is_empty());
+        }
+
+        // Suspend at a real compiled GetValue boundary and consume the
+        // producer's Reference pair, without constructing bytecode or cells.
+        let parent = compile(&parse("with ({}) {dynamicValue += 2;}").unwrap()).unwrap();
+        let offset = parent
+            .instructions()
+            .find(|instruction| instruction.opcode == Opcode::LoadWithReference)
+            .unwrap()
+            .offset;
+        let mut vm = Vm::new(VmConfig {
+            heap: HeapConfig {
+                nursery_capacity,
+                ..HeapConfig::default()
+            },
+            ..VmConfig::default()
+        })
+        .unwrap();
+        vm.prepare_root_execution(&parent, false).unwrap();
+        vm.prepare_global_declarations(&parent).unwrap();
+        vm.execute_eval(&eval_code, Vec::new(), false).unwrap();
+        let mut iterators = Vec::new();
+        let InterpreterExit::Suspend {
+            pc,
+            mut iterators,
+            handlers,
+        } = vm
+            .interpret(
+                &parent,
+                &mut iterators,
+                0,
+                None,
+                Some(InterpreterSuspensionPoint::Offset(offset)),
+                None,
+            )
+            .unwrap()
+        else {
+            panic!("compiled GetValue boundary did not suspend")
+        };
+        assert_eq!(pc, offset);
+        let target = vm.stack[vm.stack.len() - 2].clone();
+        let marker = vm.stack[vm.stack.len() - 1].clone();
+        assert_eq!(target, Value::Bool(false));
+        assert_eq!(
+            vm.load_with_reference(&parent, &target, &marker),
+            Ok(Value::Number(40.0))
+        );
+        let before = vm.stack.len();
+        let limit = vm.heap.allow_only(0);
+        assert_eq!(
+            vm.store_with_reference(
+                &parent,
+                target.clone(),
+                marker.clone(),
+                &Value::String("x".repeat(8192).into())
+            ),
+            Err(RuntimeError::Heap(HeapError::HeapLimitExceeded { limit }))
+        );
+        assert_eq!(vm.stack.len(), before);
+        assert_eq!(
+            vm.dynamic_eval_binding_value("dynamicValue"),
+            Ok(Some(Value::Number(40.0)))
+        );
+        vm.heap.allow_only(16 * 1024 * 1024);
+        assert_eq!(vm.delete_dynamic_eval_binding("dynamicValue"), Ok(true));
+        assert_eq!(
+            vm.load_with_reference(&parent, &target, &marker),
+            Err(RuntimeError::ReferenceError("dynamicValue".into()))
+        );
+        let before = vm.stack.len();
+        let limit = vm.heap.allow_only(0);
+        assert_eq!(
+            vm.store_with_reference(
+                &parent,
+                target.clone(),
+                marker.clone(),
+                &Value::String("x".repeat(8192).into())
+            ),
+            Err(RuntimeError::Heap(HeapError::HeapLimitExceeded { limit }))
+        );
+        assert_eq!(vm.stack.len(), before);
+        vm.heap.allow_only(16 * 1024 * 1024);
+        vm.store_with_reference(&parent, target, marker, &Value::Number(42.0))
+            .unwrap();
+        let error = match vm.interpret(&parent, &mut iterators, pc, None, None, Some((handlers, 0)))
+        {
+            Err(error) => error,
+            Ok(_) => panic!("the deleted compiled Reference unexpectedly resumed normally"),
+        };
+        assert_eq!(error, RuntimeError::ReferenceError("dynamicValue".into()));
+        vm.finish_root_execution(Err(error)).unwrap_err();
+        assert!(vm.stack.is_empty());
+        assert_eq!(
+            vm.execute_script(&compile(&parse("21 + 21").unwrap()).unwrap()),
+            Ok(Value::Number(42.0))
+        );
+    }
+}
+
+#[cfg_attr(test, test)]
 fn compiled_eval_captures_use_owned_dynamic_cells_and_preserve_outer_storage() {
-    let parent = compile(&parse("var captured = 7; captured;").unwrap()).unwrap();
+    let parent = compile(&parse("var captured; if (globalThis.phase === 1) {captured += 2; var before = captured++; captured--; before === 15 && captured === 15 ? 42 : 0;} else {captured = 7; captured;}").unwrap()).unwrap();
     let slot = parent
         .bindings
         .iter()
@@ -3177,6 +3423,20 @@ fn compiled_eval_captures_use_owned_dynamic_cells_and_preserve_outer_storage() {
         vm.execute_eval(&code, vec![original], false),
         Ok(Value::Number(42.0))
     );
+    let recreated = crate::compiler::compile_eval(
+        &parse("var recreated = (delete recreated, 42); recreated").unwrap(),
+        &[],
+        &[],
+        &[],
+        crate::compiler::EvalContext::default(),
+        crate::CompileLimits::default(),
+    )
+    .unwrap();
+    assert!(vm.parameter_eval_env.is_none());
+    assert_eq!(
+        vm.execute_eval(&recreated, Vec::new(), false),
+        Ok(Value::Number(42.0))
+    );
     assert_eq!(
         vm.heap.get_own(original, "value").unwrap(),
         Some(Value::Number(7.0))
@@ -3184,6 +3444,78 @@ fn compiled_eval_captures_use_owned_dynamic_cells_and_preserve_outer_storage() {
     assert_eq!(
         vm.eval_aware_binding_value(slot, "captured"),
         Ok(Some(Value::Number(13.0)))
+    );
+    // These are the real captures and aliases prepared by execute_eval above.
+    // Resolve subsequent assignments through the new cell, while references
+    // resolved before eval continue to retain the original cell.
+    vm.with_roots(|heap| {
+        heap.collect_major();
+        Ok(())
+    })
+    .unwrap();
+    let limit = vm.heap.allow_only(0);
+    assert_eq!(
+        vm.assign_unbound_name("captured", Value::String("x".repeat(4096).into()), false),
+        Err(RuntimeError::Heap(HeapError::HeapLimitExceeded { limit }))
+    );
+    for (source, captures, exposed) in [
+        (
+            "captured += 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'; 42",
+            vec![original],
+            visible.to_vec(),
+        ),
+        (
+            "captured = 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'; 42",
+            Vec::new(),
+            Vec::new(),
+        ),
+    ] {
+        let operation = crate::compiler::compile_eval(
+            &parse(source).unwrap(),
+            &exposed,
+            &[],
+            &[],
+            crate::compiler::EvalContext::default(),
+            crate::CompileLimits::default(),
+        )
+        .unwrap();
+        assert_eq!(
+            vm.execute_eval(&operation, captures, false),
+            Err(RuntimeError::Heap(HeapError::HeapLimitExceeded { limit })),
+            "{source}"
+        );
+        assert_eq!(
+            vm.heap.get_own(original, "value").unwrap(),
+            Some(Value::Number(7.0))
+        );
+        assert!(vm.stack.is_empty());
+    }
+    assert_eq!(
+        vm.assign_binding_slot(&parent, slot, Value::String("x".repeat(4096).into()), false),
+        Err(RuntimeError::Heap(HeapError::HeapLimitExceeded { limit }))
+    );
+    assert_eq!(
+        vm.eval_aware_binding_value(slot, "captured"),
+        Ok(Some(Value::Number(13.0)))
+    );
+    assert_eq!(
+        vm.heap.get_own(original, "value").unwrap(),
+        Some(Value::Number(7.0))
+    );
+    vm.heap.allow_only(16 * 1024 * 1024);
+    vm.assign_binding_slot(&parent, slot, Value::Number(13.0), false)
+        .unwrap();
+    let global = vm.global("globalThis").unwrap();
+    vm.set_property(&global, &"phase".into(), &Value::Number(1.0))
+        .unwrap();
+    assert_eq!(vm.run(&parent), Ok(Value::Number(42.0)));
+    assert_eq!(
+        vm.eval_aware_binding_value(slot, "captured"),
+        Ok(Some(Value::Number(15.0)))
+    );
+    assert_eq!(
+        vm.heap.get_own(original, "value").unwrap(),
+        Some(Value::Number(7.0))
     );
     assert!(vm.stack.is_empty());
     vm.finish_root_execution(Ok(Value::Undefined)).unwrap();
@@ -3907,4 +4239,263 @@ fn late_name_lookup_and_assignment_preserve_real_environment_errors() {
         Err(RuntimeError::ReferenceError("pending".into()))
     );
     vm.finish_root_execution(Ok(Value::Undefined)).unwrap();
+}
+
+#[cfg_attr(test, test)]
+fn staged_interpreter_name_and_reference_errors_preserve_vm_reuse() {
+    let compile_script = |source: &str| compile(&parse(source).unwrap()).unwrap();
+    let mut failures = Vec::new();
+    fn record_case(failures: &mut Vec<String>, label: &str, operation: impl FnOnce()) {
+        if let Err(payload) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(operation)) {
+            let message = payload
+                .downcast_ref::<String>()
+                .map(String::as_str)
+                .or_else(|| payload.downcast_ref::<&str>().copied())
+                .unwrap_or("non-string assertion payload");
+            failures.push(format!("{label}: {message}"));
+        }
+    }
+    let code = compile_script("const pending = 42;");
+    let mut vm = Vm::default();
+    vm.prepare_root_execution(&code, false).unwrap();
+    vm.prepare_global_declarations(&code).unwrap();
+    let slot = code
+        .bindings
+        .iter()
+        .position(|binding| binding.name == "pending")
+        .unwrap();
+    assert_eq!(
+        vm.assign_binding_slot(&code, slot, Value::Number(7.0), false),
+        Err(RuntimeError::ReferenceError("pending".into()))
+    );
+    vm.finish_root_execution(Ok(Value::Undefined)).unwrap();
+    assert!(vm.stack.is_empty());
+    for (source, warm_global) in [
+        ("this", false),
+        ("missing", false),
+        ("missing = 42", false),
+        ("NaN = 42", true),
+        ("'use strict'; undefined = 42", true),
+        ("with (env) {Array = 42;}", true),
+    ] {
+        record_case(&mut failures, source, || {
+            let mut vm = Vm::default();
+            vm.string_intrinsics().unwrap();
+            if warm_global {
+                vm.global("globalThis").unwrap();
+                vm.execute_script(&compile_script("globalThis.env = {};"))
+                    .unwrap();
+            }
+            let code = compile_script(source);
+            vm.prepare_root_execution(&code, false).unwrap();
+            let limit = vm.heap.allow_only(0);
+            let result = vm.run(&code);
+            assert_eq!(
+                result,
+                Err(RuntimeError::Heap(HeapError::HeapLimitExceeded { limit })),
+                "{source}"
+            );
+            vm.finish_root_execution(result).unwrap_err();
+            assert!(vm.stack.is_empty());
+            vm.heap.allow_only(16 * 1024 * 1024);
+            assert_eq!(
+                vm.execute_script(&compile_script("21 + 21")),
+                Ok(Value::Number(42.0))
+            );
+        });
+    }
+    for (setup, source) in [
+        ("Object.setPrototypeOf(globalThis, new Proxy({}, {has() {throw 7;}}));", "missing = 42"),
+        ("Object.setPrototypeOf(globalThis, new Proxy({}, {has() {throw 7;}}));", "'use strict'; missing = 42"),
+        ("globalThis.known = 1; Object.setPrototypeOf(globalThis, new Proxy({}, {has() {throw 7;}}));", "'use strict'; known = (delete globalThis.known, 42)"),
+        ("Object.setPrototypeOf(globalThis, new Proxy({}, {has() {throw 7;}}));", "with ({}) {missing = 42;}"),
+        ("globalThis.known = 1; Object.setPrototypeOf(globalThis, new Proxy({}, {has() {throw 7;}}));", "with ({}) {(() => {'use strict'; known = (delete globalThis.known, 42);})()}"),
+        ("Reflect; globalThis.reads = 0; Object.setPrototypeOf(globalThis, new Proxy({probe:7}, {has(target,key) {if (key === 'probe' && ++reads === 2) throw 7; return Reflect.has(target,key);}}));", "with ({}) {probe += 35;}"),
+        ("eval;", "eval('var gone = 7; (() => {gone = (delete globalThis.gone, Object.defineProperty(globalThis, \"gone\", {set(value) {throw 7;}}), 42);})()')"),
+        ("globalThis.iterable = {[Symbol.iterator]() {return this;}, next() {return {value:7,done:false};}, return() {throw 7;}};", "var [value] = iterable;"),
+        ("globalThis.key = {[Symbol.toPrimitive]() {throw 7;}}; globalThis.target = {};", "[target[key]] = [42]"),
+        ("globalThis.key = {[Symbol.toPrimitive]() {throw 7;}}; globalThis.target = {};", "({answer:target[key]} = {answer:42})"),
+        ("globalThis.thrower = new Proxy({}, {deleteProperty() {throw 7;}});", "with (thrower) {thrower.present = 1; delete present;}"),
+        ("", "with ({set value(v) {throw 7;}}) {value = 42;}"),
+        ("", "with ({get value() {throw 7;}}) {value += 42;}"),
+        ("", "with ({get value() {throw 7;}}) {value++;}"),
+        ("", "with ({set value(v) {throw 7;}}) {for (value of [42]) {}}"),
+        ("", "with ({set value(v) {throw 7;}}) {for (value in {answer:42}) {}}"),
+        ("", "with ({set value(v) {throw 7;}}) {[value] = [42];}"),
+        ("", "with ({set value(v) {throw 7;}}) {({answer:value} = {answer:42});}"),
+        ("", "with ({set value(v) {throw 7;}}) {var value = 42;}"),
+        ("globalThis.iterable = {[Symbol.iterator]() {return this;}, next() {return {value:7,done:false};}, return() {throw 7;}}; globalThis.recur = function recur(n) {if (n === 0) return 42; for (const value of iterable) {return recur(n - 1);}};", "recur(1)"),
+        ("globalThis.iterable = {[Symbol.iterator]() {return this;}, next() {return {value:7,done:false};}, return() {throw 7;}}; globalThis.recur = function recur(n) {'use strict'; if (n === 0) return 42; for (const value of iterable) {return recur(n - 1);}};", "recur(1)"),
+    ] {
+        record_case(&mut failures, source, || {
+        let mut vm = Vm::default();
+        vm.execute_script(&compile_script(setup)).unwrap();
+        assert_eq!(vm.execute_script(&compile_script(source)), Err(RuntimeError::Thrown(Value::Number(7.0))), "{source}");
+        assert!(vm.stack.is_empty());
+        assert_eq!(vm.execute_script(&compile_script("21 + 21")), Ok(Value::Number(42.0)));
+        });
+    }
+    for source in [
+        "var target = {set value(v) {throw 7;}}; with (target) {let value; for (value of [42]) {} if (value !== 42) throw 'lexical shadow';} 42",
+        "var value = 0; with ({}) {for (value of [42]) {}} value",
+        "eval('var recreated = (delete recreated, Object.defineProperty(globalThis, \"recreated\", {value:7, writable:false, configurable:false}), 42)'); recreated === 7 ? 42 : 0",
+        "var read = eval('var gone = 1; (() => gone)'); eval('delete gone'); Object.defineProperty(globalThis, 'gone', {get() {throw 7;}}); try {read();} catch (error) {error === 7 ? 42 : 0;}",
+        "var read = eval('var gone = 1; (() => {with ({}) {return typeof gone;}})'); eval('delete gone'); Object.defineProperty(globalThis, 'gone', {get() {throw 7;}}); try {read();} catch (error) {error === 7 ? 42 : 0;}",
+        "var read = eval('var gone = 1; (() => typeof gone)'); eval('delete gone'); Object.defineProperty(globalThis, 'gone', {get() {throw 7;}}); try {read();} catch (error) {error === 7 ? 42 : 0;}",
+        "var read = eval('var gone = 1; (() => {with ({}) {return gone;}})'); eval('delete gone'); Object.defineProperty(globalThis, 'gone', {get() {throw 7;}}); try {read();} catch (error) {error === 7 ? 42 : 0;}",
+        "var read = eval('var gone = 1; (() => {with ({}) {return gone();}})'); eval('delete gone'); Object.defineProperty(globalThis, 'gone', {get() {throw 7;}}); try {read();} catch (error) {error === 7 ? 42 : 0;}",
+        "var read = function self() {({answer:self} = {answer:7}); return typeof self === 'function' ? 42 : 0;}; read()",
+        "Array; delete Array; try {Array;} catch (error) {error instanceof ReferenceError ? 42 : 0;}",
+    ] {
+        record_case(&mut failures, source, || {
+        let mut vm = Vm::default();
+        assert_eq!(vm.execute_script(&compile_script(source)), Ok(Value::Number(42.0)), "{source}");
+        assert!(vm.stack.is_empty());
+        });
+    }
+    for (setup, source) in [
+        ("globalThis.values = [7,42];", "var [first,...rest] = values; rest[0]"),
+        ("globalThis.values = [7,42]; globalThis.target = {};", "[target.first,...target.rest] = values; target.rest[0]"),
+        ("Function; Object; globalThis.Base = class {constructor() {return {};}}; globalThis.Derived = class extends Base {constructor() {globalThis.readThis = () => this; super();}};", "new Derived(); 42"),
+        ("AggregateError; globalThis.values = [7,42];", "new AggregateError(values).errors[1]"),
+        ("RegExp;", "/a/; 42"),
+        ("globalThis.payload = 'x'.repeat(8192); globalThis.values = [payload,payload];", "var [first,...rest] = values; first === payload && rest[0] === payload ? 42 : 0"),
+        ("globalThis.payload = 'x'.repeat(8192); globalThis.values = [payload,payload]; globalThis.target = {};", "[target.first,...target.rest] = values; target.first === payload && target.rest[0] === payload ? 42 : 0"),
+        ("eval; globalThis.payload = 'x'.repeat(8192);", "eval('var gone = 7; (() => {gone = (delete globalThis.gone, payload);})()'); gone === payload ? 42 : 0"),
+        ("eval; globalThis.payload = 'x'.repeat(8192);", "(function() {eval('var shadow = 7'); ({answer:shadow} = {answer:payload}); return shadow === payload ? 42 : 0;})()"),
+        ("eval; globalThis.outer = function() {eval('var Array = 1; delete Array; delete Array;'); return 42;};", "outer()"),
+        ("eval; globalThis.payload = 'x'.repeat(4096); globalThis.outer = function() {eval('var shadow = 7'); shadow = payload; return 42;};", "outer()"),
+    ] {record_case(&mut failures, source, || Vm::verify_script_allocation_boundary(setup, source));}
+    record_case(&mut failures, "direct eval string result limit", || {
+        let mut vm = Vm::default();
+        vm.execute_script(&compile_script(
+            "eval; globalThis.s = 'oversized'; globalThis.read = function() {'use strict'; return eval('s');};",
+        ))
+        .unwrap();
+        let config = vm.config;
+        vm.config.max_string_bytes = 2;
+        assert_eq!(
+            vm.execute_script(&compile_script("read()")),
+            Err(RuntimeError::StringLimit { limit: 2 })
+        );
+        assert!(vm.stack.is_empty());
+        vm.config = config;
+        assert_eq!(
+            vm.execute_script(&compile_script("read()")),
+            Ok(Value::String("oversized".into()))
+        );
+    });
+    assert!(
+        failures.is_empty(),
+        "independent interpreter boundary failures:\n{}",
+        failures.join("\n")
+    );
+}
+
+#[cfg_attr(test, test)]
+fn compiled_source_keys_are_coerced_once_before_target_evaluation() {
+    for nursery_capacity in [1, HeapConfig::default().nursery_capacity] {
+        let mut vm = Vm::new(VmConfig {
+            heap: HeapConfig {
+                nursery_capacity,
+                ..HeapConfig::default()
+            },
+            ..VmConfig::default()
+        })
+        .unwrap();
+        let source = r#"
+            var observations = [];
+            var sourceKey = {[Symbol.toPrimitive]() {observations.push('key'); return 'answer';}};
+            var source = {get answer() {observations.push('get'); return 42;}};
+            var target = {};
+            function destination() {observations.push('target'); return target;}
+            ({[sourceKey]:destination().value} = source);
+            var first = observations.join(',') === 'key,target,get' && target.value === 42;
+            observations.length = 0;
+            var {[sourceKey]: answer} = source;
+            first && observations.join(',') === 'key,get' && answer === 42 ? 42 : 0;
+        "#;
+        assert_eq!(
+            vm.execute_script(&compile(&parse(source).unwrap()).unwrap()),
+            Ok(Value::Number(42.0))
+        );
+        assert!(vm.stack.is_empty());
+    }
+}
+
+#[cfg_attr(test, test)]
+fn cold_regexp_constructor_identity_preserves_initialization_refusal() {
+    let mut vm = Vm::default();
+    let pattern = vm
+        .execute_script(
+            &compile(&parse("({[Symbol.match]:true, constructor:undefined})").unwrap()).unwrap(),
+        )
+        .unwrap();
+    let root = vm.heap.root(pattern.object_id().unwrap()).unwrap();
+    assert!(vm.is_regexp(&pattern).unwrap());
+    assert_eq!(
+        vm.get_property(&pattern, &"constructor".into()),
+        Ok(Value::Undefined)
+    );
+    assert!(!vm.globals.contains_key("RegExp"));
+    vm.with_roots(|heap| {
+        heap.collect_major();
+        Ok(())
+    })
+    .unwrap();
+    let limit = vm.heap.allow_only(0);
+    assert_eq!(
+        vm.regexp_constructor(&pattern, &Value::Undefined, false),
+        Err(RuntimeError::Heap(HeapError::HeapLimitExceeded { limit }))
+    );
+    assert!(vm.stack.is_empty());
+    vm.heap.allow_only(16 * 1024 * 1024);
+    assert_eq!(
+        vm.execute_script(&compile(&parse("21 + 21").unwrap()).unwrap()),
+        Ok(Value::Number(42.0))
+    );
+    vm.heap.unroot(root).unwrap();
+}
+
+#[cfg_attr(test, test)]
+fn with_references_preserve_the_resolved_global_environment() {
+    let cases = [
+        ("globalThis;", "function localEval() {eval('var hidden = 40'); with ({}) {hidden += 2;} return hidden;} localEval()"),
+        ("globalThis;", "function capturedEval() {eval('var hidden = 40'); return function() {with ({}) {hidden += 2;} return hidden;};} capturedEval()()"),
+        ("globalThis.readTdz = function() {with ({}) {return tdzGlobal += 1;}};", "var answer = 0; try {readTdz();} catch(error) {if (error instanceof ReferenceError) answer = 42;} let tdzGlobal = 7; answer"),
+        ("globalThis.savedGlobal = 40;", "with ({}) { (() => {'use strict'; savedGlobal += 2;})() } globalThis.savedGlobal"),
+        ("var savedGlobal = 40;", "with ({}) { savedGlobal++; ++savedGlobal; } savedGlobal"),
+        ("let savedGlobal = 40;", "with ({}) { savedGlobal += 2; } savedGlobal"),
+        ("const savedGlobal = 7;", "with ({}) { try { savedGlobal += 1; } catch (e) { if (e instanceof TypeError) 42; } }"),
+        ("globalThis.savedGlobal = 7;", "with ({}) { (() => {'use strict'; try { savedGlobal = (delete globalThis.savedGlobal, 42); } catch (e) { if (e instanceof ReferenceError) return 42; }})() }"),
+        ("globalThis.savedGlobal = 7;", "function resolveFirst(p = eval('0')) { savedGlobal = eval('var savedGlobal = 9; 42'); return savedGlobal === 9 && globalThis.savedGlobal === 42 ? 42 : 0; } resolveFirst()"),
+        ("globalThis;", "function resolveMissingFirst(p = eval('0')) { newGlobal = eval('var newGlobal = 9; 42'); return newGlobal === 9 && globalThis.newGlobal === 42 ? 42 : 0; } resolveMissingFirst()"),
+        ("globalThis;", "with ({}) { (() => {'use strict'; try { absentGlobal = 42; } catch (e) { if (e instanceof ReferenceError) return 42; }})() }"),
+        ("globalThis;", "with ({}) { (() => {'use strict'; try { absentGlobal++; } catch (e) { if (e instanceof ReferenceError) return 42; }})() }"),
+        ("globalThis;", "function resolveTdz(p = eval('0')) { try { tdzGlobal += 1; } catch (e) { if (e instanceof ReferenceError) return 42; } } resolveTdz(); let tdzGlobal = 7;"),
+        ("globalThis.savedGlobal = 7;", "with ({}) { savedGlobal = (delete globalThis.savedGlobal, 42); } globalThis.savedGlobal"),
+        ("globalThis.savedGlobal = 7;", "with ({}) { savedGlobal += (delete globalThis.savedGlobal, 35); } globalThis.savedGlobal"),
+        ("globalThis;", "function destructure(p = eval('0')) { class C { constructor() { [savedGlobal = 42] = []; } } new C(); } globalThis.savedGlobal = 7; destructure(); globalThis.savedGlobal"),
+    ];
+    for nursery in [None, Some(1)] {
+        for (setup, source) in cases {
+            let mut config = VmConfig::default();
+            if let Some(nursery) = nursery {
+                config.heap.nursery_capacity = nursery;
+            }
+            let mut vm = Vm::new(config).unwrap();
+            vm.execute_script(&compile(&parse(setup).unwrap()).unwrap())
+                .unwrap();
+            assert_eq!(
+                vm.execute_script(&compile(&parse(source).unwrap()).unwrap()),
+                Ok(Value::Number(42.0)),
+                "{source}, nursery {nursery:?}",
+            );
+            assert!(vm.stack.is_empty());
+            assert_eq!(
+                vm.execute_script(&compile(&parse("21 + 21").unwrap()).unwrap()),
+                Ok(Value::Number(42.0))
+            );
+        }
+    }
 }

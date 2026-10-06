@@ -220,7 +220,8 @@ impl Vm {
                         result?;
                     }
                     Opcode::DeleteProperty => {
-                        let (receiver, key) = self.property_reference()?;
+                        let (receiver, key) = self.property_reference()
+                            .expect("DeleteProperty consumes a compiler-prepared object-coercible base and canonical key");
                         let deleted = match receiver {
                             Value::Object(id) => self.object_delete(id, &key)?,
                             Value::String(s) => {
@@ -434,7 +435,8 @@ impl Vm {
                             .push(Value::Bool(self.heap.has_private_brand(object, owner).expect("the private owner and receiver were resolved from live frame values")));
                     }
                     Opcode::SuperBase => {
-                        let base = self.super_base()?;
+                        let base = self.super_base()
+                            .expect("compiled super references have a retained ordinary class or literal home object; its prototype read cannot allocate");
                         self.stack.push(base);
                     }
                     Opcode::SuperGet | Opcode::SuperGetMethod => {
@@ -812,7 +814,9 @@ impl Vm {
                         let base = self.stack.len() - 3;
                         let source = self.stack[base].clone();
                         let excluded = self.stack[base + 1].clone();
-                        let key = self.coerce_property_key(&self.stack[base + 2].clone())?;
+                        let key = self
+                            .coerce_property_key(&self.stack[base + 2].clone())
+                            .expect("the compiler converted the destructuring source key before resolving its target");
                         let value = self.get_property(&source, &key)?;
                         self.array_push(&excluded, &key.value(), 0)?;
                         self.stack.truncate(base);
@@ -828,7 +832,9 @@ impl Vm {
                         let base = self.stack.len() - 6;
                         let source = self.stack[base].clone();
                         let excluded = self.stack[base + 1].clone();
-                        let source_key = self.coerce_property_key(&self.stack[base + 2].clone())?;
+                        let source_key = self
+                            .coerce_property_key(&self.stack[base + 2].clone())
+                            .expect("the compiler converted and duplicated the destructuring source key before resolving its target");
                         let object = self.stack[base + 4].clone();
                         let raw_target_key = self.stack[base + 5].clone();
                         let value = self.get_property(&source, &source_key)?;
@@ -1134,10 +1140,35 @@ impl Vm {
                             // consumed only by StoreWithReference.
                             self.stack.push(Value::Number(slot as f64));
                             self.stack.push(Value::Null);
+                        } else if self.dynamic_eval_bindings.contains_key(&name)
+                            || self
+                                .dynamic_eval_outer_bindings
+                                .iter()
+                                .rev()
+                                .any(|bindings| bindings.contains_key(&name))
+                        {
+                            self.stack.push(Value::Bool(false));
+                            self.stack.push(Value::String(name.into()));
                         } else {
-                            // `Undefined` tags an unresolvable reference and
-                            // preserves its source name for sloppy PutValue.
-                            self.stack.push(Value::Undefined);
+                            // Preserve the global Environment Record before
+                            // the RHS can create an eval binding of this name.
+                            // Declarative globals resolve even while in TDZ;
+                            // standard object globals must first materialize.
+                            let resolves = if self.global_bindings.contains_key(&name) {
+                                true
+                            } else {
+                                let global = self
+                                    .global("globalThis")?
+                                    .object_id()
+                                    .expect("globalThis is an object");
+                                self.materialize_lexical_global(global, &name)?;
+                                self.has_property(global, &name.as_str().into())?
+                            };
+                            self.stack.push(if resolves {
+                                Value::Bool(true)
+                            } else {
+                                Value::Undefined
+                            });
                             self.stack.push(Value::String(name.into()));
                         }
                     }
@@ -1427,7 +1458,8 @@ impl Vm {
                             if self.with_has_binding(&object, &name)? {
                                 let id = object.object_id().expect("with objects are objects");
                                 outcome = Value::Bool(if self.is_parameter_eval_env(id) {
-                                    self.delete_eval_env_var(id, &name)?
+                                    self.delete_eval_env_var(id, &name)
+                                        .expect("with resolution just validated its retained ordinary parameter-eval environment; deletion cannot allocate")
                                 } else {
                                     self.object_delete(id, &name.as_str().into())?
                                 });
@@ -1586,7 +1618,8 @@ impl Vm {
                         self.stack.push(Value::Object(id));
                     }
                     Opcode::GetProperty | Opcode::GetMethod => {
-                        let (receiver, key) = self.property_reference()?;
+                        let (receiver, key) = self.property_reference()
+                            .expect("property reads consume a prepared source reference or a retained class metadata object and literal key");
                         let value = self.get_property(&receiver, &key)?;
                         self.check_string(&value)?;
                         self.stack.push(value);
@@ -1709,7 +1742,8 @@ impl Vm {
                         let base = self.stack.len() - 3;
                         let value = self.stack[base].clone();
                         let object = self.stack[base + 1].clone();
-                        let key = self.coerce_property_key(&self.stack[base + 2].clone())?;
+                        let key = self.coerce_property_key(&self.stack[base + 2].clone())
+                            .expect("assign_pattern_target emitted PreparePropertyReference and retained its canonical key");
                         self.set_property(&object, &key, &value)?;
                         self.stack.truncate(base);
                         self.stack.push(value);
@@ -1726,7 +1760,8 @@ impl Vm {
                         self.stack.push(value);
                     }
                     Opcode::UpdateProperty => {
-                        let (object, key) = self.property_reference()?;
+                        let (object, key) = self.property_reference()
+                            .expect("UpdateProperty consumes a compiler-prepared object-coercible base and canonical key");
                         self.stack.push(object.clone());
                         let old_value = self.get_property(&object, &key)?;
                         let (old, new) = self.numeric_step(&old_value, operand & 1 != 0)?;

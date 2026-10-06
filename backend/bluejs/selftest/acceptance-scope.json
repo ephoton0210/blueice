@@ -10,6 +10,7 @@
   "criterion": "100% raw LLVM lines, functions and regions",
   "formerly_complete_files": 95,
   "modified_production_files": [
+    "compiler/expressions.rs",
     "compiler/functions.rs",
     "heap.rs",
     "heap/binary_data.rs",
@@ -47,6 +48,7 @@
     "vm/modules.rs",
     "vm/modules/deferred.rs",
     "vm/modules/namespace.rs",
+    "vm/operations.rs",
     "vm/realm_reentrancy.rs",
     "vm/regexp.rs",
     "vm/shadow_realm.rs",

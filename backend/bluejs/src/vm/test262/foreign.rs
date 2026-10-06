@@ -1689,14 +1689,13 @@ impl Vm {
                 {
                     self.with_roots(|heap| heap.resize_array_buffer(buffer, byte_length))?;
                 }
-                if self.heap.buffer_byte_length(buffer).expect(
-                    "the retained membrane mirror owns this live buffer and checked byte range",
-                ) == byte_length
-                {
-                    self.heap
-                        .array_buffer_write(buffer, 0, &bytes)
-                        .expect("the mutable mirror has the checked matching byte length");
-                }
+                // Both mirror producers preserve resizability and the source
+                // length. A fixed source cannot change length; a resizable
+                // mirror either resized above or returned its refusal. No
+                // JavaScript runs between that resize and this byte copy.
+                self.heap
+                    .array_buffer_write(buffer, 0, &bytes)
+                    .expect("the mutable mirror has the checked matching byte length");
             }
         }
         Ok(())
@@ -1773,15 +1772,16 @@ impl Vm {
                 .and_then(Value::object_id)
                 .and_then(|buffer| self.test262_foreign_reference(buffer))
             {
-                if buffer_realm == realm_id {
-                    let realm = self
-                        .test262_realms
-                        .get_mut(&realm_id)
-                        .expect("foreign realm remains live");
-                    realm.vm.heap.detach_array_buffer(buffer_target)?;
-                    self.test262_detach_foreign_buffer_mirrors(realm_id, buffer_target)?;
-                    return Ok(Value::Undefined);
-                }
+                // The host hook accepts a buffer from any live Realm. Its
+                // function's Realm does not own the receiver's buffer slots.
+                let realm = self
+                    .test262_realms
+                    .get_mut(&buffer_realm)
+                    .expect("a foreign buffer facade retains its owning realm");
+                realm.vm.heap.detach_array_buffer(buffer_target)?;
+                self.test262_detach_foreign_buffer_mirrors(buffer_realm, buffer_target)
+                    .expect("detaching foreign buffer mirrors checks weak membership and cannot allocate");
+                return Ok(Value::Undefined);
             }
             if let Some(buffer) = args.first().and_then(Value::object_id).filter(|buffer| {
                 self.test262_foreign_buffer_mirrors
@@ -1792,7 +1792,8 @@ impl Vm {
                 // and its parent identity together, exactly as a shared
                 // cross-Realm ArrayBuffer reference would behave.
                 self.test262_detach_local_buffer_mirrors(buffer)?;
-                self.with_roots(|heap| heap.detach_array_buffer(buffer))?;
+                self.with_roots(|heap| heap.detach_array_buffer(buffer))
+                    .expect("the retained local mirror has the same buffer mutability as its successfully detached child");
                 return Ok(Value::Undefined);
             }
         }

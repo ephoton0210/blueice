@@ -1603,6 +1603,7 @@ impl BlueJsPageRuntime {
     /// Runs page runtime contracts in unit and coverage builds.
     #[doc(hidden)]
     pub fn verify_retained_page_runtime_contracts() {
+        nested_module_graph_refusals_preserve_validation_and_runtime_errors();
         graph_debugger_entries_validate_owned_graphs_and_complete_without_an_invocation();
         uncaught_site_read_requires_exact_page_owned_program_and_last_execution();
         uncaught_module_root_and_child_sites_obey_the_same_page_boundary();
@@ -1746,5 +1747,83 @@ fn graph_debugger_entries_validate_owned_graphs_and_complete_without_an_invocati
                 Ok(BlueJsPageDebuggerNestedExecutionState::Completed)
             );
         }
+    }
+}
+
+#[cfg_attr(test, test)]
+fn nested_module_graph_refusals_preserve_validation_and_runtime_errors() {
+    for linked in [false, true] {
+        let mut runtime = BlueJsPageRuntime::default();
+        runtime.open_realm(7, origin()).unwrap();
+        let dependency = install(
+            &mut runtime,
+            7,
+            "page:///refused-dep.mjs",
+            &BlueJsProgramV1::Module(
+                parse_module("export function answer() {return 42;}").unwrap(),
+            ),
+        );
+        let entry = install(
+            &mut runtime,
+            7,
+            "page:///refused-entry.mjs",
+            &BlueJsProgramV1::Module(
+                parse_module("import {answer} from './refused-dep.mjs'; function child() {var value = answer(); return value;} throw 7;").unwrap(),
+            ),
+        );
+        let own_point = first_nested_point(&runtime, 7, entry);
+        let linked_point = first_nested_point(&runtime, 7, dependency);
+        assert_eq!(
+            runtime.execute_module_graph_until_nested_debugger_pause(
+                99,
+                entry,
+                vec![entry],
+                own_point
+            ),
+            Err(BlueJsPageRuntimeError::UnknownRealm(99))
+        );
+        assert_eq!(
+            runtime.execute_module_graph_until_linked_nested_debugger_pause(
+                7,
+                entry,
+                dependency,
+                vec![entry],
+                linked_point
+            ),
+            Err(BlueJsPageRuntimeError::DebuggerNestedFrameUnavailable)
+        );
+        let result = if linked {
+            runtime
+                .execute_module_graph_until_linked_nested_debugger_pause(
+                    7,
+                    entry,
+                    dependency,
+                    vec![entry, dependency],
+                    linked_point,
+                )
+                .map(|_| ())
+        } else {
+            runtime
+                .execute_module_graph_until_nested_debugger_pause(
+                    7,
+                    entry,
+                    vec![entry, dependency],
+                    own_point,
+                )
+                .map(|_| ())
+        };
+        assert_eq!(
+            result,
+            Err(BlueJsPageRuntimeError::Runtime(RuntimeError::Thrown(
+                Value::Number(7.0)
+            )))
+        );
+        let reuse = install(
+            &mut runtime,
+            7,
+            "page:///refused-reuse.js",
+            &BlueJsProgramV1::Script(parse("21 + 21").unwrap()),
+        );
+        assert_eq!(runtime.execute_program(7, reuse), Ok(Value::Number(42.0)));
     }
 }

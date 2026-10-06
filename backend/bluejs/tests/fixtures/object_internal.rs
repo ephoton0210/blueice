@@ -313,6 +313,7 @@ impl Vm {
     /// Runs constructor and heap ownership contracts in unit and coverage builds.
     #[doc(hidden)]
     pub fn verify_object_boundary_contracts() {
+        lazy_deletion_and_foreign_prototype_errors_preserve_objects();
         lazy_object_property_and_intrinsic_refusals_preserve_resource_errors();
         foreign_prototype_fallback_uses_cached_intrinsics_without_unrelated_allocation();
         function_realm_validation_rejects_primitives_and_ordinary_objects();
@@ -431,4 +432,116 @@ fn foreign_prototype_fallback_uses_cached_intrinsics_without_unrelated_allocatio
     );
     vm.heap.unroot(unknown_root).unwrap();
     vm.heap.unroot(root).unwrap();
+}
+
+#[cfg_attr(test, test)]
+fn lazy_deletion_and_foreign_prototype_errors_preserve_objects() {
+    for source in [
+        "var child = $262.createRealm().global; var prototype = child.eval('globalThis.observed = 0; new Proxy({}, {getOwnPropertyDescriptor() {observed++; throw 7;}})'); var receiver = Object.create(prototype); receiver.answer = 42; receiver.answer === 42 && child.observed === 0 ? 42 : 0;",
+        "var child = $262.createRealm().global; var prototype = child.eval('globalThis.observed = 0; new Proxy({}, {getPrototypeOf() {observed++; throw 7;}})'); var receiver = Object.create(prototype); receiver.answer = 42; receiver.answer === 42 && child.observed === 0 ? 42 : 0;",
+        "var child = $262.createRealm().global; var prototype = child.eval('new Proxy({}, {set() {throw 7;}})'); var receiver = Object.create(prototype); try {receiver.answer = 42; 0;} catch (error) {error === 7 ? 42 : 0;}",
+        "var target = {answer:42}; var proxy = new Proxy(target, {deleteProperty() {return true;}}); Reflect.deleteProperty(proxy, 'answer') && target.answer === 42 ? 42 : 0;",
+        "var buffer = new ArrayBuffer(8, {maxByteLength:16}); var prototype = new Uint8Array(buffer); var target = Object.create(prototype); var value = {valueOf() {buffer.resize(0); return 7;}}; Reflect.set(target, '0', value, prototype) && prototype.length === 0 ? 42 : 0;",
+        "var prototype = new Uint8Array([7]); var target = Object.create(prototype); var reads = 0; var value = {valueOf() {reads++; return 42;}}; var accepted = true; for (var key of ['-0','NaN','Infinity','0.5']) {accepted = Reflect.set(target,key,value,prototype) && accepted;} accepted && reads === 4 && prototype[0] === 7 ? 42 : 0;",
+    ] {
+        let mut vm = Vm::default();
+        vm.install_test262_harness().unwrap();
+        assert_eq!(vm.execute_script(&compile(&parse(source).unwrap()).unwrap()), Ok(Value::Number(42.0)), "{source}");
+        assert!(vm.stack.is_empty());
+        assert_eq!(vm.execute_script(&compile(&parse("21 + 21").unwrap()).unwrap()), Ok(Value::Number(42.0)));
+    }
+    for (source, key) in [
+        ("Object.create(Iterator.prototype)", "flatMap"),
+        (
+            "globalThis.child = $262.createRealm().global; Object.create(child.eval('({})'))",
+            "answer",
+        ),
+    ] {
+        let mut vm = Vm::default();
+        vm.install_test262_harness().unwrap();
+        let receiver = vm
+            .execute_script(&compile(&parse(source).unwrap()).unwrap())
+            .unwrap();
+        let target = receiver.object_id().unwrap();
+        let root = vm.heap.root(target).unwrap();
+        vm.with_roots(|heap| {
+            heap.collect_major();
+            Ok(())
+        })
+        .unwrap();
+        let limit = vm.heap.allow_only(0);
+        assert_eq!(
+            vm.ordinary_set_with_receiver(target, &receiver, &key.into(), &Value::Number(42.0)),
+            Err(RuntimeError::Heap(HeapError::HeapLimitExceeded { limit })),
+            "{source}"
+        );
+        assert!(vm.stack.is_empty());
+        vm.heap.allow_only(16 * 1024 * 1024);
+        assert_eq!(
+            vm.ordinary_set_with_receiver(target, &receiver, &key.into(), &Value::Number(42.0)),
+            Ok(true)
+        );
+        assert_eq!(
+            vm.heap.get_own(target, key).unwrap(),
+            Some(Value::Number(42.0))
+        );
+        vm.heap.unroot(root).unwrap();
+    }
+    let mut vm = Vm::default();
+    let owner = vm
+        .execute_script(&compile(&parse("Iterator.prototype").unwrap()).unwrap())
+        .unwrap()
+        .object_id()
+        .unwrap();
+    let root = vm.heap.root(owner).unwrap();
+    vm.with_roots(|heap| {
+        heap.collect_major();
+        Ok(())
+    })
+    .unwrap();
+    let limit = vm.heap.allow_only(0);
+    assert_eq!(
+        vm.object_delete(owner, &"flatMap".into()),
+        Err(RuntimeError::Heap(HeapError::HeapLimitExceeded { limit }))
+    );
+    assert!(vm.stack.is_empty());
+    vm.heap.allow_only(16 * 1024 * 1024);
+    assert_eq!(vm.object_delete(owner, &"flatMap".into()), Ok(true));
+    vm.heap.unroot(root).unwrap();
+
+    let mut vm = Vm::default();
+    vm.install_test262_harness().unwrap();
+    let candidate = vm
+        .execute_script(
+            &compile(
+                &parse("$262.createRealm().global.eval('Object.create({answer:42})')").unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap()
+        .object_id()
+        .unwrap();
+    let candidate_root = vm.heap.root(candidate).unwrap();
+    let target = vm.heap.alloc_object(None).unwrap();
+    let target_root = vm.heap.root(target).unwrap();
+    vm.with_roots(|heap| {
+        heap.collect_major();
+        Ok(())
+    })
+    .unwrap();
+    // The child's fresh ordinary prototype has not crossed the membrane.
+    // Walking it must allocate a facade in this heap before publishing it.
+    let limit = vm.heap.allow_only(0);
+    assert_eq!(
+        vm.object_set_prototype(target, Some(candidate)),
+        Err(RuntimeError::Heap(HeapError::HeapLimitExceeded { limit }))
+    );
+    assert_eq!(vm.heap.prototype(target).unwrap(), None);
+    assert!(vm.stack.is_empty());
+    vm.heap.allow_only(16 * 1024 * 1024);
+    assert_eq!(vm.object_set_prototype(target, Some(candidate)), Ok(true));
+    assert_eq!(vm.heap.prototype(target).unwrap(), Some(candidate));
+    assert!(vm.stack.is_empty());
+    vm.heap.unroot(target_root).unwrap();
+    vm.heap.unroot(candidate_root).unwrap();
 }

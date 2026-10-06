@@ -8,10 +8,11 @@ import json
 import re
 import shutil
 import os
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .common import ROOT, checked, complete, digest, load, now, save
+from .common import ROOT, checked, complete, digest, load, now, retain_coverage_reference, save
 from .graph import empty_graph
 
 
@@ -85,6 +86,8 @@ def export_profiles(binary, profiles, destination, root=ROOT, objects=(), summar
 def import_baseline(baseline, state, root=ROOT, progress=None):
     """Build observed target relationships from an already completed measurement."""
     root, baseline, state = Path(root), Path(baseline).resolve(), Path(state)
+    if (baseline / "run.json").is_file():
+        return import_verified_run(baseline, state, root, progress)
     rust = load(baseline / "rust-results.json")
     summary = load(baseline / "test262/summary.json")
     source_state = load(baseline / "source-state.json")
@@ -204,14 +207,93 @@ def import_baseline(baseline, state, root=ROOT, progress=None):
                                           if complete(before.get(name, value.get("_raw", value))))
     if len(graph["originally_complete"]) != audit.get("formerly_complete_files", len(graph["originally_complete"])):
         raise ValueError("Originally complete file identities do not reconcile with the retained audit")
+    existing = load(state / "graph.json", {})
+    graph["coverage_reference"] = existing.get("coverage_reference", {})
+    graph["coverage_reference_provenance"] = existing.get("coverage_reference_provenance", [])
+    retain_coverage_reference(graph, graph["baseline"]["full_coverage"], baseline)
     save(state / "graph.json", graph)
     return graph
 
 
-def latest_baseline(root=ROOT):
-    paths = sorted((Path(root) / "target").glob("test262-macos-*/coverage-audit.json"),
-                   key=lambda p: p.stat().st_mtime, reverse=True)
+def import_verified_run(directory, state, root=ROOT, progress=None):
+    """Rebuild the graph from the per-target profiles of a completed UI run."""
+    directory, state, root = Path(directory), Path(state), Path(root)
+    run, data = load(directory / "run.json", {}), load(directory / "report-data.json", {})
+    source_state = load(directory / "source-state.json", {})
+    from .runner import test262_passed
+    graph = empty_graph(root)
+    expected = {key for key, node in graph["tests"].items() if node["kind"] == "rust"}
+    tasks = {task["id"][5:]: task for task in run.get("tasks", []) if task["id"].startswith("full:rust:")}
+    corpus_task = next((t for t in run.get("tasks", []) if t["id"] == "full:test262:all"), None)
+    if (run.get("status") != "passed" or run.get("mode") not in ("full", "pipeline") or not data
+            or data.get("snapshot") != run.get("snapshot") or source_state.get("identity") != run.get("snapshot")
+            or set(tasks) != expected or any(t["status"] != "passed" for t in tasks.values())
+            or not corpus_task or corpus_task["status"] != "passed" or not test262_passed(data["test262"], True)):
+        raise ValueError("Only a verified complete run can seed the measured graph")
+    existing = load(state / "graph.json", {})
+    graph["source_hashes"] = source_state["files"]
+    from .graph import rust_structure
+    graph["structures"] = load(directory / "source-structures.json", {})
+    for name, text in load(directory / "frozen-rust-sources.json", {}).items():
+        graph["structures"][name] = rust_structure(text)
+    bins = load(directory / "full/bins.json", {})
+    tasks["test262:all"] = corpus_task
+    warnings = []
+    for index, (key, task) in enumerate(sorted(tasks.items()), 1):
+        binary = bins.get("bluejs-test262") if key == "test262:all" else task.get("binary")
+        expected_hash = data["test262"]["adapter_sha256"] if key == "test262:all" else task.get("binary_sha256")
+        if not binary or not Path(binary).is_file() or digest(binary) != expected_hash:
+            warnings.append("Retained binary changed or is missing: " + key)
+            continue
+        profiles_path = Path(task["profile_directory"])
+        if not profiles_path.resolve().is_relative_to((directory / "full/profiles").resolve()):
+            raise ValueError("Target profiles must belong to the verified run")
+        profiles = sorted(profiles_path.glob("*.profraw"))
+        if not profiles:
+            warnings.append("Retained profiles are missing: " + key)
+            continue
+        destination = directory / "full/coverage" / uuid.uuid5(uuid.NAMESPACE_URL, key).hex
+        signature = {"binary": expected_hash, "profiles": {str(p): digest(p) for p in profiles}}
+        cached = load(destination / "evidence.json", {})
+        payload = load(destination / "coverage.json")
+        if cached.get("inputs") != signature or not payload or cached.get("coverage_sha256") != digest(destination / "coverage.json"):
+            objects = list(bins.values()) if key == "test262:all" else []
+            payload = export_profiles(binary, profiles, destination, root, objects)
+            save(destination / "evidence.json", {"inputs": signature, "coverage_sha256": digest(destination / "coverage.json")})
+        graph["observed_targets"].append(key)
+        graph["edges"].extend({"source": name, "target": key, "kind": "observed", "evidence": str(directory),
+                                "source_sha256": source_state["files"].get(name)} for name in covered_sources(payload, root))
+        graph["tests"][key]["elapsed_seconds"] = task["elapsed_seconds"]
+        if progress and (index % 20 == 0 or index == len(tasks)):
+            progress("Reading measured target coverage", index, len(tasks))
+    graph["baseline"] = {"path": str(directory / "full"), "measured_at": data["measured_at"], "rust": data["rust"],
+                         "test262": data["test262"], "full_coverage": data["files"], "audit": {
+                             "source_files": len(data["files"]) + len(data["no_counters"]), "instrumented_files": len(data["files"]),
+                             "complete_files": sum(complete(v) for v in data["files"].values()), "totals": data["totals"],
+                             "raw_percentage_regressions": data["coverage_regressions"]}}
+    scope = graph["acceptance_scope"]
+    scope["selected_files"] = {**scope.get("selected_files", {}), **data["selected"]}
+    scope["modified_production_files"] = sorted(set(scope.get("modified_production_files", []))
+        | set(existing.get("acceptance_scope", {}).get("modified_production_files", [])) | set(data["modified"]))
+    graph["coverage_reference"] = existing.get("coverage_reference", {})
+    graph["coverage_reference_provenance"] = existing.get("coverage_reference_provenance", [])
+    retain_coverage_reference(graph, data.get("coverage_reference", {}), directory / "report-data.json")
+    retain_coverage_reference(graph, data["files"], directory)
+    graph.update(warnings=warnings, created_at=now())
+    save(state / "graph.json", graph)
+    return graph
+
+
+def latest_baseline(root=ROOT, state=None):
+    paths = list((Path(root) / "target").glob("test262-macos-*/coverage-audit.json"))
+    paths.extend(((Path(state) if state else Path(root) / "target/bluejs-selftest") / "runs").glob("*/report-data.json"))
+    paths.sort(key=lambda p: p.stat().st_mtime, reverse=True)
     for path in paths:
+        if path.name == "report-data.json":
+            run = load(path.parent / "run.json", {})
+            if run.get("status") == "passed" and run.get("mode") in ("full", "pipeline"):
+                return path.parent
+            continue
         if (path.parent / "test262/summary.json").is_file() and (path.parent / "rust-results.json").is_file():
             return path.parent
     raise ValueError("No retained complete measurement found; specify --baseline")

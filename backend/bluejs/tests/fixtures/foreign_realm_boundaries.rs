@@ -358,6 +358,9 @@ fn detached_and_out_of_bounds_typed_array_transports_reject_actual_views() {
 impl Vm {
     #[doc(hidden)]
     pub fn verify_foreign_realm_boundary_contracts() {
+        detached_local_mirrors_and_other_realm_host_hooks_preserve_buffer_ownership();
+        foreign_native_fill_preserves_post_callback_mirror_growth_refusal();
+        foreign_completion_and_detachment_preserve_real_resource_boundaries();
         owned_membrane_prototypes_and_detachment_preserve_real_exceptions();
         membrane_argument_exports_reject_handles_owned_by_another_live_heap();
         a_fresh_child_harness_preserves_its_actual_configuration_limit_errors();
@@ -371,6 +374,65 @@ impl Vm {
         foreign_internal_methods_preserve_actual_target_exceptions();
         foreign_error_materialization_and_snapshot_roots_preserve_refusals();
     }
+}
+
+#[cfg_attr(test, test)]
+fn detached_local_mirrors_and_other_realm_host_hooks_preserve_buffer_ownership() {
+    let mut vm = Vm::default();
+    vm.install_test262_harness().unwrap();
+    execute(&mut vm, "globalThis.child = $262.createRealm().global; globalThis.other = $262.createRealm().global;");
+    let facade = execute(&mut vm, "child.eval('new ArrayBuffer(8)')")
+        .object_id()
+        .unwrap();
+    let root = vm.heap.root(facade).unwrap();
+    let (realm, target, ..) = vm.test262_foreign_reference(facade).unwrap();
+    let mirror = vm.test262_foreign_buffer_clone(facade).unwrap().unwrap();
+    vm.heap.detach_array_buffer(mirror).unwrap();
+    vm.test262_refresh_foreign_buffer_mirrors(realm, target)
+        .unwrap();
+    assert!(vm.heap.buffer_is_detached(mirror).unwrap());
+    assert!(!vm.test262_realms[&realm]
+        .vm
+        .heap
+        .buffer_is_detached(target)
+        .unwrap());
+    let detach = execute(&mut vm, "other.$262.detachArrayBuffer")
+        .object_id()
+        .unwrap();
+    let detach_root = vm.heap.root(detach).unwrap();
+    assert_eq!(
+        vm.test262_foreign_call(detach, Value::Undefined, vec![Value::Object(facade)], false),
+        Ok(Value::Undefined)
+    );
+    assert!(vm.test262_realms[&realm]
+        .vm
+        .heap
+        .buffer_is_detached(target)
+        .unwrap());
+    for warm in [false, true] {
+        let local = execute(&mut vm, "new ArrayBuffer(8)").object_id().unwrap();
+        let local_root = vm.heap.root(local).unwrap();
+        let (hook_realm, ..) = vm.test262_foreign_reference(detach).unwrap();
+        if warm {
+            vm.test262_transport_value(hook_realm, Value::Object(local))
+                .unwrap();
+        }
+        assert_eq!(
+            vm.test262_foreign_call(detach, Value::Undefined, vec![Value::Object(local)], false),
+            Ok(Value::Undefined)
+        );
+        assert!(vm.heap.buffer_is_detached(local).unwrap());
+        vm.heap.unroot(local_root).unwrap();
+    }
+    for source in [
+        "var ctor = child.eval('(function(){this.answer=42;})'); var Target = function() {}; Reflect.construct(ctor, [], Target).answer",
+        "var ctor = child.eval('(function(){this.answer=42;}).bind(null)'); var Target = function() {}; Reflect.construct(ctor, [], Target).answer",
+        "var remote = child.eval('new ArrayBuffer(8)'); other.$262.detachArrayBuffer(remote); remote.byteLength === 0 ? 42 : 0",
+    ] {assert_eq!(execute(&mut vm, source), Value::Number(42.0), "{source}");}
+    vm.heap.unroot(detach_root).unwrap();
+    vm.heap.unroot(root).unwrap();
+    assert!(vm.stack.is_empty());
+    assert_eq!(execute(&mut vm, "21 + 21"), Value::Number(42.0));
 }
 
 #[cfg_attr(test, test)]
@@ -600,7 +662,7 @@ fn foreign_error_materialization_and_snapshot_roots_preserve_refusals() {
     );
     let limit = vm.heap.allow_only(0);
     assert_eq!(
-        vm.test262_foreign_completion(realm, Err::<(), _>(RuntimeError::Thrown(thrown))),
+        vm.test262_foreign_completion(realm, Err::<bool, _>(RuntimeError::Thrown(thrown))),
         Err(RuntimeError::Heap(HeapError::HeapLimitExceeded { limit }))
     );
     vm.heap.allow_only(16 * 1024 * 1024);
@@ -775,4 +837,99 @@ fn buffer_transport_records_retain_both_heaps_across_collection_and_flush() {
         vm.execute_script(&compile(&parse("21 + 21").unwrap()).unwrap()),
         Ok(Value::Number(42.0))
     );
+}
+
+#[cfg_attr(test, test)]
+fn foreign_completion_and_detachment_preserve_real_resource_boundaries() {
+    let mut vm = Vm::default();
+    vm.install_test262_harness().unwrap();
+    execute(&mut vm, "globalThis.child = $262.createRealm().global;");
+    let realm = *vm.test262_realms.keys().next().unwrap();
+    let limit = {
+        let child = &mut vm.test262_realms.get_mut(&realm).unwrap().vm;
+        child
+            .with_roots(|heap| {
+                heap.collect_major();
+                Ok(())
+            })
+            .unwrap();
+        child.heap.allow_only(0)
+    };
+    assert_eq!(
+        vm.test262_run_native_for_realm(
+            realm,
+            NativeFunction::ArrayBufferByteLength,
+            Value::Undefined,
+            Vec::new()
+        ),
+        Err(RuntimeError::Heap(HeapError::HeapLimitExceeded { limit }))
+    );
+    assert!(vm.stack.is_empty());
+    vm.test262_realms
+        .get_mut(&realm)
+        .unwrap()
+        .vm
+        .heap
+        .allow_only(16 * 1024 * 1024);
+    for source in [
+        "var local = new ArrayBuffer(8); child.eval('globalThis.take = function(buffer) {return buffer.byteLength;};'); child.take(local); child.$262.detachArrayBuffer(local); local.byteLength === 0 ? 42 : 0",
+        "var foreign = child.eval('new ArrayBuffer(8)'); var view = new Uint8Array(foreign); child.$262.detachArrayBuffer(foreign); view.length === 0 ? 42 : 0",
+        "child.ParentSpecies = function(n) {return new Uint8Array(new ArrayBuffer(n).transferToImmutable());}; child.eval('var array = new Uint8Array([7,42]); array.constructor = {[Symbol.species]:ParentSpecies}; try {array.slice(); 0;} catch (error) {error instanceof TypeError ? 42 : 0;}')",
+        "child.ParentSpecies = function(n) {return new Float64Array(n);}; child.eval('var array = new Uint8Array([7,42]); array.constructor = {[Symbol.species]:ParentSpecies}; var result = array.slice(); result[0] === 7 && result[1] === 42 ? 42 : 0;')",
+    ] {
+        assert_eq!(execute(&mut vm, source), Value::Number(42.0), "{source}");
+        assert!(vm.stack.is_empty());
+    }
+    assert_eq!(execute(&mut vm, "21 + 21"), Value::Number(42.0));
+}
+
+#[cfg_attr(test, test)]
+fn foreign_native_fill_preserves_post_callback_mirror_growth_refusal() {
+    let mut vm = Vm::default();
+    vm.install_test262_harness().unwrap();
+    let view = execute(&mut vm, "globalThis.child = $262.createRealm().global; child.eval('globalThis.backing = new ArrayBuffer(8, {maxByteLength:8192}); globalThis.view = new Uint8Array(backing); globalThis.coercion = {valueOf() {backing.resize(8192); return 7;}}; view')");
+    let view_root = vm.heap.root(view.object_id().unwrap()).unwrap();
+    let buffer = vm
+        .get_property(&view, &"buffer".into())
+        .unwrap()
+        .object_id()
+        .unwrap();
+    let (realm, target, _, _) = vm.test262_foreign_reference(buffer).unwrap();
+    let mirror = vm.test262_foreign_buffer_clone(buffer).unwrap().unwrap();
+    let mirror_root = vm.heap.root(mirror).unwrap();
+    let value = execute(&mut vm, "child.eval('coercion')");
+    let value_root = vm.heap.root(value.object_id().unwrap()).unwrap();
+    vm.with_roots(|heap| {
+        heap.collect_major();
+        Ok(())
+    })
+    .unwrap();
+    let limit = vm.heap.allow_only(0);
+    assert_eq!(
+        vm.test262_foreign_typed_array_native_call(
+            NativeFunction::TypedArrayMethod(crate::native::TypedArrayMethod::Fill),
+            view,
+            vec![value],
+            false
+        ),
+        Err(RuntimeError::Heap(HeapError::HeapLimitExceeded { limit }))
+    );
+    assert_eq!(vm.heap.buffer_byte_length(mirror).unwrap(), 8);
+    assert_eq!(
+        vm.test262_realms[&realm]
+            .vm
+            .heap
+            .buffer_byte_length(target)
+            .unwrap(),
+        8192
+    );
+    assert!(vm.stack.is_empty());
+    vm.heap.allow_only(16 * 1024 * 1024);
+    vm.test262_refresh_foreign_buffer_mirrors(realm, target)
+        .unwrap();
+    assert_eq!(vm.heap.buffer_byte_length(mirror).unwrap(), 8192);
+    assert_eq!(execute(&mut vm, "21 + 21"), Value::Number(42.0));
+    vm.heap.unroot(value_root).unwrap();
+    vm.heap.unroot(mirror_root).unwrap();
+    vm.heap.unroot(view_root).unwrap();
 }

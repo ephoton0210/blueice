@@ -183,6 +183,7 @@ impl Vm {
             throw_type_error: None,
             legacy_function_getters: None,
             call_stack: Vec::new(),
+            active_generator_delegations: HashSet::new(),
             inherited_with_depth: 0,
             joining: Vec::new(),
         })

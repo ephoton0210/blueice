@@ -29,6 +29,8 @@ class Application:
         self.base = None
         self.cached_plan = None
         self.last_plan_at = 0
+        self.cached_partitions = None
+        self.partition_snapshot = None
         self.lock = threading.RLock()
         self.token = __import__("secrets").token_urlsafe(32)
 
@@ -50,6 +52,12 @@ class Application:
             ready = True
         except ValueError:
             pass
+        from .partitions import partition_plan, passed_partition
+        if self.partition_snapshot != current["snapshot"] or self.cached_partitions is None:
+            self.cached_partitions = partition_plan(self.manager, self.files, self.base)
+            self.partition_snapshot = current["snapshot"]
+        partitions = self.cached_partitions
+        ready = ready or passed_partition(self.manager, partitions) is not None
         baseline = graph.get("baseline")
         measured = None
         if baseline:
@@ -59,6 +67,8 @@ class Application:
                         "audit": baseline["audit"]}
         with self.manager.lock:
             active = json.loads(json.dumps(self.manager.active)) if self.manager.active else None
+        if active is None and history:
+            active = history[0]
         # During a run the source fingerprint is checked by the owning runner.
         return {"token": self.token, "plan": {k: v for k, v in current.items() if k != "edges"},
                 "indexing": self.indexing, "graph": {"created_at": graph["created_at"], "tests": len(graph["tests"]),
@@ -66,6 +76,7 @@ class Application:
                 "warnings": graph["warnings"]}, "baseline": measured, "active": active,
                 "history": [{k: v for k, v in r.items() if k not in ("tasks",)} for r in history],
                 "ready_for_full": ready, "workspace": self.manager.workspace,
+                "partitions": partitions,
                 "jobs": self.manager.jobs, "test_threads": self.manager.test_threads}
 
     def index(self):
@@ -79,7 +90,7 @@ class Application:
                 try:
                     def progress(message, completed, total):
                         self.indexing.update(message=message, completed=completed, total=total)
-                    graph = import_baseline(latest_baseline(self.manager.root), self.manager.state, self.manager.root, progress)
+                    graph = import_baseline(latest_baseline(self.manager.root, self.manager.state), self.manager.state, self.manager.root, progress)
                     self.indexing.update(status="passed", message=f"Indexed {len(graph['observed_targets'])} measured targets", finished_at=now())
                     self.current_plan(refresh=True)
                 except Exception as error:
@@ -167,6 +178,7 @@ def make_server(application, port=8765):
                         raise ValueError("Files must be a list of repository paths")
                     candidate = plan(application.manager.graph(), files, application.manager.root, body.get("base"))
                     application.files, application.base, application.cached_plan = files, body.get("base"), candidate
+                    application.cached_partitions = None
                     return self.send(200, candidate)
                 if self.path == "/api/index":
                     return self.send(202, application.index())

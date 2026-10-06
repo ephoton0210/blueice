@@ -25,8 +25,31 @@ Editing sources invalidates earlier affected-test success.
 
 ## Selection boundaries
 
-The initial granularity is a Cargo test target and a complete Test262 runner
-node. Shared engine and unmeasured changes select a conservative full scope.
+The correction graph now includes native Rust case partitions and related
+Test262 fixture sets. A Reference-resolution contract maps changed interpreter
+opcodes and operations to with, eval, capture, destructuring and global-binding
+cases. New public fixtures map to their native unit names. The graph inspects
+public test names and script bodies independently of Cargo target names, so
+operator and coverage targets participate when they contain the same contract.
+The graph compares
+sources with a hashed snapshot whose complete Rust inventory passed; this anchor
+does not claim that later conformance or complete coverage passed.
+Each run retains the Rust texts and hashes automatically. Source anchors remain
+available beyond the UI's 30-run history window. Build inputs and dependency
+changes outside the BlueJS crate also participate in the plan.
+
+Selected owning targets are built, failed cases are rechecked, and native test
+listing identifies the exact case set without executing tests. The runner
+deduplicates cases and groups unit tests by Rust module. Fresh partition profiles
+add measured source relationships. Partition success enables one complete run
+for the same snapshot, without another correction pass first. Partial and test
+listing profiles never enter complete coverage.
+The full-run prerequisite also compares the case filters and required Test262
+modes; sharing an owning Cargo target is insufficient. Tool-only changes execute
+the Python contracts without building or executing the Rust engine.
+
+Unknown boundaries still use the existing target graph and show their fallback
+in the UI. Shared engine and unmeasured changes can require a wider scope.
 Explicit Rust dependencies and fixture includes extend measured relationships.
 Observed execution does not establish that every possible affected path has
 been discovered; a final full run remains required.
@@ -38,7 +61,7 @@ new node kinds while preserving file-to-target observations. A runner adapter
 provides the command, fresh profiles, result contract and live events. The UI
 consumes this versioned graph and event model through the local API.
 
-Future additions can include case-level collection, changed-region selection,
-duration-aware scheduling and regression-first ordering. Any added collector
+Future additions can extend the boundary contracts, refine changed-region
+selection and use retained partition durations for scheduling. Any added collector
 must retain source provenance, conservative treatment of missing observations
 and the complete-run acceptance gate.

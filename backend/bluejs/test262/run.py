@@ -960,6 +960,16 @@ def selected_files(all_files, corpus, pattern, excluded=""):
     return files
 
 
+def scheduling_groups(files, corpus, jobs):
+    """Isolate explicitly budgeted long fixtures without extending deadlines."""
+    ordinary, heavy = [], []
+    for path in files:
+        relative = path.relative_to(corpus / "test").as_posix()
+        group = heavy if LARGE_FIXTURE_RESOURCES.get(relative, {}).get("timeout", 0) >= 60 else ordinary
+        group.append(path)
+    return [("ordinary", ordinary, jobs), ("heavy", heavy, min(jobs, 2))]
+
+
 def execution_source(relative, source):
     """Return semantic native adapters for bounded, pinned stress fixtures."""
     if relative == NUMBER_FORMAT_NATIVE_PRECISION_MATRIX_FIXTURE:
@@ -1616,8 +1626,9 @@ def main():
                     request["module_text_sources"] = text_sources
                     request["module_bytes_sources"] = bytes_sources
                     request["module_source_requests"] = module_source_requests(sources)
+                mode_started = time.monotonic()
                 reply = local.worker.run(request, case_timeout(data, args.timeout, relative, source_for_execution))
-                results.append({"path": relative, "mode": mode, "status": classify(reply, negative), "expected": negative, "actual": reply, "features": data.get("features", []), "flags": data.get("flags", []), "sha256": digest})
+                results.append({"path": relative, "mode": mode, "status": classify(reply, negative), "expected": negative, "actual": reply, "features": data.get("features", []), "flags": data.get("flags", []), "sha256": digest, "elapsed_seconds": round(time.monotonic() - mode_started, 6)})
             return results
         finally:
             with lock:
@@ -1641,20 +1652,26 @@ def main():
         reporter = threading.Thread(target=report_progress, name="test262-progress", daemon=True)
         reporter.start()
 
+    scheduling = scheduling_groups(files, args.corpus, args.jobs)
     try:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=args.jobs) as pool, (args.output / "results.jsonl").open("w") as output:
-            for index, results in enumerate(pool.map(run_file, files), 1):
-                with lock:
-                    for result in results:
-                        output.write(json.dumps(result, ensure_ascii=True) + "\n")
-                        counters[result["status"]] += 1
-                        for feature in result.get("features", []):
-                            features[feature][result["status"]] += 1
-                        groups[result["path"].split("/")[0]][result["status"]] += 1
-                    completed_files = index
-                if index % 1000 == 0:
-                    output.flush()
-                    print(progress_line(time.monotonic(), checkpoint=True), flush=True)
+        with (args.output / "results.jsonl").open("w") as output:
+            for _, selected, concurrency in scheduling:
+                if not selected:
+                    continue
+                with concurrent.futures.ThreadPoolExecutor(max_workers=concurrency) as pool:
+                    for results in pool.map(run_file, selected):
+                        with lock:
+                            for result in results:
+                                output.write(json.dumps(result, ensure_ascii=True) + "\n")
+                                counters[result["status"]] += 1
+                                for feature in result.get("features", []):
+                                    features[feature][result["status"]] += 1
+                                groups[result["path"].split("/")[0]][result["status"]] += 1
+                            completed_files += 1
+                        if completed_files % 1000 == 0:
+                            output.flush()
+                            print(progress_line(time.monotonic(), checkpoint=True), flush=True)
+                output.flush()
     finally:
         stop_progress.set()
         if reporter:
@@ -1677,6 +1694,8 @@ def main():
         "groups": groups,
         "features": features,
         "elapsed_seconds": round(time.monotonic() - start, 3),
+        "scheduling": [{"group": name, "test_files": len(selected), "jobs": concurrency}
+                       for name, selected, concurrency in scheduling],
         "timeout_seconds": args.timeout,
         "typed_array_harness_timeout_seconds": TYPED_ARRAY_HARNESS_TIMEOUT,
         "typed_array_harness_instruction_budget": TYPED_ARRAY_HARNESS_INSTRUCTION_BUDGET,

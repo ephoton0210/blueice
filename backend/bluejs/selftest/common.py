@@ -11,7 +11,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_STATE = ROOT / "target/bluejs-selftest"
-DEFAULT_CORPUS = Path("/tmp/blueice-test262-72faf8ec-20261001")
+DEFAULT_CORPUS = DEFAULT_STATE / "corpus" / (
+    "test262-" + json.loads((ROOT / "backend/bluejs/test262/snapshot.json").read_text())["revision"]
+)
 METRICS = ("lines", "functions", "regions")
 
 
@@ -94,3 +96,39 @@ def changed_files(root=ROOT, base=None):
 def complete(summary):
     return all(summary[key]["count"] > 0 and summary[key]["count"] == summary[key]["covered"]
                for key in METRICS)
+
+
+def validate_corpus(corpus, pinned):
+    """Check every pinned fixture before spending time building or running Rust."""
+    corpus = Path(corpus)
+    if load(corpus / ".bluejs-snapshot.json") != pinned:
+        raise ValueError("Corpus lacks the pinned snapshot; fetch it into the configured persistent corpus directory")
+    manifest_path = corpus / ".bluejs-manifest.json"
+    if not manifest_path.is_file() or digest(manifest_path) != pinned["manifest_sha256"]:
+        raise ValueError("Corpus manifest differs from the pinned archive")
+    manifest = load(manifest_path)
+    for name, expected in manifest.items():
+        # Reject escaping paths as well as missing or changed fixtures.
+        relative(corpus, name)
+        path = corpus / name
+        if not path.is_file() or digest(path) != expected:
+            raise ValueError("Corpus file differs from the pinned archive: " + name)
+    extras = {path.relative_to(corpus).as_posix() for path in (corpus / "test").rglob("*.js")} - manifest.keys()
+    if extras:
+        raise ValueError("Untracked test files in corpus: " + ", ".join(sorted(extras)))
+    return {"revision": pinned["revision"], "verified_files": len(manifest), "javascript_cases": 0}
+
+
+def retain_coverage_reference(graph, current, evidence):
+    """Keep the highest verified percentage for comparison, never for completion."""
+    previous = graph.get("coverage_reference") or (graph.get("baseline") or {}).get("full_coverage", {})
+    reference = {name: dict(value.get("_raw", value)) for name, value in previous.items()}
+    for name, value in current.items():
+        value = value.get("_raw", value)
+        retained = reference.setdefault(name, {})
+        for key in METRICS:
+            old, new = retained.get(key), value[key]
+            if not old or (new["count"] and (not old["count"] or new["covered"] * old["count"] > old["covered"] * new["count"])):
+                retained[key] = dict(new)
+    graph["coverage_reference"] = reference
+    graph["coverage_reference_provenance"] = sorted(set(graph.get("coverage_reference_provenance", [])) | {str(evidence)})

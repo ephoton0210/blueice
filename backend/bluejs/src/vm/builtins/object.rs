@@ -237,10 +237,32 @@ impl Vm {
                 return self.test262_reverse_delete(object, key);
             }
             self.materialize_object_prototype_methods(object, Some(key))?;
-            Ok(self
+            let deleted = self
                 .heap
                 .delete(object, key)
-                .expect("the validated receiver remains rooted during materialization"))
+                .expect("the validated receiver remains rooted during materialization");
+            if deleted {
+                if let Some(cell) = self.global_property_cell(object, key) {
+                    // Property deletion and DeleteBinding invalidate the same
+                    // object-environment binding. Captured eval references must
+                    // resolve outward after either public operation.
+                    let name = key
+                        .clone()
+                        .into_string()
+                        .expect("a property-backed global binding has a string key")
+                        .to_utf8()
+                        .expect("global_property_cell validated this binding name");
+                    let binding = self
+                        .global_bindings
+                        .remove(&name)
+                        .expect("global_property_cell found this published binding");
+                    self.heap
+                        .delete(cell, "value")
+                        .expect("removing the rooted global binding's value cannot allocate");
+                    self.release_root(binding._root);
+                }
+            }
+            Ok(deleted)
         })();
         self.stack.truncate(base);
         result

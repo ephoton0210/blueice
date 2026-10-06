@@ -5,6 +5,7 @@
 import json
 import os
 import re
+from datetime import datetime
 from pathlib import Path
 
 from .common import METRICS, complete, digest, load, now, save, snapshot
@@ -12,7 +13,9 @@ from .coverage import export_profiles
 
 
 def outcome_contract(row):
-    result = {key: value for key, value in row.items() if key != "actual"}
+    # Per-mode timings describe scheduling and must not change the outcome
+    # contract when a newer collector adds them to the same pinned fixture.
+    result = {key: value for key, value in row.items() if key not in ("actual", "elapsed_seconds")}
     actual = row.get("actual", {})
     result["actual"] = {key: actual.get(key) for key in ("kind", "phase")}
     if row["status"] in ("excluded", "stale_corpus"):
@@ -36,11 +39,18 @@ def compare_outcomes(before, after):
 
 def coverage_summary(payload, root):
     source = Path(root).resolve() / "backend/bluejs/src"
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("bluejs_coverage_scope", Path(root) / "backend/bluejs/coverage_file.py")
+    helper = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(helper)
+    test_sources = {name for name, reason in helper.NO_COUNTER_REASONS.items() if reason.startswith("Test source;")}
     files = {}
     for item in payload["data"][0]["files"]:
         path = Path(item["filename"]).resolve()
         if path.is_relative_to(source):
-            files[path.relative_to(source).as_posix()] = item["summary"]
+            relative = path.relative_to(source).as_posix()
+            if relative not in test_sources:
+                files[relative] = item["summary"]
     if not files:
         raise ValueError("The full export contains no BlueJS production counters")
     for value in files.values():
@@ -78,7 +88,7 @@ def render_report(data, root, report_path):
     def counts(prefixes):
         values = {key: 0 for key in statuses}
         for row in rows:
-            if any(row["path"].startswith(p) for p in prefixes):
+            if any(row["path"] == p or (not p.endswith(".js") and row["path"].startswith(p)) for p in prefixes):
                 values[row["status"]] += 1
         return values
     def results(selections, label):
@@ -86,8 +96,7 @@ def render_report(data, root, report_path):
         for name, prefixes in selections:
             values = counts(prefixes)
             total = sum(values.values())
-            if total:
-                records.append([name, f"{total:,}", *[f"{values[k]:,}" for k in statuses], f"{100 * values['pass'] / total:.3f}%"])
+            records.append([name, f"{total:,}", *[f"{values[k]:,}" for k in statuses], f"{100 * values['pass'] / total:.3f}%" if total else "No scheduled modes"])
         table([label, "Scheduled", "Pass", "Fail", "Unsupported", "Excluded", "Stale corpus", "Timeout", "Harness error", "Raw pass rate"], records)
     selected, modified = data["selected"], data["modified"]
     complete_count = sum(complete(v) for v in raw.values())
@@ -101,6 +110,13 @@ def render_report(data, root, report_path):
            f"The scheduled inventory retains {summary['results'].get('excluded', 0)} host exclusions and "
            f"{summary['results'].get('stale_corpus', 0)} stale corpus modes. These modes are not counted as passes.", "",
            "The runner returns 1 when any scheduled status is not `pass`. The command record retains that exit; semantic outcomes determine the gate.", ""]
+    out.extend(["Test262 has no official Core classification. This report defines ECMA-262 Core as `language/` plus `built-ins/`, "
+                "the complete ECMA-262 scope as Core plus `annexB/` and `staging/`, and ECMA-402 as `intl402/`. "
+                "All pass-rate denominators include the scheduled dispositions in their row.", ""])
+    results([("ECMA-262 Core (`language/` + `built-ins/`)", ["language/", "built-ins/"]),
+             ("Complete ECMA-262 scope (Core + `annexB/` + `staging/`)", ["language/", "built-ins/", "annexB/", "staging/"]),
+             ("ECMA-402 (`intl402/`)", ["intl402/"]), ("Test262 harness support (`harness/`)", ["harness/"]),
+             ("**All Test262 runner modes**", [""])], "Scope")
     results([(f"`{name}/`", [name + "/"]) for name in ("language", "built-ins", "annexB", "staging", "intl402", "harness")], "Top-level Test262 group")
     out.extend(["### Non-pass inventory dispositions", ""])
     dispositions = {}
@@ -112,13 +128,20 @@ def render_report(data, root, report_path):
     out.extend(["### Corrected crash regressions", ""])
     results([(f"`{path}`", [path]) for path in ("built-ins/Array/prototype/push/S15.4.4.7_A3.js", "built-ins/Proxy/has/null-handler.js", "built-ins/Proxy/has/null-handler-using-with.js")], "Crash regression")
     out.extend(["## Selected results", ""])
-    prefixes = ["built-ins/Array/", "built-ins/TypedArray/", "built-ins/TypedArrayConstructors/", "built-ins/ArrayBuffer/", "built-ins/SharedArrayBuffer/", "built-ins/DataView/", "built-ins/Atomics/", "built-ins/Iterator/", "built-ins/Promise/", "built-ins/ShadowRealm/", "built-ins/AsyncDisposableStack/", "built-ins/DisposableStack/", "built-ins/Temporal/", "language/import/", "language/expressions/dynamic-import/", "language/module-code/", "language/statements/using/", "language/statements/await-using/", "language/statements/for-await-of/", "language/eval-code/"]
-    results([(f"`{p}`", [p]) for p in prefixes], "Selection")
+    prefixes = ["built-ins/Array/", "built-ins/ArrayBuffer/", "built-ins/SharedArrayBuffer/", "built-ins/DataView/", "built-ins/Atomics/", "built-ins/Iterator/", "built-ins/Promise/", "built-ins/ShadowRealm/", "built-ins/AsyncDisposableStack/", "built-ins/DisposableStack/", "built-ins/Temporal/", "language/import/", "language/expressions/dynamic-import/", "language/module-code/", "language/statements/using/", "language/statements/await-using/", "language/statements/for-await-of/", "language/eval-code/"]
+    selections = [(f"`{p}`", [p]) for p in prefixes]
+    selections.insert(1, ("`built-ins/TypedArray/` + `built-ins/TypedArrayConstructors/`", ["built-ins/TypedArray/", "built-ins/TypedArrayConstructors/"]))
+    results(selections, "Selection")
     out.extend(["## ECMA-402 and Temporal breakdown", ""])
-    intl = sorted({row["path"].split("/")[1] for row in rows if row["path"].startswith("intl402/") and len(row["path"].split("/")) > 2})
-    results([(f"`intl402/{name}/`", [f"intl402/{name}/"]) for name in intl], "Intl group")
+    intl = ("Temporal", "NumberFormat", "DateTimeFormat", "Locale", "DurationFormat", "ListFormat", "RelativeTimeFormat", "Segmenter", "Intl", "Collator", "DisplayNames", "PluralRules")
+    intl_prefixes = [f"intl402/{name}/" for name in intl]
+    others = sorted({row["path"] for row in rows if row["path"].startswith("intl402/") and not any(row["path"].startswith(p) for p in intl_prefixes)})
+    results([(f"`intl402/{name}/`", [f"intl402/{name}/"]) for name in intl]
+            + [("Top-level Intl fixtures and locale methods on other built-ins", others), ("**Total ECMA-402**", ["intl402/"])], "Intl group")
     temporal = sorted({row["path"].split("/")[2] for row in rows if row["path"].startswith(("built-ins/Temporal/", "intl402/Temporal/")) and len(row["path"].split("/")) > 3})
-    results([(name, [f"built-ins/Temporal/{name}/", f"intl402/Temporal/{name}/"]) for name in temporal], "Temporal type")
+    temporal_roots = sorted({row["path"] for row in rows if row["path"].startswith(("built-ins/Temporal/", "intl402/Temporal/")) and len(row["path"].split("/")) == 3})
+    results([(name, [f"built-ins/Temporal/{name}/", f"intl402/Temporal/{name}/"]) for name in temporal]
+            + [("Temporal root files", temporal_roots), ("**Total Temporal**", ["built-ins/Temporal/", "intl402/Temporal/"])], "Temporal type")
     out.extend(["## BlueJS per-file coverage", "", "All counters come from fresh atomic LLVM profiles for the current full run. Completion requires 100% raw lines, functions and regions.", ""])
     table(["Metric", "Covered / instrumented"], [[key.capitalize(), metric(totals[key])] for key in METRICS])
     out.extend([f"**{complete_count} / {len(raw)} instrumented files are complete; {len(raw) - complete_count} remain incomplete.**", ""])
@@ -143,6 +166,35 @@ def render_report(data, root, report_path):
                                        ["Full Test262", f"{summary['results'].get('pass', 0):,} passed"],
                                        ["Semantic comparison", f"{data['contracts']['compared_modes']:,} mode contracts; {data['contracts']['contract_changes']} changes" if data['contracts'].get('comparison_available') else "No prior complete inventory available"],
                                        ["Workspace runtime and Rustdoc", "Passed" if data["workspace"] else "Not verified for this snapshot"]])
+    if data.get("gates"):
+        table(["Current gate", "Pass", "Fail", "Ignored", "Seconds"],
+              [[gate["label"], *[f"{c:,}" for c in gate["counts"]], f"{gate['elapsed_seconds']:.3f}"] for gate in data["gates"]])
+    static = data.get("static_gates", {})
+    static_current = static.get("snapshot") == data["snapshot"]
+    table(["Static gate", "Current result"],
+          [[name, "Passed" if static_current and static.get(key, {}).get("status") == "passed" else "Not verified for this snapshot"]
+           for name, key in (("Task Rust formatting", "rustfmt"), ("Diff whitespace", "diff_check"), ("Workspace Clippy, warnings denied", "workspace_clippy"))])
+    incomplete_modified = sorted(name for name in modified if name not in raw or not complete(raw[name]))
+    out.extend(["### Remaining modified production files", ""])
+    table(["Source file", "Missing lines", "Missing functions", "Missing regions"],
+          [[source(name), *[raw[name][key]["count"] - raw[name][key]["covered"] if name in raw else "Missing counters" for key in METRICS]] for name in incomplete_modified])
+    out.extend(["### Coverage percentage regressions", ""])
+    if data["coverage_regressions"]:
+        table(["Source file", "Current raw lines", "Current raw functions", "Current raw regions"],
+              [[source(name), *[metric(raw[name][key]) for key in METRICS]] for name in data["coverage_regressions"]])
+    else:
+        out.extend(["Zero per-file percentage regressions against the retained verified comparison thresholds.", ""])
+    achieved = (not incomplete_modified and all(name in raw and complete(raw[name]) for name in selected)
+                and preserved["passed"] == preserved["total"] and not data["coverage_regressions"] and data["workspace"]
+                and rust["counts"][1] == 0 and data["contracts"].get("comparison_available")
+                and data["contracts"]["contract_changes"] == 0 and static_current
+                and all(static.get(key, {}).get("status") == "passed" for key in ("rustfmt", "diff_check", "workspace_clippy")))
+    out.extend(["**The requested completion gates are satisfied.**" if achieved else "**The requested completion gates are not yet satisfied.**", ""])
+    if data.get("evidence"):
+        out.extend([f"[Frozen source hashes]({link(data['evidence'] + '/source-state.json')}), "
+                    f"[complete run record]({link(data['evidence'] + '/run.json')}), "
+                    f"[raw coverage data]({link(data['evidence'] + '/report-data.json')}) and "
+                    f"[semantic contract audit]({link(data['evidence'] + '/outcome-contract-audit.json')}) retain this measurement.", ""])
     out.extend(["## Difficulty ranking of the remaining incomplete files", ""])
     ranking = data.get("ranking", {})
     missing = sorted((name for name in raw if not complete(raw[name])), key=lambda n: (-ranking.get(n, -1), -(raw[n]["regions"]["count"] - raw[n]["regions"]["covered"]), n))
@@ -179,13 +231,13 @@ def full_report(manager, artifacts, bins):
         contracts = compare_outcomes(Path(baseline["path"]) / "test262/results.jsonl", full / "test262/results.jsonl")
         if contracts["contract_changes"]:
             raise ValueError("Test262 semantic outcome contracts changed")
-    previous = baseline.get("full_coverage", {}) if baseline else {}
+    previous = graph.get("coverage_reference") or (baseline.get("full_coverage", {}) if baseline else {})
     regressions = []
     for name, current in raw.items():
         if name not in previous:
             continue
         old = previous[name].get("_raw", previous[name])
-        if any(current[key]["covered"] / current[key]["count"] < old[key]["covered"] / old[key]["count"] for key in METRICS):
+        if any(current[key]["covered"] * old[key]["count"] < old[key]["covered"] * current[key]["count"] for key in METRICS):
             regressions.append(name)
     scope = graph.get("acceptance_scope", {})
     original = graph.get("originally_complete", [])
@@ -203,10 +255,30 @@ def full_report(manager, artifacts, bins):
     spec.loader.exec_module(helper)
     if set(unknown) != set(helper.NO_COUNTER_REASONS):
         raise ValueError("Executable source scope differs from the reviewed no-counter manifest")
+    from .runner import CRITICAL_RUST_TARGETS
+    critical = [t for t in tasks if t["id"][5:].startswith(CRITICAL_RUST_TARGETS)]
+    gates = []
+    for label, records in (("Complete BlueJS Rust", tasks), ("Critical Rust targets", critical)):
+        first = min(datetime.fromisoformat(t["started_at"]) for t in records)
+        last = max(datetime.fromisoformat(t["finished_at"]) for t in records)
+        gates.append({"label": label, "counts": [sum(c[i] for t in records for c in t["counts"]) for i in range(3)],
+                      "elapsed_seconds": (last - first).total_seconds()})
+    for task in manager.active["tasks"]:
+        if task["id"] not in ("workspace:tests", "workspace:docs", "full:python:selftest"):
+            continue
+        log = (directory / task["log"]).read_text()
+        counts = [list(map(int, row)) for row in re.findall(r"test result: (?:ok|FAILED)\. (\d+) passed; (\d+) failed; (\d+) ignored", log)]
+        if task["id"] == "full:python:selftest":
+            match = re.search(r"Ran (\d+) tests", log)
+            counts = [[int(match[1]), 0, 0]] if match and task["status"] == "passed" else []
+        gates.append({"label": task["label"], "counts": [sum(c[i] for c in counts) for i in range(3)], "elapsed_seconds": task["elapsed_seconds"]})
     data = {"measured_at": now(), "snapshot": manager.active["snapshot"], "files": raw, "totals": totals,
+            "static_gates": load(directory / "static-gates.json", {}),
+            "evidence": str(directory.relative_to(manager.root)), "gates": gates,
             "test262": load(full / "test262/summary.json"), "selected": scope.get("selected_files", {}),
             "modified": scope.get("modified_production_files", []), "contracts": contracts, "no_counters": helper.NO_COUNTER_REASONS,
             "coverage_regressions": regressions, "ranking": ranking,
+            "coverage_reference": previous,
             "preserved": {"total": len(original), "passed": sum(name in raw and complete(raw[name]) for name in original)},
             "workspace": manager.workspace, "rust": {"targets": len(tasks),
             "counts": [sum(c[i] for t in tasks for c in t["counts"]) for i in range(3)]},

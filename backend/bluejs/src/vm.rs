@@ -1141,6 +1141,10 @@ pub struct Vm {
     /// legacy `f.caller` reads it: eval frames, natives, generators resumed
     /// from a call and async continuations do not appear.
     call_stack: Vec<ObjectId>,
+    /// Synchronous delegate callbacks execute while their saved frame remains
+    /// in the heap for GC. These identities block resumption until the callback
+    /// and its result getters finish; the call operands already retain each one.
+    active_generator_delegations: HashSet<ObjectId>,
     /// How many of `with_objects` the running function inherited from the
     /// scope it was created in (the rest were entered by its own `with`).
     inherited_with_depth: usize,

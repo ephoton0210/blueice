@@ -239,10 +239,130 @@ impl Vm {
     /// Runs TypedArray boundary contracts in unit and coverage builds.
     #[doc(hidden)]
     pub fn verify_typed_array_boundary_contracts() {
+        slice_callbacks_preserve_source_detachment_and_cross_realm_copy_values();
         foreign_species_results_validate_the_brand_and_preserve_vm_reuse();
+        foreign_species_validation_uses_internal_length_without_getters();
         typed_snapshots_check_overflow_bounds_and_foreign_ownership();
         typed_callback_and_constructor_ingress_reject_foreign_handles();
         cold_typed_copy_builders_preserve_backings_across_collection_and_refusal();
         cold_species_initialization_and_numeric_join_preserve_resource_errors();
+    }
+}
+
+#[cfg_attr(test, test)]
+fn foreign_species_validation_uses_internal_length_without_getters() {
+    for nursery_capacity in [1, HeapConfig::default().nursery_capacity] {
+        let mut vm = Vm::new(VmConfig {
+            heap: HeapConfig {
+                nursery_capacity,
+                ..HeapConfig::default()
+            },
+            ..VmConfig::default()
+        })
+        .unwrap();
+        vm.install_test262_harness().unwrap();
+        let source = r#"
+            var child = $262.createRealm().global;
+            var source = new Uint8Array([7,42]);
+            child.eval(`
+                globalThis.reads = 0;
+                globalThis.Valid = class extends Uint8Array {
+                    get length() {reads++; throw 'observable length';}
+                };
+                globalThis.Short = function(n) {
+                    var result = new Uint8Array(0);
+                    Object.defineProperty(result,'length',{value:100});
+                    return result;
+                };
+                globalThis.Immutable = function(n) {
+                    return new Uint8Array(new ArrayBuffer(n).transferToImmutable());
+                };
+            `);
+            source.constructor = {[Symbol.species]:child.Valid};
+            var copied = source.slice();
+            if (copied[0] !== 7 || copied[1] !== 42 || child.reads !== 0) throw 'length getter ran';
+            for (var constructor of [child.Short, child.Immutable]) {
+                source.constructor = {[Symbol.species]:constructor};
+                var rejected = false;
+                try {source.slice();} catch(error) {rejected = error instanceof TypeError;}
+                if (!rejected) throw 'invalid foreign result accepted';
+            }
+            // A foreign constructor can hand back an imported object from
+            // this realm. Its original immutable buffer must survive the
+            // membrane round trip and fail the local validation boundary.
+            child.immutableLocal = new Uint8Array(new ArrayBuffer(2).transferToImmutable());
+            child.eval('globalThis.ReturnLocal = function(n) {return immutableLocal;};');
+            source.constructor = {[Symbol.species]:child.ReturnLocal};
+            for (var create of [
+                () => source.slice(),
+                () => Uint8Array.of.call(child.ReturnLocal, 7, 42),
+                () => Uint8Array.from.call(child.ReturnLocal, [7,42])
+            ]) {
+                var rejected = false;
+                try {create();} catch(error) {rejected = error instanceof TypeError;}
+                if (!rejected) throw 'immutable local species accepted';
+            }
+            source.constructor = Uint8Array;
+            child.eval(`
+                Object.defineProperty(Uint8Array.prototype,'length', {
+                    configurable:true,
+                    get() {reads++; $262.detachArrayBuffer(this.buffer); return 100;}
+                });
+            `);
+            var reverse = child.Uint8Array.prototype.slice.call(source);
+            if (reverse[0] !== 7 || reverse[1] !== 42 || child.reads !== 0) throw 'reverse length getter ran';
+            delete child.Uint8Array.prototype.length;
+            42;
+        "#;
+        assert_eq!(vm.execute_script(&script(source)), Ok(Value::Number(42.0)));
+        assert!(vm.stack.is_empty());
+        assert_eq!(
+            vm.execute_script(&script("21 + 21")),
+            Ok(Value::Number(42.0))
+        );
+    }
+}
+
+#[cfg_attr(test, test)]
+fn slice_callbacks_preserve_source_detachment_and_cross_realm_copy_values() {
+    for nursery_capacity in [1, HeapConfig::default().nursery_capacity] {
+        let mut vm = Vm::new(VmConfig {
+            heap: HeapConfig {
+                nursery_capacity,
+                ..HeapConfig::default()
+            },
+            ..VmConfig::default()
+        })
+        .unwrap();
+        vm.install_test262_harness().unwrap();
+        let source = r#"
+            var child = $262.createRealm().global;
+            globalThis.source = new Uint8Array([7,42]);
+            child.detachSource = function() {$262.detachArrayBuffer(source.buffer);};
+            child.eval('globalThis.Foreign = class extends Uint8Array {get buffer() {detachSource(); return super.buffer;}};');
+            source.constructor = {[Symbol.species]:child.Foreign};
+            var rejected = false;
+            try {source.slice(0);} catch (error) {rejected = error instanceof TypeError;}
+            if (!rejected || source.buffer.byteLength !== 0) throw 'detached source was accepted';
+            var first = new Uint8Array([7,42]);
+            first.constructor = {[Symbol.species]:child.Float64Array};
+            var converted = first.slice();
+            child.collectParent = function() {$262.gc();};
+            child.eval('globalThis.Collected = class extends Float64Array {get set() {collectParent(); return super.set;}}; globalThis.Refused = class extends Float64Array {get set() {throw 7;}};');
+            first.constructor = {[Symbol.species]:child.Collected};
+            var collected = first.slice();
+            first.constructor = {[Symbol.species]:child.Refused};
+            var caught = false;
+            try {first.slice();} catch (error) {caught = error === 7;}
+            var second = new Uint8Array([7,42]);
+            var reverse = child.Uint8Array.prototype.slice.call(second);
+            converted[0] === 7 && converted[1] === 42 && collected[0] === 7 && collected[1] === 42 && caught && reverse[0] === 7 && reverse[1] === 42 ? 42 : 0;
+        "#;
+        assert_eq!(vm.execute_script(&script(source)), Ok(Value::Number(42.0)));
+        assert!(vm.stack.is_empty());
+        assert_eq!(
+            vm.execute_script(&script("21 + 21")),
+            Ok(Value::Number(42.0))
+        );
     }
 }

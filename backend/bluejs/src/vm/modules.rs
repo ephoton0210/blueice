@@ -1742,7 +1742,8 @@ impl Vm {
             finished.extend(waiters.into_iter().map(|promise| (promise, namespace)));
         }
         for (promise, namespace) in finished {
-            self.resolve_promise(promise, Value::Object(namespace))?;
+            self.resolve_promise(promise, Value::Object(namespace))
+                .expect("completed import waiters retain initialized ordinary namespace exports or deferred namespaces without then; Promise resolution only queues callable exports");
         }
         Ok(())
     }
@@ -2169,7 +2170,7 @@ impl Vm {
                         generator,
                         target,
                         PromiseStatus::Rejected(value),
-                    )?;
+                    ).expect("the resumed async generator owns this retained FIFO head and tracked promise; rejection only removes its queue entry");
                     self.resume_async_generator_next(generator)
                 }
             }

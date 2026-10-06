@@ -1821,7 +1821,15 @@ impl Compiler {
     /// the outer assignment pattern keeps its duplicate RHS beneath it.
     pub(super) fn assign_pattern_target(&mut self, target: &Expr) -> Result<(), CompileError> {
         if let Expr::Identifier(name) = target {
-            if let Some(slot) = self.resolve(name) {
+            if self.with_depth != 0 && self.resolve_inside_innermost_with(name).is_none() {
+                // For-in/of assignment heads and destructuring leaves perform
+                // PutValue through the active object environments, just as an
+                // ordinary assignment does. The leaf value is already on the
+                // stack, so use the existing value-before-reference consumer.
+                let index = self.name_constant(name)?;
+                self.emit(Opcode::ResolveWithReference, index)?;
+                self.emit(Opcode::StoreResolvedWithReference, 0)?;
+            } else if let Some(slot) = self.resolve(name) {
                 self.emit(Opcode::StoreBinding, slot)?;
             } else {
                 let index = self.name_constant(name)?;

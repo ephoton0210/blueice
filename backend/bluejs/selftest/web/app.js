@@ -58,16 +58,19 @@ function setView(name) {
 }
 function renderPlan() {
   const plan = state.plan;
-  $("selection-count").textContent = plan.selected_tests;
-  $("selection-total").textContent = `of ${plan.total_tests} current test targets`;
-  $("estimated-time").textContent = plan.selected_tests && !plan.estimated_serial_seconds ? "—" : duration(plan.estimated_serial_seconds);
+  const partitions = state.partitions;
+  const correction = partitions && !(state.active?.status === "running" && state.active.mode === "full");
+  $("selection-count").textContent = correction ? partitions.selected_targets : plan.selected_tests;
+  $("selection-total").textContent = correction ? `of ${partitions.total_rust_targets} Rust targets · related fixture sets below` : `of ${plan.total_tests} current test targets`;
+  $("estimated-time").textContent = correction ? "—" : plan.selected_tests && !plan.estimated_serial_seconds ? "—" : duration(plan.estimated_serial_seconds);
   $("snapshot-badge").textContent = `Snapshot ${plan.snapshot.slice(0, 10)}`;
   const summary = $("plan-summary");
-  summary.replaceChildren(node("strong", `${plan.changed_files.length} changed files · ${plan.affected_files.length} affected files · ${plan.selected_tests} selected targets`));
-  summary.append(node("div", plan.changed_files.length ? plan.changed_files.map(shortPath).join(" · ") : "No source changes selected. Choose files or use the Git diff."));
+  const files = correction ? partitions.changed_files.filter(path => path.endsWith(".rs")) : plan.changed_files;
+  summary.replaceChildren(node("strong", correction ? `${files.length} changed Rust files · ${partitions.boundaries.length} mapped boundaries · ${partitions.selected_targets} selected Rust targets` : `${plan.changed_files.length} changed files · ${plan.affected_files.length} affected files · ${plan.selected_tests} selected targets`));
+  summary.append(node("div", files.length ? files.map(shortPath).join(" · ") : "No source changes selected. Choose files or use the Git diff."));
   const fallback = $("fallbacks");
-  fallback.hidden = !plan.fallbacks.length;
-  fallback.textContent = plan.fallbacks.length ? `Expanded verification: ${plan.fallbacks.slice(0, 4).join("; ")}${plan.fallbacks.length > 4 ? `; and ${plan.fallbacks.length - 4} other reasons` : ""}` : "";
+  fallback.hidden = correction ? !partitions.unknown_sources.length : !plan.fallbacks.length;
+  fallback.textContent = correction ? `No case boundary recorded: ${partitions.unknown_sources.map(shortPath).join(" · ")}` : plan.fallbacks.length ? `Expanded verification: ${plan.fallbacks.slice(0, 4).join("; ")}${plan.fallbacks.length > 4 ? `; and ${plan.fallbacks.length - 4} other reasons` : ""}` : "";
 }
 function renderSources() {
   if (!graph) return;
@@ -163,6 +166,7 @@ function renderRun() {
   const run = state.active;
   const busy = run?.status === "running" || state.indexing.status === "running";
   $("impact-button").disabled = busy;
+  $("partition-button").disabled = busy;
   $("pipeline-button").disabled = busy;
   $("full-button").disabled = busy || !state.ready_for_full;
   $("cancel-button").disabled = run?.status !== "running";
@@ -262,7 +266,7 @@ async function refresh() {
     if (state.indexing.status === "running") announce(`${state.indexing.message}: ${state.indexing.completed}/${state.indexing.total}`);
     if (state.indexing.status === "failed") announce(state.indexing.message, true);
     if (!$("workspace-gates").dataset.edited) $("workspace-gates").checked = state.workspace;
-    renderPlan(); renderRun(); renderCoverage();
+    renderPlan(); renderRun(); renderCoverage(); renderPartitions();
   } catch (error) { announce(error.message, true); }
   finally { refreshInFlight = false; }
 }
@@ -277,6 +281,25 @@ async function run(mode) {
   setView("runs");
   await refresh();
 }
+function renderPartitions() {
+  const plan = state.partitions;
+  if (!plan) return;
+  $("partition-summary").textContent = `${plan.selected_targets} of ${plan.total_rust_targets} Rust targets`;
+  $("partition-anchor").textContent = plan.anchor ? `Changes since verified Rust snapshot ${plan.anchor}. ${plan.boundaries.length} mapped boundaries; discovery selects native test names before execution.` : "No verified Rust anchor; unknown changes require broader verification.";
+  $("partition-unknown").hidden = !plan.unknown_sources.length;
+  $("partition-unknown").textContent = `No case boundary recorded: ${plan.unknown_sources.map(shortPath).join(" · ")}`;
+  const body = $("partition-plan");
+  body.replaceChildren();
+  for (const test of plan.tests) {
+    const row = node("tr");
+    const target = node("td", test.label);
+    const filters = test.case_filters || [];
+    const description = !filters.length || filters.includes("") ? "All cases in this target" : filters.join(" · ");
+    target.append(node("div", description, "muted"));
+    row.append(target, node("td", test.reasons.join("; ")));
+    body.append(row);
+  }
+}
 document.querySelectorAll(".nav-item").forEach(button => button.addEventListener("click", () => setView(button.dataset.view)));
 $("source-search").addEventListener("input", renderSources);
 $("plan-button").addEventListener("click", () => analyze().catch(e => announce(e.message, true)));
@@ -289,6 +312,7 @@ $("add-source").addEventListener("click", () => {
 });
 $("index-button").addEventListener("click", () => api("/api/index", {}).then(refresh).catch(e => announce(e.message, true)));
 $("impact-button").addEventListener("click", () => run("impact").catch(e => announce(e.message, true)));
+$("partition-button").addEventListener("click", () => run("partition").catch(e => announce(e.message, true)));
 $("pipeline-button").addEventListener("click", () => run("pipeline").catch(e => announce(e.message, true)));
 $("full-button").addEventListener("click", () => run("full").catch(e => announce(e.message, true)));
 $("cancel-button").addEventListener("click", () => api("/api/cancel", {}).then(refresh).catch(e => announce(e.message, true)));

@@ -462,7 +462,7 @@ impl Vm {
                 } else if function {
                     self.with_roots(|heap| {
                         heap.set(global, binding.name.as_str(), Value::Undefined)
-                    })?;
+                    }).expect("global declaration validation established an existing writable data property; replacing it with undefined cannot grow storage");
                 }
             }
             if property {
@@ -668,7 +668,7 @@ impl Vm {
         }
         // ECMA-262 §9.1.1.1.5: TDZ takes precedence over the immutable-binding
         // assignment error, including const.
-        if self.binding_value(slot)?.is_none() {
+        if self.binding_value(slot).expect("the current frame retains this binding cell, and deleted eval bindings were resolved before this read").is_none() {
             return Err(RuntimeError::ReferenceError(name.clone()));
         }
         if binding_allows_assignment(&code.bindings[slot], code.strict)? {
@@ -945,18 +945,7 @@ impl Vm {
             .global("globalThis")?
             .object_id()
             .expect("globalThis is an object");
-        let deleted = self.object_delete(global, &name.into())?;
-        if deleted {
-            if let Some(binding) = self.global_bindings.remove(name) {
-                // Closures that captured the cell see the name resolve
-                // outward, not the stale value.
-                self.heap
-                    .delete(binding.cell, "value")
-                    .expect("removing the rooted global binding's own value cannot allocate");
-                self.release_root(binding._root);
-            }
-        }
-        Ok(deleted)
+        self.object_delete(global, &name.into())
     }
 
     pub(super) fn store_global_cell(

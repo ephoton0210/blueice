@@ -511,7 +511,12 @@ impl Vm {
     /// Runs delegation lifecycle contracts only in unit and coverage builds.
     #[doc(hidden)]
     pub fn verify_generator_delegation_boundary_contracts() {
+        delegate_callbacks_and_result_getters_reject_synchronous_reentry();
+        awaited_return_getters_keep_reentrant_requests_behind_the_current_head();
+        native_delegate_exit_errors_preserve_large_message_refusals();
         staged_sync_delegation_refusals_retain_completed_values();
+        completed_delegation_frames_do_not_allocate_when_their_budget_is_exhausted();
+        staged_delegate_reactions_preserve_error_materialization_and_yield_refusals();
         staged_async_generator_refusals_preserve_awaited_values_and_delegation();
         async_scheduler_helpers_reject_foreign_heap_handles_before_queue_changes();
         async_request_turns_separate_awaited_operands_and_reject_resumption_after_completion();
@@ -522,6 +527,103 @@ impl Vm {
         closing_a_suspended_async_frame_closes_its_real_iterator_and_keeps_the_vm_reusable();
         stale_delegate_answers_preserve_start_suspended_and_completed_frames();
         async_generator_allocation_failures_preserve_queued_completion_and_operand_roots();
+    }
+}
+
+#[cfg_attr(test, test)]
+fn delegate_callbacks_and_result_getters_reject_synchronous_reentry() {
+    for nursery_capacity in [1, HeapConfig::default().nursery_capacity] {
+        for method in ["return", "throw"] {
+            let mut vm = Vm::new(VmConfig {
+                heap: HeapConfig {
+                    nursery_capacity,
+                    ..HeapConfig::default()
+                },
+                ..VmConfig::default()
+            })
+            .unwrap();
+            vm.install_test262_harness().unwrap();
+            let source = format!(
+                r#"
+                var g, checks = 0;
+                function verifyRunning() {{
+                    for (var operation of ['next','return','throw']) {{
+                        var caught = false;
+                        try {{g[operation](7);}} catch (error) {{caught = error instanceof TypeError;}}
+                        if (!caught) throw 'resumed executing delegate';
+                        checks++;
+                    }}
+                    $262.gc();
+                }}
+                var result = {{get done() {{verifyRunning(); return true;}}, get value() {{verifyRunning(); return 42;}}}};
+                var delegate = {{[Symbol.iterator]() {{return this;}}, next() {{return {{value:1,done:false}};}}}};
+                Object.defineProperty(delegate, '{method}', {{get() {{verifyRunning(); return function() {{verifyRunning(); return result;}};}}}});
+                g = (function*() {{return yield* delegate;}})();
+                if (g.next().value !== 1) throw 'initial yield';
+                var final = g['{method}'](9);
+                final.done && final.value === 42 && checks === 12 && g.next().done ? 42 : 0;
+            "#
+            );
+            assert_eq!(
+                vm.execute_script(&compile(&parse(&source).unwrap()).unwrap()),
+                Ok(Value::Number(42.0)),
+                "{method}, nursery {nursery_capacity}"
+            );
+            assert!(vm.active_generator_delegations.is_empty());
+            assert!(vm.stack.is_empty());
+            assert_eq!(
+                vm.execute_script(&compile(&parse("21 + 21").unwrap()).unwrap()),
+                Ok(Value::Number(42.0))
+            );
+        }
+    }
+}
+
+#[cfg_attr(test, test)]
+fn awaited_return_getters_keep_reentrant_requests_behind_the_current_head() {
+    let setup = compile(&parse("Promise; Object; globalThis.payload = 'x'.repeat(8192);").unwrap())
+        .unwrap();
+    for source in [
+        "(async () => {var g = (async function*() {try {yield 1;} finally {yield 2;}})(); await g.next(); var pending = Promise.resolve(42); var queued, reads = 0; Object.defineProperty(pending,'constructor',{get(){reads++; queued = g.next(); return Promise;}}); var first = await g.return(pending); var second = await queued; return reads === 1 && first.value === 2 && !first.done && second.value === 42 && second.done ? 42 : 0;})()",
+        "(async () => {var g = (async function*() {try {yield 1;} catch(error) {if(error !== payload) throw error; return 42;}})(); await g.next(); var pending = Promise.resolve(7); Object.defineProperty(pending,'constructor',{get(){throw payload;}}); var result = await g.return(pending); return result.done && result.value === 42 && (await g.next()).done ? 42 : 0;})()",
+    ] {Vm::verify_async_allocation_boundary(&setup, source);}
+}
+
+#[cfg_attr(test, test)]
+fn native_delegate_exit_errors_preserve_large_message_refusals() {
+    let absent = "absent".repeat(1024);
+    // Missing throw closes the actual async delegate before injecting the
+    // close error into the outer generator. Exercise both synchronous close
+    // failure and Promise-constructor failure while starting its await.
+    for hook in [
+        "return() {throw sentinel;}",
+        "get return() {throw sentinel;}",
+        "return() {return close;}",
+    ] {
+        let setup = format!("Promise; Object; ReferenceError; globalThis.sentinel = {{}}; globalThis.close = Promise.resolve({{done:true}}); Object.defineProperty(close, 'constructor', {{get() {{throw sentinel;}}}}); globalThis.delegate = {{[Symbol.asyncIterator]() {{return this;}}, next() {{return {{done:false,value:7}};}}, {hook}}}; globalThis.g = (async function*() {{try {{yield* delegate;}} finally {{{absent};}}}})(); g.next();");
+        let source = "(async () => {try {await g.throw(7);} catch(error) {return error instanceof ReferenceError && (await g.next()).done ? 42 : 0;} return 0;})()";
+        Vm::verify_async_allocation_boundary(&compile(&parse(&setup).unwrap()).unwrap(), source);
+    }
+    for operation in ["return", "throw"] {
+        let setup = format!("Promise; ReferenceError; globalThis.delegate = {{[Symbol.asyncIterator]() {{return this;}}, next() {{return {{done:false,value:7}};}}, return() {{return {{done:true,value:42}};}}, throw() {{return {{done:true,value:42}};}}}}; globalThis.g = (async function*() {{try {{yield* delegate;}} finally {{{absent};}}}})(); g.next();");
+        let source = format!("(async () => {{try {{await g.{operation}(7);}} catch(error) {{return error instanceof ReferenceError && error.message.indexOf('{absent}') !== -1 && (await g.next()).done ? 42 : 0;}} return 0;}})()");
+        Vm::verify_async_allocation_boundary(&compile(&parse(&setup).unwrap()).unwrap(), &source);
+    }
+    // Both getter and call failures enter the generator's finally body.
+    for hook in [
+        "get throw() {throw 7;}",
+        "throw() {throw 7;}",
+        "get return() {throw 7;}",
+        "return() {throw 7;}",
+    ] {
+        let operation = if hook.contains("throw()") {
+            "throw"
+        } else {
+            "return"
+        };
+        let setup = format!("Promise; ReferenceError; globalThis.delegate = {{[Symbol.asyncIterator]() {{return this;}}, next() {{return {{done:false,value:7}};}}, {hook}}}; globalThis.g = (async function*() {{try {{yield* delegate;}} finally {{{absent};}}}})(); g.next();");
+        let source = format!("(async () => {{try {{await g.{operation}(7);}} catch(error) {{return error instanceof ReferenceError && (await g.next()).done ? 42 : 0;}} return 0;}})()");
+        Vm::verify_async_allocation_boundary(&compile(&parse(&setup).unwrap()).unwrap(), &source);
     }
 }
 
@@ -631,5 +733,88 @@ fn async_generator_allocation_failures_preserve_queued_completion_and_operand_ro
         "(async () => {var run = (function() {let captured = 7; return async function() {eval('var captured = 11'); captured = payload; return captured === payload ? 42 : 0;};})(); return await run();})()",
     ] {
         Vm::verify_async_allocation_boundary(&setup, source);
+    }
+}
+
+#[cfg_attr(test, test)]
+fn completed_delegation_frames_do_not_allocate_when_their_budget_is_exhausted() {
+    for asynchronous in [false, true] {
+        let mut vm = Vm::default();
+        let setup = if asynchronous {
+            "globalThis.payload = {answer:42}; globalThis.delegate = {[Symbol.asyncIterator]() {return this;}, next() {return {done:false,value:7};}}; globalThis.g = (async function*() {return yield* delegate;})(); g.next(); g;"
+        } else {
+            "globalThis.payload = {answer:42}; globalThis.delegate = {[Symbol.iterator]() {return this;}, next() {return {done:false,value:7};}}; globalThis.g = (function*() {return yield* delegate;})(); g.next(); g;"
+        };
+        let generator = vm
+            .execute_script(&compile(&parse(setup).unwrap()).unwrap())
+            .unwrap()
+            .object_id()
+            .unwrap();
+        vm.run_promise_jobs().unwrap();
+        let payload = vm.lookup_global_name("payload").unwrap().unwrap();
+        let before = vm.stack.clone();
+        vm.with_roots(|heap| {
+            heap.collect_major();
+            Ok(())
+        })
+        .unwrap();
+        vm.heap.allow_only(0);
+        let outcome = if asynchronous {
+            vm.finish_async_delegation(generator, payload.clone())
+        } else {
+            vm.finish_sync_delegation(generator, payload.clone())
+        };
+        assert_eq!(outcome, Ok(()));
+        assert_eq!(vm.stack, before);
+        assert!(vm.heap.contains(payload.object_id().unwrap()));
+        vm.heap.allow_only(16 * 1024 * 1024);
+        assert_eq!(
+            vm.execute_script(&compile(&parse("21 + 21").unwrap()).unwrap()),
+            Ok(Value::Number(42.0))
+        );
+    }
+}
+
+#[cfg_attr(test, test)]
+fn staged_delegate_reactions_preserve_error_materialization_and_yield_refusals() {
+    let script = |source: &str| compile(&parse(source).unwrap()).unwrap();
+    let mut vm = Vm::default();
+    vm.execute_script(&script("globalThis.gate = Promise.withResolvers(); globalThis.payload = 'x'.repeat(4096); globalThis.g = (async function*() {})(); g.next();")).unwrap();
+    vm.run_promise_jobs().unwrap();
+    vm.execute_script(&script("globalThis.answer = g.return(gate.promise);"))
+        .unwrap();
+    vm.run_promise_jobs().unwrap();
+    vm.execute_script(&script("gate.resolve(payload);"))
+        .unwrap();
+    assert!(vm.promise_jobs.iter().any(|job| matches!(
+        job,
+        PromiseJob::AsyncGeneratorYield {
+            fulfilled: true,
+            ..
+        }
+    )));
+    vm.with_roots(|heap| {
+        heap.collect_major();
+        Ok(())
+    })
+    .unwrap();
+    let limit = vm.heap.allow_only(0);
+    assert_eq!(
+        vm.run_next_promise_job(),
+        Err(RuntimeError::Heap(HeapError::HeapLimitExceeded { limit }))
+    );
+    assert!(vm.stack.is_empty());
+    vm.heap.allow_only(16 * 1024 * 1024);
+    assert_eq!(
+        vm.execute_script(&script("21 + 21")),
+        Ok(Value::Number(42.0))
+    );
+
+    for (setup, operation) in [
+        ("globalThis.delegate = {[Symbol.asyncIterator]() {return this;}, next() {return {done:false,value:7};}, return() {return Promise.resolve({done:true});}}; globalThis.g = (async function*() {try {yield* delegate;} catch (error) {return error instanceof TypeError ? 42 : 0;}})(); g.next();", "(async () => {delegate.return = () => {null.value;}; var result = await g.throw(7); return result.done && result.value === 42 ? 42 : 0;})()"),
+        ("globalThis.delegate = {[Symbol.asyncIterator]() {return this;}, next() {return {done:false,value:7};}, return() {return {done:true,value:42};}}; globalThis.g = (async function*() {try {yield* delegate;} finally {null.value;}})(); g.next();", "(async () => {try {await g.throw(7);} catch (error) {return error instanceof TypeError && (await g.next()).done ? 42 : 0;} return 0;})()"),
+    ] {
+        let setup = script(&format!("Promise; TypeError; {setup}"));
+        Vm::verify_async_allocation_boundary(&setup, operation);
     }
 }

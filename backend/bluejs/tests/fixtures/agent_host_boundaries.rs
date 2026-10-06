@@ -117,13 +117,24 @@ fn agent_receive_preserves_cold_constructor_and_wrapper_refusals() {
         let root = vm.heap.root(callback.object_id().unwrap()).unwrap();
         vm.test262_agent_control = Some(vm.agent_host().register());
         if warm {
-            vm.global("SharedArrayBuffer").unwrap();
+            let constructor = vm.global("SharedArrayBuffer").unwrap();
+            assert!(vm.is_callable(&callback).unwrap());
+            assert!(vm
+                .get_property(&constructor, &"prototype".into())
+                .unwrap()
+                .object_id()
+                .is_some());
         }
         let backing = Arc::new(SharedBuffer::new(8));
         vm.agent_host().broadcast(Broadcast {
             backing,
             max_byte_length: None,
         });
+        vm.with_roots(|heap| {
+            heap.collect_major();
+            Ok(())
+        })
+        .unwrap();
         let limit = vm.heap.allow_only(0);
         assert_eq!(
             vm.test262_agent_receive(&callback),
@@ -236,6 +247,7 @@ impl Vm {
     /// Runs agent host contracts in unit and coverage builds.
     #[doc(hidden)]
     pub fn verify_agent_host_boundary_contracts() {
+        finalization_job_errors_are_reported_by_the_idle_agent_loop();
         host_shutdown_collects_failures_reported_by_a_joining_worker();
         idle_and_already_queued_completions_never_wait_for_another_wakeup();
         agent_ingress_preserves_string_number_callback_and_buffer_errors();
@@ -243,4 +255,27 @@ impl Vm {
         agent_workers_report_parse_compile_and_initialization_failures();
         timers_preserve_root_refusal_and_callback_errors_after_releasing_ownership();
     }
+}
+
+#[cfg_attr(test, test)]
+fn finalization_job_errors_are_reported_by_the_idle_agent_loop() {
+    let mut vm = host_vm();
+    vm.test262_agent_start(&Value::String(
+        "var registry = new FinalizationRegistry(() => {throw 7;}); (function() {registry.register({}, 'held');})(); $262.gc();".into()
+    )).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while vm.agent_host().state.lock().unwrap().errors.is_empty() {
+        assert!(
+            Instant::now() < deadline,
+            "the idle agent did not report its cleanup job error"
+        );
+        thread::yield_now();
+    }
+    assert!(
+        matches!(vm.shutdown_test262_agents(), Err(RuntimeError::Test262(message)) if message.contains('7'))
+    );
+    assert_eq!(
+        vm.execute_script(&script("21 + 21")),
+        Ok(Value::Number(42.0))
+    );
 }

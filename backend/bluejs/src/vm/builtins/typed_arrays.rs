@@ -180,9 +180,8 @@ impl Vm {
         // silently falling through to the same-realm construction path and
         // losing every mutation applied to the result afterward (the
         // round-trip identity cache in `test262_import_foreign_value`
-        // discards it on the way back out) -- the `actual < length` check
-        // below still catches anything that turns out not to be a valid
-        // TypedArray constructor, so broadening this is safe.
+        // discards it on the way back out). Validate the actual result's
+        // internal slots below, independently of the constructor's brand.
         let is_foreign_constructor = self.test262_foreign_reference(constructor_id).is_some()
             || self.test262_reverse_reference(constructor_id).is_some();
         if !is_foreign_constructor {
@@ -195,8 +194,31 @@ impl Vm {
             true,
             constructor.clone(),
         )?;
-        let actual = self.get_property(&target, &"length".into())?;
-        let actual = self.coerce_length(&actual)? as usize;
+        // TypedArrayCreateFromConstructor validates internal slots, without
+        // reading an observable length property. A user getter could otherwise
+        // disguise a short result or detach a transported snapshot before its
+        // copy. Forward facades retain storage in the child; reverse results
+        // are concrete local snapshots and use the ordinary validation path.
+        let target_id = target
+            .object_id()
+            .expect("successful membrane [[Construct]] preserves an object result");
+        let actual = match self.test262_foreign_typed_array_info(target_id)? {
+            Some((actual, _)) => {
+                let (realm_id, foreign_target, _, _) = self
+                    .test262_foreign_reference(target_id)
+                    .expect("the pure shape check validated this retained foreign facade");
+                self.test262_realms
+                    .get(&realm_id)
+                    .expect("the retained facade owns its realm")
+                    .vm
+                    .reject_immutable_typed_array(&Value::Object(foreign_target))?;
+                actual
+            }
+            None => {
+                self.reject_immutable_typed_array(&target)?;
+                self.typed_array_receiver(&target)?.2
+            }
+        };
         if actual < length {
             return Err(RuntimeError::TypeError(
                 "TypedArray species result is too small".into(),
@@ -559,7 +581,8 @@ impl Vm {
             }
             let value = self.typed_array_element(object, index);
             if !matches!(value, Value::Undefined | Value::Null) {
-                let value = self.coerce_string(&value)?;
+                let value = self.coerce_string(&value)
+                    .expect("a decoded TypedArray element is a Number or BigInt; primitive string conversion cannot throw");
                 native::append(&mut result, &value, self.config.max_string_bytes)?;
             }
         }
@@ -643,13 +666,16 @@ impl Vm {
         // is a live forward facade, not infer it from which construction
         // path was taken.
         let (is_live_foreign_target, target_kind) =
-            match self.test262_foreign_typed_array_info(constructed_id)? {
+            match self.test262_foreign_typed_array_info(constructed_id).expect(
+                "TypedArrayCreate validated this retained result; no JavaScript or allocation intervenes",
+            ) {
                 Some((_, target_kind)) => (true, target_kind),
                 None => {
-                    // A foreign constructor can return an ordinary object or
-                    // a detached facade. Validate its brand before treating
-                    // the result as a local TypedArray.
-                    let (_, _, _, target_kind) = self.heap.typed_array_info(constructed_id)?;
+                    // Both constructor paths already validated brand, bounds,
+                    // mutability and length. This pure read chooses a copy
+                    // strategy, while invalid user results fail above.
+                    let (_, _, _, target_kind) = self.heap.typed_array_info(constructed_id)
+                        .expect("TypedArrayCreate validated this retained local result");
                     (false, target_kind)
                 }
             };
@@ -694,10 +720,20 @@ impl Vm {
                     .expect("foreign TypedArray construction retains its realm");
                 self.test262_sync_foreign_buffer_mirrors(realm_id);
             } else {
-                let values = self.typed_array_read_values(object, start, copy_count)?;
+                let values = self.typed_array_read_values(object, start, copy_count)
+                    .expect("slice revalidated this source range after species construction; no callback intervened");
                 let source = self.array_from(values)?;
-                let set = self.get_property(&constructed, &"set".into())?;
-                self.call_native(set, constructed.clone(), vec![source], false)?;
+                // Looking up a foreign set method can allocate a facade or
+                // invoke a getter that collects this realm. Retain the new
+                // argument array until the entire callback has returned.
+                let base = self.stack.len();
+                self.stack.extend([constructed.clone(), source.clone()]);
+                let copied = (|| {
+                    let set = self.get_property(&constructed, &"set".into())?;
+                    self.call_native(set, constructed.clone(), vec![source], false)
+                })();
+                self.stack.truncate(base);
+                copied?;
             }
             return Ok(constructed);
         }
@@ -734,7 +770,8 @@ impl Vm {
                 let byte_length = copy_count * kind.byte_width();
                 let bytes = self
                     .heap
-                    .array_buffer_copy(source_buffer, byte_start, byte_length)?;
+                    .array_buffer_copy(source_buffer, byte_start, byte_length)
+                    .expect("slice revalidated this source range after species construction; no callback intervened");
                 real_write_done = self.test262_reverse_write_into_real_construction_result(
                     constructor_wrapper,
                     constructed_id,
@@ -755,7 +792,7 @@ impl Vm {
                         .expect("local species results are validated or transported TypedArrays");
                     self.with_roots(|heap| {
                         heap.array_buffer_write(local_buffer, local_offset, &bytes)
-                    })?;
+                    }).expect("the fresh mutable transported snapshot has the validated species range; the real write runs no callbacks");
                 }
             }
             if !real_write_done {
@@ -766,7 +803,8 @@ impl Vm {
                 // snapshot only, which is still correct for any caller
                 // that observes it before a round trip, and strictly
                 // better than leaving it unpopulated.
-                let values = self.typed_array_read_values(object, start, copy_count)?;
+                let values = self.typed_array_read_values(object, start, copy_count)
+                    .expect("the reverse byte-write helper cannot invoke source callbacks or resize this source");
                 for (index, value) in values.into_iter().enumerate() {
                     self.typed_array_write_values(constructed_id, target_kind, index, &[value])?;
                 }
@@ -788,8 +826,10 @@ impl Vm {
             let byte_length = copy_count * kind.byte_width();
             let bytes = self
                 .heap
-                .array_buffer_copy(source_buffer, byte_start, byte_length)?;
-            self.with_roots(|heap| heap.array_buffer_write(target_buffer, target_offset, &bytes))?;
+                .array_buffer_copy(source_buffer, byte_start, byte_length)
+                .expect("slice revalidated this local source range after species construction");
+            self.with_roots(|heap| heap.array_buffer_write(target_buffer, target_offset, &bytes))
+                .expect("TypedArrayCreate validated this mutable destination and its minimum length; byte copying invokes no callbacks");
             return Ok(Value::Object(target));
         }
         // Read and write one element at a time. This preserves slice's
@@ -1054,7 +1094,8 @@ impl Vm {
         }
         let values = self.typed_array_read_values(object, 0, length)?;
         let target = self.typed_array_new_same_kind(length, kind)?;
-        self.typed_array_write_values(target, kind, 0, &values)?;
+        self.typed_array_write_values(target, kind, 0, &values)
+            .expect("with copies decoded primitives into its fresh mutable same-kind target without callbacks");
         self.typed_array_write_values(target, kind, index as usize, &[replacement])
             .expect("with converted the replacement before allocating its mutable target");
         Ok(Value::Object(target))
@@ -1152,7 +1193,8 @@ impl Vm {
                 // out-of-bounds state before the first indexed write.
                 self.typed_array_receiver(receiver)?;
                 for index in start..end {
-                    self.with_roots(|heap| heap.typed_array_set_index(object, index, &value))?;
+                    self.with_roots(|heap| heap.typed_array_set_index(object, index, &value))
+                        .expect("fill revalidated the mutable receiver after coercion and writes only its decoded primitive");
                 }
                 Ok(receiver.clone())
             }

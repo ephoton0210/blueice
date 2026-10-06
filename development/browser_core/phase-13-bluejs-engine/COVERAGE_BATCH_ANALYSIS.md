@@ -1,5 +1,105 @@
 # BlueJS Coverage Batch Analysis
 
+## Current measured coverage and remaining correction
+
+The latest complete measurement is `20261006-163240-af46eda2`, source fingerprint
+`b249ea5bb7478b7b5a3c1f18ad7d08f28d22a13875b0d52b4a55e1818c6ffe75`.
+It completes 21 of the 22 selected files (eight D5 and all thirteen D4 files),
+49 of the 50 cumulative modified production files, and 130 of 162 instrumented
+production files. All 95 originally complete files are preserved. Raw percentage
+and semantic comparisons report zero regressions. Five previously incomplete
+modified files now have 100% raw lines, functions and regions: compiler
+expressions, TypedArray builtins, operations, generators and foreign realms.
+
+The affected gate passed 1,469 Rust cases in 165 partitions across 101 owning
+targets, 7,361 related Test262 modes and 71 tooling contracts. The subsequent
+complete gate passed 4,095 Rust cases across all 334 targets, all 102,921
+applicable Test262 modes, 2,170 other workspace cases and two Rustdoc tests.
+Four Rust and 60 workspace ignored cases retain their existing identities.
+The semantic audit compares all 102,926 scheduled modes and finds zero changes.
+All 88 task Rust files pass formatting; workspace Clippy denies warnings.
+
+| Remaining modified source | Missing lines | Missing functions | Missing regions | Exact remaining boundary |
+| --- | --- | --- | --- | --- |
+| `vm/interpreter.rs` | 0 | 0 | 1 | String-limit refusal after direct eval in the TailCall opcode, at line 1644 in the frozen source |
+
+The maximum-instantiation diagnostic reconciles all 162 raw region summaries.
+The interpreter has 3,359 of 3,360 regions covered; its full line and function
+counts are covered. The remaining branch requires analysis of the actual
+compiled tail-call and eval result paths before the next complete edit batch.
+No partial profiles or complementary-instantiation union establish completion.
+This verified round is eligible for the authorized incremental commit because
+it adds five complete files with zero regressions; the full 22/50 completion
+goal remains active.
+
+### Producer and error-boundary review
+
+TypedArray construction still performs fallible brand, bounds, mutability and
+internal-length validation immediately after calling the user constructor.
+No JavaScript or allocation intervenes before the later copy-strategy shape
+reads. Ordinary objects, detached views, short views and immutable buffers
+remain catchable refusals at the first boundary. A foreign constructor returning
+an imported parent immutable view additionally exercises the local result path.
+
+Both buffer mirror producers preserve byte length, maximum length and
+resizability. A fixed buffer cannot change its internal length. A resizable
+mirror either reaches the source length through a fallible resize or returns
+that refusal before copying. Detached parent mirrors are skipped; detached
+foreign sources detach mirrors; immutable foreign sources return separately.
+The final equality branch therefore cannot reject a valid mirror after the
+preceding successful resize. The byte write retains its validated range.
+
+A published global binding owns its ordinary cell root. Dynamic eval environments
+retain their private ordinary cells. These direct reads cannot invoke a getter,
+allocate, or reject their validated handle; an absent value still produces its
+ReferenceError. ResolveWithReference materializes the permanent realm global
+before publishing a global or unresolvable reference, so subsequent cached
+lookups cannot enter a cold initializer. Property reprobes, setter calls, cell
+writes and real allocation refusals remain fallible.
+
+The compiled-eval fixture creates cells through the actual declaration ingress,
+runs previously compiled with code in current and captured dynamic environments,
+and suspends at a compiled GetValue instruction. Its Reference pair comes from
+the interpreter. Deletion and writes exercise the real environment helpers;
+resumption and cleanup use the actual interpreter error. No bytecode or invalid
+heap state is manufactured for this correction batch.
+
+The rest fixture retains its next-result objects and payloads in global roots
+before imposing the budget. Collection cannot reclaim a temporary result to
+fund the later array_push. Strict functions select the compiler's actual
+IteratorClose self-recursion and TailCall direct-eval paths. Missing async throw
+fixtures separately exercise close getter/call failure and Promise-constructor
+failure when starting the close await, followed by a large native error in finally.
+
+### Verification plan
+
+All source and fixture changes precede runtime verification. Formatting, diff
+checking and workspace Clippy run before freezing the batch. The correction
+graph selects Reference cases, TypedArray/buffer matrices, both native fixture
+instantiations and related Test262 directories. Imports or shared data changes
+invalidate narrow contracts. Only after those partitions pass for the same
+source and selection does one complete Rust, Test262, workspace and LLVM run
+establish the updated canonical report. Failed or partial profiles do not enter
+completion counters. All 22 selected and all 50 modified production files must
+reach 100% raw lines, functions and regions, with all 95 original complete files
+preserved and no semantic or percentage regression to complete the goal.
+Each verified round that adds complete files without regressions may be committed
+and pushed under the standing authorization, then work continues on its gaps.
+
+Qualified global property deletion now invalidates the property-backed cell
+at the shared object Delete boundary; DeleteBinding delegates there. Captured
+references reach replacement accessors. Public cases cover qualified and
+unqualified deletion, Reflect, Proxy forwarding, minimal nurseries, retained
+non-configurable properties and independent lexical bindings. The original
+setter failure assertion passes unchanged in unit and ordinary-library builds.
+The graph includes this deletion contract and reads independent native harness
+lists concurrently within the configured worker limit.
+
+The earlier reviews below retain implementation rationale for their source
+snapshots; they are not evidence for this pending correction batch.
+
+## Retained earlier review rationale
+
 ## R24 completed static gates and prepared source freeze (2026-10-05)
 
 Whole-workspace Clippy passes all targets with warnings denied. The collected
@@ -1739,3 +1839,272 @@ empty or smaller post-commit working-tree diff. Before another runtime run,
 review the best-instantiation gaps against their frozen sources, preserve
 fallible ingress and observable callbacks, and finish the whole correction
 cohort. Raw summaries, not source unions, determine completion.
+
+## Prepared correction cohort after the R28 measurement
+
+R28 remains the complete measured baseline. This cohort introduces no new
+coverage claim until its frozen source and executable maps pass the complete
+verification. The preparation covers all twelve remaining modified-file groups;
+existing semantic assertions and resource-error propagation are retained.
+
+| Boundary | Prepared contract or implementation review |
+| --- | --- |
+| Page module execution | Nested graph validation, linked dependency omission, actual body throws and subsequent classic execution use the existing generic handle inventory. |
+| Generator and Promise reactions | Delegation completion only decreases the retained frame's accounted edges. Completed-generator return reactions retain their private iterator-result growth refusal. Staged native errors exercise delegate close and resumed finally paths. Synchronous delegate callbacks remain fallible. |
+| TypedArray storage | Decoded primitive conversion and copy/write steps following validation cannot invoke callbacks. Foreign buffer accessors and reverse destination writes retain real detachment and immutability errors. Normal and minimal nurseries verify cross-realm slice values and detached source behavior. |
+| Object and Error descriptors | Public foreign prototype traps, Proxy deletion, numeric prototype revalidation, lazy deletion refusal and reverse Error cause-descriptor exceptions preserve observations and cleanup. AggregateError allocation sweeps retain both errors-array and property publication refusals. |
+| Execution and interpreter | Actual compiled eval captures exercise dynamic shadowing, retained references, growing binding refusal and original-cell preservation. Source property keys are converted once before target evaluation. Compiler-prepared property reads, deletes and updates retain validated bases and canonical keys; simple assignment and raw destructuring target keys remain fallible. Staged name, with, iterator-close, rest, derived-this and cold RegExp cases use valid compiled programs. |
+| Module scheduling | An actual second top-level await exhausts continuation identifiers. Immediate and waited deferred imports preserve allocation refusal and defer their body errors until namespace access. A debugger resume preserves an unsettled top-level await and its eventual export cell. Namespace Promise resolution reads initialized completed exports or the absent deferred `then`; callable exports execute in later fallible jobs. Async rejection removes its verified FIFO entry and settles its tracked Promise without heap allocation. |
+| Foreign membrane | Boolean completion instantiations retain import refusal. Child native fill grows its real backing during coercion; parent mirror refresh preserves resize refusal and retry. Host detach retains ordinary/shared/immutable validation and synchronizes real buffer identities. |
+| Agent scheduler | Setup garbage is collected before refusing a warmed receive wrapper. A real FinalizationRegistry cleanup throw is reported by the worker's idle job loop. |
+
+The self-test runner executes the tooling contracts, retained critical Rust
+targets, remaining selected Rust targets and Test262 in that order. Every group
+must complete successfully before the next starts. A critical failure therefore
+cannot spend the cost of the remaining suite or Test262. Reversed input order is
+covered by a subprocess contract. A conservative complete affected selection
+uses its fresh execution once as the full evidence; no older profiles or failed
+snapshots contribute to completion. Canonical report publication remains gated
+on a successful complete run with unchanged source provenance.
+
+All production and fixture changes precede formatting, workspace Clippy and the
+next frozen runtime verification. The canonical macOS report continues to
+contain the R28 counters until a new complete measurement is available.
+
+The first graph-driven frozen gate completed nine Rust targets with 1,194
+passes and 16 failures; later Rust targets, Test262, workspace runtime and raw
+coverage were skipped. Its unit target completed all 1,115 cases with 1,105
+passes and ten failures. Thirteen failures across the two failing targets stem
+from the same regex-worker startup prerequisite; three new unit contracts expose
+separate findings. Artifacts remain in
+`target/bluejs-selftest/runs/20261006-090641-e6d7cd8a/` and cannot establish
+completion. The canonical report remains the full R28 measurement.
+
+The Page fixture now imports its actual linked dependency. Proxy Set delegates
+to its target, so absent set traps intentionally skip descriptor and prototype
+traps; separate ordinary prototype lookups exercise genuine lazy descriptor and
+foreign prototype allocation refusals. A frozen-adapter diagnostic isolates the
+TypedArray failure to the differing-kind copy under a one-object nursery. The
+new argument array was collected while a foreign set-method lookup allocated a
+facade. The complete correction retains the argument and constructed receiver
+through lookup and invocation, then truncates temporary roots on either outcome.
+Public cases retain default/minimal nursery checks, explicit parent collection
+from a foreign getter and the getter's thrown-value identity.
+
+The runner now checks its exact regex worker with an empty-input READY handshake
+before any cases, retains readiness profiles outside runtime coverage, and passes
+the built path explicitly. No production timeout is extended. A complete affected
+selection exports graph observations once after the full gate. All corrections
+are prepared before the next frozen verification.
+
+The second graph-driven gate completed all 18 critical Rust targets with 1,452
+passes and four failures: two new fixture prerequisites reproduced in both the
+unit and ordinary-library targets. Regex readiness and all TypedArray collection,
+getter-throw and resource-refusal cases pass. Later Rust targets, Test262,
+workspace runtime and raw coverage were skipped. Its artifacts remain in
+`target/bluejs-selftest/runs/20261006-092847-35bec52b/`; R28 remains the complete
+measured snapshot.
+
+The Page fixture's nested function now retains an ordinary call instead of a
+tail call, which the nested debugger intentionally rejects during validation.
+The Object fixture retains a live child realm and uses its fresh ordinary
+prototype to provoke a real parent-heap facade allocation refusal during cycle
+validation. It verifies the untouched target prototype, temporary-root cleanup
+and a successful retry. Clearing a private realm registry violated the facade's
+producer invariant and is removed from this new fixture. Both corrections are
+prepared together before static gates and the next frozen runtime verification.
+
+## Latest complete graph-driven measurement (2026-10-06)
+
+The frozen `47277a1683d6b8bad7693a9392e7207969ccac157515bf589da45b6adfd1c385`
+snapshot completes all 334 Rust targets with 4,083 passes, zero failures and
+four existing ignored tests. All 18 critical targets pass 1,456 cases. Full
+Test262 passes 102,921 applicable modes in 369.950 seconds, with the four
+existing exclusions and one stale fixture preserved. All 102,926 outcome
+contracts are unchanged. Remaining workspace runtime tests pass 2,170 cases
+with 60 existing ignored tests; BlueJS Rustdoc passes both cases. All 82
+cumulative Rust task files pass explicit formatting, workspace Clippy passes
+with warnings denied, and the 20 existing workspace formatting findings are
+unchanged by hash and from HEAD.
+
+Fresh raw production coverage completes 122/162 files, 16/22 selected files
+(five D5 and eleven D4) and 39/48 cumulative modified production files.
+All 95 original complete files remain complete. Newly complete files are
+page_runtime.rs, vm/modules.rs and vm/builtins/promises.rs. The remaining
+nine modified files miss eleven lines and 43 regions, with no missing
+functions. The canonical English report contains only this complete snapshot.
+No commit is eligible yet: regex_worker.rs loses its sibling-discovery counters
+when every test receives an explicit worker path. The next prepared batch
+restores both Cargo deps and adapter discovery observations, retains a
+preservation reference above that decrease, and covers the remaining boundaries
+before another consolidated runtime run.
+
+| Remaining modified source | Missing lines | Missing regions | Producer boundary to review |
+| --- | ---: | ---: | --- |
+| vm/interpreter.rs | 2 | 20 | Super roots, derived-this cells, RegExp literals, actual iterator rest allocation and close, eval/with references, global deletion, direct-eval result limits and raw destructuring target keys. |
+| vm/builtins/generators.rs | 1 | 9 | Reentrant synchronous delegation, native-error materialization after async resume, retained FIFO request replacement and private completion results. |
+| vm/test262/foreign.rs | 3 | 5 | Detached mirror skips, backing-size changes, real transported detach refusal and foreign result import cleanup. |
+| vm/execution.rs | 2 | 3 | Writable binding stores, dynamic-eval writes and parameter-environment recreation. |
+| vm/builtins/object.rs | 1 | 1 | SameValue numeric prototype writes with invalid canonical indices after coercion. |
+| vm/regexp.rs | 0 | 1 | Cold constructor identity lookup after priming the preceding pattern and own-constructor queries. |
+| vm/builtins/typed_arrays.rs | 1 | 1 | A validated mutable transported snapshot after a successful real backing write; verify its range and no-callback guarantees. |
+| vm/errors.rs | 0 | 2 | AggregateError errors-array creation and property publication after observable iterator steps. |
+| vm/test262_agents.rs | 1 | 1 | Received wrapper allocation after priming the actual constructor/prototype and collecting setup garbage. |
+
+The previous temporary corpus contains directories but no regular files. The
+same pinned archive was fetched into persistent workspace artifacts and passed
+both archive and manifest checks. The undispatched configuration refusal and
+its log are retained; no JavaScript executed in that refused command. The same
+unchanged source and all 334 passing executable hashes allowed verification to
+continue without repeating Rust cases. The raw export initially contained ten
+audited test-only source files; production scope uses the exact pre-existing
+coverage_file.py classification, preserving all LLVM production file summaries.
+No failed Rust, older epoch, loader or readiness profile contributes to coverage.
+
+Complete artifacts, source hashes, the prepared patch, raw export, outcome
+contracts and maximum-instantiation diagnostics are retained in
+`target/bluejs-selftest/runs/20261006-094234-eeb3f687/`. Tool corrections and all
+remaining source/fixture corrections are prepared together before further
+tests. The measured counters do not verify those later working-tree changes.
+
+### Prepared boundaries for the next complete measurement
+
+The next frozen batch addresses the nine modified files together. Synchronous
+delegation rejects reentrant next, return and throw while getters, callbacks
+and iterator-result getters observe its saved frame. Async return marks the
+FIFO head executing before PromiseResolve can invoke a constructor getter;
+refusal restores the scheduler status before error materialization. Contracts
+exercise actual compiled generators, explicit collection and queued request
+ordering under ordinary and one-object nurseries.
+
+Compiler-owned canonical property keys and ordinary super homes are checked
+against their producers. Observable coercions, foreign brands, getters,
+allocation growth and callbacks retain their fallible boundaries. Execution
+fixtures use real compiled eval captures and public debugger pauses at emitted
+rest instructions to isolate refusal without fabricated bytecode or corrupting
+private state. AggregateError publication, cold RegExp constructor identity,
+agent wrapper creation, numeric prototype writes and third-Realm buffer
+detachment have public regression cases.
+
+Cross-Realm TypedArray construction validates internal length and bounds
+instead of reading an overridable length property, following
+[TypedArrayCreateFromConstructor](https://tc39.es/ecma262/multipage/indexed-collections.html#sec-typedarraycreatefromconstructor).
+Forward results use the owner's slots; reverse snapshots use ordinary local
+validation. Short, detached, non-TypedArray and immutable write targets remain
+errors. Getters that throw or detach must not run during this validation. A
+successful reverse backing write cannot invoke a callback before the validated
+mutable snapshot receives the same bytes.
+
+The runner validates every pinned corpus file before any build, retains the
+highest previously verified percentage for each raw metric as a preservation
+threshold, and imports graph relationships from successful UI rounds without
+rerunning cases. Evidence is bound to executable, profile and source hashes.
+Worker-reuse tests and the standalone adapter exercise normal worker discovery;
+other harnesses use the exact worker whose READY handshake succeeded. Readiness
+profiles remain outside completion coverage. Reports preserve the established
+tables from one full snapshot and require matching formatting, diff and
+workspace Clippy evidence before declaring the requested gates satisfied.
+
+These changes precede runtime verification. Only a new successful complete
+measurement may replace the canonical report or establish completion.
+
+The frozen critical gate in
+`target/bluejs-selftest/runs/20261006-112854-e12c847a/` completed all 18 targets:
+1,461 checks passed and three failed. The unit suite passed 1,122 checks with
+one failure; the ordinary driver duplicates that execution failure. Remaining
+Rust targets, Test262, workspace runtime and coverage export were skipped.
+This failed round contributes no completion counters.
+
+The compiler's assignment-pattern leaf omitted object-environment resolution
+inside with, so a for-of assignment skipped its setter. The correction uses
+the existing ResolveWithReference and StoreResolvedWithReference pair for
+identifier leaves, retaining lexical shadowing and fallback bindings. Public
+for-in/of and array/object assignment cases verify setter throws and VM reuse.
+The compiler expression source joins the cumulative production acceptance set.
+
+The existing foreign species suite also expected two non-TypedArray objects'
+length getter/coercion to execute. Internal-slot validation must reject those
+objects before either observation. Those cases now require TypeError, while
+the original getter-7 and coercion-8 assertions are retained through actual
+observable species-constructor evaluation. All other existing assertions and
+the newly passing internal-length contracts remain in place. This complete
+correction precedes the next frozen gate; the canonical report is unchanged.
+
+The second frozen gate, retained in
+`target/bluejs-selftest/runs/20261006-114357-84ab7c6d/`, passes 1,462 checks and
+fails two duplicated execution contracts. The species suite and with assignment
+checks pass. The new recursion fixture had no base case and therefore reached
+the normal call-depth limit before its iterator could close. It now performs
+one finite recursive call before testing the iterator's throwing return.
+Independent cases in the interpreter matrix collect all assertion failures
+before reporting the contract result, so one failed case cannot hide later
+cases from the same prepared matrix.
+
+The runner now rechecks previously failed named cases in their owning targets
+before building the full affected inventory. That phase uses exact Rust filters,
+fresh separate profiles and the same frozen source. It preserves the required
+affected and full gates after a successful recheck; its partial profiles never
+enter the completion export. Ignoring a previously failing case stops the gate;
+a removed case defers verification to the complete current target. These changes
+are prepared together before the next measurement.
+
+### Global reference correction and Test262 failure selection
+
+The latest failed round retains 4,091 passing Rust checks, four existing ignored
+checks and 17 Test262 failures in 12 fixture files. It contributes no completion
+coverage. The ten semantic failures are the five destructuring-default fixtures
+in both modes; seven sloppy Date DST modes exceeded their existing wall deadline.
+The canonical report continues to describe the latest complete measurement.
+
+ResolveWithReference now includes the realm's global Environment Record after
+object and active-slot lookup. Its marker preserves that record across an RHS
+eval, including global lexical TDZ/const checks and object-property deletion.
+A saved unresolvable sloppy reference writes the global object even when the
+RHS has introduced a local eval binding. Public scripts exercise these boundaries
+under default and one-object nurseries; the operations source joins the cumulative
+50-file acceptance scope.
+
+Failure selection reads retained Test262 path/mode outcomes, builds only the
+adapter and worker, and rechecks those paths with unchanged metadata and budgets.
+Every previously failed mode must pass, including timeout rows. Missing or newly
+excluded modes cannot clear a failure. Passing complete Rust targets clear older
+case failures. Recheck profiles stay separate from complete measurement profiles.
+
+Explicitly budgeted long fixtures run after ordinary fixtures with at most two
+workers. Scheduling changes preserve all inventory identities and each original
+deadline and instruction budget. Summaries retain group sizes and concurrency;
+dispatched rows now retain execution times. The next frozen verification will
+establish whether reduced contention resolves the Date timeouts, before any full
+Rust and Test262 execution is allowed.
+
+### Public Reference contract selection
+
+The full run `20261006-132424-1b6def25` stopped after the operators target
+exposed an older assertion that redirected an already-unresolvable reference
+into an eval variable introduced by the assignment's right operand. The run
+retains 108 completed Rust targets, 2,253 passes and one failure; four active
+targets were cancelled to avoid additional failed-epoch cost. Test262,
+workspace runtime and full coverage were not executed.
+
+The original script and allocation sweeps remain. Its assertion now requires
+the eval variable to remain `1` and the global property to contain `xxxx`,
+following [PutValue](https://tc39.es/ecma262/multipage/ecmascript-data-types-and-values.html#sec-putvalue).
+This corrects the fixture's semantic expectation, without redirecting the
+saved reference again. The production source snapshot is unchanged.
+
+The Reference contract now inspects public test names and bodies independently
+of Cargo target names. Tests in operator and coverage targets can therefore
+join the selected case set. A graph contract checks a neutrally named target
+containing a with/eval assignment, excludes an unrelated numeric case, and
+rejects fake declarations inside literals or comments. The partition stage
+also restores its displayed stage after failure rechecks. All changes precede
+the next consolidated partition gate and full run; the canonical report
+continues to describe the latest complete measurement.
+
+Per-mode elapsed time is collector metadata. The semantic comparison excludes
+that field, while retaining all existing fixture and outcome fields. A contract
+checks absent-versus-present timing, differing timings and an actual flag
+change. The incomplete run `20261006-135040-bbee753b` was cancelled before
+conformance and workspace execution after static review identified this
+otherwise inevitable false-positive comparison. Its profiles remain excluded;
+Rust production sources are unchanged by the comparison correction.

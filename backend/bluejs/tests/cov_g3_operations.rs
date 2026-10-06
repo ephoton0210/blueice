@@ -406,14 +406,15 @@ fn replace_all_reports_a_result_that_outgrows_the_string_limit_between_matches()
     assert_eq!(outcome, Err(RuntimeError::StringLimit { limit: 64 }));
 }
 
-/// The assignment that ends a `with` reference that could not be resolved
-/// stores into a variable `eval` created in the meantime.
+/// PutValue keeps an unresolvable reference's global destination even when
+/// the right operand creates a local eval variable after resolution.
+/// https://tc39.es/ecma262/multipage/ecmascript-data-types-and-values.html#sec-putvalue
 #[test]
 fn storing_into_an_eval_variable_created_after_the_reference_was_resolved() {
     assert_true(
         "(function () {
            with ({}) { missing = (eval('var missing = 1'), 'x'.repeat(4)) }
-           return missing === 'xxxx'
+           return missing === 1 && globalThis.missing === 'xxxx'
          })()",
     );
     let warm = "globalThis.f = function () { with ({}) { z = (eval('var z = 1'), 'x'.repeat(4000)) } }; f;";

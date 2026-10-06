@@ -1148,7 +1148,8 @@ impl Vm {
                         Ok(DynamicImportResult::Fulfilled(namespace)) => {
                             // ContinueDynamicImport calls the capability's
                             // Resolve function, including an exported `then`.
-                            self.resolve_promise(target, namespace)?
+                            self.resolve_promise(target, namespace)
+                                .expect("dynamic import produced a retained namespace: completed export cells are initialized, and a deferred namespace omits then; callable exports execute in later fallible jobs")
                         }
                         Ok(DynamicImportResult::WaitingDeferred { namespace, modules }) => {
                             self.deferred_import_waiters.push(DeferredImportWaiter {
