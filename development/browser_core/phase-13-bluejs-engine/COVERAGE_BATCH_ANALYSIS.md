@@ -1,36 +1,67 @@
 # BlueJS Coverage Batch Analysis
 
-## Current measured coverage and remaining correction
+## Current verified completion
 
-The latest complete measurement is `20261006-163240-af46eda2`, source fingerprint
-`b249ea5bb7478b7b5a3c1f18ad7d08f28d22a13875b0d52b4a55e1818c6ffe75`.
-It completes 21 of the 22 selected files (eight D5 and all thirteen D4 files),
-49 of the 50 cumulative modified production files, and 130 of 162 instrumented
-production files. All 95 originally complete files are preserved. Raw percentage
-and semantic comparisons report zero regressions. Five previously incomplete
-modified files now have 100% raw lines, functions and regions: compiler
-expressions, TypedArray builtins, operations, generators and foreign realms.
+The latest complete measurement is `20261006-183231-de935772`, source fingerprint
+`a791618afcfab936be3ea79a37ef40dfcc5d86c9d1d56416341b9e9243372b95`.
+All 22 selected files are complete: nine D5 and thirteen D4 files. All 50
+cumulative modified production files reach 100% raw LLVM lines, functions and
+regions. All 95 originally complete files are preserved. Coverage percentage
+regressions and semantic outcome changes are both zero. Overall, 131/162
+instrumented production files are complete; the remaining 31 files are outside
+the completed selected and modified acceptance set.
 
-The affected gate passed 1,469 Rust cases in 165 partitions across 101 owning
-targets, 7,361 related Test262 modes and 71 tooling contracts. The subsequent
-complete gate passed 4,095 Rust cases across all 334 targets, all 102,921
-applicable Test262 modes, 2,170 other workspace cases and two Rustdoc tests.
-Four Rust and 60 workspace ignored cases retain their existing identities.
-The semantic audit compares all 102,926 scheduled modes and finds zero changes.
-All 88 task Rust files pass formatting; workspace Clippy denies warnings.
+The complete verification passed 4,099 Rust cases across all 334 targets,
+all 102,921 applicable Test262 modes, 2,170 other workspace cases, two Rustdoc
+tests and 73 self-test tooling contracts. Four Rust and 60 workspace ignored
+cases retain their existing identities. The semantic audit compares all
+102,926 scheduled modes and finds zero changes. Test262 took 441.025 seconds;
+the complete workflow took 2,386.816 seconds. All 88 task Rust files pass
+formatting; workspace Clippy denies warnings. The 20 unchanged workspace
+formatting differences retain their baseline source hashes.
 
-| Remaining modified source | Missing lines | Missing functions | Missing regions | Exact remaining boundary |
-| --- | --- | --- | --- | --- |
-| `vm/interpreter.rs` | 0 | 0 | 1 | String-limit refusal after direct eval in the TailCall opcode, at line 1644 in the frozen source |
+The final correction's graph selected only two agent callback cases in two
+owning Rust targets. They passed in 0.029 seconds of case execution before the
+single fresh complete verification. Their partial profiles provide diagnostic
+witnesses and graph relationships only. Every completion counter above comes
+from the subsequent full run's own binaries, source texts and atomic LLVM
+profiles. No failed or partial profiles, older maps or complementary-instantiation
+union contributes to completion.
 
-The maximum-instantiation diagnostic reconciles all 162 raw region summaries.
-The interpreter has 3,359 of 3,360 regions covered; its full line and function
-counts are covered. The remaining branch requires analysis of the actual
-compiled tail-call and eval result paths before the next complete edit batch.
-No partial profiles or complementary-instantiation union establish completion.
-This verified round is eligible for the authorized incremental commit because
-it adds five complete files with zero regressions; the full 22/50 completion
-goal remains active.
+### Verified TailCall eval-result boundary
+
+The former two-byte strict eval fixture refuses at its twenty-byte UTF-16
+`'use strict'` Constant before the TailCall result check. The dedicated fixture
+retains a real 128-byte global string, verifies the compiler emits an
+eval-candidate TailCall, and proves every string loaded by a Constant fits
+the 32-byte limit. The eval result reaches the actual final refusal. Cleanup,
+success after restoring the limit and VM reuse pass under normal and one-object
+nurseries. The earlier two-byte test remains unchanged. The full interpreter
+file reaches 1,517/1,517 lines, 61/61 functions and 3,360/3,360 regions.
+
+### Verified agent callback preservation boundary
+
+The fixture registers a real host control and invokes the public broadcast and
+receiveBroadcast natives through compiled JavaScript. The callback retains its
+valid shared wrapper and throws an existing globally retained object. Exact
+thrown identity, stack cleanup, broadcast queue consumption, wrapper prototype
+and length, the next successful broadcast, repeated shutdown and VM reuse all
+pass under normal and one-object nurseries. Both native instantiations
+independently hit the callback-error region twice before the full run. The
+complete measurement restores the agent host to 488/488 lines, 50/50 functions
+and 684/684 regions without changing its production code.
+
+### Verified fixture graph selection
+
+Dedicated ordinary-library entries avoid unrelated execution sweeps. Fixture
+selection follows actual function references, including intermediate helpers,
+to the public verification roots. Changed public test cases select native names
+when shared imports, constants and helpers are identical. Shared-input edits
+and removed cases select the whole owning target. The 73 tooling contracts
+validate this behavior. Unknown boundaries still use the broader recorded graph.
+Passing affected partitions enable one complete run for the same frozen source
+and exact test selection. The UI retains live progress, selection reasons, logs,
+measured edges and the latest complete coverage results.
 
 ### Producer and error-boundary review
 

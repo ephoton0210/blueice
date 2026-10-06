@@ -58,6 +58,11 @@ including imports or shared constants, use the broader graph. Changed internal
 fixtures also select the public ordinary-library cases that call their verification
 entry points, preserving both Rust instantiations without running unrelated
 cases in the same integration target.
+Fixture entry selection follows actual function references to the relevant
+public verification roots, including intermediate helpers. Unrelated wrapper
+roots stay outside that partition. Public test changes select the changed
+native case names when shared imports, constants and helpers are identical;
+changing a shared input selects the whole owning target.
 
 Global property deletion has a contract covering captured eval bindings,
 public deletion cases and Test262 delete/eval/global-code directories.

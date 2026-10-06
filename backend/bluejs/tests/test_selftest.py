@@ -427,6 +427,44 @@ class ExecutionContracts(unittest.TestCase):
         ordinary = next(test for test in selection["tests"] if test["id"] == "rust:test:ordinary_library")
         self.assertEqual(ordinary["case_filters"], ["boundary_case"])
 
+    def test_fixture_selection_follows_only_relevant_public_wrapper_roots(self):
+        fixture = self.root / "backend/bluejs/tests/fixtures/boundary.rs"
+        fixture.parent.mkdir(parents=True)
+        fixture.write_text("#[cfg_attr(test, test)] fn actual_boundary() {old();}\n"
+                           "fn helper() {actual_boundary();}\n"
+                           "pub fn verify_actual_contracts() {helper();}\n"
+                           'pub fn verify_unrelated_contracts() {run("actual_boundary()");}')
+        public = self.root / "backend/bluejs/tests/ordinary_library.rs"
+        public.write_text("#[test] fn actual_case() {Vm::verify_actual_contracts();}\n"
+                          "#[test] fn unrelated_case() {Vm::verify_unrelated_contracts();}")
+        self.retain_rust_anchor()
+        fixture.write_text(fixture.read_text().replace("old();", "corrected();"))
+        selection = partition_plan(self.manager)
+        self.assertEqual(selection["unknown_sources"], [])
+        ordinary = next(test for test in selection["tests"] if test["id"] == "rust:test:ordinary_library")
+        self.assertEqual(ordinary["case_filters"], ["actual_case"])
+
+    def test_changed_public_cases_are_filtered_until_a_shared_input_changes(self):
+        public = self.root / "backend/bluejs/tests/ordinary_library.rs"
+        before = ('const SHARED: &str = "old shared value";\n'
+                  '#[cfg(coverage)]\n#[test]\nfn unchanged() {run(SHARED);}\n')
+        public.write_text(before)
+        self.retain_rust_anchor()
+        public.write_text(before + '#[cfg(coverage)]\n#[test]\nfn added_case() {run("new case");}\n')
+        selection = partition_plan(self.manager)
+        ordinary = next(test for test in selection["tests"] if test["id"] == "rust:test:ordinary_library")
+        self.assertEqual(ordinary["case_filters"], ["added_case"])
+        public.write_text('const SHARED: &str = "old shared value";\n'
+                          '#[cfg(coverage)]\n#[test]\nfn added_case() {run("new case");}\n')
+        selection = partition_plan(self.manager)
+        ordinary = next(test for test in selection["tests"] if test["id"] == "rust:test:ordinary_library")
+        self.assertEqual(ordinary["case_filters"], [""])
+        public.write_text(before + '#[cfg(coverage)]\n#[test]\nfn added_case() {run("new case");}\n')
+        public.write_text(public.read_text().replace("old shared value", "changed shared value"))
+        selection = partition_plan(self.manager)
+        ordinary = next(test for test in selection["tests"] if test["id"] == "rust:test:ordinary_library")
+        self.assertEqual(ordinary["case_filters"], [""])
+
     def test_deletion_graph_selects_all_public_delete_contracts_and_combines_conformance(self):
         objects = self.root / "backend/bluejs/src/vm/builtins/object.rs"
         objects.parent.mkdir(parents=True)

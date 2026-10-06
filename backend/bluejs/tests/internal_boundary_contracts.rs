@@ -28,6 +28,18 @@ fn ordinary_library_execution_boundary_contracts() {
 
 #[cfg(coverage)]
 #[test]
+fn ordinary_library_tail_eval_result_boundary_contracts() {
+    blueice_bluejs::Vm::verify_tail_eval_result_boundary_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
+fn ordinary_library_agent_receive_callback_boundary_contracts() {
+    blueice_bluejs::Vm::verify_agent_receive_callback_boundary_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
 fn ordinary_library_temporal_boundary_contracts() {
     blueice_bluejs::Vm::verify_temporal_string_boundary_contracts();
     blueice_bluejs::Vm::verify_plain_difference_boundary_contracts();

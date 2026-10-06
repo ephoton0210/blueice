@@ -24,6 +24,7 @@ BUFFER_TEST262 = ("built-ins/TypedArray/", "built-ins/TypedArrayConstructors/",
 DELETION_FILTERS = ("delete", "eval", "global", "with", "object", "capture")
 DELETION_SOURCES = re.compile(r"\bdelete\b|Reflect\.deleteProperty")
 DELETION_TEST262 = ("language/expressions/delete/", "language/eval-code/", "language/global-code/")
+PUBLIC_TEST_PATTERN = r"(?:#\[[^\n]*\]\s*)*#\[test\]\s*(?:#\[[^\n]*\]\s*)*fn\s+(\w+)\s*"
 
 
 def mask_rust(text):
@@ -125,6 +126,40 @@ def public_wrapper_cases(text, wrappers):
     return sorted(name for name, implementations in tests.items()
                   if any(re.search(r"\b" + re.escape(wrapper) + r"\s*\(", mask_rust(body))
                          for body in implementations for wrapper in wrappers))
+
+
+def outside_public_tests(text):
+    """Keep shared Rust inputs while removing test definitions and attributes."""
+    masked, parts, position = mask_rust(text), [], 0
+    for match in re.finditer(PUBLIC_TEST_PATTERN, masked):
+        if match.start() < position:
+            continue
+        opening = masked.find("{", match.end())
+        if opening < 0:
+            return text
+        depth, end = 1, opening + 1
+        while depth and end < len(masked):
+            depth += (masked[end] == "{") - (masked[end] == "}")
+            end += 1
+        parts.append(text[position:match.start()])
+        position = end
+    parts.append(text[position:])
+    return "".join(parts).strip()
+
+
+def fixture_entry_wrappers(text, test_names):
+    """Follow fixture function references to the public verification roots."""
+    definitions = bodies(text, r"\bfn\s+(\w+)\s*")
+    relevant = set(test_names)
+    while True:
+        callers = {name for name, implementations in definitions.items()
+                   if any(re.search(r"\b" + re.escape(callee) + r"\b", mask_rust(body)[mask_rust(body).find("{"):])
+                          for body in implementations for callee in relevant)}
+        if callers <= relevant:
+            break
+        relevant.update(callers)
+    wrappers = set(re.findall(r"\bpub\s+fn\s+(verify_\w+)\s*\(", mask_rust(text)))
+    return sorted(wrappers & relevant)
 
 
 def latest_rust_anchor(manager):
@@ -246,9 +281,13 @@ def partition_plan(manager, files=None, base=None):
         elif "/tests/fixtures/" in name and symbols:
             test_names = [symbol for symbol in symbols if re.search(
                 r"#\[cfg_attr\(test,\s*test\)\]\s*fn\s+" + re.escape(symbol) + r"\b", after)]
-            if test_names and set(symbols) <= set(test_names) | {"verify_execution_boundary_contracts"}:
+            public_wrappers = set(re.findall(r"\bpub\s+fn\s+(verify_\w+)\s*\(", mask_rust(after)))
+            if test_names and set(symbols) <= set(test_names) | public_wrappers:
                 add("rust:lib", test_names, "Changed regression fixture: " + name)
-                wrappers = re.findall(r"\bpub\s+fn\s+(verify_\w+)\s*\(", mask_rust(after))
+                wrappers = fixture_entry_wrappers(after, test_names)
+                if not wrappers:
+                    # Missing call structure must not omit an ordinary build.
+                    wrappers = sorted(public_wrappers)
                 for key, target in targets.items():
                     if target["kind"] == "rust" and target.get("source", "").startswith("backend/bluejs/tests/"):
                         source = manager.root / target["source"]
@@ -259,9 +298,15 @@ def partition_plan(manager, files=None, base=None):
             else:
                 unknown.append(name)
         elif "/tests/" in name and any(t.get("source") == name for t in targets.values()):
+            before = frozen.get(name, "")
+            old_tests, new_tests = bodies(before, PUBLIC_TEST_PATTERN), bodies(after, PUBLIC_TEST_PATTERN)
+            changed_tests = sorted(test for test in old_tests.keys() | new_tests.keys()
+                                   if old_tests.get(test) != new_tests.get(test))
+            filters = (changed_tests if changed_tests and set(changed_tests) <= new_tests.keys()
+                       and outside_public_tests(before) == outside_public_tests(after) else [""])
             for key, target in targets.items():
                 if target.get("source") == name:
-                    add(key, [""], "Changed public Rust contract: " + name)
+                    add(key, filters, "Changed public Rust contract: " + name)
         else:
             unknown.append(name)
     if unknown or non_rust:

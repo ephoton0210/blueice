@@ -152,6 +152,71 @@ fn agent_receive_preserves_cold_constructor_and_wrapper_refusals() {
 }
 
 #[cfg_attr(test, test)]
+fn agent_receive_propagates_callback_throw_and_preserves_vm_reuse() {
+    for nursery_capacity in [1, HeapConfig::default().nursery_capacity] {
+        let mut vm = Vm::new(VmConfig {
+            heap: HeapConfig {
+                nursery_capacity,
+                ..HeapConfig::default()
+            },
+            ..VmConfig::default()
+        })
+        .unwrap();
+        vm.install_test262_harness().unwrap();
+        vm.test262_agent_control = Some(vm.agent_host().register());
+        let thrown = vm
+            .execute_script(&script("globalThis.failure = {marker: 7}; failure"))
+            .unwrap();
+        let receive = script(
+            "globalThis.shared = new SharedArrayBuffer(8);
+             $262.agent.broadcast(shared);
+             $262.agent.receiveBroadcast(buffer => {
+                 globalThis.received = buffer;
+                 throw failure;
+             });",
+        );
+        assert_eq!(
+            vm.execute_script(&receive),
+            Err(RuntimeError::Thrown(thrown))
+        );
+        assert!(vm.stack.is_empty());
+        assert!(vm.call_stack.is_empty());
+        let control = vm.test262_agent_control.as_ref().unwrap();
+        assert!(control.broadcasts.lock().unwrap().is_empty());
+        let reuse = script(
+            "received.byteLength === 8 && failure.marker === 7 &&
+             Object.getPrototypeOf(received) === SharedArrayBuffer.prototype",
+        );
+        assert_eq!(vm.execute_script(&reuse), Ok(Value::Bool(true)));
+        let retry = script(
+            "$262.agent.broadcast(shared);
+             $262.agent.receiveBroadcast(buffer => {
+                 globalThis.result = buffer.byteLength + 34;
+             });
+             result",
+        );
+        assert_eq!(vm.execute_script(&retry), Ok(Value::Number(42.0)));
+        assert!(vm.stack.is_empty());
+        assert!(vm.call_stack.is_empty());
+        assert_eq!(vm.shutdown_test262_agents(), Ok(()));
+        assert_eq!(vm.shutdown_test262_agents(), Ok(()));
+        assert_eq!(
+            vm.execute_script(&script("21 + 21")),
+            Ok(Value::Number(42.0))
+        );
+    }
+}
+
+impl Vm {
+    /// Verify callback-error propagation at the public agent receive boundary
+    /// without executing unrelated allocation sweeps.
+    #[doc(hidden)]
+    pub fn verify_agent_receive_callback_boundary_contracts() {
+        agent_receive_propagates_callback_throw_and_preserves_vm_reuse();
+    }
+}
+
+#[cfg_attr(test, test)]
 fn agent_workers_report_parse_compile_and_initialization_failures() {
     for source in ["var =;", "let duplicate; let duplicate;"] {
         let mut vm = host_vm();

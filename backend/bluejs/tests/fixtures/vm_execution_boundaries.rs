@@ -2548,6 +2548,74 @@ fn intrinsic_builders_restore_roots_and_retry_after_cold_and_warm_allocation_fai
 }
 
 #[cfg_attr(test, test)]
+fn tail_eval_result_string_limits_preserve_vm_reuse() {
+    use crate::bytecode::Opcode;
+    const STRING_LIMIT: usize = 32;
+    let setup = compile(
+        &parse("eval; globalThis.s = 'x'.repeat(64); globalThis.read = function() {'use strict'; return eval('s');};")
+            .unwrap(),
+    )
+    .unwrap();
+    let body = setup.functions.first().unwrap();
+    assert!(body.strict);
+    assert!(body.instructions().any(|instruction| {
+        instruction.opcode == Opcode::TailCall
+            && instruction.operand.is_some_and(|operand| operand & 1 != 0)
+    }));
+    // The UTF-16 strict directive occupies 20 bytes. Every loaded string must
+    // fit the limit so only the retained 128-byte eval result is refused.
+    for instruction in body
+        .instructions()
+        .filter(|instruction| instruction.opcode == Opcode::Constant)
+    {
+        let value = &body.constants[instruction.operand.unwrap() as usize];
+        assert!(
+            !matches!(value, Value::String(string) if string.byte_len() > STRING_LIMIT),
+            "loaded constant exceeds the eval-result fixture limit: {value:?}"
+        );
+    }
+    let read = compile(&parse("read()").unwrap()).unwrap();
+    let reuse = compile(&parse("21 + 21").unwrap()).unwrap();
+    for nursery_capacity in [1, HeapConfig::default().nursery_capacity] {
+        let mut vm = Vm::new(VmConfig {
+            heap: HeapConfig {
+                nursery_capacity,
+                ..HeapConfig::default()
+            },
+            ..VmConfig::default()
+        })
+        .unwrap();
+        vm.execute_script(&setup).unwrap();
+        let config = vm.config;
+        vm.config.max_string_bytes = STRING_LIMIT;
+        assert_eq!(
+            vm.execute_script(&read),
+            Err(RuntimeError::StringLimit {
+                limit: STRING_LIMIT
+            })
+        );
+        assert!(vm.stack.is_empty());
+        assert!(vm.call_stack.is_empty());
+        assert_eq!(vm.execute_script(&reuse), Ok(Value::Number(42.0)));
+        vm.config = config;
+        assert_eq!(
+            vm.execute_script(&read),
+            Ok(Value::String("x".repeat(64).into()))
+        );
+        assert_eq!(vm.execute_script(&reuse), Ok(Value::Number(42.0)));
+    }
+}
+
+impl Vm {
+    /// Verify the compiled direct-eval tail result boundary independently of
+    /// unrelated execution fixtures in ordinary coverage builds.
+    #[doc(hidden)]
+    pub fn verify_tail_eval_result_boundary_contracts() {
+        tail_eval_result_string_limits_preserve_vm_reuse();
+    }
+}
+
+#[cfg_attr(test, test)]
 fn ordinary_call_return_checks_existing_strings_after_the_budget_changes() {
     let mut vm = Vm::default();
     vm.execute_script(
