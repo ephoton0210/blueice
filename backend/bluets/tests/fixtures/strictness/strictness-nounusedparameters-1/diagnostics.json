@@ -1,0 +1,6 @@
+[
+  {
+    "code": 6133,
+    "message": "'unused' is declared but its value is never read."
+  }
+]

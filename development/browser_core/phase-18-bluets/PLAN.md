@@ -4117,3 +4117,22 @@ Scope remains the existing target/module/JSX/resolution subset. Independent
 strictness diagnostics are K.2.2; native TypeScript CLI switches are K.2.3.
 Project references and build/watch/incremental graphs remain K.12. This phase
 does not claim full TypeScript compatibility or token-level source-map parity.
+
+### K.2.2 Pinned independent-strictness baseline
+
+The dedicated `strictness/` corpus records 32 project configurations from pinned
+TypeScript 5.9.3: an on/off pair for `strict` and each of its nine family flags,
+plus unused locals/parameters, implicit returns, switch fallthrough, exact optional
+properties and unchecked indexed reads. Sixteen configurations are accepted and
+sixteen rejected. The writer is `BLUEICE_WRITE_STRICTNESS_MATRIX=1`; the corpus
+uses its own directory so existing language matrices cannot claim these entries.
+
+The pinned replay passes. The compiler replay has sixteen verdict mismatches;
+the process-boundary suite reports four passing tests and one failing matrix
+replay. Valid-program JavaScript stays identical across all thirty-two settings,
+unrelated string-to-number errors stay rejected, and the strict/relaxed Node
+programs and exact declarations already agree. Evidence: `blueice-k22-record.log`
+and `blueice-k22-baseline.log` in the Linux validation logs. This failing baseline
+is committed before diagnostic selection is implemented. K.2.2 remains unchecked
+until all flags and the complete K.0 gate pass; default legacy behavior must stay
+unchanged and the diagnostic flags must not change JavaScript or runtime grants.

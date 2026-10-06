@@ -1,0 +1,6 @@
+[
+  {
+    "code": 2322,
+    "message": "Type 'number | undefined' is not assignable to type 'number'.   Type 'undefined' is not assignable to type 'number'."
+  }
+]

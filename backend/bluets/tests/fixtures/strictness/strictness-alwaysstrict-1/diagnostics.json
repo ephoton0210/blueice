@@ -1,0 +1,6 @@
+[
+  {
+    "code": 1100,
+    "message": "Invalid use of 'eval' in strict mode."
+  }
+]

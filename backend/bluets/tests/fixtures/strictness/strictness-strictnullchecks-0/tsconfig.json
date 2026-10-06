@@ -1,0 +1,11 @@
+{
+  "compilerOptions": {
+    "target": "es2022",
+    "strict": false,
+    "strictNullChecks": false,
+    "skipLibCheck": true
+  },
+  "files": [
+    "main.ts"
+  ]
+}

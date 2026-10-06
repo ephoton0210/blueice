@@ -1,0 +1,6 @@
+[
+  {
+    "code": 2375,
+    "message": "Type '{ item: undefined; }' is not assignable to type 'Value' with 'exactOptionalPropertyTypes: true'. Consider adding 'undefined' to the types of the target's properties.   Types of property 'item' are incompatible.     Type 'undefined' is not assignable to type 'number'."
+  }
+]
