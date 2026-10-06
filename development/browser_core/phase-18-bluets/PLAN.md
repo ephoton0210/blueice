@@ -4169,3 +4169,22 @@ including every one of 120 ignored oracle tests in 27 suite files. No failures
 or ignored tests remain in that run. The production source audit has a maximum of
 1,172 lines, below the 1,200-line review threshold. K.2.3 is next; final workspace and
 coverage checks remain due after K.2.4. Full `tsc` parity is not claimed.
+
+### K.2.3 Pinned native CLI baseline
+
+The dedicated `cli_surface/` project records 30 invocations from TypeScript 5.9.3:
+24 accepted and six rejected, with exit codes 0, 1 and 2. The matrix and normalized
+observations cover project directory/file/`-p` selection, ancestor discovery,
+`--noEmit` and boolean overrides, `--showConfig`, selected source/emitted file
+lists, `--pretty` color presence, invalid arguments and compilation errors.
+Inputs and unrelated output files must remain byte-identical; emitting without
+`outDir` writes beside sources. Successful commands must not print a build summary.
+
+The writer is `BLUEICE_WRITE_CLI_MATRIX=1`. Pinned replay passes; the current
+public CLI has 26 observation mismatches and the suite reports two passing tests
+and one failing replay. Evidence: `blueice-k23-record-final.log` and
+`blueice-k23-baseline.log`. This failing baseline precedes implementation.
+The normalized `--listFiles` comparison covers project inputs; BlueTS's embedded
+library catalog differs from TypeScript's full default library installation.
+Diagnostic wording/codes/spans remain K.3. K.2.3 stays unchecked until the CLI
+observations and the full K.0 gate pass.

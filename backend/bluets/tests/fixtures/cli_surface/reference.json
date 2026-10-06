@@ -1,0 +1,808 @@
+[
+  {
+    "args": [
+      "--project",
+      ".",
+      "--noEmit",
+      "--pretty",
+      "false"
+    ],
+    "assets": [],
+    "display": {
+      "diagnostic": false,
+      "emitted": [],
+      "files": [],
+      "pretty": false,
+      "quiet": true
+    },
+    "exit": 0,
+    "inputs_preserved": true,
+    "name": "project-directory-noemit"
+  },
+  {
+    "args": [
+      "--project",
+      "tsconfig.json",
+      "--noEmit",
+      "--pretty",
+      "false"
+    ],
+    "assets": [],
+    "display": {
+      "diagnostic": false,
+      "emitted": [],
+      "files": [],
+      "pretty": false,
+      "quiet": true
+    },
+    "exit": 0,
+    "inputs_preserved": true,
+    "name": "project-file-noemit"
+  },
+  {
+    "args": [
+      "-p",
+      ".",
+      "--noEmit",
+      "--pretty",
+      "false"
+    ],
+    "assets": [],
+    "display": {
+      "diagnostic": false,
+      "emitted": [],
+      "files": [],
+      "pretty": false,
+      "quiet": true
+    },
+    "exit": 0,
+    "inputs_preserved": true,
+    "name": "project-short-noemit"
+  },
+  {
+    "args": [
+      "--project",
+      ".",
+      "--showConfig"
+    ],
+    "assets": [],
+    "display": {
+      "config": {
+        "compilerOptions": {
+          "allowImportingTsExtensions": true,
+          "alwaysStrict": true,
+          "declaration": true,
+          "module": "es6",
+          "moduleResolution": "classic",
+          "noImplicitAny": true,
+          "noImplicitThis": true,
+          "outDir": "./out",
+          "rewriteRelativeImportExtensions": true,
+          "skipLibCheck": true,
+          "sourceMap": true,
+          "strict": true,
+          "strictBindCallApply": true,
+          "strictBuiltinIteratorReturn": true,
+          "strictFunctionTypes": true,
+          "strictNullChecks": true,
+          "strictPropertyInitialization": true,
+          "target": "es2022",
+          "useDefineForClassFields": true,
+          "useUnknownInCatchVariables": true
+        },
+        "exclude": [
+          "<project>/out"
+        ],
+        "files": [
+          "./src/main.ts"
+        ]
+      }
+    },
+    "exit": 0,
+    "inputs_preserved": true,
+    "name": "show-project"
+  },
+  {
+    "args": [
+      "--showConfig"
+    ],
+    "assets": [],
+    "display": {
+      "config": {
+        "compilerOptions": {
+          "allowImportingTsExtensions": true,
+          "alwaysStrict": true,
+          "declaration": true,
+          "module": "es6",
+          "moduleResolution": "classic",
+          "noImplicitAny": true,
+          "noImplicitThis": true,
+          "outDir": "./out",
+          "rewriteRelativeImportExtensions": true,
+          "skipLibCheck": true,
+          "sourceMap": true,
+          "strict": true,
+          "strictBindCallApply": true,
+          "strictBuiltinIteratorReturn": true,
+          "strictFunctionTypes": true,
+          "strictNullChecks": true,
+          "strictPropertyInitialization": true,
+          "target": "es2022",
+          "useDefineForClassFields": true,
+          "useUnknownInCatchVariables": true
+        },
+        "exclude": [
+          "<project>/out"
+        ],
+        "files": [
+          "./src/main.ts"
+        ]
+      }
+    },
+    "exit": 0,
+    "inputs_preserved": true,
+    "name": "show-default"
+  },
+  {
+    "args": [
+      "--project",
+      ".",
+      "--listFiles",
+      "--noEmit",
+      "--pretty",
+      "false"
+    ],
+    "assets": [],
+    "display": {
+      "diagnostic": false,
+      "emitted": [],
+      "files": [
+        "<project>/src/value.ts",
+        "<project>/src/main.ts"
+      ],
+      "pretty": false,
+      "quiet": true
+    },
+    "exit": 0,
+    "inputs_preserved": true,
+    "name": "list-sources"
+  },
+  {
+    "args": [
+      "--project",
+      ".",
+      "--listEmittedFiles",
+      "--pretty",
+      "false"
+    ],
+    "assets": [
+      "out/main.d.ts",
+      "out/main.js",
+      "out/main.js.map",
+      "out/value.d.ts",
+      "out/value.js",
+      "out/value.js.map"
+    ],
+    "display": {
+      "diagnostic": false,
+      "emitted": [
+        "<project>/out/main.d.ts",
+        "<project>/out/main.js",
+        "<project>/out/main.js.map",
+        "<project>/out/value.d.ts",
+        "<project>/out/value.js",
+        "<project>/out/value.js.map"
+      ],
+      "files": [],
+      "pretty": false,
+      "quiet": true
+    },
+    "exit": 0,
+    "inputs_preserved": true,
+    "name": "list-emits"
+  },
+  {
+    "args": [
+      "--project",
+      ".",
+      "--noEmit",
+      "--listEmittedFiles",
+      "--pretty",
+      "false"
+    ],
+    "assets": [],
+    "display": {
+      "diagnostic": false,
+      "emitted": [],
+      "files": [],
+      "pretty": false,
+      "quiet": true
+    },
+    "exit": 0,
+    "inputs_preserved": true,
+    "name": "noemit-list-emits"
+  },
+  {
+    "args": [
+      "--project",
+      ".",
+      "--noEmit",
+      "false",
+      "--listEmittedFiles",
+      "--pretty",
+      "false"
+    ],
+    "assets": [
+      "out/main.d.ts",
+      "out/main.js",
+      "out/main.js.map",
+      "out/value.d.ts",
+      "out/value.js",
+      "out/value.js.map"
+    ],
+    "display": {
+      "diagnostic": false,
+      "emitted": [
+        "<project>/out/main.d.ts",
+        "<project>/out/main.js",
+        "<project>/out/main.js.map",
+        "<project>/out/value.d.ts",
+        "<project>/out/value.js",
+        "<project>/out/value.js.map"
+      ],
+      "files": [],
+      "pretty": false,
+      "quiet": true
+    },
+    "exit": 0,
+    "inputs_preserved": true,
+    "name": "noemit-false"
+  },
+  {
+    "args": [
+      "--project",
+      ".",
+      "--noEmit",
+      "--pretty",
+      "true"
+    ],
+    "assets": [],
+    "display": {
+      "diagnostic": false,
+      "emitted": [],
+      "files": [],
+      "pretty": false,
+      "quiet": true
+    },
+    "exit": 0,
+    "inputs_preserved": true,
+    "name": "pretty-true"
+  },
+  {
+    "args": [
+      "--project",
+      "absent",
+      "--pretty",
+      "false"
+    ],
+    "assets": [],
+    "display": {
+      "diagnostic": true,
+      "emitted": [],
+      "files": [],
+      "pretty": false,
+      "quiet": true
+    },
+    "exit": 1,
+    "inputs_preserved": true,
+    "name": "missing-project"
+  },
+  {
+    "args": [
+      "--unknownOption",
+      "--pretty",
+      "false"
+    ],
+    "assets": [],
+    "display": {
+      "diagnostic": true,
+      "emitted": [],
+      "files": [],
+      "pretty": false,
+      "quiet": true
+    },
+    "exit": 1,
+    "inputs_preserved": true,
+    "name": "unknown-option"
+  },
+  {
+    "args": [
+      "--project",
+      ".",
+      "src/main.ts",
+      "--pretty",
+      "false"
+    ],
+    "assets": [],
+    "display": {
+      "diagnostic": true,
+      "emitted": [],
+      "files": [],
+      "pretty": false,
+      "quiet": true
+    },
+    "exit": 1,
+    "inputs_preserved": true,
+    "name": "project-plus-source"
+  },
+  {
+    "args": [
+      "--project",
+      ".",
+      "--noEmit",
+      "--pretty",
+      "false"
+    ],
+    "assets": [],
+    "display": {
+      "diagnostic": true,
+      "emitted": [],
+      "files": [],
+      "pretty": false,
+      "quiet": true
+    },
+    "exit": 2,
+    "inputs_preserved": true,
+    "name": "pretty-false-error",
+    "variant": "error"
+  },
+  {
+    "args": [
+      "--project",
+      ".",
+      "--noEmit",
+      "--pretty",
+      "true"
+    ],
+    "assets": [],
+    "display": {
+      "diagnostic": true,
+      "emitted": [],
+      "files": [],
+      "pretty": true,
+      "quiet": true
+    },
+    "exit": 2,
+    "inputs_preserved": true,
+    "name": "pretty-true-error",
+    "variant": "error"
+  },
+  {
+    "args": [
+      "--project",
+      ".",
+      "--listEmittedFiles",
+      "--pretty",
+      "false"
+    ],
+    "assets": [],
+    "display": {
+      "diagnostic": false,
+      "emitted": [],
+      "files": [],
+      "pretty": false,
+      "quiet": true
+    },
+    "exit": 0,
+    "inputs_preserved": true,
+    "name": "config-noemit",
+    "variant": "config-noemit"
+  },
+  {
+    "args": [
+      "--project",
+      ".",
+      "--noEmit",
+      "false",
+      "--listEmittedFiles",
+      "--pretty",
+      "false"
+    ],
+    "assets": [
+      "out/main.d.ts",
+      "out/main.js",
+      "out/main.js.map",
+      "out/value.d.ts",
+      "out/value.js",
+      "out/value.js.map"
+    ],
+    "display": {
+      "diagnostic": false,
+      "emitted": [
+        "<project>/out/main.d.ts",
+        "<project>/out/main.js",
+        "<project>/out/main.js.map",
+        "<project>/out/value.d.ts",
+        "<project>/out/value.js",
+        "<project>/out/value.js.map"
+      ],
+      "files": [],
+      "pretty": false,
+      "quiet": true
+    },
+    "exit": 0,
+    "inputs_preserved": true,
+    "name": "config-noemit-overridden",
+    "variant": "config-noemit"
+  },
+  {
+    "args": [
+      "--project",
+      ".",
+      "--noEmit",
+      "--pretty",
+      "false"
+    ],
+    "assets": [],
+    "display": {
+      "diagnostic": false,
+      "emitted": [],
+      "files": [
+        "<project>/src/value.ts",
+        "<project>/src/main.ts"
+      ],
+      "pretty": false,
+      "quiet": true
+    },
+    "exit": 0,
+    "inputs_preserved": true,
+    "name": "config-listfiles",
+    "variant": "config-listfiles"
+  },
+  {
+    "args": [
+      "--project",
+      ".",
+      "--noEmit",
+      "--listFiles",
+      "false",
+      "--pretty",
+      "false"
+    ],
+    "assets": [],
+    "display": {
+      "diagnostic": false,
+      "emitted": [],
+      "files": [],
+      "pretty": false,
+      "quiet": true
+    },
+    "exit": 0,
+    "inputs_preserved": true,
+    "name": "config-listfiles-disabled",
+    "variant": "config-listfiles"
+  },
+  {
+    "args": [
+      "--project",
+      ".",
+      "--listFiles",
+      "--listEmittedFiles",
+      "--pretty",
+      "false"
+    ],
+    "assets": [
+      "out/main.d.ts",
+      "out/main.js",
+      "out/main.js.map",
+      "out/value.d.ts",
+      "out/value.js",
+      "out/value.js.map"
+    ],
+    "display": {
+      "diagnostic": false,
+      "emitted": [
+        "<project>/out/main.d.ts",
+        "<project>/out/main.js",
+        "<project>/out/main.js.map",
+        "<project>/out/value.d.ts",
+        "<project>/out/value.js",
+        "<project>/out/value.js.map"
+      ],
+      "files": [
+        "<project>/src/value.ts",
+        "<project>/src/main.ts"
+      ],
+      "pretty": false,
+      "quiet": true
+    },
+    "exit": 0,
+    "inputs_preserved": true,
+    "name": "all-file-lists"
+  },
+  {
+    "args": [
+      "--noEmit",
+      "--pretty",
+      "false"
+    ],
+    "assets": [],
+    "display": {
+      "diagnostic": false,
+      "emitted": [],
+      "files": [],
+      "pretty": false,
+      "quiet": true
+    },
+    "exit": 0,
+    "inputs_preserved": true,
+    "name": "default-noemit"
+  },
+  {
+    "args": [
+      "--noEmit",
+      "--pretty",
+      "false"
+    ],
+    "assets": [],
+    "display": {
+      "diagnostic": false,
+      "emitted": [],
+      "files": [],
+      "pretty": false,
+      "quiet": true
+    },
+    "exit": 0,
+    "inputs_preserved": true,
+    "name": "nested-default-noemit",
+    "variant": "nested"
+  },
+  {
+    "args": [
+      "--project",
+      ".",
+      "--listEmittedFiles",
+      "--pretty",
+      "false"
+    ],
+    "assets": [
+      "src/main.d.ts",
+      "src/main.js",
+      "src/main.js.map",
+      "src/value.d.ts",
+      "src/value.js",
+      "src/value.js.map"
+    ],
+    "display": {
+      "diagnostic": false,
+      "emitted": [
+        "<project>/src/main.d.ts",
+        "<project>/src/main.js",
+        "<project>/src/main.js.map",
+        "<project>/src/value.d.ts",
+        "<project>/src/value.js",
+        "<project>/src/value.js.map"
+      ],
+      "files": [],
+      "pretty": false,
+      "quiet": true
+    },
+    "exit": 0,
+    "inputs_preserved": true,
+    "name": "in-place-emits",
+    "variant": "in-place"
+  },
+  {
+    "args": [
+      "--project"
+    ],
+    "assets": [],
+    "display": {
+      "diagnostic": true,
+      "emitted": [],
+      "files": [],
+      "pretty": false,
+      "quiet": true
+    },
+    "exit": 1,
+    "inputs_preserved": true,
+    "name": "missing-project-value"
+  },
+  {
+    "args": [
+      "--project",
+      ".",
+      "--noEmit",
+      "--pretty",
+      "false",
+      "--listFiles",
+      "false"
+    ],
+    "assets": [],
+    "display": {
+      "diagnostic": false,
+      "emitted": [],
+      "files": [],
+      "pretty": false,
+      "quiet": true
+    },
+    "exit": 0,
+    "inputs_preserved": true,
+    "name": "pretty-explicit-false"
+  },
+  {
+    "args": [],
+    "assets": [
+      "out/main.d.ts",
+      "out/main.js",
+      "out/main.js.map",
+      "out/value.d.ts",
+      "out/value.js",
+      "out/value.js.map"
+    ],
+    "display": {
+      "diagnostic": false,
+      "emitted": [],
+      "files": [],
+      "pretty": false,
+      "quiet": true
+    },
+    "exit": 0,
+    "inputs_preserved": true,
+    "name": "default-build"
+  },
+  {
+    "args": [
+      "--project",
+      ".",
+      "--showConfig"
+    ],
+    "assets": [],
+    "display": {
+      "config": {
+        "compilerOptions": {
+          "allowImportingTsExtensions": true,
+          "alwaysStrict": true,
+          "declaration": true,
+          "module": "es6",
+          "moduleResolution": "classic",
+          "noImplicitAny": true,
+          "noImplicitThis": true,
+          "outDir": "./out",
+          "rewriteRelativeImportExtensions": true,
+          "skipLibCheck": true,
+          "sourceMap": true,
+          "strict": true,
+          "strictBindCallApply": true,
+          "strictBuiltinIteratorReturn": true,
+          "strictFunctionTypes": true,
+          "strictNullChecks": true,
+          "strictPropertyInitialization": true,
+          "target": "es2022",
+          "useDefineForClassFields": true,
+          "useUnknownInCatchVariables": true
+        },
+        "exclude": [
+          "src/ignore*"
+        ],
+        "files": [
+          "./src/main.ts",
+          "./src/value.ts"
+        ],
+        "include": [
+          "src/**/*.ts"
+        ]
+      }
+    },
+    "exit": 0,
+    "inputs_preserved": true,
+    "name": "show-selectors",
+    "variant": "selectors"
+  },
+  {
+    "args": [
+      "--project",
+      ".",
+      "--showConfig",
+      "--noEmit",
+      "--pretty",
+      "false",
+      "--listFiles",
+      "--listEmittedFiles"
+    ],
+    "assets": [],
+    "display": {
+      "config": {
+        "compilerOptions": {
+          "allowImportingTsExtensions": true,
+          "alwaysStrict": true,
+          "declaration": true,
+          "module": "es6",
+          "moduleResolution": "classic",
+          "noEmit": true,
+          "noImplicitAny": true,
+          "noImplicitThis": true,
+          "outDir": "./out",
+          "rewriteRelativeImportExtensions": true,
+          "skipLibCheck": true,
+          "sourceMap": true,
+          "strict": true,
+          "strictBindCallApply": true,
+          "strictBuiltinIteratorReturn": true,
+          "strictFunctionTypes": true,
+          "strictNullChecks": true,
+          "strictPropertyInitialization": true,
+          "target": "es2022",
+          "useDefineForClassFields": true,
+          "useUnknownInCatchVariables": true
+        },
+        "exclude": [
+          "<project>/out"
+        ],
+        "files": [
+          "./src/main.ts"
+        ]
+      }
+    },
+    "exit": 0,
+    "inputs_preserved": true,
+    "name": "show-command-flags"
+  },
+  {
+    "args": [
+      "--project",
+      ".",
+      "--listEmittedFiles",
+      "--pretty",
+      "false"
+    ],
+    "assets": [
+      "out/main.d.ts",
+      "out/main.js",
+      "out/main.js.map",
+      "out/value.d.ts",
+      "out/value.js",
+      "out/value.js.map"
+    ],
+    "display": {
+      "diagnostic": false,
+      "emitted": [
+        "<project>/out/main.d.ts",
+        "<project>/out/main.js",
+        "<project>/out/main.js.map",
+        "<project>/out/value.d.ts",
+        "<project>/out/value.js",
+        "<project>/out/value.js.map"
+      ],
+      "files": [],
+      "pretty": false,
+      "quiet": true
+    },
+    "exit": 0,
+    "inputs_preserved": true,
+    "name": "existing-output-preserved",
+    "variant": "existing-output"
+  },
+  {
+    "args": [
+      "--project",
+      ".",
+      "--noEmit",
+      "--listEmittedFiles",
+      "--pretty",
+      "false"
+    ],
+    "assets": [],
+    "display": {
+      "diagnostic": false,
+      "emitted": [],
+      "files": [],
+      "pretty": false,
+      "quiet": true
+    },
+    "exit": 0,
+    "inputs_preserved": true,
+    "name": "existing-output-noemit",
+    "variant": "existing-output"
+  }
+]
