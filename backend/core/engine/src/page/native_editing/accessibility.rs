@@ -74,6 +74,7 @@ impl Page {
         };
         let focused = self.focused == Some(editor.node);
         Ok(State {
+            document: false,
             text: (!info.protected).then(|| editor.observed.clone()),
             text_length: length(&editor.observed),
             protected: info.protected,
@@ -105,6 +106,9 @@ impl Page {
         source: u64,
         action: Action,
     ) -> Result<(bool, ResultValue), String> {
+        if let Some(result) = self.accessibility_document_text(context, source, &action) {
+            return result;
+        }
         let (editor, info) = self.accessibility_editor(context, source)?;
         let geometry = geometry::Geometry::new(self, &editor, info)
             .ok_or("Accessibility text geometry is unavailable")?;

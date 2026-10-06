@@ -206,6 +206,13 @@ fn native_text_actions_round_trip_with_document_and_focus_fences() {
         TextInputAction::Redo,
         TextInputAction::Select { range },
         TextInputAction::SelectAll,
+        TextInputAction::DocumentSelectAll,
+        TextInputAction::DocumentPointer {
+            x: 10.0,
+            y: 20.0,
+            extend: true,
+            click_count: 2,
+        },
         TextInputAction::Move {
             direction: TextMovement::WordBackward,
             extend: true,
@@ -263,6 +270,7 @@ fn native_ranges_check_overflow_and_password_state_stays_redacted_on_wire() {
         focused_node: Some(5),
         focus_exit: None,
         select: None,
+        document: None,
         focused: Some(TextControlState {
             node_id: 5,
             text: None,
@@ -1020,6 +1028,7 @@ fn context_menu_commands_and_copy_metadata_round_trip() {
             context,
             link_url: Some("https://menu.test/next".into()),
             input: None,
+            document: None,
         }),
         ServerMessage::ContextMenuLink {
             context,

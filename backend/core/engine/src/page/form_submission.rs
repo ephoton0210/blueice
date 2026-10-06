@@ -58,6 +58,9 @@ impl Page {
         action: &blueice_ipc::input::TextInputAction,
     ) -> Option<NodeId> {
         use blueice_ipc::input::{PageKey, TextInputAction};
+        if self.document_selection_active() {
+            return None;
+        }
         if !matches!(
             action,
             TextInputAction::Key {

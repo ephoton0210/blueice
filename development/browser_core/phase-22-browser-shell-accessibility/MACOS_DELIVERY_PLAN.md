@@ -18,7 +18,31 @@ pushed to the current tracked branch as authorized by the owner.
 | Downloads and printing | Actual download manager/shelf, progress/cancel/open/reveal, print/PDF media output and native panel tests | Native manager panel and linked-file downloads committed and pushed `b62b38aa7`, see [download results](MACOS_DOWNLOAD_RESULTS.md); core print-media pagination and native print/PDF committed and pushed `0d2e3ea58`, acceptance recorded in [print results](MACOS_PRINT_RESULTS.md); automatic response downloads, destination/credential UI, quarantine, vector PDF and physical-printer acceptance pending |
 | Trusted browser panels | Assistant results and human permission decisions using the private owner boundary, policy-denial and no-AI-grant tests | Native installed-extension permission child and two-step one-shot confirmation committed and pushed `f83c94152`, see [permission results](MACOS_PERMISSION_RESULTS.md). Native assistant settings and proposal decisions committed and pushed `b53a91111`, see [assistant settings results](MACOS_ASSISTANT_SETTINGS_RESULTS.md). Native assistant result/sidebar and translation surfaces implemented and accepted, see [assistant page results](MACOS_ASSISTANT_PAGE_RESULTS.md). Remaining permission UI pending |
 | macOS display and system integration | DPI/multi-monitor, zoom, theme/high contrast/reduced motion, fullscreen, localization and native menu/shortcut tests | Retina/CSS viewport, per-tab zoom and native fullscreen committed and pushed `91f2dd78c`, see [viewport results](MACOS_VIEWPORT_RESULTS.md); persistent appearance/contrast/motion and CSS media committed and pushed `0609c8a81`, recorded in [display results](MACOS_DISPLAY_PREFERENCES_RESULTS.md); physical system/monitor transitions and localization pending |
-| Full accessibility and final audit | Text ranges/live regions and supported rotor operations; actual screen-reader action; final integration, design/UI acceptance and documented remaining core limitations | Native text-control ranges, geometry, selection and editing implemented and accepted, see [accessibility text results](MACOS_ACCESSIBILITY_TEXT_RESULTS.md). Bounded live-region announcements and supported native rotors implemented and accepted, see [live-region/rotor results](MACOS_LIVE_REGION_ROTOR_RESULTS.md); that earlier Rust acceptance used the recorded post-Cargo host readiness condition. Retained announcement delivery/consumption ACK is now implemented and accepted, see [delivery results](MACOS_ANNOUNCEMENT_DELIVERY_RESULTS.md). Descendant atomic/relevant settings and public author labels are implemented and accepted, see [descendant results](MACOS_DESCENDANT_LIVE_RESULTS.md). Document text selection, additional rotors and physical VoiceOver remain pending |
+| Full accessibility and final audit | Text ranges/live regions and supported rotor operations; actual screen-reader action; final integration, design/UI acceptance and documented remaining core limitations | Native text-control ranges, geometry, selection and editing implemented and accepted, see [accessibility text results](MACOS_ACCESSIBILITY_TEXT_RESULTS.md). Bounded live-region announcements and supported native rotors implemented and accepted, see [live-region/rotor results](MACOS_LIVE_REGION_ROTOR_RESULTS.md); that earlier Rust acceptance used the recorded post-Cargo host readiness condition. Retained announcement delivery/consumption ACK is now implemented and accepted, see [delivery results](MACOS_ANNOUNCEMENT_DELIVERY_RESULTS.md). Descendant atomic/relevant settings and public author labels are implemented and accepted, see [descendant results](MACOS_DESCENDANT_LIVE_RESULTS.md). Document text selection and read-only AX text access implemented and accepted, see [document-selection results](MACOS_DOCUMENT_SELECTION_RESULTS.md). Additional rotors and physical VoiceOver remain pending |
+
+## Native document text selection increment
+
+Core indexes ordinary public rendered text in document order and owns UTF-16
+selection, grapheme/visual-line queries, geometry and selection paint. AppKit
+maps native pointer/keyboard selection, Select All, Copy, context-menu commands
+and read-only AX text callbacks to that state. Controls, protected/private text
+and hidden/inert/AX-hidden content stay outside document Copy. Link drag selects
+text; a completed click follows the existing reviewed activation path.
+
+The bounded input queue retains mouse events and following page-input keys
+through temporary frame/geometry and pointer-focus acknowledgement gaps. Source,
+document, tab/window, size and responder changes discard pending input. Document
+selection never permits editing an unrelated control. Collection budgets and
+ownership requirements are recorded in the
+[document-selection contract](MACOS_DOCUMENT_SELECTION_CONTRACT.md).
+
+Complete native acceptance passed 184 methods with one existing physical Zhuyin
+skip; complete Rust workspace acceptance passed 7302 cases with 69 ignored.
+Formatting, strict Clippy, the all-targets build, eight strict signatures and
+source/product/process cleanup audits passed. Earlier unsuccessful runs and the
+unchanged-input acceptance evidence remain in the
+[dated results](MACOS_DOCUMENT_SELECTION_RESULTS.md). Physical VoiceOver/IME,
+complete bidirectional shaping and the remaining milestones stay open.
 
 ## Native accessibility text-control contract
 
@@ -39,8 +63,9 @@ Password plaintext is absent from replies, values, substring/attributed/RTF
 queries and selected text. Visible-range writes scroll inside the control
 without moving focus or selection. Selection/editing shares native Undo/Redo
 and ends existing marked composition before recording an atomic edit.
-Paragraph text selection, rich font attributes and physical VoiceOver remain
-separate delivery work. The subsequent live-region/rotor increment below records
+The document-selection increment above delivers paragraph text selection;
+rich font attributes and physical VoiceOver remain separate delivery work.
+The subsequent live-region/rotor increment below records
 the bounded support and remaining announcement delivery limitations.
 
 The earlier text-control acceptance passed: 166 native tests with one physical Zhuyin skip and
@@ -81,8 +106,9 @@ acceptance. The measured result and reproducible wrapper are recorded in
 At that increment, retained announcement delivery/acknowledgement remained
 pending. The subsequent delivery milestone below resolves that limitation.
 Initial alert creation, descendant-scoped atomic/relevant overrides, complete
-ARIA/name computation, additional rotor kinds, document paragraph selection and
-physical VoiceOver remain pending. This does not complete the full browser design.
+ARIA/name computation, additional rotor kinds and physical VoiceOver remain
+pending. Document paragraph selection is accepted in the increment above.
+This does not complete the full browser design.
 
 ## Retained announcement delivery increment
 

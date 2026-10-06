@@ -3,7 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 //! Native context menus inspect core hit targets, never a frontend DOM copy.
-use crate::input::TextInputState;
+use crate::input::{DocumentSelectionState, TextInputState};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -24,6 +24,9 @@ pub struct ContextMenuState {
     pub link_url: Option<String>,
     /// Only the hit editor's redacted public state, never an unrelated focus.
     pub input: Option<TextInputState>,
+    /// Document commands for public/blank targets, separate from editor state.
+    #[serde(default)]
+    pub document: Option<Box<DocumentSelectionState>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

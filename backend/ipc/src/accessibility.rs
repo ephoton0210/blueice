@@ -113,6 +113,8 @@ pub struct AccessibilityTextStyle {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AccessibilityTextState {
+    #[serde(default)]
+    pub document: bool,
     pub text: Option<String>,
     pub text_length: u32,
     pub protected: bool,

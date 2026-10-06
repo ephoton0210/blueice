@@ -213,13 +213,15 @@ final class PageAccessibilityTree: NSObject, @MainActor NSAccessibilityCustomRot
     }
 
     func textResult(_ element: PageAccessibilityElement, _ action: AccessibilityTextAction) -> AccessibilityTextResult? {
-        guard contains(element), let snapshot, element.node.role == .textBox, !element.node.state.fileInput,
+        guard contains(element), let snapshot, !element.node.state.fileInput,
               !element.node.state.disabled, !element.node.occluded,
-              element.node.state.nativeTextInput || element.node.state.nativeFocusable else { return nil }
+              element.node.supportsDocumentText || element.node.role == .textBox
+                && (element.node.state.nativeTextInput || element.node.state.nativeFocusable) else { return nil }
         let result = text?(snapshot, epoch, element.node, action)
         if result != nil && action.changesFocus, let view {
-            readingID = nil
+            readingID = element.node.supportsDocumentText ? element.node.id : nil
             view.window?.makeFirstResponder(view)
+            NSAccessibility.post(element: element, notification: .selectedTextChanged)
         }
         return result
     }
@@ -347,6 +349,7 @@ final class PageAccessibilityElement: NSAccessibilityElement, @MainActor NSAcces
     private func textState() -> AccessibilityTextState? {
         guard case .state(let state) = tree?.textResult(self, .inspect) else { return nil }; return state
     }
+    private var textLimit: UInt32 { node.supportsDocumentText ? 2_097_152 : 65_536 }
     private func textRange(_ action: AccessibilityTextAction) -> NSRange {
         guard case .range(let range) = tree?.textResult(self, action), let range else { return NSRange(location: NSNotFound, length: 0) }
         return range.nsRange
@@ -373,15 +376,15 @@ final class PageAccessibilityElement: NSAccessibilityElement, @MainActor NSAcces
         return try? value.data(from: NSRange(location: 0, length: value.length), documentAttributes: [.documentType: NSAttributedString.DocumentType.rtf])
     }
     override func accessibilityRange(for index: Int) -> NSRange {
-        guard (0...65_536).contains(index) else { return NSRange(location: NSNotFound, length: 0) }
+        guard (0...Int(textLimit)).contains(index) else { return NSRange(location: NSNotFound, length: 0) }
         return textRange(.rangeForIndex(UInt32(index)))
     }
     override func accessibilityRange(forLine line: Int) -> NSRange {
-        guard (0...65_536).contains(line) else { return NSRange(location: NSNotFound, length: 0) }
+        guard (0...Int(textLimit)).contains(line) else { return NSRange(location: NSNotFound, length: 0) }
         return textRange(.rangeForLine(UInt32(line)))
     }
     override func accessibilityLine(for index: Int) -> Int {
-        guard (0...65_536).contains(index), case .index(let line) = tree?.textResult(self, .lineForIndex(UInt32(index))) else { return NSNotFound }
+        guard (0...Int(textLimit)).contains(index), case .index(let line) = tree?.textResult(self, .lineForIndex(UInt32(index))) else { return NSNotFound }
         return line.map(Int.init) ?? NSNotFound
     }
     override func accessibilityRange(for position: NSPoint) -> NSRange {
@@ -389,7 +392,7 @@ final class PageAccessibilityElement: NSAccessibilityElement, @MainActor NSAcces
         return textRange(.rangeForPosition(point.x, point.y))
     }
     override func accessibilityFrame(for range: NSRange) -> NSRect {
-        guard let range = TextRange.replacement(range), case .bounds(let bounds) = tree?.textResult(self, .bounds(range)), let bounds else { return .zero }
+        guard let range = TextRange.replacement(range, limit: textLimit), case .bounds(let bounds) = tree?.textResult(self, .bounds(range)), let bounds else { return .zero }
         return tree?.screenFrame(bounds) ?? .zero
     }
     override func accessibilityStyleRange(for index: Int) -> NSRange {
@@ -405,12 +408,12 @@ final class PageAccessibilityElement: NSAccessibilityElement, @MainActor NSAcces
         _ = tree?.textResult(self, .replaceSelection(text))
     }
     override func setAccessibilitySelectedTextRange(_ range: NSRange) {
-        guard let range = TextRange.replacement(range) else { return }; _ = tree?.textResult(self, .select(range))
+        guard let range = TextRange.replacement(range, limit: textLimit) else { return }; _ = tree?.textResult(self, .select(range))
     }
     override func setAccessibilitySelectedTextRanges(_ ranges: [NSValue]?) {
         guard let ranges, ranges.count == 1 else { return }; setAccessibilitySelectedTextRange(ranges[0].rangeValue)
     }
     override func setAccessibilityVisibleCharacterRange(_ range: NSRange) {
-        guard let range = TextRange.replacement(range) else { return }; _ = tree?.textResult(self, .scrollToRange(range))
+        guard let range = TextRange.replacement(range, limit: textLimit) else { return }; _ = tree?.textResult(self, .scrollToRange(range))
     }
 }

@@ -13,9 +13,9 @@ struct TextRange: Codable, Equatable, Sendable {
         length = UInt32(range.length)
     }
     func valid(length: UInt32) -> Bool { UInt64(location) + UInt64(self.length) <= UInt64(length) }
-    static func replacement(_ range: NSRange) -> TextRange? {
+    static func replacement(_ range: NSRange, limit: UInt32 = 65_536) -> TextRange? {
         guard range.location != NSNotFound, range.location >= 0, range.length >= 0,
-              UInt64(range.location) + UInt64(range.length) <= 65_536 else { return nil }
+              UInt64(range.location) + UInt64(range.length) <= UInt64(limit) else { return nil }
         return TextRange(range)
     }
 }
@@ -43,12 +43,17 @@ enum TextInputAction: Encodable, Sendable {
     var isPageKey: Bool {
         switch self { case .key, .selectOption, .selectKey, .selectPointer, .selectScroll: return true; default: return false }
     }
+    var usesDocumentSelection: Bool {
+        switch self { case .documentPointer, .documentSelectAll, .selectAll, .select, .move: return true; default: return false }
+    }
     case replace(String, TextRange?), compose(String, TextRange, TextRange?)
     case finishComposition, cancelComposition, select(TextRange), selectAll
     case undo, redo
     case selectScroll(Double, Double, Int32)
     case selectOption(UInt64, UInt64, Bool, Bool), selectKey(PageKey, Bool, Bool), selectPointer(Double, Double, Bool, Bool)
     case move(TextMovement, Bool), delete(Bool), pointer(Double, Double, Bool, UInt8)
+    case documentPointer(Double, Double, Bool, UInt8)
+    case documentSelectAll
 
     private struct Key: CodingKey {
         let stringValue: String
@@ -82,6 +87,7 @@ enum TextInputAction: Encodable, Sendable {
         case .undo: try unit("Undo")
         case .redo: try unit("Redo")
         case .selectAll: try unit("SelectAll")
+        case .documentSelectAll: try unit("DocumentSelectAll")
         case .replace(let text, let range):
             var value = fields("Replace"); try value.encode(text, forKey: Key("text")); try value.encode(range, forKey: Key("replacement"))
         case .compose(let text, let selection, let range):
@@ -91,8 +97,9 @@ enum TextInputAction: Encodable, Sendable {
         case .move(let direction, let extend):
             var value = fields("Move"); try value.encode(direction, forKey: Key("direction")); try value.encode(extend, forKey: Key("extend"))
         case .delete(let forward): var value = fields("Delete"); try value.encode(forward, forKey: Key("forward"))
-        case .pointer(let x, let y, let extend, let count):
-            var value = fields("Pointer"); try value.encode(x, forKey: Key("x")); try value.encode(y, forKey: Key("y"))
+        case .pointer(let x, let y, let extend, let count), .documentPointer(let x, let y, let extend, let count):
+            let name: String; if case .documentPointer = self { name = "DocumentPointer" } else { name = "Pointer" }
+            var value = fields(name); try value.encode(x, forKey: Key("x")); try value.encode(y, forKey: Key("y"))
             try value.encode(extend, forKey: Key("extend")); try value.encode(count, forKey: Key("click_count"))
         }
     }
@@ -129,6 +136,7 @@ struct TextInputState: Decodable, Sendable {
     let focus_exit: FocusDirection?
     let focused: TextControlState?
     let select: SelectControlState?
+    let document: DocumentSelectionState?
     var context: TextInputContext {
         TextInputContext(version: version, frame_source: frame_source,
                          document_generation: document_generation, focus_generation: focus_generation)
@@ -140,6 +148,7 @@ struct TextInputState: Decodable, Sendable {
                 && value.width >= 0 && value.height >= 0
         }
         guard version == 1, scroll_y.isFinite, abs(scroll_y) <= 1e9 else { throw BrowserFailure.invalid("Invalid native text state.") }
+        guard document?.valid != false else { throw BrowserFailure.invalid("Invalid document selection state.") }
         guard focus_exit == nil || focused_node == nil && focused == nil else { throw BrowserFailure.invalid("Invalid native focus handoff.") }
         if let select {
             guard focused == nil, focused_node == select.node_id, focus_exit == nil,
@@ -180,6 +189,20 @@ struct TextInputState: Decodable, Sendable {
         guard image.width > 0, image.height > 0 else { return .zero }
         return CGRect(x: rect.x * viewport.width / image.width, y: (rect.y - scroll_y) * viewport.height / image.height,
                       width: rect.width * viewport.width / image.width, height: rect.height * viewport.height / image.height)
+    }
+}
+
+struct DocumentSelectionState: Decodable, Sendable {
+    let version: UInt32
+    let text_length: UInt32
+    let active: Bool
+    let selection: TextRange
+    let selected_text: String?
+    let limited: Bool
+    var valid: Bool {
+        version == 1 && text_length <= 2_097_152 && selection.valid(length: text_length)
+            && (active ? selected_text?.utf16.count == Int(selection.length)
+                : selected_text == nil && selection.location == 0 && selection.length == 0)
     }
 }
 

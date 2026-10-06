@@ -88,6 +88,7 @@ fn go_back_uses_the_same_navigation_completion_barrier_and_returns_restored_stat
                         context,
                         link_url: Some("https://example.com/link".into()),
                         input: None,
+                        document: None,
                     }),
                 );
                 reply_tab(

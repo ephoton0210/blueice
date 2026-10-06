@@ -3,10 +3,87 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 import AppKit
+import Combine
 import XCTest
 
 @MainActor
 final class NativeEditingTests: XCTestCase {
+    func testDocumentTextWireSupportsLongReadonlyTextAndKeepsControlBounds() throws {
+        let text = String(repeating: "a", count: 70_000)
+        var state: [String: Any] = ["document": true, "text": text, "text_length": text.utf16.count, "protected": false, "writable": false,
+            "multiline": false, "focused": false, "selection": NSNull(), "marked": NSNull(), "visible_range": ["location": 0, "length": text.utf16.count],
+            "insertion_line": NSNull(), "line_count": 1, "style": ["font_size_px": 16, "bold": false, "italic": false, "color": [0, 0, 0, 255]]]
+        func decode(_ value: [String: Any]) throws -> AccessibilityTextState {
+            try JSONDecoder().decode(AccessibilityTextState.self, from: JSONSerialization.data(withJSONObject: value))
+        }
+        XCTAssertTrue(try decode(state).valid)
+        state["document"] = false; XCTAssertFalse(try decode(state).valid)
+        state["document"] = true; state["writable"] = true; XCTAssertFalse(try decode(state).valid)
+        state["writable"] = false; state["protected"] = true; XCTAssertFalse(try decode(state).valid)
+    }
+
+    func testActualDocumentTextAXSelectionCopyAndReadonlyEditorIsolation() async throws {
+        let (model, view, fixture) = try await start(path: "/document-selection")
+        defer { fixture.stop(); Task { await model.stop() } }
+        let saved = NSPasteboard.general.pasteboardItems?.map { item -> NSPasteboardItem in
+            let copy = NSPasteboardItem(); for type in item.types { if let data = item.data(forType: type) { copy.setData(data, forType: type) } }; return copy
+        } ?? []
+        defer { NSPasteboard.general.clearContents(); NSPasteboard.general.writeObjects(saved) }
+        let window = NSWindow(contentRect: view.frame, styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false; window.contentView = view; window.makeFirstResponder(view)
+        defer { window.contentView = nil; window.close() }
+        func refresh() async {
+            // Attaching an NSView can queue a debounced backing-scale resize.
+            // Wait for its actual core acknowledgement before an exact-frame
+            // synchronous AX read, not just an earlier locally current frame.
+            await wait { model.representation?.generation == model.generation
+                && model.textInputState?.frame_generation == model.generation && !model.textInputBusy
+                && model.cssViewportSize != nil && model.displayState?.width == view.bounds.width
+                && model.displayState?.height == view.bounds.height
+                && model.displayState?.backingScale == view.convertToBacking(view.bounds).width / view.bounds.width }
+            view.accessibilityTree.update(model.representation, epoch: model.accessibilityEpoch, imageSize: model.cssViewportSize ?? .zero)
+        }
+        await refresh()
+        let paragraph = try XCTUnwrap(view.accessibilityTree.elements.values.first { $0.accessibilityLabel() == "Alpha bold 😀 é" })
+        XCTAssertEqual(paragraph.accessibilityNumberOfCharacters(), "Alpha bold 😀 é".utf16.count)
+        XCTAssertEqual(paragraph.accessibilityString(for: NSRange(location: 11, length: 2)), "😀")
+        XCTAssertEqual(paragraph.accessibilityRange(for: 12), NSRange(location: 11, length: 2))
+        try await focus("Document editor", model: model, view: view); await refresh()
+        let editor = try XCTUnwrap(model.textInputState?.focused)
+        let oldFrame = model.generation
+        paragraph.setAccessibilitySelectedTextRange(NSRange(location: 11, length: 2))
+        await wait { model.generation > oldFrame }; await refresh()
+        await wait { model.textInputState?.document?.selected_text == "😀" }; await refresh()
+        XCTAssertEqual(paragraph.accessibilitySelectedText(), "😀")
+        XCTAssertEqual(model.textInputState?.focused?.node_id, editor.node_id)
+        XCTAssertEqual(model.textInputState?.focused?.selection, editor.selection)
+        XCTAssertEqual(model.textInputState?.focused?.text, "public-control-secret")
+        let status = model.status
+        view.insertText("blocked", replacementRange: NSRange(location: NSNotFound, length: 0))
+        view.setMarkedText("blocked", selectedRange: NSRange(location: 0, length: 0), replacementRange: NSRange(location: NSNotFound, length: 0))
+        view.unmarkText(); view.cut(nil); view.paste(nil)
+        await wait { !model.textInputBusy }; await refresh()
+        XCTAssertEqual(model.status, status)
+        XCTAssertEqual(model.textInputState?.focused?.text, "public-control-secret")
+        XCTAssertFalse(paragraph.isAccessibilitySelectorAllowed(#selector(PageAccessibilityElement.setAccessibilityValue(_:))))
+        XCTAssertGreaterThan(paragraph.accessibilityFrame(for: NSRange(location: 11, length: 2)).width, 0)
+        NSPasteboard.general.clearContents(); NSPasteboard.general.setString("document-copy-sentinel", forType: .string)
+        view.copy(nil); await wait { !model.textInputBusy && NSPasteboard.general.string(forType: .string) == "😀" }
+        let snapshot = try XCTUnwrap(model.representation), epoch = model.accessibilityEpoch
+        model.action(.values("OpenTab", ["url": .null])); await wait { model.selected != snapshot.tabID && model.representation != nil }
+        await refresh(); XCTAssertNil(paragraph.accessibilitySelectedText())
+        model.select(snapshot.tabID); await wait { model.representation?.url == fixture.origin + "/document-selection" }; await refresh()
+        XCTAssertNil(model.accessibilityText(snapshot, epoch: epoch, node: try XCTUnwrap(snapshot.nodes.first { $0.name == "Alpha bold 😀 é" }), action: .select(TextRange(NSRange(location: 0, length: 1)))))
+        let retained = try XCTUnwrap(view.accessibilityTree.elements.values.first { $0.accessibilityLabel() == "Alpha bold 😀 é" })
+        XCTAssertEqual(retained.accessibilitySelectedText(), "😀")
+        let oldDocument = model.textInputState?.document_generation
+        model.reload(); await wait { fixture.requests.count == 2 && model.textInputState?.document_generation != oldDocument
+            && model.representation?.url == fixture.origin + "/document-selection" }; await refresh()
+        XCTAssertNil(retained.accessibilitySelectedText())
+        XCTAssertEqual(fixture.requests, ["/document-selection", "/document-selection"])
+        await model.stop()
+    }
+
     func testAccessibilityTextWireRejectsPasswordLeaksAndMalformedRanges() throws {
         let context: [String: Any] = ["version": 1, "frame_source": 9, "document_generation": 3, "frame_generation": 8, "node_id": 7]
         let range: [String: Any] = ["location": 0, "length": 4]
@@ -797,11 +874,135 @@ final class NativeEditingTests: XCTestCase {
         XCTAssertFalse(readonly.input?.focused?.writable ?? true)
         let readonlyItems = view.makeContextMenu(readonly).items
         XCTAssertFalse(try XCTUnwrap(readonlyItems.first { $0.title == "Paste" }).isEnabled)
+        let editorBefore = model.textInputState?.focused
+        let documentMenu = try await menu("Destination link")
+        XCTAssertNil(documentMenu.input)
+        XCTAssertNotNil(documentMenu.document)
+        XCTAssertEqual(model.textInputState?.focused?.node_id, editorBefore?.node_id)
+        let documentItems = view.makeContextMenu(documentMenu).items
+        XCTAssertNotNil(documentItems.first { $0.title == "Select All" && $0.isEnabled })
+        XCTAssertNil(documentItems.first { $0.title == "Cut" || $0.title == "Paste" })
+        model.textInput(.documentSelectAll); await wait { !model.textInputBusy && model.textInputState?.document?.active == true }
+        let selectedDocument = try await menu("Destination link")
+        XCTAssertTrue(try XCTUnwrap(view.makeContextMenu(selectedDocument).items.first { $0.title == "Copy" }).isEnabled)
+        XCTAssertEqual(model.textInputState?.focused?.text, editorBefore?.text)
         let old = try await menu("Destination link")
         model.action(.values("OpenTab", ["url": .null]))
         await wait { model.tabs.count == 2 && model.selected != old.context.tabID }
         XCTAssertFalse(model.contextMenuIsCurrent(old.context))
         XCTAssertEqual(fixture.requests, ["/context-menu"])
+    }
+
+    func testMouseClickDuringFrameGeometryGapFocusesReadonlyThroughRealCore() async throws {
+        let (model, view, fixture) = try await start()
+        defer { fixture.stop(); Task { await model.stop() } }
+        let window = NSWindow(contentRect: view.bounds, styleMask: [.borderless], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false; window.contentView = view
+        XCTAssertTrue(window.makeFirstResponder(view))
+        try await focus("Secret", model: model, view: view)
+        await wait { model.cssViewportSize != nil && model.representation != nil }
+        let snapshot = try XCTUnwrap(model.representation)
+        let readonly = try XCTUnwrap(snapshot.nodes.first { $0.name == "Readonly" })
+        let geometry = try XCTUnwrap(model.displayState)
+        let rect = snapshot.viewRect(for: readonly, viewport: view.bounds.size, image: try XCTUnwrap(model.cssViewportSize))
+        let point = view.convert(NSPoint(x: rect.midX, y: rect.midY), to: nil)
+        model.apply(IncomingEnvelope(requestID: nil, tabID: snapshot.tabID, message: .viewportUnavailable), pixels: nil)
+        XCTAssertNil(model.cssViewportSize, "Reproduce the suspension between a frame and its viewport reply")
+        for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+            let event = try XCTUnwrap(NSEvent.mouseEvent(with: type, location: point, modifierFlags: [], timestamp: 0,
+                windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1))
+            if type == .leftMouseDown { view.mouseDown(with: event) } else { view.mouseUp(with: event) }
+        }
+        let selectAll = try XCTUnwrap(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: .command,
+            timestamp: 0, windowNumber: window.windowNumber, context: nil, characters: "a", charactersIgnoringModifiers: "a",
+            isARepeat: false, keyCode: 0))
+        view.keyDown(with: selectAll)
+        model.apply(IncomingEnvelope(requestID: nil, tabID: snapshot.tabID, message: .viewportState(geometry)), pixels: nil)
+        await wait { model.textInputState?.focused?.node_id == readonly.id && !model.textInputBusy
+            && model.textInputState?.focused?.selection.length == 6 }
+        XCTAssertEqual(model.textInputState?.focused?.text, "locked")
+        view.selectAll(nil); view.insertText("bad", replacementRange: NSRange(location: NSNotFound, length: 0))
+        await wait { !model.textInputBusy }
+        XCTAssertEqual(model.textInputState?.focused?.text, "locked")
+        await model.stop()
+    }
+
+    func testDeferredMouseClickIsCancelledByResizeAndTabSwitch() async throws {
+        let (model, view, fixture) = try await start()
+        defer { fixture.stop(); Task { await model.stop() } }
+        let window = NSWindow(contentRect: view.bounds, styleMask: [.borderless], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false; window.contentView = view
+        XCTAssertTrue(window.makeFirstResponder(view))
+        let tab = try XCTUnwrap(model.selected)
+        model.action(.values("OpenTab", ["url": .null]))
+        await wait { model.selected != tab && model.representation != nil }
+        let other = try XCTUnwrap(model.selected)
+        model.select(tab)
+        await wait { model.selected == tab && model.representation != nil }
+        try await focus("Secret", model: model, view: view)
+        for resize in [true, false] {
+            await wait { model.representation != nil && model.cssViewportSize != nil && !model.textInputBusy }
+            let snapshot = try XCTUnwrap(model.representation), geometry = try XCTUnwrap(model.displayState)
+            let readonly = try XCTUnwrap(snapshot.nodes.first { $0.name == "Readonly" })
+            let previousFocus = model.textInputState?.focused?.node_id
+            let previousSelection = model.textInputState?.focused?.selection
+            let rect = snapshot.viewRect(for: readonly, viewport: view.bounds.size, image: try XCTUnwrap(model.cssViewportSize))
+            let point = view.convert(NSPoint(x: rect.midX, y: rect.midY), to: nil)
+            let unexpectedFocus = expectation(description: "Cancelled pointer must never focus readonly")
+            unexpectedFocus.isInverted = true
+            let observation = model.$textInputState.sink { state in
+                if state?.tab_id == tab && state?.focused?.node_id == readonly.id { unexpectedFocus.fulfill() }
+            }
+            model.apply(IncomingEnvelope(requestID: nil, tabID: tab, message: .viewportUnavailable), pixels: nil)
+            for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+                let event = try XCTUnwrap(NSEvent.mouseEvent(with: type, location: point, modifierFlags: [], timestamp: 0,
+                    windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1))
+                if type == .leftMouseDown { view.mouseDown(with: event) } else { view.mouseUp(with: event) }
+            }
+            let selectAll = try XCTUnwrap(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: .command,
+                timestamp: 0, windowNumber: window.windowNumber, context: nil, characters: "a", charactersIgnoringModifiers: "a",
+                isARepeat: false, keyCode: 0))
+            view.keyDown(with: selectAll)
+            if resize { view.setFrameSize(CGSize(width: view.bounds.width - 1, height: view.bounds.height)) }
+            else { model.select(other) }
+            model.apply(IncomingEnvelope(requestID: nil, tabID: tab, message: .viewportState(geometry)), pixels: nil)
+            await fulfillment(of: [unexpectedFocus], timeout: 0.25)
+            observation.cancel()
+            if resize { view.setFrameSize(CGSize(width: 500, height: 300)) }
+            else { model.select(tab) }
+            await wait { model.textInputState?.tab_id == tab && !model.textInputBusy }
+            XCTAssertEqual(model.textInputState?.focused?.node_id, previousFocus)
+            XCTAssertEqual(model.textInputState?.focused?.selection, previousSelection)
+        }
+        await model.stop()
+    }
+
+    func testRedoKeyWaitsForPointerFocusAcknowledgementThroughRealCore() async throws {
+        let (model, view, fixture) = try await start()
+        defer { fixture.stop(); Task { await model.stop() } }
+        let window = NSWindow(contentRect: view.bounds, styleMask: [.borderless], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false; window.contentView = view
+        XCTAssertTrue(window.makeFirstResponder(view))
+        try await focus("Editor", model: model, view: view)
+        view.selectAll(nil); view.insertText("Second tab", replacementRange: NSRange(location: NSNotFound, length: 0))
+        await wait { !model.textInputBusy && model.textInputState?.focused?.text == "Second tab" }
+        view.undo(nil)
+        await wait { !model.textInputBusy && model.textInputState?.focused?.text == "A😀B"
+            && model.textInputState?.focused?.can_redo == true && model.cssViewportSize != nil && model.representation != nil }
+        let snapshot = try XCTUnwrap(model.representation)
+        let node = try XCTUnwrap(snapshot.nodes.first { $0.name == "Editor" })
+        let rect = snapshot.viewRect(for: node, viewport: view.bounds.size, image: try XCTUnwrap(model.cssViewportSize))
+        let point = view.convert(NSPoint(x: rect.midX, y: rect.midY), to: nil)
+        let down = try XCTUnwrap(NSEvent.mouseEvent(with: .leftMouseDown, location: point, modifierFlags: [], timestamp: 0,
+            windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1))
+        view.mouseDown(with: down)
+        XCTAssertNil(model.textInputState, "Pointer focus suspends native command validation before its acknowledgement")
+        let redo = try XCTUnwrap(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [.command, .shift],
+            timestamp: 0, windowNumber: window.windowNumber, context: nil, characters: "Z", charactersIgnoringModifiers: "z",
+            isARepeat: false, keyCode: 6))
+        view.keyDown(with: redo)
+        await wait { !model.textInputBusy && model.textInputState?.focused?.text == "Second tab" }
+        await model.stop()
     }
 
     func testClipboardCommandsWaitForCoreSelectionAndPreservePrivacy() async throws {
@@ -1062,6 +1263,8 @@ final class NativeEditingTests: XCTestCase {
         await wait { model.status.contains("read-only") && !model.textInputBusy }
         model.address = fixture.origin + "/blocked"; model.navigateAddress()
         await wait { model.status.contains("Navigation blocked") }
+        await wait { model.representation?.generation == model.generation
+            && model.cssViewportSize != nil && !model.textInputBusy }
         let snapshot = try XCTUnwrap(model.representation)
         let reset = try XCTUnwrap(snapshot.nodes.first { $0.name == "Reset form" })
         let beforeReset = model.generation

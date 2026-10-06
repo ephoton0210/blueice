@@ -1932,6 +1932,43 @@ final class BrowserUITests: XCTestCase {
         XCTAssertEqual(fixture.requests, ["/accessibility-descendants", "/accessibility-descendants"])
     }
 
+    func testDocumentSelectAllCopyLinkDragPrivacyTabIsolationAndReload() throws {
+        let fixture = try HTTPFixture(); defer { fixture.stop() }
+        let saved = saveClipboard(); defer { NSPasteboard.general.clearContents(); NSPasteboard.general.writeObjects(saved) }
+        launch(); enter(fixture.origin + "/document-selection")
+        let page = app.groups["page"], first = page.staticTexts["Alpha bold 😀 é"]
+        XCTAssertTrue(first.waitForExistence(timeout: 15))
+        NSPasteboard.general.clearContents(); NSPasteboard.general.setString("document-copy-sentinel", forType: .string)
+        first.click(); app.typeKey("a", modifierFlags: .command); app.typeKey("c", modifierFlags: .command)
+        let expected = "Document selection\nAlpha bold 😀 é\nBeta 中文 selectable link\nVisit 1\nBottom finish"
+        let copied = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in NSPasteboard.general.string(forType: .string) == expected }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [copied], timeout: 15), .completed)
+        guard NSPasteboard.general.string(forType: .string) == expected else { return }
+        let link = page.links["selectable link"]
+        link.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.5)).press(forDuration: 0.1,
+            thenDragTo: first.coordinate(withNormalizedOffset: CGVector(dx: 0.01, dy: 0.5)))
+        app.typeKey("c", modifierFlags: .command)
+        let dragged = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            guard let text = NSPasteboard.general.string(forType: .string) else { return false }
+            return text != expected && text.contains("bold") && text.contains("😀") && !text.contains("secret")
+        }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [dragged], timeout: 15), .completed)
+        waitValue(app.textFields["address"], fixture.origin + "/document-selection")
+        XCTAssertEqual(fixture.requests, ["/document-selection"])
+        app.buttons["add-tab"].click(); waitValue(app.textFields["address"], "about:credits")
+        XCTAssertFalse(page.staticTexts["Alpha bold 😀 é"].exists)
+        app.buttons["tab-1"].click(); XCTAssertTrue(first.waitForExistence(timeout: 15))
+        let attachment = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
+        attachment.name = "macos-document-selection"; attachment.lifetime = .keepAlways; add(attachment)
+        app.buttons["reload"].click(); XCTAssertTrue(page.staticTexts["Visit 2"].waitForExistence(timeout: 15))
+        XCTAssertFalse(app.debugDescription.contains("private-control-secret")); XCTAssertFalse(app.debugDescription.contains("hidden-document-secret"))
+        XCTAssertEqual(fixture.requests, ["/document-selection", "/document-selection"])
+        page.links["selectable link"].click()
+        waitValue(app.textFields["address"], fixture.origin + "/selection-follow")
+        XCTAssertTrue(page.staticTexts["Selection link reached"].waitForExistence(timeout: 15))
+        XCTAssertEqual(fixture.requests, ["/document-selection", "/document-selection", "/selection-follow"])
+    }
+
     func testAccessibleUnicodeTextControlsEditingScrollingAndReload() throws {
         let fixture = try HTTPFixture(); defer { fixture.stop() }
         launch(); enter(fixture.origin + "/accessibility-text")

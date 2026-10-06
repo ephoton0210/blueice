@@ -287,3 +287,169 @@ fn context_query_rejects_outside_viewport_and_wrong_frame() {
         ));
     }
 }
+
+#[test]
+fn document_selection_round_trips_without_editor_leaks_and_rejects_foreign_tabs() {
+    let mut browser = Browser::new();
+    let editor = browser.menu("Editor").input.unwrap();
+    let context = editor.context();
+    let ServerMessage::TextInputState(state) = browser.request(
+        1,
+        ClientMessage::TextInput {
+            context,
+            action: TextInputAction::DocumentSelectAll,
+        },
+    ) else {
+        panic!("document selection")
+    };
+    let text = state
+        .document
+        .as_ref()
+        .unwrap()
+        .selected_text
+        .as_ref()
+        .unwrap();
+    assert!(text.contains("Nested link") && text.contains("Credits"));
+    assert!(
+        !text.contains("hello")
+            && !text.contains("private-menu-secret")
+            && !text.contains("Invisible")
+    );
+    assert_eq!(state.focused, editor.focused);
+    let menu = browser.menu("Nested link");
+    assert!(menu.input.is_none());
+    assert_eq!(menu.document, state.document);
+    assert!(matches!(
+        browser.request(
+            2,
+            ClientMessage::TextInput {
+                context: state.context(),
+                action: TextInputAction::DocumentSelectAll,
+            }
+        ),
+        ServerMessage::Error { .. }
+    ));
+    let ServerMessage::TextInputState(retained) =
+        browser.request(1, ClientMessage::GetTextInputState)
+    else {
+        panic!("retained selection")
+    };
+    assert_eq!(retained.document, state.document);
+    assert!(matches!(
+        browser.request(
+            1,
+            ClientMessage::Navigate {
+                url: "about:credits".into()
+            }
+        ),
+        ServerMessage::Navigated { .. }
+    ));
+    assert!(matches!(
+        browser.request(
+            1,
+            ClientMessage::TextInput {
+                context: state.context(),
+                action: TextInputAction::DocumentSelectAll,
+            }
+        ),
+        ServerMessage::Error { .. }
+    ));
+    let ServerMessage::TextInputState(replaced) =
+        browser.request(1, ClientMessage::GetTextInputState)
+    else {
+        panic!("new document")
+    };
+    assert!(!replaced.document.unwrap().active);
+}
+
+#[test]
+fn deferred_native_click_rejects_stale_owners_and_keeps_reviewed_activation() {
+    let mut browser = Browser::new();
+    let ServerMessage::TextInputState(state) = browser.request(1, ClientMessage::GetTextInputState)
+    else {
+        panic!("input ownership")
+    };
+    let snapshot = browser.snapshot();
+    let credits = snapshot
+        .nodes
+        .iter()
+        .find(|node| node.name.as_deref() == Some("Credits"))
+        .unwrap();
+    let x = credits.bounds.x + 2.0;
+    let y = credits.bounds.y + credits.bounds.height / 2.0;
+    for context in [
+        TextInputContext {
+            version: 2,
+            ..state.context()
+        },
+        TextInputContext {
+            frame_source: state.frame_source ^ 1,
+            ..state.context()
+        },
+        TextInputContext {
+            document_generation: state.document_generation + 1,
+            ..state.context()
+        },
+        TextInputContext {
+            focus_generation: state.focus_generation + 1,
+            ..state.context()
+        },
+    ] {
+        assert!(matches!(
+            browser.request(1, ClientMessage::NativeClick { context, x, y }),
+            ServerMessage::Error { .. }
+        ));
+        assert_eq!(browser.snapshot().url, snapshot.url);
+    }
+    assert!(matches!(
+        browser.request(
+            1,
+            ClientMessage::NativeClick {
+                context: state.context(),
+                x: 1e10,
+                y
+            }
+        ),
+        ServerMessage::Error { .. }
+    ));
+    let link = browser.menu("Nested link");
+    assert!(matches!(
+        browser.request(
+            1,
+            ClientMessage::NativeClick {
+                context: state.context(),
+                x: link.context.x,
+                y: link.context.y
+            }
+        ),
+        ServerMessage::Error { .. } | ServerMessage::GatekeeperBlocked { .. }
+    ));
+    assert_eq!(browser.snapshot().url, snapshot.url);
+    let ServerMessage::TextInputState(current) =
+        browser.request(1, ClientMessage::GetTextInputState)
+    else {
+        panic!("focus after reviewed activation")
+    };
+    assert!(matches!(
+        browser.request(
+            1,
+            ClientMessage::NativeClick {
+                context: current.context(),
+                x,
+                y
+            }
+        ),
+        ServerMessage::Navigated { .. }
+    ));
+    assert!(matches!(
+        browser.request(
+            1,
+            ClientMessage::NativeClick {
+                context: state.context(),
+                x,
+                y
+            }
+        ),
+        ServerMessage::Error { .. }
+    ));
+}

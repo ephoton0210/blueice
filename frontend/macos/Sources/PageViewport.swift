@@ -95,6 +95,15 @@ final class CorePageView: NSView, NSTextInputClient, NSUserInterfaceValidations 
         let focus: UInt64?
     }
     private var tabTransition: TabTransition?
+    private struct PointerTransition {
+        let owner: ObjectIdentifier
+        let tab: UInt64
+        let epoch: UInt64
+        let document: UInt64?
+        let viewSize: CGSize
+        let deadline: Date
+    }
+    private var pointerTransition: PointerTransition?
     private var pendingKeys: [NSEvent] = []
     private var entryTabEvent: NSEvent?
     weak var editingMenu: NativeEditingMenu?
@@ -133,6 +142,29 @@ final class CorePageView: NSView, NSTextInputClient, NSUserInterfaceValidations 
     private var activeContextMenu: (menu: NSMenu, context: PageMenuContext)?
     private var pendingSelectPopup: (tab: UInt64, epoch: UInt64, node: UInt64)?
     private var activeSelectMenu: (menu: NSMenu, context: TextInputContext, frame: UInt64, tab: UInt64)?
+    private struct DocumentGesture {
+        let owner: ObjectIdentifier
+        let tab: UInt64
+        let epoch: UInt64
+        let document: UInt64
+        let viewSize: CGSize
+        let cssSize: CGSize
+        let start: NSPoint
+        var dragged = false
+    }
+    private var documentGesture: DocumentGesture?
+    private struct PendingMouseGesture {
+        let id = UUID()
+        let owner: ObjectIdentifier
+        let tab: UInt64
+        let epoch: UInt64
+        let document: UInt64
+        let viewSize: CGSize
+        var events: [NSEvent]
+    }
+    private var pendingMouseGesture: PendingMouseGesture?
+    private var pendingMouseTask: Task<Void, Never>?
+    private var textField: TextControlState? { model?.textInputState?.document?.active == true ? nil : model?.textInputState?.focused }
     override var isFlipped: Bool { true }
     override var acceptsFirstResponder: Bool { true }
     private lazy var coreUndoManager = CoreUndoManager(view: self)
@@ -200,10 +232,21 @@ final class CorePageView: NSView, NSTextInputClient, NSUserInterfaceValidations 
     }
 
     override func mouseDown(with event: NSEvent) {
+        pendingMouseTask?.cancel(); pendingMouseTask = nil; pendingMouseGesture = nil
+        documentGesture = nil
         accessibilityTree.clearReadingFocus()
         if event.modifierFlags.contains(.control) { rightMouseDown(with: event); return }
-        guard let size = model?.cssViewportSize, bounds.width > 0, bounds.height > 0 else { return }
+        guard bounds.width > 0, bounds.height > 0 else { return }
         window?.makeFirstResponder(self)
+        if let model, model.ready, let tab = model.selected {
+            pointerTransition = PointerTransition(owner: ObjectIdentifier(model), tab: tab,
+                epoch: model.accessibilityEpoch, document: model.textInputState?.document_generation,
+                viewSize: bounds.size, deadline: Date().addingTimeInterval(2))
+        }
+        guard let size = model?.cssViewportSize, model?.representation != nil else {
+            deferMouseGesture(event)
+            return
+        }
         tabTransition = nil; pendingKeys.removeAll(); pendingSelectPopup = nil
         let point = convert(event.locationInWindow, from: nil)
         if let model, let snapshot = model.representation, let window,
@@ -221,9 +264,70 @@ final class CorePageView: NSView, NSTextInputClient, NSUserInterfaceValidations 
                && snapshot.viewRect(for: $0, viewport: bounds.size, image: size).contains(point)
            }) { pendingSelectPopup = (snapshot.tabID, model.accessibilityEpoch, node.id) }
         pendingMarked = nil; pendingSelection = nil; pendingContext = nil
+        if let model, let input = model.textInputState, input.document?.version == 1,
+           let snapshot = model.representation, input.frame_generation == snapshot.generation,
+           !snapshot.nodes.contains(where: { node in
+               let control: Bool
+               switch node.role { case .button, .textBox, .checkBox, .slider, .comboBox, .option: control = true; default: control = false }
+               return control && snapshot.viewRect(for: node, viewport: bounds.size, image: size).contains(point)
+           }) {
+            documentGesture = DocumentGesture(owner: ObjectIdentifier(model), tab: snapshot.tabID, epoch: model.accessibilityEpoch,
+                document: input.document_generation, viewSize: bounds.size, cssSize: size, start: point)
+            model.textInput(.documentPointer(point.x * size.width / bounds.width, point.y * size.height / bounds.height,
+                event.modifierFlags.contains(.shift), UInt8(min(3, max(1, event.clickCount)))))
+            return
+        }
         model?.focusPage(x: point.x * size.width / bounds.width,
                          y: point.y * size.height / bounds.height,
                          extend: event.modifierFlags.contains(.shift), clickCount: event.clickCount, toggleSelect: event.modifierFlags.contains(.command))
+    }
+
+    private func deferMouseGesture(_ event: NSEvent) {
+        guard let model, model.ready, let tab = model.selected,
+              let document = model.textInputState?.document_generation else { return }
+        let gesture = PendingMouseGesture(owner: ObjectIdentifier(model), tab: tab, epoch: model.accessibilityEpoch,
+            document: document, viewSize: bounds.size, events: [event])
+        pendingMouseGesture = gesture
+        pendingMouseTask = Task { @MainActor [weak self, weak model] in
+            let deadline = Date().addingTimeInterval(2)
+            while !Task.isCancelled, Date() < deadline {
+                guard let self, let model, self.model === model, model.ready,
+                      let pending = self.pendingMouseGesture, pending.id == gesture.id,
+                      pending.owner == ObjectIdentifier(model), model.selected == pending.tab,
+                      model.accessibilityEpoch == pending.epoch,
+                      model.textInputState?.document_generation == pending.document,
+                      self.bounds.size == pending.viewSize,
+                      self.window?.firstResponder === self else { break }
+                if model.cssViewportSize != nil, let snapshot = model.representation,
+                   snapshot.generation == model.generation, snapshot.tabID == pending.tab {
+                    // Dispatch the original events once, after current geometry
+                    // arrives. Navigation, tab changes and resizing cancel them.
+                    self.pendingMouseGesture = nil; self.pendingMouseTask = nil
+                    for event in pending.events {
+                        switch event.type {
+                        case .leftMouseDown: self.mouseDown(with: event)
+                        case .leftMouseDragged: self.mouseDragged(with: event)
+                        case .leftMouseUp: self.mouseUp(with: event)
+                        case .keyDown: self.keyDown(with: event)
+                        default: break
+                        }
+                    }
+                    return
+                }
+                try? await Task.sleep(for: .milliseconds(10))
+            }
+            if let self, self.pendingMouseGesture?.id == gesture.id {
+                self.pendingMouseGesture = nil; self.pendingMouseTask = nil
+            }
+        }
+    }
+
+    private func bufferMouseEvent(_ event: NSEvent) -> Bool {
+        guard var pending = pendingMouseGesture else { return false }
+        if event.type == .leftMouseDragged, pending.events.last?.type == .leftMouseDragged { pending.events.removeLast() }
+        if pending.events.count < 64 { pending.events.append(event) }
+        pendingMouseGesture = pending
+        return true
     }
 
     override func rightMouseDown(with event: NSEvent) {
@@ -329,7 +433,12 @@ final class CorePageView: NSView, NSTextInputClient, NSUserInterfaceValidations 
             }
             menu.addItem(.separator())
         }
-        if let field = state.input?.focused {
+        if let document = state.document {
+            item("Copy", enabled: document.active && document.selection.length > 0) { $0.copySelection() }
+            item("Select All", enabled: document.text_length > 0) { $0.textInput(.documentSelectAll) }
+            if document.limited { item("Some document text is unavailable", enabled: false) { _ in } }
+            menu.addItem(.separator())
+        } else if let field = state.input?.focused {
             item("Undo", enabled: field.can_undo == true) { $0.textInput(.undo) }
             item("Redo", enabled: field.can_redo == true) { $0.textInput(.redo) }
             if field.undo_limited == true { item("Earlier edits may be unavailable", enabled: false) { _ in } }
@@ -356,10 +465,45 @@ final class CorePageView: NSView, NSTextInputClient, NSUserInterfaceValidations 
     }
 
     override func mouseDragged(with event: NSEvent) {
+        if bufferMouseEvent(event) { return }
         guard let size = model?.cssViewportSize, bounds.width > 0, bounds.height > 0 else { return }
         let point = convert(event.locationInWindow, from: nil)
+        if var gesture = documentGesture {
+            guard documentGestureIsCurrent(gesture) else { return }
+            gesture.dragged = gesture.dragged || hypot(point.x - gesture.start.x, point.y - gesture.start.y) > 3
+            documentGesture = gesture
+            if gesture.dragged { model?.textInput(.documentPointer(point.x * size.width / bounds.width, point.y * size.height / bounds.height, true, 1)) }
+            return
+        }
         model?.textInput(.pointer(point.x * size.width / bounds.width,
                                   point.y * size.height / bounds.height, true, 1))
+    }
+
+    private func documentGestureIsCurrent(_ gesture: DocumentGesture) -> Bool {
+        guard let model else { return false }
+        return model.ready && ObjectIdentifier(model) == gesture.owner && model.selected == gesture.tab
+            && model.accessibilityEpoch == gesture.epoch && model.textInputState?.document_generation == gesture.document
+            && bounds.size == gesture.viewSize
+            // A selection frame temporarily suspends display-state reads.
+            // The queued click obtains fresh input before dispatch; an actual
+            // viewport change still invalidates the captured gesture.
+            && (model.cssViewportSize == nil || model.cssViewportSize == gesture.cssSize)
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        if bufferMouseEvent(event) { return }
+        guard let gesture = documentGesture else { return }
+        documentGesture = nil
+        guard documentGestureIsCurrent(gesture) else { return }
+        let point = convert(event.locationInWindow, from: nil)
+        let x = point.x * gesture.cssSize.width / gesture.viewSize.width
+        let y = point.y * gesture.cssSize.height / gesture.viewSize.height
+        if gesture.dragged || hypot(point.x - gesture.start.x, point.y - gesture.start.y) > 3 {
+            model?.textInput(.documentPointer(x, y, true, 1))
+            return
+        }
+        guard bounds.contains(point), window?.isKeyWindow == true, window?.firstResponder === self else { return }
+        model?.queueDocumentClick(x: x, y: y, cssSize: gesture.cssSize, tab: gesture.tab, epoch: gesture.epoch, document: gesture.document)
     }
 
     override func scrollWheel(with event: NSEvent) {
@@ -376,13 +520,18 @@ final class CorePageView: NSView, NSTextInputClient, NSUserInterfaceValidations 
     }
 
     override func keyDown(with event: NSEvent) {
+        if isPageInputKey(event), pendingMouseGesture != nil, bufferMouseEvent(event) { return }
+        if pointerTransition != nil, isPageInputKey(event) {
+            replayPendingKeys()
+            if pointerTransition != nil { if pendingKeys.count < 512 { pendingKeys.append(event) }; return }
+        }
         accessibilityTree.clearReadingFocus()
         if event.keyCode == 109, event.modifierFlags.intersection([.command, .control, .option, .shift]) == .shift,
            accessibilityPerformShowMenu() { return }
         if entryTabEvent === event { entryTabEvent = nil; return }
         entryTabEvent = nil
         if tabTransition != nil { if pendingKeys.count < 512 { pendingKeys.append(event) }; return }
-        if let state = model?.textInputState, let select = state.select,
+        if let state = model?.textInputState, state.document?.active != true, let select = state.select,
            event.modifierFlags.intersection([.command, .control, .option]) == .command {
             let key: PageKey? = [123: .left, 124: .right, 125: .down, 126: .up, 115: .home, 119: .end, 116: .pageUp, 121: .pageDown, 49: .space][Int(event.keyCode)]
             if let key, select.multiple {
@@ -407,10 +556,10 @@ final class CorePageView: NSView, NSTextInputClient, NSUserInterfaceValidations 
             default: key = event.charactersIgnoringModifiers == " " ? .space : nil
             }
             if let key {
-                if key == .enter || key == .space, let state = model?.textInputState, state.select?.popup == true {
+                if key == .enter || key == .space, let state = model?.textInputState, state.document?.active != true, state.select?.popup == true {
                     presentSelectMenu(state); return
                 }
-                if key == .enter || key == .space, let model, let window,
+                if key == .enter || key == .space, let model, model.textInputState?.document?.active != true, let window,
                    let node = model.representation?.nodes.first(where: { $0.state.fileInput && $0.state.focused && !$0.state.disabled }) {
                     filePicker.present(node: node,model: model,window: window)
                     return
@@ -424,9 +573,17 @@ final class CorePageView: NSView, NSTextInputClient, NSUserInterfaceValidations 
     }
 
     func bufferWindowKey(_ event: NSEvent) -> Bool {
-        guard tabTransition != nil else { return false }
+        if isPageInputKey(event), pendingMouseGesture != nil { return bufferMouseEvent(event) }
+        if pointerTransition != nil { replayPendingKeys() }
+        if tabTransition == nil && !isPageInputKey(event) { return false }
+        guard tabTransition != nil || pointerTransition != nil else { return false }
         if pendingKeys.count < 512 { pendingKeys.append(event) }
         return true
+    }
+    private func isPageInputKey(_ event: NSEvent) -> Bool {
+        !event.modifierFlags.contains(.command)
+            || ["a", "c", "x", "v", "z"].contains(event.charactersIgnoringModifiers?.lowercased() ?? "")
+            || [51, 117, 123, 124, 125, 126, 115, 119].contains(Int(event.keyCode))
     }
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         if tabTransition != nil, event.modifierFlags.intersection([.command, .option, .control]) == .command,
@@ -435,7 +592,7 @@ final class CorePageView: NSView, NSTextInputClient, NSUserInterfaceValidations 
         }
         guard event.modifierFlags.intersection([.command, .option, .control]) == .command,
               window?.firstResponder === self,
-              model?.textInputState?.focused != nil else { return false }
+              model?.textInputState?.focused != nil || model?.textInputState?.document != nil else { return false }
         switch event.charactersIgnoringModifiers?.lowercased() {
         case "a": selectAll(nil)
         case "c": copy(nil)
@@ -485,6 +642,26 @@ final class CorePageView: NSView, NSTextInputClient, NSUserInterfaceValidations 
     }
 
     private func replayPendingKeys() {
+        if let transition = pointerTransition {
+            guard let model, model.ready, ObjectIdentifier(model) == transition.owner,
+                  model.selected == transition.tab, model.accessibilityEpoch == transition.epoch,
+                  bounds.size == transition.viewSize, window?.firstResponder === self,
+                  Date() < transition.deadline else {
+                pointerTransition = nil; pendingKeys.removeAll(); return
+            }
+            guard pendingMouseGesture == nil, !model.textInputBusy, let state = model.textInputState,
+                  state.frame_generation == model.generation else { return }
+            guard transition.document == nil || state.document_generation == transition.document else {
+                pointerTransition = nil; pendingKeys.removeAll(); return
+            }
+            pointerTransition = nil
+            let keys = pendingKeys; pendingKeys.removeAll()
+            for event in keys {
+                guard window?.firstResponder === self else { return }
+                keyDown(with: event)
+            }
+            return
+        }
         guard let transition = tabTransition else { return }
         guard let model, model.ready, model.selected == transition.tab, model.accessibilityEpoch == transition.epoch else {
             tabTransition = nil; pendingKeys.removeAll(); return
@@ -513,6 +690,7 @@ final class CorePageView: NSView, NSTextInputClient, NSUserInterfaceValidations 
     }
 
     func insertText(_ string: Any, replacementRange: NSRange) {
+        guard model?.textInputState?.document?.active != true else { return }
         if model?.textInputState?.select != nil {
             let text = (string as? NSAttributedString)?.string ?? (string as? String ?? "")
             model?.textInput(.replace(text, nil)); return
@@ -526,6 +704,10 @@ final class CorePageView: NSView, NSTextInputClient, NSUserInterfaceValidations 
     }
     override func doCommand(by selector: Selector) {
         let name = NSStringFromSelector(selector)
+        if model?.textInputState?.document?.active == true {
+            if name == "cancelOperation:" { model?.textInput(.key(.escape, false)); return }
+            if name.hasPrefix("delete") || name.hasPrefix("insert") && name != "insertTab:" && name != "insertBacktab:" { return }
+        }
         let extend = name.contains("AndModifySelection")
         let movement: TextMovement?
         switch name.replacingOccurrences(of: "AndModifySelection", with: "") {
@@ -558,6 +740,7 @@ final class CorePageView: NSView, NSTextInputClient, NSUserInterfaceValidations 
         }
     }
     func setMarkedText(_ string: Any, selectedRange: NSRange, replacementRange: NSRange) {
+        guard model?.textInputState?.document?.active != true else { return }
         let text = (string as? NSAttributedString)?.string ?? (string as? String ?? "")
         guard text.utf16.count <= 65_536, let selection = TextRange.replacement(selectedRange),
               selection.valid(length: UInt32(text.utf16.count)),
@@ -571,16 +754,19 @@ final class CorePageView: NSView, NSTextInputClient, NSUserInterfaceValidations 
         model?.textInput(.compose(text, selection, TextRange.replacement(replacementRange)))
     }
     func unmarkText() {
+        guard model?.textInputState?.document?.active != true else { return }
         pendingUnmark = model?.textInputState?.context
         model?.textInput(.finishComposition); pendingMarked = nil; pendingSelection = nil
     }
     func hasMarkedText() -> Bool { markedRange().location != NSNotFound }
     func markedRange() -> NSRange {
+        if model?.textInputState?.document?.active == true { return NSRange(location: NSNotFound, length: 0) }
         refreshPendingContext()
         if pendingUnmark != nil { return NSRange(location: NSNotFound, length: 0) }
         return pendingMarked ?? model?.textInputState?.focused?.marked?.nsRange ?? NSRange(location: NSNotFound, length: 0)
     }
     func selectedRange() -> NSRange {
+        if let document = model?.textInputState?.document, document.active { return document.selection.nsRange }
         refreshPendingContext()
         return pendingSelection ?? model?.textInputState?.focused?.selection.nsRange ?? NSRange(location: NSNotFound, length: 0)
     }
@@ -593,7 +779,7 @@ final class CorePageView: NSView, NSTextInputClient, NSUserInterfaceValidations 
     func validAttributesForMarkedText() -> [NSAttributedString.Key] { [] }
     func attributedSubstring(forProposedRange range: NSRange, actualRange: NSRangePointer?) -> NSAttributedString? {
         actualRange?.pointee = NSRange(location: NSNotFound, length: 0)
-        guard let field = model?.textInputState?.focused, !field.protected, let text = field.text,
+        guard let field = textField, !field.protected, let text = field.text,
               let checked = TextRange.replacement(range), checked.valid(length: field.text_length) else { return nil }
         let value = text as NSString
         let expanded = value.rangeOfComposedCharacterSequences(for: checked.nsRange)
@@ -601,7 +787,7 @@ final class CorePageView: NSView, NSTextInputClient, NSUserInterfaceValidations 
         return NSAttributedString(string: value.substring(with: expanded))
     }
     func characterIndex(for point: NSPoint) -> Int {
-        guard let state = model?.textInputState, let field = state.focused, let window, let size = model?.cssViewportSize else { return NSNotFound }
+        guard let state = model?.textInputState, let field = textField, let window, let size = model?.cssViewportSize else { return NSNotFound }
         let local = convert(window.convertPoint(fromScreen: point), from: nil)
         guard state.viewRect(field.bounds, viewport: bounds.size, image: size).contains(local) else { return NSNotFound }
         return field.carets.min {
@@ -615,7 +801,7 @@ final class CorePageView: NSView, NSTextInputClient, NSUserInterfaceValidations 
     func firstRect(forCharacterRange range: NSRange, actualRange: NSRangePointer?) -> NSRect {
         actualRange?.pointee = NSRange(location: NSNotFound, length: 0)
         refreshPendingContext()
-        guard let state = model?.textInputState, let field = state.focused, let window, let size = model?.cssViewportSize,
+        guard let state = model?.textInputState, let field = textField, let window, let size = model?.cssViewportSize,
               range.location != NSNotFound, range.location >= 0 else { return .zero }
         let pending = pendingMarked.map { range.location >= $0.location && range.location <= NSMaxRange($0) } ?? false
         guard range.location <= Int(field.text_length) || pending else { return .zero }
@@ -642,6 +828,10 @@ final class CorePageView: NSView, NSTextInputClient, NSUserInterfaceValidations 
         switch item.action?.description {
         case "undo:": return coreUndoManager.canUndo
         case "redo:": return coreUndoManager.canRedo
+        case "copy:": return model?.textInputBusy == true || model?.textInputState?.document.map { $0.active && $0.selection.length > 0 } == true || textField.map { !$0.protected && $0.selection.length > 0 } == true
+        case "cut:": return model?.textInputState?.document?.active != true && textField.map { !$0.protected && $0.writable && $0.selection.length > 0 } == true
+        case "paste:": return model?.textInputState?.document?.active != true && textField?.writable == true
+        case "selectAll:": return model?.textInputState?.document.map { $0.text_length > 0 } == true || textField.map { $0.text_length > 0 } == true || model?.textInputState?.select?.multiple == true
         default: return model?.ready == true
         }
     }
@@ -658,7 +848,7 @@ private final class CoreUndoManager: UndoManager {
     private weak var view: CorePageView?
     init(view: CorePageView) { self.view = view; super.init(); disableUndoRegistration() }
     private var field: TextControlState? { view?.model?.textInputState?.focused }
-    private var editable: Bool { view?.model?.ready == true && field?.writable == true && view?.hasMarkedText() == false }
+    private var editable: Bool { view?.model?.ready == true && view?.model?.textInputState?.document?.active != true && field?.writable == true && view?.hasMarkedText() == false }
     override var canUndo: Bool { editable && (field?.can_undo == true || view?.model?.textInputBusy == true) }
     override var canRedo: Bool { editable && (field?.can_redo == true || view?.model?.textInputBusy == true) }
     override func undo() { if canUndo { view?.model?.textInput(.undo) } }

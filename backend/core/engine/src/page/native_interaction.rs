@@ -151,8 +151,12 @@ impl Page {
     pub(crate) fn native_focus_at(&mut self, focused: Option<NodeId>) -> bool {
         self.native_focus_exit = None;
         let focused = focused.filter(|id| self.native_focusable(*id));
+        let selection_changed = focused.is_some() && self.document_selection_active();
+        if focused.is_some() {
+            self.clear_document_selection();
+        }
         if self.focused == focused {
-            return false;
+            return selection_changed;
         }
         self.commit_native_composition();
         self.focused = focused;
@@ -238,6 +242,9 @@ impl Page {
     }
 
     pub(crate) fn native_key_activation(&self, action: &TextInputAction) -> Option<NodeId> {
+        if self.document_selection_active() {
+            return None;
+        }
         let TextInputAction::Key { key, .. } = action else {
             return None;
         };

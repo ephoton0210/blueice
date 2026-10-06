@@ -70,6 +70,7 @@ enum AccessibilityTextAction: Encodable, Sendable {
 }
 
 struct AccessibilityTextState: Decodable, Sendable {
+    let document: Bool?
     struct Style: Decodable, Sendable {
         let font_size_px: Double
         let bold: Bool
@@ -89,14 +90,15 @@ struct AccessibilityTextState: Decodable, Sendable {
     let line_count: UInt32
     let style: Style
     var valid: Bool {
-        text_length <= 65_536 && (protected ? text == nil : text?.utf16.count == Int(text_length))
+        text_length <= (document == true ? 2_097_152 : 65_536) && (document != true || !protected && !writable && marked == nil)
+            && (protected ? text == nil : text?.utf16.count == Int(text_length))
             && visible_range.valid(length: text_length) && selection.map { $0.valid(length: text_length) } != false
             && marked.map { $0.valid(length: text_length) } != false && (focused || selection == nil && marked == nil && insertion_line == nil)
-            && line_count > 0 && line_count <= 65_537 && insertion_line.map { $0 < line_count } != false
+            && line_count > 0 && line_count <= (document == true ? 2_097_153 : 65_537) && insertion_line.map { $0 < line_count } != false
             && style.font_size_px.isFinite && style.font_size_px > 0 && style.color.count == 4
     }
     func substring(_ range: NSRange) -> String? {
-        guard !protected, let text, let requested = TextRange.replacement(range), requested.valid(length: text_length),
+        guard !protected, let text, let requested = TextRange.replacement(range, limit: document == true ? 2_097_152 : 65_536), requested.valid(length: text_length),
               range.location <= text.utf16.count else { return nil }
         let units = Array(text.utf16)
         let end = range.location + range.length
@@ -122,10 +124,10 @@ enum AccessibilityTextResult: Decodable, Sendable {
             }; self = .bounds(bounds)
         case "Index":
             let index = try root.decodeIfPresent(UInt32.self, forKey: key)
-            guard index.map({ $0 <= 65_536 }) != false else { throw BrowserFailure.invalid("Invalid accessibility text index.") }; self = .index(index)
+            guard index.map({ $0 <= 2_097_152 }) != false else { throw BrowserFailure.invalid("Invalid accessibility text index.") }; self = .index(index)
         case "Range":
             let range = try root.decodeIfPresent(TextRange.self, forKey: key)
-            guard range.map({ $0.valid(length: 65_536) }) != false else { throw BrowserFailure.invalid("Invalid accessibility text range.") }; self = .range(range)
+            guard range.map({ $0.valid(length: 2_097_152) }) != false else { throw BrowserFailure.invalid("Invalid accessibility text range.") }; self = .range(range)
         default: throw BrowserFailure.invalid("Unknown accessibility text result.")
         }
     }
@@ -218,13 +220,19 @@ final class BrowserAccessibilityTextSession {
             return reply.bounds
         } catch { close(); throw error }
     }
-    func perform(_ textContext: AccessibilityTextContext, action: AccessibilityTextAction) throws -> AccessibilityTextResult {
+    func perform(_ textContext: AccessibilityTextContext, action: AccessibilityTextAction, document: Bool = false) throws -> AccessibilityTextResult {
         do {
             guard case .accessibilityTextState(let reply) = try exchange(.accessibilityText(textContext, action)),
                   reply.context.version == textContext.version, reply.context.frame_source == textContext.frame_source,
                   reply.context.document_generation == textContext.document_generation, reply.context.node_id == textContext.node_id,
                   action.mutates ? reply.context.frame_generation > textContext.frame_generation : reply.context.frame_generation == textContext.frame_generation else {
                 throw BrowserFailure.invalid("Stale accessibility text reply.")
+            }
+            switch reply.result {
+            case .state(let state): guard (state.document == true) == document else { throw BrowserFailure.invalid("Mismatched accessibility text domain.") }
+            case .index(let index): guard index.map({ $0 <= (document ? 2_097_152 : 65_536) }) != false else { throw BrowserFailure.invalid("Invalid accessibility index domain.") }
+            case .range(let range): guard range.map({ $0.valid(length: document ? 2_097_152 : 65_536) }) != false else { throw BrowserFailure.invalid("Invalid accessibility range domain.") }
+            case .bounds: break
             }
             switch (action, reply.result) {
             case (.inspect, .state), (.select, .state), (.replaceSelection, .state), (.setValue, .state), (.scrollToRange, .state),

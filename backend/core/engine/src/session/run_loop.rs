@@ -656,7 +656,29 @@ pub(super) fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
                             )?;
                         }
                     }
-                    ClientMessage::Click { x, y } => {
+                    ClientMessage::Click { x, y } | ClientMessage::NativeClick { x, y, .. } => {
+                        if let ClientMessage::NativeClick { context, .. } = msg {
+                            let source = blueice_ipc::shm::frame_source_id(frame_dir);
+                            let validation = tabs
+                                .get(target)
+                                .ok_or_else(|| "Unknown native click tab".to_string())
+                                .and_then(|page| {
+                                    page.validate_native_input_context(&context, source)
+                                });
+                            if let Err(message) = validation {
+                                write_error(stream, reply_tab, request_id, message)?;
+                                continue;
+                            }
+                            if !x.is_finite() || !y.is_finite() || x.abs() > 1e9 || y.abs() > 1e9 {
+                                write_error(
+                                    stream,
+                                    reply_tab,
+                                    request_id,
+                                    "Invalid native click point".into(),
+                                )?;
+                                continue;
+                            }
+                        }
                         let Some((node, event_target, href)) = tabs.get(target).map(|page| {
                             (
                                 page.click_target(x, y),

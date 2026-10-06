@@ -75,6 +75,14 @@ impl Page {
             state.focused.as_ref()?;
             Some(state)
         });
+        let document = (input.is_none()
+            && self.validate_menu_point(x, y)
+            && self
+                .click_target(x, y)
+                .is_none_or(|node| self.document_text_is_public(node)))
+        .then(|| self.document_selection_state())
+        .filter(|state| state.text_length > 0)
+        .map(Box::new);
         ContextMenuState {
             context: ContextMenuContext {
                 tab_id: tab,
@@ -86,6 +94,7 @@ impl Page {
             },
             link_url: self.menu_link(x, y),
             input,
+            document,
         }
     }
 }

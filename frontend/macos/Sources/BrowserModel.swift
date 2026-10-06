@@ -297,11 +297,14 @@ final class BrowserModel: ObservableObject {
         var request: UInt64?
     }
     private struct InputEdit {
+        let id = UUID()
         let tab: UInt64
         let epoch: UInt64
         let serial: UInt64
         let action: TextInputAction
         var clipboard: ClipboardAction? = nil
+        var click: NSPoint? = nil
+        var clickCSSSize: CGSize? = nil
     }
     private enum ClipboardAction { case copy, cut, paste }
     private var inputStates: [UInt64: TextInputState] = [:]
@@ -563,9 +566,12 @@ final class BrowserModel: ObservableObject {
             displayStates[tab] = state
             if desiredZooms[tab] == state.zoom { desiredZooms.removeValue(forKey: tab) }
             if tab == selected { displayState = state }
+            drainTextInput()
         case .viewportUnavailable:
             if let tab { displayStates.removeValue(forKey: tab) }
             if tab == selected { displayState = nil; status = "Display geometry unavailable" }
+            inputQueue.removeAll { $0.tab == tab && $0.click != nil }
+            drainTextInput()
         case .displayPreferences(let state):
             guard let tab, state.tabID == tab, state.frameGeneration == frames[tab]?.generation,
                   state.frameSource == PageRepresentation.frameSource(directory: session.frameDirectory.path) else { return }
@@ -956,17 +962,22 @@ final class BrowserModel: ObservableObject {
               representation?.generation == snapshot.generation,
               snapshot.frameSource == PageRepresentation.frameSource(directory: session.frameDirectory.path),
               input.frame_source == snapshot.frameSource, !node.state.disabled, !node.occluded,
-              node.role == .textBox, !node.state.fileInput,
-              node.state.nativeTextInput || node.state.nativeFocusable else { return nil }
+              snapshot.accessibility?.hidden_nodes.contains(node.id) != true,
+              node.supportsDocumentText ? input.document?.version == 1 : node.role == .textBox && !node.state.fileInput
+                && (node.state.nativeTextInput || node.state.nativeFocusable) else { return nil }
         do {
             let broker = try BrowserAccessibilityTextSession(runtime: session.runtimeDirectory, tab: snapshot.tabID, context: contextID, window: windowID)
             // No idle broadcast reader survives a synchronous AX callback.
             defer { broker.close() }
             let context = AccessibilityTextContext(version: 1, frame_source: snapshot.frameSource,
                 document_generation: input.document_generation, frame_generation: snapshot.generation, node_id: node.id)
-            let result = try broker.perform(context, action: action)
+            let result = try broker.perform(context, action: action, document: node.supportsDocumentText)
             if case .state(let state) = result, state.protected != node.state.protected {
                 throw BrowserFailure.invalid("Accessibility text privacy metadata changed.")
+            }
+            if action.mutates {
+                inputStates.removeValue(forKey: snapshot.tabID)
+                requestTextInput(snapshot.tabID)
             }
             return result
         } catch {
@@ -1012,7 +1023,13 @@ final class BrowserModel: ObservableObject {
     // Serialize edits through acknowledgements. An IME can issue several
     // callbacks in one event; none may use a different document or focus.
     func textInput(_ action: TextInputAction) {
-        guard ready, let tab = selected, inputQueue.count < 128 else { return }
+        guard ready, let tab = selected else { return }
+        if case .documentPointer(_, _, true, 1) = action, let last = inputQueue.last,
+           case .documentPointer(_, _, true, 1) = last.action, last.clipboard == nil,
+           last.tab == tab, last.epoch == documentEpochs[tab, default: 0], last.serial == inputSerials[tab, default: 0] {
+            inputQueue.removeLast()
+        }
+        guard inputQueue.count < 128 else { return }
         inputQueue.append(InputEdit(tab: tab, epoch: documentEpochs[tab, default: 0],
                                     serial: inputSerials[tab, default: 0], action: action))
         textInputBusy = true
@@ -1021,8 +1038,17 @@ final class BrowserModel: ObservableObject {
 
     func copySelection(cut: Bool = false) { enqueueClipboard(cut ? .cut : .copy) }
     func pasteClipboard() { enqueueClipboard(.paste) }
+    func queueDocumentClick(x: Double, y: Double, cssSize: CGSize, tab: UInt64, epoch: UInt64, document: UInt64) {
+        guard ready, selected == tab, accessibilityEpoch == epoch,
+              textInputState?.document_generation == document, inputQueue.count < 128 else { return }
+        inputQueue.append(InputEdit(tab: tab, epoch: epoch, serial: inputSerials[tab, default: 0],
+            action: .selectAll, click: NSPoint(x: x, y: y), clickCSSSize: cssSize))
+        textInputBusy = true
+        drainTextInput()
+    }
     private func enqueueClipboard(_ command: ClipboardAction) {
         guard ready, let tab = selected, inputQueue.count < 128 else { return }
+        inputStates.removeValue(forKey: tab)
         inputQueue.append(InputEdit(tab: tab, epoch: documentEpochs[tab, default: 0],
                                     serial: inputSerials[tab, default: 0], action: .replace("", nil), clipboard: command))
         textInputBusy = true
@@ -1065,11 +1091,41 @@ final class BrowserModel: ObservableObject {
             guard edit.epoch == documentEpochs[edit.tab, default: 0], edit.serial == inputSerials[edit.tab, default: 0],
                   tabs.contains(where: { $0.id == edit.tab }) else { inputQueue.removeFirst(); continue }
             guard inputRequests[edit.tab] == nil, let state = inputStates[edit.tab] else { requestTextInput(edit.tab); return }
-            guard state.focused != nil || state.select != nil || edit.action.isPageKey else { inputQueue.removeFirst(); continue }
+            guard state.frame_generation == frames[edit.tab]?.generation else { inputStates.removeValue(forKey: edit.tab); requestTextInput(edit.tab); return }
+            if edit.click != nil {
+                guard let geometry = displayStates[edit.tab], geometry.frameGeneration == state.frame_generation else { return }
+                guard edit.clickCSSSize == CGSize(width: geometry.cssWidth, height: geometry.cssHeight) else { inputQueue.removeFirst(); continue }
+            }
+            guard state.focused != nil || state.select != nil || edit.action.isPageKey
+                || state.document != nil && (edit.action.usesDocumentSelection || edit.clipboard != nil) else { inputQueue.removeFirst(); continue }
             inputQueue.removeFirst()
+            if let point = edit.click {
+                inputFlight = (edit, nil)
+                Task {
+                    guard selected == edit.tab, documentEpochs[edit.tab, default: 0] == edit.epoch,
+                          inputSerials[edit.tab, default: 0] == edit.serial, inputFlight?.edit.id == edit.id else {
+                        if inputFlight?.edit.id == edit.id { finishInputFlight(); drainTextInput() }
+                        return
+                    }
+                    await send(.nativeClick(state.context, point.x, point.y), tab: edit.tab)
+                    guard inputFlight?.edit.id == edit.id else { return }
+                    finishInputFlight()
+                    inputStates.removeValue(forKey: edit.tab)
+                    requestTextInput(edit.tab)
+                    drainTextInput()
+                }
+                return
+            }
             var action = edit.action
             if let clipboard = edit.clipboard {
-                guard selected == edit.tab, let field = state.focused else { continue }
+                guard selected == edit.tab else { continue }
+                if let document = state.document, document.active {
+                    if clipboard == .copy, document.selection.length > 0, let text = document.selected_text {
+                        NSPasteboard.general.clearContents(); NSPasteboard.general.setString(text, forType: .string)
+                    }
+                    continue
+                }
+                guard let field = state.focused else { continue }
                 switch clipboard {
                 case .copy, .cut:
                     guard !field.protected, clipboard != .cut || field.writable,
@@ -1091,6 +1147,7 @@ final class BrowserModel: ObservableObject {
             }
             Task {
                 let request = await send(.textInput(state.context, action), tab: edit.tab)
+                guard inputFlight?.edit.id == edit.id else { return }
                 inputFlight?.request = request
                 replayEarlyInputReplies()
             }

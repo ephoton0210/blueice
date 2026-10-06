@@ -68,6 +68,9 @@ enum PageRole: Equatable, Decodable, Sendable {
 }
 
 struct PageNode: Decodable, Sendable {
+    var supportsDocumentText: Bool {
+        switch role { case .heading, .paragraph, .link, .list, .listItem, .generic: return true; default: return false }
+    }
     struct State: Decodable, Sendable {
         let value: String?
         let checked: Bool?

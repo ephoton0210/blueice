@@ -359,7 +359,7 @@ impl Geometry {
     }
 }
 
-pub(super) fn grapheme_range(text: &str, index: u32) -> Option<TextRange> {
+pub(in crate::page) fn grapheme_range(text: &str, index: u32) -> Option<TextRange> {
     let mut offset = 0;
     for cluster in text.graphemes(true) {
         let end = offset + length(cluster);
@@ -373,7 +373,7 @@ pub(super) fn grapheme_range(text: &str, index: u32) -> Option<TextRange> {
     }
     None
 }
-pub(super) fn intersection(a: Bounds, b: Bounds) -> Option<Bounds> {
+pub(in crate::page) fn intersection(a: Bounds, b: Bounds) -> Option<Bounds> {
     let x = a.x.max(b.x);
     let y = a.y.max(b.y);
     let right = (a.x + a.width).min(b.x + b.width);
@@ -385,7 +385,7 @@ pub(super) fn intersection(a: Bounds, b: Bounds) -> Option<Bounds> {
         height: bottom - y,
     })
 }
-pub(super) fn union(rects: &[Bounds]) -> Option<Bounds> {
+pub(in crate::page) fn union(rects: &[Bounds]) -> Option<Bounds> {
     let first = *rects.first()?;
     let x = rects.iter().fold(first.x, |x, r| x.min(r.x));
     let y = rects.iter().fold(first.y, |y, r| y.min(r.y));

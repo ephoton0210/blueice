@@ -289,5 +289,12 @@ The descendant increment preserves each contributor's atomic/relevant scope,
 expands public groups/author labels once in document order and retains label
 privacy provenance. Its complete native and normal-runner Rust acceptance is in
 [MACOS_DESCENDANT_LIVE_RESULTS.md](MACOS_DESCENDANT_LIVE_RESULTS.md).
-Document text selection, complete ARIA semantics and physical VoiceOver remain
-open in the macOS delivery plan.
+The document-selection increment supplies core-owned UTF-16 selection and paint,
+pointer/keyboard Select All and Copy, read-only AppKit AX text ranges, link-drag
+isolation and bounded input buffering through frame/focus gaps. Complete native
+acceptance passed 184 methods with one existing physical Zhuyin skip; complete
+Rust workspace acceptance passed 7302 cases with 69 ignored. Earlier unsuccessful
+attempts and the unchanged-source/product audit are recorded in
+[MACOS_DOCUMENT_SELECTION_RESULTS.md](MACOS_DOCUMENT_SELECTION_RESULTS.md).
+Complete ARIA semantics, physical VoiceOver and the remaining browser requirements
+stay open in the macOS delivery plan.

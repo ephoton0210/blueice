@@ -26,6 +26,7 @@ enum JSONValue: Encodable, Sendable {
 enum BrowserCommand: Encodable, Sendable {
     case unit(String), values(String, [String: JSONValue])
     case textInput(TextInputContext, TextInputAction)
+    case nativeClick(TextInputContext, Double, Double)
     case accessibilityText(AccessibilityTextContext, AccessibilityTextAction)
     case accessibilityReveal(AccessibilityTextContext)
     case accessibilityAcknowledge(AccessibilityDelivery)
@@ -67,6 +68,11 @@ enum BrowserCommand: Encodable, Sendable {
         case .values(let name, let fields):
             var value = encoder.container(keyedBy: MessageKey.self)
             try value.encode(fields, forKey: MessageKey(name))
+        case .nativeClick(let context, let x, let y):
+            var root = encoder.container(keyedBy: MessageKey.self)
+            var value = root.nestedContainer(keyedBy: MessageKey.self, forKey: MessageKey("NativeClick"))
+            try value.encode(context, forKey: MessageKey("context"))
+            try value.encode(x, forKey: MessageKey("x")); try value.encode(y, forKey: MessageKey("y"))
         case .textInput(let context, let action):
             var root = encoder.container(keyedBy: MessageKey.self)
             var value = root.nestedContainer(keyedBy: MessageKey.self, forKey: MessageKey("TextInput"))
@@ -176,12 +182,14 @@ struct PageContextMenu: Decodable, Sendable {
     let context: PageMenuContext
     let linkURL: String?
     let input: TextInputState?
-    enum CodingKeys: String, CodingKey { case context, linkURL = "link_url", input }
+    let document: DocumentSelectionState?
+    enum CodingKeys: String, CodingKey { case context, linkURL = "link_url", input, document }
     static func validLink(_ text: String) -> Bool {
         text.utf8.count <= 8192 && URL(string: text)?.scheme.map { ["http", "https", "about"].contains($0) } == true
     }
     var valid: Bool {
         guard context.valid, linkURL.map(Self.validLink) != false else { return false }
+        guard document?.valid != false, input == nil || document == nil else { return false }
         guard let input else { return true }
         return (try? input.validate()) != nil && input.focused != nil && input.tab_id == context.tabID
             && input.frame_source == context.frameSource && input.document_generation == context.documentGeneration

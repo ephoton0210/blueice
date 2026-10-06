@@ -13,7 +13,7 @@ use blueice_ipc::input::{
 use unicode_segmentation::UnicodeSegmentation;
 
 mod accessibility;
-mod geometry;
+pub(super) mod geometry;
 #[cfg(test)]
 mod tests;
 pub(in crate::page) mod undo;
@@ -109,7 +109,7 @@ fn length(text: &str) -> u32 {
     text.encode_utf16().count() as u32
 }
 
-fn byte_offset(text: &str, target: u32) -> Option<usize> {
+pub(super) fn byte_offset(text: &str, target: u32) -> Option<usize> {
     let mut offset = 0_u32;
     for (byte, ch) in text.char_indices() {
         if offset == target {
@@ -123,7 +123,10 @@ fn byte_offset(text: &str, target: u32) -> Option<usize> {
     (offset == target).then_some(text.len())
 }
 
-fn checked_range(text: &str, range: TextRange) -> Result<std::ops::Range<usize>, String> {
+pub(super) fn checked_range(
+    text: &str,
+    range: TextRange,
+) -> Result<std::ops::Range<usize>, String> {
     let end = range.end().ok_or("Text range overflow")?;
     let start = byte_offset(text, range.location).ok_or("Text range splits a Unicode scalar")?;
     let end = byte_offset(text, end).ok_or("Text range is outside the control")?;
@@ -252,6 +255,7 @@ impl Page {
             focus_exit: self.native_focus_exit,
             select: self.native_select_state().map(Box::new),
             focused,
+            document: Some(Box::new(self.document_selection_state())),
         }
     }
 
@@ -277,6 +281,9 @@ impl Page {
         action: TextInputAction,
     ) -> Result<bool, String> {
         self.validate_native_input_context(context, source)?;
+        if let Some(result) = self.document_input_action(&action) {
+            return result;
+        }
         if let TextInputAction::Key { key, shift } = action {
             self.commit_native_composition();
             if let Some(node) = self.focused {
@@ -333,7 +340,11 @@ impl Page {
             | TextInputAction::SelectKey { .. }
             | TextInputAction::SelectOption { .. }
             | TextInputAction::SelectPointer { .. }
-            | TextInputAction::SelectScroll { .. } => unreachable!("control actions handled above"),
+            | TextInputAction::SelectScroll { .. }
+            | TextInputAction::DocumentPointer { .. }
+            | TextInputAction::DocumentSelectAll => {
+                unreachable!("control actions handled above")
+            }
             TextInputAction::Replace { text, replacement } => {
                 if !info.writable {
                     return Err("Native text control is read-only".into());

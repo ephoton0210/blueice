@@ -70,6 +70,15 @@ final class HTTPFixture: @unchecked Sendable {
                 }
                 let body: String
                 switch route {
+                case "/document-selection": body = """
+                    <html><body><h1>Document selection</h1><p id="first">Alpha <b>bold</b> 😀 é</p>
+                    <p id="second">Beta 中文 <a href="/selection-follow">selectable link</a></p>
+                    <input aria-label="Document editor" value="public-control-secret" style="display:block;width:280px;height:32px">
+                    <input aria-label="Document password" type="password" value="private-control-secret" style="display:block;width:280px;height:32px">
+                    <p aria-hidden="true">hidden-document-secret</p><p>Visit \(self.requests.filter { $0 == path }.count)</p><div style="height:800px"></div><p>Bottom finish</p>
+                    </body></html>
+                    """
+                case "/selection-follow": body = "<html><body><h1>Selection link reached</h1></body></html>"
                 case "/accessibility-descendants": body = """
                     <html><body><h1>Descendant live regions</h1><span id="score-label">Score</span>
                     <div role="log">Outer log <div aria-atomic="true" aria-labelledby="score-label" aria-label="Fallback">Count

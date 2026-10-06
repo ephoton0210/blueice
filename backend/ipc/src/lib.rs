@@ -229,6 +229,13 @@ pub enum ClientMessage {
         x: f64,
         y: f64,
     },
+    /// Deferred native pointer activation with the same ownership fence as
+    /// native text input. Uses the ordinary reviewed click/default-action path.
+    NativeClick {
+        context: input::TextInputContext,
+        x: f64,
+        y: f64,
+    },
     /// The pointer moved to this viewport point (same coordinate space
     /// as `Click`) -- `core` resolves it to a node the same way `Click`
     /// already does, becoming the single source of truth for "what's

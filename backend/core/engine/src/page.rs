@@ -67,6 +67,7 @@ pub struct Page {
     hovered: Option<NodeId>,
     focused: Option<NodeId>,
     native_editor: Option<native_editing::EditorSession>,
+    document_selection: document_selection::DocumentSelection,
     native_text_scroll: HashMap<NodeId, (f64, f64)>,
     native_text_scroll_target: Option<(NodeId, blueice_ipc::input::TextRange)>,
     native_select: native_select::SelectSession,
@@ -139,6 +140,7 @@ impl Page {
             hovered: None,
             focused: None,
             native_editor: None,
+            document_selection: document_selection::DocumentSelection::default(),
             native_text_scroll: HashMap::new(),
             native_text_scroll_target: None,
             native_select: native_select::SelectSession::default(),
@@ -211,6 +213,7 @@ impl Page {
         self.hovered = None;
         self.focused = None;
         self.native_editor = None;
+        self.document_selection = document_selection::DocumentSelection::default();
         self.native_focus_exit = None;
         self.native_focus_start = None;
         self.highlighted = None;
@@ -244,6 +247,7 @@ impl Page {
         let max_scroll = (self.fragment.height - self.viewport_height).max(0.0);
         self.scroll_y = self.scroll_y.min(max_scroll);
         self.rebuild_find();
+        self.rebuild_document_selection();
         self.refresh_accessibility();
     }
 
@@ -1237,6 +1241,7 @@ impl Page {
     pub fn render(&self) -> Frame {
         let mut frame = paint(&self.fragment, &self.styles);
         self.paint_native_editor(&mut frame);
+        self.paint_document_selection(&mut frame);
         self.paint_native_focus(&mut frame);
         self.paint_find(&mut frame);
         if let Some(id) = self.highlighted {
@@ -1274,6 +1279,7 @@ impl Page {
 
 mod accessibility;
 mod context_menu;
+mod document_selection;
 mod dom_helpers;
 mod dom_write;
 mod file_input;
@@ -1288,5 +1294,9 @@ use dom_helpers::*;
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+#[path = "../tests/support/document_selection.rs"]
+mod document_selection_tests;
 
 pub(crate) use dom_helpers::find_fragment_bounds;

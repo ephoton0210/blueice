@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 pub const TEXT_INPUT_VERSION: u32 = 1;
 pub const MAX_EDIT_TEXT_UTF16: usize = 65_536;
 pub const MAX_EDIT_CARETS: usize = 1_024;
+pub const MAX_DOCUMENT_TEXT_UTF16: usize = 2_097_152;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TextRange {
@@ -119,6 +120,8 @@ pub enum TextInputAction {
         range: TextRange,
     },
     SelectAll,
+    /// Select public document text explicitly, preserving unrelated editors.
+    DocumentSelectAll,
     Move {
         direction: TextMovement,
         extend: bool,
@@ -126,9 +129,16 @@ pub enum TextInputAction {
     Delete {
         forward: bool,
     },
-    /// Adjust selection only in the already-focused control. Ordinary click
-    /// hit-testing and default focus run before this command.
+    /// Adjust the focused control or public document text at this viewport
+    /// point. Selection itself never activates a link or grants authority.
     Pointer {
+        x: f64,
+        y: f64,
+        extend: bool,
+        click_count: u8,
+    },
+    /// Select public layout text without dispatching a click or activating links.
+    DocumentPointer {
         x: f64,
         y: f64,
         extend: bool,
@@ -182,6 +192,18 @@ pub struct TextInputState {
     pub focused: Option<TextControlState>,
     #[serde(default)]
     pub select: Option<Box<SelectControlState>>,
+    #[serde(default)]
+    pub document: Option<Box<DocumentSelectionState>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DocumentSelectionState {
+    pub version: u32,
+    pub text_length: u32,
+    pub active: bool,
+    pub selection: TextRange,
+    pub selected_text: Option<String>,
+    pub limited: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
