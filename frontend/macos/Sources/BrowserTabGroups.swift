@@ -63,6 +63,7 @@ struct BrowserTabStrip: View {
                                 Divider()
                                 Button(BrowserStrings.text("Ungroup and Remove Group")) { Task { await model.removeTabGroup(group.id) } }
                             }
+                            .modifier(BrowserTabDropArea(model: model, target: .group(group.id)))
                             if !group.collapsed { ForEach(members) { tab in tabView(tab) } }
                         }
                     }
@@ -80,13 +81,16 @@ struct BrowserTabStrip: View {
             .accessibilityLabel(BrowserStrings.text("New tab")).accessibilityIdentifier("add-tab").help(BrowserStrings.text("New tab"))
             .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(appearance.resolved.highContrast ? Color.primary : Color.clear, lineWidth: 1).allowsHitTesting(false).accessibilityHidden(true))
             .keyboardShortcut("t", modifiers: .command)
+            .modifier(BrowserTabDropArea(model: model, target: .ungroupedEnd))
         }.disabled(!model.ready).padding(.horizontal, 12).padding(.vertical, 8)
     }
     private func tabView(_ tab: BrowserTab) -> some View {
         HStack(spacing: 4) {
             Button { model.select(tab.id) } label: { Text(tab.url ?? BrowserStrings.text("New tab")).lineLimit(1).frame(maxWidth: 200) }
+                .buttonStyle(.plain).contentShape(Rectangle())
                 .accessibilityIdentifier("tab-\(tab.id)").accessibilityLabel(tab.url ?? BrowserStrings.text("New tab"))
                 .accessibilityValue(model.selected == tab.id ? BrowserStrings.text("Selected") : "")
+                .modifier(BrowserTabDragSource(model: model, tab: tab.id))
             Button { model.action(.unit("CloseTab"), tab: tab.id) } label: { Image(systemName: "xmark").font(.caption) }
                 .accessibilityLabel(BrowserStrings.text("Close tab")).accessibilityIdentifier("close-tab-\(tab.id)")
         }
@@ -96,6 +100,7 @@ struct BrowserTabStrip: View {
         .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(model.selected == tab.id && appearance.resolved.highContrast ? Color.primary : Color.clear, lineWidth: 2).allowsHitTesting(false).accessibilityHidden(true))
         .contextMenu {
             if let workspace = model.windowManager { TabWindowMenu(workspace: workspace, tab: tab.id, window: model.windowID) }
+            if let workspace = model.windowManager { BrowserTabPlacementButtons(workspace: workspace, tab: tab.id, window: model.windowID, shortcuts: false) }
             Button(BrowserStrings.text("New Tab Group…")) { model.beginTabGroupEditor(tab: tab.id) }
                 .disabled(!model.groupsAvailable || model.groupBusy)
             Menu(BrowserStrings.text("Move to Group")) {
@@ -105,6 +110,7 @@ struct BrowserTabStrip: View {
                 }
             }.disabled(!model.groupsAvailable || model.groupBusy)
         }
+        .modifier(BrowserTabDropArea(model: model, target: .tab(tab.id)))
     }
 }
 
@@ -170,6 +176,7 @@ struct BrowserTabGroupCommands: Commands {
     @ObservedObject var model: BrowserModel
     var body: some Commands {
         CommandGroup(after: .toolbar) {
+            if let workspace = model.windowManager { BrowserTabPlacementButtons(workspace: workspace, tab: model.selected, window: model.windowID, shortcuts: true) }
             Menu(BrowserStrings.text("Tab Groups")) {
                 Button(BrowserStrings.text("New Tab Group…")) { model.beginTabGroupEditor() }
                     .keyboardShortcut("g", modifiers: [.command, .option])

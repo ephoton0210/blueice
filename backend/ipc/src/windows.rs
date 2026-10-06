@@ -33,6 +33,14 @@ pub enum WindowAction {
     MoveTab {
         window_id: u64,
     },
+    /// Atomic native placement. The source window fences a stale drag; neither
+    /// a tab identity nor this command authorizes document or OS access.
+    PlaceTab {
+        source_window_id: u64,
+        window_id: u64,
+        before_tab_id: Option<u64>,
+        group_id: Option<u64>,
+    },
     OpenTab {
         window_id: u64,
         url: Option<String>,
@@ -63,6 +71,11 @@ pub enum WindowEvent {
         from_window: u64,
         to_window: u64,
     },
+    TabPlaced {
+        tab_id: u64,
+        from_window: u64,
+        to_window: u64,
+    },
     TabOpened {
         tab_id: u64,
         window_id: u64,
@@ -77,4 +90,8 @@ pub enum WindowEvent {
 pub struct WindowState {
     pub windows: Vec<WindowSummary>,
     pub event: WindowEvent,
+    /// Older cores omit this flag. Frontends must not send PlaceTab until it
+    /// is advertised by the owned native-window registry.
+    #[serde(default)]
+    pub tab_placement_v1: bool,
 }

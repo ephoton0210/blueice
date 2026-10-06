@@ -39,7 +39,11 @@ pub(super) fn write_window_state<S: Write>(
     blueice_ipc::write_server_message_with_id(
         stream,
         request,
-        &ServerMessage::WindowState(WindowState { windows, event }),
+        &ServerMessage::WindowState(WindowState {
+            windows,
+            event,
+            tab_placement_v1: true,
+        }),
     )
 }
 
@@ -101,6 +105,37 @@ pub(super) fn handle_window_action<S: Write>(
                         vec![tab],
                     )
                 })
+        }
+        WindowAction::PlaceTab {
+            source_window_id,
+            window_id,
+            before_tab_id,
+            group_id,
+        } => {
+            if tabs.tab_window(tab).map(WindowId::as_u64) != Some(source_window_id) {
+                Err("Tab is no longer in the source browser window".into())
+            } else {
+                tabs.place_tab(
+                    tab,
+                    WindowId::from_u64(window_id),
+                    before_tab_id.map(TabId::from_u64),
+                    group_id.map(GroupId::from_u64),
+                )
+                .map(|()| {
+                    (
+                        WindowEvent::TabPlaced {
+                            tab_id: tab.as_u64(),
+                            from_window: source_window_id,
+                            to_window: window_id,
+                        },
+                        if source_window_id == window_id {
+                            vec![]
+                        } else {
+                            vec![tab]
+                        },
+                    )
+                })
+            }
         }
         WindowAction::Close { window_id } => {
             tabs.close_window(WindowId::from_u64(window_id))

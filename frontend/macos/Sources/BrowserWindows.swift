@@ -20,6 +20,7 @@ struct WindowViewport: Codable, Sendable, Equatable {
 enum WindowAction: Encodable, Sendable {
     case list, create(WindowViewport), resize(UInt64, WindowViewport), close(UInt64), move(UInt64), open(UInt64, String?)
     case createInContext(UInt64, WindowViewport)
+    case place(UInt64, UInt64, UInt64?, UInt64?)
     indirect case command(UInt64, BrowserCommand)
     private enum Keys: String, CodingKey { case create = "Create", createInContext = "CreateInContext", resize = "Resize", command = "Command" }
     private struct Scoped: Encodable { let window_id: UInt64; let message: BrowserCommand }
@@ -42,6 +43,9 @@ enum WindowAction: Encodable, Sendable {
             try value.encode(Display(window_id: id, viewport: viewport), forKey: .resize)
         case .close(let id): try BrowserCommand.values("Close", ["window_id": .unsigned(id)]).encode(to: encoder)
         case .move(let id): try BrowserCommand.values("MoveTab", ["window_id": .unsigned(id)]).encode(to: encoder)
+        case .place(let source, let destination, let before, let group):
+            try BrowserCommand.values("PlaceTab", ["source_window_id": .unsigned(source), "window_id": .unsigned(destination),
+                "before_tab_id": before.map(JSONValue.unsigned) ?? .null, "group_id": group.map(JSONValue.unsigned) ?? .null]).encode(to: encoder)
         case .open(let id, let url): try BrowserCommand.values("OpenTab", ["window_id": .unsigned(id), "url": url.map(JSONValue.string) ?? .null]).encode(to: encoder)
         }
     }
@@ -55,7 +59,8 @@ struct BrowserWindowSummary: Decodable, Sendable, Identifiable {
 
 enum BrowserWindowEvent: Decodable, Sendable {
     case snapshot, created(UInt64), resized(UInt64), closed(UInt64), moved(UInt64, UInt64, UInt64), opened(UInt64, UInt64), tabClosed(UInt64, UInt64)
-    private enum Keys: String, CodingKey { case Created, Resized, Closed, TabMoved, TabOpened, TabClosed }
+    case placed(UInt64, UInt64, UInt64)
+    private enum Keys: String, CodingKey { case Created, Resized, Closed, TabMoved, TabPlaced, TabOpened, TabClosed }
     private struct Window: Decodable { let window_id: UInt64 }
     private struct Tab: Decodable { let tab_id: UInt64; let window_id: UInt64 }
     private struct Move: Decodable { let tab_id: UInt64; let from_window: UInt64; let to_window: UInt64 }
@@ -68,6 +73,7 @@ enum BrowserWindowEvent: Decodable, Sendable {
         case .Resized: self = .resized(try value.decode(Window.self, forKey: key).window_id)
         case .Closed: self = .closed(try value.decode(Window.self, forKey: key).window_id)
         case .TabMoved: let move = try value.decode(Move.self, forKey: key); self = .moved(move.tab_id, move.from_window, move.to_window)
+        case .TabPlaced: let move = try value.decode(Move.self, forKey: key); self = .placed(move.tab_id, move.from_window, move.to_window)
         case .TabOpened: let tab = try value.decode(Tab.self, forKey: key); self = .opened(tab.tab_id, tab.window_id)
         case .TabClosed: let tab = try value.decode(Tab.self, forKey: key); self = .tabClosed(tab.tab_id, tab.window_id)
         }
@@ -76,6 +82,11 @@ enum BrowserWindowEvent: Decodable, Sendable {
 struct BrowserWindowState: Decodable, Sendable {
     let windows: [BrowserWindowSummary]
     let event: BrowserWindowEvent
+    let tabPlacement: Bool?
+    private enum CodingKeys: String, CodingKey { case windows, event, tabPlacement = "tab_placement_v1" }
+    init(windows: [BrowserWindowSummary], event: BrowserWindowEvent, tabPlacement: Bool? = nil) {
+        self.windows = windows; self.event = event; self.tabPlacement = tabPlacement
+    }
     var valid: Bool {
         guard windows.count <= 64, windows.allSatisfy({ $0.id > 0 && $0.viewport.valid }), Set(windows.map(\.id)).count == windows.count else { return false }
         let tabs = windows.flatMap(\.tabs)
@@ -86,6 +97,8 @@ struct BrowserWindowState: Decodable, Sendable {
         case .created(let id), .resized(let id): return windows.contains { $0.id == id }
         case .closed(let id): return id > 0 && !windows.contains { $0.id == id }
         case .moved(let tab, let from, let to): return tab > 0 && from > 0 && to > 0 && contains(tab, to)
+        case .placed(let tab, let from, let to):
+            return tabPlacement == true && from > 0 && windows.contains { $0.id == from } && contains(tab, to)
         case .opened(let tab, let window): return contains(tab, window)
         case .tabClosed(let tab, let window): return tab > 0 && windows.contains { $0.id == window } && !tabs.contains { $0.id == tab }
         }

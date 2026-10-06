@@ -401,6 +401,33 @@ mod wire {
             ),
             (
                 Some(tab_id),
+                ClientMessage::Window(WindowAction::PlaceTab {
+                    source_window_id: window_id,
+                    window_id: 1,
+                    before_tab_id: None,
+                    group_id: None,
+                }),
+            ),
+            (
+                Some(tab_id),
+                ClientMessage::Window(WindowAction::PlaceTab {
+                    source_window_id: 1,
+                    window_id,
+                    before_tab_id: None,
+                    group_id: None,
+                }),
+            ),
+            (
+                Some(tab_id),
+                ClientMessage::Window(WindowAction::PlaceTab {
+                    source_window_id: window_id,
+                    window_id,
+                    before_tab_id: Some(1),
+                    group_id: None,
+                }),
+            ),
+            (
+                Some(tab_id),
                 ClientMessage::BrowserContext(ContextAction::List),
             ),
             (None, ClientMessage::Shutdown),
@@ -421,6 +448,19 @@ mod wire {
                 ClientMessage::SetTabGroup {
                     group_id: Some(group.id)
                 }
+            ),
+            ServerMessage::Error { .. }
+        ));
+        assert!(matches!(
+            b.scoped(
+                1,
+                Some(1),
+                ClientMessage::Window(WindowAction::PlaceTab {
+                    source_window_id: 1,
+                    window_id: 1,
+                    before_tab_id: None,
+                    group_id: Some(group.id),
+                })
             ),
             ServerMessage::Error { .. }
         ));

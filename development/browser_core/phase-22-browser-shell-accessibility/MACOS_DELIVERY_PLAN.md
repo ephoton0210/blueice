@@ -14,11 +14,38 @@ pushed to the current tracked branch as authorized by the owner.
 | Page accessibility | Core semantic tree mapped into NSAccessibility, native actions, privacy, stale-element and tab isolation tests | Committed and pushed `41952a803` |
 | Native text editing | Core-owned UTF-16 selection, grapheme movement/deletion, IME composition/update/commit/cancel, caret/candidate geometry, text/password/textarea editing, clipboard policy and native UI tests | Foundation committed and pushed `8b80c3c53`; bounded native Undo/Redo implemented and accepted, see [Undo/Redo results](MACOS_UNDO_REDO_RESULTS.md); physical OS IME and remaining editing behavior pending, see [foundation results](MACOS_NATIVE_EDITING_RESULTS.md) |
 | Keyboard and page interaction | Keyboard-only form completion, checkbox/radio/select/range controls, find-in-page, native context menus, drag/drop and file-selection policy tests | Keyboard increment committed and pushed `97794bb57`; native form reset committed and pushed `4c1c6e922`; GET/POST submission committed and pushed `1bf78a3d9`; find/ordered clipboard committed and pushed `614489c59`; native context menus committed and pushed `531b6b2df`; native file-input panel/content submission committed and pushed `222d7f78e`, see [file-input results](MACOS_FILE_INPUT_RESULTS.md); native select popup/typeahead/multiple selection accepted, see [select results](MACOS_SELECT_CONTROLS_RESULTS.md); remaining interactions pending |
-| Windows and tab organization | Multiple native windows, tab groups, profile/context lifecycle, retained history and state handoff using core tab identities | Native groups committed and pushed `6e141967f`; shared-core windows/tab transfer committed and pushed `b318e0de8`; context lifecycle and persistent profile identities committed and pushed `ee450a3df`, see [context results](MACOS_CONTEXT_RESULTS.md); durable native session restoration implemented and accepted, see [session results](MACOS_SESSION_RESTORE_RESULTS.md); full storage partitioning pending |
+| Windows and tab organization | Multiple native windows, tab groups, profile/context lifecycle, retained history and state handoff using core tab identities | Native groups committed and pushed `6e141967f`; shared-core windows/tab transfer committed and pushed `b318e0de8`; context lifecycle and persistent profile identities committed and pushed `ee450a3df`, see [context results](MACOS_CONTEXT_RESULTS.md); durable native session restoration implemented and accepted, see [session results](MACOS_SESSION_RESTORE_RESULTS.md); native dragging and atomic placement implemented and accepted, see [placement results](MACOS_TAB_PLACEMENT_RESULTS.md); full storage partitioning pending |
 | Downloads and printing | Actual download manager/shelf, progress/cancel/open/reveal, print/PDF media output and native panel tests | Native manager panel and linked-file downloads committed and pushed `b62b38aa7`, see [download results](MACOS_DOWNLOAD_RESULTS.md); core print-media pagination and native print/PDF committed and pushed `0d2e3ea58`, acceptance recorded in [print results](MACOS_PRINT_RESULTS.md); automatic response downloads, destination/credential UI, quarantine, vector PDF and physical-printer acceptance pending |
 | Trusted browser panels | Assistant results and human permission decisions using the private owner boundary, policy-denial and no-AI-grant tests | Native installed-extension permission child and two-step one-shot confirmation committed and pushed `f83c94152`, see [permission results](MACOS_PERMISSION_RESULTS.md). Native assistant settings and proposal decisions committed and pushed `b53a91111`, see [assistant settings results](MACOS_ASSISTANT_SETTINGS_RESULTS.md). Native assistant result/sidebar and translation surfaces implemented and accepted, see [assistant page results](MACOS_ASSISTANT_PAGE_RESULTS.md). Remaining permission UI pending |
 | macOS display and system integration | DPI/multi-monitor, zoom, theme/high contrast/reduced motion, fullscreen, localization and native menu/shortcut tests | Retina/CSS viewport, per-tab zoom and native fullscreen committed and pushed `91f2dd78c`, see [viewport results](MACOS_VIEWPORT_RESULTS.md); persistent appearance/contrast/motion and CSS media committed and pushed `0609c8a81`, recorded in [display results](MACOS_DISPLAY_PREFERENCES_RESULTS.md); English/Traditional Chinese native interface localization implemented and accepted, see [localization results](MACOS_LOCALIZATION_RESULTS.md); physical system/monitor transitions pending |
 | Full accessibility and final audit | Text ranges/live regions and supported rotor operations; actual screen-reader action; final integration, design/UI acceptance and documented remaining core limitations | Native text-control ranges, geometry, selection and editing implemented and accepted, see [accessibility text results](MACOS_ACCESSIBILITY_TEXT_RESULTS.md). Bounded live-region announcements and supported native rotors implemented and accepted, see [live-region/rotor results](MACOS_LIVE_REGION_ROTOR_RESULTS.md); that earlier Rust acceptance used the recorded post-Cargo host readiness condition. Retained announcement delivery/consumption ACK is now implemented and accepted, see [delivery results](MACOS_ANNOUNCEMENT_DELIVERY_RESULTS.md). Descendant atomic/relevant settings and public author labels are implemented and accepted, see [descendant results](MACOS_DESCENDANT_LIVE_RESULTS.md). Document text selection and read-only AX text access implemented and accepted, see [document-selection results](MACOS_DOCUMENT_SELECTION_RESULTS.md). Additional rotors and physical VoiceOver remain pending |
+
+## Native tab placement increment
+
+Tab titles support actual native dragging before/after a destination member,
+into expanded or collapsed groups, back to the ungrouped end and between live
+windows in the same context. Different profiles refuse the transfer. View and
+tab context menus plus Command-Control-Left/Right offer the same atomic core
+placement. The existing opt-in session archive retains canonical order and
+selection across normal quit/relaunch.
+
+Source membership, insertion anchor and destination/context/group ownership are
+validated before mutation and again after provider completion. The native drag
+contains only a short-lived own-process token. Same-window organization retains
+the selected page, composition/focus/frame identity, committed editor text,
+unsent address draft, find state and zoom. Cross-window handoff retains the live
+page and rejects stale source callbacks. Insertion indicators clear when the
+owned token is consumed or cancelled.
+
+All nine new native methods and 1,004 focused engine/IPC cases pass, together
+with formatting, strict Clippy and all-targets build. Complete native acceptance
+passed 199 methods with one existing physical Zhuyin skip; complete Rust workspace
+acceptance passed 7,307 cases with 69 ignored. Eight strict signatures, universal
+app architectures, source/product consistency and owned-process cleanup passed.
+All final gates share the same unchanged 1,803 inputs. Earlier unsuccessful and
+superseded runs remain in [the dated results](MACOS_TAB_PLACEMENT_RESULTS.md).
+General page/OS drag-and-drop, storage partitioning, physical IME/VoiceOver and
+the remaining browser requirements stay open.
 
 ## Native interface localization increment
 
@@ -495,9 +522,9 @@ the windows. Recovery refreshes history, pixels, semantics and editing state.
 Real-service and actual-window evidence is recorded in
 [window results](MACOS_WINDOW_RESULTS.md).
 
-The next increment supplies context lifecycle and persistent profile identities.
-Restart restoration of tabs, drag reorder and physical IME/screen-reader
-acceptance remain separate delivery requirements.
+The context increment below supplies lifecycle and persistent profile identities;
+the later session and placement increments provide restart restoration and
+native tab ordering. Physical IME/screen-reader acceptance remains separate.
 
 ## Native context and profile identity increment
 

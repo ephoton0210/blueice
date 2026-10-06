@@ -340,3 +340,6 @@
 "Zoom In" = "放大";
 "Zoom Out" = "縮小";
 "llama.cpp" = "llama.cpp";
+
+"Move Tab Left" = "將分頁向左移動";
+"Move Tab Right" = "將分頁向右移動";

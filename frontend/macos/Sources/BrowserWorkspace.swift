@@ -35,6 +35,8 @@ final class BrowserWorkspace: ObservableObject {
     private var contextRequests: Set<UInt64> = []
     private var contextReplies: [IncomingEnvelope] = []
     @Published private(set) var canManageWindows = false
+    @Published private(set) var canPlaceTabs = false
+    let tabDragging = BrowserTabDragging()
     @Published private(set) var busy = false
     @Published private(set) var notice: String?
     private(set) var models: [UInt64: BrowserModel] = [:]
@@ -85,7 +87,7 @@ final class BrowserWorkspace: ObservableObject {
                 let message = error.localizedDescription
                 DispatchQueue.main.async { [weak self] in
                     guard let self else { return }
-                    self.connected = false; self.canManageWindows = false
+                    self.connected = false; self.canManageWindows = false; self.canPlaceTabs = false; self.tabDragging.cancel()
                     for model in self.models.values { model.workspaceFailed(message) }
                     Task { await self.downloads.stop(); await self.session.stop() }
                 }
@@ -113,7 +115,7 @@ final class BrowserWorkspace: ObservableObject {
                 if !sessionRestored { await models[1]?.openInitialPage() }
             } else { await models[1]?.openInitialPage() }
         } catch {
-            connected = false; canManageWindows = false
+            connected = false; canManageWindows = false; canPlaceTabs = false; tabDragging.cancel()
             for model in models.values { model.workspaceFailed(error.localizedDescription) }
             await downloads.stop()
             await session.stop()
@@ -202,7 +204,7 @@ final class BrowserWorkspace: ObservableObject {
             if !restoringProfiles { persistProfiles() }
             onContextsChanged?()
         case .contextsUnavailable:
-            canManageContexts = false; canManageWindows = false; notice = "Browser context state unavailable"
+            canManageContexts = false; canManageWindows = false; canPlaceTabs = false; tabDragging.cancel(); notice = "Browser context state unavailable"
             for model in models.values { model.workspaceFailed("Browser context state unavailable") }
             return
         case .windowState(let state):
@@ -211,14 +213,20 @@ final class BrowserWorkspace: ObservableObject {
                 let groups = Set(context.groups.map(\.id))
                 return window.tabs.allSatisfy { $0.groupID.map(groups.contains) != false }
             }) else {
-                canManageWindows = false; canManageContexts = false; notice = "Browser context ownership unavailable"
+                canManageWindows = false; canPlaceTabs = false; tabDragging.cancel(); canManageContexts = false; notice = "Browser context ownership unavailable"
                 for model in models.values { model.workspaceFailed("Browser context ownership unavailable") }
                 return
             }
-            if case .moved(let tab, let from, let to) = state.event, from != to, let source = models[from], let destination = models[to] {
+            let transfer: (UInt64, UInt64, UInt64)?
+            switch state.event {
+            case .moved(let tab, let from, let to), .placed(let tab, let from, let to): transfer = (tab, from, to)
+            default: transfer = nil
+            }
+            if let (tab, from, to) = transfer, from != to, let source = models[from], let destination = models[to] {
                 source.transferLocalTabState(tab, to: destination)
             }
-            windows = state.windows; canManageWindows = true
+            windows = state.windows; canManageWindows = true; canPlaceTabs = state.tabPlacement == true
+            if !canPlaceTabs { tabDragging.cancel() }
             let ids = Set(windows.map(\.id))
             windowKeys = windowKeys.filter { ids.contains($0.key) }
             let tabs = Set(windows.flatMap(\.tabs).map(\.id))
@@ -240,9 +248,10 @@ final class BrowserWorkspace: ObservableObject {
                 }
             }
             if case .moved(let tab, _, let destination) = state.event { models[destination]?.select(tab) }
+            if case .placed(let tab, let source, let destination) = state.event, source != destination { models[destination]?.select(tab) }
             synchronizePreferences()
         case .windowsUnavailable:
-            canManageWindows = false; notice = "Browser window state unavailable"
+            canManageWindows = false; canPlaceTabs = false; tabDragging.cancel(); notice = "Browser window state unavailable"
             for model in models.values { model.workspaceFailed("Browser window state unavailable") }
         case .error:
             if let request = envelope.requestID, let owner = requestOwners[request] {
@@ -318,6 +327,24 @@ final class BrowserWorkspace: ObservableObject {
         notice = nil
         guard let state = await command(.move(window), tab: tab), case .moved(let moved, _, let destination) = state.event, moved == tab, destination == window else { return false }
         onActivateWindow?(window); return true
+    }
+    func placeTab(_ placement: BrowserTabPlacement) async -> Bool {
+        guard canPlaceTabs, !busy, !restoringSession, placement.valid(windows: windows, contexts: contexts) else { return false }
+        busy = true; defer { busy = false }
+        notice = nil
+        guard let state = await command(.place(placement.source, placement.destination, placement.before, placement.group), tab: placement.tab),
+              case .placed(let tab, let source, let destination) = state.event,
+              tab == placement.tab, source == placement.source, destination == placement.destination else { return false }
+        if source != destination { onActivateWindow?(destination) }
+        return true
+    }
+    func tabStep(_ tab: UInt64, in window: UInt64, step: Int) -> BrowserTabPlacement? {
+        guard canPlaceTabs, !busy, !restoringSession, let state = windows.first(where: { $0.id == window }),
+              let context = contextForWindow(window), step == -1 || step == 1 else { return nil }
+        let ordered = state.tabs.filter { $0.groupID == nil } + context.groups.flatMap { group in state.tabs.filter { $0.groupID == group.id } }
+        guard let index = ordered.firstIndex(where: { $0.id == tab }), ordered.indices.contains(index + step) else { return nil }
+        return BrowserTabPlacement.resolve(tab: tab, source: window, destination: window, target: .tab(ordered[index + step].id),
+            after: step > 0, windows: windows, contexts: contexts)
     }
     func moveTabToNewWindow(_ tab: UInt64) async {
         guard let source = windows.first(where: { $0.tabs.contains { $0.id == tab } }), let context = contextForWindow(source.id),
@@ -395,7 +422,7 @@ final class BrowserWorkspace: ObservableObject {
         guard !finishing, !stopping else { return }; finishing = true
         saveTask?.cancel(); await saveTask?.value; saveTask = nil
         if sessionReady, captureArmed, !restoringSession { await saveSession() }
-        guard !stopping else { return }; stopping = true; connected = false; canManageWindows = false
+        guard !stopping else { return }; stopping = true; connected = false; canManageWindows = false; canPlaceTabs = false; tabDragging.cancel()
         canManageContexts = false; contextRequests = []; contextReplies = []
         assistantRequests.removeAll()
         sessionRequests = [:]; sessionReplies = []

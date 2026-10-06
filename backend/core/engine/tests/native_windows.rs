@@ -330,6 +330,151 @@ mod wire {
         assert_eq!(b.state(1).width, 320.0);
     }
     #[test]
+    fn wire_placement_preserves_same_window_composition_and_rejects_stale_source() {
+        use blueice_ipc::input::TextRange;
+        let mut b = Browser::new();
+        assert!(b.window(WindowAction::List, None).tab_placement_v1);
+        let ServerMessage::TabOpened { tab_id: other, .. } = b.request(
+            None,
+            ClientMessage::Window(WindowAction::OpenTab {
+                window_id: 1,
+                url: Some("about:credits".into()),
+            }),
+        ) else {
+            panic!("opened")
+        };
+        b.request(
+            Some(1),
+            ClientMessage::SetViewport {
+                viewport: viewport(300.0, 200.0, 1.0),
+            },
+        );
+        b.input(1);
+        b.request(Some(1), ClientMessage::Click { x: 10.0, y: 10.0 });
+        let context = Browser::context(&b.input(1));
+        b.request(
+            Some(1),
+            ClientMessage::TextInput {
+                context,
+                action: TextInputAction::Compose {
+                    text: "中文".into(),
+                    selection: TextRange {
+                        location: 2,
+                        length: 0,
+                    },
+                    replacement: Some(TextRange {
+                        location: 0,
+                        length: 5,
+                    }),
+                },
+            },
+        );
+        let before = b.input(1);
+        assert!(before.focused.as_ref().unwrap().marked.is_some());
+        let frames = b.frames.get(&1).copied();
+        let placed = b.window(
+            WindowAction::PlaceTab {
+                source_window_id: 1,
+                window_id: 1,
+                before_tab_id: None,
+                group_id: None,
+            },
+            Some(1),
+        );
+        assert_eq!(
+            placed.windows[0]
+                .tabs
+                .iter()
+                .map(|tab| tab.id)
+                .collect::<Vec<_>>(),
+            [other, 1]
+        );
+        assert_eq!(
+            placed.event,
+            WindowEvent::TabPlaced {
+                tab_id: 1,
+                from_window: 1,
+                to_window: 1
+            }
+        );
+        let after = b.input(1);
+        assert_eq!(after.document_generation, before.document_generation);
+        assert_eq!(after.focus_generation, before.focus_generation);
+        assert_eq!(after.frame_generation, before.frame_generation);
+        assert_eq!(
+            after.focused.as_ref().unwrap().selection,
+            before.focused.as_ref().unwrap().selection
+        );
+        assert_eq!(
+            after.focused.as_ref().unwrap().marked,
+            before.focused.as_ref().unwrap().marked
+        );
+        assert_eq!(
+            after.focused.as_ref().unwrap().text,
+            before.focused.as_ref().unwrap().text
+        );
+        assert_eq!(
+            b.frames.get(&1).copied(),
+            frames,
+            "Chrome organization must not rasterize or refocus the page"
+        );
+        b.request(
+            Some(1),
+            ClientMessage::TextInput {
+                context: Browser::context(&before),
+                action: TextInputAction::CancelComposition,
+            },
+        );
+        b.window(
+            WindowAction::Create {
+                viewport: viewport(180.0, 120.0, 2.0),
+            },
+            None,
+        );
+        let moved = b.window(
+            WindowAction::PlaceTab {
+                source_window_id: 1,
+                window_id: 2,
+                before_tab_id: None,
+                group_id: None,
+            },
+            Some(1),
+        );
+        assert_eq!(moved.windows[0].tabs[0].id, other);
+        assert_eq!(moved.windows[1].tabs[0].id, 1);
+        for action in [
+            WindowAction::PlaceTab {
+                source_window_id: 1,
+                window_id: 1,
+                before_tab_id: None,
+                group_id: None,
+            },
+            WindowAction::PlaceTab {
+                source_window_id: 2,
+                window_id: 1,
+                before_tab_id: Some(999),
+                group_id: None,
+            },
+            WindowAction::PlaceTab {
+                source_window_id: 2,
+                window_id: 1,
+                before_tab_id: None,
+                group_id: Some(999),
+            },
+        ] {
+            assert!(matches!(
+                b.request(Some(1), ClientMessage::Window(action)),
+                ServerMessage::Error { .. }
+            ));
+            assert_eq!(b.window(WindowAction::List, None).windows, moved.windows);
+        }
+        let after = b.input(1);
+        assert_eq!(after.document_generation, before.document_generation);
+        assert_eq!(after.focused.unwrap().text.as_deref(), Some("frost"));
+        assert_eq!(b.state(1).width, 180.0);
+    }
+
+    #[test]
     fn wire_transfer_preserves_document_selection_zoom_history_and_fences_old_input() {
         let mut b = Browser::new();
         b.window(WindowAction::List, None);

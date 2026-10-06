@@ -263,8 +263,9 @@ values and zoom. Empty groups remain editable. Invalid names/colors and closed
 editor targets cannot save. Core replies update the chrome, and group errors
 have their own notice without replacing navigation or policy messages.
 See [tab group results](../../development/browser_core/phase-22-browser-shell-accessibility/MACOS_TAB_GROUP_RESULTS.md).
-Groups currently live in the running core session and belong to one browser
-context; restart restoration and drag reordering remain pending.
+Groups belong to one browser context and are included in opt-in session
+restoration. Native tab placement supports dragging into expanded or collapsed
+groups and back to the ungrouped end.
 
 Native windows share one owned launcher/core/gatekeeper session. Command-N and
 File > New Window open a real AppKit window; Window menu entries activate it.
@@ -285,8 +286,24 @@ native focus generation and ends temporary composition, preserving committed
 text and selection. Window IDs are lifecycle checks and confer no permission.
 Malformed registry metadata disables management with a Retry notice while
 preserving native windows. Find queries and pending resubmission prompts move
-with their tab; session restoration and drag reordering remain open.
+with their tab; opt-in session restoration preserves ordered membership.
 See [multi-window results](../../development/browser_core/phase-22-browser-shell-accessibility/MACOS_WINDOW_RESULTS.md).
+
+Drag a tab title onto the leading/trailing half of another tab to place it before
+or after that member, onto a group header to join it, or onto the new-tab button
+to append it without a group. Same-context windows accept the existing page;
+different profiles reject the transfer. View and tab context menus offer Move
+Tab Left/Right; Command-Control-Left/Right moves the selected tab. Ordering keeps
+the selected page, unsent address draft, editor, find query and zoom. Normal
+session restoration retains the canonical order and selected index.
+
+The native provider exposes only a short-lived own-process token. Core placement
+validates the source, destination, insertion member and group before changing
+membership; cancelled, expired, consumed or stale tokens cannot move a tab.
+Controls require the owned `tab_placement_v1` capability. General page/OS
+drag-and-drop remains pending. See the
+[placement contract](../../development/browser_core/phase-22-browser-shell-accessibility/MACOS_TAB_PLACEMENT_CONTRACT.md)
+and [validation results](../../development/browser_core/phase-22-browser-shell-accessibility/MACOS_TAB_PLACEMENT_RESULTS.md).
 
 Profiles in the toolbar and native Profiles menu create, rename and remove named
 core contexts or open a window in one. Command-N uses the active profile. Windows,

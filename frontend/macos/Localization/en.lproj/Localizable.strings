@@ -340,3 +340,6 @@
 "Zoom In" = "Zoom In";
 "Zoom Out" = "Zoom Out";
 "llama.cpp" = "llama.cpp";
+
+"Move Tab Left" = "Move Tab Left";
+"Move Tab Right" = "Move Tab Right";

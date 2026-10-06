@@ -127,6 +127,19 @@ pub(super) fn scoped_command(
             | WindowAction::Resize { window_id, .. }
             | WindowAction::OpenTab { window_id, .. } => owns_window(*window_id),
             WindowAction::MoveTab { window_id } => owns_tab() && owns_window(*window_id),
+            WindowAction::PlaceTab {
+                source_window_id,
+                window_id,
+                before_tab_id,
+                group_id,
+            } => {
+                owns_tab()
+                    && owns_window(*source_window_id)
+                    && owns_window(*window_id)
+                    && before_tab_id
+                        .is_none_or(|id| tabs.tab_context(TabId::from_u64(id)) == Some(context))
+                    && group_id.is_none_or(owns_group)
+            }
             WindowAction::Command { window_id, message } => {
                 owns_tab()
                     && owns_window(*window_id)

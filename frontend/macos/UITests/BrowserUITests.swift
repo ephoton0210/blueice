@@ -1067,6 +1067,200 @@ final class BrowserUITests: XCTestCase {
     private var assistantSettingsFile: URL!
     private var assistantControlSocket: URL!
 
+    func testTabDragReordersWithoutChangingSelectedEditorFindOrZoom() throws {
+        let fixture = try HTTPFixture(); defer { fixture.stop() }
+        let saved = saveClipboard(); defer { NSPasteboard.general.clearContents(); NSPasteboard.general.writeObjects(saved) }
+        launch(); enter(fixture.origin + "/editing")
+        let window = app.windows["browser-window"], editor = window.groups["page"].textFields["Editor"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 15)); paste("Drag 😀 中文", into: editor)
+        waitValue(editor, "Drag 😀 中文")
+        app.typeKey("+", modifierFlags: .command); app.typeKey("+", modifierFlags: .command); app.typeKey("+", modifierFlags: .command)
+        waitValue(window.buttons["page-zoom"], "150%")
+        window.buttons["add-tab"].click(); enter("about:settings")
+        window.buttons["add-tab"].click(); waitValue(window.textFields["address"], "about:credits")
+        window.buttons["tab-1"].click(); waitValue(editor, "Drag 😀 中文")
+        app.typeKey("f", modifierFlags: .command)
+        let find = window.searchFields["find-query"]
+        XCTAssertTrue(find.waitForExistence(timeout: 10)); find.typeText("unlikely-query")
+        paste("unsent address 😀", into: window.textFields["address"])
+        let first = window.buttons["tab-1"], second = window.buttons["tab-2"], third = window.buttons["tab-3"]
+        XCTAssertTrue(window.frame.contains(first.frame)); XCTAssertTrue(window.frame.contains(third.frame))
+        XCTAssertEqual(try tabInsertionPixels(first, in: window), 0, "No insertion line is visible before a drag")
+        third.coordinate(withNormalizedOffset: CGVector(dx: 0.4, dy: 0.5)).press(forDuration: 0.6,
+            thenDragTo: first.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.5)))
+        let order = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            third.frame.minX < first.frame.minX && first.frame.minX < second.frame.minX
+        }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [order], timeout: 15), .completed,
+                       "A real native drag must update canonical window-local order")
+        XCTAssertEqual(first.value as? String, "Selected")
+        waitValue(editor, "Drag 😀 中文"); waitValue(find, "unlikely-query")
+        waitValue(window.buttons["page-zoom"], "150%")
+        waitValue(window.textFields["address"], "unsent address 😀")
+        XCTAssertEqual(fixture.requests, ["/editing"], "Organization never reloads the page")
+        let attachment = XCTAttachment(screenshot: window.screenshot())
+        attachment.name = "macos-tab-drag-order"; attachment.lifetime = .keepAlways; add(attachment)
+        XCTAssertEqual(try tabInsertionPixels(first, in: window), 0, "The insertion line must disappear after the drop completes")
+    }
+
+    private func tabInsertionPixels(_ tab: XCUIElement, in window: XCUIElement) throws -> Int {
+        // The tab title has six points of outer padding. Sample the insertion
+        // line's three-point strip there, away from text and the close button.
+        let frame = tab.frame, bounds = window.frame
+        let area = CGRect(x: (frame.minX - bounds.minX - 6) / bounds.width,
+                          y: (frame.minY - bounds.minY) / bounds.height,
+                          width: 3 / bounds.width, height: frame.height / bounds.height)
+        let accent = try XCTUnwrap(NSColor.controlAccentColor.usingColorSpace(.sRGB))
+        return try colorCount(try XCTUnwrap(window.screenshot().image.tiffRepresentation),
+            red: accent.redComponent, green: accent.greenComponent, blue: accent.blueComponent, area: area)
+    }
+
+    func testTabDragIntoCollapsedGroupAndBackToUngroupedEndPreservesPage() throws {
+        let fixture = try HTTPFixture(); defer { fixture.stop() }
+        let saved = saveClipboard(); defer { NSPasteboard.general.clearContents(); NSPasteboard.general.writeObjects(saved) }
+        launch(); enter(fixture.origin + "/editing")
+        let window = app.windows["browser-window"], editor = window.groups["page"].textFields["Editor"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 15)); paste("Grouped drag 中文", into: editor)
+        window.buttons["new-tab-group"].click()
+        XCTAssertTrue(window.textFields["group-name"].waitForExistence(timeout: 10))
+        paste("Drag Study", into: window.textFields["group-name"]); window.buttons["group-save"].click()
+        let group = window.buttons["tab-group-1"]
+        XCTAssertTrue(group.waitForExistence(timeout: 10)); group.click()
+        waitValue(group, "Collapsed, 1 tabs, contains selected tab")
+        window.buttons["add-tab"].click(); waitValue(window.textFields["address"], "about:credits")
+        window.buttons["tab-2"].coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 0.6,
+            thenDragTo: group.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)))
+        waitValue(group, "Collapsed, 2 tabs, contains selected tab")
+        XCTAssertFalse(window.buttons["tab-1"].exists); XCTAssertFalse(window.buttons["tab-2"].exists)
+        waitValue(window.textFields["address"], "about:credits")
+        group.click(); waitValue(group, "Expanded, 2 tabs, contains selected tab")
+        XCTAssertLessThan(window.buttons["tab-1"].frame.minX, window.buttons["tab-2"].frame.minX)
+        window.buttons["tab-2"].coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 0.6,
+            thenDragTo: window.buttons["add-tab"].coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)))
+        waitValue(group, "Expanded, 1 tabs")
+        XCTAssertLessThan(window.buttons["tab-2"].frame.minX, group.frame.minX)
+        XCTAssertFalse(window.buttons["tab-3"].exists, "An end drop cannot activate the new-tab button")
+        window.buttons["tab-1"].click(); waitValue(editor, "Grouped drag 中文")
+        XCTAssertEqual(fixture.requests, ["/editing"])
+        let attachment = XCTAttachment(screenshot: window.screenshot())
+        attachment.name = "macos-tab-drag-groups"; attachment.lifetime = .keepAlways; add(attachment)
+    }
+
+    func testTabPlacementKeyboardContextMenuAndNormalRestartKeepOrder() throws {
+        let fixture = try HTTPFixture(); defer { fixture.stop() }
+        let saved = saveClipboard(); defer { NSPasteboard.general.clearContents(); NSPasteboard.general.writeObjects(saved) }
+        launch()
+        let window = app.windows["browser-window"]
+        window.buttons["add-tab"].click(); enter("about:settings")
+        window.buttons["add-tab"].click()
+        paste(fixture.origin + "/first", into: window.textFields["address"])
+        window.textFields["address"].typeKey(.return, modifierFlags: [])
+        waitValue(window.textFields["address"], fixture.origin + "/first")
+        let first = window.buttons["tab-1"], second = window.buttons["tab-2"], third = window.buttons["tab-3"]
+        func order(_ a: XCUIElement, _ b: XCUIElement, _ c: XCUIElement) {
+            XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+                a.frame.minX < b.frame.minX && b.frame.minX < c.frame.minX
+            }, object: nil)], timeout: 15), .completed)
+        }
+        app.typeKey(.leftArrow, modifierFlags: [.command, .control]); order(first, third, second)
+        app.typeKey(.leftArrow, modifierFlags: [.command, .control]); order(third, first, second)
+        third.rightClick(); chooseChromeContext("Move Tab Right"); order(first, third, second)
+        app.menuBars.menuBarItems["View"].click(); app.menuItems["Move Tab Right"].click(); order(first, second, third)
+        app.typeKey(.leftArrow, modifierFlags: [.command, .control]); order(first, third, second)
+        app.typeKey(.leftArrow, modifierFlags: [.command, .control]); order(third, first, second)
+        app.menuBars.menuBarItems["View"].click()
+        XCTAssertFalse(app.menuItems["Move Tab Left"].isEnabled); app.typeKey(.escape, modifierFlags: [])
+        XCTAssertEqual(third.value as? String, "Selected")
+        let settings = preferenceWindow(); try enableSessionRestoration(settings, windows: 1, tabs: 3)
+        settings.buttons[XCUIIdentifierCloseWindow].click()
+        let archive = try waitSessionArchive(windows: 1, tabs: 3)
+        let root = try XCTUnwrap(JSONSerialization.jsonObject(with: archive) as? [String: Any])
+        let profiles = try XCTUnwrap(root["profiles"] as? [[String: Any]])
+        let windows = try XCTUnwrap(profiles.first?["windows"] as? [[String: Any]])
+        let tabs = try XCTUnwrap(windows.first?["tabs"] as? [[String: Any]])
+        let urls = try tabs.map { tab -> String in
+            let history = try XCTUnwrap(tab["history"] as? [String: Any])
+            let entries = try XCTUnwrap(history["entries"] as? [[String: Any]])
+            let cursor = try XCTUnwrap(history["cursor"] as? Int)
+            XCTAssertTrue(entries.indices.contains(cursor))
+            return try XCTUnwrap(entries[cursor]["url"] as? String)
+        }
+        XCTAssertEqual(urls, [fixture.origin + "/first", "about:credits", "about:settings"])
+        XCTAssertEqual(windows.first?["selected"] as? Int, 0)
+        app.typeKey("q", modifierFlags: .command); XCTAssertTrue(app.wait(for: .notRunning, timeout: 15))
+        app.launch()
+        let reopened = app.windows["browser-window-2"]
+        XCTAssertTrue(reopened.waitForExistence(timeout: 15))
+        func tab(_ url: String) -> XCUIElement {
+            reopened.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'tab-' AND label == %@", url)).firstMatch
+        }
+        let restored = tab(fixture.origin + "/first"), credits = tab("about:credits"), preferences = tab("about:settings")
+        XCTAssertTrue(preferences.waitForExistence(timeout: 15)); order(restored, credits, preferences)
+        waitValue(reopened.textFields["address"], fixture.origin + "/first"); waitValue(restored, "Selected")
+        XCTAssertFalse(window.exists, "Restoration replaces the startup window with a fresh core identity")
+        XCTAssertEqual(fixture.requests, ["/first", "/first"])
+        let attachment = XCTAttachment(screenshot: reopened.screenshot())
+        attachment.name = "macos-tab-order-restored"; attachment.lifetime = .keepAlways; add(attachment)
+    }
+
+    private func positionTabDragWindow(_ window: XCUIElement, x: CGFloat) {
+        let corner = window.coordinate(withNormalizedOffset: CGVector(dx: 1, dy: 1)).withOffset(CGVector(dx: -2, dy: -2))
+        corner.click(forDuration: 0.2, thenDragTo: corner.withOffset(CGVector(dx: 760 - window.frame.width, dy: 600 - window.frame.height)))
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            abs(window.frame.width - 760) < 3 && abs(window.frame.height - 600) < 3
+        }, object: window)], timeout: 10), .completed)
+        let title = window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.02))
+        title.click(forDuration: 0.1, thenDragTo: title.withOffset(CGVector(dx: x - window.frame.minX, dy: 40 - window.frame.minY)))
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            abs(window.frame.minX - x) < 3 && abs(window.frame.minY - 40) < 3
+        }, object: window)], timeout: 10), .completed)
+    }
+
+    func testTabDragTransfersLiveWindowStateAndRefusesDifferentProfile() throws {
+        let fixture = try HTTPFixture(); defer { fixture.stop() }
+        let saved = saveClipboard(); defer { NSPasteboard.general.clearContents(); NSPasteboard.general.writeObjects(saved) }
+        launch(); enter(fixture.origin + "/editing")
+        let first = app.windows["browser-window"]
+        let editor = first.groups["page"].textFields["Editor"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 15)); paste("Across windows 😀", into: editor)
+        app.menuBars.menuBarItems["View"].click(); app.menuItems["Page Zoom"].hover(); app.menuItems["150%"].click()
+        waitValue(first.buttons["page-zoom"], "150%")
+        app.typeKey("f", modifierFlags: .command)
+        XCTAssertTrue(first.searchFields["find-query"].waitForExistence(timeout: 10)); first.searchFields["find-query"].typeText("transfer")
+        positionTabDragWindow(first, x: 40)
+        app.typeKey("n", modifierFlags: .command)
+        let second = app.windows["browser-window-2"]
+        XCTAssertTrue(second.waitForExistence(timeout: 15)); waitValue(second.textFields["address"], "about:credits")
+        positionTabDragWindow(second, x: 820)
+        let source = first.buttons["tab-1"], target = second.buttons["tab-2"]
+        XCTAssertFalse(first.frame.intersects(second.frame))
+        source.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 0.6,
+            thenDragTo: target.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.5)))
+        waitValue(second.textFields["address"], fixture.origin + "/editing")
+        let moved = second.groups["page"].textFields["Editor"]
+        XCTAssertTrue(moved.waitForExistence(timeout: 15)); waitValue(moved, "Across windows 😀")
+        waitValue(second.searchFields["find-query"], "transfer"); waitValue(second.buttons["page-zoom"], "150%")
+        XCTAssertLessThan(second.buttons["tab-1"].frame.minX, target.frame.minX)
+        XCTAssertFalse(first.buttons["tab-1"].exists)
+        activateWindow(1); first.buttons[XCUIIdentifierCloseWindow].click()
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: first)], timeout: 10), .completed)
+        activateWindow(2); paste("After source closes 中文", into: moved); waitValue(moved, "After source closes 中文")
+        app.menuBars.menuBarItems["Profiles"].click(); app.menuItems["New Profile…"].click()
+        XCTAssertTrue(app.textFields["profile-name"].waitForExistence(timeout: 10)); paste("Separate", into: app.textFields["profile-name"])
+        app.buttons["profile-save"].click()
+        let other = app.windows["browser-window-3"]
+        XCTAssertTrue(other.waitForExistence(timeout: 15)); waitValue(other.textFields["address"], "about:credits")
+        positionTabDragWindow(other, x: 40)
+        second.buttons["tab-1"].coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 0.6,
+            thenDragTo: other.buttons["tab-3"].coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.5)))
+        XCTAssertTrue(second.buttons["tab-1"].exists); XCTAssertFalse(other.buttons["tab-1"].exists)
+        waitValue(other.textFields["address"], "about:credits")
+        waitValue(moved, "After source closes 中文"); waitValue(second.buttons["page-zoom"], "150%")
+        XCTAssertEqual(fixture.requests, ["/editing"], "Transfer and refused drops never fetch another document")
+        let attachment = XCTAttachment(screenshot: second.screenshot())
+        attachment.name = "macos-tab-drag-windows"; attachment.lifetime = .keepAlways; add(attachment)
+    }
+
     func testTraditionalChineseChromeSettingsMenusAndMultipleWindows() throws {
         let downloads = assistantSettingsFile.deletingLastPathComponent().appendingPathComponent("localization-downloads")
         app.launchArguments += ["--downloads-directory", downloads.appendingPathComponent("files").path,
@@ -1142,6 +1336,13 @@ final class BrowserUITests: XCTestCase {
         app.launchArguments.removeSubrange(languageIndex...languageIndex + 1)
         launch(); XCTAssertEqual(app.buttons["back"].label, "返回")
         XCTAssertEqual(fixture.requests, ["/editing"])
+        // Foundation acknowledges the shared defaults database before its
+        // backing plist is updated. Check the actual owner file asynchronously,
+        // as for the session archive, without relaxing the persisted value.
+        let persisted = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            self.storedPreferences()?["browser.interfaceLanguage"] as? String == "zh-Hant"
+        }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [persisted], timeout: 15), .completed)
         XCTAssertEqual(storedPreferences()?["browser.interfaceLanguage"] as? String, "zh-Hant")
     }
 

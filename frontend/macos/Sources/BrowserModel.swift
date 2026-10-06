@@ -433,6 +433,7 @@ final class BrowserModel: ObservableObject {
         case .groupsUnavailable:
             groups = []; groupsAvailable = false; groupError = "Tab groups unavailable"
         case .tabs(let incoming):
+            let previousSelection = selected, previousURL = tabs.first { $0.id == selected }?.url
             let list = windowTabs.map { ordered in
                 let byID = Dictionary(incoming.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
                 let existing = Dictionary(tabs.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
@@ -462,7 +463,9 @@ final class BrowserModel: ObservableObject {
             inputRequests = inputRequests.filter { live.contains($0.key) }
             inputQueue.removeAll { !live.contains($0.tab) }
             if selected == nil || !live.contains(selected!) { selected = list.first?.id }
-            showSelected()
+            // Reordering or regrouping a live tab does not change the selected
+            // page. Keep the native address draft and editor/find presentation.
+            if selected != previousSelection || tabs.first(where: { $0.id == selected })?.url != previousURL { showSelected() }
         case .opened(let id, let url):
             if menuOperation != nil && menuReplies.count < 16 { menuReplies.append(envelope) }
             selected = id

@@ -159,6 +159,71 @@ impl TabManager {
         self.order.retain(|tab| !window.tabs.contains(tab));
         Ok(window.tabs)
     }
+    /// Place an existing tab before a destination member, or append it. Every
+    /// identity/context check precedes mutation; same-window organization does
+    /// not end composition, change editor focus or rebuild the page.
+    pub fn place_tab(
+        &mut self,
+        id: TabId,
+        destination: WindowId,
+        before: Option<TabId>,
+        group: Option<GroupId>,
+    ) -> Result<(), String> {
+        let source = self.tab_window(id).ok_or("Unknown tab")?;
+        let viewport = self
+            .window_viewport(destination)
+            .ok_or("Unknown browser window")?;
+        let context = self.window_context(source).expect("live source context");
+        if self.window_context(destination) != Some(context) {
+            return Err("A tab cannot move to a different browser context".into());
+        }
+        if let Some(group) = group {
+            if self.group(group).ok_or("Unknown tab group")?.context_id() != context {
+                return Err("A tab group belongs to a different browser context".into());
+            }
+        }
+        if let Some(before) = before {
+            if self.tab_window(before) != Some(destination) {
+                return Err("Insertion tab is not in the destination browser window".into());
+            }
+            if before == id {
+                self.tabs.get_mut(&id).expect("validated tab").group_id = group;
+                return Ok(());
+            }
+        }
+        self.windows
+            .get_mut(&source)
+            .expect("live source window")
+            .tabs
+            .retain(|&tab| tab != id);
+        let members = &mut self
+            .windows
+            .get_mut(&destination)
+            .expect("validated destination")
+            .tabs;
+        let index = before
+            .map(|anchor| {
+                members
+                    .iter()
+                    .position(|&tab| tab == anchor)
+                    .expect("validated insertion tab")
+            })
+            .unwrap_or(members.len());
+        members.insert(index, id);
+        let tab = self.tabs.get_mut(&id).expect("validated tab");
+        tab.group_id = group;
+        if source != destination {
+            tab.window_id = destination;
+            tab.page.transfer_native_editor();
+            tab.page.configure_display(viewport);
+            for entry in tab.back.iter_mut().chain(tab.forward.iter_mut()) {
+                if let Some(page) = entry.snapshot_mut() {
+                    page.configure_display(viewport);
+                }
+            }
+        }
+        Ok(())
+    }
     pub(crate) fn enable_native_windows(&mut self) {
         self.native_windows = true;
     }
