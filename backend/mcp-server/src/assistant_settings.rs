@@ -242,22 +242,96 @@ mod tests {
     fn fake_launcher(
         reply: ControlReply,
     ) -> (std::path::PathBuf, thread::JoinHandle<ControlRequest>) {
-        let path = std::env::temp_dir().join(format!(
-            "mcp-ctl-{}-{}.sock",
-            std::process::id(),
+        fake_launcher_at(
+            reply,
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
-                .as_nanos()
+                .as_nanos(),
+        )
+    }
+
+    fn fake_launcher_at(
+        reply: ControlReply,
+        timestamp: u128,
+    ) -> (std::path::PathBuf, thread::JoinHandle<ControlRequest>) {
+        static NEXT_SOCKET: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let sequence = NEXT_SOCKET.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let path = std::env::temp_dir().join(format!(
+            "mcp-ctl-{}-{:x}-{:x}.sock",
+            std::process::id(),
+            timestamp,
+            sequence
         ));
         let listener = UnixListener::bind(&path).unwrap();
+        struct SocketFile(std::path::PathBuf);
+        impl Drop for SocketFile {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_file(&self.0);
+            }
+        }
+        let socket = SocketFile(path.clone());
         let worker = thread::spawn(move || {
+            let _socket = socket;
             let (mut stream, _) = listener.accept().unwrap();
             let request = read_control_request(&mut stream).unwrap();
             write_control_reply(&mut stream, &reply).unwrap();
             request
         });
         (path, worker)
+    }
+
+    #[test]
+    fn repeated_clock_values_create_independent_launcher_fixtures() {
+        struct Sockets(Vec<std::path::PathBuf>);
+        impl Drop for Sockets {
+            fn drop(&mut self) {
+                for path in &self.0 {
+                    let _ = std::fs::remove_file(path);
+                }
+            }
+        }
+        let mut sockets = Sockets(Vec::new());
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let (first, worker) = fake_launcher_at(
+            ControlReply::AssistantSettingsInForce {
+                settings: Box::default(),
+            },
+            timestamp,
+        );
+        sockets.0.push(first.clone());
+        assert_eq!(
+            current(&first).unwrap(),
+            SettingsOutcome::InForce(Box::default())
+        );
+        assert_eq!(
+            worker.join().unwrap(),
+            ControlRequest::InspectAssistantSettings
+        );
+        assert!(
+            !first.exists(),
+            "The fixture releases its own socket after replying"
+        );
+        let (second, worker) = fake_launcher_at(
+            ControlReply::AssistantProposalStatus {
+                status: "pending".into(),
+            },
+            timestamp,
+        );
+        sockets.0.push(second.clone());
+        assert_ne!(first, second);
+        assert_eq!(
+            status(&second, 9).unwrap(),
+            SettingsOutcome::Status("pending".into())
+        );
+        assert_eq!(
+            worker.join().unwrap(),
+            ControlRequest::AssistantProposalStatus { id: 9 }
+        );
+        assert!(!second.exists());
     }
 
     fn params(backend: &str) -> SettingsParams {
