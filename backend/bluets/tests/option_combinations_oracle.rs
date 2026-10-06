@@ -2,16 +2,19 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Option combinations against pinned TypeScript (J.6.2): one program that uses
+//! Option combinations against pinned TypeScript (J.6.2, K.2.4): one program that uses
 //! enums, a const enum, namespaces, classes with fields, private names, static
 //! members and cross-module imports is built by `bluetsc` and by `tsc` under every
 //! combination of the options that change emit, and both outputs must print the
 //! same thing under Node. The options are `target`, the module system,
-//! `useDefineForClassFields`, `preserveConstEnums` and `isolatedModules`.
+//! `useDefineForClassFields`, `preserveConstEnums`, `isolatedModules`, source maps,
+//! declarations, noEmit and strict checking.
 
+use serde_json::{json, Value};
+use std::collections::{BTreeMap, BTreeSet};
 use std::env;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 const LIB: &str = r#"export const enum Color { Red, Green = 5, Blue }
@@ -45,27 +48,49 @@ console.log(new LocalDerived().name, new LocalDerived().kind, d.id, d.tag, d.not
 console.log(Object.keys(d).join(","), Object.getOwnPropertyNames(Derived).sort().join(","));
 "#;
 
-const OPTIONS_MATRIX: &str =
-    include_str!("fixtures/option_combinations/options-checker-matrix.tsv");
-
-#[test]
-fn recorded_matrix_covers_the_required_cartesian_product() {
-    assert_eq!(OPTIONS_MATRIX.lines().count(), 768);
-    assert_eq!(
-        combinations().len(),
-        768,
-        "K.2.4 requires the new project options in the Cartesian oracle"
-    );
-}
-
+const MATRIX: &str = include_str!("fixtures/option_combinations/options-checker-matrix.tsv");
+#[derive(Clone)]
 struct Combination {
     target: &'static str,
     module: &'static str,
     define: Option<bool>,
     preserve: bool,
     isolated: bool,
+    source_map: bool,
+    declaration: bool,
+    no_emit: bool,
+    strict: bool,
 }
-
+impl Combination {
+    fn name(&self) -> String {
+        format!(
+            "options-{}-{}-define{}-preserve{}-isolated{}-map{}-declaration{}-noemit{}-strict{}",
+            self.target,
+            self.module,
+            self.define.map_or("default", |v| if v { "1" } else { "0" }),
+            u8::from(self.preserve),
+            u8::from(self.isolated),
+            u8::from(self.source_map),
+            u8::from(self.declaration),
+            u8::from(self.no_emit),
+            u8::from(self.strict)
+        )
+    }
+    fn options(&self, directory: &str) -> Value {
+        let mut options = json!({"target":self.target,"module":self.module,
+            "isolatedModules":self.isolated,"sourceMap":self.source_map,
+            "declaration":self.declaration,"noEmit":self.no_emit,"strict":self.strict,
+            "skipLibCheck":true,"rewriteRelativeImportExtensions":true,"outDir":directory});
+        if let Some(value) = self.define {
+            options["useDefineForClassFields"] = json!(value);
+        }
+        // Absence preserves the isolatedModules implication; explicit false is invalid there.
+        if self.preserve {
+            options["preserveConstEnums"] = json!(true);
+        }
+        options
+    }
+}
 fn combinations() -> Vec<Combination> {
     let mut all = Vec::new();
     for target in ["es2020", "es2022"] {
@@ -73,13 +98,25 @@ fn combinations() -> Vec<Combination> {
             for define in [None, Some(true), Some(false)] {
                 for preserve in [false, true] {
                     for isolated in [false, true] {
-                        all.push(Combination {
-                            target,
-                            module,
-                            define,
-                            preserve,
-                            isolated,
-                        });
+                        for source_map in [false, true] {
+                            for declaration in [false, true] {
+                                for no_emit in [false, true] {
+                                    for strict in [false, true] {
+                                        all.push(Combination {
+                                            target,
+                                            module,
+                                            define,
+                                            preserve,
+                                            isolated,
+                                            source_map,
+                                            declaration,
+                                            no_emit,
+                                            strict,
+                                        });
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -87,95 +124,215 @@ fn combinations() -> Vec<Combination> {
     }
     all
 }
-
+fn matrix() -> BTreeMap<String, bool> {
+    MATRIX
+        .lines()
+        .map(|line| {
+            let (name, verdict) = line.split_once('\t').unwrap();
+            assert!(matches!(verdict, "accept" | "reject"));
+            (name.to_string(), verdict == "accept")
+        })
+        .collect()
+}
+fn root(label: &str) -> PathBuf {
+    let path = env::temp_dir().join(format!("bluets-options-{label}-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&path);
+    fs::create_dir_all(path.join("src")).unwrap();
+    fs::write(path.join("src/main.ts"), MAIN).unwrap();
+    fs::write(path.join("src/lib.ts"), LIB).unwrap();
+    fs::canonicalize(path).unwrap()
+}
+fn build(root: &Path, index: usize, combination: &Combination) -> PathBuf {
+    let output = format!("blue-{index}");
+    fs::write(
+        root.join("tsconfig.json"),
+        serde_json::to_vec(
+            &json!({"compilerOptions":combination.options(&output),"files":["src/main.ts"]}),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let result = Command::new(env!("CARGO_BIN_EXE_bluetsc"))
+        .current_dir(root)
+        .args(["--project", "tsconfig.json", "--pretty", "false"])
+        .output()
+        .unwrap();
+    assert_eq!(
+        result.status.success(),
+        matrix()[&combination.name()],
+        "{}: {}",
+        combination.name(),
+        String::from_utf8_lossy(&result.stderr)
+    );
+    let directory = root.join(output);
+    if combination.no_emit {
+        assert!(
+            !directory.exists(),
+            "{}: noEmit wrote artifacts",
+            combination.name()
+        );
+    } else {
+        let expected = ["main", "lib"]
+            .into_iter()
+            .flat_map(|stem| {
+                let mut paths = vec![format!("{stem}.js")];
+                if combination.source_map {
+                    paths.push(format!("{stem}.js.map"));
+                }
+                if combination.declaration {
+                    paths.push(format!("{stem}.d.ts"));
+                }
+                paths
+            })
+            .collect::<BTreeSet<_>>();
+        let actual = fs::read_dir(&directory)
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().into_string().unwrap())
+            .collect();
+        assert_eq!(
+            expected,
+            actual,
+            "{}: artifact inventory",
+            combination.name()
+        );
+        for stem in ["main", "lib"] {
+            let javascript = fs::read_to_string(directory.join(format!("{stem}.js"))).unwrap();
+            assert_eq!(
+                javascript.contains("//# sourceMappingURL="),
+                combination.source_map,
+                "{}: source map link",
+                combination.name()
+            );
+            if combination.source_map {
+                let map: Value = serde_json::from_slice(
+                    &fs::read(directory.join(format!("{stem}.js.map"))).unwrap(),
+                )
+                .unwrap();
+                assert_eq!(map["version"], 3);
+                assert_eq!(map["sources"].as_array().unwrap().len(), 1);
+                assert_eq!(
+                    map["sourcesContent"][0],
+                    if stem == "main" { MAIN } else { LIB }
+                );
+                assert!(!map["mappings"].as_str().unwrap().is_empty());
+            }
+        }
+    }
+    assert_eq!(fs::read_to_string(root.join("src/main.ts")).unwrap(), MAIN);
+    assert_eq!(fs::read_to_string(root.join("src/lib.ts")).unwrap(), LIB);
+    directory
+}
+#[test]
+fn recorded_matrix_covers_the_complete_cartesian_product() {
+    let all = combinations();
+    assert_eq!(all.len(), 768);
+    let names = all.iter().map(Combination::name).collect::<BTreeSet<_>>();
+    assert_eq!(names.len(), 768);
+    assert_eq!(names, matrix().into_keys().collect());
+    let recorded: Vec<Value> =
+        serde_json::from_str(include_str!("fixtures/option_combinations/cases.json")).unwrap();
+    let generated = all
+        .iter()
+        .enumerate()
+        .map(|(index, c)| json!({"name":c.name(),"options":c.options(&format!("out-{index}"))}))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        generated, recorded,
+        "recorded configurations must cover all generated options"
+    );
+}
+#[test]
+fn every_project_option_combination_replays_the_recorded_verdict() {
+    let root = root("offline");
+    for (index, combination) in combinations().iter().enumerate() {
+        build(&root, index, combination);
+    }
+    fs::remove_dir_all(root).unwrap();
+}
 #[test]
 #[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
 fn every_emit_option_combination_prints_what_typescript_prints() {
     let tsc = env::var_os("BLUEICE_BLUETSC_ORACLE")
         .map(PathBuf::from)
-        .expect("set BLUEICE_BLUETSC_ORACLE to the TypeScript 5.9.3 tsc executable");
-    let version = Command::new(&tsc).arg("--version").output().unwrap();
-    assert!(String::from_utf8_lossy(&version.stdout).contains("5.9.3"));
+        .expect("set BLUEICE_BLUETSC_ORACLE");
     let node = env::var_os("BLUEICE_NODE").unwrap_or_else(|| "node".into());
-    let root = env::temp_dir().join(format!("bluets-options-{}", std::process::id()));
-    let _ = fs::remove_dir_all(&root);
-    let input = root.join("src");
-    fs::create_dir_all(&input).unwrap();
-    fs::write(input.join("lib.ts"), LIB).unwrap();
-    fs::write(input.join("main.ts"), MAIN).unwrap();
-    let combinations = combinations();
-    assert_eq!(combinations.len(), 48);
-    for (index, combination) in combinations.iter().enumerate() {
-        let label = format!(
-            "target={} module={} define={:?} preserve={} isolated={}",
-            combination.target,
-            combination.module,
-            combination.define,
-            combination.preserve,
-            combination.isolated
+    let root = root("oracle");
+    let all = combinations();
+    let rows = all
+        .iter()
+        .enumerate()
+        .map(|(index, c)| json!({"name":c.name(),"options":c.options(&format!("tsc-{index}"))}))
+        .collect::<Vec<_>>();
+    fs::write(root.join("cases.json"), serde_json::to_vec(&rows).unwrap()).unwrap();
+    let script = r#"
+const path = require('path'), fs = require('fs');
+const ts = require(path.resolve(process.argv[1], '../../lib/typescript.js'));
+if (ts.version !== '5.9.3') throw Error(ts.version);
+const results = [];
+let previous;
+for (const row of JSON.parse(fs.readFileSync('cases.json', 'utf8'))) {
+ const converted = ts.convertCompilerOptionsFromJson(row.options, process.cwd());
+ const program = ts.createProgram([path.resolve('src/main.ts')], converted.options, undefined, previous);
+ previous = program;
+ const diagnostics = [...converted.errors,...ts.getPreEmitDiagnostics(program)];
+ const emitted = program.emit();
+ diagnostics.push(...emitted.diagnostics);
+ results.push([row.name,diagnostics.length === 0]);
+ if (diagnostics.length) console.error(row.name,diagnostics.map(d=>ts.flattenDiagnosticMessageText(d.messageText,' ')));
+}
+fs.writeFileSync('verdicts.json',JSON.stringify(results));
+"#;
+    let reference = Command::new(&node)
+        .current_dir(&root)
+        .env("FORCE_COLOR", "0")
+        .args(["-e", script])
+        .arg(&tsc)
+        .output()
+        .unwrap();
+    assert!(
+        reference.status.success(),
+        "{}",
+        String::from_utf8_lossy(&reference.stderr)
+    );
+    let verdicts: Vec<(String, bool)> =
+        serde_json::from_slice(&fs::read(root.join("verdicts.json")).unwrap()).unwrap();
+    let recorded = verdicts.into_iter().collect::<BTreeMap<_, _>>();
+    if env::var_os("BLUEICE_WRITE_OPTIONS_MATRIX").is_some() {
+        let text = recorded
+            .iter()
+            .map(|(name, accepted)| {
+                format!("{name}\t{}\n", if *accepted { "accept" } else { "reject" })
+            })
+            .collect::<String>();
+        fs::write(
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("tests/fixtures/option_combinations/options-checker-matrix.tsv"),
+            text,
+        )
+        .unwrap();
+    } else {
+        assert_eq!(
+            recorded,
+            matrix(),
+            "pinned verdicts changed: {}",
+            String::from_utf8_lossy(&reference.stderr)
         );
-        let commonjs = combination.module == "commonjs";
-        let blue = root.join(format!("blue-{index}"));
+    }
+    for (index, combination) in all.iter().enumerate() {
+        let blue = build(&root, index, combination);
         let reference = root.join(format!("tsc-{index}"));
-        let mut command = Command::new(env!("CARGO_BIN_EXE_bluetsc"));
-        command
-            .current_dir(&input)
-            .args([
-                "build",
-                "main.ts",
-                "--target",
-                combination.target,
-                "--module",
-                combination.module,
-                "--out-dir",
-            ])
-            .arg(&blue);
-        let mut tsc_command = Command::new(&tsc);
-        tsc_command
-            .current_dir(&input)
-            .args([
-                "--target",
-                &combination.target.to_uppercase(),
-                "--module",
-                if commonjs { "commonjs" } else { "es2022" },
-                "--pretty",
-                "false",
-                "--skipLibCheck",
-                "--allowImportingTsExtensions",
-                "--rewriteRelativeImportExtensions",
-                "--outDir",
-            ])
-            .arg(&reference)
-            .arg("main.ts");
-        if let Some(define) = combination.define {
-            let value = if define { "true" } else { "false" };
-            command.args(["--use-define-for-class-fields", value]);
-            tsc_command.args(["--useDefineForClassFields", value]);
+        if combination.no_emit {
+            assert!(
+                !reference.exists(),
+                "{}: TypeScript noEmit artifacts",
+                combination.name()
+            );
+            continue;
         }
-        if combination.preserve {
-            command.arg("--preserve-const-enums");
-            tsc_command.arg("--preserveConstEnums");
-        }
-        if combination.isolated {
-            command.arg("--isolated-modules");
-            tsc_command.arg("--isolatedModules");
-        }
-        let built = command.output().unwrap();
-        assert!(
-            built.status.success(),
-            "{label}: bluetsc failed: {}",
-            String::from_utf8_lossy(&built.stderr)
-        );
-        let emitted = tsc_command.output().unwrap();
-        assert!(
-            reference.join("main.js").exists(),
-            "{label}: tsc emitted nothing: {}",
-            String::from_utf8_lossy(&emitted.stdout)
-        );
         for directory in [&blue, &reference] {
             fs::write(
                 directory.join("package.json"),
-                if commonjs {
+                if combination.module == "commonjs" {
                     r#"{"type":"commonjs"}"#
                 } else {
                     r#"{"type":"module"}"#
@@ -183,7 +340,7 @@ fn every_emit_option_combination_prints_what_typescript_prints() {
             )
             .unwrap();
         }
-        let run = |directory: &PathBuf| {
+        let run = |directory: &Path| {
             Command::new(&node)
                 .env("FORCE_COLOR", "0")
                 .arg(directory.join("main.js"))
@@ -194,76 +351,43 @@ fn every_emit_option_combination_prints_what_typescript_prints() {
         let tsc_run = run(&reference);
         assert!(
             blue_run.status.success(),
-            "{label}: BlueTSC output failed: {}",
+            "{}: {}",
+            combination.name(),
             String::from_utf8_lossy(&blue_run.stderr)
         );
         assert!(
             tsc_run.status.success(),
-            "{label}: tsc output failed: {}",
+            "{}: {}",
+            combination.name(),
             String::from_utf8_lossy(&tsc_run.stderr)
         );
         assert_eq!(
-            String::from_utf8_lossy(&blue_run.stdout),
-            String::from_utf8_lossy(&tsc_run.stdout),
-            "{label}: BlueTSC and TypeScript print different output"
+            blue_run.stdout,
+            tsc_run.stdout,
+            "{}: Node output",
+            combination.name()
         );
-    }
-    let _ = fs::remove_dir_all(&root);
-}
-
-#[test]
-#[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to pinned TypeScript 5.9.3"]
-fn new_option_matrix_matches_pinned_typescript() {
-    let tsc = env::var_os("BLUEICE_BLUETSC_ORACLE").expect("set BLUEICE_BLUETSC_ORACLE");
-    let root = env::temp_dir().join(format!("bluets-options-record-{}", std::process::id()));
-    let _ = fs::remove_dir_all(&root);
-    fs::create_dir_all(root.join("src")).unwrap();
-    fs::write(root.join("src/main.ts"), MAIN).unwrap();
-    fs::write(root.join("src/lib.ts"), LIB).unwrap();
-    fs::write(
-        root.join("cases.json"),
-        include_str!("fixtures/option_combinations/cases.json"),
-    )
-    .unwrap();
-    let script = r#"
-const path = require('path'), fs = require('fs');
-const ts = require(path.resolve(process.argv[1], '../../lib/typescript.js'));
-if (ts.version !== '5.9.3') throw Error(ts.version);
-let lines = [];
-let previous;
-for (const row of JSON.parse(fs.readFileSync('cases.json', 'utf8'))) {
- const converted = ts.convertCompilerOptionsFromJson(row.options, process.cwd());
- const program = ts.createProgram([path.resolve('src/main.ts')], converted.options, undefined, previous);
- previous = program;
- const diagnostics = [...converted.errors,...ts.getPreEmitDiagnostics(program)];
- lines.push(row.name + '\t' + (diagnostics.length ? 'reject' : 'accept'));
-}
-fs.writeFileSync('matrix.tsv', lines.sort().join('\n')+'\n');
-"#;
-    let output = Command::new("node")
-        .current_dir(&root)
-        .args(["-e", script])
-        .arg(tsc)
-        .output()
-        .unwrap();
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let text = fs::read_to_string(root.join("matrix.tsv")).unwrap();
-    if env::var_os("BLUEICE_WRITE_OPTIONS_MATRIX").is_some() {
-        fs::write(
-            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                .join("tests/fixtures/option_combinations/options-checker-matrix.tsv"),
-            text,
-        )
-        .unwrap();
-    } else {
-        assert_eq!(
-            text.lines().collect::<std::collections::BTreeSet<_>>(),
-            OPTIONS_MATRIX.lines().collect()
-        );
+        if combination.declaration {
+            for stem in ["main", "lib"] {
+                assert_eq!(
+                    fs::read_to_string(blue.join(format!("{stem}.d.ts"))).unwrap(),
+                    fs::read_to_string(reference.join(format!("{stem}.d.ts"))).unwrap(),
+                    "{}: {stem}.d.ts",
+                    combination.name()
+                );
+            }
+        }
+        if combination.source_map {
+            for stem in ["main", "lib"] {
+                let map: Value = serde_json::from_slice(
+                    &fs::read(reference.join(format!("{stem}.js.map"))).unwrap(),
+                )
+                .unwrap();
+                assert_eq!(map["version"], 3);
+                assert_eq!(map["sources"].as_array().unwrap().len(), 1);
+                assert!(!map["mappings"].as_str().unwrap().is_empty());
+            }
+        }
     }
     fs::remove_dir_all(root).unwrap();
 }

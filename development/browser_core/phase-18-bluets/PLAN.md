@@ -4238,3 +4238,33 @@ oracle still enumerates 48 cases rather than the required 768. The original Node
 oracle remains unchanged in this baseline. It is committed before expanding the
 project replay, no-emission inventory, source-map and exact declaration checks.
 K.2.4 remains unchecked until its complete K.0 gate succeeds.
+
+
+### K.2.4 Project option Cartesian oracle delivered
+
+The existing multi-feature program remains the oracle template: linked imports,
+normal and const enums, namespaces, inheritance, instance/static fields and private
+names. Its Cartesian product now has 768 configurations: two targets, two module
+systems, three explicit/default class-field policies, two const-enum preservation
+selections, two isolated-module selections, source maps on/off, declarations on/off,
+no-emission on/off and strict checking on/off. Preservation off omits the option,
+retaining TypeScript's isolatedModules implication; it does not request the invalid
+explicit-false/isolated-true combination.
+
+The pinned 5.9.3 matrix records 768 accepted configurations. The separate baseline
+commit exposed the old oracle's 48-case coverage before expansion. Canonical recorded
+configuration metadata and generated Cartesian names/options agree, and ordinary
+project replay checks verdicts, complete artifact inventories, source-map links and
+embedded source provenance, no-emission behavior and unchanged inputs. The ignored
+pinned oracle can regenerate the matrix with `BLUEICE_WRITE_OPTIONS_MATRIX=1`;
+it compares Node output for all 384 emitted configurations, exact declarations for
+all declaration-enabled outputs, map structure and the absence of no-emission assets.
+
+The frozen-source K.0 gate (`blueice-k24-final1-*`) passed formatting, both crates'
+all-target Clippy with warnings denied, and 1,069 tests across 61 target/doctest
+groups, including all 122 ignored oracles in 28 suite files. No failure,
+ignored or filtered test remains. This leaf changes test coverage rather than adding
+compiler authority. The production source maximum remains 1,172 lines, below
+the 1,200-line review threshold. K.2.1 through K.2.4 are delivered; the final workspace
+and coverage gate is recorded separately after it succeeds. K.3 remains necessary
+for M7, and full TypeScript parity is not claimed.

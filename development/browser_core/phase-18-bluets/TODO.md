@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: K.2.4.** Sections A to J are complete (summarized below); J.6 closed in its
+**Current leaf: K.3.1.** Sections A to J are complete (summarized below); J.6 closed in its
 measured form (`COMPATIBILITY_INVENTORY.md`). Section K closes the gaps that inventory lists.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
@@ -278,7 +278,7 @@ and import rules.
 ### K.2 Read real project configuration — M7 — gaps G-M2, G-C2
 
 - [x] **K.2.1 `tsconfig.json` (L).**
-  - *Verified (2026-10-06):* 69 pinned configs (59 accept, 10 reject), all normalized options and file sets agree; canonical confinement, owner overlays, declaration inputs, graph output layout and strict-helper relocation covered. K.0: format and Clippy pass; 1,047 tests across 56 targets and doctests pass, including all 117 ignored oracle tests.
+  - *Verified (2026-10-06):* 69 pinned configs (59 accept, 10 reject), all normalized options and file sets agree; canonical confinement, owner overlays, declaration inputs, graph output layout and strict-helper relocation covered. K.0: format and Clippy pass; 1,047 tests across 58 target/doctest groups pass, including all 117 ignored oracle tests.
   - *Work:* a JSONC reader (comments, trailing commas); `compilerOptions` that map to existing options
     (`target`, `module`, `moduleResolution`, `jsx*`, `experimentalDecorators`, `emitDecoratorMetadata`,
     `esModuleInterop`, `useDefineForClassFields`, `preserveConstEnums`, `isolatedModules`, `outDir`,
@@ -301,7 +301,9 @@ and import rules.
   - *Verified (2026-10-06):* 30 pinned native project observations (24 accept, 6 reject), including command/config overrides, default project search, source/emitted lists, pretty selection and exit codes. Node output and exact declarations agree; input/config collisions are refused before publication. K.0: format and Clippy pass; 1,067 tests in 61 target/doctest groups pass, including all 122 ignored oracles. Largest production source: 1,172 lines.
   - *Work:* `--noEmit`, `--showConfig`, `--listFiles`, `--listEmittedFiles`,
   `--pretty`, `--project`, exit codes; compared with `tsc` on the same project directory.
-- [ ] **K.2.4 Option-combination oracle (S).** Extend `option_combinations_oracle.rs` with the new options;
+- [x] **K.2.4 Option-combination oracle (S).**
+  - *Verified (2026-10-06):* 768 pinned project combinations; all verdicts agree, 384 emitted programs match Node output and 384 noEmit configurations publish nothing. Declaration-enabled cases match exact `.d.ts` output and source maps retain their provenance structure. K.0: format and Clippy pass; 1,069 tests across 61 target/doctest groups pass, including all 122 ignored oracles. The final K.2 workspace and coverage gate remains due.
+  - *Work:* Extend `option_combinations_oracle.rs` with the new options;
   keep it the template: one multi-feature program × the cartesian product of emit-affecting options.
 
 ### K.3 TypeScript diagnostic codes — M7 — gap G-C1
