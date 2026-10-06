@@ -279,6 +279,7 @@ and import rules.
 
 - [x] **K.2.1 `tsconfig.json` (L).**
   - *Verified (2026-10-06):* 69 pinned configs (59 accept, 10 reject), all normalized options and file sets agree; canonical confinement, owner overlays, declaration inputs, graph output layout and strict-helper relocation covered. K.0: format and Clippy pass; 1,047 tests across 58 target/doctest groups pass, including all 117 ignored oracle tests.
+  - *Portability correction (2026-10-06):* sibling precedence retains native Windows parent/prefix paths. The complete corrected K.0 gate passes 1,070 tests in 61 groups, including all 122 ignored oracles; largest production source 1,172 lines.
   - *Work:* a JSONC reader (comments, trailing commas); `compilerOptions` that map to existing options
     (`target`, `module`, `moduleResolution`, `jsx*`, `experimentalDecorators`, `emitDecoratorMetadata`,
     `esModuleInterop`, `useDefineForClassFields`, `preserveConstEnums`, `isolatedModules`, `outDir`,

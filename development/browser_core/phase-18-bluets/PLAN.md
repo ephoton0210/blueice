@@ -4305,3 +4305,21 @@ and both-crate all-target Clippy with warnings denied pass. Compiler source and
 recorded verdicts remain unchanged; this adds one observation regression to the
 previously recorded local 1,069-test feature gate. Replacement final CI will verify
 the corrected test harness on the full platform matrix.
+
+### K.2 Native sibling file precedence on Windows
+
+Windows CI replayed the existing pinned `config-sibling-priority` fixture with
+three inputs instead of the expected `.ts` input. The sibling filter had rebuilt
+native paths from display-normalized text, losing Windows verbatim path spelling.
+It now examines only the filename and uses `Path::with_file_name` to retain the
+native parent and prefix before checking the already authorized selected set.
+Explicit input selection and filesystem authority remain unchanged.
+
+All 19 focused project/CLI tests passed, including the 69 pinned configurations,
+30 CLI observations, Node execution, exact declarations and owner/output guards.
+The frozen-source K.0 gate (`blueice-k2-portability-final1-*`) passed formatting,
+both-crate all-target Clippy with warnings denied, and 1,070 tests in 61
+target/doctest groups, including all 122 ignored oracles in 28 suite
+files, with no failures or skipped tests. The source audit maximum is 1,172
+lines, below the review/split thresholds. Final workspace and coverage CI will
+run on this corrected commit; M7 still requires K.3.

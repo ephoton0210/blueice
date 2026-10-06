@@ -75,11 +75,11 @@ pub(super) fn select(document: &Document, reader: &Reader) -> Result<Vec<PathBuf
         if explicit.contains(path) {
             return true;
         }
-        let text = output_path(path);
+        let text = path.file_name().unwrap_or_default().to_string_lossy();
         let base = text
             .strip_suffix(".d.ts")
             .or_else(|| text.strip_suffix(".tsx"));
-        !base.is_some_and(|base| all.contains(&PathBuf::from(format!("{base}.ts"))))
+        !base.is_some_and(|base| all.contains(&path.with_file_name(format!("{base}.ts"))))
     });
     Ok(selected.into_iter().collect())
 }
