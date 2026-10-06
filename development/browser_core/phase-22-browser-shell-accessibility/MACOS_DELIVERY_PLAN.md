@@ -18,7 +18,7 @@ pushed to the current tracked branch as authorized by the owner.
 | Downloads and printing | Actual download manager/shelf, progress/cancel/open/reveal, print/PDF media output and native panel tests | Native manager panel and linked-file downloads committed and pushed `b62b38aa7`, see [download results](MACOS_DOWNLOAD_RESULTS.md); core print-media pagination and native print/PDF committed and pushed `0d2e3ea58`, acceptance recorded in [print results](MACOS_PRINT_RESULTS.md); automatic response downloads, destination/credential UI, quarantine, vector PDF and physical-printer acceptance pending |
 | Trusted browser panels | Assistant results and human permission decisions using the private owner boundary, policy-denial and no-AI-grant tests | Native installed-extension permission child and two-step one-shot confirmation committed and pushed `f83c94152`, see [permission results](MACOS_PERMISSION_RESULTS.md). Native assistant settings and proposal decisions committed and pushed `b53a91111`, see [assistant settings results](MACOS_ASSISTANT_SETTINGS_RESULTS.md). Native assistant result/sidebar and translation surfaces implemented and accepted, see [assistant page results](MACOS_ASSISTANT_PAGE_RESULTS.md). Remaining permission UI pending |
 | macOS display and system integration | DPI/multi-monitor, zoom, theme/high contrast/reduced motion, fullscreen, localization and native menu/shortcut tests | Retina/CSS viewport, per-tab zoom and native fullscreen committed and pushed `91f2dd78c`, see [viewport results](MACOS_VIEWPORT_RESULTS.md); persistent appearance/contrast/motion and CSS media committed and pushed `0609c8a81`, recorded in [display results](MACOS_DISPLAY_PREFERENCES_RESULTS.md); physical system/monitor transitions and localization pending |
-| Full accessibility and final audit | Text ranges/live regions and supported rotor operations; actual screen-reader action; final integration, design/UI acceptance and documented remaining core limitations | Native text-control ranges, geometry, selection and editing implemented and accepted, see [accessibility text results](MACOS_ACCESSIBILITY_TEXT_RESULTS.md). Bounded live-region announcements and supported native rotors implemented and accepted, see [live-region/rotor results](MACOS_LIVE_REGION_ROTOR_RESULTS.md); that earlier Rust acceptance used the recorded post-Cargo host readiness condition. Retained announcement delivery/consumption ACK is now implemented and accepted, see [delivery results](MACOS_ANNOUNCEMENT_DELIVERY_RESULTS.md). Document text selection, additional rotors and physical VoiceOver remain pending |
+| Full accessibility and final audit | Text ranges/live regions and supported rotor operations; actual screen-reader action; final integration, design/UI acceptance and documented remaining core limitations | Native text-control ranges, geometry, selection and editing implemented and accepted, see [accessibility text results](MACOS_ACCESSIBILITY_TEXT_RESULTS.md). Bounded live-region announcements and supported native rotors implemented and accepted, see [live-region/rotor results](MACOS_LIVE_REGION_ROTOR_RESULTS.md); that earlier Rust acceptance used the recorded post-Cargo host readiness condition. Retained announcement delivery/consumption ACK is now implemented and accepted, see [delivery results](MACOS_ANNOUNCEMENT_DELIVERY_RESULTS.md). Descendant atomic/relevant settings and public author labels are implemented and accepted, see [descendant results](MACOS_DESCENDANT_LIVE_RESULTS.md). Document text selection, additional rotors and physical VoiceOver remain pending |
 
 ## Native accessibility text-control contract
 
@@ -101,6 +101,21 @@ Earlier incomplete startup attempts, the one cfg(test)-only assertion correction
 after native acceptance and all frozen input scopes remain documented in
 [MACOS_ANNOUNCEMENT_DELIVERY_RESULTS.md](MACOS_ANNOUNCEMENT_DELIVERY_RESULTS.md).
 Consumption ACK does not establish physical VoiceOver speech completion.
+
+## Descendant live-region increment
+
+This increment preserves per-contributor atomic/relevant scope, groups nearest
+atomic changes once in document order and shares public author-label provenance
+with native names. Explicit false, removal overrides, suppressed baselines,
+external labels, privacy, busy coalescing, clipping and group limits have regression
+coverage. Complete acceptance passed 178 native cases with one existing physical
+Zhuyin skip and 7,279 workspace cases with 69 ignored across 473 suites. Application,
+core and native-test inputs stayed unchanged; the results record the later MCP
+`cfg(test)` fixture correction and both incomplete workspace attempts. Assistant
+tests passed after readiness observation; the startup timeout cause remains unproved.
+See [MACOS_DESCENDANT_LIVE_RESULTS.md](MACOS_DESCENDANT_LIVE_RESULTS.md).
+Initial alerts, complete ARIA/name computation, additional rotors, document text
+selection and physical VoiceOver remain separate work.
 
 ## Native editing contract
 

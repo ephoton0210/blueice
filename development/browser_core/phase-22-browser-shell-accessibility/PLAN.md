@@ -285,5 +285,9 @@ The subsequent retained-delivery increment preserves ready announcements through
 layout gaps and releases only source/document-scoped observed prefixes. Its
 complete native and normal-runner Rust acceptance is recorded in
 [MACOS_ANNOUNCEMENT_DELIVERY_RESULTS.md](MACOS_ANNOUNCEMENT_DELIVERY_RESULTS.md).
+The descendant increment preserves each contributor's atomic/relevant scope,
+expands public groups/author labels once in document order and retains label
+privacy provenance. Its complete native and normal-runner Rust acceptance is in
+[MACOS_DESCENDANT_LIVE_RESULTS.md](MACOS_DESCENDANT_LIVE_RESULTS.md).
 Document text selection, complete ARIA semantics and physical VoiceOver remain
 open in the macOS delivery plan.

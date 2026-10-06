@@ -8,6 +8,72 @@ use blueice_ipc::accessibility::AccessibilityContext;
 use blueice_ipc::{ClientMessage, NodeAction, ServerMessage};
 
 #[test]
+fn actual_core_descendant_atomic_relevant_names_and_acknowledgement() {
+    use blueice_ipc::accessibility::AccessibilityDelivery;
+    let url = common::web_server_with_html("<span id='label'>Score</span><div role='log'>Outer<div aria-atomic='true' aria-labelledby='label' aria-label='Fallback'>Count<input aria-label='Atomic editor' value='1'><input type='password' value='private-descendant-secret'><span aria-hidden='true'>hidden-descendant-secret</span><span aria-live='off'>quiet descendant</span></div></div><div role='status'>Outer status<div aria-atomic='false'><input aria-label='Narrow editor' value='1'></div></div><div role='log' aria-relevant='all'><div aria-relevant='removals'><input aria-label='Suppressed editor' value='1'></div></div>");
+    let (gatekeeper, reviewed) = common::recording_gatekeeper();
+    let mut core = common::Core::start(&gatekeeper, &[]);
+    core.navigate(&url);
+    let baseline = core.snapshot();
+    for (name, value) in [
+        ("Atomic editor", "完成 😀"),
+        ("Narrow editor", "narrow 😀"),
+        ("Suppressed editor", "silent"),
+    ] {
+        let editor = baseline
+            .nodes
+            .iter()
+            .find(|node| node.name.as_deref() == Some(name))
+            .unwrap()
+            .id;
+        core.send(&ClientMessage::ActOn {
+            id: editor,
+            action: NodeAction::SetValue(value.into()),
+        });
+        assert!(matches!(core.read(), ServerMessage::FrameReady { .. }));
+    }
+    let updated = core.snapshot();
+    let stream = updated.accessibility.as_ref().unwrap();
+    assert_eq!(
+        stream
+            .announcements
+            .iter()
+            .map(|item| item.text.as_str())
+            .collect::<Vec<_>>(),
+        ["Score Count 完成 😀", "narrow 😀"]
+    );
+    assert_eq!(stream.revision, 2);
+    assert!(!serde_json::to_string(stream).unwrap().contains("secret"));
+    assert_eq!(
+        stream.announcements,
+        core.snapshot().accessibility.unwrap().announcements
+    );
+    let delivery = AccessibilityDelivery {
+        version: 1,
+        frame_source: updated.frame_source,
+        document_generation: stream.document_generation,
+        revision: stream.revision,
+    };
+    core.send(&common::native_command(
+        ClientMessage::AccessibilityAcknowledge { delivery },
+    ));
+    assert!(
+        matches!(core.read(), ServerMessage::AccessibilityAcknowledged(reply) if reply == delivery)
+    );
+    let acknowledged = core.snapshot();
+    assert_eq!(acknowledged.generation, updated.generation);
+    assert!(acknowledged.accessibility.unwrap().announcements.is_empty());
+    core.navigate(&url);
+    assert!(core
+        .snapshot()
+        .accessibility
+        .unwrap()
+        .announcements
+        .is_empty());
+    assert_eq!(reviewed.lock().unwrap().len(), 2);
+}
+
+#[test]
 fn actual_core_announcements_and_scoped_reveal_share_the_live_frame() {
     let url = common::web_server_with_html("<div role='status'>Progress <input aria-label='Progress editor' value='1'></div><input type='password' aria-label='Secret' value='private-live-secret'><div style='height:1200px'></div><h2>Lower heading</h2><a href='/danger' style='display:block'>Do not follow</a>");
     let (gatekeeper, reviewed) = common::recording_gatekeeper();

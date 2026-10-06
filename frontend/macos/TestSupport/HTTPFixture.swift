@@ -70,6 +70,18 @@ final class HTTPFixture: @unchecked Sendable {
                 }
                 let body: String
                 switch route {
+                case "/accessibility-descendants": body = """
+                    <html><body><h1>Descendant live regions</h1><span id="score-label">Score</span>
+                    <div role="log">Outer log <div aria-atomic="true" aria-labelledby="score-label" aria-label="Fallback">Count
+                    <input aria-label="Atomic editor" value="1" style="display:block;width:280px;height:32px">
+                    <span aria-live="off">quiet descendant</span><span aria-hidden="true">hidden-descendant-secret</span>
+                    <input aria-label="Descendant secret" type="password" value="private-descendant-secret" style="display:block;width:280px;height:32px"></div></div>
+                    <div role="status">Outer status <div aria-atomic="false">Narrow
+                    <input aria-label="Narrow editor" value="1" style="display:block;width:280px;height:32px"></div></div>
+                    <div role="log" aria-relevant="all"><div aria-relevant="removals">
+                    <input aria-label="Suppressed editor" value="1" style="display:block;width:280px;height:32px"></div></div>
+                    </body></html>
+                    """
                 case "/accessibility-live": body = """
                     <html><body><h1>Live region and rotor fixture</h1>
                     <div role="status">Progress <input aria-label="Status editor" value="1" style="display:block;width:280px;height:32px">

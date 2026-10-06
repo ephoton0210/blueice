@@ -15,15 +15,15 @@ use zeroize::Zeroize;
 const MAX_REGIONS: usize = 256;
 const MAX_ANNOUNCEMENTS: usize = 64;
 const MAX_TEXT_CHARS: usize = 4096;
+const MAX_ATOMIC_GROUPS: usize = 256;
 
 #[derive(Clone)]
 struct Region {
     id: NodeId,
     politeness: LivePoliteness,
-    atomic: bool,
-    relevant: Relevant,
     busy: bool,
     chunks: Vec<LiveText>,
+    groups: HashMap<NodeId, AtomicGroup>,
     elements: HashSet<NodeId>,
     remaining: usize,
     truncated: bool,
@@ -34,10 +34,35 @@ struct LiveText {
     source: NodeId,
     container: NodeId,
     text: String,
+    order: usize,
+    relevant: Relevant,
+    atomic_owner: Option<NodeId>,
+}
+
+#[derive(Clone)]
+struct AtomicGroup {
+    start: usize,
+    end: usize,
+    order: usize,
+    relevant: Relevant,
+    label: crate::ai_snapshot::NativeAuthorLabel,
+}
+#[derive(Clone, Copy)]
+struct LiveScope {
+    relevant: Relevant,
+    atomic_owner: Option<NodeId>,
+    order: usize,
 }
 
 impl Region {
-    fn push(&mut self, source: NodeId, container: NodeId, text: &str, truncated: &mut bool) {
+    fn push(
+        &mut self,
+        source: NodeId,
+        container: NodeId,
+        text: &str,
+        scope: LiveScope,
+        truncated: &mut bool,
+    ) {
         let mut chars = text.chars();
         let text: String = chars.by_ref().take(self.remaining).collect();
         let clipped = chars.next().is_some();
@@ -49,6 +74,9 @@ impl Region {
                 source,
                 container,
                 text,
+                relevant: scope.relevant,
+                atomic_owner: scope.atomic_owner,
+                order: scope.order,
             });
         }
     }
@@ -102,8 +130,23 @@ pub(super) struct LiveRegions {
 }
 struct PendingAnnouncement {
     announcement: AccessibilityAnnouncement,
-    sources: Vec<(NodeId, NodeId)>,
+    sources: Vec<Contributor>,
     truncated: bool,
+}
+#[derive(Clone, Copy)]
+struct Contributor {
+    source: NodeId,
+    container: NodeId,
+    author_name: bool,
+}
+impl From<&LiveText> for Contributor {
+    fn from(chunk: &LiveText) -> Self {
+        Self {
+            source: chunk.source,
+            container: chunk.container,
+            author_name: false,
+        }
+    }
 }
 impl Drop for PendingAnnouncement {
     fn drop(&mut self) {
@@ -121,10 +164,12 @@ impl LiveRegions {
                 // through several layouts while aria-busy remains true.
                 if let Some(old) = old {
                     region.chunks = old.chunks;
+                    region.groups = old.groups;
                     region.elements = old.elements;
                     region.truncated = old.truncated;
                 } else {
                     region.chunks.clear();
+                    region.groups.clear();
                     region.elements.clear();
                 }
             } else if self.initialized {
@@ -142,44 +187,148 @@ impl LiveRegions {
                     .map(|chunk| (chunk.source, &chunk.text))
                     .collect();
                 let mut changed = Vec::new();
-                for chunk in &region.chunks {
+                for (index, chunk) in region.chunks.iter().enumerate() {
                     let new_element = old
                         .as_ref()
                         .is_none_or(|old| !old.elements.contains(&chunk.container));
                     match previous.get(&chunk.source) {
-                        None if region.relevant.text
-                            || region.relevant.additions && new_element =>
-                        {
-                            changed.push(chunk)
+                        None if chunk.relevant.text || chunk.relevant.additions && new_element => {
+                            changed.push((index, chunk, false))
                         }
-                        Some(old) if *old != &chunk.text && region.relevant.text => {
-                            changed.push(chunk)
+                        Some(old) if *old != &chunk.text && chunk.relevant.text => {
+                            changed.push((index, chunk, false))
                         }
                         _ => {}
                     }
                 }
-                if region.relevant.removals {
-                    for chunk in old_chunks {
-                        if !current.contains_key(&chunk.source) {
-                            changed.push(chunk);
-                        }
+                for (index, chunk) in old_chunks.iter().enumerate() {
+                    if !chunk.text.is_empty()
+                        && chunk.relevant.removals
+                        && !current.contains_key(&chunk.source)
+                    {
+                        changed.push((index, chunk, true));
                     }
                 }
-                if !changed.is_empty() {
-                    let text = if region.atomic {
-                        region
-                            .chunks
-                            .iter()
-                            .map(|chunk| chunk.text.as_str())
-                            .collect::<Vec<_>>()
-                            .join(" ")
+                let mut groups = Vec::new();
+                let mut emitted = HashSet::new();
+                let mut plain = Vec::new();
+                for (index, chunk, removed) in changed {
+                    if let Some(owner) = chunk.atomic_owner {
+                        let (group_region, group) = if let Some(group) = region.groups.get(&owner) {
+                            (&region, group)
+                        } else if let Some((old, group)) = old
+                            .as_ref()
+                            .and_then(|old| old.groups.get(&owner).map(|group| (old, group)))
+                        {
+                            (old, group)
+                        } else {
+                            continue;
+                        };
+                        if emitted.insert(owner) {
+                            groups.push((owner, group_region, group));
+                        }
                     } else {
-                        changed
-                            .iter()
-                            .map(|chunk| chunk.text.as_str())
-                            .collect::<Vec<_>>()
-                            .join(" ")
+                        plain.push((index, chunk, removed));
+                    }
+                }
+                // Only author attributes inside the region cause a label update.
+                // Mutating an external aria-labelledby target refreshes the next
+                // expansion's name, but is not itself a live-region notification.
+                let mut label_changes = region
+                    .groups
+                    .iter()
+                    .filter(|(owner, group)| {
+                        group.relevant.text
+                            && old
+                                .as_ref()
+                                .and_then(|old| old.groups.get(owner))
+                                .is_some_and(|old| {
+                                    old.label.attributes != group.label.attributes
+                                        && old.label.text != group.label.text
+                                })
+                    })
+                    .collect::<Vec<_>>();
+                label_changes.sort_by_key(|(_, group)| group.start);
+                for (&owner, group) in label_changes {
+                    if emitted.insert(owner) {
+                        groups.push((owner, &region, group));
+                    }
+                }
+                groups.sort_by_key(|(_, _, group)| {
+                    (group.start, std::cmp::Reverse(group.end), group.order)
+                });
+                let mut segments = Vec::new();
+                let mut covered = Vec::new();
+                for (owner, group_region, group) in groups {
+                    if covered.iter().any(|&(observed, start, end)| {
+                        std::ptr::eq(observed, group_region)
+                            && start <= group.start
+                            && group.end <= end
+                            && start < end
+                    }) {
+                        continue;
+                    }
+                    covered.push((group_region, group.start, group.end));
+                    let mut parts = Vec::new();
+                    let mut contributing = Vec::new();
+                    if !group.label.text.is_empty() {
+                        parts.push(group.label.text.as_str());
+                        contributing.extend(group.label.sources.iter().map(|&source| {
+                            Contributor {
+                                source,
+                                container: source,
+                                author_name: true,
+                            }
+                        }));
+                    }
+                    contributing.push(Contributor {
+                        source: owner,
+                        container: owner,
+                        author_name: false,
+                    });
+                    for chunk in &group_region.chunks[group.start..group.end] {
+                        if !chunk.text.is_empty() {
+                            parts.push(chunk.text.as_str());
+                            contributing.push(Contributor::from(chunk));
+                        }
+                    }
+                    let removed = !std::ptr::eq(group_region, &region);
+                    segments.push((
+                        (removed, group.order),
+                        parts,
+                        contributing,
+                        group.label.truncated || group_region.truncated,
+                    ));
+                }
+                for (index, chunk, removed) in plain {
+                    let observed = if removed {
+                        old.as_ref().unwrap()
+                    } else {
+                        &region
                     };
+                    if covered.iter().any(|&(group_region, start, end)| {
+                        std::ptr::eq(group_region, observed) && start <= index && index < end
+                    }) {
+                        continue;
+                    }
+                    segments.push((
+                        (removed, chunk.order),
+                        vec![chunk.text.as_str()],
+                        vec![Contributor::from(chunk)],
+                        observed.truncated,
+                    ));
+                }
+                segments.sort_by_key(|segment| segment.0);
+                if !segments.is_empty() {
+                    let mut clipped = false;
+                    let mut parts = Vec::new();
+                    let mut contributing = Vec::new();
+                    for (_, text, sources, truncated) in segments {
+                        parts.extend(text);
+                        contributing.extend(sources);
+                        clipped |= truncated;
+                    }
+                    let text = parts.join(" ");
                     if !text.is_empty() {
                         self.revision =
                             self.revision.checked_add(1).expect("AT revision exhausted");
@@ -187,14 +336,6 @@ impl LiveRegions {
                             let removed = self.announcements.pop_front().unwrap();
                             self.lost_through = removed.announcement.sequence;
                         }
-                        let contributing = if region.atomic {
-                            region.chunks.iter().collect::<Vec<_>>()
-                        } else {
-                            changed
-                        };
-                        let mut clipped = region.truncated
-                            || region.relevant.removals
-                                && old.as_ref().is_some_and(|old| old.truncated);
                         let text = bounded_text(&text, &mut clipped);
                         self.announcements.push_back(PendingAnnouncement {
                             announcement: AccessibilityAnnouncement {
@@ -203,10 +344,7 @@ impl LiveRegions {
                                 text,
                                 politeness: region.politeness,
                             },
-                            sources: contributing
-                                .iter()
-                                .map(|chunk| (chunk.source, chunk.container))
-                                .collect(),
+                            sources: contributing,
                             truncated: clipped,
                         });
                     }
@@ -231,6 +369,33 @@ fn truth(value: Option<&str>) -> bool {
 }
 
 impl Page {
+    fn accessibility_contributor_safe(&self, contributor: &Contributor, region: NodeId) -> bool {
+        [contributor.source, contributor.container]
+            .iter()
+            .all(|&id| {
+                if contributor.author_name {
+                    self.doc.contains(id) && self.accessibility_author_content(id, region)
+                } else {
+                    !self.doc.contains(id) || self.accessibility_announcement_content(id, region)
+                }
+            })
+    }
+
+    pub(crate) fn accessibility_author_content(&self, node: NodeId, region: NodeId) -> bool {
+        if !self.accessibility_safe_content(node) {
+            return false;
+        }
+        let mut ancestor = Some(node);
+        while let Some(id) = ancestor {
+            if id == region {
+                return self.accessibility_announcement_content(node, region);
+            }
+            ancestor = self.doc.parent(id);
+        }
+        // External references are names, not members of this live region.
+        true
+    }
+
     fn accessibility_announcement_content(&self, node: NodeId, region: NodeId) -> bool {
         if !self.accessibility_safe_content(node) {
             return false;
@@ -318,14 +483,29 @@ impl Page {
         struct Inherited {
             owner: Option<usize>,
             atomic: Option<bool>,
+            atomic_owner: Option<NodeId>,
             relevant: Option<Relevant>,
             busy: bool,
         }
+        enum Visit {
+            Enter(NodeId, Inherited, usize),
+            Exit(usize, NodeId),
+        }
         let mut regions: Vec<Region> = Vec::new();
-        let mut pending = vec![(self.doc.root(), Inherited::default(), 0)];
+        let mut pending = vec![Visit::Enter(self.doc.root(), Inherited::default(), 0)];
+        let labels = crate::ai_snapshot::native_label_index(self);
+        let mut group_count = 0;
         let mut truncated = false;
         let mut visited = 0;
-        while let Some((node, mut inherited, depth)) = pending.pop() {
+        while let Some(visit) = pending.pop() {
+            let (node, mut inherited, depth) = match visit {
+                Visit::Enter(node, inherited, depth) => (node, inherited, depth),
+                Visit::Exit(index, owner) => {
+                    let end = regions[index].chunks.len();
+                    regions[index].groups.get_mut(&owner).unwrap().end = end;
+                    continue;
+                }
+            };
             visited += 1;
             if visited > 50_000 {
                 truncated = true;
@@ -340,9 +520,11 @@ impl Page {
             }
             if let NodeData::Element { tag_name, .. } = self.doc.data(node) {
                 let get = |name| element_attribute(&self.doc, node, name);
-                if let Some(value) = get("aria-atomic") {
+                let mut explicit_atomic = None;
+                if let Some(value) = get("aria-atomic").map(str::trim) {
                     if value.eq_ignore_ascii_case("true") || value.eq_ignore_ascii_case("false") {
-                        inherited.atomic = Some(truth(Some(value)));
+                        explicit_atomic = Some(truth(Some(value)));
+                        inherited.atomic = explicit_atomic;
                     }
                 }
                 if let Some(value) = get("aria-relevant") {
@@ -359,6 +541,7 @@ impl Page {
                 let polite = match explicit.as_deref() {
                     Some("off") => {
                         inherited.owner = None;
+                        inherited.atomic_owner = None;
                         None
                     }
                     Some("polite") => Some(LivePoliteness::Polite),
@@ -373,17 +556,23 @@ impl Page {
                     if regions.len() >= MAX_REGIONS {
                         truncated = true;
                         inherited.owner = None;
+                        inherited.atomic_owner = None;
                     } else {
                         inherited.owner = Some(regions.len());
+                        // A nested live owner bounds atomic expansion to its own
+                        // content, even when an explicit setting is inherited.
+                        explicit_atomic = Some(
+                            inherited
+                                .atomic
+                                .unwrap_or(matches!(role.as_str(), "status" | "alert")),
+                        );
+                        inherited.atomic_owner = None;
                         regions.push(Region {
                             id: node,
                             politeness,
-                            atomic: inherited
-                                .atomic
-                                .unwrap_or(matches!(role.as_str(), "status" | "alert")),
-                            relevant: inherited.relevant.unwrap_or_default(),
                             busy: inherited.busy,
                             chunks: Vec::new(),
+                            groups: HashMap::new(),
                             elements: HashSet::new(),
                             remaining: MAX_TEXT_CHARS,
                             truncated: false,
@@ -391,6 +580,38 @@ impl Page {
                     }
                 }
                 if let Some(index) = inherited.owner {
+                    match explicit_atomic {
+                        Some(true) if group_count < MAX_ATOMIC_GROUPS => {
+                            group_count += 1;
+                            inherited.atomic_owner = Some(node);
+                            let start = regions[index].chunks.len();
+                            let label = crate::ai_snapshot::native_author_label(
+                                self,
+                                node,
+                                &labels,
+                                Some(regions[index].id),
+                            );
+                            regions[index].groups.insert(
+                                node,
+                                AtomicGroup {
+                                    start,
+                                    end: start,
+                                    order: visited,
+                                    relevant: inherited.relevant.unwrap_or_default(),
+                                    label,
+                                },
+                            );
+                            pending.push(Visit::Exit(index, node));
+                        }
+                        Some(true) => {
+                            truncated = true;
+                            // Do not turn an unsupported atomic group into a
+                            // misleading partial, non-atomic announcement.
+                            continue;
+                        }
+                        Some(false) => inherited.atomic_owner = None,
+                        None => {}
+                    }
                     regions[index].busy |= inherited.busy;
                     regions[index].elements.insert(node);
                     if tag_name == "input" || tag_name == "select" {
@@ -398,13 +619,33 @@ impl Page {
                             .native_control_public_value(node)
                             .filter(|text| !text.is_empty())
                         {
-                            regions[index].push(node, node, &text, &mut truncated);
+                            regions[index].push(
+                                node,
+                                node,
+                                &text,
+                                LiveScope {
+                                    relevant: inherited.relevant.unwrap_or_default(),
+                                    atomic_owner: inherited.atomic_owner,
+                                    order: visited,
+                                },
+                                &mut truncated,
+                            );
                         }
                         continue;
                     }
                     if tag_name == "img" {
                         if let Some(text) = get("alt").filter(|text| !text.is_empty()) {
-                            regions[index].push(node, node, text, &mut truncated);
+                            regions[index].push(
+                                node,
+                                node,
+                                text,
+                                LiveScope {
+                                    relevant: inherited.relevant.unwrap_or_default(),
+                                    atomic_owner: inherited.atomic_owner,
+                                    order: visited,
+                                },
+                                &mut truncated,
+                            );
                         }
                     }
                 }
@@ -417,6 +658,11 @@ impl Page {
                         node,
                         self.doc.parent(node).unwrap_or(node),
                         &text,
+                        LiveScope {
+                            relevant: inherited.relevant.unwrap_or_default(),
+                            atomic_owner: inherited.atomic_owner,
+                            order: visited,
+                        },
                         &mut truncated,
                     );
                 }
@@ -426,8 +672,16 @@ impl Page {
                 children
                     .into_iter()
                     .rev()
-                    .map(|child| (child, inherited, depth + 1)),
+                    .map(|child| Visit::Enter(child, inherited, depth + 1)),
             );
+        }
+        // A traversal budget can stop before queued exit markers are visited.
+        // Their collected public prefix is still a valid, explicitly clipped range.
+        for visit in pending {
+            if let Visit::Exit(index, owner) = visit {
+                let end = regions[index].chunks.len();
+                regions[index].groups.get_mut(&owner).unwrap().end = end;
+            }
         }
         (regions, truncated)
     }
@@ -441,14 +695,11 @@ impl Page {
             .iter()
             .filter(|pending| {
                 live.contains(&pending.announcement.region_id)
-                    && pending.sources.iter().all(|(source, container)| {
-                        [*source, *container].iter().all(|id| {
-                            !self.doc.contains(*id)
-                                || self.accessibility_announcement_content(
-                                    *id,
-                                    NodeId::from_u64(pending.announcement.region_id),
-                                )
-                        })
+                    && pending.sources.iter().all(|source| {
+                        self.accessibility_contributor_safe(
+                            source,
+                            NodeId::from_u64(pending.announcement.region_id),
+                        )
                     })
             })
             .map(|pending| pending.announcement.sequence)
@@ -468,10 +719,46 @@ impl Page {
             })
             .map(|(region, chunk)| (region, chunk.source))
             .collect();
+        let blocked_labels: HashSet<_> = self
+            .live_regions
+            .observed
+            .iter()
+            .flat_map(|(region, observed)| {
+                observed
+                    .groups
+                    .iter()
+                    .filter(|(_, group)| {
+                        group.label.sources.iter().any(|&source| {
+                            !self.accessibility_contributor_safe(
+                                &Contributor {
+                                    source,
+                                    container: source,
+                                    author_name: true,
+                                },
+                                *region,
+                            )
+                        })
+                    })
+                    .map(move |(owner, _)| (*region, *owner))
+            })
+            .collect();
         for (id, region) in &mut self.live_regions.observed {
-            region
-                .chunks
-                .retain(|chunk| !blocked.contains(&(*id, chunk.source)));
+            // Keep indices stable for the atomic ranges, and erase excluded text
+            // before diffing removals or retaining a busy baseline.
+            for chunk in &mut region.chunks {
+                if blocked.contains(&(*id, chunk.source)) {
+                    chunk.text.zeroize();
+                    chunk.text.clear();
+                }
+            }
+            for (owner, group) in &mut region.groups {
+                if blocked_labels.contains(&(*id, *owner)) {
+                    group.label.text.zeroize();
+                    group.label.text.clear();
+                    group.label.sources.clear();
+                    group.label.truncated = false;
+                }
+            }
         }
         self.live_regions.refresh(regions, truncated);
     }

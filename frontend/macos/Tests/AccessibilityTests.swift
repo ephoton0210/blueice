@@ -435,6 +435,56 @@ final class AccessibilityTests: XCTestCase {
         await model.stop()
     }
 
+    func testActualCoreDescendantAnnouncementsThroughNativeAXEditsAndAcknowledgement() async throws {
+        let fixture = try HTTPFixture(); defer { fixture.stop() }
+        let launcher = Bundle(for: Self.self).bundleURL.deletingLastPathComponent()
+            .appendingPathComponent("BlueIce.app/Contents/MacOS/blueice-launcher")
+        let model = BrowserModel(); defer { Task { await model.stop() } }
+        let view = CorePageView(frame: CGRect(x: 0, y: 0, width: 500, height: 500)); view.model = model
+        model.viewportChanged(view.bounds.size)
+        let window = NSWindow(contentRect: view.bounds, styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false; window.contentView = view; defer { window.close() }
+        var spoken: [String] = []
+        let tree = PageAccessibilityTree(view: view,
+            text: { snapshot, epoch, node, action in model.accessibilityText(snapshot, epoch: epoch, node: node, action: action) },
+            isActive: { true }, announce: { text, _ in spoken.append(text) },
+            acknowledge: { snapshot, epoch in model.acknowledgeAccessibility(snapshot, epoch: epoch) }) { snapshot, epoch, node, action in
+            model.accessibilityAction(snapshot, epoch: epoch, node: node, focusOnly: action == .focus)
+        }
+        view.accessibilityTree = tree; window.makeFirstResponder(view)
+        await model.start(launcher: launcher); await wait { model.representation != nil }
+        let url = fixture.origin + "/accessibility-descendants"
+        model.address = url; model.navigateAddress()
+        await wait { model.representation?.url == url && model.textInputState?.frame_generation == model.representation?.generation }
+        func refresh() { tree.update(model.representation, epoch: model.accessibilityEpoch, imageSize: model.cssViewportSize ?? .zero) }
+        refresh(); XCTAssertTrue(spoken.isEmpty)
+        for (name, value) in [("Atomic editor", "完成 😀"), ("Narrow editor", "narrow 😀"), ("Suppressed editor", "silent")] {
+            let editor = try XCTUnwrap(tree.elements.values.first { $0.accessibilityLabel() == name })
+            editor.setAccessibilityFocused(true)
+            await wait { model.representation?.nodes.contains { $0.name == name && $0.state.focused } == true }
+            refresh(); editor.setAccessibilityValue(value)
+            await wait { model.representation?.nodes.contains { $0.name == name && $0.state.value == value } == true }
+            refresh(); refresh()
+        }
+        XCTAssertEqual(spoken, ["Score Count 完成 😀", "narrow 😀"])
+        XCTAssertFalse(spoken.joined().contains("secret")); XCTAssertFalse(spoken.joined().contains("quiet descendant"))
+        await wait { model.representation?.accessibility?.acknowledged_revision == 2 }
+        XCTAssertTrue(model.representation?.accessibility?.announcements.isEmpty == true)
+        XCTAssertTrue(model.representation?.nodes.contains { $0.name == "Suppressed editor" && $0.state.focused && $0.state.value == "silent" } == true)
+        let originalTab = try XCTUnwrap(model.selected)
+        model.action(.values("OpenTab", ["url": .null]))
+        await wait { model.selected != originalTab && model.representation != nil }
+        refresh(); XCTAssertFalse(tree.elements.values.contains { $0.accessibilityLabel() == "Atomic editor" })
+        model.select(originalTab); await wait { model.representation?.url == url }
+        refresh(); XCTAssertEqual(spoken.count, 2)
+        let previousDocument = try XCTUnwrap(model.representation?.accessibility?.document_generation)
+        model.reload(); await wait { model.representation?.accessibility?.document_generation != previousDocument && model.representation?.url == url }
+        refresh(); XCTAssertEqual(spoken.count, 2)
+        XCTAssertTrue(model.representation?.nodes.contains { $0.name == "Atomic editor" && $0.state.value == "1" } == true)
+        XCTAssertEqual(fixture.requests, ["/accessibility-descendants", "/accessibility-descendants"])
+        await model.stop()
+    }
+
     private func wait(_ predicate: () -> Bool, file: StaticString = #filePath, line: UInt = #line) async {
         let deadline = Date().addingTimeInterval(15)
         while !predicate() && Date() < deadline { try? await Task.sleep(for: .milliseconds(20)) }

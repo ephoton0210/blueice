@@ -1908,6 +1908,30 @@ final class BrowserUITests: XCTestCase {
         XCTAssertEqual(fixture.requests, ["/accessibility-live", "/accessibility-live"])
     }
 
+    func testNativeDescendantLiveRegionEditorsPrivacyTabIsolationAndReload() throws {
+        let fixture = try HTTPFixture(); defer { fixture.stop() }
+        let saved = saveClipboard(); defer { NSPasteboard.general.clearContents(); NSPasteboard.general.writeObjects(saved) }
+        launch(); enter(fixture.origin + "/accessibility-descendants")
+        let page = app.groups["page"]
+        let atomic = page.textFields["Atomic editor"]
+        XCTAssertTrue(atomic.waitForExistence(timeout: 15)); waitValue(atomic, "1")
+        paste("完成 😀", into: atomic); waitValue(atomic, "完成 😀")
+        let narrow = page.textFields["Narrow editor"]
+        paste("narrow 😀", into: narrow); waitValue(narrow, "narrow 😀")
+        let suppressed = page.textFields["Suppressed editor"]
+        paste("silent", into: suppressed); waitValue(suppressed, "silent")
+        XCTAssertTrue(page.secureTextFields["Descendant secret"].exists)
+        XCTAssertFalse(app.debugDescription.contains("private-descendant-secret"))
+        XCTAssertFalse(app.debugDescription.contains("hidden-descendant-secret"))
+        app.buttons["add-tab"].click(); waitValue(app.textFields["address"], "about:credits")
+        XCTAssertFalse(page.textFields["Atomic editor"].exists)
+        app.buttons["tab-1"].click(); waitValue(atomic, "完成 😀"); waitValue(narrow, "narrow 😀"); waitValue(suppressed, "silent")
+        let attachment = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
+        attachment.name = "macos-accessibility-descendants"; attachment.lifetime = .keepAlways; add(attachment)
+        app.buttons["reload"].click(); waitValue(atomic, "1"); waitValue(narrow, "1"); waitValue(suppressed, "1")
+        XCTAssertEqual(fixture.requests, ["/accessibility-descendants", "/accessibility-descendants"])
+    }
+
     func testAccessibleUnicodeTextControlsEditingScrollingAndReload() throws {
         let fixture = try HTTPFixture(); defer { fixture.stop() }
         launch(); enter(fixture.origin + "/accessibility-text")

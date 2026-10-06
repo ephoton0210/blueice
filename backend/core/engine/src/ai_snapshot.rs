@@ -40,7 +40,7 @@
 use crate::page::{find_fragment_bounds, Page};
 use blueice_dom::{Document, NodeData, NodeId};
 use blueice_ipc::{AiNode, AiSnapshot, NameFrom, NodeState, Role};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 pub(crate) fn build(page: &Page, generation: u64, tab_id: u64) -> AiSnapshot {
     let doc = page.doc();
@@ -145,7 +145,176 @@ pub(crate) fn native_name(page: &Page, node: NodeId) -> Option<String> {
     else {
         return None;
     };
+    if attr(attributes, "aria-labelledby").is_some() {
+        let label = native_author_label(page, node, &native_label_index(page), None);
+        if !label.text.is_empty() {
+            return Some(label.text);
+        }
+    }
     compute_name(page.doc(), node, tag_name, attributes, None, Some(page)).0
+}
+
+/// Bounded public author names shared by the native tree and live announcements.
+/// This intentionally excludes hidden/protected references rather than adopting
+/// the complete accessible-name algorithm's hidden-reference exception.
+#[derive(Clone, Default)]
+pub(crate) struct NativeAuthorLabel {
+    pub text: String,
+    pub sources: Vec<NodeId>,
+    pub attributes: [Option<String>; 2],
+    pub truncated: bool,
+}
+
+pub(crate) fn native_label_index(page: &Page) -> HashMap<String, NodeId> {
+    let mut index = HashMap::new();
+    let mut pending = vec![(page.doc().root(), 0)];
+    let mut visited = 0;
+    while let Some((node, depth)) = pending.pop() {
+        visited += 1;
+        if visited > 50_000 {
+            break;
+        }
+        if depth > 256 {
+            continue;
+        }
+        if let NodeData::Element { attributes, .. } = page.doc().data(node) {
+            if let Some(id) = attr(attributes, "id") {
+                index.entry(id.to_string()).or_insert(node);
+            }
+        }
+        pending.extend(
+            page.doc()
+                .children(node)
+                .collect::<Vec<_>>()
+                .into_iter()
+                .rev()
+                .map(|child| (child, depth + 1)),
+        );
+    }
+    index
+}
+
+pub(crate) fn native_author_label(
+    page: &Page,
+    node: NodeId,
+    index: &HashMap<String, NodeId>,
+    live_region: Option<NodeId>,
+) -> NativeAuthorLabel {
+    const LIMIT: usize = 4096;
+    let mut result = NativeAuthorLabel::default();
+    let NodeData::Element { attributes, .. } = page.doc().data(node) else {
+        return result;
+    };
+    if !page.accessibility_safe_content(node) {
+        return result;
+    }
+    result.attributes = ["aria-labelledby", "aria-label"]
+        .map(|name| attr(attributes, name).map(|value| value.chars().take(LIMIT).collect()));
+    let mut remaining = LIMIT;
+    fn append(
+        result: &mut NativeAuthorLabel,
+        remaining: &mut usize,
+        text: &str,
+        source: NodeId,
+        container: NodeId,
+    ) {
+        let normalized = text.split_whitespace().collect::<Vec<_>>().join(" ");
+        if normalized.is_empty() {
+            return;
+        }
+        if !result.text.is_empty() && *remaining > 0 {
+            result.text.push(' ');
+            *remaining -= 1;
+        }
+        let mut chars = normalized.chars();
+        let part: String = chars.by_ref().take(*remaining).collect();
+        result.truncated |= chars.next().is_some();
+        *remaining -= part.chars().count();
+        if !part.is_empty() {
+            result.text.push_str(&part);
+            result.sources.extend([source, container]);
+        }
+    }
+    if let Some(ids) = attr(attributes, "aria-labelledby") {
+        let mut seen = HashSet::new();
+        let mut visited = 0;
+        for (offset, id) in ids.split_ascii_whitespace().enumerate() {
+            if offset >= 256 {
+                result.truncated = true;
+                break;
+            }
+            let Some(&reference) = index.get(id) else {
+                continue;
+            };
+            if !seen.insert(reference)
+                || !page.accessibility_safe_content(reference)
+                || live_region
+                    .is_some_and(|region| !page.accessibility_author_content(reference, region))
+            {
+                continue;
+            }
+            let mut pending = vec![(reference, 0)];
+            while let Some((current, depth)) = pending.pop() {
+                visited += 1;
+                if visited > 50_000 || depth > 256 {
+                    result.truncated = true;
+                    break;
+                }
+                if !page.accessibility_safe_content(current)
+                    || live_region
+                        .is_some_and(|region| !page.accessibility_author_content(current, region))
+                {
+                    continue;
+                }
+                match page.doc().data(current) {
+                    NodeData::Text { data } => append(
+                        &mut result,
+                        &mut remaining,
+                        data,
+                        current,
+                        page.doc().parent(current).unwrap_or(current),
+                    ),
+                    NodeData::Element {
+                        tag_name,
+                        attributes,
+                    } => {
+                        if let Some(label) = attr(attributes, "aria-label") {
+                            append(&mut result, &mut remaining, label, current, current);
+                            continue;
+                        }
+                        if matches!(tag_name.as_str(), "input" | "select") {
+                            if let Some(value) = page.native_control_public_value(current) {
+                                append(&mut result, &mut remaining, &value, current, current);
+                            }
+                            continue;
+                        }
+                        if tag_name == "img" {
+                            if let Some(alt) = attr(attributes, "alt") {
+                                append(&mut result, &mut remaining, alt, current, current);
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+                pending.extend(
+                    page.doc()
+                        .children(current)
+                        .collect::<Vec<_>>()
+                        .into_iter()
+                        .rev()
+                        .map(|child| (child, depth + 1)),
+                );
+            }
+        }
+    }
+    if result.text.is_empty() {
+        if let Some(label) = attr(attributes, "aria-label") {
+            append(&mut result, &mut remaining, label, node, node);
+        }
+    }
+    result.sources.sort_by_key(|id| id.as_u64());
+    result.sources.dedup();
+    result
 }
 
 fn attr<'a>(attributes: &'a [(String, String)], name: &str) -> Option<&'a str> {

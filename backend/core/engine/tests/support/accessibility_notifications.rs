@@ -507,3 +507,255 @@ fn retained_explicit_live_region_updates_override_an_off_ancestor() {
     assert_eq!(stream(&page).announcements.len(), 1);
     assert_eq!(stream(&page).announcements[0].text, "explicit update");
 }
+
+#[test]
+fn atomic_descendants_include_their_public_group_and_author_label() {
+    let mut page = page("<div role='log'>Outer <span aria-atomic='true' aria-label='Score'>Count <input id='value' value='1'></span></div>");
+    let value = page.script_get_element_by_id("value").unwrap();
+    page.act(value, NodeAction::SetValue("2😀".into()));
+    assert_eq!(stream(&page).announcements[0].text, "Score Count 2😀");
+}
+
+#[test]
+fn explicit_non_atomic_descendants_stop_an_atomic_owner() {
+    let mut page = page("<div role='status'>Outer <span aria-atomic='false'>Changed <input id='value' value='1'></span></div>");
+    let value = page.script_get_element_by_id("value").unwrap();
+    page.act(value, NodeAction::SetValue("2".into()));
+    assert_eq!(stream(&page).announcements[0].text, "2");
+}
+
+#[test]
+fn nearest_atomic_boundary_selects_the_containing_element_once() {
+    let mut page = page("<div role='log' aria-atomic='true'>Outer <div aria-atomic='false'>Intermediate <div aria-atomic='true' aria-label='Scores'><span id='first'>1</span><span id='second'>2</span><span aria-atomic='false'><input id='exception' value='3'></span></div></div></div>");
+    for (id, text) in [("first", "10"), ("second", "20")] {
+        let element = page.script_get_element_by_id(id).unwrap();
+        let text_node = page.doc.children(element).next().unwrap();
+        let NodeData::Text { data } = page.doc.data_mut(text_node) else {
+            panic!("text")
+        };
+        *data = text.into();
+    }
+    page.restyle_and_relayout();
+    let batch = stream(&page);
+    assert_eq!(batch.announcements.len(), 1);
+    assert_eq!(batch.announcements[0].text, "Scores 10 20 3");
+    let exception = page.script_get_element_by_id("exception").unwrap();
+    page.act(exception, NodeAction::SetValue("4".into()));
+    assert_eq!(stream(&page).announcements[1].text, "4");
+}
+
+#[test]
+fn descendant_relevant_removals_override_additions_and_text() {
+    let mut page = page("<div role='log'><div id='scope' aria-relevant='removals'><input id='value' value='ready'></div></div>");
+    let value = page.script_get_element_by_id("value").unwrap();
+    page.act(value, NodeAction::SetValue("latest".into()));
+    assert!(stream(&page).announcements.is_empty());
+    replace(&mut page, "scope", "");
+    assert_eq!(stream(&page).announcements[0].text, "latest");
+}
+
+#[test]
+fn descendant_relevant_text_overrides_all_without_old_text_replay() {
+    let mut page = page("<div role='log' aria-relevant='all'><span id='message' aria-relevant='text'>ready</span></div>");
+    replace(&mut page, "message", "new text");
+    assert_eq!(stream(&page).announcements[0].text, "new text");
+    replace(&mut page, "message", "");
+    assert_eq!(stream(&page).revision, 1);
+    assert_eq!(stream(&page).announcements.len(), 1);
+}
+
+#[test]
+fn changing_relevant_scope_does_not_replay_suppressed_edits() {
+    let mut page = page("<div role='log'><div id='scope' aria-relevant='removals'><input id='value' value='ready'></div></div>");
+    let value = page.script_get_element_by_id("value").unwrap();
+    page.act(value, NodeAction::SetValue("suppressed".into()));
+    assert!(stream(&page).announcements.is_empty());
+    attribute(&mut page, "scope", "aria-relevant", "text");
+    assert!(stream(&page).announcements.is_empty());
+    page.act(value, NodeAction::SetValue("fresh value".into()));
+    assert_eq!(stream(&page).announcements[0].text, "fresh value");
+}
+
+#[test]
+fn removal_uses_the_original_relevant_scope_through_plain_descendants() {
+    let mut page = page("<div role='log' aria-relevant='all'><div aria-relevant='text'><span id='first'>ready</span></div><div aria-relevant='removals'><span id='second'><input id='value' value='other'></span></div></div>");
+    replace(&mut page, "first", "");
+    assert!(stream(&page).announcements.is_empty());
+    let value = page.script_get_element_by_id("value").unwrap();
+    page.act(value, NodeAction::SetValue("other latest".into()));
+    assert!(stream(&page).announcements.is_empty());
+    replace(&mut page, "second", "");
+    assert_eq!(stream(&page).announcements[0].text, "other latest");
+}
+
+#[test]
+fn atomic_group_content_excludes_hidden_protected_and_off_contributors() {
+    let mut page = page("<div role='log'><div aria-atomic='true' aria-label='Progress'><span id='public'>ready</span><input type='password' value='password-secret'><span aria-hidden='true'>hidden-secret</span><span aria-live='off'>off-secret</span></div></div>");
+    replace(&mut page, "public", "done");
+    assert_eq!(stream(&page).announcements[0].text, "Progress done");
+    assert!(!serde_json::to_string(&stream(&page).announcements)
+        .unwrap()
+        .contains("secret"));
+    attribute(&mut page, "public", "aria-live", "off");
+    assert!(stream(&page).announcements.is_empty());
+}
+
+#[test]
+fn atomic_labels_follow_public_idrefs_without_outside_region_notifications() {
+    let mut page = page("<span id='label'>Score</span><div role='log'><div aria-atomic='true' aria-labelledby='label' aria-label='Fallback'><input id='value' value='1'></div></div>");
+    let value = page.script_get_element_by_id("value").unwrap();
+    page.act(value, NodeAction::SetValue("2".into()));
+    let first = stream(&page);
+    assert_eq!(first.announcements[0].text, "Score 2");
+    page.accessibility_acknowledge(
+        &blueice_ipc::accessibility::AccessibilityDelivery {
+            version: 1,
+            frame_source: 42,
+            document_generation: first.document_generation,
+            revision: first.revision,
+        },
+        42,
+    )
+    .unwrap();
+    replace(&mut page, "label", "Other");
+    assert!(stream(&page).announcements.is_empty());
+    assert_eq!(stream(&page).revision, first.revision);
+    page.act(value, NodeAction::SetValue("3".into()));
+    assert_eq!(stream(&page).announcements[0].text, "Other 3");
+}
+
+#[test]
+fn retained_atomic_labels_are_purged_when_external_label_becomes_private() {
+    let mut page = page("<span id='label'>Score</span><div role='log'><div aria-atomic='true' aria-labelledby='label'><input id='value' value='1'></div></div>");
+    let value = page.script_get_element_by_id("value").unwrap();
+    page.act(value, NodeAction::SetValue("2".into()));
+    assert_eq!(stream(&page).announcements[0].text, "Score 2");
+    attribute(&mut page, "label", "aria-hidden", "true");
+    assert!(stream(&page).announcements.is_empty());
+    page.resize(500.0, 200.0);
+    assert!(stream(&page).announcements.is_empty());
+}
+
+#[test]
+fn atomic_label_clipping_survives_later_short_labels_until_prefix_release() {
+    let html = format!("<div role='log'><div id='scope' aria-atomic='true' aria-label='{}'><input id='value' value='1'></div></div>", "😀".repeat(5000));
+    let mut page = page(&html);
+    let value = page.script_get_element_by_id("value").unwrap();
+    page.act(value, NodeAction::SetValue("2".into()));
+    let first = stream(&page);
+    assert_eq!(first.announcements[0].text.chars().count(), 4096);
+    assert!(first.truncated);
+    attribute(&mut page, "scope", "aria-label", "Short");
+    let pending = stream(&page);
+    assert_eq!(pending.announcements.len(), 2);
+    assert_eq!(pending.announcements[1].text, "Short 2");
+    assert!(pending.truncated);
+    page.accessibility_acknowledge(
+        &blueice_ipc::accessibility::AccessibilityDelivery {
+            version: 1,
+            frame_source: 42,
+            document_generation: pending.document_generation,
+            revision: first.revision,
+        },
+        42,
+    )
+    .unwrap();
+    assert!(!stream(&page).truncated);
+}
+
+#[test]
+fn busy_atomic_descendants_coalesce_with_their_latest_public_label() {
+    let mut page = page("<div role='log'><div id='scope' aria-atomic='true' aria-label='Score'><input id='value' value='1'></div></div>");
+    let value = page.script_get_element_by_id("value").unwrap();
+    attribute(&mut page, "scope", "aria-busy", "true");
+    attribute(&mut page, "scope", "aria-label", "Current label");
+    page.act(value, NodeAction::SetValue("2".into()));
+    page.act(value, NodeAction::SetValue("3".into()));
+    assert!(stream(&page).announcements.is_empty());
+    attribute(&mut page, "scope", "aria-busy", "false");
+    assert_eq!(stream(&page).announcements.len(), 1);
+    assert_eq!(stream(&page).announcements[0].text, "Current label 3");
+}
+
+#[test]
+fn simultaneous_atomic_and_plain_updates_keep_document_order_without_duplicates() {
+    let mut page = page("<div role='log'><div aria-atomic='true' aria-label='First'><input id='first' value='1'></div><input id='plain' value='2'><div aria-atomic='true' aria-label='Last'><input id='last' value='3'></div></div>");
+    for (id, value) in [("first", "10"), ("plain", "20"), ("last", "30")] {
+        let node = page.script_get_element_by_id(id).unwrap();
+        let NodeData::Element { attributes, .. } = page.doc.data_mut(node) else {
+            panic!()
+        };
+        attributes.retain(|(name, _)| name != "value");
+        attributes.push(("value".into(), value.into()));
+    }
+    page.restyle_and_relayout();
+    assert_eq!(stream(&page).announcements[0].text, "First 10 20 Last 30");
+}
+
+#[test]
+fn an_activated_outer_group_covers_simultaneous_inner_and_non_atomic_updates_once() {
+    let mut page = page("<div role='status' aria-label='Whole'><input id='outer' value='1'><div aria-atomic='true' aria-label='Inner'><input id='inner' value='2'></div><div aria-atomic='false'><input id='plain' value='3'></div></div>");
+    for (id, value) in [("outer", "10"), ("inner", "20"), ("plain", "30")] {
+        let node = page.script_get_element_by_id(id).unwrap();
+        let NodeData::Element { attributes, .. } = page.doc.data_mut(node) else {
+            panic!()
+        };
+        attributes.retain(|(name, _)| name != "value");
+        attributes.push(("value".into(), value.into()));
+    }
+    page.restyle_and_relayout();
+    assert_eq!(stream(&page).announcements[0].text, "Whole 10 20 30");
+}
+
+#[test]
+fn atomic_group_budget_reports_omitted_groups_without_partial_updates() {
+    let html = format!(
+        "<div role='log'>{}</div>",
+        (0..257)
+            .map(|i| format!(
+                "<div aria-atomic='true' aria-label='Group'><input id='n{i}' value='ready'></div>"
+            ))
+            .collect::<String>()
+    );
+    let mut page = page(&html);
+    assert!(stream(&page).truncated);
+    let omitted = page.script_get_element_by_id("n256").unwrap();
+    assert!(page
+        .act(omitted, blueice_ipc::NodeAction::SetValue("omitted".into()))
+        .is_none());
+    assert!(stream(&page).announcements.is_empty());
+    let retained = page.script_get_element_by_id("n255").unwrap();
+    assert!(page
+        .act(
+            retained,
+            blueice_ipc::NodeAction::SetValue("included".into())
+        )
+        .is_none());
+    assert_eq!(stream(&page).announcements[0].text, "Group included");
+}
+
+#[test]
+fn native_names_share_public_idref_priority_and_skip_private_references() {
+    let mut page = page("<span id='first'>First</span><span id='secret' aria-hidden='true'>private-reference</span><span id='last'>Last</span><input id='field' aria-labelledby='first secret first last absent' aria-label='Fallback' value='1'>");
+    let node = page.script_get_element_by_id("field").unwrap();
+    assert_eq!(
+        crate::ai_snapshot::native_name(&page, node).as_deref(),
+        Some("First Last")
+    );
+    attribute(&mut page, "first", "aria-hidden", "true");
+    attribute(&mut page, "last", "aria-hidden", "true");
+    assert_eq!(
+        crate::ai_snapshot::native_name(&page, node).as_deref(),
+        Some("Fallback")
+    );
+}
+
+#[test]
+fn atomic_names_allow_external_off_references_but_exclude_off_content_inside_the_region() {
+    let mut page = page("<span id='external' aria-live='off'>External</span><div role='log'><div aria-atomic='true' aria-labelledby='external internal'><span id='internal' aria-live='off'>off-name-secret</span><input id='value' value='1'></div></div>");
+    let value = page.script_get_element_by_id("value").unwrap();
+    page.act(value, NodeAction::SetValue("2".into()));
+    assert_eq!(stream(&page).announcements[0].text, "External 2");
+    attribute(&mut page, "external", "aria-hidden", "true");
+    assert!(stream(&page).announcements.is_empty());
+}
