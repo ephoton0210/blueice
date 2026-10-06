@@ -4036,3 +4036,27 @@ the same `cfg(unix)` condition. All five existing disk-resolution tests,
 format/check and both BlueTS crates' all-target Clippy with `-D warnings`
 pass in the Linux runner. The complete M6 replay on the corrected revision
 is still required before checking the milestone.
+
+
+### M6 K.1 workspace and coverage closure
+
+K.1.1 to K.1.5 and the K.1.R.1 source split are complete and pushed.
+The final tested K.1 revision is `8343929b77d85d2f62085520948394bae87b38d7`.
+CI run [37387952696](https://github.com/ephoton0210/blueice/actions/runs/37387952696)
+passed all 29 jobs on that exact revision: the 25-platform workspace build,
+test, all-target Clippy and format matrix; both Linux/macOS pinned TypeScript
+oracle jobs; the coverage job; and the aggregate CI gate. No required job was
+skipped. Pinned Test262 and CLDR inputs and the fetched WPT corpus follow
+the existing CI workflow.
+
+Workspace line coverage is **90.48%**, above the existing 90% floor.
+The independent BlueJS line coverage is **93.00%**, above its 88% floor.
+The existing coverage exclusions are unchanged. The local final K.0 gate
+passed all 1036 two-crate tests, including every one of the 114 ignored
+oracles in 24 suite files, on a source-verified Linux snapshot before the
+implementation commit. The production source audit remains below 1200 lines
+(maximum 1171), and the K.1 refactoring queue has no pending split.
+
+M6 is checked and the next ordered leaf is K.2.1. The K.4/K.8 inference and
+declaration gaps, minimum-library omissions and remaining inventory rows
+remain visible; full TypeScript parity is still not claimed.

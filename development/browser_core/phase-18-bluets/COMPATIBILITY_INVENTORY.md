@@ -56,6 +56,11 @@ namespace/enum/class downlevel under both targets, direct-runtime parity 20). Th
 Ubuntu 24.04 and macOS 15; Windows is not covered (G-M3). The percentage means only: *of the forms inside
 the subset, every one agrees with `tsc`*. It says nothing about the forms in section 3, which are refused.
 
+The M6 workspace milestone passed CI run [37387952696](https://github.com/ephoton0210/blueice/actions/runs/37387952696)
+on `8343929b7`, including all 29 jobs and both pinned oracle platforms. Workspace
+line coverage is 90.48%; independent BlueJS line coverage is 93.00%.
+The recorded subset measurements above remain the scope of the compatibility claim.
+
 ## 2. What the supported subset is (summary)
 
 Statements and expressions with a typed core (numbers, strings, booleans, literals, arrays, tuples,
