@@ -202,6 +202,162 @@ fn cli_matrix_records_every_named_invocation() {
         .collect::<String>();
     assert_eq!(matrix, MATRIX);
 }
+
+#[test]
+fn import_only_declarations_retain_the_module_boundary() {
+    let compilation = blueice_bluets::compile(
+        "memory:///main.ts",
+        &blueice_bluets::MapLoader::from([
+            blueice_bluets::ModuleSource::new(
+                "memory:///main.ts",
+                "import { value } from './value.ts'; console.log(value);",
+            ),
+            blueice_bluets::ModuleSource::new(
+                "memory:///value.ts",
+                "export const value: number = 1;",
+            ),
+        ]),
+        blueice_bluets::CompilerOptions {
+            declaration: true,
+            ..blueice_bluets::CompilerOptions::default()
+        },
+    );
+    assert!(!compilation.has_errors(), "{:?}", compilation.diagnostics);
+    assert_eq!(
+        compilation.output.unwrap().artifacts["memory:///main.ts"]
+            .declaration
+            .as_deref(),
+        Some("export {};\n")
+    );
+}
+
+#[test]
+fn native_emission_rejects_input_and_configuration_collisions() {
+    let root = env::temp_dir().join(format!("bluets-native-collisions-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&root);
+    copy_tree(&fixtures().join("project"), &root);
+    fs::write(
+        root.join("src/main.ts"),
+        "import type { Value } from './main.d.ts'; export const value: Value = 1;",
+    )
+    .unwrap();
+    let declaration = "export type Value = number;\n";
+    fs::write(root.join("src/main.d.ts"), declaration).unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_bluetsc"))
+        .current_dir(&root)
+        .args(["--project", "."])
+        .output()
+        .unwrap();
+    // With outDir, the original declaration remains separate from its output.
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let mut config: Value =
+        serde_json::from_slice(&fs::read(root.join("tsconfig.json")).unwrap()).unwrap();
+    config["compilerOptions"]
+        .as_object_mut()
+        .unwrap()
+        .remove("outDir");
+    fs::write(
+        root.join("tsconfig.json"),
+        serde_json::to_vec(&config).unwrap(),
+    )
+    .unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_bluetsc"))
+        .current_dir(&root)
+        .args(["--project", "."])
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    assert_eq!(
+        fs::read_to_string(root.join("src/main.d.ts")).unwrap(),
+        declaration
+    );
+    assert!(!root.join("src/main.js").exists());
+    fs::write(
+        root.join("src/main.ts"),
+        "export const value: number = 1;\n",
+    )
+    .unwrap();
+    config["files"] = json!(["main.ts"]);
+    let protected = serde_json::to_vec(&config).unwrap();
+    fs::write(root.join("src/main.js.map"), &protected).unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_bluetsc"))
+        .current_dir(&root)
+        .args(["--project", "src/main.js.map"])
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    assert_eq!(fs::read(root.join("src/main.js.map")).unwrap(), protected);
+    assert!(!root.join("src/main.js").exists());
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn native_emission_rejects_duplicate_destinations_before_writing() {
+    let root = env::temp_dir().join(format!("bluets-native-duplicate-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&root);
+    copy_tree(&fixtures().join("project"), &root);
+    fs::write(root.join("src/main.tsx"), "export const other: number = 1;").unwrap();
+    let mut config: Value =
+        serde_json::from_slice(&fs::read(root.join("tsconfig.json")).unwrap()).unwrap();
+    config["files"] = json!(["src/main.ts", "src/main.tsx"]);
+    fs::write(
+        root.join("tsconfig.json"),
+        serde_json::to_vec(&config).unwrap(),
+    )
+    .unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_bluetsc"))
+        .current_dir(&root)
+        .args(["--project", "."])
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    assert!(!root.join("out").exists());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("same output path"));
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+#[ignore = "requires pinned TypeScript 5.9.3 and Node"]
+fn native_output_runs_and_declares_like_typescript() {
+    let tsc =
+        PathBuf::from(env::var_os("BLUEICE_BLUETSC_ORACLE").expect("set BLUEICE_BLUETSC_ORACLE"));
+    let root = env::temp_dir().join(format!("bluets-native-execution-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&root);
+    for name in ["list-emits", "in-place-emits"] {
+        let row = rows().into_iter().find(|r| r["name"] == name).unwrap();
+        let blue = root.join(name).join("blue");
+        let reference = root.join(name).join("reference");
+        let (_, actual) = observe(Path::new(env!("CARGO_BIN_EXE_bluetsc")), &blue, &row);
+        let (_, expected) = observe(&tsc, &reference, &row);
+        assert!(actual.status.success() && expected.status.success());
+        let directory = if name == "list-emits" { "out" } else { "src" };
+        let run = |path: &Path| {
+            let result = Command::new("node")
+                .arg(path.join(directory).join("main.js"))
+                .output()
+                .unwrap();
+            assert!(
+                result.status.success(),
+                "{}",
+                String::from_utf8_lossy(&result.stderr)
+            );
+            result.stdout
+        };
+        assert_eq!(run(&blue), run(&reference));
+        assert_eq!(run(&blue), b"42\n");
+        for file in ["main.d.ts", "value.d.ts"] {
+            assert_eq!(
+                fs::read(blue.join(directory).join(file)).unwrap(),
+                fs::read(reference.join(directory).join(file)).unwrap()
+            );
+        }
+    }
+    fs::remove_dir_all(root).unwrap();
+}
 #[test]
 #[ignore = "requires pinned TypeScript 5.9.3"]
 fn recorded_native_cli_observations_match_pinned_typescript() {

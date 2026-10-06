@@ -4188,3 +4188,38 @@ The normalized `--listFiles` comparison covers project inputs; BlueTS's embedded
 library catalog differs from TypeScript's full default library installation.
 Diagnostic wording/codes/spans remain K.3. K.2.3 stays unchecked until the CLI
 observations and the full K.0 gate pass.
+
+
+### K.2.3 Native project commands delivered
+
+Native project invocations accept `--project`/`-p`, `--noEmit`, `--showConfig`,
+`--listFiles`, `--listEmittedFiles` and `--pretty`, with explicit boolean overrides
+and default ancestor configuration search. They reuse the canonical project reader,
+owner overlays, resolver and checking policy. Valid project commands return zero;
+configuration/argument failures return one and checked source failures return two.
+Normal native emission preserves unrelated files and writes JS/maps/declarations
+beside sources or under the configured output directory. No-emission commands
+check the complete graph and output layout without publishing artifacts. Selected
+strict-runtime projects retain the existing helper/proof publisher and owner limits.
+
+All destinations are checked before publication: source and declaration inputs,
+configuration files and duplicate destinations cannot be overwritten. Canonical
+ancestor checks preserve existing filesystem authority. Node output and exact
+module declarations agree with pinned TypeScript; an import-only module retains
+its `export {};` declaration marker through the public compiler API.
+
+Thirty recorded TypeScript 5.9.3 observations now match (24 accept, six reject).
+They cover project files/directories, default/nested discovery, CLI/config overrides,
+source and emitted lists, combined lists, in-place output, unchanged existing files,
+pretty on/off errors, missing/unknown/conflicting arguments and exit codes. Source
+lists compare project inputs; the pinned installation's full standard-library
+catalog remains a documented difference. TypeScript diagnostic codes, wording,
+spans and complete formatting remain K.3; bare-source native commands, references,
+watch/build/incremental operation and broader configuration options remain open.
+
+The frozen-source K.0 gate (`blueice-k23-final2-*`) passed formatting, both crates'
+all-target Clippy with warnings denied, and 1,067 tests in 61 target/doctest
+groups, including all 122 ignored oracle tests in 28 suite files. No
+failures, ignored or filtered tests remain. The production source maximum is
+1,172 lines, below the 1,200-line review threshold. K.2.4 follows; the final
+workspace and coverage gate remains due after it. Full `tsc` parity stays unclaimed.

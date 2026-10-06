@@ -21,6 +21,8 @@ pub(super) struct ProjectConfig {
     pub(super) directory: PathBuf,
     pub(super) emit_root: PathBuf,
     pub(super) fingerprint: String,
+    pub(super) selectors: Map<String, Value>,
+    pub(super) config_inputs: Vec<PathBuf>,
 }
 
 impl ProjectConfig {
@@ -30,7 +32,12 @@ impl ProjectConfig {
             .iter()
             .map(|file| format!("./{}", relative_text(&self.directory, file)))
             .collect::<Vec<_>>();
-        json!({"compilerOptions": options::effective(&self.options, &self.directory), "files": files})
+        let mut shown = json!({"compilerOptions": options::effective(&self.options, &self.directory), "files": files});
+        shown
+            .as_object_mut()
+            .expect("configuration object")
+            .extend(self.selectors.clone());
+        shown
     }
 }
 
@@ -187,7 +194,33 @@ pub(super) fn resolve(path: &Path, owner_path: Option<&Path>) -> Result<Invocati
         fingerprint.extend(relative_text(&root, file).bytes());
         fingerprint.push(0);
     }
+    let mut selectors = Map::new();
+    for (name, paths) in [
+        ("include", document.include.as_ref()),
+        ("exclude", document.exclude.as_ref()),
+    ] {
+        if let Some(paths) = paths {
+            selectors.insert(
+                name.to_string(),
+                json!(paths
+                    .iter()
+                    .map(|path| relative_text(&directory, path))
+                    .collect::<Vec<_>>()),
+            );
+        }
+    }
+    if document.exclude.is_none() {
+        if let Some(out) = document.options.get("outDir").and_then(Value::as_str) {
+            selectors.insert("exclude".to_string(), json!([out]));
+        }
+    }
+    let mut config_inputs = reader.inputs.keys().cloned().collect::<Vec<_>>();
+    if let Some(path) = owner_path {
+        config_inputs.push(path.to_path_buf());
+    }
     let project = ProjectConfig {
+        selectors,
+        config_inputs,
         options: document.options.clone(),
         files: files.clone(),
         directory: directory.clone(),

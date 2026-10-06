@@ -718,6 +718,19 @@ fn emit_declaration(
             _ => {}
         }
     }
+    if output.is_empty()
+        && module.declarations.iter().any(|declaration| {
+            matches!(
+                declaration,
+                Declaration::Import(_)
+                    | Declaration::TypeExport(_)
+                    | Declaration::ValueExport(_)
+                    | Declaration::DefaultExport(_)
+            )
+        })
+    {
+        output.push_str("export {};\n");
+    }
     Ok(output)
 }
 

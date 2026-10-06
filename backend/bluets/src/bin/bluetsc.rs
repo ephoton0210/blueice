@@ -29,6 +29,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 mod config;
 use config::*;
 
+#[path = "bluetsc/native_cli/mod.rs"]
+mod native_cli;
 #[path = "bluetsc/tsconfig/mod.rs"]
 mod tsconfig;
 
@@ -37,7 +39,14 @@ const RUNTIME_HELPER_V1_VERSION: &str = "bluets-runtime-helper-v1";
 const RUNTIME_HELPER_V1_SOURCE: &str = include_str!("../runtime_helper_v1.mjs");
 
 fn main() -> ExitCode {
-    let args = match parse_args(env::args().skip(1)) {
+    let arguments = env::args().skip(1).collect::<Vec<_>>();
+    if arguments
+        .first()
+        .is_none_or(|arg| arg.starts_with('-') && !matches!(arg.as_str(), "--help" | "-h"))
+    {
+        return native_cli::run(arguments);
+    }
+    let args = match parse_args(arguments.into_iter()) {
         Ok(args) => args,
         Err(message) if message == "help requested" => {
             println!("{}", usage());

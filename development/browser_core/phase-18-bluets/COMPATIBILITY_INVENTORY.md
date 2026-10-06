@@ -33,6 +33,7 @@ test files (`grep -rl '#\[ignore' backend/bluets*/tests`), section 4 is
 | `inferred_return_checker_matrix.rs` | unannotated function/member return signatures, freshness, recursion and completion, async/generators, lexical/default/pattern scopes and importers; exact declarations and Node execution | 121 entries, 1 program, 23 exact declaration cases, 2 union type-equality cases |
 | `project_config.rs` | JSONC inheritance, normalized compiler options and selected files; owner overlays and confinement; exact declarations and Node runtime, including strict-helper relocation | 69 configurations (59 accept, 10 reject), 2 linked programs |
 | `strictness_flags.rs`, `strictness_controls.rs` | independent parent/strict-family and additional diagnostics, lexical/return/call/index boundaries, unchanged valid JavaScript and cache policy identity; pinned Node execution and exact declarations | 32 configurations (16 accept, 16 reject), 39 boundary controls, 1 program in 2 policies |
+| `cli_surface.rs` | native project CLI flags and overrides, default project discovery, normalized configuration, source/emitted lists, noEmit and pretty/exit observations; input preservation, Node execution and exact declarations | 30 observations (24 accept, 6 reject), 2 emission layouts |
 | `option_combinations_oracle.rs` | one program over every combination of `target`, module system, `useDefineForClassFields`, `preserveConstEnums`, `isolatedModules` | 48 combinations |
 | `bluets-bluejs/tests/namespace_parity.rs`, `jsx_direct.rs`, `decorators_direct.rs` | the direct runtime (BlueJS) against Node running `tsc`'s output | 7 + 7 + 6 programs |
 
@@ -49,9 +50,9 @@ whitespace.
 ### Measured pass rate (2026-10-06, Linux aarch64 in Colima on Apple silicon, pinned `typescript@5.9.3`, Node 26)
 
 Every differential suite of section 1 was run against the pinned compiler with none skipped:
-**27 of 27 suites pass, 120 ignored oracle tests pass, 0 failures.** The versioned case list is the
+**28 of 28 suites pass, 122 ignored oracle tests pass, 0 failures.** The versioned case list is the
 repository itself at the commit that carries this file: 69 project configurations
-(59 accept, 10 reject), 32 strictness configurations (16 accept, 16 reject) and 39 checking boundary controls, separately from 1366 recorded accepted/rejected verdicts (class
+(59 accept, 10 reject), 32 strictness configurations (16 accept, 16 reject) and 39 checking boundary controls, 30 native CLI observations (24 accept, 6 reject), separately from 1366 recorded accepted/rejected verdicts (class
 523, namespace 76, enum 57, JSX 53, decorators 32, legacy decorators 19, unknown names 108, immutables 173, imported values 81, standard library 123, inferred returns 121), 109 core-subset
 cases in `typescript_oracle.rs`, and the emit-and-run programs (JSX 11, standard decorators 20,
 legacy decorators 18, CommonJS 6, unknown names 1, immutables 1, imported values 2, standard library 1, inferred returns 1, option combinations 48,
@@ -119,14 +120,14 @@ suite entry, then removing the row.
 | ID | Gap |
 | --- | --- |
 | G-M1 | Resolution features not read: `typesVersions`, `.d.mts`/`.d.cts`/`.mts`/`.cts` entry points, `paths`/`baseUrl`/`rootDirs`, package self-name imports, `moduleResolution: classic`, automatic `@types` inclusion (`types`/`typeRoots`), `resolveJsonModule`, `allowJs`/`checkJs`, `.js` files as sources. |
-| G-M2 | K.2.1 reads JSONC `tsconfig.json`, relative/package `extends`, and `files`/`include`/`exclude`, with normalized option/file comparison and owner overlays. The existing ES2020/ES2022, ESM/CommonJS and resolver subset remains explicit; unsupported options are named. Remaining: project references, `--build`, `--watch`, `--incremental`/`.tsbuildinfo`, `composite`, and native `--project`/`--noEmit`/`--listFiles`/`--listEmittedFiles`/`--pretty` CLI behavior (K.2.3). `--showConfig` is currently available with `check/build --config`. |
+| G-M2 | K.2.1 reads canonical JSONC projects, relative/package inheritance and file selectors with owner overlays. K.2.3 provides native project/default discovery, `--project`, `--showConfig`, `--noEmit`, project source/emitted lists, pretty selection and exit codes; 30 pinned observations agree. Remaining: project references, `--build`, `--watch`, `--incremental`/`.tsbuildinfo`, `composite`, bare-source native CLI invocations, the full installed standard-library file catalog and options beyond the documented compiler/resolver subset. |
 | G-M3 | Windows: the oracle suites are not run on Windows (the harness does not launch `tsc.cmd`; symlink tests are Unix-only); the path code uses `std::fs::canonicalize` and `Path` and has been type-checked, not run, there. |
 
 ### 3.5 Diagnostics and CLI
 
 | ID | Gap |
 | --- | --- |
-| G-C1 | Diagnostic parity: BlueTSC reports `BTSnnnn` with its own wording and spans; TypeScript's `TSnnnn` codes, messages, related information and suggestions, `--pretty`, `--diagnostics`, `--explainFiles`, and the full `tsc` command line are not provided. |
+| G-C1 | Diagnostic parity: BlueTSC reports `BTSnnnn` with its own wording and spans. K.2.3 selects colored/plain project diagnostics and matching exit codes, but TypeScript `TSnnnn` codes, messages, related information, suggestions, complete pretty formatting, `--diagnostics`, `--explainFiles` and the full `tsc` command line remain open. |
 | G-C2 | Closed for the compared subset by K.2.2: parent `strict`, its nine family flags, unused locals/parameters, implicit returns, switch fallthrough, exact optional properties and unchecked indexed reads are independently selectable through projects and `CheckingOptions`. Thirty-two on/off configurations and 39 boundary controls agree with pinned TypeScript; valid JavaScript stays identical and legacy API defaults remain unchanged. Broader type-system behavior remains in G-T1/G-T2 and the other open rows; full `tsc` parity is not claimed. |
 | G-C3 | JSX: `jsx` type options `jsxImportSource` runtime typing (the automatic runtime's `JSX` namespace is not read from the package), `JSX.ElementType`, `LibraryManagedAttributes`, `defaultProps`, generic components and type arguments on tags (section 4 and `PLAN.md` J.5.1). |
 
