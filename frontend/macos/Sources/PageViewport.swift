@@ -30,6 +30,7 @@ final class BrowserWindow: NSWindow {
 }
 
 struct PageViewport: NSViewRepresentable {
+    @ObservedObject private var localization = BrowserLocalization.shared
     @ObservedObject var model: BrowserModel
     @EnvironmentObject var editingMenu: NativeEditingMenu
 
@@ -39,16 +40,17 @@ struct PageViewport: NSViewRepresentable {
         view.editingMenu = editingMenu
         view.setAccessibilityElement(true)
         view.setAccessibilityRole(.group)
-        view.setAccessibilityLabel("Browser page")
+        view.setAccessibilityLabel(BrowserStrings.text("Browser page"))
         view.setAccessibilityIdentifier("page")
         return view
     }
 
     func updateNSView(_ view: CorePageView, context: Context) {
+        view.setAccessibilityLabel(BrowserStrings.text("Browser page"))
         view.image = model.image
         view.invalidateContextMenu()
         view.invalidateSelectMenu()
-        view.setAccessibilityValue(model.image.map { "Rendered \($0.width) × \($0.height), frame \(model.generation)" } ?? "No rendered page")
+        view.setAccessibilityValue(model.image.map { BrowserStrings.format("Rendered %llu × %llu, frame %llu", UInt64($0.width), UInt64($0.height), model.generation) } ?? BrowserStrings.text("No rendered page"))
         view.accessibilityTree.update(model.representation, epoch: model.accessibilityEpoch,
                                       imageSize: model.cssViewportSize ?? .zero, tab: model.selected)
         view.needsDisplay = true
@@ -374,7 +376,7 @@ final class CorePageView: NSView, NSTextInputClient, NSUserInterfaceValidations 
     }
 
     func makeSelectMenu(_ state: TextInputState) -> NSMenu {
-        let menu = NSMenu(title: "Page options"); menu.autoenablesItems = false
+        let menu = NSMenu(title: BrowserStrings.text("Page options")); menu.autoenablesItems = false
         guard let select = state.select, select.popup else { return menu }
         var previousGroup: String?
         for choice in select.options {
@@ -394,7 +396,7 @@ final class CorePageView: NSView, NSTextInputClient, NSUserInterfaceValidations 
             item.indentationLevel = choice.group == nil ? 0 : 1; menu.addItem(item)
         }
         if select.limited {
-            let notice = NSMenuItem(title: "More choices available with the keyboard", action: nil, keyEquivalent: "")
+            let notice = NSMenuItem(title: BrowserStrings.text("More choices available with the keyboard"), action: nil, keyEquivalent: "")
             notice.isEnabled = false; menu.addItem(notice)
         }
         return menu
@@ -413,10 +415,10 @@ final class CorePageView: NSView, NSTextInputClient, NSUserInterfaceValidations 
     }
 
     func makeContextMenu(_ state: PageContextMenu) -> NSMenu {
-        let menu = NSMenu(title: "Page context menu")
+        let menu = NSMenu(title: BrowserStrings.text("Page context menu"))
         menu.autoenablesItems = false
         func item(_ title: String, enabled: Bool = true, _ action: @escaping (BrowserModel) -> Void) {
-            let item = PageMenuItem(title: title) { [weak self] in
+            let item = PageMenuItem(title: BrowserStrings.text(title)) { [weak self] in
                 guard let model = self?.model, model.contextMenuIsCurrent(state.context) else { return }
                 action(model)
             }

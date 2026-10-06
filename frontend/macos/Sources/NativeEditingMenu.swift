@@ -47,38 +47,39 @@ final class NativeEditingMenu: ObservableObject {
 }
 
 struct NativeEditingCommands: Commands {
+    @ObservedObject private var localization = BrowserLocalization.shared
     @ObservedObject var menu: NativeEditingMenu
     @ObservedObject var model: BrowserModel
     var body: some Commands {
         CommandGroup(after: .toolbar) {
-            Button("Open Location…") { model.requestAddressFocus() }
+            Button(BrowserStrings.text("Open Location…")) { model.requestAddressFocus() }
                 .keyboardShortcut("l", modifiers: .command).disabled(!model.ready)
             Divider()
-            Button("Zoom In") { model.changeZoom(increase: true) }
+            Button(BrowserStrings.text("Zoom In")) { model.changeZoom(increase: true) }
                 .keyboardShortcut("+", modifiers: .command).disabled(!model.ready || model.selected == nil)
-            Button("Zoom Out") { model.changeZoom(increase: false) }
+            Button(BrowserStrings.text("Zoom Out")) { model.changeZoom(increase: false) }
                 .keyboardShortcut("-", modifiers: .command).disabled(!model.ready || model.selected == nil)
-            Button("Actual Size") { model.setZoom(1) }
+            Button(BrowserStrings.text("Actual Size")) { model.setZoom(1) }
                 .keyboardShortcut("0", modifiers: .command).disabled(!model.ready || model.selected == nil)
-            Menu("Page Zoom") {
+            Menu(BrowserStrings.text("Page Zoom")) {
                 ForEach([25, 50, 75, 100, 125, 150, 200, 300, 400, 500], id: \.self) { percent in
                     Button("\(percent)%") { model.setZoom(Double(percent) / 100) }
                 }
             }.disabled(!model.ready || model.selected == nil)
             Divider()
-            Button("Toggle Full Screen") { NSApp.keyWindow?.toggleFullScreen(nil) }
+            Button(BrowserStrings.text("Toggle Full Screen")) { NSApp.keyWindow?.toggleFullScreen(nil) }
                 .keyboardShortcut("f", modifiers: [.command, .control])
         }
         CommandGroup(after: .textEditing) {
-            Menu("Find") {
-                Button("Find in Page…") { model.showFind() }
+            Menu(BrowserStrings.text("Find")) {
+                Button(BrowserStrings.text("Find in Page…")) { model.showFind() }
                     .keyboardShortcut("f", modifiers: .command).disabled(!model.ready || model.selected == nil)
-                Button("Find Next") { model.findNext() }
+                Button(BrowserStrings.text("Find Next")) { model.findNext() }
                     .keyboardShortcut("g", modifiers: .command).disabled(!model.ready || model.selected == nil)
-                Button("Find Previous") { model.findNext(backwards: true) }
+                Button(BrowserStrings.text("Find Previous")) { model.findNext(backwards: true) }
                     .keyboardShortcut("g", modifiers: [.command, .shift]).disabled(!model.ready || model.selected == nil)
             }
-            Menu("Input Source") {
+            Menu(BrowserStrings.text("Input Source")) {
                 ForEach(menu.sources) { source in
                     Button { menu.choose(source.id) } label: {
                         if menu.selected == source.id { Label(source.name, systemImage: "checkmark") }

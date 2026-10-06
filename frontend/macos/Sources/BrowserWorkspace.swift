@@ -559,48 +559,51 @@ final class BrowserWorkspace: ObservableObject {
 }
 
 struct BrowserWindowCommands: Commands {
+    @ObservedObject private var localization = BrowserLocalization.shared
     @ObservedObject var workspace: BrowserWorkspace
     var body: some Commands {
         CommandGroup(after: .newItem) {
-            Button("New Window") { Task { await workspace.createWindow() } }
+            Button(BrowserStrings.text("New Window")) { Task { await workspace.createWindow() } }
                 .keyboardShortcut("n", modifiers: .command).disabled(!workspace.canManageWindows || workspace.busy)
         }
         CommandGroup(after: .windowArrangement) {
             Divider()
             ForEach(workspace.windows) { window in
-                Button("Window \(window.id)") { workspace.activateWindow(window.id) }
+                Button(BrowserStrings.format("Window %llu", window.id)) { workspace.activateWindow(window.id) }
             }
         }
     }
 }
 struct TabWindowMenu: View {
+    @ObservedObject private var localization = BrowserLocalization.shared
     @ObservedObject var workspace: BrowserWorkspace
     let tab: UInt64
     let window: UInt64
     var body: some View {
-        Menu("Move to Window") {
-            Button("New Window") { Task { await workspace.moveTabToNewWindow(tab) } }
+        Menu(BrowserStrings.text("Move to Window")) {
+            Button(BrowserStrings.text("New Window")) { Task { await workspace.moveTabToNewWindow(tab) } }
             ForEach(workspace.windows.filter { $0.id != window && workspace.contextForWindow($0.id)?.id == workspace.contextForWindow(window)?.id }) { destination in
-                Button("Window \(destination.id)") { Task { await workspace.moveTab(tab, to: destination.id) } }
+                Button(BrowserStrings.format("Window %llu", destination.id)) { Task { await workspace.moveTab(tab, to: destination.id) } }
             }
         }.disabled(!workspace.canManageWindows || workspace.busy)
     }
 }
 struct BrowserWorkspaceNotice: View {
+    @ObservedObject private var localization = BrowserLocalization.shared
     @ObservedObject var workspace: BrowserWorkspace
     var body: some View {
         if workspace.restoringSession {
-            HStack { ProgressView().controlSize(.small); Text("Restoring saved windows and tabs…") }
+            HStack { ProgressView().controlSize(.small); Text(BrowserStrings.text("Restoring saved windows and tabs…")) }
                 .font(.caption).padding(8).accessibilityIdentifier("session-progress")
             Divider()
         }
         if let notice = workspace.notice {
             HStack {
-                Text(notice).accessibilityIdentifier("window-notice")
+                Text(BrowserStrings.text(notice)).accessibilityIdentifier("window-notice")
                 Spacer()
-                if !workspace.canManageWindows { Button("Retry") { Task { await workspace.refreshWindows() } }.accessibilityIdentifier("retry-windows") }
+                if !workspace.canManageWindows { Button(BrowserStrings.text("Retry")) { Task { await workspace.refreshWindows() } }.accessibilityIdentifier("retry-windows") }
                 Button { workspace.dismissNotice() } label: { Image(systemName: "xmark") }
-                    .accessibilityLabel("Dismiss window notice").accessibilityIdentifier("dismiss-window-notice")
+                    .accessibilityLabel(BrowserStrings.text("Dismiss window notice")).accessibilityIdentifier("dismiss-window-notice")
             }.font(.caption).padding(.horizontal, 12).padding(.vertical, 6)
             Divider()
         }

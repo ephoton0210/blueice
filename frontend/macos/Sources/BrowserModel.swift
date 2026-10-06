@@ -214,6 +214,12 @@ final class BrowserModel: ObservableObject {
     @Published private(set) var selected: UInt64?
     @Published var address = ""
     @Published private(set) var status = "Starting BlueIce…"
+    var localizedStatus: String {
+        if status.hasPrefix("Navigation blocked: ") {
+            return BrowserStrings.format("Navigation blocked: %@", String(status.dropFirst("Navigation blocked: ".count)))
+        }
+        return BrowserStrings.text(status)
+    }
     @Published var permissionsErrorPresented = false
 
     func openPermissions() {
@@ -284,11 +290,12 @@ final class BrowserModel: ObservableObject {
     private var menuReplies: [IncomingEnvelope] = []
     private var linkTabReplies: [UUID: [IncomingEnvelope]] = [:]
     var findSummary: String {
-        if findQuery.isEmpty { return "Type to find in page" }
-        if findQuery.utf8.count > 1024 { return "Search is too long" }
-        guard let result = findResult else { return "Searching…" }
-        if result.matchCount == 0 { return result.limited ? "No matches in searched portion" : "No matches" }
-        return "\(result.activeMatch ?? 0) of \(result.matchCount)\(result.limited ? "+ · Partial results" : "")\(result.wrapped ? " · Wrapped" : "")"
+        if findQuery.isEmpty { return BrowserStrings.text("Type to find in page") }
+        if findQuery.utf8.count > 1024 { return BrowserStrings.text("Search is too long") }
+        guard let result = findResult else { return BrowserStrings.text("Searching…") }
+        if result.matchCount == 0 { return BrowserStrings.text(result.limited ? "No matches in searched portion" : "No matches") }
+        return BrowserStrings.format("%llu of %llu%@%@", UInt64(result.activeMatch ?? 0), UInt64(result.matchCount),
+            result.limited ? BrowserStrings.text("+ · Partial results") : "", result.wrapped ? BrowserStrings.text(" · Wrapped") : "")
     }
     private struct InputRequest {
         let epoch: UInt64

@@ -5,14 +5,19 @@
 set -euo pipefail
 frontend_dir=$(cd "$(dirname "$0")" && pwd)
 panel_app="$TARGET_BUILD_DIR/$EXECUTABLE_FOLDER_PATH/BlueIcePanels.app"
-mkdir -p "$panel_app/Contents/MacOS" "$DERIVED_FILE_DIR/panels"
+mkdir -p "$panel_app/Contents/MacOS" "$panel_app/Contents/Resources" "$DERIVED_FILE_DIR/panels"
 cp "$frontend_dir/TrustedPanels/Info.plist" "$panel_app/Contents/Info.plist"
+for panel_language in en zh-Hant; do
+    mkdir -p "$panel_app/Contents/Resources/$panel_language.lproj"
+    /usr/bin/plutil -convert binary1 -o "$panel_app/Contents/Resources/$panel_language.lproj/Localizable.strings" \
+        "$frontend_dir/Localization/$panel_language.lproj/Localizable.strings"
+done
 panel_outputs=()
 for panel_arch in $ARCHS; do
     panel_binary="$DERIVED_FILE_DIR/panels/BlueIcePanels-$panel_arch"
     xcrun swiftc -swift-version 6 -parse-as-library -target "$panel_arch-apple-macosx14.0" \
         -module-cache-path "$DERIVED_FILE_DIR/panels/module-cache" \
-        "$frontend_dir"/TrustedPanels/*.swift -o "$panel_binary"
+        "$frontend_dir"/Shared/BrowserLocalization.swift "$frontend_dir"/TrustedPanels/*.swift -o "$panel_binary"
     panel_outputs+=("$panel_binary")
 done
 xcrun lipo -create "${panel_outputs[@]}" -output "$panel_app/Contents/MacOS/BlueIcePanels"

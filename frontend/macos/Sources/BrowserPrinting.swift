@@ -286,10 +286,11 @@ final class BrowserPrintView: NSView {
     }
 }
 struct BrowserPrintingCommands: Commands {
+    @ObservedObject private var localization = BrowserLocalization.shared
     @ObservedObject var model: BrowserModel
     var body: some Commands {
         CommandGroup(replacing: .printItem) {
-            Button("Print…") { Task { await model.printCurrentPage() } }
+            Button(BrowserStrings.text("Print…")) { Task { await model.printCurrentPage() } }
                 .keyboardShortcut("p").disabled(!model.canPrint)
         }
     }

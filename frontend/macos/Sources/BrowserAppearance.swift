@@ -9,11 +9,11 @@ import SwiftUI
 @MainActor
 final class BrowserAppearance: ObservableObject {
     enum Appearance: String, CaseIterable { case system, light, dark
-        var title: String { rawValue.capitalized } }
+        var title: String { BrowserStrings.text(rawValue.capitalized) } }
     enum Contrast: String, CaseIterable { case system, standard, increased
-        var title: String { rawValue.capitalized } }
+        var title: String { BrowserStrings.text(rawValue.capitalized) } }
     enum Motion: String, CaseIterable { case system, full, reduced
-        var title: String { switch self { case .system: return "System"; case .full: return "No reduction"; case .reduced: return "Reduce" } } }
+        var title: String { switch self { case .system: return BrowserStrings.text("System"); case .full: return BrowserStrings.text("No reduction"); case .reduced: return BrowserStrings.text("Reduce") } } }
     @Published private(set) var appearance: Appearance
     @Published private(set) var contrast: Contrast
     @Published private(set) var motion: Motion
@@ -71,27 +71,30 @@ final class BrowserAppearance: ObservableObject {
         return NSAppearance(named: name)
     }
     var summary: String {
-        "\(resolved.dark ? "Dark" : "Light") appearance · \(resolved.highContrast ? "Increased" : "Standard") contrast · \(resolved.reducedMotion ? "Reduced motion" : "No motion reduction")"
+        BrowserStrings.format("%@ appearance · %@ contrast · %@", BrowserStrings.text(resolved.dark ? "Dark" : "Light"),
+            BrowserStrings.text(resolved.highContrast ? "Increased" : "Standard"),
+            BrowserStrings.text(resolved.reducedMotion ? "Reduced motion" : "No motion reduction"))
     }
 }
 
 struct BrowserAppearanceSettingsView: View {
+    @ObservedObject private var localization = BrowserLocalization.shared
     @ObservedObject var settings: BrowserAppearance
     var body: some View {
         Form {
-            Picker("Appearance", selection: Binding(get: { settings.appearance }, set: settings.setAppearance)) {
+            Picker(BrowserStrings.text("Appearance"), selection: Binding(get: { settings.appearance }, set: settings.setAppearance)) {
                 ForEach(BrowserAppearance.Appearance.allCases, id: \.self) { Text($0.title).tag($0) }
-            }.accessibilityIdentifier("appearance-choice")
-            Picker("Contrast", selection: Binding(get: { settings.contrast }, set: settings.setContrast)) {
+            }.accessibilityLabel(BrowserStrings.text("Appearance")).accessibilityIdentifier("appearance-choice")
+            Picker(BrowserStrings.text("Contrast"), selection: Binding(get: { settings.contrast }, set: settings.setContrast)) {
                 ForEach(BrowserAppearance.Contrast.allCases, id: \.self) { Text($0.title).tag($0) }
-            }.accessibilityIdentifier("contrast-choice")
-            Picker("Motion", selection: Binding(get: { settings.motion }, set: settings.setMotion)) {
+            }.accessibilityLabel(BrowserStrings.text("Contrast")).accessibilityIdentifier("contrast-choice")
+            Picker(BrowserStrings.text("Motion"), selection: Binding(get: { settings.motion }, set: settings.setMotion)) {
                 ForEach(BrowserAppearance.Motion.allCases, id: \.self) { Text($0.title).tag($0) }
-            }.accessibilityIdentifier("motion-choice")
-            Text("Pages can follow these preferences. System follows your current macOS settings.")
+            }.accessibilityLabel(BrowserStrings.text("Motion")).accessibilityIdentifier("motion-choice")
+            Text(BrowserStrings.text("Pages can follow these preferences. System follows your current macOS settings."))
                 .font(.caption).foregroundStyle(settings.resolved.highContrast ? .primary : .secondary)
             Text(settings.summary).font(.caption).accessibilityIdentifier("display-preferences")
-            Button("Restore System Settings", action: settings.restoreSystem).accessibilityIdentifier("restore-display-system")
+            Button(BrowserStrings.text("Restore System Settings"), action: settings.restoreSystem).accessibilityIdentifier("restore-display-system")
         }
         .padding(24).frame(width: 460)
         .transaction { if settings.resolved.reducedMotion { $0.animation = nil; $0.disablesAnimations = true } }
@@ -115,13 +118,14 @@ struct AppearanceWindow: NSViewRepresentable {
 }
 
 struct BrowserAppearanceCommands: Commands {
+    @ObservedObject private var localization = BrowserLocalization.shared
     @ObservedObject var settings: BrowserAppearance
     var body: some Commands {
         CommandGroup(after: .toolbar) {
-            Menu("Appearance") {
-                Toggle("Use System Appearance", isOn: Binding(get: { settings.appearance == .system }, set: { if $0 { settings.setAppearance(.system) } }))
-                Toggle("Light Appearance", isOn: Binding(get: { settings.appearance == .light }, set: { if $0 { settings.setAppearance(.light) } }))
-                Toggle("Dark Appearance", isOn: Binding(get: { settings.appearance == .dark }, set: { if $0 { settings.setAppearance(.dark) } }))
+            Menu(BrowserStrings.text("Appearance")) {
+                Toggle(BrowserStrings.text("Use System Appearance"), isOn: Binding(get: { settings.appearance == .system }, set: { if $0 { settings.setAppearance(.system) } }))
+                Toggle(BrowserStrings.text("Light Appearance"), isOn: Binding(get: { settings.appearance == .light }, set: { if $0 { settings.setAppearance(.light) } }))
+                Toggle(BrowserStrings.text("Dark Appearance"), isOn: Binding(get: { settings.appearance == .dark }, set: { if $0 { settings.setAppearance(.dark) } }))
             }
         }
     }

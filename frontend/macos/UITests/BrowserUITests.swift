@@ -167,7 +167,7 @@ final class BrowserUITests: XCTestCase {
     func testNativeAssistantSettingsReviewCancelApplyAndRelaunch() throws {
         launch()
         var panels = openAssistantSettings()
-        waitPermissionValue(panels.staticTexts["assistant-settings-current"], "In force: none · idle 600 seconds · niceness 10")
+        waitPermissionValue(panels.staticTexts["assistant-settings-current"], "In force: Off · idle 600 seconds · niceness 10")
         XCTAssertFalse(FileManager.default.fileExists(atPath: assistantSettingsFile.path), "Inspection never persists a setting")
         editAssistantField(panels, "assistant-idle", "29")
         panels.buttons["assistant-settings-review"].click()
@@ -190,7 +190,7 @@ final class BrowserUITests: XCTestCase {
         app.windows["browser-window"].buttons[XCUIIdentifierCloseWindow].click()
         XCTAssertTrue(app.wait(for: .notRunning, timeout: 15))
         launch(); panels = openAssistantSettings()
-        waitPermissionValue(panels.staticTexts["assistant-settings-current"], "In force: none · idle 630 seconds · niceness 10")
+        waitPermissionValue(panels.staticTexts["assistant-settings-current"], "In force: Off · idle 630 seconds · niceness 10")
     }
     func testNativeAssistantProposalCannotApplyWithoutExactHumanConfirmation() throws {
         launch()
@@ -942,15 +942,21 @@ final class BrowserUITests: XCTestCase {
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == 1 OR value == '1'"), object: reopen)], timeout: 10), .completed)
     }
 
-    private func storedSessionArchive() -> Data? {
+    private var ownedPreferenceFile: URL? {
+        let prefix = "cc.blueice.uitests."
+        guard preferenceDomain.hasPrefix(prefix), UUID(uuidString: String(preferenceDomain.dropFirst(prefix.count))) != nil,
+              let user = getpwuid(getuid()), let home = user.pointee.pw_dir else { return nil }
+        return URL(fileURLWithPath: String(cString: home)).appendingPathComponent("Library/Preferences").appendingPathComponent(preferenceDomain + ".plist")
+    }
+    private func storedPreferences() -> [String: Any]? {
         // The generated UI runner is sandboxed. Read the app's isolated test
         // domain, rather than the runner's separate suite with the same name.
-        guard let user = getpwuid(getuid()), let home = user.pointee.pw_dir else { return nil }
-        let file = URL(fileURLWithPath: String(cString: home)).appendingPathComponent("Library/Preferences").appendingPathComponent(preferenceDomain + ".plist")
+        guard let file = ownedPreferenceFile else { return nil }
         guard let data = try? Data(contentsOf: file),
               let values = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any] else { return nil }
-        return values["browser.session.archive"] as? Data
+        return values
     }
+    private func storedSessionArchive() -> Data? { storedPreferences()?["browser.session.archive"] as? Data }
 
     private func waitSessionArchive(windows: Int, tabs: Int) throws -> Data {
         let expectation = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
@@ -1061,11 +1067,89 @@ final class BrowserUITests: XCTestCase {
     private var assistantSettingsFile: URL!
     private var assistantControlSocket: URL!
 
+    func testTraditionalChineseChromeSettingsMenusAndMultipleWindows() throws {
+        let downloads = assistantSettingsFile.deletingLastPathComponent().appendingPathComponent("localization-downloads")
+        app.launchArguments += ["--downloads-directory", downloads.appendingPathComponent("files").path,
+                                "--downloads-data-directory", downloads.appendingPathComponent("data").path]
+        let languageIndex = try XCTUnwrap(app.launchArguments.firstIndex(of: "--interface-language"))
+        app.launchArguments[languageIndex + 1] = "zh-Hant"
+        launch()
+        let first = app.windows["browser-window"]
+        XCTAssertEqual(first.buttons["back"].label, "返回")
+        XCTAssertEqual(first.buttons["reload"].label, "重新載入")
+        XCTAssertEqual(first.textFields["address"].label, "網址")
+        XCTAssertEqual(first.buttons["add-tab"].label, "新增分頁")
+        first.buttons["downloads"].click()
+        XCTAssertTrue(app.staticTexts["downloads-title"].waitForExistence(timeout: 10))
+        waitAssistantText(app.staticTexts["downloads-title"], "下載項目")
+        XCTAssertEqual(app.buttons["downloads-close"].label, "完成")
+        app.buttons["downloads-close"].click()
+        app.typeKey("n", modifierFlags: .command)
+        let second = app.windows["browser-window-2"]
+        XCTAssertTrue(second.waitForExistence(timeout: 15))
+        XCTAssertEqual(second.buttons["back"].label, "返回")
+        XCTAssertEqual(second.buttons["assistant"].label, "本機助理")
+        XCTAssertTrue(app.menuBars.menuBarItems["設定檔"].exists)
+        app.typeKey(",", modifierFlags: .command)
+        XCTAssertTrue(app.popUpButtons["interface-language"].waitForExistence(timeout: 10))
+        XCTAssertEqual(app.popUpButtons["appearance-choice"].label, "外觀")
+        let attachment = XCTAttachment(screenshot: app.screenshot())
+        attachment.name = "macos-traditional-chinese-interface"; attachment.lifetime = .keepAlways; add(attachment)
+    }
+
+    func testRuntimeLanguageSwitchPreservesPageEditorsPrivatePanelsAndRelaunch() throws {
+        let fixture = try HTTPFixture(); defer { fixture.stop() }
+        let saved = saveClipboard(); defer { NSPasteboard.general.clearContents(); NSPasteboard.general.writeObjects(saved) }
+        launch(); enter(fixture.origin + "/editing")
+        let first = app.windows["browser-window"], editor = first.groups["page"].textFields["Editor"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 15)); paste("Keep 😀 中文", into: editor)
+        waitValue(editor, "Keep 😀 中文")
+        let panels = openPermissionPanel()
+        XCTAssertTrue(panels.staticTexts["permissions-empty"].waitForExistence(timeout: 10))
+        app.activate(); app.typeKey("n", modifierFlags: .command)
+        let second = app.windows["browser-window-2"]
+        XCTAssertTrue(second.waitForExistence(timeout: 15))
+        app.typeKey(",", modifierFlags: .command)
+        let language = app.popUpButtons["interface-language"]
+        XCTAssertTrue(language.waitForExistence(timeout: 10)); language.click()
+        app.menuItems["繁體中文"].click()
+        let localized = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", "返回"), object: first.buttons["back"])
+        XCTAssertEqual(XCTWaiter.wait(for: [localized], timeout: 10), .completed)
+        XCTAssertEqual(second.buttons["back"].label, "返回")
+        waitValue(editor, "Keep 😀 中文")
+        waitValue(first.textFields["address"], fixture.origin + "/editing")
+        waitAssistantText(panels.staticTexts["permissions-empty"], "尚未安裝擴充功能。")
+        XCTAssertEqual(panels.buttons["permissions-refresh"].label, "重新整理")
+        panels.activate(); panels.radioButtons["助理設定"].click()
+        waitAssistantText(panels.staticTexts["assistant-settings-current"], "目前設定：關閉 · 閒置 600 秒 · nice 值 10")
+        XCTAssertEqual(panels.buttons["assistant-settings-review"].label, "檢閱變更…")
+        XCTAssertFalse(panels.buttons["assistant-settings-confirm"].exists)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: assistantSettingsFile.path))
+        app.activate(); app.typeKey(",", modifierFlags: .command)
+        language.click(); app.menuItems["English"].click()
+        let english = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == 'Back'"), object: first.buttons["back"])
+        XCTAssertEqual(XCTWaiter.wait(for: [english], timeout: 10), .completed)
+        waitAssistantText(panels.staticTexts["assistant-settings-current"], "In force: Off · idle 600 seconds · niceness 10")
+        waitValue(editor, "Keep 😀 中文")
+        language.click(); app.menuItems["繁體中文"].click()
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", "返回"), object: first.buttons["back"])], timeout: 10), .completed)
+        let settings = app.windows.containing(.popUpButton, identifier: "interface-language").firstMatch
+        settings.buttons[XCUIIdentifierCloseWindow].click()
+        second.buttons[XCUIIdentifierCloseWindow].click()
+        first.buttons[XCUIIdentifierCloseWindow].click()
+        XCTAssertTrue(app.wait(for: .notRunning, timeout: 15))
+        let languageIndex = try XCTUnwrap(app.launchArguments.firstIndex(of: "--interface-language"))
+        app.launchArguments.removeSubrange(languageIndex...languageIndex + 1)
+        launch(); XCTAssertEqual(app.buttons["back"].label, "返回")
+        XCTAssertEqual(fixture.requests, ["/editing"])
+        XCTAssertEqual(storedPreferences()?["browser.interfaceLanguage"] as? String, "zh-Hant")
+    }
+
     override func setUpWithError() throws {
         continueAfterFailure = false
         app = XCUIApplication()
         preferenceDomain = "cc.blueice.uitests." + UUID().uuidString
-        app.launchArguments = ["--preferences-domain", preferenceDomain]
+        app.launchArguments = ["--preferences-domain", preferenceDomain, "--interface-language", "en"]
         let assistantRoot = FileManager.default.temporaryDirectory.appendingPathComponent("as-" + UUID().uuidString.prefix(12))
         try FileManager.default.createDirectory(at: assistantRoot, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
         assistantSettingsFile = assistantRoot.appendingPathComponent("settings.json")
@@ -1084,6 +1168,7 @@ final class BrowserUITests: XCTestCase {
             try? FileManager.default.removeItem(at: assistantSettingsFile.deletingLastPathComponent())
             try? FileManager.default.removeItem(at: assistantControlSocket)
             UserDefaults(suiteName: preferenceDomain)?.removePersistentDomain(forName: preferenceDomain)
+            if app.state == .notRunning, let file = ownedPreferenceFile { try? FileManager.default.removeItem(at: file) }
             if let originalInputSource { XCTAssertEqual(TISSelectInputSource(originalInputSource), noErr) }
         }
         if app.state != .notRunning {

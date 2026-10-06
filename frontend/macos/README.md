@@ -434,16 +434,40 @@ clipped screen geometry and supported AX value/selection writes. A private
 synchronous broker preserves the core boundary without waiting for the main
 browser reader. Read-only fields permit selection but reject value changes;
 password contents remain redacted. The existing `NSTextInputClient` and AX
-queries share layout, inner scrolling and Undo/Redo. Live-region announcements,
-document paragraph selection, rich font attributes and rotor search remain pending.
+queries share layout, inner scrolling and Undo/Redo. Later increments add retained
+live-region announcements, supported rotors and read-only document text selection.
+Rich font attributes and physical screen-reader acceptance remain open.
 See [accessibility text results](../../development/browser_core/phase-22-browser-shell-accessibility/MACOS_ACCESSIBILITY_TEXT_RESULTS.md).
+See [document-selection results](../../development/browser_core/phase-22-browser-shell-accessibility/MACOS_DOCUMENT_SELECTION_RESULTS.md)
+for pointer/keyboard selection, Copy, public-text privacy and focus/frame-gap input buffering.
 Actual OS IME verification is pending
 runner Accessibility permission on the recorded host. JavaScript
 keyboard/beforeinput/input/composition event dispatch, complete
 bidirectional shaping and caret blink remain open, as do full form event/validity behavior,
-complete toolbar Tab traversal, image/media context actions, page-text selection/copy, drag/drop,
-full file API/events, automatic attachment downloads, remaining trusted panels and localization. Automated checks cover the recorded features; an
+complete toolbar Tab traversal, image/media context actions, drag/drop,
+full file API/events, automatic attachment downloads and remaining trusted panels. Automated checks cover the recorded features; an
 interactive VoiceOver session remains unvalidated.
+
+## Interface language
+
+Native Settings provides Follow macOS, English and Traditional Chinese choices.
+Toolbar/help/accessibility labels, native menus, find, tabs/groups/profiles,
+downloads, appearance/session settings, assistant tools and private confirmation
+panels share bundled localization resources. Existing browser windows and the
+owned permissions/assistant child update without replacing their page/model state.
+The interface preference is independent of page translation; page text, URLs,
+file paths, authored names, reviewed values and model results retain their values.
+
+Browser controls update immediately. Standard macOS menus and system dialogs
+use the startup language; restart BlueIce to update them. Follow macOS reads the
+global preferred languages without changing global preferences. Diagnostic
+`--interface-language system|en|zh-Hant` supplies an explicit startup choice and
+uses the existing `--preferences-domain` when provided. Native automation selects
+an explicit language and isolates its preference files.
+The [localization contract](../../development/browser_core/phase-22-browser-shell-accessibility/MACOS_LOCALIZATION_CONTRACT.md)
+defines the boundary and the
+[dated results](../../development/browser_core/phase-22-browser-shell-accessibility/MACOS_LOCALIZATION_RESULTS.md)
+record validation scope and remaining acceptance work.
 
 ## Native select controls
 

@@ -6,6 +6,7 @@ import AppKit
 import SwiftUI
 
 struct BrowserView: View {
+    @ObservedObject private var localization = BrowserLocalization.shared
     @ObservedObject var model: BrowserModel
     @ObservedObject private var appearance: BrowserAppearance
     @FocusState private var addressFocused: Bool
@@ -18,7 +19,7 @@ struct BrowserView: View {
             Divider()
             if let error = model.groupError, model.groupEditor == nil {
                 HStack {
-                    Text(error).accessibilityIdentifier("tab-group-notice")
+                    Text(BrowserStrings.text(error)).accessibilityIdentifier("tab-group-notice")
                     Spacer()
                     button("xmark", "Dismiss tab group notice", "dismiss-tab-group-notice") { model.dismissTabGroupError() }
                 }.font(.caption).padding(.horizontal, 12).padding(.vertical, 6)
@@ -31,10 +32,10 @@ struct BrowserView: View {
                     .disabled(!model.history.forward)
                 button("arrow.clockwise", "Reload", "reload") { model.reload() }
                     .keyboardShortcut("r", modifiers: .command)
-                TextField("Search or enter address", text: $model.address)
+                TextField(BrowserStrings.text("Search or enter address"), text: $model.address)
                     .focused($addressFocused)
                     .textFieldStyle(.roundedBorder)
-                    .accessibilityLabel("Address")
+                    .accessibilityLabel(BrowserStrings.text("Address"))
                     .accessibilityIdentifier("address")
                     .onSubmit { addressFocused = false; model.navigateAddress() }
                 button("arrow.right", "Go", "go") { model.navigateAddress() }
@@ -46,9 +47,9 @@ struct BrowserView: View {
                     BrowserProfileMenu(model: model, workspace: workspace)
                     button("arrow.down.circle", "Downloads", "downloads") { model.downloadsPresented = true }
                     button("shield.lefthalf.filled", "Permissions and assistant settings", "permissions") { model.openPermissions() }
-                        .alert("Permissions unavailable", isPresented: $model.permissionsErrorPresented) {
-                            Button("OK", role: .cancel) {}
-                        } message: { Text("This browser's permission window is unavailable.") }
+                        .alert(BrowserStrings.text("Permissions unavailable"), isPresented: $model.permissionsErrorPresented) {
+                            Button(BrowserStrings.text("OK"), role: .cancel) {}
+                        } message: { Text(BrowserStrings.text("This browser's permission window is unavailable.")) }
                 }
             }
             .disabled(!model.ready || model.selected == nil)
@@ -60,7 +61,7 @@ struct BrowserView: View {
                     FindField(model: model).frame(minWidth: 150, maxWidth: 300)
                     Text(model.findSummary).font(.caption).accessibilityLabel(model.findSummary).accessibilityIdentifier("find-results")
                     Spacer()
-                    Toggle("Match case", isOn: Binding(get: { model.findCaseSensitive }, set: model.setFindCaseSensitive))
+                    Toggle(BrowserStrings.text("Match case"), isOn: Binding(get: { model.findCaseSensitive }, set: model.setFindCaseSensitive))
                         .toggleStyle(.checkbox).accessibilityIdentifier("find-case")
                     button("chevron.up", "Previous match", "find-previous") { model.findNext(backwards: true) }
                         .disabled(model.findResult?.matchCount ?? 0 == 0)
@@ -76,7 +77,7 @@ struct BrowserView: View {
                 ZStack {
                     PageViewport(model: model)
                     if model.image == nil {
-                        Text(model.selected == nil ? "Open a new tab" : "Waiting for page…")
+                        Text(BrowserStrings.text(model.selected == nil ? "Open a new tab" : "Waiting for page…"))
                             .foregroundStyle(.secondary)
                             .accessibilityIdentifier("empty-page")
                             .allowsHitTesting(false)
@@ -87,25 +88,25 @@ struct BrowserView: View {
             }
             Divider()
             HStack {
-                Text(model.status).lineLimit(2).accessibilityIdentifier("status")
+                Text(model.localizedStatus).lineLimit(2).accessibilityIdentifier("status")
                 Spacer()
                 Button("\(model.zoomPercent)%") { model.setZoom(1) }
-                    .accessibilityLabel("Page zoom")
+                    .accessibilityLabel(BrowserStrings.text("Page zoom"))
                     .accessibilityValue("\(model.zoomPercent)%")
                     .accessibilityIdentifier("page-zoom")
-                    .help("Reset page zoom")
+                    .help(BrowserStrings.text("Reset page zoom"))
                     .disabled(!model.ready || model.selected == nil)
             }
             .font(.caption).foregroundStyle(appearance.resolved.highContrast ? .primary : .secondary).padding(.horizontal, 12).padding(.vertical, 6)
         }
-        .alert("Resend form data?", isPresented: $model.resubmissionPresented, presenting: model.resubmission) { prompt in
-            Button("Resend") { model.resolveResubmission(prompt.confirmationID, accept: true) }
-            Button("Cancel", role: .cancel) { model.resolveResubmission(prompt.confirmationID, accept: false) }
+        .alert(BrowserStrings.text("Resend form data?"), isPresented: $model.resubmissionPresented, presenting: model.resubmission) { prompt in
+            Button(BrowserStrings.text("Resend")) { model.resolveResubmission(prompt.confirmationID, accept: true) }
+            Button(BrowserStrings.text("Cancel"), role: .cancel) { model.resolveResubmission(prompt.confirmationID, accept: false) }
         } message: { prompt in
-            Text("Resending will repeat the previous form submission to \(URL(string: prompt.url)?.host ?? prompt.url).")
+            Text(BrowserStrings.format("Resending will repeat the previous form submission to %@.", URL(string: prompt.url)?.host ?? prompt.url))
         }
-        .alert("Could not print",isPresented: $model.printErrorPresented) { Button("OK",role: .cancel) {} } message: { Text(model.printError) }
-        .alert("Could not select files",isPresented: $model.fileInputErrorPresented) { Button("OK",role: .cancel) {} } message: { Text(model.fileInputError) }
+        .alert(BrowserStrings.text("Could not print"),isPresented: $model.printErrorPresented) { Button(BrowserStrings.text("OK"),role: .cancel) {} } message: { Text(BrowserStrings.text(model.printError)) }
+        .alert(BrowserStrings.text("Could not select files"),isPresented: $model.fileInputErrorPresented) { Button(BrowserStrings.text("OK"),role: .cancel) {} } message: { Text(BrowserStrings.text(model.fileInputError)) }
         .sheet(item: $model.groupEditor) { editor in BrowserTabGroupEditor(model: model, editor: editor) }
         .sheet(item: $model.profileEditor) { editor in
             if let workspace = model.windowManager { BrowserProfileEditor(model: model, workspace: workspace, editor: editor) }
@@ -124,7 +125,7 @@ struct BrowserView: View {
     private func button(_ symbol: String, _ label: String, _ identifier: String, action: @escaping () -> Void) -> some View {
         Button(action: action) { Image(systemName: symbol).frame(width: 24, height: 24) }
             .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(appearance.resolved.highContrast ? Color.primary : Color.clear, lineWidth: 1).allowsHitTesting(false).accessibilityHidden(true))
-            .help(label).accessibilityLabel(label).accessibilityIdentifier(identifier)
+            .help(BrowserStrings.text(label)).accessibilityLabel(BrowserStrings.text(label)).accessibilityIdentifier(identifier)
     }
 }
 
@@ -133,14 +134,16 @@ private struct FindField: NSViewRepresentable {
     func makeCoordinator() -> Coordinator { Coordinator(model) }
     func makeNSView(context: Context) -> NSSearchField {
         let field = NSSearchField()
-        field.placeholderString = "Find in page"
-        field.setAccessibilityLabel("Find in page")
+        field.placeholderString = BrowserStrings.text("Find in page")
+        field.setAccessibilityLabel(BrowserStrings.text("Find in page"))
         field.setAccessibilityIdentifier("find-query")
         field.delegate = context.coordinator
         field.sendsSearchStringImmediately = true
         return field
     }
     func updateNSView(_ field: NSSearchField, context: Context) {
+        field.placeholderString = BrowserStrings.text("Find in page")
+        field.setAccessibilityLabel(BrowserStrings.text("Find in page"))
         let coordinator = context.coordinator
         coordinator.synchronizing = true
         defer { coordinator.synchronizing = false }

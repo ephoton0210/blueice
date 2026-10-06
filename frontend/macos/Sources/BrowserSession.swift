@@ -94,6 +94,7 @@ final class BrowserSession: @unchecked Sendable {
                             }
                             self.ownsDirectory = true
                             var environment = ProcessInfo.processInfo.environment
+                            environment["BLUEICE_PREFERENCES_DOMAIN"] = BrowserStrings.preferenceDomain()
                             environment["TMPDIR"] = self.runtimeDirectory.path
                             environment["XDG_RUNTIME_DIR"] = self.runtimeDirectory.path
                             if supervised {

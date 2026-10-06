@@ -33,15 +33,15 @@ enum DownloadState: String, Sendable {
     var terminal: Bool { [.completed, .failed, .cancelled, .blocked].contains(self) }
     var title: String {
         switch self {
-        case .queued: return "Queued"
-        case .awaitingClearance: return "Waiting for review"
-        case .active: return "Downloading"
-        case .paused: return "Paused"
-        case .completed: return "Completed"
-        case .failed: return "Failed"
-        case .cancelled: return "Cancelled"
-        case .blocked: return "Blocked"
-        case .unknown: return "Unsupported state"
+        case .queued: return BrowserStrings.text("Queued")
+        case .awaitingClearance: return BrowserStrings.text("Waiting for review")
+        case .active: return BrowserStrings.text("Downloading")
+        case .paused: return BrowserStrings.text("Paused")
+        case .completed: return BrowserStrings.text("Completed")
+        case .failed: return BrowserStrings.text("Failed")
+        case .cancelled: return BrowserStrings.text("Cancelled")
+        case .blocked: return BrowserStrings.text("Blocked")
+        case .unknown: return BrowserStrings.text("Unsupported state")
         }
     }
 }
@@ -100,7 +100,10 @@ struct DownloadInfo: Decodable, Sendable, Identifiable {
         if (value * 10).rounded() >= 10240 && index < 4 { value /= 1024; index += 1 }
         return String(format: "%.1f %@", value, units[index])
     }
-    var progressText: String { totalBytes.map { "\(Self.bytes(completedBytes)) of \(Self.bytes($0))" } ?? "\(Self.bytes(completedBytes)) — total unknown" }
+    var progressText: String {
+        totalBytes.map { BrowserStrings.format("%@ of %@", Self.bytes(completedBytes), Self.bytes($0)) }
+            ?? BrowserStrings.format("%@ — total unknown", Self.bytes(completedBytes))
+    }
 }
 
 struct DownloadEnvelope: Decodable, Sendable {

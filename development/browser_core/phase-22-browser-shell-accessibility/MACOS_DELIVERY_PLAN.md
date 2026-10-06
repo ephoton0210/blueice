@@ -17,8 +17,29 @@ pushed to the current tracked branch as authorized by the owner.
 | Windows and tab organization | Multiple native windows, tab groups, profile/context lifecycle, retained history and state handoff using core tab identities | Native groups committed and pushed `6e141967f`; shared-core windows/tab transfer committed and pushed `b318e0de8`; context lifecycle and persistent profile identities committed and pushed `ee450a3df`, see [context results](MACOS_CONTEXT_RESULTS.md); durable native session restoration implemented and accepted, see [session results](MACOS_SESSION_RESTORE_RESULTS.md); full storage partitioning pending |
 | Downloads and printing | Actual download manager/shelf, progress/cancel/open/reveal, print/PDF media output and native panel tests | Native manager panel and linked-file downloads committed and pushed `b62b38aa7`, see [download results](MACOS_DOWNLOAD_RESULTS.md); core print-media pagination and native print/PDF committed and pushed `0d2e3ea58`, acceptance recorded in [print results](MACOS_PRINT_RESULTS.md); automatic response downloads, destination/credential UI, quarantine, vector PDF and physical-printer acceptance pending |
 | Trusted browser panels | Assistant results and human permission decisions using the private owner boundary, policy-denial and no-AI-grant tests | Native installed-extension permission child and two-step one-shot confirmation committed and pushed `f83c94152`, see [permission results](MACOS_PERMISSION_RESULTS.md). Native assistant settings and proposal decisions committed and pushed `b53a91111`, see [assistant settings results](MACOS_ASSISTANT_SETTINGS_RESULTS.md). Native assistant result/sidebar and translation surfaces implemented and accepted, see [assistant page results](MACOS_ASSISTANT_PAGE_RESULTS.md). Remaining permission UI pending |
-| macOS display and system integration | DPI/multi-monitor, zoom, theme/high contrast/reduced motion, fullscreen, localization and native menu/shortcut tests | Retina/CSS viewport, per-tab zoom and native fullscreen committed and pushed `91f2dd78c`, see [viewport results](MACOS_VIEWPORT_RESULTS.md); persistent appearance/contrast/motion and CSS media committed and pushed `0609c8a81`, recorded in [display results](MACOS_DISPLAY_PREFERENCES_RESULTS.md); physical system/monitor transitions and localization pending |
+| macOS display and system integration | DPI/multi-monitor, zoom, theme/high contrast/reduced motion, fullscreen, localization and native menu/shortcut tests | Retina/CSS viewport, per-tab zoom and native fullscreen committed and pushed `91f2dd78c`, see [viewport results](MACOS_VIEWPORT_RESULTS.md); persistent appearance/contrast/motion and CSS media committed and pushed `0609c8a81`, recorded in [display results](MACOS_DISPLAY_PREFERENCES_RESULTS.md); English/Traditional Chinese native interface localization implemented and accepted, see [localization results](MACOS_LOCALIZATION_RESULTS.md); physical system/monitor transitions pending |
 | Full accessibility and final audit | Text ranges/live regions and supported rotor operations; actual screen-reader action; final integration, design/UI acceptance and documented remaining core limitations | Native text-control ranges, geometry, selection and editing implemented and accepted, see [accessibility text results](MACOS_ACCESSIBILITY_TEXT_RESULTS.md). Bounded live-region announcements and supported native rotors implemented and accepted, see [live-region/rotor results](MACOS_LIVE_REGION_ROTOR_RESULTS.md); that earlier Rust acceptance used the recorded post-Cargo host readiness condition. Retained announcement delivery/consumption ACK is now implemented and accepted, see [delivery results](MACOS_ANNOUNCEMENT_DELIVERY_RESULTS.md). Descendant atomic/relevant settings and public author labels are implemented and accepted, see [descendant results](MACOS_DESCENDANT_LIVE_RESULTS.md). Document text selection and read-only AX text access implemented and accepted, see [document-selection results](MACOS_DOCUMENT_SELECTION_RESULTS.md). Additional rotors and physical VoiceOver remain pending |
+
+## Native interface localization increment
+
+Settings offers Follow macOS, English and Traditional Chinese. Bundled string
+tables cover browser controls, AppKit actions and private permission/assistant
+panels. Existing windows and the owner-scoped private child observe the persisted
+language without replacing the core page or confirming any decision. URLs,
+editor/page text, authored names, protocol tokens and reviewed values retain
+their original data. Native browser controls update immediately; standard macOS
+menus/dialogs use the startup language and update after restarting BlueIce.
+The boundary and resource/preference behavior are recorded in
+[the localization contract](MACOS_LOCALIZATION_CONTRACT.md).
+
+Complete native acceptance passed 190 methods with one existing physical Zhuyin
+skip; complete Rust workspace acceptance passed 7302 cases with 69 ignored.
+Formatting, strict Clippy, all-targets build, eight strict signatures and the
+source/product/process audit passed. The final source aggregate is identical
+across all gates. Earlier native failures, the corrected classification of a
+pre-existing unrelated test process and internal QoS warnings remain in
+[the dated results](MACOS_LOCALIZATION_RESULTS.md). Physical system/monitor
+transitions, VoiceOver/IME and the remaining browser requirements stay open.
 
 ## Native document text selection increment
 

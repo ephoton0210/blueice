@@ -20,6 +20,7 @@ private func groupColor(_ hex: String) -> Color {
 }
 
 struct BrowserTabStrip: View {
+    @ObservedObject private var localization = BrowserLocalization.shared
     @ObservedObject var model: BrowserModel
     @ObservedObject private var appearance: BrowserAppearance
     init(model: BrowserModel) { self.model = model; appearance = model.appearance }
@@ -50,16 +51,17 @@ struct BrowserTabStrip: View {
                             .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(appearance.resolved.highContrast ? Color.primary : Color.clear, lineWidth: 1).allowsHitTesting(false).accessibilityHidden(true))
                             .accessibilityIdentifier("tab-group-\(group.id)")
                             .accessibilityLabel(group.name)
-                            .accessibilityValue("\(group.collapsed ? "Collapsed" : "Expanded"), \(members.count) tabs\(members.contains { $0.id == model.selected } ? ", contains selected tab" : "")")
+                            .accessibilityValue(BrowserStrings.format("%@, %llu tabs%@", BrowserStrings.text(group.collapsed ? "Collapsed" : "Expanded"),
+                                UInt64(members.count), members.contains { $0.id == model.selected } ? BrowserStrings.text(", contains selected tab") : ""))
                             .help(group.name)
                             .disabled(model.groupBusy || !model.groupsAvailable)
                             .contextMenu {
-                                Button("Edit Group…") { model.beginTabGroupEditor(group: group.id) }
-                                Button(group.collapsed ? "Expand Group" : "Collapse Group") {
+                                Button(BrowserStrings.text("Edit Group…")) { model.beginTabGroupEditor(group: group.id) }
+                                Button(BrowserStrings.text(group.collapsed ? "Expand Group" : "Collapse Group")) {
                                     Task { await model.setTabGroupCollapsed(group.id, collapsed: !group.collapsed) }
                                 }
                                 Divider()
-                                Button("Ungroup and Remove Group") { Task { await model.removeTabGroup(group.id) } }
+                                Button(BrowserStrings.text("Ungroup and Remove Group")) { Task { await model.removeTabGroup(group.id) } }
                             }
                             if !group.collapsed { ForEach(members) { tab in tabView(tab) } }
                         }
@@ -69,24 +71,24 @@ struct BrowserTabStrip: View {
             Button { model.beginTabGroupEditor() } label: {
                 Image(systemName: "rectangle.3.group").frame(width: 24, height: 24)
             }
-            .accessibilityLabel("New tab group").accessibilityIdentifier("new-tab-group").help("New tab group")
+            .accessibilityLabel(BrowserStrings.text("New tab group")).accessibilityIdentifier("new-tab-group").help(BrowserStrings.text("New tab group"))
             .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(appearance.resolved.highContrast ? Color.primary : Color.clear, lineWidth: 1).allowsHitTesting(false).accessibilityHidden(true))
             .disabled(!model.groupsAvailable || model.groupBusy)
             Button { model.action(.values("OpenTab", ["url": .null])) } label: {
                 Image(systemName: "plus").frame(width: 24, height: 24)
             }
-            .accessibilityLabel("New tab").accessibilityIdentifier("add-tab").help("New tab")
+            .accessibilityLabel(BrowserStrings.text("New tab")).accessibilityIdentifier("add-tab").help(BrowserStrings.text("New tab"))
             .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(appearance.resolved.highContrast ? Color.primary : Color.clear, lineWidth: 1).allowsHitTesting(false).accessibilityHidden(true))
             .keyboardShortcut("t", modifiers: .command)
         }.disabled(!model.ready).padding(.horizontal, 12).padding(.vertical, 8)
     }
     private func tabView(_ tab: BrowserTab) -> some View {
         HStack(spacing: 4) {
-            Button { model.select(tab.id) } label: { Text(tab.url ?? "New tab").lineLimit(1).frame(maxWidth: 200) }
-                .accessibilityIdentifier("tab-\(tab.id)").accessibilityLabel(tab.url ?? "New tab")
-                .accessibilityValue(model.selected == tab.id ? "Selected" : "")
+            Button { model.select(tab.id) } label: { Text(tab.url ?? BrowserStrings.text("New tab")).lineLimit(1).frame(maxWidth: 200) }
+                .accessibilityIdentifier("tab-\(tab.id)").accessibilityLabel(tab.url ?? BrowserStrings.text("New tab"))
+                .accessibilityValue(model.selected == tab.id ? BrowserStrings.text("Selected") : "")
             Button { model.action(.unit("CloseTab"), tab: tab.id) } label: { Image(systemName: "xmark").font(.caption) }
-                .accessibilityLabel("Close tab").accessibilityIdentifier("close-tab-\(tab.id)")
+                .accessibilityLabel(BrowserStrings.text("Close tab")).accessibilityIdentifier("close-tab-\(tab.id)")
         }
         .padding(6)
         .background(model.selected == tab.id ? Color.accentColor.opacity(0.15) : Color.clear)
@@ -94,10 +96,10 @@ struct BrowserTabStrip: View {
         .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(model.selected == tab.id && appearance.resolved.highContrast ? Color.primary : Color.clear, lineWidth: 2).allowsHitTesting(false).accessibilityHidden(true))
         .contextMenu {
             if let workspace = model.windowManager { TabWindowMenu(workspace: workspace, tab: tab.id, window: model.windowID) }
-            Button("New Tab Group…") { model.beginTabGroupEditor(tab: tab.id) }
+            Button(BrowserStrings.text("New Tab Group…")) { model.beginTabGroupEditor(tab: tab.id) }
                 .disabled(!model.groupsAvailable || model.groupBusy)
-            Menu("Move to Group") {
-                Button("No Group") { Task { await model.setTabGroup(nil, tab: tab.id) } }
+            Menu(BrowserStrings.text("Move to Group")) {
+                Button(BrowserStrings.text("No Group")) { Task { await model.setTabGroup(nil, tab: tab.id) } }
                 ForEach(model.groups) { group in
                     Button(group.name) { Task { await model.setTabGroup(group.id, tab: tab.id) } }
                 }
@@ -107,6 +109,7 @@ struct BrowserTabStrip: View {
 }
 
 struct BrowserTabGroupEditor: View {
+    @ObservedObject private var localization = BrowserLocalization.shared
     @ObservedObject var model: BrowserModel
     let editor: TabGroupEditor
     @State private var name: String
@@ -125,28 +128,28 @@ struct BrowserTabGroupEditor: View {
     private var valid: Bool { BrowserTabGroup.validName(name) && BrowserTabGroup.validColor(color.trimmingCharacters(in: .whitespacesAndNewlines)) && targetExists }
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text(editor.groupID == nil ? "New Tab Group" : "Edit Tab Group").font(.headline)
-            TextField("Name", text: $name).textFieldStyle(.roundedBorder).focused($nameFocused)
-                .accessibilityLabel("Group name").accessibilityIdentifier("group-name").onSubmit(save)
+            Text(BrowserStrings.text(editor.groupID == nil ? "New Tab Group" : "Edit Tab Group")).font(.headline)
+            TextField(BrowserStrings.text("Name"), text: $name).textFieldStyle(.roundedBorder).focused($nameFocused)
+                .accessibilityLabel(BrowserStrings.text("Group name")).accessibilityIdentifier("group-name").onSubmit(save)
             HStack {
                 Circle().fill(groupColor(color)).frame(width: 18, height: 18).accessibilityHidden(true)
-                TextField("Hex color", text: $color).textFieldStyle(.roundedBorder)
-                    .accessibilityLabel("Group color").accessibilityIdentifier("group-color").onSubmit(save)
+                TextField(BrowserStrings.text("Hex color"), text: $color).textFieldStyle(.roundedBorder)
+                    .accessibilityLabel(BrowserStrings.text("Group color")).accessibilityIdentifier("group-color").onSubmit(save)
             }
             HStack(spacing: 10) {
                 ForEach(palette, id: \.0) { title, hex in
                     Button { color = hex } label: { Circle().fill(groupColor(hex)).frame(width: 22, height: 22) }
-                        .buttonStyle(.plain).accessibilityLabel(title).accessibilityIdentifier("group-color-" + title.lowercased())
+                        .buttonStyle(.plain).accessibilityLabel(BrowserStrings.text(title)).accessibilityIdentifier("group-color-" + title.lowercased())
                 }
             }
-            if !targetExists { Text("The tab or group is no longer available.").foregroundStyle(.red).accessibilityIdentifier("group-target-closed") }
+            if !targetExists { Text(BrowserStrings.text("The tab or group is no longer available.")).foregroundStyle(.red).accessibilityIdentifier("group-target-closed") }
             else if let error = model.groupError { Text(error).foregroundStyle(.red).accessibilityIdentifier("group-error") }
-            else { Text("Use a name of up to 80 characters and a six-digit hex color. Tabs keep their pages and history.").font(.caption).foregroundStyle(.secondary) }
+            else { Text(BrowserStrings.text("Use a name of up to 80 characters and a six-digit hex color. Tabs keep their pages and history.")).font(.caption).foregroundStyle(.secondary) }
             HStack {
                 Spacer()
-                Button("Cancel") { model.groupEditor = nil }.keyboardShortcut(.cancelAction).accessibilityIdentifier("group-cancel")
+                Button(BrowserStrings.text("Cancel")) { model.groupEditor = nil }.keyboardShortcut(.cancelAction).accessibilityIdentifier("group-cancel")
                     .disabled(model.groupBusy)
-                Button(model.groupBusy ? "Saving…" : "Save", action: save).keyboardShortcut(.defaultAction)
+                Button(BrowserStrings.text(model.groupBusy ? "Saving…" : "Save"), action: save).keyboardShortcut(.defaultAction)
                     .accessibilityIdentifier("group-save").disabled(!valid || model.groupBusy || !model.ready)
             }
         }.padding(24).frame(width: 420).onAppear { nameFocused = true }
@@ -163,19 +166,20 @@ struct BrowserTabGroupEditor: View {
 }
 
 struct BrowserTabGroupCommands: Commands {
+    @ObservedObject private var localization = BrowserLocalization.shared
     @ObservedObject var model: BrowserModel
     var body: some Commands {
         CommandGroup(after: .toolbar) {
-            Menu("Tab Groups") {
-                Button("New Tab Group…") { model.beginTabGroupEditor() }
+            Menu(BrowserStrings.text("Tab Groups")) {
+                Button(BrowserStrings.text("New Tab Group…")) { model.beginTabGroupEditor() }
                     .keyboardShortcut("g", modifiers: [.command, .option])
                 ForEach(model.groups) { group in
                     Menu(group.name) {
-                        Button("Edit Group…") { model.beginTabGroupEditor(group: group.id) }
-                        Button(group.collapsed ? "Expand Group" : "Collapse Group") {
+                        Button(BrowserStrings.text("Edit Group…")) { model.beginTabGroupEditor(group: group.id) }
+                        Button(BrowserStrings.text(group.collapsed ? "Expand Group" : "Collapse Group")) {
                             Task { await model.setTabGroupCollapsed(group.id, collapsed: !group.collapsed) }
                         }
-                        Button("Ungroup and Remove Group") { Task { await model.removeTabGroup(group.id) } }
+                        Button(BrowserStrings.text("Ungroup and Remove Group")) { Task { await model.removeTabGroup(group.id) } }
                     }
                 }
             }.disabled(!model.ready || !model.groupsAvailable || model.groupBusy)

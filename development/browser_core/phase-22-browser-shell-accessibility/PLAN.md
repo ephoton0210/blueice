@@ -240,6 +240,17 @@ resolution even when raster density is capped. Native/core and actual-window
 evidence is recorded in [MACOS_DISPLAY_PREFERENCES_RESULTS.md](MACOS_DISPLAY_PREFERENCES_RESULTS.md).
 Physical system/monitor transitions and the full macOS delivery plan remain open.
 
+The native interface localization increment adds English, Traditional Chinese
+and Follow macOS settings, bundled browser/private-panel resources and
+owner-scoped live updates across existing windows. Page/editor content, URLs,
+authored names and reviewed protocol values remain unchanged. Standard macOS
+menus and dialogs update on restart. Complete native acceptance passed 190
+methods with one existing physical Zhuyin skip; complete Rust workspace passed
+7302 cases with 69 ignored. Source/product/signature/process acceptance and
+earlier development attempts are recorded in
+[MACOS_LOCALIZATION_RESULTS.md](MACOS_LOCALIZATION_RESULTS.md).
+Physical system transitions, VoiceOver/IME and the full delivery plan remain open.
+
 The macOS native tab-group increment connects the Phase 16 shared group state
 with SwiftUI sheets, native tab/group/View menus, collapse and nullable membership.
 Core IDs, pages, editor values, history and zoom remain intact when groups change

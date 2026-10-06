@@ -91,6 +91,16 @@ final class BrowserSessionPreferences: ObservableObject {
     @Published private(set) var saved: SavedBrowserSession?
     @Published private(set) var error: String?
     @Published var status: String?
+    var localizedStatus: String {
+        if let saved, let status {
+            let windows = saved.profiles.flatMap(\.windows).count
+            let tabs = saved.profiles.flatMap(\.windows).flatMap(\.tabs).count
+            if status == "Saved \(windows) windows and \(tabs) tabs." {
+                return BrowserStrings.format("Saved %llu windows and %llu tabs.", UInt64(windows), UInt64(tabs))
+            }
+        }
+        return BrowserStrings.text(error ?? status ?? " ")
+    }
     init(defaults: UserDefaults? = nil) {
         self.defaults = defaults ?? BrowserAppearance.preferenceStore()
         remember = self.defaults.bool(forKey: "browser.session.remember")
@@ -123,32 +133,34 @@ final class BrowserSessionPreferences: ObservableObject {
     }
 }
 struct BrowserSessionSettingsView: View {
+    @ObservedObject private var localization = BrowserLocalization.shared
     @ObservedObject var workspace: BrowserWorkspace
     @ObservedObject var preferences: BrowserSessionPreferences
     var body: some View {
-        GroupBox("Windows and tabs") {
+        GroupBox(BrowserStrings.text("Windows and tabs")) {
             VStack(alignment: .leading, spacing: 8) {
-                Toggle("Remember windows and tabs", isOn: Binding(get: { preferences.remember }, set: workspace.setRememberSession)).accessibilityIdentifier("session-remember")
-                Toggle("Reopen saved session on startup", isOn: Binding(get: { preferences.reopen }, set: preferences.setReopen))
+                Toggle(BrowserStrings.text("Remember windows and tabs"), isOn: Binding(get: { preferences.remember }, set: workspace.setRememberSession)).accessibilityIdentifier("session-remember")
+                Toggle(BrowserStrings.text("Reopen saved session on startup"), isOn: Binding(get: { preferences.reopen }, set: preferences.setReopen))
                     .disabled(!preferences.remember).accessibilityIdentifier("session-reopen")
-                Text("Saves visited URLs, history, groups, selected tabs, window positions and zoom. Pages are reviewed again when reopened. Form contents, passwords, selected files and POST bodies are not saved.").font(.caption)
+                Text(BrowserStrings.text("Saves visited URLs, history, groups, selected tabs, window positions and zoom. Pages are reviewed again when reopened. Form contents, passwords, selected files and POST bodies are not saved.")).font(.caption)
                 // Keep the switches stationary when the first save completes.
-                Text(verbatim: preferences.error ?? preferences.status ?? " ")
+                Text(verbatim: preferences.localizedStatus)
                     .font(.caption).accessibilityIdentifier("session-status")
                     .accessibilityHidden(preferences.error == nil && preferences.status == nil)
                 HStack {
-                    Button("Restore Last Session") { Task { await workspace.restoreSavedSession() } }.disabled(!workspace.canRestoreSession).accessibilityIdentifier("session-restore")
-                    Button("Forget Session and Stop Remembering") { workspace.setRememberSession(false) }.accessibilityIdentifier("session-forget")
+                    Button(BrowserStrings.text("Restore Last Session")) { Task { await workspace.restoreSavedSession() } }.disabled(!workspace.canRestoreSession).accessibilityIdentifier("session-restore")
+                    Button(BrowserStrings.text("Forget Session and Stop Remembering")) { workspace.setRememberSession(false) }.accessibilityIdentifier("session-forget")
                 }
             }.frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 }
 struct BrowserSessionCommands: Commands {
+    @ObservedObject private var localization = BrowserLocalization.shared
     @ObservedObject var workspace: BrowserWorkspace
     var body: some Commands {
         CommandGroup(after: .newItem) {
-            Button("Restore Last Session") { Task { await workspace.restoreSavedSession() } }.disabled(!workspace.canRestoreSession)
+            Button(BrowserStrings.text("Restore Last Session")) { Task { await workspace.restoreSavedSession() } }.disabled(!workspace.canRestoreSession)
         }
     }
 }

@@ -3,18 +3,21 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 import AppKit
+import Combine
 import SwiftUI
 
 @main
 struct BlueIceApp: App {
+    @ObservedObject private var localization = BrowserLocalization.shared
     @NSApplicationDelegateAdaptor(BrowserAppDelegate.self) private var delegate
     var body: some Scene {
         Settings {
             VStack(spacing: 0) {
+                BrowserLanguageSettingsView()
                 BrowserAppearanceSettingsView(settings: delegate.model.appearance)
                 BrowserSessionSettingsView(workspace: delegate.workspace, preferences: delegate.workspace.sessionPreferences)
                     .padding([.horizontal, .bottom], 24).frame(width: 460)
-            }
+            }.environment(\.locale, localization.locale)
         }
             .commands {
                 BrowserActiveCommands(delegate: delegate)
@@ -45,6 +48,7 @@ final class BrowserAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
     private var cascadePoint = NSPoint.zero
     private var terminating = false
     let editingMenu = NativeEditingMenu()
+    private var languageObservation: AnyCancellable?
     override init() {
         let workspace = BrowserWorkspace()
         self.workspace = workspace
@@ -81,6 +85,14 @@ final class BrowserAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
             for (id, window) in self.browserWindows { if let model = self.workspace.models[id] { window.title = self.title(model) } }
         }
         openWindow(model)
+        languageObservation = BrowserLocalization.shared.$language.sink { [weak self] _ in
+            Task { @MainActor in
+                guard let self else { return }
+                for (id, window) in self.browserWindows {
+                    if let model = self.workspace.models[id] { window.title = self.title(model) }
+                }
+            }
+        }
         NSApp.activate(ignoringOtherApps: true)
         Task { await workspace.start() }
     }
@@ -111,7 +123,7 @@ final class BrowserAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
     func windowDidResize(_ notification: Notification) { workspace.scheduleSessionSave() }
     private func title(_ model: BrowserModel) -> String {
         let profile = model.profileName == "Default" ? "BlueIce" : "BlueIce · \(model.profileName)"
-        return model.windowID == 1 ? profile : "\(profile) · Window \(model.windowID)"
+        return model.windowID == 1 ? profile : "\(profile) · " + BrowserStrings.format("Window %llu", model.windowID)
     }
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         if browserWindows.count <= 1 { NSApp.terminate(nil); return false }

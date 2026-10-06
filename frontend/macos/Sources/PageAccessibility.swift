@@ -26,6 +26,7 @@ final class PageAccessibilityTree: NSObject, @MainActor NSAccessibilityCustomRot
     private let announce: (String, LivePoliteness) -> Void
     private let acknowledge: (PageRepresentation, UInt64) -> Void
     private(set) var rotors: [NSAccessibilityCustomRotor] = []
+    private var rotorLanguage: String?
 
     init(view: NSView, text: ((PageRepresentation, UInt64, PageNode, AccessibilityTextAction) -> AccessibilityTextResult?)? = nil,
          isActive: (() -> Bool)? = nil, announce: ((String, LivePoliteness) -> Void)? = nil,
@@ -55,13 +56,17 @@ final class PageAccessibilityTree: NSObject, @MainActor NSAccessibilityCustomRot
             focusedID = nil
             readingID = nil
             announcementDocument = nil
+            for element in elements.values { element.invalidate() }
+            elements.removeAll()
+        }
+        let language = BrowserStrings.currentLanguage
+        if !sameDocument || rotorLanguage != language {
+            rotorLanguage = language
             rotors = [.heading, .headingLevel1, .headingLevel2, .headingLevel3, .headingLevel4,
                       .headingLevel5, .headingLevel6, .link, .image, .list].map {
                 NSAccessibilityCustomRotor(rotorType: $0, itemSearchDelegate: self)
             }
-            rotors.append(NSAccessibilityCustomRotor(label: "Buttons", itemSearchDelegate: self))
-            for element in elements.values { element.invalidate() }
-            elements.removeAll()
+            rotors.append(NSAccessibilityCustomRotor(label: BrowserStrings.text("Buttons"), itemSearchDelegate: self))
         }
         snapshot = value
         tabID = documentTab
@@ -287,7 +292,7 @@ final class PageAccessibilityElement: NSAccessibilityElement, @MainActor NSAcces
     }
 
     override func accessibilityRoleDescription() -> String? {
-        if case .heading(let level) = node.role { return "Heading level \(level)" }
+        if case .heading(let level) = node.role { return BrowserStrings.format("Heading level %llu", UInt64(level)) }
         return super.accessibilityRoleDescription()
     }
     override func accessibilityLabel() -> String? { node.name }

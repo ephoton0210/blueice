@@ -109,7 +109,7 @@ final class BrowserFilePicker {
                   !Task.isCancelled, model.fileInputIsCurrent(state.context,tab: tab), window.isVisible else { return }
             self.context = state.context; self.tab = tab
             let panel = NSOpenPanel(); self.panel = panel
-            panel.title = "Choose Files"; panel.prompt = "Choose"
+            panel.title = BrowserStrings.text("Choose Files"); panel.prompt = BrowserStrings.text("Choose")
             panel.canChooseFiles = true; panel.canChooseDirectories = false
             panel.treatsFilePackagesAsDirectories = true; panel.resolvesAliases = false
             panel.allowsMultipleSelection = state.multiple
