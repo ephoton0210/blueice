@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+    "isolatedModules": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "preserveConstEnums": true,
+    "resolveJsonModule": true,
+    "resolvePackageJsonExports": true,
+    "resolvePackageJsonImports": true,
+    "target": "es2022",
+    "useDefineForClassFields": true
+  },
+  "files": [
+    "src/main.test.ts",
+    "src/main.ts",
+    "src/nested/tool.ts",
+    "src/other.ts"
+  ]
+}

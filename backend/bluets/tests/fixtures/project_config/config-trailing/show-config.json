@@ -1,0 +1,12 @@
+{
+  "compilerOptions": {
+    "module": "commonjs",
+    "target": "es2020"
+  },
+  "files": [
+    "src/main.test.ts",
+    "src/main.ts",
+    "src/nested/tool.ts",
+    "src/other.ts"
+  ]
+}

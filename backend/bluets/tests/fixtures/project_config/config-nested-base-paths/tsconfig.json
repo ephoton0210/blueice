@@ -1,0 +1,6 @@
+{
+  "extends": "./settings/base.json",
+  "compilerOptions": {
+    "target": "ES2022"
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "module": "esnext",
+    "moduleResolution": "classic",
+    "preserveConstEnums": true,
+    "target": "es2020",
+    "useDefineForClassFields": false
+  },
+  "files": [
+    "src/main.test.ts",
+    "src/main.ts",
+    "src/nested/tool.ts",
+    "src/other.ts"
+  ]
+}

@@ -4060,3 +4060,25 @@ implementation commit. The production source audit remains below 1200 lines
 M6 is checked and the next ordered leaf is K.2.1. The K.4/K.8 inference and
 declaration gaps, minimum-library omissions and remaining inventory rows
 remain visible; full TypeScript parity is still not claimed.
+
+
+### K.2.1 Pinned project-configuration baseline
+
+The new `config-*` corpus lives separately from the syntax matrices and
+records 50 TypeScript 5.9.3 `--showConfig` verdicts: 44 accepted and six
+rejected. Every accepted case retains normalized JSON containing the
+complete compiler-option interpretation and selected file set. The corpus
+covers JSONC comments and trailing commas, explicit files and glob discovery,
+excludes and output-directory defaults, the existing emitter options,
+strict-family expansion, relative and package bases, multiple bases and
+inherited paths. A missing explicitly listed source is deliberately accepted
+by the configuration viewer, matching the pinned compiler; compilation must
+still report the missing file.
+
+The pinned replay and fixture-coverage test pass before implementation.
+Five process-boundary tests fail: configuration parity, owner-only overrides
+and configuration-byte fingerprints, named unknown-option diagnostics,
+canonical-root confinement, and Node/exact declaration output. The latter
+also requires TypeScript's common-source-directory output layout. This red
+baseline is committed before implementation. K.2.1 stays unchecked until its
+complete K.0 gate passes; independent strictness semantics remain K.2.2.

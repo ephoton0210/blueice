@@ -1,0 +1,9 @@
+{
+  "extends": "@ice/config",
+  "compilerOptions": {
+    "target": "ES2022"
+  },
+  "files": [
+    "src/main.ts"
+  ]
+}

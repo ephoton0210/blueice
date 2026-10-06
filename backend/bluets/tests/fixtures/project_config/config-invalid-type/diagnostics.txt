@@ -1,0 +1,1 @@
+backend/bluets/tests/fixtures/project_config/config-invalid-type/tsconfig.json(5,18): error TS5024: Compiler option 'sourceMap' requires a value of type boolean.

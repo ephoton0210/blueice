@@ -1,0 +1,6 @@
+{
+  "extends": "ice-config",
+  "files": [
+    "src/main.ts"
+  ]
+}

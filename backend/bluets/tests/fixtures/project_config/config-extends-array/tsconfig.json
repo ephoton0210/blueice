@@ -1,0 +1,9 @@
+{
+  "extends": [
+    "./first.json",
+    "./second.json"
+  ],
+  "compilerOptions": {
+    "sourceMap": true
+  }
+}
