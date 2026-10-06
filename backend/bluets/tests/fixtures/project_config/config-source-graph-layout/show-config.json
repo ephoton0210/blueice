@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "allowImportingTsExtensions": true,
+    "declaration": true,
+    "module": "esnext",
+    "moduleResolution": "classic",
+    "outDir": "build",
+    "rewriteRelativeImportExtensions": true,
+    "target": "es2022",
+    "useDefineForClassFields": true
+  },
+  "files": [
+    "src/main.ts"
+  ]
+}

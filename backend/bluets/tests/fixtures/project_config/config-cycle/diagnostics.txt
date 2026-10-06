@@ -1,1 +1,1 @@
-error TS18000: Circularity detected while resolving configuration: /Users/ephoton/git/blueice-bluets/backend/bluets/tests/fixtures/project_config/config-cycle/tsconfig.json -> /Users/ephoton/git/blueice-bluets/backend/bluets/tests/fixtures/project_config/config-cycle/base.json -> /Users/ephoton/git/blueice-bluets/backend/bluets/tests/fixtures/project_config/config-cycle/tsconfig.json
+error TS18000: Circularity detected while resolving configuration: <project>/tsconfig.json -> <project>/base.json -> <project>/tsconfig.json

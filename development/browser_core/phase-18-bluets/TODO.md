@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: K.2.1.** Sections A to J are complete (summarized below); J.6 closed in its
+**Current leaf: K.2.2.** Sections A to J are complete (summarized below); J.6 closed in its
 measured form (`COMPATIBILITY_INVENTORY.md`). Section K closes the gaps that inventory lists.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
@@ -277,8 +277,8 @@ and import rules.
 
 ### K.2 Read real project configuration — M7 — gaps G-M2, G-C2
 
-- [ ] **K.2.1 `tsconfig.json` (L).**
-  - *Today:* `bluetsc.json` only.
+- [x] **K.2.1 `tsconfig.json` (L).**
+  - *Verified (2026-10-06):* 69 pinned configs (59 accept, 10 reject), all normalized options and file sets agree; canonical confinement, owner overlays, declaration inputs, graph output layout and strict-helper relocation covered. K.0: format and Clippy pass; 1,047 tests across 56 targets and doctests pass, including all 117 ignored oracle tests.
   - *Work:* a JSONC reader (comments, trailing commas); `compilerOptions` that map to existing options
     (`target`, `module`, `moduleResolution`, `jsx*`, `experimentalDecorators`, `emitDecoratorMetadata`,
     `esModuleInterop`, `useDefineForClassFields`, `preserveConstEnums`, `isolatedModules`, `outDir`,

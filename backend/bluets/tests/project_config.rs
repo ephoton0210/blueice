@@ -49,10 +49,11 @@ fn normalized(mut value: Value) -> Value {
             *path = path.replace('\\', "/").trim_start_matches("./").to_string();
         }
     }
-    let files = value["files"]
-        .as_array()
-        .unwrap()
-        .iter()
+    let files = value
+        .get("files")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
         .map(|path| {
             path.as_str()
                 .unwrap()
@@ -270,7 +271,106 @@ fn configurations_files_and_outputs_cannot_follow_links_outside_the_owner_root()
         assert!(!output.status.success(), "escaped owner root: {config}");
         assert!(report(&output).contains("outside"), "{}", report(&output));
     }
+    fs::write(
+        root.join("tsconfig.json"),
+        r#"{"compilerOptions":{"target":"ES2022"},"files":["src/main.ts"]}"#,
+    )
+    .unwrap();
+    fs::write(outside.join("owner.json"), r#"{"target":"es2020"}"#).unwrap();
+    symlink(outside.join("owner.json"), root.join("bluetsc.json")).unwrap();
+    let output = blue(&root, "check", true);
+    assert!(
+        !output.status.success(),
+        "implicit owner config escaped its directory"
+    );
+    assert!(report(&output).contains("outside"), "{}", report(&output));
     fs::remove_dir_all(temporary).unwrap();
+}
+
+#[test]
+fn configured_global_declarations_and_declaration_only_projects_check() {
+    for name in [
+        "config-declaration-inputs",
+        "config-declaration-only",
+        "config-declaration-module-inputs",
+        "config-null-file-selection",
+    ] {
+        let output = blue(&fixtures().join(name), "check", false);
+        assert!(output.status.success(), "{name}: {}", report(&output));
+    }
+}
+
+#[test]
+fn owner_import_maps_point_at_the_published_source_layout() {
+    let root = temporary("import-map");
+    fs::create_dir_all(root.join("src")).unwrap();
+    fs::write(
+        root.join("src/main.ts"),
+        "import { answer } from '@value'; export const result: number = answer;\n",
+    )
+    .unwrap();
+    fs::write(
+        root.join("src/shared.ts"),
+        "export const answer: number = 42;\n",
+    )
+    .unwrap();
+    fs::write(root.join("tsconfig.json"), r#"{"compilerOptions":{"target":"ES2022","module":"ESNext","outDir":"build"},"files":["src/main.ts"]}"#).unwrap();
+    fs::write(
+        root.join("bluetsc.json"),
+        r#"{"imports":{"@value":"src/shared.ts"}}"#,
+    )
+    .unwrap();
+    let output = blue(&root, "build", false);
+    assert!(output.status.success(), "{}", report(&output));
+    let import_map: Value =
+        serde_json::from_slice(&fs::read(root.join("build/bluetsc.importmap.json")).unwrap())
+            .unwrap();
+    assert_eq!(import_map["imports"]["@value"], "./shared.js");
+    assert!(root.join("build/main.js").is_file());
+    assert!(root.join("build/shared.js").is_file());
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn the_complete_source_graph_determines_default_output_root() {
+    let root = temporary("source-graph");
+    copy_tree(&fixtures().join("config-source-graph-layout"), &root);
+    let output = blue(&root, "build", false);
+    assert!(output.status.success(), "{}", report(&output));
+    assert!(root.join("build/src/main.js").is_file());
+    assert!(root.join("build/lib/value.js").is_file());
+    let config_path = root.join("tsconfig.json");
+    let mut config: Value = serde_json::from_slice(&fs::read(&config_path).unwrap()).unwrap();
+    config["compilerOptions"]["rootDir"] = json!("src");
+    fs::write(config_path, config.to_string()).unwrap();
+    for command in ["check", "build"] {
+        let output = blue(&root, command, false);
+        assert!(!output.status.success(), "source graph escaped rootDir");
+        assert!(report(&output).contains("rootDir"), "{}", report(&output));
+    }
+    assert!(root.join("build/src/main.js").is_file());
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+#[ignore = "requires Node for an owner-selected strict-runtime crossing"]
+fn strict_runtime_crossings_keep_their_audit_after_output_relocation() {
+    let root = temporary("strict-layout");
+    fs::create_dir_all(root.join("src")).unwrap();
+    let source = "export function echo(value: string): string { return value; }";
+    fs::write(root.join("src/main.ts"), source).unwrap();
+    fs::write(root.join("tsconfig.json"), r#"{"compilerOptions":{"target":"ES2022","module":"ESNext","outDir":"build","sourceMap":true,"declaration":true},"files":["src/main.ts"]}"#).unwrap();
+    fs::write(root.join("bluetsc.json"), json!({"runtimePolicy":"strict-runtime", "strictBoundaries":[{"contractId":"echo-v1","module":"src/main.ts","function":"echo","sourceStart":0,"sourceEnd":source.len(),"maxStringBytes":64,"helperVersion":"bluets-runtime-helper-v1"}]}).to_string()).unwrap();
+    let output = blue(&root, "build", false);
+    assert!(output.status.success(), "{}", report(&output));
+    fs::write(root.join("build/package.json"), r#"{"type":"module"}"#).unwrap();
+    let output = Command::new(env::var_os("BLUEICE_NODE").unwrap_or_else(|| "node".into()))
+        .current_dir(root.join("build"))
+        .args(["--input-type=module", "-e", "import { echo } from './main.js'; console.log(echo('ice')); try { echo(42); process.exitCode = 1; } catch (error) { if (error !== 'BlueTS runtime contract rejected the value') throw error; }"])
+        .output().unwrap();
+    assert!(output.status.success(), "{}", report(&output));
+    assert_eq!(output.stdout, b"ice\n");
+    fs::remove_dir_all(root).unwrap();
 }
 
 #[test]

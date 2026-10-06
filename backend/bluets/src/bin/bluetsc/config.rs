@@ -19,6 +19,7 @@ pub(super) enum Command {
 pub(super) struct Args {
     pub(super) command: Command,
     pub(super) input: Input,
+    pub(super) show_config: bool,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -41,6 +42,7 @@ pub(super) struct Invocation {
     pub(super) imports: BTreeMap<String, PathBuf>,
     pub(super) packages: Option<PackageSettings>,
     pub(super) remote: Option<RemoteSettings>,
+    pub(super) project_config: Option<tsconfig::ProjectConfig>,
 }
 
 /// The owner's pinned remote declaration sources and where they are cached.
@@ -71,6 +73,7 @@ pub(super) struct PackageSettings {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(super) struct BlueTscConfig {
+    #[serde(default)]
     pub(super) entries: Vec<String>,
     #[serde(default)]
     pub(super) project_root: Option<String>,
@@ -155,14 +158,20 @@ pub(super) fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, Str
         let path = args
             .next()
             .ok_or_else(|| "--config requires a JSON file".to_string())?;
+        let mut show_config = false;
         if let Some(extra) = args.next() {
-            return Err(format!(
-                "`--config` owns project settings; unsupported extra argument `{extra}`"
-            ));
+            if extra == "--showConfig" && args.next().is_none() {
+                show_config = true;
+            } else {
+                return Err(format!(
+                    "`--config` owns project settings; unsupported extra argument `{extra}`"
+                ));
+            }
         }
         return Ok(Args {
             command,
             input: Input::Config(PathBuf::from(path)),
+            show_config,
         });
     }
     if command == Command::FetchDeclarations {
@@ -260,11 +269,12 @@ pub(super) fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, Str
             out_dir,
             options: Box::new(options),
         },
+        show_config: false,
     })
 }
 
 pub(super) fn usage() -> &'static str {
-    "Usage:\n  bluetsc check <entry.ts> [--project-root <directory>] [--target es2020|es2022] [--use-define-for-class-fields true|false] [--preserve-const-enums] [--isolated-modules] [--module esnext|commonjs] [--es-module-interop] [--experimental-decorators] [--emit-decorator-metadata] [--jsx preserve|react-native|react|react-jsx|react-jsxdev] [--jsx-factory <name>] [--jsx-fragment-factory <name>] [--jsx-import-source <module>] [--runtime-policy transpile-only|checked|strict-runtime]\n  bluetsc build <entry.ts> --out-dir <directory> [--project-root <directory>] [--source-map] [--declaration] [--target es2020|es2022] [--use-define-for-class-fields true|false] [--preserve-const-enums] [--isolated-modules] [--module esnext|commonjs] [--es-module-interop] [--experimental-decorators] [--emit-decorator-metadata] [--jsx preserve|react-native|react|react-jsx|react-jsxdev] [--jsx-factory <name>] [--jsx-fragment-factory <name>] [--jsx-import-source <module>] [--runtime-policy transpile-only|checked|strict-runtime]\n  bluetsc fetch-declarations --config <bluetsc.json>\n  bluetsc check --config <bluetsc.json>\n  bluetsc build --config <bluetsc.json>\n\nConfig fields: entries, projectRoot, outDir, sourceMap, declaration, target, useDefineForClassFields, preserveConstEnums, isolatedModules, module, esModuleInterop, experimentalDecorators, emitDecoratorMetadata, jsx, jsxFactory, jsxFragmentFactory, jsxImportSource, runtimePolicy, imports, moduleResolution, packageRoots, customConditions, remoteDeclarations, declarationCache, strictBoundaries."
+    "Usage:\n  bluetsc check <entry.ts> [--project-root <directory>] [--target es2020|es2022] [--use-define-for-class-fields true|false] [--preserve-const-enums] [--isolated-modules] [--module esnext|commonjs] [--es-module-interop] [--experimental-decorators] [--emit-decorator-metadata] [--jsx preserve|react-native|react|react-jsx|react-jsxdev] [--jsx-factory <name>] [--jsx-fragment-factory <name>] [--jsx-import-source <module>] [--runtime-policy transpile-only|checked|strict-runtime]\n  bluetsc build <entry.ts> --out-dir <directory> [--project-root <directory>] [--source-map] [--declaration] [--target es2020|es2022] [--use-define-for-class-fields true|false] [--preserve-const-enums] [--isolated-modules] [--module esnext|commonjs] [--es-module-interop] [--experimental-decorators] [--emit-decorator-metadata] [--jsx preserve|react-native|react|react-jsx|react-jsxdev] [--jsx-factory <name>] [--jsx-fragment-factory <name>] [--jsx-import-source <module>] [--runtime-policy transpile-only|checked|strict-runtime]\n  bluetsc fetch-declarations --config <bluetsc.json>\n  bluetsc check --config <bluetsc.json>\n  bluetsc check --config <tsconfig.json> [--showConfig]\n  bluetsc build --config <bluetsc.json>\n  bluetsc build --config <tsconfig.json> [--showConfig]\n\nConfig fields: entries, projectRoot, outDir, sourceMap, declaration, target, useDefineForClassFields, preserveConstEnums, isolatedModules, module, esModuleInterop, experimentalDecorators, emitDecoratorMetadata, jsx, jsxFactory, jsxFragmentFactory, jsxImportSource, runtimePolicy, imports, moduleResolution, packageRoots, customConditions, remoteDeclarations, declarationCache, strictBoundaries, tsconfig."
 }
 
 pub(super) fn resolve_invocation(input: Input) -> Result<Invocation, String> {
@@ -311,6 +321,7 @@ pub(super) fn resolve_explicit_invocation(
         imports: BTreeMap::new(),
         packages: None,
         remote: None,
+        project_config: None,
     })
 }
 
@@ -319,17 +330,60 @@ pub(super) fn resolve_config_invocation(path: PathBuf) -> Result<Invocation, Str
         .map_err(|error| format!("cannot read config {}: {error}", path.display()))?;
     let config_text = fs::read_to_string(&config_path)
         .map_err(|error| format!("cannot read config {}: {error}", config_path.display()))?;
-    let config: BlueTscConfig = serde_json::from_str(&config_text)
+    let value = tsconfig::parse_jsonc(&config_text)
         .map_err(|error| format!("invalid config {}: {error}", config_path.display()))?;
-    if config.entries.is_empty() {
-        return Err("config `entries` must contain at least one .ts entry".to_string());
+    if !value.is_object() {
+        return Err(format!(
+            "invalid config {}: expected an object",
+            config_path.display()
+        ));
     }
     let config_directory = config_path
         .parent()
         .ok_or_else(|| "config has no parent directory".to_string())?;
-    let root = match config.project_root {
+    let ts_shape = config_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name.starts_with("tsconfig"))
+        || ["compilerOptions", "files", "include", "exclude", "extends"]
+            .iter()
+            .any(|key| value.get(*key).is_some());
+    let owner = !ts_shape || value.get("entries").is_some() || value.get("tsconfig").is_some();
+    if !owner {
+        let owner_path = config_directory.join("bluetsc.json");
+        return tsconfig::resolve(
+            &config_path,
+            owner_path.is_file().then_some(owner_path.as_path()),
+        );
+    }
+    let selected = value
+        .get("tsconfig")
+        .and_then(serde_json::Value::as_str)
+        .map(|path| tsconfig::clean_path(&config_directory.join(path)))
+        .unwrap_or_else(|| config_directory.join("tsconfig.json"));
+    if value
+        .get("tsconfig")
+        .is_some_and(|value| !value.is_null() && !value.is_string())
+    {
+        return Err("owner tsconfig requires a string path".to_string());
+    }
+    if value.get("tsconfig").is_some() || selected.is_file() {
+        return tsconfig::resolve(&selected, Some(&config_path));
+    }
+    if value.get("entries").is_none() {
+        return Err(format!(
+            "invalid config {}: missing field `entries`",
+            config_path.display()
+        ));
+    }
+    let config: BlueTscConfig = serde_json::from_value(value)
+        .map_err(|error| format!("invalid config {}: {error}", config_path.display()))?;
+    if config.entries.is_empty() {
+        return Err("config `entries` must contain at least one .ts entry".to_string());
+    }
+    let root = match config.project_root.as_deref() {
         Some(root) => {
-            let root_path = Path::new(&root);
+            let root_path = Path::new(root);
             if root_path.is_absolute()
                 || root_path
                     .components()
@@ -348,6 +402,15 @@ pub(super) fn resolve_config_invocation(path: PathBuf) -> Result<Invocation, Str
         }
         None => config_directory.to_path_buf(),
     };
+    resolve_config_document(config_directory, root, config, true)
+}
+
+pub(super) fn resolve_config_document(
+    config_directory: &Path,
+    root: PathBuf,
+    config: BlueTscConfig,
+    validate_entries: bool,
+) -> Result<Invocation, String> {
     if !root.is_dir() {
         return Err(format!(
             "config projectRoot {} is not a directory",
@@ -356,15 +419,27 @@ pub(super) fn resolve_config_invocation(path: PathBuf) -> Result<Invocation, Str
     }
     let mut entries = Vec::new();
     for entry in config.entries {
-        let entry = absolute_existing_path(&root.join(entry))
-            .map_err(|error| format!("cannot read configured entry: {error}"))?;
+        let entry = if validate_entries {
+            absolute_existing_path(&root.join(entry))
+                .map_err(|error| format!("cannot read configured entry: {error}"))?
+        } else {
+            tsconfig::clean_path(&root.join(entry))
+        };
         ensure_within(&entry, &root, "configured entry")?;
-        ensure_not_declaration_entry(&entry, "configured entry")?;
+        if validate_entries {
+            ensure_not_declaration_entry(&entry, "configured entry")?;
+        }
         entries.push(entry);
     }
     entries.sort();
     entries.dedup();
-    if !config.strict_boundaries.is_empty() && entries.len() != 1 {
+    if !config.strict_boundaries.is_empty()
+        && entries
+            .iter()
+            .filter(|entry| !is_declaration_path(entry))
+            .count()
+            != 1
+    {
         return Err(
             "the first emitted strict boundary profile requires exactly one entry".to_string(),
         );
@@ -472,6 +547,7 @@ pub(super) fn resolve_config_invocation(path: PathBuf) -> Result<Invocation, Str
         imports,
         packages,
         remote,
+        project_config: None,
     })
 }
 

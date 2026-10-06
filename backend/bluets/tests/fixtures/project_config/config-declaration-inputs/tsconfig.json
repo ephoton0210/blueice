@@ -1,0 +1,10 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext"
+  },
+  "files": [
+    "src/main.ts",
+    "types/local.d.ts"
+  ]
+}

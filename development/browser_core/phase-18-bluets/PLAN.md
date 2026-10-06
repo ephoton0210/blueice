@@ -4082,3 +4082,38 @@ canonical-root confinement, and Node/exact declaration output. The latter
 also requires TypeScript's common-source-directory output layout. This red
 baseline is committed before implementation. K.2.1 stays unchecked until its
 complete K.0 gate passes; independent strictness semantics remain K.2.2.
+
+### K.2.1 Project configuration, filesystem ownership and output layout
+
+The CLI reads JSONC configurations through bounded, canonical-root-checked inputs.
+Relative and package `extends` retain each declaring directory and merge options
+property by property; child file selectors replace the inherited selector.
+Explicit files, glob discovery, default exclusions, source-extension precedence
+and null overrides follow the pinned configuration corpus. An inherited empty
+`files` list can describe an empty project; an empty array supplied by the selected
+config is rejected. The implicit ES6 module name and all supported ESM aliases
+map to the existing ESM compiler. Unknown option names, inheritance cycles and
+unauthorized symlinks are rejected.
+
+`bluetsc.json` can select a configuration or overlay an adjacent one; only supplied
+owner settings override it, and normalized compiler values are retained rather
+than overwritten by the owner's raw spelling. Config bytes, selected names and
+declaration bytes contribute to fingerprints without granting additional authority.
+Compilation checks configured declarations as independent roots, injecting only
+global declarations into runtime entries. Publication uses the graph's common
+source directory and enforces explicit `rootDir` during both check and build.
+Owner import-map URLs use that layout. Strict-runtime helper relocation updates
+generated offsets before publishing and retains the contract/hash audit.
+
+The corpus has 69 configurations (59 accepted, 10 rejected). All 40 focused CLI
+and project-config tests pass. The final K.0 gate passed formatting, both-crate
+all-target Clippy with `-D warnings`, all 1,047 tests across 56 executable targets
+and both crates' doctests. All 117 ignored tests in 25 oracle suite files ran.
+Sources stayed hash-identical throughout the final gate; local evidence is
+`blueice-k21-final5-status.json` and `blueice-k21-final5-gate.log` in the Linux
+validation logs. Largest production source: 1,171 lines; the CLI is 1,091 lines.
+
+Scope remains the existing target/module/JSX/resolution subset. Independent
+strictness diagnostics are K.2.2; native TypeScript CLI switches are K.2.3.
+Project references and build/watch/incremental graphs remain K.12. This phase
+does not claim full TypeScript compatibility or token-level source-map parity.

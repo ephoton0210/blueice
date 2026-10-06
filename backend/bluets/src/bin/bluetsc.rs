@@ -29,6 +29,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 mod config;
 use config::*;
 
+#[path = "bluetsc/tsconfig/mod.rs"]
+mod tsconfig;
+
 const RUNTIME_HELPER_V1_FILE: &str = "bluets.runtime-helper.v1.mjs";
 const RUNTIME_HELPER_V1_VERSION: &str = "bluets-runtime-helper-v1";
 const RUNTIME_HELPER_V1_SOURCE: &str = include_str!("../runtime_helper_v1.mjs");
@@ -45,13 +48,29 @@ fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    let invocation = match resolve_invocation(args.input) {
+    let mut invocation = match resolve_invocation(args.input) {
         Ok(invocation) => invocation,
         Err(message) => {
             eprintln!("bluetsc: {message}");
             return ExitCode::FAILURE;
         }
     };
+    if args.show_config {
+        let Some(project) = &invocation.project_config else {
+            eprintln!("bluetsc: --showConfig requires a TypeScript project config");
+            return ExitCode::FAILURE;
+        };
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&project.show())
+                .expect("configuration JSON is serializable")
+        );
+        return ExitCode::SUCCESS;
+    }
+    if let Err(message) = tsconfig::prepare(&mut invocation) {
+        eprintln!("bluetsc: {message}");
+        return ExitCode::FAILURE;
+    }
     if args.command == Command::FetchDeclarations {
         return run_fetch_declarations(&invocation);
     }
@@ -104,13 +123,17 @@ fn main() -> ExitCode {
             ImportMode::Import
         },
     };
-    let summary = compile_entries(
+    let mut summary = compile_entries(
         &invocation.root,
         &invocation.entries,
         &loader,
         invocation.options.clone(),
     );
     if summary.has_errors {
+        return ExitCode::FAILURE;
+    }
+    if let Err(message) = tsconfig::prepare_output(&mut invocation, &mut summary) {
+        eprintln!("bluetsc: {message}");
         return ExitCode::FAILURE;
     }
     if args.command == Command::Check {
@@ -166,6 +189,8 @@ struct CompileSummary {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct BuildMetadata {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    root_dir: Option<String>,
     standard_library: blueice_bluets::standard_library::Identity,
     language_version: &'static str,
     fingerprint: String,
@@ -340,8 +365,20 @@ fn compile_entries(
     let mut modules = BTreeSet::new();
     let mut fingerprints = Vec::new();
     let mut has_errors = false;
+    let has_runtime_entries = entries.iter().any(|entry| !is_declaration_path(entry));
     for entry in entries {
-        let result = compile(&project_module_id(root, entry), loader, options.clone());
+        let module = project_module_id(root, entry);
+        let mut entry_options = options.clone();
+        entry_options
+            .ambient_declaration_modules
+            .retain(|source| source.id != module);
+        if is_declaration_path(entry) {
+            if entry_options.runtime_policy == RuntimePolicy::StrictRuntime {
+                entry_options.runtime_policy = RuntimePolicy::Checked;
+            }
+            entry_options.strict_runtime_boundaries.clear();
+        }
+        let result = compile(&module, loader, entry_options);
         for diagnostic in &result.diagnostics {
             eprintln!(
                 "{}:{}:{}: {}: {}",
@@ -355,7 +392,9 @@ fn compile_entries(
         has_errors |= result.has_errors();
         modules.extend(result.project.modules.keys().cloned());
         if let Some(output) = result.output {
-            fingerprints.push(output.fingerprint);
+            if !has_runtime_entries || !is_declaration_path(entry) {
+                fingerprints.push(output.fingerprint);
+            }
             for (module_id, artifact) in output.artifacts {
                 artifacts.entry(module_id).or_insert(artifact);
             }
@@ -365,6 +404,13 @@ fn compile_entries(
         }
     }
     fingerprints.sort();
+    if fingerprints.is_empty() {
+        fingerprints.extend([
+            blueice_bluets::LANGUAGE_VERSION.to_string(),
+            blueice_bluets::standard_library::VERSION.to_string(),
+            options.resolver_fingerprint,
+        ]);
+    }
     CompileSummary {
         artifacts,
         declaration_modules,
@@ -382,9 +428,14 @@ fn build_metadata(
     let entries = invocation
         .entries
         .iter()
+        .filter(|entry| !is_declaration_path(entry))
         .map(|entry| {
             output_module_path(
-                &invocation.root,
+                invocation
+                    .project_config
+                    .as_ref()
+                    .map(|project| project.emit_root.as_path())
+                    .unwrap_or(&invocation.root),
                 entry,
                 invocation.options.jsx == Some(JsxMode::Preserve),
             )
@@ -396,7 +447,13 @@ fn build_metadata(
         .filter(|(_, target)| !is_declaration_path(target))
         .map(|(specifier, target)| {
             let relative = target
-                .strip_prefix(&invocation.root)
+                .strip_prefix(
+                    invocation
+                        .project_config
+                        .as_ref()
+                        .map(|project| project.emit_root.as_path())
+                        .unwrap_or(&invocation.root),
+                )
                 .expect("validated import-map target is beneath project root");
             let emitted = if target.is_dir() {
                 format!("{}/", output_path(relative))
@@ -411,6 +468,10 @@ fn build_metadata(
         .collect();
     let declaration_modules = summary.declaration_modules.keys().cloned().collect();
     BuildMetadata {
+        root_dir: invocation
+            .project_config
+            .as_ref()
+            .map(|project| tsconfig::relative_text(&invocation.root, &project.emit_root)),
         standard_library: blueice_bluets::standard_library::identity(invocation.options.target),
         language_version: blueice_bluets::LANGUAGE_VERSION,
         fingerprint: summary.fingerprint.clone(),
@@ -870,7 +931,11 @@ fn publish_build(
         }
         for (module_id, artifact) in artifacts {
             let module_path = Path::new(module_id);
-            let relative = artifact_relative_path(root, module_path, module_id)?;
+            let relative = if metadata.root_dir.is_some() {
+                tsconfig::emitted_path(module_id, metadata)?
+            } else {
+                artifact_relative_path(root, module_path, module_id)?
+            };
             let extension = output_extension(&relative, metadata.jsx == Some("preserve"));
             let output_relative = relative.with_extension(extension);
             let js_path = stage.join(&output_relative);
@@ -899,6 +964,9 @@ fn publish_build(
             }
         }
         for (module_id, source) in declaration_modules {
+            if metadata.root_dir.is_some() {
+                continue;
+            }
             let module_path = Path::new(module_id);
             let relative = artifact_relative_path(root, module_path, module_id)?;
             if !is_declaration_path(&relative) {

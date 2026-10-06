@@ -1,1 +1,1 @@
-error TS18003: No inputs were found in config file '/Users/ephoton/git/blueice-bluets/backend/bluets/tests/fixtures/project_config/config-empty/tsconfig.json'. Specified 'include' paths were '[]' and 'exclude' paths were '[]'.
+error TS18003: No inputs were found in config file '<project>/tsconfig.json'. Specified 'include' paths were '[]' and 'exclude' paths were '[]'.

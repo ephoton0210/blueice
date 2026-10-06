@@ -60,7 +60,8 @@ pub(super) fn verify(
                 "strict artifact has a noncanonical module identity",
             ));
         }
-        let output_id = Path::new(module_id).with_extension("js");
+        let emitted = tsconfig::emitted_path(module_id, metadata)?;
+        let output_id = emitted.with_extension("js");
         if metadata.entries[0] == output_path(&output_id) {
             entry_found = true;
         }
@@ -100,12 +101,9 @@ pub(super) fn verify(
         {
             return Err(invalid("strict artifact has an incomplete helper import"));
         }
-        let helper_path = if module_id.contains('/') {
-            format!(
-                "{}{}",
-                "../".repeat(module_id.split('/').count() - 1),
-                RUNTIME_HELPER_V1_FILE
-            )
+        let depth = emitted.components().count().saturating_sub(1);
+        let helper_path = if depth > 0 {
+            format!("{}{}", "../".repeat(depth), RUNTIME_HELPER_V1_FILE)
         } else {
             format!("./{RUNTIME_HELPER_V1_FILE}")
         };

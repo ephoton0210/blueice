@@ -1,0 +1,12 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "outDir": "build",
+    "declaration": true,
+    "rewriteRelativeImportExtensions": true
+  },
+  "files": [
+    "src/main.ts"
+  ]
+}

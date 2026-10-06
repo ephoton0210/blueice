@@ -1,1 +1,1 @@
-error TS5083: Cannot read file '/Users/ephoton/git/blueice-bluets/backend/bluets/tests/fixtures/project_config/config-missing-base/absent.json'.
+error TS5083: Cannot read file '<project>/absent.json'.

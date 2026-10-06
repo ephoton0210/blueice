@@ -31,6 +31,7 @@ test files (`grep -rl '#\[ignore' backend/bluets*/tests`), section 4 is
 | `imported_value_checker_matrix.rs` | accept/reject through `check` and `build` for named/default/namespace and CommonJS imports, retained checked value surfaces, private type identities and circular inference; linked Node programs and exact inferred declarations | 81 entries, 2 programs, 15 declaration cases |
 | `standard_library_checker_matrix.rs` | selected ECMAScript types and methods, matching target/lib, owner/runtime policy and versioned manifest; exact inferred declarations and linked Node execution | 123 entries, 1 program, 5 declaration cases |
 | `inferred_return_checker_matrix.rs` | unannotated function/member return signatures, freshness, recursion and completion, async/generators, lexical/default/pattern scopes and importers; exact declarations and Node execution | 121 entries, 1 program, 23 exact declaration cases, 2 union type-equality cases |
+| `project_config.rs` | JSONC inheritance, normalized compiler options and selected files; owner overlays and confinement; exact declarations and Node runtime, including strict-helper relocation | 69 configurations (59 accept, 10 reject), 2 linked programs |
 | `option_combinations_oracle.rs` | one program over every combination of `target`, module system, `useDefineForClassFields`, `preserveConstEnums`, `isolatedModules` | 48 combinations |
 | `bluets-bluejs/tests/namespace_parity.rs`, `jsx_direct.rs`, `decorators_direct.rs` | the direct runtime (BlueJS) against Node running `tsc`'s output | 7 + 7 + 6 programs |
 
@@ -47,8 +48,9 @@ whitespace.
 ### Measured pass rate (2026-10-06, Linux aarch64 in Colima on Apple silicon, pinned `typescript@5.9.3`, Node 26)
 
 Every differential suite of section 1 was run against the pinned compiler with none skipped:
-**24 of 24 suites pass, 114 ignored oracle tests pass, 0 failures.** The versioned case list is the
-repository itself at the commit that carries this file: 1366 recorded accepted/rejected verdicts (class
+**25 of 25 suites pass, 117 ignored oracle tests pass, 0 failures.** The versioned case list is the
+repository itself at the commit that carries this file: 69 project configurations
+(59 accept, 10 reject), separately from 1366 recorded accepted/rejected verdicts (class
 523, namespace 76, enum 57, JSX 53, decorators 32, legacy decorators 19, unknown names 108, immutables 173, imported values 81, standard library 123, inferred returns 121), 109 core-subset
 cases in `typescript_oracle.rs`, and the emit-and-run programs (JSX 11, standard decorators 20,
 legacy decorators 18, CommonJS 6, unknown names 1, immutables 1, imported values 2, standard library 1, inferred returns 1, option combinations 48,
@@ -116,7 +118,7 @@ suite entry, then removing the row.
 | ID | Gap |
 | --- | --- |
 | G-M1 | Resolution features not read: `typesVersions`, `.d.mts`/`.d.cts`/`.mts`/`.cts` entry points, `paths`/`baseUrl`/`rootDirs`, package self-name imports, `moduleResolution: classic`, automatic `@types` inclusion (`types`/`typeRoots`), `resolveJsonModule`, `allowJs`/`checkJs`, `.js` files as sources. |
-| G-M2 | Project-level features: `tsconfig.json` (BlueTSC reads its own `bluetsc.json`, not `tsconfig`), `extends`, `include`/`exclude`/`files`, project references, `--build`, `--watch`, `--incremental`/`.tsbuildinfo`, `--noEmit`/`--listFiles`/`--showConfig`, `composite`. |
+| G-M2 | K.2.1 reads JSONC `tsconfig.json`, relative/package `extends`, and `files`/`include`/`exclude`, with normalized option/file comparison and owner overlays. The existing ES2020/ES2022, ESM/CommonJS and resolver subset remains explicit; unsupported options are named. Remaining: project references, `--build`, `--watch`, `--incremental`/`.tsbuildinfo`, `composite`, and native `--project`/`--noEmit`/`--listFiles`/`--listEmittedFiles`/`--pretty` CLI behavior (K.2.3). `--showConfig` is currently available with `check/build --config`. |
 | G-M3 | Windows: the oracle suites are not run on Windows (the harness does not launch `tsc.cmd`; symlink tests are Unix-only); the path code uses `std::fs::canonicalize` and `Path` and has been type-checked, not run, there. |
 
 ### 3.5 Diagnostics and CLI
