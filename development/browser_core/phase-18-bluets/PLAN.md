@@ -4287,3 +4287,21 @@ feature coverage and the version pin are unchanged. The superseded CI run
 37416832111 was cancelled; final workspace and coverage evidence will come from the
 corrected commit's replacement CI run. The complete local K.0 gate recorded above
 used the absolute oracle path and remains the feature verification evidence.
+
+### K.2 Windows observation normalization
+
+Final CI exposed two observation-only failures on Windows Server 2022 and Windows
+11 VS2026 arm64: Git checkout supplied CRLF matrix rows, and the CLI test replaced
+backslashes in serialized `--showConfig` JSON before decoding its escaped canonical
+Windows path. Compiler output and publication protection tests passed.
+
+The matrix comparison now checks ordered rows with `str::lines`, retaining every
+name/verdict while accepting Git's line endings. Configuration observations decode
+JSON before normalizing strings, so Windows canonical project roots are recognized.
+A platform-independent regression reproduced the escaped Windows path failure
+before this correction. All eight CLI tests now pass, including the 30 pinned
+observations, input/output guards, Node execution and exact declarations. Formatting
+and both-crate all-target Clippy with warnings denied pass. Compiler source and
+recorded verdicts remain unchanged; this adds one observation regression to the
+previously recorded local 1,069-test feature gate. Replacement final CI will verify
+the corrected test harness on the full platform matrix.

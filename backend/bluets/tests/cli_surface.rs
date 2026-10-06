@@ -91,9 +91,7 @@ fn display(root: &Path, row: &Value, output: &Output) -> Value {
         "{}{}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
-    )
-    .replace(&root.to_string_lossy().to_string(), "<project>")
-    .replace('\\', "/");
+    );
     if row["args"]
         .as_array()
         .unwrap()
@@ -101,8 +99,31 @@ fn display(root: &Path, row: &Value, output: &Output) -> Value {
         .any(|arg| arg == "--showConfig")
         && output.status.success()
     {
-        return json!({"config":serde_json::from_str::<Value>(&text).unwrap()});
+        fn normalize(value: &mut Value, root: &str) {
+            match value {
+                Value::String(text) => {
+                    *text = text.replace(root, "<project>").replace('\\', "/");
+                }
+                Value::Array(values) => {
+                    for value in values {
+                        normalize(value, root);
+                    }
+                }
+                Value::Object(values) => {
+                    for value in values.values_mut() {
+                        normalize(value, root);
+                    }
+                }
+                _ => {}
+            }
+        }
+        let mut config: Value = serde_json::from_str(&text).unwrap();
+        normalize(&mut config, &root.to_string_lossy());
+        return json!({"config":config});
     }
+    let text = text
+        .replace(&root.to_string_lossy().to_string(), "<project>")
+        .replace('\\', "/");
     let mut emitted = text
         .lines()
         .filter_map(|line| line.strip_prefix("TSFILE: "))
@@ -187,6 +208,25 @@ fn native_cli_matches_the_recorded_project_observations() {
     );
 }
 #[test]
+fn serialized_project_paths_normalize_windows_roots() {
+    let root = Path::new(r"\\?\C:\Users\runneradmin\Temp\project");
+    let mut output = Command::new(env!("CARGO_BIN_EXE_bluetsc"))
+        .arg("--help")
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    output.stdout = serde_json::to_vec(&json!({
+        "exclude": [format!(r"{}\out", root.display())],
+        "files": ["./src/main.ts"]
+    }))
+    .unwrap();
+    assert_eq!(
+        display(root, &json!({"args": ["--showConfig"]}), &output),
+        json!({"config": {"exclude": ["<project>/out"], "files": ["./src/main.ts"]}})
+    );
+}
+
+#[test]
 fn cli_matrix_records_every_named_invocation() {
     let cases = rows();
     assert_eq!(cases.len(), 30);
@@ -200,7 +240,10 @@ fn cli_matrix_records_every_named_invocation() {
             )
         })
         .collect::<String>();
-    assert_eq!(matrix, MATRIX);
+    assert_eq!(
+        matrix.lines().collect::<Vec<_>>(),
+        MATRIX.lines().collect::<Vec<_>>()
+    );
 }
 
 #[test]
