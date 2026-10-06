@@ -63,6 +63,9 @@ the subset, every one agrees with `tsc`*. It says nothing about the forms in sec
 The M6 workspace milestone passed CI run [37387952696](https://github.com/ephoton0210/blueice/actions/runs/37387952696)
 on `8343929b7`, including all 29 jobs and both pinned oracle platforms. Workspace
 line coverage is 90.48%; independent BlueJS line coverage is 93.00%.
+The K.2 workspace verification passed CI run [37428756632](https://github.com/ephoton0210/blueice/actions/runs/37428756632)
+on `62f6a440d`: all 29 jobs succeeded, including both pinned oracle platforms.
+Workspace line coverage is 90.43%; independent BlueJS is 93.00%.
 The recorded subset measurements above remain the scope of the compatibility claim.
 
 ## 2. What the supported subset is (summary)
@@ -121,7 +124,7 @@ suite entry, then removing the row.
 | --- | --- |
 | G-M1 | Resolution features not read: `typesVersions`, `.d.mts`/`.d.cts`/`.mts`/`.cts` entry points, `paths`/`baseUrl`/`rootDirs`, package self-name imports, `moduleResolution: classic`, automatic `@types` inclusion (`types`/`typeRoots`), `resolveJsonModule`, `allowJs`/`checkJs`, `.js` files as sources. |
 | G-M2 | K.2.1 reads canonical JSONC projects, relative/package inheritance and file selectors with owner overlays. Sibling precedence preserves native Windows parent/prefix paths. K.2.3 provides native project/default discovery, `--project`, `--showConfig`, `--noEmit`, project source/emitted lists, pretty selection and exit codes; 30 pinned observations agree; K.2.4 verifies the supported options together in 768 Cartesian configurations. Remaining: project references, `--build`, `--watch`, `--incremental`/`.tsbuildinfo`, `composite`, bare-source native CLI invocations, the full installed standard-library file catalog and options beyond the documented compiler/resolver subset. |
-| G-M3 | Windows: the oracle suites are not run on Windows (the harness does not launch `tsc.cmd`; symlink tests are Unix-only); the path code uses `std::fs::canonicalize` and `Path` and has been type-checked, not run, there. |
+| G-M3 | Windows: all five workspace build/test/lint jobs pass, including replay of the pinned project and CLI matrices and native sibling precedence. Live TypeScript oracle suites run on Linux and macOS; the harness does not launch `tsc.cmd`, and symlink tests remain Unix-only. |
 
 ### 3.5 Diagnostics and CLI
 

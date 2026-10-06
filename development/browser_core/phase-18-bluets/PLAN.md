@@ -4323,3 +4323,25 @@ target/doctest groups, including all 122 ignored oracles in 28 suite
 files, with no failures or skipped tests. The source audit maximum is 1,172
 lines, below the review/split thresholds. Final workspace and coverage CI will
 run on this corrected commit; M7 still requires K.3.
+
+### K.2 Final workspace and coverage verification
+
+CI run [37428756632](https://github.com/ephoton0210/blueice/actions/runs/37428756632) tested the exact implementation commit
+`62f6a440dca0c50900179bc903d0fbc6195ff9d7`. All 29 jobs succeeded: the workspace build, tests,
+all-target Clippy and formatting matrix across 25 platforms; both pinned TypeScript
+oracle platforms; workspace coverage; and the dependent CI success gate. Workspace
+line coverage is 90.43% with its 90% floor; independent BlueJS line coverage
+is 93.00% with its 88% floor. No test or coverage threshold was relaxed.
+
+K.2.1 through K.2.4 are complete and each verified leaf was committed and pushed.
+The complete corrected local K.0 gate ran 1,070 tests in 61 target/doctest
+groups, including all 122 ignored oracles in 28 suite files, with zero failures or
+skipped tests. Formatting and both-crate all-target Clippy with warnings denied
+also passed. The largest production source is
+1,172 lines, below the 1,200-line review and 1,300-line split thresholds, so no
+additional production split is due for this group. This final evidence commit
+changes documentation only and preserves the tested implementation source.
+
+The next ordered leaf is K.3.1. K.3 remains required for M7; project references,
+build/watch/incremental operation and broader compatibility inventory rows remain
+open. Full TypeScript parity is not claimed.

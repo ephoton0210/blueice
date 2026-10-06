@@ -303,7 +303,7 @@ and import rules.
   - *Work:* `--noEmit`, `--showConfig`, `--listFiles`, `--listEmittedFiles`,
   `--pretty`, `--project`, exit codes; compared with `tsc` on the same project directory.
 - [x] **K.2.4 Option-combination oracle (S).**
-  - *Verified (2026-10-06):* 768 pinned project combinations; all verdicts agree, 384 emitted programs match Node output and 384 noEmit configurations publish nothing. Declaration-enabled cases match exact `.d.ts` output and source maps retain their provenance structure. K.0: format and Clippy pass; 1,069 tests across 61 target/doctest groups pass, including all 122 ignored oracles. The final K.2 workspace and coverage gate remains due.
+  - *Verified (2026-10-06):* 768 pinned project combinations; all verdicts agree, 384 emitted programs match Node output and 384 noEmit configurations publish nothing. Declaration-enabled cases match exact `.d.ts` output and source maps retain their provenance structure. K.0: format and Clippy pass; 1,069 tests across 61 target/doctest groups pass, including all 122 ignored oracles. Final K.2 CI [37428756632](https://github.com/ephoton0210/blueice/actions/runs/37428756632) passes all 29 jobs on `62f6a440d`; workspace line coverage 90.43%, independent BlueJS 93.00%.
   - *Work:* Extend `option_combinations_oracle.rs` with the new options;
   keep it the template: one multi-feature program × the cartesian product of emit-affecting options.
 
