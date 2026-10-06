@@ -20,6 +20,14 @@ struct AccessibilityTextContext: Codable, Equatable, Sendable {
     let node_id: UInt64
 }
 
+struct AccessibilityDelivery: Codable, Equatable, Sendable {
+    let version: UInt32
+    let frame_source: UInt64
+    let document_generation: UInt64
+    let revision: UInt64
+    var valid: Bool { version == 1 && document_generation > 0 }
+}
+
 struct AccessibilityRevealReply: Decodable, Sendable {
     let context: AccessibilityTextContext
     let bounds: PageNode.Bounds
@@ -182,13 +190,22 @@ final class BrowserAccessibilityTextSession {
             // notifications belong to the normal reader, not this exchange.
             if scoped {
                 switch reply.message {
-                case .accessibilityTextState, .accessibilityRevealed: break
+                case .accessibilityTextState, .accessibilityRevealed, .accessibilityAcknowledged: break
                 case .frame, .viewportState, .displayPreferences: continue
                 default: throw BrowserFailure.invalid("Unexpected accessibility reply.")
                 }
             }
             return reply.message
         }
+    }
+    func acknowledge(_ delivery: AccessibilityDelivery) throws {
+        do {
+            guard case .accessibilityAcknowledged(let reply) = try exchange(.accessibilityAcknowledge(delivery)),
+                  reply.valid, reply.frame_source == delivery.frame_source,
+                  reply.document_generation == delivery.document_generation, reply.revision >= delivery.revision else {
+                throw BrowserFailure.invalid("Stale accessibility consumption reply.")
+            }
+        } catch { close(); throw error }
     }
     func reveal(_ context: AccessibilityTextContext) throws -> PageNode.Bounds {
         do {

@@ -21,6 +21,16 @@ pub struct AccessibilityContext {
 
 pub type AccessibilityTextContext = AccessibilityContext;
 
+/// Native consumption of a document-scoped announcement prefix. This is not
+/// acknowledgement of screen-reader speech and never grants input authority.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AccessibilityDelivery {
+    pub version: u32,
+    pub frame_source: u64,
+    pub document_generation: u64,
+    pub revision: u64,
+}
+
 /// Revealing an AT reading target never activates it or changes DOM focus.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AccessibilityRevealReply {
@@ -48,13 +58,17 @@ pub struct AccessibilityName {
     pub name: Option<String>,
 }
 
-/// Announcements from the latest layout mutation, never a retained private
-/// text history. Repeated reads have the same revision. Initial content is a
-/// baseline; platform clients must also baseline a newly selected document.
+/// Bounded pending announcements, retained until native consumption. Repeated
+/// reads have the same revision. Initial content is a baseline; platform clients
+/// must also baseline a newly selected document.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AccessibilitySnapshot {
     pub document_generation: u64,
     pub revision: u64,
+    #[serde(default)]
+    pub acknowledged_revision: u64,
+    #[serde(default)]
+    pub delivery_version: u32,
     pub announcements: Vec<AccessibilityAnnouncement>,
     #[serde(default)]
     pub hidden_nodes: Vec<u64>,

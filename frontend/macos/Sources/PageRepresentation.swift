@@ -17,15 +17,19 @@ struct AccessibilitySnapshot: Decodable, Sendable {
     }
     let document_generation: UInt64
     let revision: UInt64
+    let acknowledged_revision: UInt64
+    let delivery_version: UInt32
     let announcements: [Announcement]
     let hidden_nodes: [UInt64]
     let names: [Name]
     let truncated: Bool
-    enum CodingKeys: CodingKey { case document_generation, revision, announcements, hidden_nodes, names, truncated }
+    enum CodingKeys: CodingKey { case document_generation, revision, acknowledged_revision, delivery_version, announcements, hidden_nodes, names, truncated }
     init(from decoder: Decoder) throws {
         let value = try decoder.container(keyedBy: CodingKeys.self)
         document_generation = try value.decode(UInt64.self, forKey: .document_generation)
         revision = try value.decode(UInt64.self, forKey: .revision)
+        acknowledged_revision = try value.decodeIfPresent(UInt64.self, forKey: .acknowledged_revision) ?? 0
+        delivery_version = try value.decodeIfPresent(UInt32.self, forKey: .delivery_version) ?? 0
         announcements = try value.decode([Announcement].self, forKey: .announcements)
         hidden_nodes = try value.decodeIfPresent([UInt64].self, forKey: .hidden_nodes) ?? []
         names = try value.decodeIfPresent([Name].self, forKey: .names) ?? []
@@ -163,6 +167,7 @@ struct PageRepresentation: Decodable, Sendable {
         }
         if let accessibility {
             guard accessibility.document_generation > 0 || nodes.isEmpty && accessibility.revision == 0,
+                  accessibility.acknowledged_revision <= accessibility.revision, accessibility.delivery_version <= 1,
                   accessibility.announcements.count <= 64, Set(accessibility.hidden_nodes).count == accessibility.hidden_nodes.count,
                   accessibility.hidden_nodes.allSatisfy({ byID[$0] != nil }) else { throw invalid() }
             let hidden = Set(accessibility.hidden_nodes)
@@ -171,7 +176,7 @@ struct PageRepresentation: Decodable, Sendable {
                   accessibility.names.allSatisfy({ byID[$0.node_id] != nil && $0.name.map { $0.utf16.count <= 65_536 } != false }) else { throw invalid() }
             var previous: UInt64 = 0
             for announcement in accessibility.announcements {
-                guard announcement.sequence > previous, announcement.sequence <= accessibility.revision,
+                guard announcement.sequence > previous, announcement.sequence > accessibility.acknowledged_revision, announcement.sequence <= accessibility.revision,
                       announcement.region_id > 0, !announcement.text.isEmpty, announcement.text.utf16.count <= 8192 else { throw invalid() }
                 previous = announcement.sequence
             }

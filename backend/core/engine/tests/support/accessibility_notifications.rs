@@ -43,7 +43,121 @@ fn status_is_atomic_and_reads_do_not_create_duplicate_announcements() {
     assert_eq!(stream(&page), updated);
     page.resize(500.0, 200.0);
     assert_eq!(stream(&page).revision, updated.revision);
+    assert_eq!(stream(&page).announcements, updated.announcements);
+}
+
+#[test]
+fn delayed_native_reads_retain_updates_across_other_layouts() {
+    let mut page = page("<div role='log'><span id='message'>ready</span></div>");
+    replace(&mut page, "message", "first update");
+    page.resize(500.0, 220.0);
+    replace(&mut page, "message", "second update");
+    page.resize(600.0, 240.0);
+    let pending = stream(&page);
+    assert_eq!(pending.revision, 2);
+    assert_eq!(
+        pending
+            .announcements
+            .iter()
+            .map(|item| item.text.as_str())
+            .collect::<Vec<_>>(),
+        ["first update", "second update"]
+    );
+    assert_eq!(stream(&page), pending, "Reading is not acknowledgement");
+}
+
+#[test]
+fn delayed_delivery_is_bounded_and_reports_evicted_announcements() {
+    let mut page = page("<div role='log'><span id='message'>ready</span></div>");
+    for index in 1..=200 {
+        replace(&mut page, "message", &format!("Update {index}"));
+    }
+    let pending = stream(&page);
+    assert_eq!(pending.revision, 200);
+    assert_eq!(pending.announcements.len(), 64);
+    assert_eq!(pending.announcements.first().unwrap().sequence, 137);
+    assert_eq!(pending.announcements.last().unwrap().sequence, 200);
+    assert!(pending.truncated);
+    let delivery = blueice_ipc::accessibility::AccessibilityDelivery {
+        version: 1,
+        frame_source: 42,
+        document_generation: pending.document_generation,
+        revision: 135,
+    };
+    page.accessibility_acknowledge(&delivery, 42).unwrap();
+    page.resize(500.0, 200.0);
+    assert!(stream(&page).truncated, "Overflow survives another layout");
+    page.accessibility_acknowledge(
+        &blueice_ipc::accessibility::AccessibilityDelivery {
+            revision: 136,
+            ..delivery
+        },
+        42,
+    )
+    .unwrap();
+    assert!(!stream(&page).truncated);
+    assert_eq!(stream(&page).announcements.len(), 64);
+}
+
+#[test]
+fn retained_updates_are_discarded_when_their_source_becomes_private() {
+    let mut page = page("<div role='status'>Progress <input id='editor' value='ready'></div>");
+    let editor = page.script_get_element_by_id("editor").unwrap();
+    page.act(editor, NodeAction::SetValue("queued-public-value".into()));
+    assert!(stream(&page).announcements[0]
+        .text
+        .contains("queued-public-value"));
+    attribute(&mut page, "editor", "type", "password");
     assert!(stream(&page).announcements.is_empty());
+    assert!(!serde_json::to_string(&stream(&page))
+        .unwrap()
+        .contains("queued-public-value"));
+}
+
+#[test]
+fn queued_regions_are_purged_when_disabled_hidden_or_removed() {
+    for (name, value) in [
+        ("aria-live", "off"),
+        ("aria-hidden", "true"),
+        ("style", "display:none"),
+    ] {
+        let mut page = page("<div id='region' role='status'><span id='message'>ready</span></div>");
+        replace(&mut page, "message", "queued update");
+        attribute(&mut page, "region", name, value);
+        assert!(stream(&page).announcements.is_empty(), "{name}={value}");
+        page.resize(500.0, 200.0);
+        assert!(stream(&page).announcements.is_empty());
+    }
+    let mut page = page("<main id='main'><div role='status' id='message'>ready</div></main>");
+    replace(&mut page, "message", "queued update");
+    replace(&mut page, "main", "ordinary replacement");
+    assert!(stream(&page).announcements.is_empty());
+}
+
+#[test]
+fn queued_text_truncation_survives_subsequent_short_updates_until_acknowledged() {
+    let mut page = page("<div role='log'><span id='message'>ready</span></div>");
+    replace(&mut page, "message", &"😀".repeat(5000));
+    replace(&mut page, "message", "short update");
+    page.resize(500.0, 200.0);
+    let pending = stream(&page);
+    assert_eq!(pending.announcements.len(), 2);
+    assert!(
+        pending.truncated,
+        "A queued clipped update must still report its loss"
+    );
+    page.accessibility_acknowledge(
+        &blueice_ipc::accessibility::AccessibilityDelivery {
+            version: 1,
+            frame_source: 42,
+            document_generation: pending.document_generation,
+            revision: 1,
+        },
+        42,
+    )
+    .unwrap();
+    assert!(!stream(&page).truncated);
+    assert_eq!(stream(&page).announcements[0].text, "short update");
 }
 
 #[test]
@@ -105,7 +219,86 @@ fn relevant_removals_and_non_atomic_text_use_the_changed_content() {
     assert_eq!(stream(&page).announcements[0].text, "new");
     attribute(&mut page, "log", "aria-relevant", "removals");
     replace(&mut page, "b", "");
-    assert_eq!(stream(&page).announcements[0].text, "two");
+    assert_eq!(stream(&page).announcements.last().unwrap().text, "two");
+}
+
+#[test]
+fn acknowledgement_releases_only_observed_revisions_without_layout_changes() {
+    let mut page = page("<div role='log'><span id='message'>ready</span></div>");
+    replace(&mut page, "message", "first");
+    replace(&mut page, "message", "second");
+    let before = stream(&page);
+    let delivery = blueice_ipc::accessibility::AccessibilityDelivery {
+        version: 1,
+        frame_source: 42,
+        document_generation: before.document_generation,
+        revision: 1,
+    };
+    let frame = page.frame_generation;
+    let reply = page.accessibility_acknowledge(&delivery, 42).unwrap();
+    assert_eq!(reply.revision, 1);
+    let pending = stream(&page);
+    assert_eq!(pending.revision, 2);
+    assert_eq!(pending.acknowledged_revision, 1);
+    assert_eq!(pending.announcements.len(), 1);
+    assert_eq!(pending.announcements[0].text, "second");
+    assert_eq!(page.frame_generation, frame);
+    assert_eq!(
+        page.accessibility_acknowledge(&delivery, 42).unwrap(),
+        reply
+    );
+    assert_eq!(stream(&page), pending);
+    let older = blueice_ipc::accessibility::AccessibilityDelivery {
+        revision: 0,
+        ..delivery
+    };
+    assert_eq!(
+        page.accessibility_acknowledge(&older, 42).unwrap().revision,
+        1
+    );
+    let complete = blueice_ipc::accessibility::AccessibilityDelivery {
+        revision: 2,
+        ..delivery
+    };
+    page.accessibility_acknowledge(&complete, 42).unwrap();
+    assert!(stream(&page).announcements.is_empty());
+}
+
+#[test]
+fn acknowledgement_rejects_foreign_future_and_replaced_document_requests() {
+    let mut page = page("<div id='message' role='status'>ready</div>");
+    replace(&mut page, "message", "update");
+    let before = stream(&page);
+    let delivery = blueice_ipc::accessibility::AccessibilityDelivery {
+        version: 1,
+        frame_source: 42,
+        document_generation: before.document_generation,
+        revision: 1,
+    };
+    for bad in [
+        blueice_ipc::accessibility::AccessibilityDelivery {
+            version: 2,
+            ..delivery
+        },
+        blueice_ipc::accessibility::AccessibilityDelivery {
+            frame_source: 43,
+            ..delivery
+        },
+        blueice_ipc::accessibility::AccessibilityDelivery {
+            document_generation: before.document_generation + 1,
+            ..delivery
+        },
+        blueice_ipc::accessibility::AccessibilityDelivery {
+            revision: 2,
+            ..delivery
+        },
+    ] {
+        assert!(page.accessibility_acknowledge(&bad, 42).is_err());
+        assert_eq!(stream(&page), before);
+    }
+    page.load_html_str("<div role='status'>replacement</div>", None);
+    assert!(page.accessibility_acknowledge(&delivery, 42).is_err());
+    assert_eq!(stream(&page).acknowledged_revision, 0);
 }
 
 #[test]
@@ -195,6 +388,16 @@ fn text_relevance_includes_new_text_while_additions_requires_a_new_element() {
         page("<div id='log' role='log' aria-relevant='text'><span id='message'>ready</span></div>");
     replace(&mut page, "message", "changed");
     assert_eq!(stream(&page).announcements[0].text, "changed");
+    page.accessibility_acknowledge(
+        &blueice_ipc::accessibility::AccessibilityDelivery {
+            version: 1,
+            frame_source: 42,
+            document_generation: stream(&page).document_generation,
+            revision: stream(&page).revision,
+        },
+        42,
+    )
+    .unwrap();
     attribute(&mut page, "log", "aria-relevant", "additions");
     replace(&mut page, "message", "another text replacement");
     assert!(stream(&page).announcements.is_empty());
@@ -271,4 +474,36 @@ fn reveal_scrolls_without_activation_focus_or_editor_selection_changes() {
         .is_err());
     page.load_html_str("<h2>replacement</h2>", None);
     assert!(page.accessibility_reveal(&context, 19).is_err());
+}
+
+#[test]
+fn queued_sources_becoming_live_off_are_not_delivered_as_updates_or_removals() {
+    let mut page =
+        page("<div role='log' aria-relevant='all'><span id='message'>ready</span></div>");
+    replace(&mut page, "message", "queued update");
+    assert_eq!(stream(&page).announcements[0].text, "queued update ready");
+    attribute(&mut page, "message", "aria-live", "off");
+    assert!(stream(&page).announcements.is_empty());
+    assert_eq!(
+        stream(&page).revision,
+        1,
+        "Disabling a source must not announce its previous text as a removal"
+    );
+    replace(&mut page, "message", "silenced text");
+    page.resize(500.0, 200.0);
+    assert!(stream(&page).announcements.is_empty());
+    attribute(&mut page, "message", "aria-live", "polite");
+    assert!(stream(&page)
+        .announcements
+        .iter()
+        .all(|item| !item.text.contains("queued update")));
+}
+
+#[test]
+fn retained_explicit_live_region_updates_override_an_off_ancestor() {
+    let mut page = page("<div aria-live='off'><div role='log' aria-live='polite'><span id='message'>ready</span></div></div>");
+    replace(&mut page, "message", "explicit update");
+    page.resize(500.0, 200.0);
+    assert_eq!(stream(&page).announcements.len(), 1);
+    assert_eq!(stream(&page).announcements[0].text, "explicit update");
 }

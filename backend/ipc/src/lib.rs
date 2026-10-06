@@ -91,6 +91,9 @@ pub enum ChromeCommand {
 /// Sent by a client (`frontend` today; `extension`/AI later) to `core`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ClientMessage {
+    AccessibilityAcknowledge {
+        delivery: accessibility::AccessibilityDelivery,
+    },
     AccessibilityReveal {
         context: accessibility::AccessibilityContext,
     },
@@ -395,6 +398,7 @@ pub enum AssistantTaskKind {
 /// Sent by `core` to a client.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ServerMessage {
+    AccessibilityAcknowledged(accessibility::AccessibilityDelivery),
     AccessibilityRevealed(accessibility::AccessibilityRevealReply),
     AccessibilityTextState(accessibility::AccessibilityTextReply),
     FileInputState(file_input::FileInputState),

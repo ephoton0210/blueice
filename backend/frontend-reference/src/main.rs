@@ -1845,6 +1845,7 @@ mod unix {
                     | ServerMessage::ViewportState(_)
                     | ServerMessage::FileInputState(_)
                     | ServerMessage::PrintState(_)
+                    | ServerMessage::AccessibilityAcknowledged(_)
                     | ServerMessage::AccessibilityRevealed(_)
                     | ServerMessage::AccessibilityTextState(_)
                     | ServerMessage::DisplayPreferencesState(_)

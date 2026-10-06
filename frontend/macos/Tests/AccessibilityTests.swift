@@ -66,6 +66,72 @@ final class AccessibilityTests: XCTestCase {
         XCTAssertEqual(spoken.last, "Update 7")
     }
 
+    func testRetainedAnnouncementsAreDeliveredOnceAndConsumptionIsAcknowledged() throws {
+        let view = NSView(frame: NSRect(x: 0, y: 0, width: 400, height: 300))
+        var active = true
+        var spoken: [String] = []
+        var consumed: [String] = []
+        let tree = PageAccessibilityTree(view: view, isActive: { active }, announce: { text, _ in spoken.append(text) },
+            acknowledge: { snapshot, _ in consumed.append("\(snapshot.accessibility!.document_generation):\(snapshot.accessibility!.revision)") }) { _, _, _, _ in true }
+        func snapshot(_ revision: Int, acknowledged: Int = 0, document: Int = 1) throws -> PageRepresentation {
+            try representation { value in
+                value["generation"] = revision + 7
+                value["accessibility"] = ["document_generation": document, "revision": revision, "acknowledged_revision": acknowledged, "delivery_version": 1,
+                    "announcements": revision > acknowledged ? ((acknowledged + 1)...revision).map { sequence in
+                        ["sequence": sequence, "region_id": 1, "text": "Update \(sequence)", "politeness": "Polite"]
+                    } : []]
+            }
+        }
+        tree.update(try snapshot(0), epoch: 1, imageSize: view.bounds.size)
+        tree.update(try snapshot(2), epoch: 1, imageSize: view.bounds.size)
+        tree.update(try snapshot(2), epoch: 1, imageSize: view.bounds.size)
+        XCTAssertEqual(spoken, ["Update 1", "Update 2"])
+        XCTAssertEqual(consumed, ["1:2", "1:2"], "An unconfirmed prefix may be acknowledged idempotently")
+        tree.update(try snapshot(2, acknowledged: 2), epoch: 1, imageSize: view.bounds.size)
+        XCTAssertEqual(consumed.count, 2)
+        active = false
+        tree.update(try snapshot(3, acknowledged: 2), epoch: 1, imageSize: view.bounds.size)
+        active = true
+        tree.update(try snapshot(3, acknowledged: 3), epoch: 1, imageSize: view.bounds.size)
+        XCTAssertEqual(spoken, ["Update 1", "Update 2"])
+        tree.update(try snapshot(1, document: 2), epoch: 2, imageSize: view.bounds.size)
+        XCTAssertEqual(spoken.count, 2, "A replacement document establishes a new baseline")
+        XCTAssertEqual(consumed, ["1:2", "1:2", "1:3", "2:1"])
+    }
+
+    func testAnnouncementDeliveryCapabilityAndTypedWireAreBackwardCompatible() throws {
+        var acknowledgements = 0
+        let view = NSView(frame: NSRect(x: 0, y: 0, width: 400, height: 300))
+        let tree = PageAccessibilityTree(view: view, acknowledge: { _, _ in acknowledgements += 1 }) { _, _, _, _ in true }
+        let legacy = try representation { value in
+            value["accessibility"] = ["document_generation": 1, "revision": 1,
+                "announcements": [["sequence": 1, "region_id": 1, "text": "Legacy", "politeness": "Polite"]]]
+        }
+        XCTAssertEqual(legacy.accessibility?.delivery_version, 0)
+        XCTAssertEqual(legacy.accessibility?.acknowledged_revision, 0)
+        tree.update(legacy, epoch: 1, imageSize: view.bounds.size)
+        XCTAssertEqual(acknowledgements, 0, "An older core must never receive an unsupported command")
+        let delivery = AccessibilityDelivery(version: 1, frame_source: 19, document_generation: 3, revision: 7)
+        let encoded = try JSONEncoder().encode(BrowserCommand.accessibilityAcknowledge(delivery))
+        let value = try JSONSerialization.jsonObject(with: encoded) as! [String: Any]
+        let body = value["AccessibilityAcknowledge"] as! [String: Any]
+        let metadata = body["delivery"] as! [String: Any]
+        XCTAssertEqual(metadata["revision"] as? Int, 7)
+        XCTAssertEqual(Set(metadata.keys), Set(["version", "frame_source", "document_generation", "revision"]))
+        let envelope = try JSONDecoder().decode(IncomingEnvelope.self, from: Data(#"{"request_id":8,"tab_id":2,"message":{"AccessibilityAcknowledged":{"version":1,"frame_source":19,"document_generation":3,"revision":7}}}"#.utf8))
+        if case .accessibilityAcknowledged(let reply) = envelope.message { XCTAssertEqual(reply, delivery) }
+        else { XCTFail("Typed acknowledgement reply must decode") }
+    }
+
+    func testDeliveryWatermarkRejectsFutureAndAlreadyConsumedAnnouncements() throws {
+        for watermark in [2, 3] {
+            XCTAssertThrowsError(try representation { value in
+                value["accessibility"] = ["document_generation": 1, "revision": 2, "acknowledged_revision": watermark,
+                    "announcements": [["sequence": 2, "region_id": 1, "text": "Consumed", "politeness": "Polite"]]]
+            })
+        }
+    }
+
     func testRotorSearchUsesDocumentOrderFilterDirectionAndRejectsOldOrForeignItems() throws {
         let view = NSView(frame: NSRect(x: 0, y: 0, width: 400, height: 300))
         var actions: [PageAccessibilityAction] = []
@@ -316,7 +382,8 @@ final class AccessibilityTests: XCTestCase {
         window.isReleasedWhenClosed = false; window.contentView = view
         defer { window.close() }
         var spoken: [String] = []
-        let tree = PageAccessibilityTree(view: view, isActive: { true }, announce: { text, _ in spoken.append(text) }) { snapshot, epoch, node, action in
+        let tree = PageAccessibilityTree(view: view, isActive: { true }, announce: { text, _ in spoken.append(text) },
+            acknowledge: { snapshot, epoch in model.acknowledgeAccessibility(snapshot, epoch: epoch) }) { snapshot, epoch, node, action in
             if action == .reveal { return model.accessibilityReveal(snapshot, epoch: epoch, node: node) }
             return model.accessibilityAction(snapshot, epoch: epoch, node: node, focusOnly: action == .focus)
         }
@@ -335,6 +402,9 @@ final class AccessibilityTests: XCTestCase {
         await wait { model.representation?.nodes.contains(where: { $0.name == "Status editor" && $0.state.value == "1😀" }) == true && model.textInputState?.frame_generation == model.representation?.generation }
         refresh(); refresh()
         XCTAssertEqual(spoken, ["Progress 1😀"])
+        await wait { model.representation?.accessibility?.acknowledged_revision == 1 }
+        XCTAssertTrue(model.representation?.accessibility?.announcements.isEmpty == true)
+        refresh(); XCTAssertEqual(spoken, ["Progress 1😀"])
         XCTAssertFalse(spoken.joined().contains("secret")); XCTAssertFalse(spoken.joined().contains("quiet content"))
         let rotor = try XCTUnwrap(tree.rotors.first { $0.type == .headingLevel2 })
         XCTAssertTrue(view.accessibilityCustomRotors().contains { $0 === rotor })

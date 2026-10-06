@@ -103,6 +103,8 @@ final class CorePageView: NSView, NSTextInputClient, NSUserInterfaceValidations 
     private let filePicker = BrowserFilePicker()
     lazy var accessibilityTree = PageAccessibilityTree(view: self, text: { [weak self] snapshot, epoch, node, action in
         self?.model?.accessibilityText(snapshot, epoch: epoch, node: node, action: action)
+    }, acknowledge: { [weak self] snapshot, epoch in
+        self?.model?.acknowledgeAccessibility(snapshot, epoch: epoch)
     }) { [weak self] snapshot, epoch, node, action in
         if action == .reveal {
             guard let self, self.model?.accessibilityReveal(snapshot, epoch: epoch, node: node) == true else { return false }

@@ -9,7 +9,8 @@ use blueice_ipc::accessibility::{
     AccessibilityAnnouncement, AccessibilityContext, AccessibilitySnapshot, LivePoliteness,
 };
 use blueice_ipc::Bounds;
-use std::collections::HashSet;
+use std::collections::{HashSet, VecDeque};
+use zeroize::Zeroize;
 
 const MAX_REGIONS: usize = 256;
 const MAX_ANNOUNCEMENTS: usize = 64;
@@ -25,6 +26,7 @@ struct Region {
     chunks: Vec<LiveText>,
     elements: HashSet<NodeId>,
     remaining: usize,
+    truncated: bool,
 }
 
 #[derive(Clone)]
@@ -38,7 +40,9 @@ impl Region {
     fn push(&mut self, source: NodeId, container: NodeId, text: &str, truncated: &mut bool) {
         let mut chars = text.chars();
         let text: String = chars.by_ref().take(self.remaining).collect();
-        *truncated |= chars.next().is_some();
+        let clipped = chars.next().is_some();
+        *truncated |= clipped;
+        self.truncated |= clipped;
         self.remaining -= text.chars().count();
         if !text.is_empty() {
             self.chunks.push(LiveText {
@@ -91,12 +95,23 @@ pub(super) struct LiveRegions {
     initialized: bool,
     observed: HashMap<NodeId, Region>,
     revision: u64,
-    announcements: Vec<AccessibilityAnnouncement>,
+    announcements: VecDeque<PendingAnnouncement>,
+    acknowledged: u64,
+    lost_through: u64,
     truncated: bool,
+}
+struct PendingAnnouncement {
+    announcement: AccessibilityAnnouncement,
+    sources: Vec<(NodeId, NodeId)>,
+    truncated: bool,
+}
+impl Drop for PendingAnnouncement {
+    fn drop(&mut self) {
+        self.announcement.text.zeroize();
+    }
 }
 impl LiveRegions {
     fn refresh(&mut self, regions: Vec<Region>, truncated: bool) {
-        self.announcements.clear();
         self.truncated = truncated;
         let mut next = HashMap::new();
         for mut region in regions {
@@ -107,6 +122,7 @@ impl LiveRegions {
                 if let Some(old) = old {
                     region.chunks = old.chunks;
                     region.elements = old.elements;
+                    region.truncated = old.truncated;
                 } else {
                     region.chunks.clear();
                     region.elements.clear();
@@ -134,10 +150,10 @@ impl LiveRegions {
                         None if region.relevant.text
                             || region.relevant.additions && new_element =>
                         {
-                            changed.push(chunk.text.as_str())
+                            changed.push(chunk)
                         }
                         Some(old) if *old != &chunk.text && region.relevant.text => {
-                            changed.push(chunk.text.as_str())
+                            changed.push(chunk)
                         }
                         _ => {}
                     }
@@ -145,7 +161,7 @@ impl LiveRegions {
                 if region.relevant.removals {
                     for chunk in old_chunks {
                         if !current.contains_key(&chunk.source) {
-                            changed.push(chunk.text.as_str());
+                            changed.push(chunk);
                         }
                     }
                 }
@@ -158,21 +174,41 @@ impl LiveRegions {
                             .collect::<Vec<_>>()
                             .join(" ")
                     } else {
-                        changed.join(" ")
+                        changed
+                            .iter()
+                            .map(|chunk| chunk.text.as_str())
+                            .collect::<Vec<_>>()
+                            .join(" ")
                     };
                     if !text.is_empty() {
-                        if self.announcements.len() < MAX_ANNOUNCEMENTS {
-                            self.revision =
-                                self.revision.checked_add(1).expect("AT revision exhausted");
-                            self.announcements.push(AccessibilityAnnouncement {
+                        self.revision =
+                            self.revision.checked_add(1).expect("AT revision exhausted");
+                        if self.announcements.len() == MAX_ANNOUNCEMENTS {
+                            let removed = self.announcements.pop_front().unwrap();
+                            self.lost_through = removed.announcement.sequence;
+                        }
+                        let contributing = if region.atomic {
+                            region.chunks.iter().collect::<Vec<_>>()
+                        } else {
+                            changed
+                        };
+                        let mut clipped = region.truncated
+                            || region.relevant.removals
+                                && old.as_ref().is_some_and(|old| old.truncated);
+                        let text = bounded_text(&text, &mut clipped);
+                        self.announcements.push_back(PendingAnnouncement {
+                            announcement: AccessibilityAnnouncement {
                                 sequence: self.revision,
                                 region_id: region.id.as_u64(),
-                                text: bounded_text(&text, &mut self.truncated),
+                                text,
                                 politeness: region.politeness,
-                            });
-                        } else {
-                            self.truncated = true;
-                        }
+                            },
+                            sources: contributing
+                                .iter()
+                                .map(|chunk| (chunk.source, chunk.container))
+                                .collect(),
+                            truncated: clipped,
+                        });
                     }
                 }
             }
@@ -195,6 +231,28 @@ fn truth(value: Option<&str>) -> bool {
 }
 
 impl Page {
+    fn accessibility_announcement_content(&self, node: NodeId, region: NodeId) -> bool {
+        if !self.accessibility_safe_content(node) {
+            return false;
+        }
+        // Off content remains ordinary readable AX content. It may no longer
+        // contribute to this live region, including its retained removals.
+        // Stop at the owner: an explicit inner region overrides an off ancestor.
+        let mut ancestor = Some(node);
+        while let Some(id) = ancestor {
+            if id == region {
+                break;
+            }
+            if element_attribute(&self.doc, id, "aria-live")
+                .is_some_and(|value| value.trim().eq_ignore_ascii_case("off"))
+            {
+                return false;
+            }
+            ancestor = self.doc.parent(id);
+        }
+        true
+    }
+
     pub(crate) fn accessibility_safe_content(&self, node: NodeId) -> bool {
         if !self.accessibility_exposed(node) {
             return false;
@@ -328,6 +386,7 @@ impl Page {
                             chunks: Vec::new(),
                             elements: HashSet::new(),
                             remaining: MAX_TEXT_CHARS,
+                            truncated: false,
                         });
                     }
                 }
@@ -375,22 +434,44 @@ impl Page {
 
     pub(super) fn refresh_accessibility(&mut self) {
         let (regions, truncated) = self.collect_live_regions();
+        let live: HashSet<_> = regions.iter().map(|region| region.id.as_u64()).collect();
+        let safe_sequences: HashSet<_> = self
+            .live_regions
+            .announcements
+            .iter()
+            .filter(|pending| {
+                live.contains(&pending.announcement.region_id)
+                    && pending.sources.iter().all(|(source, container)| {
+                        [*source, *container].iter().all(|id| {
+                            !self.doc.contains(*id)
+                                || self.accessibility_announcement_content(
+                                    *id,
+                                    NodeId::from_u64(pending.announcement.region_id),
+                                )
+                        })
+                    })
+            })
+            .map(|pending| pending.announcement.sequence)
+            .collect();
+        self.live_regions
+            .announcements
+            .retain(|pending| safe_sequences.contains(&pending.announcement.sequence));
         let blocked: HashSet<_> = self
             .live_regions
             .observed
-            .values()
-            .flat_map(|region| region.chunks.iter())
-            .filter(|chunk| {
-                [chunk.source, chunk.container]
-                    .iter()
-                    .any(|id| self.doc.contains(*id) && !self.accessibility_safe_content(*id))
+            .iter()
+            .flat_map(|(id, region)| region.chunks.iter().map(move |chunk| (*id, chunk)))
+            .filter(|(region, chunk)| {
+                [chunk.source, chunk.container].iter().any(|id| {
+                    self.doc.contains(*id) && !self.accessibility_announcement_content(*id, *region)
+                })
             })
-            .map(|chunk| chunk.source)
+            .map(|(region, chunk)| (region, chunk.source))
             .collect();
-        for region in self.live_regions.observed.values_mut() {
+        for (id, region) in &mut self.live_regions.observed {
             region
                 .chunks
-                .retain(|chunk| !blocked.contains(&chunk.source));
+                .retain(|chunk| !blocked.contains(&(*id, chunk.source)));
         }
         self.live_regions.refresh(regions, truncated);
     }
@@ -402,7 +483,14 @@ impl Page {
         AccessibilitySnapshot {
             document_generation: self.document_generation,
             revision: self.live_regions.revision,
-            announcements: self.live_regions.announcements.clone(),
+            acknowledged_revision: self.live_regions.acknowledged,
+            delivery_version: 1,
+            announcements: self
+                .live_regions
+                .announcements
+                .iter()
+                .map(|pending| pending.announcement.clone())
+                .collect(),
             hidden_nodes: nodes
                 .iter()
                 .filter(|node| !self.accessibility_exposed(NodeId::from_u64(node.id)))
@@ -418,8 +506,38 @@ impl Page {
                     })
                 })
                 .collect(),
-            truncated: self.live_regions.truncated,
+            truncated: self.live_regions.truncated
+                || self.live_regions.lost_through > self.live_regions.acknowledged
+                || self
+                    .live_regions
+                    .announcements
+                    .iter()
+                    .any(|pending| pending.truncated),
         }
+    }
+
+    pub(crate) fn accessibility_acknowledge(
+        &mut self,
+        delivery: &blueice_ipc::accessibility::AccessibilityDelivery,
+        source: u64,
+    ) -> Result<blueice_ipc::accessibility::AccessibilityDelivery, String> {
+        if delivery.version != 1
+            || delivery.frame_source != source
+            || delivery.document_generation != self.document_generation
+            || delivery.document_generation == 0
+            || delivery.revision > self.live_regions.revision
+        {
+            return Err("Stale or unsupported accessibility delivery context".into());
+        }
+        self.live_regions.acknowledged = self.live_regions.acknowledged.max(delivery.revision);
+        let acknowledged = self.live_regions.acknowledged;
+        self.live_regions
+            .announcements
+            .retain(|pending| pending.announcement.sequence > acknowledged);
+        Ok(blueice_ipc::accessibility::AccessibilityDelivery {
+            revision: acknowledged,
+            ..*delivery
+        })
     }
 
     pub(crate) fn accessibility_reveal(

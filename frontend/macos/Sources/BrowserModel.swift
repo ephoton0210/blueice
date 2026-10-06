@@ -316,6 +316,9 @@ final class BrowserModel: ObservableObject {
     private var representations: [UInt64: PageRepresentation] = [:]
     private var documentEpochs: [UInt64: UInt64] = [:]
     private var representationRequests: [UInt64: (epoch: UInt64, generation: UInt64)] = [:]
+    private var accessibilityDeliveryRequests: [UInt64: (delivery: AccessibilityDelivery, epoch: UInt64)] = [:]
+    private var accessibilityDeliveryJobs: [UInt64: (id: UUID, task: Task<Void, Never>)] = [:]
+
     private var frames: [UInt64: FramePixels] = [:]
     private var histories: [UInt64: HistoryState] = [:]
     private var viewport = CGSize(width: 1024, height: 640)
@@ -890,6 +893,62 @@ final class BrowserModel: ObservableObject {
         Task { await send(.unit("GetRepresentation"), tab: tab) }
     }
 
+    func acknowledgeAccessibility(_ snapshot: PageRepresentation, epoch: UInt64) {
+        guard ready, selected == snapshot.tabID, accessibilityEpoch == epoch,
+              let stream = snapshot.accessibility, stream.delivery_version == 1, stream.document_generation > 0,
+              stream.acknowledged_revision < stream.revision,
+              snapshot.frameSource == PageRepresentation.frameSource(directory: session.frameDirectory.path) else { return }
+        let tab = snapshot.tabID
+        let delivery = AccessibilityDelivery(version: 1, frame_source: snapshot.frameSource,
+            document_generation: stream.document_generation, revision: stream.revision)
+        if let previous = accessibilityDeliveryRequests[tab], previous.epoch == epoch,
+           previous.delivery.document_generation == delivery.document_generation,
+           previous.delivery.revision > delivery.revision { return }
+        accessibilityDeliveryRequests[tab] = (delivery, epoch)
+        guard accessibilityDeliveryJobs[tab] == nil else { return }
+        let id = UUID()
+        let task = Task { [weak self] in
+            guard let self else { return }
+            defer {
+                if self.accessibilityDeliveryJobs[tab]?.id == id {
+                    self.accessibilityDeliveryJobs.removeValue(forKey: tab)
+                    self.accessibilityDeliveryRequests.removeValue(forKey: tab)
+                }
+            }
+            var backoff: UInt64 = 250
+            while !Task.isCancelled, self.ready, self.selected == tab,
+                  self.accessibilityDeliveryJobs[tab]?.id == id,
+                  let pending = self.accessibilityDeliveryRequests[tab],
+                  self.documentEpochs[tab, default: 0] == pending.epoch {
+                let runtime = self.session.runtimeDirectory
+                let context = self.contextID, window = self.windowID
+                let succeeded = await Task.detached { () -> Bool in
+                    do {
+                        let broker = try BrowserAccessibilityTextSession(runtime: runtime, tab: tab, context: context, window: window)
+                        defer { broker.close() }
+                        try broker.acknowledge(pending.delivery)
+                        return true
+                    } catch { return false }
+                }.value
+                guard !Task.isCancelled, self.accessibilityDeliveryJobs[tab]?.id == id else { break }
+                if succeeded {
+                    if self.accessibilityDeliveryRequests[tab]?.delivery == pending.delivery,
+                       self.accessibilityDeliveryRequests[tab]?.epoch == pending.epoch {
+                        self.accessibilityDeliveryRequests.removeValue(forKey: tab)
+                    }
+                    self.requestRepresentation(tab)
+                    backoff = 250
+                } else {
+                    // Only this idempotent resource acknowledgement retries;
+                    // editor and reveal mutations retain their no-retry policy.
+                    try? await Task.sleep(for: .milliseconds(backoff))
+                    backoff = min(8_000, backoff * 2)
+                }
+            }
+        }
+        accessibilityDeliveryJobs[tab] = (id, task)
+    }
+
     func accessibilityText(_ snapshot: PageRepresentation, epoch: UInt64, node: PageNode, action: AccessibilityTextAction) -> AccessibilityTextResult? {
         guard ready, selected == snapshot.tabID, accessibilityEpoch == epoch, !textInputBusy,
               let input = textInputState, input.tab_id == snapshot.tabID,
@@ -1160,5 +1219,5 @@ final class BrowserModel: ObservableObject {
         }
     }
 
-    func stop() async { assistant.clear(); groupOperation = nil; groupReplies = []; groupRequests = []; groupBusy = false; groups = []; groupsAvailable = false; groupEditor = nil; zoomTask?.cancel(); zoomWrites.removeAll(); preferenceTask?.cancel(); lastSentPreferences = nil; preferenceStates.removeAll(); displayPreferences = nil; findTask?.cancel(); findPanels.removeAll(); findVisible = false; findResult = nil; resubmissions.removeAll(); resubmission = nil; resubmissionPresented = false; ready = false; representation = nil; representations.removeAll(); representationRequests.removeAll(); clearTextInput(); resizeTask?.cancel(); if workspace == nil { await session.stop() } }
+    func stop() async { accessibilityDeliveryJobs.values.forEach { $0.task.cancel() }; accessibilityDeliveryJobs.removeAll(); accessibilityDeliveryRequests.removeAll(); assistant.clear(); groupOperation = nil; groupReplies = []; groupRequests = []; groupBusy = false; groups = []; groupsAvailable = false; groupEditor = nil; zoomTask?.cancel(); zoomWrites.removeAll(); preferenceTask?.cancel(); lastSentPreferences = nil; preferenceStates.removeAll(); displayPreferences = nil; findTask?.cancel(); findPanels.removeAll(); findVisible = false; findResult = nil; resubmissions.removeAll(); resubmission = nil; resubmissionPresented = false; ready = false; representation = nil; representations.removeAll(); representationRequests.removeAll(); clearTextInput(); resizeTask?.cancel(); if workspace == nil { await session.stop() } }
 }

@@ -18,7 +18,7 @@ pushed to the current tracked branch as authorized by the owner.
 | Downloads and printing | Actual download manager/shelf, progress/cancel/open/reveal, print/PDF media output and native panel tests | Native manager panel and linked-file downloads committed and pushed `b62b38aa7`, see [download results](MACOS_DOWNLOAD_RESULTS.md); core print-media pagination and native print/PDF committed and pushed `0d2e3ea58`, acceptance recorded in [print results](MACOS_PRINT_RESULTS.md); automatic response downloads, destination/credential UI, quarantine, vector PDF and physical-printer acceptance pending |
 | Trusted browser panels | Assistant results and human permission decisions using the private owner boundary, policy-denial and no-AI-grant tests | Native installed-extension permission child and two-step one-shot confirmation committed and pushed `f83c94152`, see [permission results](MACOS_PERMISSION_RESULTS.md). Native assistant settings and proposal decisions committed and pushed `b53a91111`, see [assistant settings results](MACOS_ASSISTANT_SETTINGS_RESULTS.md). Native assistant result/sidebar and translation surfaces implemented and accepted, see [assistant page results](MACOS_ASSISTANT_PAGE_RESULTS.md). Remaining permission UI pending |
 | macOS display and system integration | DPI/multi-monitor, zoom, theme/high contrast/reduced motion, fullscreen, localization and native menu/shortcut tests | Retina/CSS viewport, per-tab zoom and native fullscreen committed and pushed `91f2dd78c`, see [viewport results](MACOS_VIEWPORT_RESULTS.md); persistent appearance/contrast/motion and CSS media committed and pushed `0609c8a81`, recorded in [display results](MACOS_DISPLAY_PREFERENCES_RESULTS.md); physical system/monitor transitions and localization pending |
-| Full accessibility and final audit | Text ranges/live regions and supported rotor operations; actual screen-reader action; final integration, design/UI acceptance and documented remaining core limitations | Native text-control ranges, geometry, selection and editing implemented and accepted, see [accessibility text results](MACOS_ACCESSIBILITY_TEXT_RESULTS.md). Bounded live-region announcements and supported native rotors implemented and accepted, see [live-region/rotor results](MACOS_LIVE_REGION_ROTOR_RESULTS.md); Rust acceptance requires the recorded post-Cargo host readiness condition. Document text selection, retained announcement delivery, additional rotors and physical VoiceOver remain pending |
+| Full accessibility and final audit | Text ranges/live regions and supported rotor operations; actual screen-reader action; final integration, design/UI acceptance and documented remaining core limitations | Native text-control ranges, geometry, selection and editing implemented and accepted, see [accessibility text results](MACOS_ACCESSIBILITY_TEXT_RESULTS.md). Bounded live-region announcements and supported native rotors implemented and accepted, see [live-region/rotor results](MACOS_LIVE_REGION_ROTOR_RESULTS.md); that earlier Rust acceptance used the recorded post-Cargo host readiness condition. Retained announcement delivery/consumption ACK is now implemented and accepted, see [delivery results](MACOS_ANNOUNCEMENT_DELIVERY_RESULTS.md). Document text selection, additional rotors and physical VoiceOver remain pending |
 
 ## Native accessibility text-control contract
 
@@ -78,10 +78,29 @@ This host readiness condition does not establish clean default-runner cold-start
 acceptance. The measured result and reproducible wrapper are recorded in
 [MACOS_LIVE_REGION_ROTOR_RESULTS.md](MACOS_LIVE_REGION_ROTOR_RESULTS.md).
 
-Retained announcement delivery/acknowledgement, initial alert creation,
-descendant-scoped atomic/relevant overrides, complete ARIA/name computation,
-additional rotor kinds, document paragraph selection and physical VoiceOver
-remain pending. This increment does not complete the full browser design.
+At that increment, retained announcement delivery/acknowledgement remained
+pending. The subsequent delivery milestone below resolves that limitation.
+Initial alert creation, descendant-scoped atomic/relevant overrides, complete
+ARIA/name computation, additional rotor kinds, document paragraph selection and
+physical VoiceOver remain pending. This does not complete the full browser design.
+
+## Retained announcement delivery increment
+
+Core now retains ready announcements across reads, resize and later mutations
+until a source/document-scoped prefix acknowledgement releases them. The bounded
+FIFO reports overflow and queued clipping, and purges invalid/private/off
+contributors. AppKit delivers each batch once, acknowledges deliberately dropped
+baselines/background updates and coalesces only idempotent ACK retries off the
+main thread. Older cores without the capability receive no new command.
+
+Acceptance passed 176 native cases with one existing physical Zhuyin skip and
+7,260 workspace cases with 69 ignored across 473 suites. The complete Rust run
+used the normal repository signing runner after the unchanged executables again
+started normally; no auxiliary readiness helper or deadline change was used.
+Earlier incomplete startup attempts, the one cfg(test)-only assertion correction
+after native acceptance and all frozen input scopes remain documented in
+[MACOS_ANNOUNCEMENT_DELIVERY_RESULTS.md](MACOS_ANNOUNCEMENT_DELIVERY_RESULTS.md).
+Consumption ACK does not establish physical VoiceOver speech completion.
 
 ## Native editing contract
 

@@ -75,3 +75,148 @@ fn actual_core_announcements_and_scoped_reveal_share_the_live_frame() {
         "AT navigation must not fetch or activate a link"
     );
 }
+
+#[test]
+fn actual_core_retains_and_acknowledges_only_the_owned_observed_prefix() {
+    use blueice_ipc::accessibility::AccessibilityDelivery;
+    use blueice_ipc::browser_contexts::{ContextAction, ContextEvent};
+    use blueice_ipc::windows::WindowAction;
+    let url = common::web_server_with_html("<div role='log'><input aria-label='Editor' value='ready'></div><input type='password' value='private-secret'>");
+    let (gatekeeper, reviewed) = common::recording_gatekeeper();
+    let mut core = common::Core::start(&gatekeeper, &[]);
+    core.navigate(&url);
+    let editor = core
+        .snapshot()
+        .nodes
+        .iter()
+        .find(|node| node.name.as_deref() == Some("Editor"))
+        .unwrap()
+        .id;
+    core.send(&ClientMessage::ActOn {
+        id: editor,
+        action: NodeAction::Focus,
+    });
+    assert!(matches!(core.read(), ServerMessage::FrameReady { .. }));
+    for value in ["first", "second"] {
+        core.send(&ClientMessage::ActOn {
+            id: editor,
+            action: NodeAction::SetValue(value.into()),
+        });
+        assert!(matches!(core.read(), ServerMessage::FrameReady { .. }));
+    }
+    let observed = core.snapshot();
+    core.send(&ClientMessage::Resize {
+        width: 500,
+        height: 240,
+    });
+    assert!(matches!(core.read(), ServerMessage::FrameReady { .. }));
+    let before = core.snapshot();
+    assert!(before.generation > observed.generation);
+    let stream = before.accessibility.as_ref().unwrap();
+    assert_eq!(stream.delivery_version, 1);
+    assert_eq!(stream.revision, 2);
+    assert_eq!(
+        stream
+            .announcements
+            .iter()
+            .map(|item| item.text.as_str())
+            .collect::<Vec<_>>(),
+        ["first", "second"]
+    );
+    core.send(&ClientMessage::GetTextInputState);
+    let ServerMessage::TextInputState(input_before) = core.read() else {
+        panic!("input state")
+    };
+    let delivery = AccessibilityDelivery {
+        version: 1,
+        frame_source: before.frame_source,
+        document_generation: stream.document_generation,
+        revision: 1,
+    };
+    for bad in [
+        AccessibilityDelivery {
+            version: 2,
+            ..delivery
+        },
+        AccessibilityDelivery {
+            frame_source: delivery.frame_source.wrapping_add(1),
+            ..delivery
+        },
+        AccessibilityDelivery {
+            document_generation: delivery.document_generation + 1,
+            ..delivery
+        },
+        AccessibilityDelivery {
+            revision: 3,
+            ..delivery
+        },
+    ] {
+        core.send(&common::native_command(
+            ClientMessage::AccessibilityAcknowledge { delivery: bad },
+        ));
+        assert!(matches!(core.read(), ServerMessage::Error { .. }));
+        assert_eq!(core.snapshot(), before);
+    }
+    core.send(&ClientMessage::BrowserContext(ContextAction::Create {
+        name: "Foreign".into(),
+    }));
+    let ServerMessage::BrowserContextState(created) = core.read() else {
+        panic!("context")
+    };
+    let ContextEvent::Created { context_id } = created.event else {
+        panic!("created")
+    };
+    for (context, window) in [(context_id, 1), (1, 999)] {
+        let message = ClientMessage::BrowserContext(ContextAction::Command {
+            context_id: context,
+            message: Box::new(ClientMessage::Window(WindowAction::Command {
+                window_id: window,
+                message: Box::new(ClientMessage::AccessibilityAcknowledge { delivery }),
+            })),
+        });
+        core.send(&message);
+        assert!(matches!(core.read(), ServerMessage::Error { .. }));
+        assert_eq!(core.snapshot(), before);
+    }
+    for revision in [1, 1, 0, 2] {
+        let request = AccessibilityDelivery {
+            revision,
+            ..delivery
+        };
+        core.send(&common::native_command(
+            ClientMessage::AccessibilityAcknowledge { delivery: request },
+        ));
+        let ServerMessage::AccessibilityAcknowledged(reply) = core.read() else {
+            panic!("ACK must have no preceding frame")
+        };
+        assert_eq!(reply.revision, revision.max(1));
+        let after = core.snapshot();
+        assert_eq!(after.generation, before.generation);
+        assert_eq!(after.scroll_y, before.scroll_y);
+        assert_eq!(after.url, before.url);
+        assert_eq!(after.nodes, before.nodes);
+        let pending = after.accessibility.as_ref().unwrap();
+        assert_eq!(pending.acknowledged_revision, revision.max(1));
+        assert_eq!(pending.announcements.len(), usize::from(revision < 2));
+        if revision < 2 {
+            assert_eq!(pending.announcements[0].text, "second");
+        }
+        core.send(&ClientMessage::GetTextInputState);
+        let ServerMessage::TextInputState(input_after) = core.read() else {
+            panic!("input after")
+        };
+        assert_eq!(input_after, input_before);
+    }
+    assert_eq!(
+        reviewed.lock().unwrap().len(),
+        1,
+        "Acknowledgement must not review or fetch"
+    );
+    core.navigate(&url);
+    let replacement = core.snapshot();
+    core.send(&common::native_command(
+        ClientMessage::AccessibilityAcknowledge { delivery },
+    ));
+    assert!(matches!(core.read(), ServerMessage::Error { .. }));
+    assert_eq!(core.snapshot(), replacement);
+}

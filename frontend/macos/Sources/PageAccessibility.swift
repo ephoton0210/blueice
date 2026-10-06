@@ -24,14 +24,17 @@ final class PageAccessibilityTree: NSObject, @MainActor NSAccessibilityCustomRot
     private var announcementRevision: UInt64 = 0
     private let isActive: () -> Bool
     private let announce: (String, LivePoliteness) -> Void
+    private let acknowledge: (PageRepresentation, UInt64) -> Void
     private(set) var rotors: [NSAccessibilityCustomRotor] = []
 
     init(view: NSView, text: ((PageRepresentation, UInt64, PageNode, AccessibilityTextAction) -> AccessibilityTextResult?)? = nil,
          isActive: (() -> Bool)? = nil, announce: ((String, LivePoliteness) -> Void)? = nil,
+         acknowledge: ((PageRepresentation, UInt64) -> Void)? = nil,
          perform: @escaping (PageRepresentation, UInt64, PageNode, PageAccessibilityAction) -> Bool) {
         self.view = view
         self.text = text
         self.perform = perform
+        self.acknowledge = acknowledge ?? { _, _ in }
         self.isActive = isActive ?? { [weak view] in NSApp?.isActive == true && view?.window?.isKeyWindow == true }
         self.announce = announce ?? { text, politeness in
             guard let application = NSApp else { return }
@@ -104,13 +107,17 @@ final class PageAccessibilityTree: NSObject, @MainActor NSAccessibilityCustomRot
     private func deliverAnnouncements(_ value: PageRepresentation?) {
         guard let value, let stream = value.accessibility else { return }
         let document = "\(value.frameSource):\(value.tabID):\(epoch):\(stream.document_generation)"
-        guard announcementDocument == document else {
-            announcementDocument = document; announcementRevision = stream.revision; return
+        if announcementDocument != document {
+            announcementDocument = document; announcementRevision = stream.revision
+        } else {
+            guard stream.revision >= announcementRevision else { return }
+            let pending = stream.announcements.filter { $0.sequence > announcementRevision }
+            announcementRevision = stream.revision
+            if !pending.isEmpty && isActive() { for item in pending { announce(item.text, item.politeness) } }
         }
-        guard stream.revision >= announcementRevision else { return }
-        let pending = stream.announcements.filter { $0.sequence > announcementRevision }
-        announcementRevision = stream.revision
-        if !pending.isEmpty && isActive() { for item in pending { announce(item.text, item.politeness) } }
+        if stream.delivery_version == 1 && stream.acknowledged_revision < stream.revision {
+            acknowledge(value, epoch)
+        }
     }
 
     func rotor(_ rotor: NSAccessibilityCustomRotor, resultFor parameters: NSAccessibilityCustomRotor.SearchParameters) -> NSAccessibilityCustomRotor.ItemResult? {

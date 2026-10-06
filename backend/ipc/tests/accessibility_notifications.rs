@@ -25,11 +25,43 @@ fn announcements_preserve_document_revision_and_unicode() {
     let stream = snapshot.accessibility.as_ref().unwrap();
     assert_eq!(stream.document_generation, 3);
     assert_eq!(stream.revision, 7);
+    assert_eq!(stream.acknowledged_revision, 0);
+    assert_eq!(
+        stream.delivery_version, 0,
+        "Old streams do not advertise acknowledgement support"
+    );
     assert_eq!(stream.announcements[0].text, "完成 😀");
     assert_eq!(
         serde_json::from_value::<AiSnapshot>(serde_json::to_value(&snapshot).unwrap()).unwrap(),
         snapshot
     );
+}
+
+#[test]
+fn acknowledgement_wire_preserves_document_prefix_without_frame_or_input_authority() {
+    let json = r#"{"AccessibilityAcknowledge":{"delivery":{"version":1,"frame_source":4,"document_generation":3,"revision":7}}}"#;
+    let command: ClientMessage = serde_json::from_str(json).unwrap();
+    let ClientMessage::AccessibilityAcknowledge { delivery } = command else {
+        panic!("delivery command")
+    };
+    assert_eq!(delivery.revision, 7);
+    assert_eq!(
+        serde_json::to_value(ClientMessage::AccessibilityAcknowledge { delivery }).unwrap(),
+        serde_json::from_str::<serde_json::Value>(json).unwrap(),
+    );
+    let reply = ServerMessage::AccessibilityAcknowledged(delivery);
+    let ServerMessage::AccessibilityAcknowledged(round_trip) =
+        serde_json::from_value(serde_json::to_value(reply).unwrap()).unwrap()
+    else {
+        panic!("delivery reply")
+    };
+    assert_eq!(round_trip, delivery);
+    let snapshot: AiSnapshot = serde_json::from_str(
+        r#"{"generation":8,"tab_id":2,"url":null,"scroll_y":0,"nodes":[],"accessibility":{"document_generation":3,"revision":7,"acknowledged_revision":7,"delivery_version":1,"announcements":[]}}"#,
+    ).unwrap();
+    let stream = snapshot.accessibility.unwrap();
+    assert_eq!(stream.acknowledged_revision, 7);
+    assert_eq!(stream.delivery_version, 1);
 }
 
 #[test]

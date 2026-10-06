@@ -281,5 +281,9 @@ AppKit advertises directional filtered rotors while retaining editor focus and
 rejecting stale/foreign items. Full native acceptance and host-prepared Rust
 verification, including unsuccessful default-runner startup attempts, are
 recorded in [MACOS_LIVE_REGION_ROTOR_RESULTS.md](MACOS_LIVE_REGION_ROTOR_RESULTS.md).
-Retained announcement delivery, document text selection, complete ARIA semantics
-and physical VoiceOver remain open in the macOS delivery plan.
+The subsequent retained-delivery increment preserves ready announcements through
+layout gaps and releases only source/document-scoped observed prefixes. Its
+complete native and normal-runner Rust acceptance is recorded in
+[MACOS_ANNOUNCEMENT_DELIVERY_RESULTS.md](MACOS_ANNOUNCEMENT_DELIVERY_RESULTS.md).
+Document text selection, complete ARIA semantics and physical VoiceOver remain
+open in the macOS delivery plan.
