@@ -34,6 +34,18 @@ fn ordinary_library_tail_eval_result_boundary_contracts() {
 
 #[cfg(coverage)]
 #[test]
+fn ordinary_library_d1_vm_boundary_contracts() {
+    blueice_bluejs::Vm::verify_d1_vm_boundary_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
+fn ordinary_library_regex_pool_boundary_contracts() {
+    blueice_bluejs::regex_worker::verify_regex_pool_boundary_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
 fn ordinary_library_agent_receive_callback_boundary_contracts() {
     blueice_bluejs::Vm::verify_agent_receive_callback_boundary_contracts();
 }

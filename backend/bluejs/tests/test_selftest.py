@@ -427,6 +427,47 @@ class ExecutionContracts(unittest.TestCase):
         ordinary = next(test for test in selection["tests"] if test["id"] == "rust:test:ordinary_library")
         self.assertEqual(ordinary["case_filters"], ["boundary_case"])
 
+    def test_regex_pool_graph_selects_lifecycle_consumers_and_ordinary_fixtures(self):
+        worker = self.root / "backend/bluejs/src/regex_worker.rs"
+        before = 'const MEMO_UNITS: usize = 1024;\nfn remember() {old();}\nfn with_worker() {old();}\n'
+        worker.write_text(before)
+        for name in ("regex_worker_reuse", "regex_deadlines", "regexp_observable_ordering", "unrelated"):
+            (self.root / f"backend/bluejs/tests/{name}.rs").write_text("#[test] fn contract() {}")
+        ordinary = self.root / "backend/bluejs/tests/ordinary_library.rs"
+        ordinary.write_text("#[test] fn lifecycle() {regex_worker::verify_regex_pool_boundary_contracts();}\n"
+                            "#[test] fn other() {Vm::verify_other_contracts();}")
+        self.retain_rust_anchor()
+        worker.write_text(before.replace("old();", "corrected();") +
+            '/// Retire outside the lock.\nfn recycle_worker() {}\n'
+            '#[cfg(any(test, coverage))]\n#[path = "../tests/fixtures/regex_pool_boundaries.rs"]\n'
+            'mod pool_boundary_contracts;\n#[cfg(coverage)]\n#[doc(hidden)]\n'
+            'pub use pool_boundary_contracts::verify_regex_pool_boundary_contracts;\n')
+        selection = partition_plan(self.manager)
+        self.assertEqual(selection["unknown_sources"], [])
+        self.assertEqual({test["id"] for test in selection["tests"]}, {
+            "rust:lib", "rust:test:regex_worker_reuse", "rust:test:regex_deadlines",
+            "rust:test:regexp_observable_ordering", "rust:test:ordinary_library", "test262:partition:regex-pool"})
+        library = next(test for test in selection["tests"] if test["id"] == "rust:lib")
+        self.assertEqual(library["case_filters"], ["regex_worker::"])
+        public = next(test for test in selection["tests"] if test["id"] == "rust:test:ordinary_library")
+        self.assertEqual(public["case_filters"], ["lifecycle"])
+        conformance = next(test for test in selection["tests"] if test["kind"] == "test262")
+        self.assertIn("built-ins/RegExp/", conformance["case_filters"])
+        self.assertIn("built-ins/String/prototype/split/", conformance["case_filters"])
+
+    def test_regex_pool_contract_refuses_changed_constants_imports_and_other_bodies(self):
+        worker = self.root / "backend/bluejs/src/regex_worker.rs"
+        before = 'const MEMO_UNITS: usize = 1024;\nconst VERSION: &str = "old string";\nfn remember() {old();}\nfn find() {old();}\n'
+        worker.write_text(before)
+        (self.root / "backend/bluejs/tests/unrelated.rs").write_text("#[test] fn contract() {}")
+        self.retain_rust_anchor()
+        for after in (before.replace("1024", "2048"), before.replace("old string", "changed string"), "use new_dependency::*;\n" + before,
+                      before.replace("fn find() {old();}", "fn find() {changed();}")):
+            worker.write_text(after)
+            selection = partition_plan(self.manager)
+            self.assertIn("backend/bluejs/src/regex_worker.rs", selection["unknown_sources"])
+            self.assertIn("rust:test:unrelated", {test["id"] for test in selection["tests"]})
+
     def test_fixture_selection_follows_only_relevant_public_wrapper_roots(self):
         fixture = self.root / "backend/bluejs/tests/fixtures/boundary.rs"
         fixture.parent.mkdir(parents=True)

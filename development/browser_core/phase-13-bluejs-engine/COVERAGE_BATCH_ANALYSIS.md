@@ -2,31 +2,274 @@
 
 ## Current verified completion
 
-The latest complete measurement is `20261006-183231-de935772`, source fingerprint
-`a791618afcfab936be3ea79a37ef40dfcc5d86c9d1d56416341b9e9243372b95`.
-All 22 selected files are complete: nine D5 and thirteen D4 files. All 50
+The latest complete measurement is `20261007-104315-a2610d61`, source fingerprint
+`36badcecc52bba028b13907c2158e75008f6335bf893cbf1561e00f284872cc7`.
+All 22 selected files are complete: nine D5 and thirteen D4 files. All 51
 cumulative modified production files reach 100% raw LLVM lines, functions and
-regions. All 95 originally complete files are preserved. Coverage percentage
-regressions and semantic outcome changes are both zero. Overall, 131/162
-instrumented production files are complete; the remaining 31 files are outside
-the completed selected and modified acceptance set.
+regions. All 131 previously complete files are preserved, including all 95
+originally complete files. Coverage percentage regressions and semantic outcome
+changes are both zero. Overall, 134/162 instrumented production files are
+complete; 28 files remain incomplete.
 
-The complete verification passed 4,099 Rust cases across all 334 targets,
+The complete verification passed 4,107 Rust cases across all 334 targets,
 all 102,921 applicable Test262 modes, 2,170 other workspace cases, two Rustdoc
-tests and 73 self-test tooling contracts. Four Rust and 60 workspace ignored
+tests and 75 self-test tooling contracts. Four Rust and 60 workspace ignored
 cases retain their existing identities. The semantic audit compares all
-102,926 scheduled modes and finds zero changes. Test262 took 441.025 seconds;
-the complete workflow took 2,386.816 seconds. All 88 task Rust files pass
+102,926 scheduled modes and finds zero changes. Test262 took 375.797 seconds;
+the complete workflow took 2598.058 seconds. All 90 task Rust files pass
 formatting; workspace Clippy denies warnings. The 20 unchanged workspace
 formatting differences retain their baseline source hashes.
 
-The final correction's graph selected only two agent callback cases in two
-owning Rust targets. They passed in 0.029 seconds of case execution before the
-single fresh complete verification. Their partial profiles provide diagnostic
-witnesses and graph relationships only. Every completion counter above comes
-from the subsequent full run's own binaries, source texts and atomic LLVM
-profiles. No failed or partial profiles, older maps or complementary-instantiation
-union contributes to completion.
+The frozen batch first passed 86 Rust cases in 19 native partitions across
+16 owning targets, 5,072 related Test262 modes and 75 tooling contracts. That
+partition run took 183.102 seconds, including builds and diagnostic exports.
+Its profiles provide graph relationships and diagnostic witnesses only. Every
+completion counter above comes from the subsequent full run's own binaries,
+source texts and atomic LLVM profiles. No failed or partial profiles, older maps
+or complementary-instantiation union contributes to completion.
+
+## Verified D1 completion
+
+The [D1 acceptance audit](../../../target/bluejs-selftest/runs/20261007-104315-a2610d61/d1-acceptance-audit.json)
+verifies all three targets at 100% raw lines, functions and regions, preservation
+of all 131 previously complete files, all 51 modified production files complete,
+and zero semantic or per-file percentage regressions.
+
+| D1 source | Raw lines | Raw functions | Raw regions | Status |
+| --- | --- | --- | --- | --- |
+| [`regex_worker.rs`](../../../backend/bluejs/src/regex_worker.rs) | 657 / 657 | 77 / 77 | 967 / 967 | Complete (100% in all three metrics) |
+| [`vm/builtins/array_change_by_copy.rs`](../../../backend/bluejs/src/vm/builtins/array_change_by_copy.rs) | 197 / 197 | 14 / 14 | 456 / 456 | Complete (100% in all three metrics) |
+| [`vm/intl/number_options.rs`](../../../backend/bluejs/src/vm/intl/number_options.rs) | 446 / 446 | 32 / 32 | 633 / 633 | Complete (100% in all three metrics) |
+
+Worker recycling now exposes its private pool boundary and explicitly releases
+the pool lock before excess-worker shutdown, transport joining and child
+reaping. Independent owned-worker fixtures verify the capacity, actual compile
+request, reuse identity, shutdown and retained workers without changing the
+shared global pool. Actual path-ingress I/O errors retain their kind and message.
+
+Memo eviction relies on its sole mutator's queue/map/accounting invariant.
+Every admitted key exists once in both structures; an empty memo and an admitted
+key fit the UTF-16 code unit budget. Entry and code unit limits, duplicate identity,
+FIFO eviction, cached negative matches and oversized admission are verified in
+both native instantiations. Only impossible private bookkeeping alternatives
+were replaced with explicit invariant checks.
+
+The array fixture uses compiled public calls to all four change-by-copy methods
+with an oversized result length, checking RangeError, cleanup and successful VM
+reuse under normal and one-object nurseries. Together with the retained unit
+allocation sweep, the required compiled helper covers every raw region.
+NumberFormat retains its fallible cold Intl entry. A genuine heap refusal keeps
+its intrinsic cache unpublished, and later public construction succeeds under
+both nursery configurations. Neither array nor NumberFormat production code
+needed a change.
+
+## Remaining 28-file difficulty analysis
+
+This analysis uses the complete measurement identified above, recorded at
+`2026-10-07T03:25:40.192737+00:00`. The current runtime source fingerprint still
+matches that frozen snapshot. The remaining debt is **326 lines, 55 functions
+and 709 regions** across exactly 28 files. Reading and classifying the retained
+LLVM export executes no Rust tests or JavaScript cases and creates no new
+coverage result.
+
+The [raw per-file results](../../../target/bluejs-selftest/runs/20261007-104315-a2610d61/report-data.json)
+are the measurement authority. The derived
+[maximum-instantiation gap diagnostic](../../../target/bluejs-selftest/runs/20261007-104315-a2610d61/best-instantiation-gaps.json)
+reconciles all 162 raw region summaries exactly and records the function,
+instantiation and source location behind each gap. Region counts are LLVM code
+regions, not branch-coverage counts or required test-case counts. Missed function
+summaries can describe error closures rather than an entirely untested feature.
+
+### Difficulty criteria
+
+The grades estimate the work needed to achieve all three raw metrics while
+preserving behavior. They consider whether a valid caller can reach the gap,
+the complexity of retaining objects and execution state, observable getters and
+callbacks, real allocation or root refusal, and dependencies on compiler or
+provider guarantees. Gap size breaks ties within a grade; it does not determine
+the grade. No completion-time estimate is inferred from these counts.
+
+| Grade | Meaning | Files | Missing lines | Missing functions | Missing regions |
+| --- | --- | --- | --- | --- | --- |
+| D4 | Very hard: several lifecycles or producer contracts, broad semantic impact | 4 | 178 | 33 | 358 |
+| D3 | Hard: a dedicated state/refusal matrix or a substantial invariant review | 9 | 107 | 20 | 224 |
+| D2 | Moderate: bounded public fixtures and localized producer review | 15 | 41 | 2 | 127 |
+| **Total** | **Remaining incomplete files** | **28** | **326** | **55** | **709** |
+
+The four D4 files contain 358 of the 709 missing regions and 33 of the 55 missed
+function summaries. The earlier selected nine D5 and thirteen D4 files remain
+complete; these grades describe the remaining inventory only. The former D0
+labels have been removed because even a single missing region needs a valid
+execution witness or a supported invariant proof.
+
+### Ranked inventory and completion approach
+
+`L / F / R` means missing raw lines, functions and regions. Locations below
+refer to this frozen source. Candidate invariants remain review tasks unless
+the producer evidence is explicitly established in the following sections.
+Rows within each grade sort by missing regions, then source path, matching the
+canonical report.
+
+| Rank | Grade | Source | Missing L / F / R | Actual gap and required work |
+| --- | --- | --- | --- | --- |
+| 1 | D4 | [`vm/host_objects.rs`](../../../backend/bluejs/src/vm/host_objects.rs) | 95 / 18 / 116 | Click dispatch and listener cleanup (207–422); family/method/accessor/factory installation (432–649); callback dispatch (659–781). Exercise real embedding errors, root and heap refusal, listener mutation, callback exceptions and retry. Separately review private registration IDs and checked capacity arithmetic. |
+| 2 | D4 | [`vm/builtins/native_dispatch/dispatch.rs`](../../../backend/bluejs/src/vm/builtins/native_dispatch/dispatch.rs) | 21 / 2 / 88 | Promise settlement (130–154), buffer/view reads (705–887), callable/constructor dispatch, boxed values and iterator/constructor paths. Distinguish already-validated internal reads from real callbacks and resource failures. Review the unreachable BigInt conversion fallback against the locked dependency, then retain cross-Realm and refusal contracts. |
+| 3 | D4 | [`vm/properties.rs`](../../../backend/bluejs/src/vm/properties.rs) | 37 / 5 / 88 | Private owner/declaration lookup (286–400), function naming and class metadata, copy refusal (699), and private for-in records (750–863). Trace compiler and record producers before changing guards. Preserve Proxy own-key/descriptor/prototype behavior, getters, private brand errors, live roots and cleanup. |
+| 4 | D4 | [`vm/intl/list_duration.rs`](../../../backend/bluejs/src/vm/intl/list_duration.rs) | 25 / 8 / 66 | List option UTF-16 errors, provider construction/formatting and element-part correspondence; Duration record coercion; parts/resolved-options allocation. Add genuine option/getter/string-limit and allocation cases. Provider-only errors require a review of `backend/ecma402` and its retained data contract before any refactor. |
+| 5 | D3 | [`vm/json.rs`](../../../backend/bluejs/src/vm/json.rs) | 12 / 0 / 41 | Raw JSON freezing (152–158), reviver holder state (199), boxed/foreign serialization (544–592), initialization and parser guards. Use public reviver/replacer/coercion and refusal fixtures; prove fresh-object freezing and parser lookahead guarantees separately. Preserve observable property access and exact thrown values. |
+| 6 | D3 | [`vm/temporal/plain_time.rs`](../../../backend/bluejs/src/vm/temporal/plain_time.rs) | 22 / 5 / 34 | Receiver extraction (242–255), lone-surrogate conversion (318, 648–650), rounding/options, duration construction and locale-format slots. Verify the dispatch brand check and bounded duration producer; cover real argument errors and allocation refusal without removing argument validation. |
+| 7 | D3 | [`vm/temporal/instant.rs`](../../../backend/bluejs/src/vm/temporal/instant.rs) | 13 / 7 / 32 | Receiver extraction, repeated `Instant::try_new` error closures after arithmetic/range checks, timezone UTF-16 conversion (405), and duration allocation (247). Trace each epoch producer and arithmetic bound, then exercise public limits, malformed timezone strings and resource refusal. |
+| 8 | D3 | [`ast/retained_payload.rs`](../../../backend/bluejs/src/ast/retained_payload.rs) | 5 / 0 / 25 | Generic Box/Vec checked accounting (52–61), BigInt limb arithmetic (68–72), compiler-generated class statements (432–437). Retain overflow refusal and source-text deduplication. Exercise legitimate generated AST shapes and shared checked-arithmetic boundaries without allocating an impossible AST or unioning generic instantiations. |
+| 9 | D3 | [`vm/builtins/uint8array.rs`](../../../backend/bluejs/src/vm/builtins/uint8array.rs) | 15 / 1 / 25 | Branded byte reads/writes (185–253), partial Base64 rejection/progress (397, 459), cold prototypes and encoding invariants (616). Cover public malformed tails, foreign views and real refusal; prove no callback or collection invalidates the validated byte-read interval. Preserve partial writes and progress fields. |
+| 10 | D3 | [`vm/temporal/conversion/zoned_conversion.rs`](../../../backend/bluejs/src/vm/temporal/conversion/zoned_conversion.rs) | 24 / 5 / 24 | Duplicate plain/zoned receiver errors (17–29, 120–129) and Instant conversion after a zoned value is validated (133). Audit all dispatch and internal callers, epoch range, timezone/provider setup and locale ordering. A malformed receiver must still fail at the public boundary before observing options. |
+| 11 | D3 | [`vm/builtins/resource_management.rs`](../../../backend/bluejs/src/vm/builtins/resource_management.rs) | 12 / 2 / 23 | Explicit disposal methods (94–100), method-less async resources, async-helper parse/compile closures (337, 346), lazy prototypes and Promise resolution (748). Trace actual callers of the optional-method form. Cover nullish await ordering, callback throws, suppression, heap/root refusal and VM reuse; review fixed helper source separately. |
+| 12 | D3 | [`vm/builtins/promise_core.rs`](../../../backend/bluejs/src/vm/builtins/promise_core.rs) | 2 / 0 / 10 | Callable/species checks and retained Promise lookup (561) used by internal/public then paths (603, 663). User species constructors can run arbitrary code before reaction installation. Review retention and re-entry, preserve genuine callback/capability errors, and compare pending, fulfilled, rejected and foreign cases. |
+| 13 | D3 | [`vm/debugger/inspection.rs`](../../../backend/bluejs/src/vm/debugger/inspection.rs) | 2 / 0 / 10 | The non-cell binding preview arm (100), retained cell reads (98), nested/linked continuation lookup and stack snapshot guards. Obtain slots through a real compiled pause and preview an actual uncaptured binding; inspect whether each guard is reachable after the preceding snapshot validation. Preserve frame identity, TDZ and resume behavior. |
+| 14 | D2 | [`parser/statements.rs`](../../../backend/bluejs/src/parser/statements.rs) | 27 / 0 / 40 | Escaped await/yield labels, static-block context, using/for patterns and punctuation/ASI failures. Prepare public script/module negative cases with exact error classification. Review token lookahead for expectation failures already excluded by dispatch; preserve valid sloppy labels and for-head disambiguation. |
+| 15 | D2 | [`vm/test262/assertions.rs`](../../../backend/bluejs/src/vm/test262/assertions.rs) | 2 / 0 / 13 | Test262Error message conversion (80), cold error initialization (94), typeof/Boolean classification and exhaustive native-name filtering (65). Add real throwing conversion and initializer refusal; reuse the shared live-value classification review while retaining assertion error identity and wording. |
+| 16 | D2 | [`vm/builtins/arrays.rs`](../../../backend/bluejs/src/vm/builtins/arrays.rs) | 0 / 0 / 12 | Eleven callback/constructor classification propagation regions and one cold ordinary-array creation path (1392). A noncallable callback already has a normal rejection path; it does not trigger the classifier's own error. Review valid-handle provenance and add an actual initializer refusal fixture. |
+| 17 | D2 | [`vm/builtins/general.rs`](../../../backend/bluejs/src/vm/builtins/general.rs) | 1 / 0 / 10 | Repeated heap reads in `is_callable` after `proxy_capabilities` validates the handle (33–35), plus coercion, RegExp and intrinsic-entry guards. Review foreign/reverse facade classification and the interval between validation and reads. Keep invalid ingress, revoked-Proxy and observable coercion errors at their real boundaries. |
+| 18 | D2 | [`vm/temporal/conversion/calendar_fields.rs`](../../../backend/bluejs/src/vm/temporal/conversion/calendar_fields.rs) | 8 / 2 / 10 | `withCalendar` duplicate receiver-error closures (505–510) and Temporal slot reads. Audit the receiver-kind map and other conversion callers. Keep missing/invalid calendar argument and property-bag getter errors fallible and ordered after receiver validation. |
+| 19 | D2 | [`heap/object_storage.rs`](../../../backend/bluejs/src/heap/object_storage.rs) | 1 / 0 / 8 | Namespace/arguments cell lookups after validation, Array `length` deletion (712), key enumeration, and a retained test-region counter (1303). Use actual arguments/namespace producers and the public non-configurable deletion contract. Inspect the test region's instantiation instead of relocating it or excluding it to change the denominator. |
+| 20 | D2 | [`vm/builtins/numbers.rs`](../../../backend/bluejs/src/vm/builtins/numbers.rs) | 2 / 0 / 7 | Boxed receiver read (212), ToString/LocaleString arms handled before the later match (286–287), and primitive string conversion of nonfinite numbers (294–322). Review method dispatch and the primitive converter; preserve public invalid-receiver errors, formatting results and coercion order. |
+| 21 | D2 | [`vm/functions.rs`](../../../backend/bluejs/src/vm/functions.rs) | 0 / 0 / 6 | Validated callable prototype/constructor reads in bind (18, 23), and `has_instance` native/foreign/bound reads (95–110). Check rooting across custom hasInstance and Proxy prototype callbacks; local read proofs must not bypass foreign intrinsic or bound-function behavior. |
+| 22 | D2 | [`vm/builtins/collections.rs`](../../../backend/bluejs/src/vm/builtins/collections.rs) | 0 / 0 / 5 | Object/Map groupBy and Array.from/of callback/constructor classifier errors (70, 156, 292, 310, 426). Reuse the shared classifier review. Preserve mapper throws, custom constructor execution, iterator closing and the ordinary noncallable/nonconstructible outcomes. |
+| 23 | D2 | [`vm/builtins/collection_iteration.rs`](../../../backend/bluejs/src/vm/builtins/collection_iteration.rs) | 0 / 0 / 4 | Cold Function prototype, prototype root refusal, owned-root release (33, 35, 64), and forEach callback classification (132). Use a real cold initializer/root limit and prove root ownership on cleanup; retain collection mutation during callbacks and retry after refusal. |
+| 24 | D2 | [`compiler.rs`](../../../backend/bluejs/src/compiler.rs) | 0 / 0 / 3 | Root declaration slot metadata lookup (306–307). Trace declaration instantiation, name-table ownership and matching binding names across scripts/modules, duplicate declarations and destructuring. Verify debugger metadata through public compilation; do not create inconsistent compiler tables to trigger an impossible lookup. |
+| 25 | D2 | [`vm/test262/cases.rs`](../../../backend/bluejs/src/vm/test262/cases.rs) | 0 / 0 / 3 | Host callback and exhaustive decode/encode callable-classifier errors (95, 357, 461). Reuse live-value validation evidence and retain real callback throws and range refusals. Exhaustive encoder/decoder loops need not be rerun just to reach these three guards. |
+| 26 | D2 | [`vm/builtins/native_dispatch/date.rs`](../../../backend/bluejs/src/vm/builtins/native_dispatch/date.rs) | 0 / 0 / 2 | ToPrimitive and toJSON method-call classification (791, 821). Review method values after observable property lookup; preserve getter/callback throws, noncallable outcomes, nonfinite-Date handling and foreign method behavior. |
+| 27 | D2 | [`vm/builtins/set_methods.rs`](../../../backend/bluejs/src/vm/builtins/set_methods.rs) | 0 / 0 / 2 | Set-record `has` and `keys` callable-classifier errors (80, 87). Getters remain observable and fallible. Reuse shared live-handle evidence, preserving getter order, incorrect methods, foreign callables and iterator-close behavior. |
+| 28 | D2 | [`vm/temporal/dates/construction.rs`](../../../backend/bluejs/src/vm/temporal/dates/construction.rs) | 0 / 0 / 2 | Temporal slot lookup errors on object input to plain-date and date-time conversion (144, 202). These inputs are arguments, not already-branded method receivers. Prove valid local/foreign object provenance without assuming every object is Temporal; preserve normal property-bag fallback and getter errors. |
+
+### What makes the hardest files difficult
+
+**Host objects combine public embedding errors with private registration
+guarantees.** The embedder can legitimately supply another Realm's family,
+repeat an installed name, return a callback error, or encounter a root/heap
+limit. Private family and native registration indices, however, are produced by
+successful installation and have no public arbitrary-index constructor. Several
+missed error closures therefore need producer review. Checked u32 capacity and
+two-slot accessor registration must retain their real refusal semantics; a
+shared arithmetic boundary can be tested without creating billions of objects.
+Click dispatch adds listener snapshots, listener removal during callbacks,
+language exceptions versus resource failures, cancellation state, and cleanup
+before a later dispatch. One broad happy-path host fixture is insufficient.
+
+**Dispatch and properties have broad callers and observable behavior.** A
+classification read may be safe immediately after validation while a nearby
+getter, constructor, Proxy trap or allocation remains fallible. Private fields
+derive their owner and declarations from compiler metadata. For-in records own
+private arrays and slots, but their enumerated subject can still run Proxy
+traps. These two kinds of access must be reviewed separately. The current
+source graph reaches many integration targets through these shared files;
+function contracts are needed before reducing that conservative selection.
+
+The Number(BigInt) fallback in `dispatch.rs:1274` has a stronger existing proof:
+the locked `num-bigint` 0.4.6 BigUint `to_f64` implementation returns `Some` in
+both its finite and overflow arms; BigInt applies the sign to that result.
+Overflow already produces signed infinity. Its `None` fallback cannot be
+triggered by making the integer larger. A correction should preserve the
+dependency contract and test finite conversion plus positive/negative overflow.
+Other dispatch gaps do not inherit that proof.
+
+**Intl crosses a second crate and a provider contract.** The List formatter
+selects ICU or pinned patterns in `backend/ecma402/src/list_format.rs`, and its
+parts collector has a separate correspondence guarantee. Duration formatting
+validates its record again downstream and delegates list formatting. A genuine
+bad user option, malformed UTF-16 string, throwing duration getter or limited
+allocation is different from an unavailable provider or invalid internal parts.
+The latter paths need source/data evidence or a supported provider seam. Removing
+all error propagation merely because current fixtures do not reach it would
+change those contracts without establishing safety.
+
+### Shared causes and boundaries to preserve
+
+1. **Raw maxima can miss a path that already ran.** LLVM function summaries
+   take the maximum covered region count across compiled instantiations. A union
+   of complementary paths does not meet the agreed raw criterion. The D1 array
+   fixture now completes its required compiled helper. Apply the same review to
+   remaining generic AST accounting and native fixture gaps: prepare valid
+   witnesses in the required instantiation and inspect its fresh counters.
+
+2. **A normal TypeError need not cover a classifier's error propagation.**
+   `is_callable` first checks foreign/reverse facades or validates a local object
+   with `proxy_capabilities`. Later native/closure/bound reads run without a
+   callback or allocation. Passing a number exercises `Ok(false)`, not an
+   invalid-handle error. Review this shared guarantee once, retaining fallible
+   external ingress and genuine Proxy/callback errors. Apply the evidence to
+   each caller rather than inventing an invalid heap object.
+
+3. **Temporal method guards differ from conversion arguments.**
+   `native_call` checks `temporal_receiver_kind` before reading arguments
+   (`dispatch.rs:87–96`). This explains duplicate receiver-error closures in
+   PlainTime, Instant, withCalendar and zoned methods. Audit every internal
+   caller too. Conversion arguments in `dates/construction.rs` must continue to
+   accept ordinary property bags. UTF-16 errors, timezone parsing, arithmetic
+   limits, provider failures and allocation refusal remain distinct tasks.
+
+4. **Not every checked-arithmetic error needs a giant fixture.** Retained AST
+   accounting must preserve legitimate overflow reporting and deduplication.
+   Box/Vec/BigInt implementation guarantees can prove particular operations
+   safe; other accumulated sums can still overflow. Review each operation
+   independently and exercise a shared production arithmetic boundary with
+   legitimate edge inputs when necessary. Do not replace overflow protection
+   wholesale or manufacture invalid Vec capacities.
+
+5. **Private helper source and parser lookahead need producer evidence.** The
+   async disposal helper parses and compiles a fixed source with fixed default
+   compile limits; execution remains fallible. Parser statement dispatch and
+   JSON parser dispatch already constrain some expected tokens. Document those
+   constraints before simplifying duplicate failure paths. Public syntax,
+   disposal ordering, suppression and resource failures still require fixtures.
+
+### Dependency groups and focused verification
+
+The ranking determines review priority. Implementation should share producer
+proofs and fixtures across the following groups rather than treating each file
+as an independent test suite. Each remaining file appears in exactly one group;
+the listed targets are starting points for graph contracts, not an assertion
+that all other affected tests can already be omitted.
+
+| Group | Remaining sources | Existing fixture/target starting points |
+| --- | --- | --- |
+| Host, dispatch and inspection | `host_objects.rs`, `properties.rs`, `builtins/native_dispatch/dispatch.rs`, `debugger/inspection.rs` | `internal_boundary_contracts`, `page_runtime_coverage`, `coverage_hard_debugger`, `cov_g8_private`, `cov_g2_language`; the retained ordinary-library and unit verification roots |
+| Shared classification and native consumers | `builtins/general.rs`, `builtins/arrays.rs`, `builtins/collection_iteration.rs`, `builtins/collections.rs`, `builtins/native_dispatch/date.rs`, `builtins/numbers.rs`, `builtins/promise_core.rs`, `builtins/set_methods.rs`, `functions.rs`, `test262/assertions.rs`, `test262/cases.rs` | `cov_g1_functions`, `cov_g1_collections`, `cov_g8_arrays`, `cov_g8_numbers`, `cov_g3_promises`, `cov_g1_test262_host`; exact native unit cases and corresponding Test262 directories |
+| Temporal | `temporal/plain_time.rs`, `temporal/instant.rs`, `temporal/conversion/zoned_conversion.rs`, `temporal/conversion/calendar_fields.rs`, `temporal/dates/construction.rs` | `temporal_receiver_brand_checks`, `cov_g7_instant`, `cov_g8_temporal`, `cov_g4_temporal_conversion`, `temporal_zoned_date_time_to_locale_string`, `temporal_creation_limits` |
+| Intl | `intl/list_duration.rs` | `cov_g1_intl`, `cov_g2_intl_sweeps`, `intl`, `resource_boundaries`; ecma402 tests if its source/provider contract changes |
+| AST and parsing | `ast/retained_payload.rs`, `compiler.rs`, `parser/statements.rs` | `cov_g1_compiler_ast`, `cov_g8_ast`, `cov_g7_parser`, `compiler_private_validation_public`; public compilation/accounting and native parser cases |
+| Serialization, byte codecs and disposal | `json.rs`, `builtins/uint8array.rs`, `builtins/resource_management.rs` | `cov_g7_json`, `json_enumerable_own_properties`, `cov_g7_uint8array`, `cov_g7_resource_management`, `resource_management_gc`, `resource_boundaries` |
+| Local heap storage | `heap/object_storage.rs` | `heap`, public arguments and namespace cases; matching unit/ordinary fixture instantiations |
+
+VM rows in this table are relative to `backend/bluejs/src/vm/`; `ast/`,
+`compiler.rs`, `parser/` and `heap/` are relative to
+`backend/bluejs/src/`. Dependency groups can overlap in their affected tests.
+For example, the classification review informs dispatch, JSON and disposal,
+while Temporal locale conversion depends on Intl. Deduplicate shared targets
+and test names in the selection.
+
+Prepare the complete source, fixture and graph-contract batch before runtime
+testing. Each missing region should have a planned valid witness, an
+instantiation correction, or a documented producer proof and reviewed refactor.
+New contracts must cover the actual owning public and native fixtures; changes
+to shared imports/data or an unmapped boundary retain the broader graph fallback.
+An existing observed edge alone does not prove absence of other dependencies.
+
+Run the affected partitions with exact native case filters after the batch is
+frozen. Inspect fresh partition counters for the selected files and compiled
+instantiations without using those partial profiles as completion evidence.
+Use recorded target/case timings for scheduling; grading a file D1 does not
+imply that its containing Cargo target builds or launches quickly.
+
+After all affected partitions pass for the same source and selection, perform
+one complete Rust, Test262, workspace and raw LLVM verification and update the
+existing canonical tables. For an overall 100% claim, all 28 remaining files and
+every other newly modified or added instrumented file must pass all three raw
+metrics. Preserve all 134 currently complete files, including the previously
+selected 22, modified 51 and original 95; these sets overlap. Require zero
+semantic outcome changes and zero per-file coverage percentage regressions.
+The current 134/162 result remains the verified result until that complete run.
+
+## Verified completion boundaries
 
 ### Verified TailCall eval-result boundary
 
@@ -57,7 +300,7 @@ Dedicated ordinary-library entries avoid unrelated execution sweeps. Fixture
 selection follows actual function references, including intermediate helpers,
 to the public verification roots. Changed public test cases select native names
 when shared imports, constants and helpers are identical. Shared-input edits
-and removed cases select the whole owning target. The 73 tooling contracts
+and removed cases select the whole owning target. The 75 tooling contracts
 validate this behavior. Unknown boundaries still use the broader recorded graph.
 Passing affected partitions enable one complete run for the same frozen source
 and exact test selection. The UI retains live progress, selection reasons, logs,
@@ -102,20 +345,20 @@ IteratorClose self-recursion and TailCall direct-eval paths. Missing async throw
 fixtures separately exercise close getter/call failure and Promise-constructor
 failure when starting the close await, followed by a large native error in finally.
 
-### Verification plan
+### Verified batch workflow
 
-All source and fixture changes precede runtime verification. Formatting, diff
-checking and workspace Clippy run before freezing the batch. The correction
-graph selects Reference cases, TypedArray/buffer matrices, both native fixture
+All source and fixture changes preceded runtime verification. Formatting, diff
+checking and workspace Clippy passed before the batch was frozen. The D1
+graph selected regex lifecycle consumers, affected VM fixtures in both native
 instantiations and related Test262 directories. Imports or shared data changes
-invalidate narrow contracts. Only after those partitions pass for the same
-source and selection does one complete Rust, Test262, workspace and LLVM run
-establish the updated canonical report. Failed or partial profiles do not enter
-completion counters. All 22 selected and all 50 modified production files must
-reach 100% raw lines, functions and regions, with all 95 original complete files
-preserved and no semantic or percentage regression to complete the goal.
-Each verified round that adds complete files without regressions may be committed
-and pushed under the standing authorization, then work continues on its gaps.
+invalidate narrow contracts. After the affected partitions passed for the same
+source and selection, one complete Rust, Test262, workspace and LLVM run
+established the canonical report. Failed or partial profiles do not enter
+completion counters. All 22 selected and all 51 modified production files
+reached 100% raw lines, functions and regions, with all 95 original complete
+files preserved and no semantic or percentage regression. Verified rounds that
+add complete files without regressions may be committed and pushed under the
+standing authorization.
 
 Qualified global property deletion now invalidates the property-backed cell
 at the shared object Delete boundary; DeleteBinding delegates there. Captured
@@ -126,8 +369,9 @@ setter failure assertion passes unchanged in unit and ordinary-library builds.
 The graph includes this deletion contract and reads independent native harness
 lists concurrently within the configured worker limit.
 
-The earlier reviews below retain implementation rationale for their source
-snapshots; they are not evidence for this pending correction batch.
+The earlier reviews below retain historical implementation rationale. Current
+verification evidence is exclusively the complete measurement identified at the
+top of this document.
 
 ## Retained earlier review rationale
 

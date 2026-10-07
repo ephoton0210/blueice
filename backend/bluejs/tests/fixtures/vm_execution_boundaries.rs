@@ -2613,6 +2613,76 @@ impl Vm {
     pub fn verify_tail_eval_result_boundary_contracts() {
         tail_eval_result_string_limits_preserve_vm_reuse();
     }
+
+    /// Verify the remaining array and NumberFormat entry boundaries in both
+    /// compiled library instantiations without unrelated allocation sweeps.
+    #[doc(hidden)]
+    pub fn verify_d1_vm_boundary_contracts() {
+        oversized_change_by_copy_results_refuse_before_allocating_and_allow_reuse();
+        cold_number_format_service_refusal_keeps_the_intrinsic_cache_unpublished();
+    }
+}
+
+#[cfg_attr(test, test)]
+fn oversized_change_by_copy_results_refuse_before_allocating_and_allow_reuse() {
+    let scripts = [
+        "Array.prototype.toReversed.call({length:4294967296})",
+        "Array.prototype.toSorted.call({length:4294967296})",
+        "Array.prototype.toSpliced.call({length:4294967296},0,0)",
+        "Array.prototype.with.call({length:4294967296},0,42)",
+    ]
+    .map(|source| compile(&parse(source).unwrap()).unwrap());
+    let reuse = compile(&parse("[1,2,3].toReversed().join(',')").unwrap()).unwrap();
+    for nursery_capacity in [HeapConfig::default().nursery_capacity, 1] {
+        let mut vm = Vm::new(VmConfig {
+            heap: HeapConfig {
+                nursery_capacity,
+                ..HeapConfig::default()
+            },
+            ..VmConfig::default()
+        })
+        .unwrap();
+        for code in &scripts {
+            assert_eq!(
+                vm.execute_script(code),
+                Err(RuntimeError::RangeError("invalid Array length".into()))
+            );
+            assert!(vm.stack.is_empty());
+            assert!(vm.call_stack.is_empty());
+            assert_eq!(vm.execute_script(&reuse), Ok(Value::String("3,2,1".into())));
+        }
+    }
+}
+
+#[cfg_attr(test, test)]
+fn cold_number_format_service_refusal_keeps_the_intrinsic_cache_unpublished() {
+    let reuse = compile(&parse("new Intl.NumberFormat('en').format(42)").unwrap()).unwrap();
+    for nursery_capacity in [HeapConfig::default().nursery_capacity, 1] {
+        let mut vm = Vm::new(VmConfig {
+            heap: HeapConfig {
+                nursery_capacity,
+                ..HeapConfig::default()
+            },
+            ..VmConfig::default()
+        })
+        .unwrap();
+        vm.remaining_instructions = vm.config.instruction_budget;
+        let limit = vm.heap.allow_only(0);
+        assert_eq!(
+            vm.create_intl_service(native::IntlService::Number, &Value::Undefined, &[], false),
+            Err(RuntimeError::Heap(HeapError::HeapLimitExceeded { limit }))
+        );
+        assert!(!vm
+            .globals
+            .keys()
+            .any(|name| name == "Intl" || name.starts_with("%Intl.")));
+        assert!(vm.stack.is_empty());
+        assert!(vm.call_stack.is_empty());
+        vm.heap.allow_only(16 * 1024 * 1024);
+        assert_eq!(vm.execute_script(&reuse), Ok(Value::String("42".into())));
+        assert!(vm.stack.is_empty());
+        assert!(vm.call_stack.is_empty());
+    }
 }
 
 #[cfg_attr(test, test)]

@@ -24,10 +24,20 @@ BUFFER_TEST262 = ("built-ins/TypedArray/", "built-ins/TypedArrayConstructors/",
 DELETION_FILTERS = ("delete", "eval", "global", "with", "object", "capture")
 DELETION_SOURCES = re.compile(r"\bdelete\b|Reflect\.deleteProperty")
 DELETION_TEST262 = ("language/expressions/delete/", "language/eval-code/", "language/global-code/")
+REGEX_TEST262 = ("built-ins/RegExp/", "language/literals/regexp/",
+                 "built-ins/String/prototype/match/", "built-ins/String/prototype/matchAll/",
+                 "built-ins/String/prototype/replace/", "built-ins/String/prototype/replaceAll/",
+                 "built-ins/String/prototype/search/", "built-ins/String/prototype/split/")
+REGEX_POOL_FIXTURE = re.compile(
+    r'#\[cfg\(any\(test,\s*coverage\)\)\]\s*'
+    r'#\[path\s*=\s*"\.\./tests/fixtures/regex_pool_boundaries\.rs"\]\s*'
+    r'mod\s+pool_boundary_contracts\s*;\s*'
+    r'#\[cfg\(coverage\)\]\s*#\[doc\(hidden\)\]\s*'
+    r'pub\s+use\s+pool_boundary_contracts::verify_regex_pool_boundary_contracts\s*;')
 PUBLIC_TEST_PATTERN = r"(?:#\[[^\n]*\]\s*)*#\[test\]\s*(?:#\[[^\n]*\]\s*)*fn\s+(\w+)\s*"
 
 
-def mask_rust(text):
+def mask_rust(text, literals=None):
     """Keep structural braces while hiding comments and Rust string literals."""
     pattern = re.compile(r'''//[^\n]*|/\*|r(\#*)"|"|'(?:\\(?:x[\da-fA-F]{2}|u\{[\da-fA-F]+\}|.)|[^'\\\n])'|\bfn\b''', re.M)
     result = list(text)
@@ -64,6 +74,8 @@ def mask_rust(text):
                     end += 1
         else:
             end = match.end()
+        if literals is not None and not token.startswith("//") and token != "/*":
+            literals.append(text[start:end])
         result[start:end] = ["\n" if c == "\n" else " " for c in text[start:end]]
         position = end
     return "".join(result)
@@ -162,6 +174,18 @@ def fixture_entry_wrappers(text, test_names):
     return sorted(wrappers & relevant)
 
 
+def regex_pool_body_contract(before, after, symbols):
+    """Accept only pool/memo bodies and the exact conditional fixture export."""
+    if not symbols or not set(symbols) <= {"remember", "with_worker", "recycle_worker"}:
+        return False
+    def shared(text):
+        text = REGEX_POOL_FIXTURE.sub("", text)
+        literals = []
+        masked = mask_rust(outside_functions(text), literals)
+        return re.sub(r"\s+", "", masked), literals
+    return shared(before) == shared(after)
+
+
 def latest_rust_anchor(manager):
     required = {key for key, t in inventory(manager.root).items() if t["kind"] == "rust"}
     for row in manager.history(limit=None):
@@ -243,6 +267,8 @@ def partition_plan(manager, files=None, base=None):
         deletion = body_only and bool(symbols) and (
             (name.endswith("/vm/builtins/object.rs") and symbols == ["object_delete"]) or
             (name.endswith("/vm/execution.rs") and symbols == ["delete_unbound_name"]))
+        regex_pool = name == "backend/bluejs/src/regex_worker.rs" and regex_pool_body_contract(
+            frozen.get(name, ""), after, symbols)
         if reference:
             reason = "Reference resolution contract: " + name
             add("rust:lib", REFERENCE_FILTERS, reason)
@@ -278,6 +304,19 @@ def partition_plan(manager, files=None, base=None):
                         # individual test bodies; keep every case in that owner.
                         add(key, [""], reason + "; public source contains the related buffer contract")
             boundaries.append({"source": name, "symbols": symbols, "contract": "TypedArray and buffers"})
+        elif regex_pool:
+            reason = "Regex worker pool and memo ownership contract: " + name
+            add("rust:lib", ["regex_worker::"], reason)
+            for key, target in targets.items():
+                if target["kind"] == "rust" and target["label"].startswith((
+                        "regex_", "regexp_", "annex_b_regexp", "cov_g1_regex_", "cov_g8_regexp")):
+                    add(key, [""], reason)
+                elif target["kind"] == "rust" and target.get("source", "").startswith("backend/bluejs/tests/"):
+                    source = manager.root / target["source"]
+                    filters = public_wrapper_cases(source.read_text(), ["verify_regex_pool_boundary_contracts"]) if source.is_file() else []
+                    if filters:
+                        add(key, filters, reason + "; ordinary-library lifecycle fixture")
+            boundaries.append({"source": name, "symbols": symbols, "contract": "Regex pool and memo"})
         elif "/tests/fixtures/" in name and symbols:
             test_names = [symbol for symbol in symbols if re.search(
                 r"#\[cfg_attr\(test,\s*test\)\]\s*fn\s+" + re.escape(symbol) + r"\b", after)]
@@ -322,15 +361,16 @@ def partition_plan(manager, files=None, base=None):
     reference = any(boundary["contract"] == "Reference resolution" for boundary in boundaries)
     buffer = any(boundary["contract"] == "TypedArray and buffers" for boundary in boundaries)
     deletion = any(boundary["contract"] == "Global property deletion" for boundary in boundaries)
-    if "test262:all" not in selected and (reference or buffer or deletion):
-        key = ("test262:partition:buffer-contracts" if buffer else
+    regex_pool = any(boundary["contract"] == "Regex pool and memo" for boundary in boundaries)
+    if "test262:all" not in selected and (reference or buffer or deletion or regex_pool):
+        key = ("test262:partition:regex-pool" if regex_pool else "test262:partition:buffer-contracts" if buffer else
                "test262:partition:global-deletion" if deletion else "test262:partition:reference-resolution")
         filters = ((REFERENCE_TEST262 if reference else ()) + (BUFFER_TEST262 if buffer else ())
-                   + (DELETION_TEST262 if deletion else ()))
-        label = ("Related buffer, Reference and deletion contracts" if deletion else
+                   + (DELETION_TEST262 if deletion else ()) + (REGEX_TEST262 if regex_pool else ()))
+        label = ("Related regex pool and native contracts" if regex_pool else "Related buffer, Reference and deletion contracts" if deletion else
                  "Related TypedArray and buffer contracts" if buffer else "Related Test262 Reference contracts (5 files, 10 modes)")
         selected[key] = {**targets["test262:all"], "id": key, "target_id": "test262:all",
-                         "label": label, "case": "buffer-contracts" if buffer else "global-deletion" if deletion else "reference-resolution",
+                         "label": label, "case": "regex-pool" if regex_pool else "buffer-contracts" if buffer else "global-deletion" if deletion else "reference-resolution",
                          "case_filters": list(filters), "filter": ",".join(filters),
                          "required_modes": [(path, mode) for path in (REFERENCE_TEST262 if reference else ()) for mode in ("sloppy", "strict")],
                          "reasons": [boundary["contract"] for boundary in boundaries if boundary["contract"] != "Regression fixture"]}

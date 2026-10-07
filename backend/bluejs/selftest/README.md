@@ -69,6 +69,14 @@ public deletion cases and Test262 delete/eval/global-code directories.
 Both qualified property deletion and unqualified DeleteBinding reach the same
 VM cleanup boundary, so their tests participate in one selection.
 
+Regex pool and memo edits have a contract for the native transport/cache cases,
+worker reuse/deadline targets, public RegExp cases, the ordinary-library fixture
+and related RegExp/String Test262 directories. The contract accepts only the
+three pool/memo function bodies and their exact conditional fixture declaration.
+Shared constants, imports, other functions and unknown declarations retain the
+broader selection. Independent fixture pools verify retirement outside the lock
+without changing the global idle pool used by concurrently running cases.
+
 The runner builds only selected owning targets, rechecks known failed cases,
 lists independent harnesses concurrently within the configured worker limit
 without executing test names, deduplicates the selection, and
