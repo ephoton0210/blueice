@@ -20,7 +20,8 @@ from backend.bluejs.selftest.common import digest, relative, retain_coverage_ref
 from backend.bluejs.selftest.graph import empty_graph, inventory, plan, static_edges
 from backend.bluejs.selftest.coverage import covered_sources, import_baseline, latest_baseline, profile_owners
 from backend.bluejs.selftest.report import compare_outcomes, coverage_summary, publish_report, render_report
-from backend.bluejs.selftest.runner import Manager, test262_passed, validate_impact
+from backend.bluejs.selftest.runner import Manager, refresh_observations, test262_passed, validate_impact
+from backend.bluejs.selftest.shared_functions import body_contract, shared_function_graph, verified_body_contracts
 from backend.bluejs.selftest.partitions import (case_partitions, changed_opcodes, changed_symbols, latest_rust_anchor,
                                               partition_plan, passed_partition, public_reference_cases, selection_identity)
 from backend.bluejs.selftest.server import Application, make_server
@@ -120,6 +121,69 @@ class ImpactContracts(unittest.TestCase):
         edges, _ = static_edges(self.root)
         self.assertIn({"source": "backend/bluejs/src/feature.rs", "target": "backend/bluejs/src/consumer.rs", "kind": "static"}, edges)
 
+    def test_shared_function_references_connect_isolated_owners_and_skip_literals(self):
+        owner = "backend/bluejs/src/vm/classification.rs"
+        caller = "backend/bluejs/src/vm/consumer.rs"
+        self.write(owner, "impl Vm { fn is_callable(&self, value: &Value) -> bool { true } }")
+        self.write(caller, '''impl Vm {
+            fn related(&self) {
+                // self.is_callable(comment);
+                let text = "self.is_callable(string)";
+                let raw = r#"self.is_callable(raw)"#;
+                self.is_callable(actual);
+                fn nested() { unrelated(); }
+                self.is_callable(after_nested);
+            }
+        }''')
+        entry = next(item for item in shared_function_graph(self.root) if item["symbol"] == "is_callable")
+        self.assertEqual(len(entry["definitions"]), 1)
+        self.assertEqual([ref["function"] for ref in entry["references"]], ["related", "related"])
+        self.assertEqual({ref["source"] for ref in entry["references"]}, {caller})
+        self.assertEqual(entry["definitions"][0]["source_sha256"], digest(self.root / owner))
+        edges, _ = static_edges(self.root)
+        self.assertIn({"source": owner, "target": caller, "kind": "shared-function"}, edges)
+
+    def test_shared_function_ambiguity_retains_both_definitions(self):
+        self.write("backend/bluejs/src/first.rs", "impl First { fn is_callable(&self) {} }")
+        self.write("backend/bluejs/src/second.rs", "impl Second { fn is_callable(&self) {} }")
+        self.write("backend/bluejs/src/caller.rs", "fn test() { receiver.is_callable(); }")
+        edges, _ = static_edges(self.root)
+        for owner in ("first", "second"):
+            self.assertIn({"source": f"backend/bluejs/src/{owner}.rs", "target": "backend/bluejs/src/caller.rs", "kind": "shared-function"}, edges)
+
+    def test_shared_body_contract_uses_current_complete_evidence_and_checks_signatures(self):
+        owner = "backend/bluejs/src/heap/capabilities.rs"
+        caller = "backend/bluejs/src/vm/builtins/native_dispatch/dispatch.rs"
+        before = "fn object_capabilities(&self, id: u64) -> bool { false }"
+        self.write(owner, before)
+        self.write(caller, "fn native_call() { self.object_capabilities(1); }")
+        graph = empty_graph(self.root)
+        graph["observed_targets"] = [key for key, value in graph["tests"].items() if value["kind"] in ("rust", "test262")]
+        graph["shared_body_contracts"] = verified_body_contracts({owner: before}, "complete")
+        graph["edges"].extend([
+            {"source": owner, "target": "rust:test:feature", "kind": "observed", "source_sha256": digest(self.root / owner), "snapshot": "complete"},
+            {"source": caller, "target": "rust:test:other", "kind": "observed"},
+        ])
+        self.write(owner, before.replace("false", "true"))
+        result = plan(graph, [owner], self.root)
+        self.assertEqual(self.selected(result), {"rust:test:feature"})
+        self.assertEqual(result["shared_body_contract_sources"], [owner])
+        self.write(owner, before.replace("id: u64", "id: u32"))
+        self.assertIn("rust:test:other", self.selected(plan(graph, [owner], self.root)))
+        self.assertIn("test262:all", self.selected(plan(graph, [owner], self.root)))
+        self.write(owner, before.replace("false", "true"))
+        graph["edges"][-2]["snapshot"] = "partial"
+        self.assertIn("rust:test:other", self.selected(plan(graph, [owner], self.root)))
+
+    def test_structural_contract_keeps_types_literals_attributes_and_new_helpers(self):
+        before = 'const MODE: &str = "before"; struct State { index: u32 } #[inline] fn helper(x: u32) -> bool { false }'
+        same = before.replace("false", 'new_body("literal"); true')
+        self.assertEqual(body_contract(before), body_contract(same))
+        for changed in (before.replace('"before"', '"after"'), before.replace("index: u32", "index: u64"),
+                        before.replace("#[inline]", "#[cold]"), before.replace("x: u32", "x: u64"),
+                        before + " fn added() {}"):
+            self.assertNotEqual(body_contract(before), body_contract(changed))
+
     def test_cargo_metadata_includes_explicit_targets_and_example_harness(self):
         self.write("backend/bluejs/Cargo.toml", '[package]\nname = "blueice-bluejs"\nversion = "0.1.0"')
         metadata = {"packages": [{"name": "blueice-bluejs", "targets": [
@@ -153,6 +217,36 @@ class ImpactContracts(unittest.TestCase):
 
 
 class MeasurementContracts(unittest.TestCase):
+    def test_observed_relationship_refreshes_evidence_and_retains_history(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            binary, coverage = root / "binary", root / "coverage.json"
+            binary.write_bytes(b"current executable")
+            coverage.write_text('{"fresh": true}')
+            graph = {"edges": [
+                {"source": "source.rs", "target": "rust:test:owner", "kind": "observed", "source_sha256": "old", "evidence": "old-run"},
+                {"source": "earlier-caller.rs", "target": "rust:test:owner", "kind": "observed", "source_sha256": "earlier", "evidence": "old-run"},
+            ]}
+            test = {"id": "rust:test:owner", "kind": "rust", "source": "test.rs", "case_filters": ["related"]}
+            active = {"id": "current-run", "snapshot": "current-snapshot"}
+            hashes = {"source.rs": "current", "test.rs": "test-hash"}
+            refresh_observations(graph, ["source.rs"], test, active, hashes, binary, coverage, root / "profiles")
+            self.assertEqual(len(graph["edges"]), 2)
+            edge = graph["edges"][0]
+            self.assertEqual(edge["source_sha256"], "current")
+            self.assertEqual(edge["evidence"], "current-run")
+            self.assertEqual(edge["snapshot"], "current-snapshot")
+            self.assertEqual(edge["test_source_sha256"], "test-hash")
+            self.assertEqual(edge["binary_sha256"], digest(binary))
+            self.assertEqual(edge["coverage_sha256"], digest(coverage))
+            self.assertEqual(edge["history"], [{"evidence": "old-run", "source_sha256": "old"}])
+            self.assertEqual(graph["edges"][1]["evidence"], "old-run")
+            refresh_observations(graph, ["source.rs"], test, active, hashes, binary, coverage, root / "profiles")
+            self.assertEqual(len(edge["history"]), 1)
+            refresh_observations(graph, ["source.rs"], test, active, hashes, binary, coverage, root / "profiles", complete_owner=True)
+            self.assertEqual(len(graph["edges"]), 1)
+            self.assertEqual(graph["historical_observations"][0]["source"], "earlier-caller.rs")
+
     def test_production_scope_keeps_raw_counters_and_new_executable_declarations(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -293,6 +387,20 @@ class MeasurementContracts(unittest.TestCase):
             data["static_gates"]["snapshot"] = "current"
             self.assertIn("completion gates are satisfied", render_report(data, root, root / "report.md"))
 
+            # A reviewed test-only source has no production counters. Unknown
+            # missing executable paths must continue to block completion.
+            data["modified"].append("heap/tests.rs")
+            data["no_counters"] = {"heap/tests.rs": "Test source; not a coverage target"}
+            audited = render_report(data, root, root / "report.md")
+            self.assertIn("Modified production files complete: **1 / 1**", audited)
+            self.assertIn("Test source; not a coverage target", audited)
+            self.assertIn("completion gates are satisfied", audited)
+            data["modified"].append("missing.rs")
+            unreviewed = render_report(data, root, root / "report.md")
+            self.assertIn("Modified production files complete: **1 / 2**", unreviewed)
+            self.assertIn("Missing counters", unreviewed)
+            self.assertIn("completion gates are not yet satisfied", unreviewed)
+
     def test_profile_crate_names_use_declared_lengths(self):
         symbols = "_RNvCsABC_7feature5check _RNvCsXYZ_14blueice_bluejs2vm"
         self.assertEqual(profile_owners(symbols, {"feature": "rust:test:feature", "blueice_bluejs": "rust:lib"}),
@@ -426,6 +534,35 @@ class ExecutionContracts(unittest.TestCase):
         self.assertEqual({test["id"] for test in selection["tests"]}, {"rust:lib", "rust:test:ordinary_library"})
         ordinary = next(test for test in selection["tests"] if test["id"] == "rust:test:ordinary_library")
         self.assertEqual(ordinary["case_filters"], ["boundary_case"])
+
+    def test_registered_common_fixture_selects_both_builds_when_new_helpers_change(self):
+        ordinary = self.root / "backend/bluejs/tests/ordinary_library.rs"
+        ordinary.write_text("#[test] fn common_case() {Vm::verify_common_boundary_contracts();}\n"
+                            "#[test] fn unrelated_case() {}")
+        self.retain_rust_anchor()
+        fixture = self.root / "backend/bluejs/tests/fixtures/common_boundary_contracts.rs"
+        fixture.parent.mkdir(parents=True)
+        fixture.write_text("fn shared_setup() { install_real_host(); }\n"
+                           "#[cfg_attr(test, test)] fn actual_boundary() {shared_setup();}\n"
+                           "pub fn verify_common_boundary_contracts() {actual_boundary();}")
+        selection = partition_plan(self.manager, [str(fixture)])
+        self.assertEqual(selection["unknown_sources"], [])
+        self.assertEqual({t["id"] for t in selection["tests"]}, {"rust:lib", "rust:test:ordinary_library"})
+        library = next(t for t in selection["tests"] if t["id"] == "rust:lib")
+        self.assertEqual(library["case_filters"], ["vm::classification::boundary_contracts::"])
+        public = next(t for t in selection["tests"] if t["id"] == "rust:test:ordinary_library")
+        self.assertEqual(public["case_filters"], ["common_case"])
+        fixture.write_text(fixture.read_text().replace("install_real_host", "protect_vm_roots"))
+        self.assertEqual(partition_plan(self.manager, [str(fixture)])["unknown_sources"], [])
+
+    def test_registered_common_fixture_without_expected_wrapper_keeps_broad_fallback(self):
+        self.retain_rust_anchor()
+        fixture = self.root / "backend/bluejs/tests/fixtures/common_boundary_contracts.rs"
+        fixture.parent.mkdir(parents=True)
+        fixture.write_text("#[cfg_attr(test, test)] fn actual_boundary() {}")
+        selection = partition_plan(self.manager, [str(fixture)])
+        self.assertEqual(selection["unknown_sources"], ["backend/bluejs/tests/fixtures/common_boundary_contracts.rs"])
+
 
     def test_regex_pool_graph_selects_lifecycle_consumers_and_ordinary_fixtures(self):
         worker = self.root / "backend/bluejs/src/regex_worker.rs"

@@ -233,9 +233,14 @@ def import_verified_run(directory, state, root=ROOT, progress=None):
     existing = load(state / "graph.json", {})
     graph["source_hashes"] = source_state["files"]
     from .graph import rust_structure
+    from .shared_functions import verified_body_contracts
     graph["structures"] = load(directory / "source-structures.json", {})
-    for name, text in load(directory / "frozen-rust-sources.json", {}).items():
+    frozen = load(directory / "frozen-rust-sources.json", {})
+    for name, text in frozen.items():
+        if hashlib.sha256(text.encode()).hexdigest() != source_state["files"].get(name):
+            raise ValueError("Retained source text differs from the verified snapshot")
         graph["structures"][name] = rust_structure(text)
+    graph["shared_body_contracts"] = verified_body_contracts(frozen, run["snapshot"])
     bins = load(directory / "full/bins.json", {})
     tasks["test262:all"] = corpus_task
     warnings = []
@@ -262,7 +267,8 @@ def import_verified_run(directory, state, root=ROOT, progress=None):
             save(destination / "evidence.json", {"inputs": signature, "coverage_sha256": digest(destination / "coverage.json")})
         graph["observed_targets"].append(key)
         graph["edges"].extend({"source": name, "target": key, "kind": "observed", "evidence": str(directory),
-                                "source_sha256": source_state["files"].get(name)} for name in covered_sources(payload, root))
+                                "source_sha256": source_state["files"].get(name), "snapshot": run["snapshot"]}
+                               for name in covered_sources(payload, root))
         graph["tests"][key]["elapsed_seconds"] = task["elapsed_seconds"]
         if progress and (index % 20 == 0 or index == len(tasks)):
             progress("Reading measured target coverage", index, len(tasks))

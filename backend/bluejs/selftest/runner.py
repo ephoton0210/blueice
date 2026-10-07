@@ -30,6 +30,34 @@ CRITICAL_RUST_TARGETS = (
 )
 
 
+def refresh_observations(graph, sources, test, active, hashes, binary, coverage, profile_directory, complete_owner=False):
+    """Refresh current evidence without losing conservative historical callers."""
+    from .partitions import selection_identity
+    provenance = {"evidence": active["id"], "snapshot": active["snapshot"],
+                  "selection_identity": selection_identity({"tests": [test]}),
+                  "test_source_sha256": hashes.get(test.get("source")),
+                  "binary_sha256": digest(binary), "coverage_sha256": digest(coverage),
+                  "profile_directory": str(profile_directory)}
+    existing = {edge["source"]: edge for edge in graph["edges"]
+                if edge["target"] == test["id"] and edge["kind"] == "observed"}
+    if complete_owner:
+        # Only an entire owning harness can retire an obsolete active path.
+        # Partial selections keep the remaining owner relationships intact.
+        obsolete = [edge for source, edge in existing.items() if source not in sources]
+        graph.setdefault("historical_observations", []).extend(obsolete)
+        graph["edges"] = [edge for edge in graph["edges"] if edge not in obsolete]
+    for source in sources:
+        current = {**provenance, "source_sha256": hashes.get(source)}
+        if source in existing:
+            edge = existing[source]
+            if edge.get("source_sha256") != current["source_sha256"]:
+                history = edge.setdefault("history", [])
+                history.append({key: edge[key] for key in (*provenance, "source_sha256") if key in edge})
+            edge.update(current)
+        else:
+            graph["edges"].append({"source": source, "target": test["id"], "kind": "observed", **current})
+
+
 def validate_impact(previous, current):
     if not previous or previous.get("status") != "passed" or previous.get("mode") not in ("impact", "pipeline"):
         raise ValueError("Run the affected tests successfully before starting the full verification")
@@ -516,11 +544,10 @@ class Manager:
             save(destination / "evidence.json", {"inputs": {"binary": digest(binary), "profiles": {str(p): digest(p) for p in profiles}},
                                                   "coverage_sha256": digest(destination / "coverage.json")})
             sources = covered_sources(payload, self.root)
-            # Retain the union of observations to protect previously exercised paths.
-            existing = {e["source"] for e in graph["edges"] if e["target"] == test["id"] and e["kind"] == "observed"}
-            graph["edges"].extend({"source": source, "target": test["id"], "kind": "observed",
-                                   "evidence": self.active["id"], "source_sha256": hashes.get(source)}
-                                  for source in sources if source not in existing)
+            refresh_observations(graph, sources, test, self.active, hashes, binary,
+                                 destination / "coverage.json", task["profile_directory"],
+                                 complete_owner=not test.get("case") and not test.get("filter")
+                                 and (not test.get("case_filters") or test["case_filters"] == [""]))
             graph["observed_targets"] = sorted(set(graph["observed_targets"] + [test["id"]]))
             graph["tests"][test["id"]] = {**test, "elapsed_seconds": task["elapsed_seconds"]}
             if index == 1 or index % 20 == 0 or index == len(measured):
@@ -528,6 +555,13 @@ class Manager:
                            message=f"Reading measured test relationships: {index}/{len(measured)}")
         from .graph import static_edges
         _, graph["structures"] = static_edges(self.root)
+        engine_inventory = {key for key, value in inventory(self.root).items() if value["kind"] in ("rust", "test262")}
+        complete_selection = {test["id"] for test in tests if not test.get("case") and not test.get("filter")
+                              and (not test.get("case_filters") or test["case_filters"] == [""])}
+        if engine_inventory <= complete_selection:
+            from .shared_functions import verified_body_contracts
+            frozen = load(self.state / "runs" / self.active["id"] / "frozen-rust-sources.json", {})
+            graph["shared_body_contracts"] = verified_body_contracts(frozen, self.active["snapshot"])
         graph["source_hashes"] = hashes
         graph["created_at"] = now()
         save(self.state / "graph.json", graph)

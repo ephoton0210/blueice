@@ -43,20 +43,6 @@ impl Heap {
         })
     }
 
-    pub(crate) fn proxy_capabilities(
-        &self,
-        object: ObjectId,
-    ) -> Result<Option<(bool, bool)>, HeapError> {
-        self.object(object).map(|stored| match stored.kind {
-            ObjectKind::Proxy {
-                callable,
-                constructible,
-                ..
-            } => Some((callable, constructible)),
-            _ => None,
-        })
-    }
-
     pub(crate) fn revoke_proxy(&mut self, object: ObjectId) -> Result<(), HeapError> {
         let ObjectKind::Proxy {
             target, handler, ..

@@ -1,12 +1,12 @@
 # macOS Test262 Report
 
-**Measurement: 2026-10-07T03:25:40.192737+00:00. All numbers use this one verified source snapshot.**
+**Measurement: 2026-10-07T10:29:28.165513+00:00. All numbers use this one verified source snapshot.**
 
 ## Current complete inventory
 
-Source fingerprint: `36badcecc52bba028b13907c2158e75008f6335bf893cbf1561e00f284872cc7`. Adapter SHA-256: `d781098447abf46deaa1609c6f28f192d3b654ff3a7866f0b0ec0b35532375c9`. Pinned Test262 revision: `72faf8ec1445c55149615e8b35187830783aba1a`.
+Source fingerprint: `f597b400fb6d359005f4f3276186ac7e92a50ef9dfa76ccfba197ecdfe5ca782`. Adapter SHA-256: `56affd55d305a87e3d7c3d8770a3c89e7dc4815671ed3f85b087d7602c963339`. Pinned Test262 revision: `72faf8ec1445c55149615e8b35187830783aba1a`.
 
-**102,921 applicable modes passed**, across 102,926 scheduled modes and 53,582 test files, in 375.797 seconds. The scheduled inventory retains 4 host exclusions and 1 stale corpus modes. These modes are not counted as passes.
+**102,921 applicable modes passed**, across 102,926 scheduled modes and 53,582 test files, in 468.465 seconds. The scheduled inventory retains 4 host exclusions and 1 stale corpus modes. These modes are not counted as passes.
 
 The runner returns 1 when any scheduled status is not `pass`. The command record retains that exit; semantic outcomes determine the gate.
 
@@ -109,16 +109,16 @@ All counters come from fresh atomic LLVM profiles for the current full run. Comp
 
 | Metric | Covered / instrumented |
 | --- | --- |
-| Lines | 80,856 / 81,182 (99.598433%) |
-| Functions | 5,738 / 5,793 (99.050578%) |
-| Regions | 135,095 / 135,804 (99.477924%) |
+| Lines | 80,951 / 81,205 (99.687211%) |
+| Functions | 5,749 / 5,787 (99.343356%) |
+| Regions | 135,110 / 135,719 (99.551279%) |
 
-**134 / 162 instrumented files are complete; 28 remain incomplete.**
+**139 / 169 instrumented files are complete; 30 remain incomplete.**
 
 | Source file | Raw lines | Raw functions | Raw regions | Status | Note |
 | --- | --- | --- | --- | --- | --- |
 | [`ast.rs`](../../../backend/bluejs/src/ast.rs) | 940 / 940 (100.000000%) | 95 / 95 (100.000000%) | 1,249 / 1,249 (100.000000%) | Complete |  |
-| [`ast/retained_payload.rs`](../../../backend/bluejs/src/ast/retained_payload.rs) | 510 / 515 (99.029126%) | 41 / 41 (100.000000%) | 830 / 855 (97.076023%) | Incomplete |  |
+| [`ast/retained_payload.rs`](../../../backend/bluejs/src/ast/retained_payload.rs) | 511 / 516 (99.031008%) | 42 / 42 (100.000000%) | 835 / 857 (97.432905%) | Incomplete |  |
 | [`bin/bluejs-regexp-worker.rs`](../../../backend/bluejs/src/bin/bluejs-regexp-worker.rs) | 3 / 3 (100.000000%) | 1 / 1 (100.000000%) | 3 / 3 (100.000000%) | Complete |  |
 | [`bin/bluejs-test262.rs`](../../../backend/bluejs/src/bin/bluejs-test262.rs) | 631 / 631 (100.000000%) | 56 / 56 (100.000000%) | 1,211 / 1,211 (100.000000%) | Complete |  |
 | [`bytecode.rs`](../../../backend/bluejs/src/bytecode.rs) | 116 / 116 (100.000000%) | 18 / 18 (100.000000%) | 123 / 123 (100.000000%) | Complete |  |
@@ -133,10 +133,11 @@ All counters come from fresh atomic LLVM profiles for the current full run. Comp
 | [`compiler/statements/tests.rs`](../../../backend/bluejs/src/compiler/statements/tests.rs) | — | — | — | No executable counters | Test source; not a coverage target |
 | [`heap.rs`](../../../backend/bluejs/src/heap.rs) | 744 / 744 (100.000000%) | 78 / 78 (100.000000%) | 1,190 / 1,190 (100.000000%) | Complete |  |
 | [`heap/binary_data.rs`](../../../backend/bluejs/src/heap/binary_data.rs) | 852 / 852 (100.000000%) | 77 / 77 (100.000000%) | 1,307 / 1,307 (100.000000%) | Complete |  |
+| [`heap/capabilities.rs`](../../../backend/bluejs/src/heap/capabilities.rs) | 23 / 23 (100.000000%) | 2 / 2 (100.000000%) | 26 / 26 (100.000000%) | Complete |  |
 | [`heap/collection_iteration.rs`](../../../backend/bluejs/src/heap/collection_iteration.rs) | 93 / 93 (100.000000%) | 5 / 5 (100.000000%) | 120 / 120 (100.000000%) | Complete |  |
 | [`heap/core.rs`](../../../backend/bluejs/src/heap/core.rs) | 1,261 / 1,261 (100.000000%) | 116 / 116 (100.000000%) | 2,546 / 2,546 (100.000000%) | Complete |  |
 | [`heap/debugger.rs`](../../../backend/bluejs/src/heap/debugger.rs) | 163 / 163 (100.000000%) | 10 / 10 (100.000000%) | 239 / 239 (100.000000%) | Complete |  |
-| [`heap/exotic.rs`](../../../backend/bluejs/src/heap/exotic.rs) | 996 / 996 (100.000000%) | 119 / 119 (100.000000%) | 1,160 / 1,160 (100.000000%) | Complete |  |
+| [`heap/exotic.rs`](../../../backend/bluejs/src/heap/exotic.rs) | 984 / 984 (100.000000%) | 117 / 117 (100.000000%) | 1,148 / 1,148 (100.000000%) | Complete |  |
 | [`heap/lifecycle.rs`](../../../backend/bluejs/src/heap/lifecycle.rs) | 294 / 294 (100.000000%) | 31 / 31 (100.000000%) | 510 / 510 (100.000000%) | Complete |  |
 | [`heap/object_storage.rs`](../../../backend/bluejs/src/heap/object_storage.rs) | 1,222 / 1,223 (99.918234%) | 72 / 72 (100.000000%) | 2,593 / 2,601 (99.692426%) | Incomplete |  |
 | [`heap/tests.rs`](../../../backend/bluejs/src/heap/tests.rs) | — | — | — | No executable counters | Test source; not a coverage target |
@@ -167,7 +168,7 @@ All counters come from fresh atomic LLVM profiles for the current full run. Comp
 | [`string.rs`](../../../backend/bluejs/src/string.rs) | 107 / 107 (100.000000%) | 23 / 23 (100.000000%) | 174 / 174 (100.000000%) | Complete |  |
 | [`token.rs`](../../../backend/bluejs/src/token.rs) | 1,381 / 1,381 (100.000000%) | 115 / 115 (100.000000%) | 2,200 / 2,200 (100.000000%) | Complete |  |
 | [`value.rs`](../../../backend/bluejs/src/value.rs) | 27 / 27 (100.000000%) | 5 / 5 (100.000000%) | 38 / 38 (100.000000%) | Complete |  |
-| [`vm.rs`](../../../backend/bluejs/src/vm.rs) | 628 / 628 (100.000000%) | 59 / 59 (100.000000%) | 910 / 910 (100.000000%) | Complete |  |
+| [`vm.rs`](../../../backend/bluejs/src/vm.rs) | 624 / 624 (100.000000%) | 57 / 57 (100.000000%) | 903 / 903 (100.000000%) | Complete |  |
 | [`vm/builtins.rs`](../../../backend/bluejs/src/vm/builtins.rs) | 320 / 320 (100.000000%) | 20 / 20 (100.000000%) | 587 / 587 (100.000000%) | Complete |  |
 | [`vm/builtins/arguments.rs`](../../../backend/bluejs/src/vm/builtins/arguments.rs) | 784 / 784 (100.000000%) | 73 / 73 (100.000000%) | 1,292 / 1,292 (100.000000%) | Complete |  |
 | [`vm/builtins/array_change_by_copy.rs`](../../../backend/bluejs/src/vm/builtins/array_change_by_copy.rs) | 197 / 197 (100.000000%) | 14 / 14 (100.000000%) | 456 / 456 (100.000000%) | Complete |  |
@@ -183,37 +184,41 @@ All counters come from fresh atomic LLVM profiles for the current full run. Comp
 | [`vm/builtins/execution/closures.rs`](../../../backend/bluejs/src/vm/builtins/execution/closures.rs) | 468 / 468 (100.000000%) | 20 / 20 (100.000000%) | 832 / 832 (100.000000%) | Complete |  |
 | [`vm/builtins/execution/runtime.rs`](../../../backend/bluejs/src/vm/builtins/execution/runtime.rs) | 1,711 / 1,711 (100.000000%) | 102 / 102 (100.000000%) | 3,139 / 3,139 (100.000000%) | Complete |  |
 | [`vm/builtins/execution/setup.rs`](../../../backend/bluejs/src/vm/builtins/execution/setup.rs) | 1,088 / 1,088 (100.000000%) | 93 / 93 (100.000000%) | 1,801 / 1,801 (100.000000%) | Complete |  |
-| [`vm/builtins/general.rs`](../../../backend/bluejs/src/vm/builtins/general.rs) | 424 / 425 (99.764706%) | 37 / 37 (100.000000%) | 739 / 749 (98.664887%) | Incomplete |  |
+| [`vm/builtins/general.rs`](../../../backend/bluejs/src/vm/builtins/general.rs) | 409 / 409 (100.000000%) | 36 / 36 (100.000000%) | 705 / 711 (99.156118%) | Incomplete |  |
 | [`vm/builtins/generators.rs`](../../../backend/bluejs/src/vm/builtins/generators.rs) | 1,653 / 1,653 (100.000000%) | 77 / 77 (100.000000%) | 2,567 / 2,567 (100.000000%) | Complete |  |
 | [`vm/builtins/globals.rs`](../../../backend/bluejs/src/vm/builtins/globals.rs) | 1,006 / 1,006 (100.000000%) | 12 / 12 (100.000000%) | 1,472 / 1,472 (100.000000%) | Complete |  |
 | [`vm/builtins/immutable_arraybuffer.rs`](../../../backend/bluejs/src/vm/builtins/immutable_arraybuffer.rs) | 160 / 160 (100.000000%) | 11 / 11 (100.000000%) | 244 / 244 (100.000000%) | Complete |  |
 | [`vm/builtins/math.rs`](../../../backend/bluejs/src/vm/builtins/math.rs) | 436 / 436 (100.000000%) | 27 / 27 (100.000000%) | 742 / 742 (100.000000%) | Complete |  |
 | [`vm/builtins/native_dispatch.rs`](../../../backend/bluejs/src/vm/builtins/native_dispatch.rs) | — | — | — | No executable counters | Declarations/re-exports only; no executable code |
 | [`vm/builtins/native_dispatch/date.rs`](../../../backend/bluejs/src/vm/builtins/native_dispatch/date.rs) | 687 / 687 (100.000000%) | 55 / 55 (100.000000%) | 1,230 / 1,232 (99.837662%) | Incomplete |  |
-| [`vm/builtins/native_dispatch/dispatch.rs`](../../../backend/bluejs/src/vm/builtins/native_dispatch/dispatch.rs) | 1,240 / 1,261 (98.334655%) | 35 / 37 (94.594595%) | 3,062 / 3,150 (97.206349%) | Incomplete |  |
+| [`vm/builtins/native_dispatch/dispatch.rs`](../../../backend/bluejs/src/vm/builtins/native_dispatch/dispatch.rs) | 1,334 / 1,355 (98.450185%) | 35 / 37 (94.594595%) | 3,110 / 3,198 (97.248280%) | Incomplete |  |
 | [`vm/builtins/numbers.rs`](../../../backend/bluejs/src/vm/builtins/numbers.rs) | 244 / 246 (99.186992%) | 15 / 15 (100.000000%) | 424 / 431 (98.375870%) | Incomplete |  |
 | [`vm/builtins/numbers/tests.rs`](../../../backend/bluejs/src/vm/builtins/numbers/tests.rs) | — | — | — | No executable counters | Test source; not a coverage target |
-| [`vm/builtins/object.rs`](../../../backend/bluejs/src/vm/builtins/object.rs) | 1,419 / 1,419 (100.000000%) | 78 / 78 (100.000000%) | 2,427 / 2,427 (100.000000%) | Complete |  |
+| [`vm/builtins/object.rs`](../../../backend/bluejs/src/vm/builtins/object.rs) | 1,389 / 1,389 (100.000000%) | 77 / 77 (100.000000%) | 2,381 / 2,381 (100.000000%) | Complete |  |
 | [`vm/builtins/promise_combinators.rs`](../../../backend/bluejs/src/vm/builtins/promise_combinators.rs) | 415 / 415 (100.000000%) | 34 / 34 (100.000000%) | 854 / 854 (100.000000%) | Complete |  |
-| [`vm/builtins/promise_core.rs`](../../../backend/bluejs/src/vm/builtins/promise_core.rs) | 799 / 801 (99.750312%) | 67 / 67 (100.000000%) | 1,329 / 1,339 (99.253174%) | Incomplete |  |
+| [`vm/builtins/promise_core.rs`](../../../backend/bluejs/src/vm/builtins/promise_core.rs) | 779 / 779 (100.000000%) | 67 / 67 (100.000000%) | 1,324 / 1,331 (99.474080%) | Incomplete |  |
 | [`vm/builtins/promises.rs`](../../../backend/bluejs/src/vm/builtins/promises.rs) | 987 / 987 (100.000000%) | 59 / 59 (100.000000%) | 1,642 / 1,642 (100.000000%) | Complete |  |
-| [`vm/builtins/resource_management.rs`](../../../backend/bluejs/src/vm/builtins/resource_management.rs) | 546 / 558 (97.849462%) | 32 / 34 (94.117647%) | 806 / 829 (97.225573%) | Incomplete |  |
+| [`vm/builtins/resource_management.rs`](../../../backend/bluejs/src/vm/builtins/resource_management.rs) | 537 / 542 (99.077491%) | 32 / 34 (94.117647%) | 797 / 812 (98.152709%) | Incomplete |  |
 | [`vm/builtins/set_methods.rs`](../../../backend/bluejs/src/vm/builtins/set_methods.rs) | 314 / 314 (100.000000%) | 33 / 33 (100.000000%) | 627 / 629 (99.682035%) | Incomplete |  |
 | [`vm/builtins/tests.rs`](../../../backend/bluejs/src/vm/builtins/tests.rs) | — | — | — | No executable counters | Test source; not a coverage target |
 | [`vm/builtins/typed_arrays.rs`](../../../backend/bluejs/src/vm/builtins/typed_arrays.rs) | 948 / 948 (100.000000%) | 44 / 44 (100.000000%) | 1,836 / 1,836 (100.000000%) | Complete |  |
 | [`vm/builtins/uint8array.rs`](../../../backend/bluejs/src/vm/builtins/uint8array.rs) | 493 / 508 (97.047244%) | 34 / 35 (97.142857%) | 743 / 768 (96.744792%) | Incomplete |  |
+| [`vm/classification.rs`](../../../backend/bluejs/src/vm/classification.rs) | 46 / 46 (100.000000%) | 8 / 8 (100.000000%) | 69 / 69 (100.000000%) | Complete |  |
 | [`vm/completion.rs`](../../../backend/bluejs/src/vm/completion.rs) | 113 / 113 (100.000000%) | 9 / 9 (100.000000%) | 162 / 162 (100.000000%) | Complete |  |
 | [`vm/debugger.rs`](../../../backend/bluejs/src/vm/debugger.rs) | 773 / 773 (100.000000%) | 38 / 38 (100.000000%) | 946 / 946 (100.000000%) | Complete |  |
 | [`vm/debugger/inspection.rs`](../../../backend/bluejs/src/vm/debugger/inspection.rs) | 189 / 191 (98.952880%) | 6 / 6 (100.000000%) | 182 / 192 (94.791667%) | Incomplete |  |
-| [`vm/errors.rs`](../../../backend/bluejs/src/vm/errors.rs) | 406 / 406 (100.000000%) | 24 / 24 (100.000000%) | 747 / 747 (100.000000%) | Complete |  |
+| [`vm/errors.rs`](../../../backend/bluejs/src/vm/errors.rs) | 387 / 387 (100.000000%) | 22 / 22 (100.000000%) | 717 / 717 (100.000000%) | Complete |  |
 | [`vm/execution.rs`](../../../backend/bluejs/src/vm/execution.rs) | 1,562 / 1,562 (100.000000%) | 142 / 142 (100.000000%) | 2,543 / 2,543 (100.000000%) | Complete |  |
+| [`vm/for_in.rs`](../../../backend/bluejs/src/vm/for_in.rs) | 123 / 132 (93.181818%) | 23 / 23 (100.000000%) | 314 / 342 (91.812865%) | Incomplete |  |
 | [`vm/functions.rs`](../../../backend/bluejs/src/vm/functions.rs) | 434 / 434 (100.000000%) | 46 / 46 (100.000000%) | 551 / 557 (98.922801%) | Incomplete |  |
-| [`vm/host_objects.rs`](../../../backend/bluejs/src/vm/host_objects.rs) | 525 / 620 (84.677419%) | 40 / 58 (68.965517%) | 597 / 713 (83.730715%) | Incomplete |  |
-| [`vm/interpreter.rs`](../../../backend/bluejs/src/vm/interpreter.rs) | 1,517 / 1,517 (100.000000%) | 61 / 61 (100.000000%) | 3,360 / 3,360 (100.000000%) | Complete |  |
+| [`vm/host_objects.rs`](../../../backend/bluejs/src/vm/host_objects.rs) | 523 / 617 (84.764992%) | 40 / 52 (76.923077%) | 590 / 693 (85.137085%) | Incomplete |  |
+| [`vm/host_registration.rs`](../../../backend/bluejs/src/vm/host_registration.rs) | 15 / 15 (100.000000%) | 4 / 4 (100.000000%) | 22 / 22 (100.000000%) | Complete |  |
+| [`vm/interpreter.rs`](../../../backend/bluejs/src/vm/interpreter.rs) | 1,516 / 1,516 (100.000000%) | 61 / 61 (100.000000%) | 3,359 / 3,359 (100.000000%) | Complete |  |
 | [`vm/intl.rs`](../../../backend/bluejs/src/vm/intl.rs) | 597 / 597 (100.000000%) | 18 / 18 (100.000000%) | 779 / 779 (100.000000%) | Complete |  |
 | [`vm/intl/collator_locale.rs`](../../../backend/bluejs/src/vm/intl/collator_locale.rs) | 444 / 444 (100.000000%) | 41 / 41 (100.000000%) | 711 / 711 (100.000000%) | Complete |  |
 | [`vm/intl/date_time.rs`](../../../backend/bluejs/src/vm/intl/date_time.rs) | 827 / 827 (100.000000%) | 56 / 56 (100.000000%) | 1,226 / 1,226 (100.000000%) | Complete |  |
-| [`vm/intl/list_duration.rs`](../../../backend/bluejs/src/vm/intl/list_duration.rs) | 593 / 618 (95.954693%) | 47 / 55 (85.454545%) | 891 / 957 (93.103448%) | Incomplete |  |
+| [`vm/intl/duration_format.rs`](../../../backend/bluejs/src/vm/intl/duration_format.rs) | 362 / 378 (95.767196%) | 26 / 29 (89.655172%) | 535 / 574 (93.205575%) | Incomplete |  |
+| [`vm/intl/list_format.rs`](../../../backend/bluejs/src/vm/intl/list_format.rs) | 231 / 240 (96.250000%) | 21 / 26 (80.769231%) | 356 / 383 (92.950392%) | Incomplete |  |
 | [`vm/intl/number_options.rs`](../../../backend/bluejs/src/vm/intl/number_options.rs) | 446 / 446 (100.000000%) | 32 / 32 (100.000000%) | 633 / 633 (100.000000%) | Complete |  |
 | [`vm/intl/number_runtime.rs`](../../../backend/bluejs/src/vm/intl/number_runtime.rs) | 438 / 438 (100.000000%) | 26 / 26 (100.000000%) | 586 / 586 (100.000000%) | Complete |  |
 | [`vm/intl/plural_segmenter.rs`](../../../backend/bluejs/src/vm/intl/plural_segmenter.rs) | 585 / 585 (100.000000%) | 45 / 45 (100.000000%) | 843 / 843 (100.000000%) | Complete |  |
@@ -227,19 +232,20 @@ All counters come from fresh atomic LLVM profiles for the current full run. Comp
 | [`vm/modules/synthetic.rs`](../../../backend/bluejs/src/vm/modules/synthetic.rs) | 211 / 211 (100.000000%) | 12 / 12 (100.000000%) | 317 / 317 (100.000000%) | Complete |  |
 | [`vm/native_stack.rs`](../../../backend/bluejs/src/vm/native_stack.rs) | 97 / 97 (100.000000%) | 19 / 19 (100.000000%) | 160 / 160 (100.000000%) | Complete |  |
 | [`vm/operations.rs`](../../../backend/bluejs/src/vm/operations.rs) | 763 / 763 (100.000000%) | 58 / 58 (100.000000%) | 1,449 / 1,449 (100.000000%) | Complete |  |
-| [`vm/properties.rs`](../../../backend/bluejs/src/vm/properties.rs) | 668 / 705 (94.751773%) | 65 / 70 (92.857143%) | 1,207 / 1,295 (93.204633%) | Incomplete |  |
+| [`vm/promise_reactions.rs`](../../../backend/bluejs/src/vm/promise_reactions.rs) | 33 / 33 (100.000000%) | 2 / 2 (100.000000%) | 37 / 37 (100.000000%) | Complete |  |
+| [`vm/properties.rs`](../../../backend/bluejs/src/vm/properties.rs) | 555 / 575 (96.521739%) | 44 / 47 (93.617021%) | 904 / 954 (94.758910%) | Incomplete |  |
 | [`vm/realm_reentrancy.rs`](../../../backend/bluejs/src/vm/realm_reentrancy.rs) | 32 / 32 (100.000000%) | 11 / 11 (100.000000%) | 42 / 42 (100.000000%) | Complete |  |
 | [`vm/regexp.rs`](../../../backend/bluejs/src/vm/regexp.rs) | 1,140 / 1,140 (100.000000%) | 65 / 65 (100.000000%) | 2,115 / 2,115 (100.000000%) | Complete |  |
 | [`vm/shadow_realm.rs`](../../../backend/bluejs/src/vm/shadow_realm.rs) | 446 / 446 (100.000000%) | 34 / 34 (100.000000%) | 746 / 746 (100.000000%) | Complete |  |
 | [`vm/temporal.rs`](../../../backend/bluejs/src/vm/temporal.rs) | 578 / 578 (100.000000%) | 11 / 11 (100.000000%) | 568 / 568 (100.000000%) | Complete |  |
 | [`vm/temporal/calendar.rs`](../../../backend/bluejs/src/vm/temporal/calendar.rs) | 147 / 147 (100.000000%) | 14 / 14 (100.000000%) | 215 / 215 (100.000000%) | Complete |  |
 | [`vm/temporal/conversion.rs`](../../../backend/bluejs/src/vm/temporal/conversion.rs) | — | — | — | No executable counters | Declarations/re-exports only; no executable code |
-| [`vm/temporal/conversion/calendar_fields.rs`](../../../backend/bluejs/src/vm/temporal/conversion/calendar_fields.rs) | 305 / 313 (97.444089%) | 25 / 27 (92.592593%) | 475 / 485 (97.938144%) | Incomplete |  |
+| [`vm/temporal/conversion/calendar_fields.rs`](../../../backend/bluejs/src/vm/temporal/conversion/calendar_fields.rs) | 304 / 304 (100.000000%) | 25 / 25 (100.000000%) | 469 / 470 (99.787234%) | Incomplete |  |
 | [`vm/temporal/conversion/from_value.rs`](../../../backend/bluejs/src/vm/temporal/conversion/from_value.rs) | 369 / 369 (100.000000%) | 21 / 21 (100.000000%) | 600 / 600 (100.000000%) | Complete |  |
 | [`vm/temporal/conversion/getters.rs`](../../../backend/bluejs/src/vm/temporal/conversion/getters.rs) | 114 / 114 (100.000000%) | 4 / 4 (100.000000%) | 151 / 151 (100.000000%) | Complete |  |
 | [`vm/temporal/conversion/numeric.rs`](../../../backend/bluejs/src/vm/temporal/conversion/numeric.rs) | 195 / 195 (100.000000%) | 24 / 24 (100.000000%) | 251 / 251 (100.000000%) | Complete |  |
 | [`vm/temporal/conversion/options.rs`](../../../backend/bluejs/src/vm/temporal/conversion/options.rs) | 130 / 130 (100.000000%) | 12 / 12 (100.000000%) | 158 / 158 (100.000000%) | Complete |  |
-| [`vm/temporal/conversion/zoned_conversion.rs`](../../../backend/bluejs/src/vm/temporal/conversion/zoned_conversion.rs) | 107 / 131 (81.679389%) | 6 / 11 (54.545455%) | 182 / 206 (88.349515%) | Incomplete |  |
+| [`vm/temporal/conversion/zoned_conversion.rs`](../../../backend/bluejs/src/vm/temporal/conversion/zoned_conversion.rs) | 101 / 102 (99.019608%) | 6 / 7 (85.714286%) | 166 / 169 (98.224852%) | Incomplete |  |
 | [`vm/temporal/dates.rs`](../../../backend/bluejs/src/vm/temporal/dates.rs) | — | — | — | No executable counters | Declarations/re-exports only; no executable code |
 | [`vm/temporal/dates/arithmetic.rs`](../../../backend/bluejs/src/vm/temporal/dates/arithmetic.rs) | 206 / 206 (100.000000%) | 8 / 8 (100.000000%) | 281 / 281 (100.000000%) | Complete |  |
 | [`vm/temporal/dates/comparison.rs`](../../../backend/bluejs/src/vm/temporal/dates/comparison.rs) | 49 / 49 (100.000000%) | 3 / 3 (100.000000%) | 65 / 65 (100.000000%) | Complete |  |
@@ -247,14 +253,14 @@ All counters come from fresh atomic LLVM profiles for the current full run. Comp
 | [`vm/temporal/dates/conversions.rs`](../../../backend/bluejs/src/vm/temporal/dates/conversions.rs) | 66 / 66 (100.000000%) | 3 / 3 (100.000000%) | 108 / 108 (100.000000%) | Complete |  |
 | [`vm/temporal/dates/date_time.rs`](../../../backend/bluejs/src/vm/temporal/dates/date_time.rs) | 124 / 124 (100.000000%) | 8 / 8 (100.000000%) | 198 / 198 (100.000000%) | Complete |  |
 | [`vm/temporal/dates/formatting.rs`](../../../backend/bluejs/src/vm/temporal/dates/formatting.rs) | 166 / 166 (100.000000%) | 5 / 5 (100.000000%) | 216 / 216 (100.000000%) | Complete |  |
-| [`vm/temporal/dates/now_and_zone.rs`](../../../backend/bluejs/src/vm/temporal/dates/now_and_zone.rs) | 192 / 192 (100.000000%) | 20 / 20 (100.000000%) | 266 / 266 (100.000000%) | Complete |  |
+| [`vm/temporal/dates/now_and_zone.rs`](../../../backend/bluejs/src/vm/temporal/dates/now_and_zone.rs) | 192 / 192 (100.000000%) | 20 / 20 (100.000000%) | 264 / 264 (100.000000%) | Complete |  |
 | [`vm/temporal/dates/with.rs`](../../../backend/bluejs/src/vm/temporal/dates/with.rs) | 144 / 144 (100.000000%) | 6 / 6 (100.000000%) | 262 / 262 (100.000000%) | Complete |  |
 | [`vm/temporal/duration_conversion.rs`](../../../backend/bluejs/src/vm/temporal/duration_conversion.rs) | 48 / 48 (100.000000%) | 4 / 4 (100.000000%) | 73 / 73 (100.000000%) | Complete |  |
 | [`vm/temporal/duration_math.rs`](../../../backend/bluejs/src/vm/temporal/duration_math.rs) | 305 / 305 (100.000000%) | 29 / 29 (100.000000%) | 361 / 361 (100.000000%) | Complete |  |
 | [`vm/temporal/duration_operations.rs`](../../../backend/bluejs/src/vm/temporal/duration_operations.rs) | 611 / 611 (100.000000%) | 27 / 27 (100.000000%) | 874 / 874 (100.000000%) | Complete |  |
 | [`vm/temporal/duration_relative.rs`](../../../backend/bluejs/src/vm/temporal/duration_relative.rs) | 523 / 523 (100.000000%) | 42 / 42 (100.000000%) | 659 / 659 (100.000000%) | Complete |  |
 | [`vm/temporal/epoch.rs`](../../../backend/bluejs/src/vm/temporal/epoch.rs) | 136 / 136 (100.000000%) | 13 / 13 (100.000000%) | 237 / 237 (100.000000%) | Complete |  |
-| [`vm/temporal/instant.rs`](../../../backend/bluejs/src/vm/temporal/instant.rs) | 449 / 462 (97.186147%) | 25 / 32 (78.125000%) | 635 / 667 (95.202399%) | Incomplete |  |
+| [`vm/temporal/instant.rs`](../../../backend/bluejs/src/vm/temporal/instant.rs) | 434 / 440 (98.636364%) | 23 / 29 (79.310345%) | 609 / 629 (96.820350%) | Incomplete |  |
 | [`vm/temporal/iso.rs`](../../../backend/bluejs/src/vm/temporal/iso.rs) | 17 / 17 (100.000000%) | 3 / 3 (100.000000%) | 24 / 24 (100.000000%) | Complete |  |
 | [`vm/temporal/iso/annotations.rs`](../../../backend/bluejs/src/vm/temporal/iso/annotations.rs) | 271 / 271 (100.000000%) | 28 / 28 (100.000000%) | 452 / 452 (100.000000%) | Complete |  |
 | [`vm/temporal/iso/datetime.rs`](../../../backend/bluejs/src/vm/temporal/iso/datetime.rs) | 145 / 145 (100.000000%) | 15 / 15 (100.000000%) | 259 / 259 (100.000000%) | Complete |  |
@@ -272,9 +278,10 @@ All counters come from fresh atomic LLVM profiles for the current full run. Comp
 | [`vm/temporal/plain_date/tests.rs`](../../../backend/bluejs/src/vm/temporal/plain_date/tests.rs) | — | — | — | No executable counters | Test source; not a coverage target |
 | [`vm/temporal/plain_date_time_difference.rs`](../../../backend/bluejs/src/vm/temporal/plain_date_time_difference.rs) | 454 / 454 (100.000000%) | 25 / 25 (100.000000%) | 594 / 594 (100.000000%) | Complete |  |
 | [`vm/temporal/plain_month_day.rs`](../../../backend/bluejs/src/vm/temporal/plain_month_day.rs) | 282 / 282 (100.000000%) | 28 / 28 (100.000000%) | 386 / 386 (100.000000%) | Complete |  |
-| [`vm/temporal/plain_time.rs`](../../../backend/bluejs/src/vm/temporal/plain_time.rs) | 627 / 649 (96.610169%) | 39 / 44 (88.636364%) | 888 / 922 (96.312364%) | Incomplete |  |
+| [`vm/temporal/plain_time.rs`](../../../backend/bluejs/src/vm/temporal/plain_time.rs) | 609 / 616 (98.863636%) | 38 / 41 (92.682927%) | 861 / 878 (98.063781%) | Incomplete |  |
 | [`vm/temporal/plain_year_month.rs`](../../../backend/bluejs/src/vm/temporal/plain_year_month.rs) | 145 / 145 (100.000000%) | 13 / 13 (100.000000%) | 193 / 193 (100.000000%) | Complete |  |
-| [`vm/temporal/receiver.rs`](../../../backend/bluejs/src/vm/temporal/receiver.rs) | 42 / 42 (100.000000%) | 3 / 3 (100.000000%) | 43 / 43 (100.000000%) | Complete |  |
+| [`vm/temporal/receiver.rs`](../../../backend/bluejs/src/vm/temporal/receiver.rs) | 43 / 43 (100.000000%) | 5 / 5 (100.000000%) | 43 / 43 (100.000000%) | Complete |  |
+| [`vm/temporal/receiver_kind.rs`](../../../backend/bluejs/src/vm/temporal/receiver_kind.rs) | 24 / 24 (100.000000%) | 1 / 1 (100.000000%) | 25 / 25 (100.000000%) | Complete |  |
 | [`vm/temporal/rounding.rs`](../../../backend/bluejs/src/vm/temporal/rounding.rs) | 405 / 405 (100.000000%) | 33 / 33 (100.000000%) | 666 / 666 (100.000000%) | Complete |  |
 | [`vm/temporal/time_zone.rs`](../../../backend/bluejs/src/vm/temporal/time_zone.rs) | 519 / 519 (100.000000%) | 47 / 47 (100.000000%) | 1,031 / 1,031 (100.000000%) | Complete |  |
 | [`vm/temporal/time_zone_id.rs`](../../../backend/bluejs/src/vm/temporal/time_zone_id.rs) | 248 / 248 (100.000000%) | 32 / 32 (100.000000%) | 546 / 546 (100.000000%) | Complete |  |
@@ -301,19 +308,6 @@ All counters come from fresh atomic LLVM profiles for the current full run. Comp
 
 95 / 95 original complete files remain complete. The raw comparison records 0 per-file coverage percentage regressions.
 
-### D1 coverage acceptance
-
-All three D1 targets reach 100% raw lines, functions and regions in this same
-full measurement. All 131 files complete before this batch remain complete.
-The [D1 acceptance audit](../../../target/bluejs-selftest/runs/20261007-104315-a2610d61/d1-acceptance-audit.json)
-records preservation and zero semantic or coverage percentage regressions.
-
-| D1 source | Raw lines | Raw functions | Raw regions | Status |
-| --- | --- | --- | --- | --- |
-| [`regex_worker.rs`](../../../backend/bluejs/src/regex_worker.rs) | 657 / 657 (100.000000%) | 77 / 77 (100.000000%) | 967 / 967 (100.000000%) | Complete |
-| [`vm/builtins/array_change_by_copy.rs`](../../../backend/bluejs/src/vm/builtins/array_change_by_copy.rs) | 197 / 197 (100.000000%) | 14 / 14 (100.000000%) | 456 / 456 (100.000000%) | Complete |
-| [`vm/intl/number_options.rs`](../../../backend/bluejs/src/vm/intl/number_options.rs) | 446 / 446 (100.000000%) | 32 / 32 (100.000000%) | 633 / 633 (100.000000%) | Complete |
-
 ## Nine most difficult and thirteen difficult files
 
 | Difficulty | Selected source | Raw lines | Raw functions | Raw regions | Status |
@@ -324,14 +318,14 @@ records preservation and zero semantic or coverage percentage regressions.
 | D5 | [`vm/builtins/generators.rs`](../../../backend/bluejs/src/vm/builtins/generators.rs) | 1,653 / 1,653 (100.000000%) | 77 / 77 (100.000000%) | 2,567 / 2,567 (100.000000%) | Complete |
 | D5 | [`vm/debugger.rs`](../../../backend/bluejs/src/vm/debugger.rs) | 773 / 773 (100.000000%) | 38 / 38 (100.000000%) | 946 / 946 (100.000000%) | Complete |
 | D5 | [`vm/execution.rs`](../../../backend/bluejs/src/vm/execution.rs) | 1,562 / 1,562 (100.000000%) | 142 / 142 (100.000000%) | 2,543 / 2,543 (100.000000%) | Complete |
-| D5 | [`vm/interpreter.rs`](../../../backend/bluejs/src/vm/interpreter.rs) | 1,517 / 1,517 (100.000000%) | 61 / 61 (100.000000%) | 3,360 / 3,360 (100.000000%) | Complete |
+| D5 | [`vm/interpreter.rs`](../../../backend/bluejs/src/vm/interpreter.rs) | 1,516 / 1,516 (100.000000%) | 61 / 61 (100.000000%) | 3,359 / 3,359 (100.000000%) | Complete |
 | D5 | [`vm/shadow_realm.rs`](../../../backend/bluejs/src/vm/shadow_realm.rs) | 446 / 446 (100.000000%) | 34 / 34 (100.000000%) | 746 / 746 (100.000000%) | Complete |
 | D5 | [`vm/test262/foreign.rs`](../../../backend/bluejs/src/vm/test262/foreign.rs) | 1,800 / 1,800 (100.000000%) | 149 / 149 (100.000000%) | 2,756 / 2,756 (100.000000%) | Complete |
-| D4 | [`vm.rs`](../../../backend/bluejs/src/vm.rs) | 628 / 628 (100.000000%) | 59 / 59 (100.000000%) | 910 / 910 (100.000000%) | Complete |
+| D4 | [`vm.rs`](../../../backend/bluejs/src/vm.rs) | 624 / 624 (100.000000%) | 57 / 57 (100.000000%) | 903 / 903 (100.000000%) | Complete |
 | D4 | [`vm/builtins/array_from_async.rs`](../../../backend/bluejs/src/vm/builtins/array_from_async.rs) | 366 / 366 (100.000000%) | 29 / 29 (100.000000%) | 889 / 889 (100.000000%) | Complete |
 | D4 | [`vm/builtins/execution/runtime.rs`](../../../backend/bluejs/src/vm/builtins/execution/runtime.rs) | 1,711 / 1,711 (100.000000%) | 102 / 102 (100.000000%) | 3,139 / 3,139 (100.000000%) | Complete |
 | D4 | [`vm/builtins/execution/setup.rs`](../../../backend/bluejs/src/vm/builtins/execution/setup.rs) | 1,088 / 1,088 (100.000000%) | 93 / 93 (100.000000%) | 1,801 / 1,801 (100.000000%) | Complete |
-| D4 | [`vm/builtins/object.rs`](../../../backend/bluejs/src/vm/builtins/object.rs) | 1,419 / 1,419 (100.000000%) | 78 / 78 (100.000000%) | 2,427 / 2,427 (100.000000%) | Complete |
+| D4 | [`vm/builtins/object.rs`](../../../backend/bluejs/src/vm/builtins/object.rs) | 1,389 / 1,389 (100.000000%) | 77 / 77 (100.000000%) | 2,381 / 2,381 (100.000000%) | Complete |
 | D4 | [`vm/modules.rs`](../../../backend/bluejs/src/vm/modules.rs) | 1,920 / 1,920 (100.000000%) | 101 / 101 (100.000000%) | 2,970 / 2,970 (100.000000%) | Complete |
 | D4 | [`vm/modules/deferred.rs`](../../../backend/bluejs/src/vm/modules/deferred.rs) | 303 / 303 (100.000000%) | 27 / 27 (100.000000%) | 475 / 475 (100.000000%) | Complete |
 | D4 | [`vm/modules/namespace.rs`](../../../backend/bluejs/src/vm/modules/namespace.rs) | 282 / 282 (100.000000%) | 20 / 20 (100.000000%) | 450 / 450 (100.000000%) | Complete |
@@ -341,24 +335,30 @@ records preservation and zero semantic or coverage percentage regressions.
 | D4 | [`vm/temporal/plain_date_time_difference.rs`](../../../backend/bluejs/src/vm/temporal/plain_date_time_difference.rs) | 454 / 454 (100.000000%) | 25 / 25 (100.000000%) | 594 / 594 (100.000000%) | Complete |
 | D4 | [`vm/temporal/zoned_difference.rs`](../../../backend/bluejs/src/vm/temporal/zoned_difference.rs) | 409 / 409 (100.000000%) | 21 / 21 (100.000000%) | 574 / 574 (100.000000%) | Complete |
 
-Selected files complete: **22 / 22**. Modified production files complete: **51 / 51**.
+Selected files complete: **22 / 22**. Modified production files complete: **59 / 73**.
+
+Changed sources in the reviewed no-counter manifest remain separately audited:
+
+| Source file | Reviewed classification |
+| --- | --- |
+| [`heap/tests.rs`](../../../backend/bluejs/src/heap/tests.rs) | Test source; not a coverage target |
 
 ### Verification evidence
 
 | Gate | Current result |
 | --- | --- |
-| BlueJS Rust | 334 targets; 4,107 passed; 0 failed; 4 ignored |
+| BlueJS Rust | 334 targets; 4,118 passed; 0 failed; 4 ignored |
 | Full Test262 | 102,921 passed |
 | Semantic comparison | 102,926 mode contracts; 0 changes |
 | Workspace runtime and Rustdoc | Passed |
 
 | Current gate | Pass | Fail | Ignored | Seconds |
 | --- | --- | --- | --- | --- |
-| Complete BlueJS Rust | 4,107 | 0 | 4 | 1289.679 |
-| Critical Rust targets | 1,478 | 0 | 0 | 266.309 |
-| Self-test tooling contracts | 75 | 0 | 0 | 6.968 |
-| Workspace runtime tests | 2,170 | 0 | 60 | 587.336 |
-| BlueJS Rustdoc tests | 2 | 0 | 0 | 9.521 |
+| Complete BlueJS Rust | 4,118 | 0 | 4 | 1719.984 |
+| Critical Rust targets | 1,489 | 0 | 0 | 367.295 |
+| Self-test tooling contracts | 82 | 0 | 0 | 7.033 |
+| Workspace runtime tests | 2,170 | 0 | 60 | 416.346 |
+| BlueJS Rustdoc tests | 2 | 0 | 0 | 7.669 |
 
 | Static gate | Current result |
 | --- | --- |
@@ -370,47 +370,63 @@ Selected files complete: **22 / 22**. Modified production files complete: **51 /
 
 | Source file | Missing lines | Missing functions | Missing regions |
 | --- | --- | --- | --- |
+| [`ast/retained_payload.rs`](../../../backend/bluejs/src/ast/retained_payload.rs) | 5 | 0 | 22 |
+| [`vm/builtins/general.rs`](../../../backend/bluejs/src/vm/builtins/general.rs) | 0 | 0 | 6 |
+| [`vm/builtins/native_dispatch/dispatch.rs`](../../../backend/bluejs/src/vm/builtins/native_dispatch/dispatch.rs) | 21 | 2 | 88 |
+| [`vm/builtins/promise_core.rs`](../../../backend/bluejs/src/vm/builtins/promise_core.rs) | 0 | 0 | 7 |
+| [`vm/builtins/resource_management.rs`](../../../backend/bluejs/src/vm/builtins/resource_management.rs) | 5 | 2 | 15 |
+| [`vm/for_in.rs`](../../../backend/bluejs/src/vm/for_in.rs) | 9 | 0 | 28 |
+| [`vm/host_objects.rs`](../../../backend/bluejs/src/vm/host_objects.rs) | 94 | 12 | 103 |
+| [`vm/intl/duration_format.rs`](../../../backend/bluejs/src/vm/intl/duration_format.rs) | 16 | 3 | 39 |
+| [`vm/intl/list_format.rs`](../../../backend/bluejs/src/vm/intl/list_format.rs) | 9 | 5 | 27 |
+| [`vm/properties.rs`](../../../backend/bluejs/src/vm/properties.rs) | 20 | 3 | 50 |
+| [`vm/temporal/conversion/calendar_fields.rs`](../../../backend/bluejs/src/vm/temporal/conversion/calendar_fields.rs) | 0 | 0 | 1 |
+| [`vm/temporal/conversion/zoned_conversion.rs`](../../../backend/bluejs/src/vm/temporal/conversion/zoned_conversion.rs) | 1 | 1 | 3 |
+| [`vm/temporal/instant.rs`](../../../backend/bluejs/src/vm/temporal/instant.rs) | 6 | 6 | 20 |
+| [`vm/temporal/plain_time.rs`](../../../backend/bluejs/src/vm/temporal/plain_time.rs) | 7 | 3 | 17 |
 
 ### Coverage percentage regressions
 
 Zero per-file percentage regressions against the retained verified comparison thresholds.
 
-**The requested completion gates are satisfied.**
+**The requested completion gates are not yet satisfied.**
 
-[Frozen source hashes](../../../target/bluejs-selftest/runs/20261007-104315-a2610d61/source-state.json), [complete run record](../../../target/bluejs-selftest/runs/20261007-104315-a2610d61/run.json), [raw coverage data](../../../target/bluejs-selftest/runs/20261007-104315-a2610d61/report-data.json) and [semantic contract audit](../../../target/bluejs-selftest/runs/20261007-104315-a2610d61/outcome-contract-audit.json) retain this measurement.
+[Frozen source hashes](../../../target/bluejs-selftest/runs/20261007-173453-3cd81e5f/source-state.json), [complete run record](../../../target/bluejs-selftest/runs/20261007-173453-3cd81e5f/run.json), [raw coverage data](../../../target/bluejs-selftest/runs/20261007-173453-3cd81e5f/report-data.json) and [semantic contract audit](../../../target/bluejs-selftest/runs/20261007-173453-3cd81e5f/outcome-contract-audit.json) retain this measurement.
 
 ## Difficulty ranking of the remaining incomplete files
 
 | Rank | Difficulty | Source file | Missing lines | Missing functions | Missing regions |
 | --- | --- | --- | --- | --- | --- |
-| 1 | D4 | [`vm/host_objects.rs`](../../../backend/bluejs/src/vm/host_objects.rs) | 95 | 18 | 116 |
+| 1 | D4 | [`vm/host_objects.rs`](../../../backend/bluejs/src/vm/host_objects.rs) | 94 | 12 | 103 |
 | 2 | D4 | [`vm/builtins/native_dispatch/dispatch.rs`](../../../backend/bluejs/src/vm/builtins/native_dispatch/dispatch.rs) | 21 | 2 | 88 |
-| 3 | D4 | [`vm/properties.rs`](../../../backend/bluejs/src/vm/properties.rs) | 37 | 5 | 88 |
-| 4 | D4 | [`vm/intl/list_duration.rs`](../../../backend/bluejs/src/vm/intl/list_duration.rs) | 25 | 8 | 66 |
-| 5 | D3 | [`vm/json.rs`](../../../backend/bluejs/src/vm/json.rs) | 12 | 0 | 41 |
-| 6 | D3 | [`vm/temporal/plain_time.rs`](../../../backend/bluejs/src/vm/temporal/plain_time.rs) | 22 | 5 | 34 |
-| 7 | D3 | [`vm/temporal/instant.rs`](../../../backend/bluejs/src/vm/temporal/instant.rs) | 13 | 7 | 32 |
-| 8 | D3 | [`ast/retained_payload.rs`](../../../backend/bluejs/src/ast/retained_payload.rs) | 5 | 0 | 25 |
-| 9 | D3 | [`vm/builtins/uint8array.rs`](../../../backend/bluejs/src/vm/builtins/uint8array.rs) | 15 | 1 | 25 |
-| 10 | D3 | [`vm/temporal/conversion/zoned_conversion.rs`](../../../backend/bluejs/src/vm/temporal/conversion/zoned_conversion.rs) | 24 | 5 | 24 |
-| 11 | D3 | [`vm/builtins/resource_management.rs`](../../../backend/bluejs/src/vm/builtins/resource_management.rs) | 12 | 2 | 23 |
-| 12 | D3 | [`vm/builtins/promise_core.rs`](../../../backend/bluejs/src/vm/builtins/promise_core.rs) | 2 | 0 | 10 |
+| 3 | D4 | [`vm/properties.rs`](../../../backend/bluejs/src/vm/properties.rs) | 20 | 3 | 50 |
+| 4 | D4 | [`vm/intl/duration_format.rs`](../../../backend/bluejs/src/vm/intl/duration_format.rs) | 16 | 3 | 39 |
+| 5 | D4 | [`vm/for_in.rs`](../../../backend/bluejs/src/vm/for_in.rs) | 9 | 0 | 28 |
+| 6 | D4 | [`vm/intl/list_format.rs`](../../../backend/bluejs/src/vm/intl/list_format.rs) | 9 | 5 | 27 |
+| 7 | D3 | [`vm/json.rs`](../../../backend/bluejs/src/vm/json.rs) | 12 | 0 | 41 |
+| 8 | D3 | [`vm/builtins/uint8array.rs`](../../../backend/bluejs/src/vm/builtins/uint8array.rs) | 15 | 1 | 25 |
+| 9 | D3 | [`ast/retained_payload.rs`](../../../backend/bluejs/src/ast/retained_payload.rs) | 5 | 0 | 22 |
+| 10 | D3 | [`vm/temporal/instant.rs`](../../../backend/bluejs/src/vm/temporal/instant.rs) | 6 | 6 | 20 |
+| 11 | D3 | [`vm/temporal/plain_time.rs`](../../../backend/bluejs/src/vm/temporal/plain_time.rs) | 7 | 3 | 17 |
+| 12 | D3 | [`vm/builtins/resource_management.rs`](../../../backend/bluejs/src/vm/builtins/resource_management.rs) | 5 | 2 | 15 |
 | 13 | D3 | [`vm/debugger/inspection.rs`](../../../backend/bluejs/src/vm/debugger/inspection.rs) | 2 | 0 | 10 |
-| 14 | D2 | [`parser/statements.rs`](../../../backend/bluejs/src/parser/statements.rs) | 27 | 0 | 40 |
-| 15 | D2 | [`vm/test262/assertions.rs`](../../../backend/bluejs/src/vm/test262/assertions.rs) | 2 | 0 | 13 |
-| 16 | D2 | [`vm/builtins/arrays.rs`](../../../backend/bluejs/src/vm/builtins/arrays.rs) | 0 | 0 | 12 |
-| 17 | D2 | [`vm/builtins/general.rs`](../../../backend/bluejs/src/vm/builtins/general.rs) | 1 | 0 | 10 |
-| 18 | D2 | [`vm/temporal/conversion/calendar_fields.rs`](../../../backend/bluejs/src/vm/temporal/conversion/calendar_fields.rs) | 8 | 2 | 10 |
+| 14 | D3 | [`vm/builtins/promise_core.rs`](../../../backend/bluejs/src/vm/builtins/promise_core.rs) | 0 | 0 | 7 |
+| 15 | D3 | [`vm/temporal/conversion/zoned_conversion.rs`](../../../backend/bluejs/src/vm/temporal/conversion/zoned_conversion.rs) | 1 | 1 | 3 |
+| 16 | D2 | [`parser/statements.rs`](../../../backend/bluejs/src/parser/statements.rs) | 27 | 0 | 40 |
+| 17 | D2 | [`vm/test262/assertions.rs`](../../../backend/bluejs/src/vm/test262/assertions.rs) | 2 | 0 | 13 |
+| 18 | D2 | [`vm/builtins/arrays.rs`](../../../backend/bluejs/src/vm/builtins/arrays.rs) | 0 | 0 | 12 |
 | 19 | D2 | [`heap/object_storage.rs`](../../../backend/bluejs/src/heap/object_storage.rs) | 1 | 0 | 8 |
 | 20 | D2 | [`vm/builtins/numbers.rs`](../../../backend/bluejs/src/vm/builtins/numbers.rs) | 2 | 0 | 7 |
-| 21 | D2 | [`vm/functions.rs`](../../../backend/bluejs/src/vm/functions.rs) | 0 | 0 | 6 |
-| 22 | D2 | [`vm/builtins/collections.rs`](../../../backend/bluejs/src/vm/builtins/collections.rs) | 0 | 0 | 5 |
-| 23 | D2 | [`vm/builtins/collection_iteration.rs`](../../../backend/bluejs/src/vm/builtins/collection_iteration.rs) | 0 | 0 | 4 |
-| 24 | D2 | [`compiler.rs`](../../../backend/bluejs/src/compiler.rs) | 0 | 0 | 3 |
-| 25 | D2 | [`vm/test262/cases.rs`](../../../backend/bluejs/src/vm/test262/cases.rs) | 0 | 0 | 3 |
-| 26 | D2 | [`vm/builtins/native_dispatch/date.rs`](../../../backend/bluejs/src/vm/builtins/native_dispatch/date.rs) | 0 | 0 | 2 |
-| 27 | D2 | [`vm/builtins/set_methods.rs`](../../../backend/bluejs/src/vm/builtins/set_methods.rs) | 0 | 0 | 2 |
-| 28 | D2 | [`vm/temporal/dates/construction.rs`](../../../backend/bluejs/src/vm/temporal/dates/construction.rs) | 0 | 0 | 2 |
+| 21 | D2 | [`vm/builtins/general.rs`](../../../backend/bluejs/src/vm/builtins/general.rs) | 0 | 0 | 6 |
+| 22 | D2 | [`vm/functions.rs`](../../../backend/bluejs/src/vm/functions.rs) | 0 | 0 | 6 |
+| 23 | D2 | [`vm/builtins/collections.rs`](../../../backend/bluejs/src/vm/builtins/collections.rs) | 0 | 0 | 5 |
+| 24 | D2 | [`vm/builtins/collection_iteration.rs`](../../../backend/bluejs/src/vm/builtins/collection_iteration.rs) | 0 | 0 | 4 |
+| 25 | D2 | [`compiler.rs`](../../../backend/bluejs/src/compiler.rs) | 0 | 0 | 3 |
+| 26 | D2 | [`vm/test262/cases.rs`](../../../backend/bluejs/src/vm/test262/cases.rs) | 0 | 0 | 3 |
+| 27 | D2 | [`vm/builtins/native_dispatch/date.rs`](../../../backend/bluejs/src/vm/builtins/native_dispatch/date.rs) | 0 | 0 | 2 |
+| 28 | D2 | [`vm/builtins/set_methods.rs`](../../../backend/bluejs/src/vm/builtins/set_methods.rs) | 0 | 0 | 2 |
+| 29 | D2 | [`vm/temporal/dates/construction.rs`](../../../backend/bluejs/src/vm/temporal/dates/construction.rs) | 0 | 0 | 2 |
+| 30 | D2 | [`vm/temporal/conversion/calendar_fields.rs`](../../../backend/bluejs/src/vm/temporal/conversion/calendar_fields.rs) | 0 | 0 | 1 |
 
 ## Reproduce the current inventory
 

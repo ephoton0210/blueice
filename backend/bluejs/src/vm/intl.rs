@@ -785,7 +785,8 @@ impl Vm {
 
 mod collator_locale;
 mod date_time;
-mod list_duration;
+mod duration_format;
+mod list_format;
 mod number_options;
 mod number_runtime;
 mod plural_segmenter;

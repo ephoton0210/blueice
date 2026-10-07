@@ -2523,8 +2523,8 @@ fn proxy_allocation_rejects_foreign_handles_and_revocation_keeps_capabilities() 
     );
     assert_eq!(heap.stats().managed_bytes, before);
     assert_eq!(
-        heap.proxy_capabilities(foreign),
-        Err(HeapError::InvalidObject(foreign))
+        heap.object_capabilities(foreign).err(),
+        Some(HeapError::InvalidObject(foreign))
     );
     assert_eq!(
         heap.revoke_proxy(foreign),
@@ -2539,10 +2539,12 @@ fn proxy_allocation_rejects_foreign_handles_and_revocation_keeps_capabilities() 
         .alloc_proxy(target, handler, None, true, false)
         .unwrap();
     assert_eq!(heap.proxy(proxy), Ok(Some((target, handler))));
-    assert_eq!(heap.proxy_capabilities(proxy), Ok(Some((true, false))));
+    let bits = heap.object_capabilities(proxy).unwrap();
+    assert!(bits.callable && !bits.constructible);
     heap.revoke_proxy(proxy).unwrap();
     assert_eq!(heap.proxy(proxy), Err(HeapError::RevokedProxy));
-    assert_eq!(heap.proxy_capabilities(proxy), Ok(Some((true, false))));
+    let bits = heap.object_capabilities(proxy).unwrap();
+    assert!(bits.callable && !bits.constructible);
 }
 
 #[test]

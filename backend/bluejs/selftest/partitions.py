@@ -10,6 +10,7 @@ from pathlib import Path
 
 from .common import digest, load, snapshot
 from .graph import inventory, plan
+from .rust_source import bodies, mask_rust
 
 
 REFERENCE_FILTERS = ("with_", "with_scope", "eval", "capture", "destructur", "reference",
@@ -35,64 +36,12 @@ REGEX_POOL_FIXTURE = re.compile(
     r'#\[cfg\(coverage\)\]\s*#\[doc\(hidden\)\]\s*'
     r'pub\s+use\s+pool_boundary_contracts::verify_regex_pool_boundary_contracts\s*;')
 PUBLIC_TEST_PATTERN = r"(?:#\[[^\n]*\]\s*)*#\[test\]\s*(?:#\[[^\n]*\]\s*)*fn\s+(\w+)\s*"
-
-
-def mask_rust(text, literals=None):
-    """Keep structural braces while hiding comments and Rust string literals."""
-    pattern = re.compile(r'''//[^\n]*|/\*|r(\#*)"|"|'(?:\\(?:x[\da-fA-F]{2}|u\{[\da-fA-F]+\}|.)|[^'\\\n])'|\bfn\b''', re.M)
-    result = list(text)
-    position = 0
-    while match := pattern.search(text, position):
-        start, token = match.start(), match.group()
-        if token == "fn":
-            position = match.end()
-            continue
-        if token == "/*":
-            end, depth = match.end(), 1
-            while depth and end < len(text):
-                if text.startswith("/*", end):
-                    depth += 1
-                    end += 2
-                elif text.startswith("*/", end):
-                    depth -= 1
-                    end += 2
-                else:
-                    end += 1
-        elif token.startswith("r"):
-            delimiter = '"' + match.group(1)
-            finish = text.find(delimiter, match.end())
-            end = len(text) if finish < 0 else finish + len(delimiter)
-        elif token == '"':
-            end = match.end()
-            while end < len(text):
-                if text[end] == "\\":
-                    end += 2
-                elif text[end] == '"':
-                    end += 1
-                    break
-                else:
-                    end += 1
-        else:
-            end = match.end()
-        if literals is not None and not token.startswith("//") and token != "/*":
-            literals.append(text[start:end])
-        result[start:end] = ["\n" if c == "\n" else " " for c in text[start:end]]
-        position = end
-    return "".join(result)
-
-
-def bodies(text, pattern):
-    masked, result = mask_rust(text), {}
-    for match in re.finditer(pattern, masked):
-        opening = masked.find("{", match.end())
-        if opening < 0:
-            continue
-        depth, end = 1, opening + 1
-        while depth and end < len(masked):
-            depth += (masked[end] == "{") - (masked[end] == "}")
-            end += 1
-        result.setdefault(match.group(1), []).append(text[match.start():end])
-    return result
+ISOLATED_FIXTURES = {
+    "backend/bluejs/tests/fixtures/common_boundary_contracts.rs":
+        ("vm::classification::boundary_contracts::", "verify_common_boundary_contracts"),
+    "backend/bluejs/tests/fixtures/payload_accounting_contracts.rs":
+        ("ast::retained_payload::accounting_contracts::", "verify_payload_accounting_contracts"),
+}
 
 
 def changed_symbols(before, after):
@@ -317,6 +266,23 @@ def partition_plan(manager, files=None, base=None):
                     if filters:
                         add(key, filters, reason + "; ordinary-library lifecycle fixture")
             boundaries.append({"source": name, "symbols": symbols, "contract": "Regex pool and memo"})
+        elif name in ISOLATED_FIXTURES and symbols:
+            prefix, wrapper = ISOLATED_FIXTURES[name]
+            public = set(re.findall(r"\bpub(?:\([^)]*\))?\s+fn\s+(\w+)\s*\(", mask_rust(after)))
+            test_names = re.findall(r"#\[cfg_attr\(test,\s*test\)\]\s*fn\s+(\w+)\b", after)
+            wrappers = fixture_entry_wrappers(after, test_names)
+            if test_names and public == {wrapper} and wrapper in wrappers and not re.search(
+                    r"\bmacro_rules\b|\binclude\s*!|\bmacro_export\b", mask_rust(after)):
+                add("rust:lib", [prefix], "Isolated fixture includes all native cases and shared helpers: " + name)
+                for key, target in targets.items():
+                    if target["kind"] == "rust" and target.get("source", "").startswith("backend/bluejs/tests/"):
+                        source = manager.root / target["source"]
+                        filters = public_wrapper_cases(source.read_text(), [wrapper]) if source.is_file() else []
+                        if filters:
+                            add(key, filters, "Ordinary-library fixture entry point: " + name)
+                boundaries.append({"source": name, "symbols": symbols, "contract": "Isolated regression fixture"})
+            else:
+                unknown.append(name)
         elif "/tests/fixtures/" in name and symbols:
             test_names = [symbol for symbol in symbols if re.search(
                 r"#\[cfg_attr\(test,\s*test\)\]\s*fn\s+" + re.escape(symbol) + r"\b", after)]

@@ -499,15 +499,10 @@ impl Vm {
 
     pub(in super::super::super) fn temporal_with_calendar(
         &mut self,
-        receiver: &Value,
+        receiver: &ValidatedTemporalReceiver,
         calendar: &Value,
     ) -> Result<Value, RuntimeError> {
-        let object = receiver.object_id().ok_or_else(|| {
-            RuntimeError::TypeError("Temporal.withCalendar requires a Temporal receiver".into())
-        })?;
-        let mut value = self.heap.temporal_value(object)?.ok_or_else(|| {
-            RuntimeError::TypeError("Temporal.withCalendar requires a Temporal receiver".into())
-        })?;
+        let mut value = receiver.data().clone();
         // Unlike a property bag's optional `calendar` field, `withCalendar`'s
         // argument is required: `ToTemporalCalendarIdentifier(undefined)` is a
         // `TypeError`, not the ISO default (`withCalendar/missing-argument.js`).

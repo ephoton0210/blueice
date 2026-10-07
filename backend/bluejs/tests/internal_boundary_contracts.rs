@@ -7,6 +7,13 @@
 
 #[cfg(coverage)]
 #[test]
+fn ordinary_library_common_boundary_contracts() {
+    blueice_bluejs::Vm::verify_common_boundary_contracts();
+    blueice_bluejs::Program::verify_payload_accounting_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
 fn ordinary_library_page_runtime_contracts() {
     blueice_bluejs::BlueJsPageRuntime::verify_retained_page_runtime_contracts();
     blueice_bluejs::BlueJsPageRuntime::verify_page_runtime_boundary_contracts();

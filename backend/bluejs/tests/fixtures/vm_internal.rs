@@ -158,7 +158,12 @@ fn temporal_zone_helpers_reject_foreign_handles_and_invalid_stored_zones() {
         Err(RuntimeError::RangeError(_))
     ));
     assert!(matches!(
-        vm.temporal_instant_to_zoned_date_time_iso(&Value::Null, &invalid),
+        vm.native_call(
+            NativeFunction::TemporalInstantToZonedDateTimeIso,
+            Value::Null,
+            vec![invalid.clone()],
+            false
+        ),
         Err(RuntimeError::TypeError(_))
     ));
 }
@@ -180,8 +185,11 @@ fn temporal_zone_helpers_complete_the_valid_instant_and_current_clock_paths() {
 
     let code = crate::compile(&crate::parse("new Temporal.Instant(0n)").unwrap()).unwrap();
     let instant = vm.execute(&code).unwrap();
+    let receiver = vm
+        .validate_temporal_receiver(&instant, TemporalKind::Instant)
+        .unwrap();
     let zoned = vm
-        .temporal_instant_to_zoned_date_time_iso(&instant, &utc)
+        .temporal_instant_to_zoned_date_time_iso(&receiver, &utc)
         .unwrap();
     let stored = vm
         .heap
@@ -371,18 +379,21 @@ fn temporal_receiver_checks_propagate_invalid_object_handles() {
     let foreign = other_vm.heap.alloc_object(None).unwrap();
     let receiver = Value::Object(foreign);
     assert_eq!(
-        vm.require_temporal_receiver(&receiver, TemporalKind::PlainDate),
+        vm.validate_temporal_receiver(&receiver, TemporalKind::PlainDate)
+            .map(|_| ()),
         Err(RuntimeError::Heap(HeapError::InvalidObject(foreign)))
     );
     let ordinary = vm.heap.alloc_object(None).unwrap();
     assert_eq!(
-        vm.require_temporal_receiver(&Value::Object(ordinary), TemporalKind::PlainDate),
+        vm.validate_temporal_receiver(&Value::Object(ordinary), TemporalKind::PlainDate)
+            .map(|_| ()),
         Err(RuntimeError::TypeError(
             "receiver is not a Temporal.PlainDate".into()
         ))
     );
     assert_eq!(
-        vm.require_temporal_receiver(&Value::Null, TemporalKind::PlainDate),
+        vm.validate_temporal_receiver(&Value::Null, TemporalKind::PlainDate)
+            .map(|_| ()),
         Err(RuntimeError::TypeError(
             "receiver is not a Temporal.PlainDate".into()
         ))
@@ -393,7 +404,8 @@ fn temporal_receiver_checks_propagate_invalid_object_handles() {
         )
         .unwrap();
     assert_eq!(
-        vm.require_temporal_receiver(&date, TemporalKind::PlainDate),
+        vm.validate_temporal_receiver(&date, TemporalKind::PlainDate)
+            .map(|_| ()),
         Ok(())
     );
 }

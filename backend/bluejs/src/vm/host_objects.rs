@@ -430,8 +430,11 @@ impl Vm {
     /// Creates a realm-local prototype and identity table. The prototype is
     /// kept alive even before a wrapper exists; all roots die with the VM.
     pub fn create_host_object_family(&mut self) -> Result<HostObjectFamily, RuntimeError> {
-        let index = u32::try_from(self.host_object_families.len())
-            .map_err(|_| RuntimeError::RangeError("too many host-object families".into()))?;
+        let index = host_registration_index(
+            self.host_object_families.len(),
+            0,
+            "too many host-object families",
+        )?;
         let object_prototype = self.object_prototype;
         let prototype = self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;
         let root = self.heap.root(prototype)?;
@@ -472,8 +475,11 @@ impl Vm {
                 "host-object method is already defined".into(),
             ));
         }
-        let index = u32::try_from(self.host_object_methods.len())
-            .map_err(|_| RuntimeError::RangeError("too many host-object methods".into()))?;
+        let index = host_registration_index(
+            self.host_object_methods.len(),
+            0,
+            "too many host-object methods",
+        )?;
         self.install_host_callable_native(
             prototype,
             name,
@@ -512,8 +518,11 @@ impl Vm {
                 "host-object method is already defined".into(),
             ));
         }
-        let index = u32::try_from(self.host_object_pair_methods.len())
-            .map_err(|_| RuntimeError::RangeError("too many host-object pair methods".into()))?;
+        let index = host_registration_index(
+            self.host_object_pair_methods.len(),
+            0,
+            "too many host-object pair methods",
+        )?;
         self.install_host_callable_native(
             prototype,
             name,
@@ -554,11 +563,12 @@ impl Vm {
                 "host-object accessor is already defined".into(),
             ));
         }
-        let getter_index = u32::try_from(self.host_object_methods.len())
-            .map_err(|_| RuntimeError::RangeError("too many host-object methods".into()))?;
-        let setter_index = getter_index
-            .checked_add(1)
-            .ok_or_else(|| RuntimeError::RangeError("too many host-object methods".into()))?;
+        let getter_index = host_registration_index(
+            self.host_object_methods.len(),
+            1,
+            "too many host-object methods",
+        )?;
+        let setter_index = getter_index + 1;
         let function_prototype = self.function_prototype()?;
         self.install_native_accessor(
             prototype,
@@ -639,8 +649,11 @@ impl Vm {
                 "host factory name is invalid or already defined".into(),
             ));
         }
-        let index = u32::try_from(self.host_object_factories.len())
-            .map_err(|_| RuntimeError::RangeError("too many host-object factories".into()))?;
+        let index = host_registration_index(
+            self.host_object_factories.len(),
+            0,
+            "too many host-object factories",
+        )?;
         self.install_host_callable_native(
             owner,
             name,

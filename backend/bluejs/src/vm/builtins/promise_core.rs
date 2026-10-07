@@ -542,44 +542,6 @@ impl Vm {
         Ok(())
     }
 
-    /// PerformPromiseThen ( promise, onFulfilled, onRejected, resultCapability ).
-    pub(in super::super) fn perform_promise_then(
-        &mut self,
-        promise: ObjectId,
-        on_fulfilled: Value,
-        on_rejected: Value,
-        target: ReactionTarget,
-    ) -> Result<(), RuntimeError> {
-        let reaction = PromiseThenReaction {
-            target,
-            on_fulfilled,
-            on_rejected,
-        };
-        let record = self
-            .promises
-            .get_mut(&promise)
-            .ok_or(RuntimeError::TypeError("invalid Promise receiver".into()))?;
-        let (fulfilled, value) = match &record.status {
-            PromiseStatus::Pending => {
-                record.reactions.push(PromiseReaction::Then(reaction));
-                return Ok(());
-            }
-            PromiseStatus::Fulfilled(value) => (true, value.clone()),
-            PromiseStatus::Rejected(value) => (false, value.clone()),
-        };
-        self.promise_jobs.push_back(PromiseJob::Reaction {
-            target: reaction.target,
-            handler: if fulfilled {
-                reaction.on_fulfilled
-            } else {
-                reaction.on_rejected
-            },
-            value,
-            fulfilled,
-        });
-        Ok(())
-    }
-
     /// PerformPromiseThen for VM-internal callers: `receiver` is a promise the
     /// VM already knows, no species is consulted, and the derived promise is a
     /// plain `%Promise%`.
@@ -594,14 +556,22 @@ impl Vm {
             .ok_or(RuntimeError::TypeError(
                 "Promise.prototype.then receiver".into(),
             ))?;
-        let target = self.new_promise()?;
-        self.perform_promise_then(
-            promise,
-            native::argument(args, 0).clone(),
-            native::argument(args, 1).clone(),
-            ReactionTarget::Native(target),
-        )?;
-        Ok(Value::Object(target))
+        let base = self.stack.len();
+        self.stack.push(receiver.clone());
+        self.stack.extend(args.iter().cloned());
+        let result = (|| {
+            let target = self.new_promise()?;
+            self.perform_promise_then(
+                promise,
+                native::argument(args, 0).clone(),
+                native::argument(args, 1).clone(),
+                ReactionTarget::Native(target),
+            )
+            .expect("the validated Promise record is retained across derived allocation");
+            Ok(Value::Object(target))
+        })();
+        self.stack.truncate(base);
+        result
     }
 
     /// SpeciesConstructor ( promise, %Promise% ).
@@ -641,6 +611,7 @@ impl Vm {
                 "Promise.prototype.then receiver".into(),
             ))?;
         let base = self.stack.len();
+        self.stack.push(receiver.clone());
         self.stack.extend(args.iter().cloned());
         let result = (|| {
             let constructor = self.promise_species_constructor(receiver)?;
@@ -660,7 +631,8 @@ impl Vm {
                 native::argument(args, 0).clone(),
                 native::argument(args, 1).clone(),
                 target,
-            )?;
+            )
+            .expect("the validated Promise record is retained across species construction");
             Ok(derived)
         })();
         self.stack.truncate(base);

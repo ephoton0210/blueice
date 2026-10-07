@@ -21,10 +21,17 @@ trait HeapPayload {
     fn heap_payload(&self, context: &mut CountContext) -> Option<usize>;
 }
 
+/// Account for a child payload without conflating allocation size with the
+/// sum of separately owned allocations. Both unavailable children and real
+/// usize overflow retain the public None result.
+fn add_payload(total: usize, child: Option<usize>) -> Option<usize> {
+    total.checked_add(child?)
+}
+
 macro_rules! sum {
     ($($part:expr),* $(,)?) => {{
         let mut total = 0usize;
-        $(total = total.checked_add($part?)?;)*
+        $(total = add_payload(total, $part)?;)*
         Some(total)
     }};
 }
@@ -50,7 +57,7 @@ impl<T: HeapPayload> HeapPayload for Option<T> {
 
 impl<T: HeapPayload> HeapPayload for Box<T> {
     fn heap_payload(&self, context: &mut CountContext) -> Option<usize> {
-        std::mem::size_of::<T>().checked_add((**self).heap_payload(context)?)
+        add_payload(std::mem::size_of::<T>(), (**self).heap_payload(context))
     }
 }
 
@@ -58,7 +65,7 @@ impl<T: HeapPayload> HeapPayload for Vec<T> {
     fn heap_payload(&self, context: &mut CountContext) -> Option<usize> {
         let mut bytes = self.capacity().checked_mul(std::mem::size_of::<T>())?;
         for item in self {
-            bytes = bytes.checked_add(item.heap_payload(context)?)?;
+            bytes = add_payload(bytes, item.heap_payload(context))?;
         }
         Some(bytes)
     }
@@ -67,9 +74,7 @@ impl<T: HeapPayload> HeapPayload for Vec<T> {
 impl HeapPayload for BigInt {
     fn heap_payload(&self, _: &mut CountContext) -> Option<usize> {
         let bits = usize::try_from(self.bits()).ok()?;
-        bits.checked_add(31)?
-            .checked_div(32)?
-            .checked_mul(std::mem::size_of::<u32>())
+        (bits.checked_add(31)? / 32).checked_mul(std::mem::size_of::<u32>())
     }
 }
 
@@ -776,3 +781,7 @@ mod tests {
         assert!(program.owned_heap_payload_bytes().unwrap() > 0);
     }
 }
+
+#[cfg(any(test, coverage))]
+#[path = "../../tests/fixtures/payload_accounting_contracts.rs"]
+mod accounting_contracts;

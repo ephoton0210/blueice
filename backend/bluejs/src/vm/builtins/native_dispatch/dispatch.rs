@@ -84,13 +84,15 @@ impl Vm {
         // `RequireInternalSlot(this, ...)` is every Temporal prototype
         // member's first step, ahead of any argument access. Duration methods
         // also need the record, so read it once at this boundary.
-        let duration_record = match function.temporal_receiver_kind() {
-            Some(TemporalKind::Duration) => Some(self.temporal_duration_receiver(&receiver)?),
-            Some(kind) => {
-                self.require_temporal_receiver(&receiver, kind)?;
-                None
+        let (duration_record, temporal_receiver) = match function.temporal_receiver_kind() {
+            Some(TemporalKind::Duration) => {
+                (Some(self.temporal_duration_receiver(&receiver)?), None)
             }
-            None => None,
+            Some(kind) => (
+                None,
+                Some(self.validate_temporal_receiver(&receiver, kind)?),
+            ),
+            None => (None, None),
         };
         let first = native::argument(&args, 0);
         match function {
@@ -318,48 +320,99 @@ impl Vm {
             NativeFunction::TemporalFrom(kind) => {
                 self.temporal_from(kind, first, native::argument(&args, 1))
             }
-            NativeFunction::TemporalWithCalendar(_) => {
-                self.temporal_with_calendar(&receiver, first)
-            }
-            NativeFunction::TemporalPlainToZonedDateTime(_) => {
-                self.temporal_plain_to_zoned_date_time(&receiver, first, native::argument(&args, 1))
-            }
-            NativeFunction::TemporalInstantToZonedDateTimeIso => {
-                self.temporal_instant_to_zoned_date_time_iso(&receiver, first)
-            }
+            NativeFunction::TemporalWithCalendar(_) => self.temporal_with_calendar(
+                temporal_receiver
+                    .as_ref()
+                    .expect("native receiver was validated before argument access"),
+                first,
+            ),
+            NativeFunction::TemporalPlainToZonedDateTime(_) => self
+                .temporal_plain_to_zoned_date_time(
+                    temporal_receiver
+                        .as_ref()
+                        .expect("native receiver was validated before argument access"),
+                    first,
+                    native::argument(&args, 1),
+                ),
+            NativeFunction::TemporalInstantToZonedDateTimeIso => self
+                .temporal_instant_to_zoned_date_time_iso(
+                    temporal_receiver
+                        .as_ref()
+                        .expect("native receiver was validated before argument access"),
+                    first,
+                ),
             NativeFunction::TemporalGetter(_, getter) => self.temporal_getter(&receiver, getter),
-            NativeFunction::TemporalZonedDateTimeToLocaleString => {
-                self.temporal_zoned_date_time_to_locale_string(&receiver, &args)
-            }
-            NativeFunction::TemporalInstantAdd => {
-                self.temporal_instant_add(&receiver, first, false)
-            }
-            NativeFunction::TemporalInstantSubtract => {
-                self.temporal_instant_add(&receiver, first, true)
-            }
-            NativeFunction::TemporalInstantRound => self.temporal_instant_round(&receiver, first),
+            NativeFunction::TemporalZonedDateTimeToLocaleString => self
+                .temporal_zoned_date_time_to_locale_string(
+                    temporal_receiver
+                        .as_ref()
+                        .expect("native receiver was validated before argument access"),
+                    &args,
+                ),
+            NativeFunction::TemporalInstantAdd => self.temporal_instant_add(
+                temporal_receiver
+                    .as_ref()
+                    .expect("native receiver was validated before argument access"),
+                first,
+                false,
+            ),
+            NativeFunction::TemporalInstantSubtract => self.temporal_instant_add(
+                temporal_receiver
+                    .as_ref()
+                    .expect("native receiver was validated before argument access"),
+                first,
+                true,
+            ),
+            NativeFunction::TemporalInstantRound => self.temporal_instant_round(
+                temporal_receiver
+                    .as_ref()
+                    .expect("native receiver was validated before argument access"),
+                first,
+            ),
             NativeFunction::TemporalInstantUntil => self.temporal_instant_difference(
-                &receiver,
+                temporal_receiver
+                    .as_ref()
+                    .expect("native receiver was validated before argument access"),
                 first,
                 native::argument(&args, 1),
                 false,
             ),
-            NativeFunction::TemporalInstantSince => {
-                self.temporal_instant_difference(&receiver, first, native::argument(&args, 1), true)
-            }
-            NativeFunction::TemporalInstantEquals => self.temporal_instant_equals(&receiver, first),
+            NativeFunction::TemporalInstantSince => self.temporal_instant_difference(
+                temporal_receiver
+                    .as_ref()
+                    .expect("native receiver was validated before argument access"),
+                first,
+                native::argument(&args, 1),
+                true,
+            ),
+            NativeFunction::TemporalInstantEquals => self.temporal_instant_equals(
+                temporal_receiver
+                    .as_ref()
+                    .expect("native receiver was validated before argument access"),
+                first,
+            ),
             NativeFunction::TemporalInstantCompare => {
                 self.temporal_instant_compare(first, native::argument(&args, 1))
             }
-            NativeFunction::TemporalInstantToString => {
-                self.temporal_instant_to_string(&receiver, first)
-            }
-            NativeFunction::TemporalInstantToLocaleString => {
-                self.temporal_instant_to_locale_string(&receiver, &args)
-            }
-            NativeFunction::TemporalInstantToJson => {
-                self.temporal_instant_to_string(&receiver, &Value::Undefined)
-            }
+            NativeFunction::TemporalInstantToString => self.temporal_instant_to_string(
+                temporal_receiver
+                    .as_ref()
+                    .expect("native receiver was validated before argument access"),
+                first,
+            ),
+            NativeFunction::TemporalInstantToLocaleString => self
+                .temporal_instant_to_locale_string(
+                    temporal_receiver
+                        .as_ref()
+                        .expect("native receiver was validated before argument access"),
+                    &args,
+                ),
+            NativeFunction::TemporalInstantToJson => self.temporal_instant_to_string(
+                temporal_receiver
+                    .as_ref()
+                    .expect("native receiver was validated before argument access"),
+                &Value::Undefined,
+            ),
             NativeFunction::TemporalInstantValueOf => self.temporal_instant_value_of(),
             NativeFunction::TemporalFromEpochMilliseconds => {
                 self.temporal_from_epoch_milliseconds(first)
@@ -367,45 +420,77 @@ impl Vm {
             NativeFunction::TemporalFromEpochNanoseconds => {
                 self.temporal_from_epoch_nanoseconds(first)
             }
-            NativeFunction::TemporalPlainTimeAdd => {
-                self.temporal_plain_time_add(&receiver, first, false)
-            }
-            NativeFunction::TemporalPlainTimeSubtract => {
-                self.temporal_plain_time_add(&receiver, first, true)
-            }
-            NativeFunction::TemporalPlainTimeRound => {
-                self.temporal_plain_time_round(&receiver, first)
-            }
+            NativeFunction::TemporalPlainTimeAdd => self.temporal_plain_time_add(
+                temporal_receiver
+                    .as_ref()
+                    .expect("native receiver was validated before argument access"),
+                first,
+                false,
+            ),
+            NativeFunction::TemporalPlainTimeSubtract => self.temporal_plain_time_add(
+                temporal_receiver
+                    .as_ref()
+                    .expect("native receiver was validated before argument access"),
+                first,
+                true,
+            ),
+            NativeFunction::TemporalPlainTimeRound => self.temporal_plain_time_round(
+                temporal_receiver
+                    .as_ref()
+                    .expect("native receiver was validated before argument access"),
+                first,
+            ),
             NativeFunction::TemporalPlainTimeUntil => self.temporal_plain_time_difference(
-                &receiver,
+                temporal_receiver
+                    .as_ref()
+                    .expect("native receiver was validated before argument access"),
                 first,
                 native::argument(&args, 1),
                 false,
             ),
             NativeFunction::TemporalPlainTimeSince => self.temporal_plain_time_difference(
-                &receiver,
+                temporal_receiver
+                    .as_ref()
+                    .expect("native receiver was validated before argument access"),
                 first,
                 native::argument(&args, 1),
                 true,
             ),
-            NativeFunction::TemporalPlainTimeEquals => {
-                self.temporal_plain_time_equals(&receiver, first)
-            }
+            NativeFunction::TemporalPlainTimeEquals => self.temporal_plain_time_equals(
+                temporal_receiver
+                    .as_ref()
+                    .expect("native receiver was validated before argument access"),
+                first,
+            ),
             NativeFunction::TemporalPlainTimeCompare => {
                 self.temporal_plain_time_compare(first, native::argument(&args, 1))
             }
-            NativeFunction::TemporalPlainTimeWith => {
-                self.temporal_plain_time_with(&receiver, first, native::argument(&args, 1))
-            }
-            NativeFunction::TemporalPlainTimeToString => {
-                self.temporal_plain_time_to_string(&receiver, first)
-            }
-            NativeFunction::TemporalPlainTimeToJson => {
-                self.temporal_plain_time_to_string(&receiver, &Value::Undefined)
-            }
-            NativeFunction::TemporalPlainTimeToLocaleString => {
-                self.temporal_plain_time_to_locale_string(&receiver, &args)
-            }
+            NativeFunction::TemporalPlainTimeWith => self.temporal_plain_time_with(
+                temporal_receiver
+                    .as_ref()
+                    .expect("native receiver was validated before argument access"),
+                first,
+                native::argument(&args, 1),
+            ),
+            NativeFunction::TemporalPlainTimeToString => self.temporal_plain_time_to_string(
+                temporal_receiver
+                    .as_ref()
+                    .expect("native receiver was validated before argument access"),
+                first,
+            ),
+            NativeFunction::TemporalPlainTimeToJson => self.temporal_plain_time_to_string(
+                temporal_receiver
+                    .as_ref()
+                    .expect("native receiver was validated before argument access"),
+                &Value::Undefined,
+            ),
+            NativeFunction::TemporalPlainTimeToLocaleString => self
+                .temporal_plain_time_to_locale_string(
+                    temporal_receiver
+                        .as_ref()
+                        .expect("native receiver was validated before argument access"),
+                    &args,
+                ),
             NativeFunction::TemporalPlainTimeValueOf => self.temporal_plain_time_value_of(),
             NativeFunction::TemporalNowInstant => self.temporal_now_instant(),
             NativeFunction::TemporalNowTimeZoneId => self.temporal_now_time_zone_id(),

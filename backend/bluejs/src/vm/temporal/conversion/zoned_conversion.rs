@@ -10,24 +10,11 @@ use super::super::*;
 impl Vm {
     pub(in super::super::super) fn temporal_plain_to_zoned_date_time(
         &mut self,
-        receiver: &Value,
+        receiver: &ValidatedTemporalReceiver,
         time_zone: &Value,
         options: &Value,
     ) -> Result<Value, RuntimeError> {
-        let object = receiver.object_id().ok_or_else(|| {
-            RuntimeError::TypeError("Temporal.toZonedDateTime requires a plain receiver".into())
-        })?;
-        let mut value = self.heap.temporal_value(object)?.ok_or_else(|| {
-            RuntimeError::TypeError("Temporal.toZonedDateTime requires a plain receiver".into())
-        })?;
-        if !matches!(
-            value.kind,
-            TemporalKind::PlainDate | TemporalKind::PlainDateTime
-        ) {
-            return Err(RuntimeError::TypeError(
-                "Temporal.toZonedDateTime requires a plain receiver".into(),
-            ));
-        }
+        let mut value = receiver.data().clone();
         // `Temporal.PlainDate.prototype.toZonedDateTime` takes one `item`
         // argument (a bare identifier or a `{ timeZone, plainTime }` bag) and
         // no options object; `Temporal.PlainDateTime.prototype` takes a bare
@@ -114,20 +101,10 @@ impl Vm {
     ///    own lone-option behavior (`lone-options-accepted.js`).
     pub(in super::super::super) fn temporal_zoned_date_time_to_locale_string(
         &mut self,
-        receiver: &Value,
+        receiver: &ValidatedTemporalReceiver,
         args: &[Value],
     ) -> Result<Value, RuntimeError> {
-        let object = receiver.object_id().ok_or_else(|| {
-            RuntimeError::TypeError("Temporal.ZonedDateTime method requires a receiver".into())
-        })?;
-        let value = self.heap.temporal_value(object)?.ok_or_else(|| {
-            RuntimeError::TypeError("Temporal.ZonedDateTime method requires a receiver".into())
-        })?;
-        if value.kind != TemporalKind::ZonedDateTime {
-            return Err(RuntimeError::TypeError(
-                "Temporal.ZonedDateTime method requires a receiver".into(),
-            ));
-        }
+        let value = receiver.data();
         let milliseconds = (&value.epoch_nanoseconds / 1_000_000_u32)
             .to_f64()
             .ok_or_else(|| RuntimeError::RangeError("invalid Temporal instant".into()))?;
@@ -178,7 +155,7 @@ impl Vm {
                 .map_err(|error| RuntimeError::RangeError(error.to_string()))?;
             // Like the plain types: the value's calendar must be the ISO one
             // or the formatter's own (`toLocaleString/calendar-mismatch.js`).
-            Self::temporal_check_format_calendar(&format, &value)?;
+            Self::temporal_check_format_calendar(&format, value)?;
             format
                 .format(milliseconds)
                 .map(|formatted| Value::String(formatted.into()))

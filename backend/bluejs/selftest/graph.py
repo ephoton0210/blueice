@@ -102,6 +102,9 @@ def static_edges(root=ROOT):
                     if known[dependency] != name:
                         edges.add((known[dependency], name, "static"))
                     break
+    from .shared_functions import shared_function_edges, shared_function_graph
+    for edge in shared_function_edges(shared_function_graph(root)):
+        edges.add((edge["source"], edge["target"], edge["kind"]))
     return [{"source": a, "target": b, "kind": kind} for a, b, kind in sorted(edges)], structures
 
 
@@ -133,6 +136,16 @@ def plan(graph, files=None, root=ROOT, base=None):
     affected = set(files)
     fallbacks = []
     visited_edges = []
+    from .shared_functions import body_contract
+    body_sources = set()
+    for name in files:
+        contract = graph.get("shared_body_contracts", {}).get(name)
+        path = root / name
+        if contract and path.is_file() and body_contract(path.read_text()) == contract["structural_sha256"]:
+            if any(e["source"] == name and e["kind"] == "observed"
+                   and e.get("source_sha256") == contract["source_sha256"]
+                   and e.get("snapshot") == contract["snapshot"] for e in old_edges):
+                body_sources.add(name)
 
     def all_engine(reason):
         fallbacks.append(reason)
@@ -148,7 +161,9 @@ def plan(graph, files=None, root=ROOT, base=None):
             continue
         if name.startswith(SOURCE):
             short = name[len(SOURCE):]
-            if short in GLOBAL_FILES or short.startswith("bin/") or any(short == part + ".rs" or short.startswith(part + "/") for part in BROAD):
+            if name in graph.get("shared_body_contracts", {}) and name not in body_sources:
+                all_engine("Shared boundary interface changed or current evidence is unavailable: " + name)
+            if name not in body_sources and (short in GLOBAL_FILES or short.startswith("bin/") or any(short == part + ".rs" or short.startswith(part + "/") for part in BROAD)):
                 all_engine("Shared engine contract changed: " + name)
             if not (root / name).is_file() or name not in graph.get("source_hashes", {}):
                 all_engine("New or removed production source: " + name)
@@ -171,6 +186,11 @@ def plan(graph, files=None, root=ROOT, base=None):
         while queue:
             node, path = queue.popleft()
             for edge in adjacency[node]:
+                if origin in body_sources and edge["kind"] == "shared-function":
+                    # A complete gate measured actual entry to this module.
+                    # Its interface is identical; lexical caller-file edges
+                    # would otherwise merge unrelated branches in dispatch.
+                    continue
                 target = edge["target"]
                 if target in seen:
                     continue
@@ -195,4 +215,5 @@ def plan(graph, files=None, root=ROOT, base=None):
             "estimated_serial_seconds": round(sum(t.get("elapsed_seconds", 0) for t in selected), 3),
             "edges": list({(e["source"], e["target"], e["kind"]): e for e in visited_edges}.values()),
             "graph_created_at": graph.get("created_at"),
+            "shared_body_contract_sources": sorted(body_sources),
             "note": "Observed relationships describe executed paths. The final full run checks behavior beyond those observations."}

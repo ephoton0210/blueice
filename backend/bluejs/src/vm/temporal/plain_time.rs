@@ -234,36 +234,6 @@ impl Vm {
         }
     }
 
-    /// Reads a validated `Temporal.PlainTime` receiver's time of day.
-    pub(in super::super) fn temporal_plain_time_fields(
-        &mut self,
-        receiver: &Value,
-    ) -> Result<(u8, u8, u8, u16, u16, u16), RuntimeError> {
-        let object = receiver.object_id().ok_or_else(|| {
-            RuntimeError::TypeError(
-                "Temporal.PlainTime method requires a PlainTime receiver".into(),
-            )
-        })?;
-        let value = self.heap.temporal_value(object)?.ok_or_else(|| {
-            RuntimeError::TypeError(
-                "Temporal.PlainTime method requires a PlainTime receiver".into(),
-            )
-        })?;
-        if value.kind != TemporalKind::PlainTime {
-            return Err(RuntimeError::TypeError(
-                "Temporal.PlainTime method requires a PlainTime receiver".into(),
-            ));
-        }
-        Ok((
-            value.hour,
-            value.minute,
-            value.second,
-            value.millisecond,
-            value.microsecond,
-            value.nanosecond,
-        ))
-    }
-
     /// `ToTemporalTime`: a `PlainTime`/`PlainDateTime`/`ZonedDateTime` carries
     /// its own time of day; a string goes through the `TemporalTimeString`
     /// grammar; anything else object-shaped is read as a property bag.
@@ -340,11 +310,11 @@ impl Vm {
     /// and unlike `Temporal.Instant.prototype.add` it is not an error either.
     pub(in super::super) fn temporal_plain_time_add(
         &mut self,
-        receiver: &Value,
+        receiver: &ValidatedTemporalReceiver,
         duration_value: &Value,
         negate: bool,
     ) -> Result<Value, RuntimeError> {
-        let fields = self.temporal_plain_time_fields(receiver)?;
+        let fields = receiver.time_fields();
         let duration = self.temporal_duration_from_value(duration_value)?;
         let time = duration_math::TimeDuration::from_fields(
             duration.hours,
@@ -368,10 +338,10 @@ impl Vm {
     /// `round/string-shorthand-no-object-prototype-pollution.js`).
     pub(in super::super) fn temporal_plain_time_round(
         &mut self,
-        receiver: &Value,
+        receiver: &ValidatedTemporalReceiver,
         round_to: &Value,
     ) -> Result<Value, RuntimeError> {
-        let fields = self.temporal_plain_time_fields(receiver)?;
+        let fields = receiver.time_fields();
         if *round_to == Value::Undefined {
             return Err(RuntimeError::TypeError(
                 "Temporal.PlainTime.round requires a smallestUnit or options argument".into(),
@@ -432,12 +402,12 @@ impl Vm {
     /// `since/roundingmode-*.js` fixtures agree with.
     pub(in super::super) fn temporal_plain_time_difference(
         &mut self,
-        receiver: &Value,
+        receiver: &ValidatedTemporalReceiver,
         other: &Value,
         options: &Value,
         since: bool,
     ) -> Result<Value, RuntimeError> {
-        let fields = self.temporal_plain_time_fields(receiver)?;
+        let fields = receiver.time_fields();
         let other_fields = self.temporal_to_plain_time(other, &Value::Undefined)?;
         let base = self.stack.len();
         let result = (|| {
@@ -515,10 +485,10 @@ impl Vm {
 
     pub(in super::super) fn temporal_plain_time_equals(
         &mut self,
-        receiver: &Value,
+        receiver: &ValidatedTemporalReceiver,
         other: &Value,
     ) -> Result<Value, RuntimeError> {
-        let fields = self.temporal_plain_time_fields(receiver)?;
+        let fields = receiver.time_fields();
         let other = self.temporal_to_plain_time(other, &Value::Undefined)?;
         Ok(Value::Bool(fields == other))
     }
@@ -543,11 +513,11 @@ impl Vm {
     /// `with/plaintimelike-invalid.js`.
     pub(in super::super) fn temporal_plain_time_with(
         &mut self,
-        receiver: &Value,
+        receiver: &ValidatedTemporalReceiver,
         like: &Value,
         options: &Value,
     ) -> Result<Value, RuntimeError> {
-        let fields = self.temporal_plain_time_fields(receiver)?;
+        let fields = receiver.time_fields();
         let object = like.object_id().ok_or_else(|| {
             RuntimeError::TypeError("Temporal.PlainTime.with requires a property bag".into())
         })?;
@@ -617,10 +587,10 @@ impl Vm {
 
     pub(in super::super) fn temporal_plain_time_to_string(
         &mut self,
-        receiver: &Value,
+        receiver: &ValidatedTemporalReceiver,
         options: &Value,
     ) -> Result<Value, RuntimeError> {
-        let fields = self.temporal_plain_time_fields(receiver)?;
+        let fields = receiver.time_fields();
         let base = self.stack.len();
         let result = (|| {
             let options = self.temporal_options(options)?;
@@ -788,11 +758,9 @@ impl Vm {
     /// check in there regressed that fixture during development.
     pub(in super::super) fn temporal_plain_time_to_locale_string(
         &mut self,
-        receiver: &Value,
+        receiver: &ValidatedTemporalReceiver,
         args: &[Value],
     ) -> Result<Value, RuntimeError> {
-        // Brand check before any observable option read.
-        self.temporal_plain_time_fields(receiver)?;
         let stack_base = self.stack.len();
         let result = (|| {
             let formatter = self.create_date_time_format(
@@ -815,7 +783,7 @@ impl Vm {
                         .into(),
                 ));
             }
-            self.date_time_format_format(&formatter, receiver)
+            self.date_time_format_format(&formatter, receiver.value())
         })();
         self.stack.truncate(stack_base);
         result

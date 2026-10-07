@@ -5,25 +5,6 @@
 use super::*;
 
 impl Vm {
-    /// Reads a validated `Temporal.Instant` receiver's epoch nanoseconds.
-    pub(in super::super) fn temporal_instant_epoch(
-        &mut self,
-        receiver: &Value,
-    ) -> Result<BigInt, RuntimeError> {
-        let object = receiver.object_id().ok_or_else(|| {
-            RuntimeError::TypeError("Temporal.Instant method requires an Instant receiver".into())
-        })?;
-        let value = self.heap.temporal_value(object)?.ok_or_else(|| {
-            RuntimeError::TypeError("Temporal.Instant method requires an Instant receiver".into())
-        })?;
-        if value.kind != TemporalKind::Instant {
-            return Err(RuntimeError::TypeError(
-                "Temporal.Instant method requires an Instant receiver".into(),
-            ));
-        }
-        Ok(value.epoch_nanoseconds)
-    }
-
     /// Parses a `TemporalInstantString` into epoch nanoseconds.
     pub(in super::super) fn instant_epoch_from_string(
         source: &str,
@@ -108,11 +89,11 @@ impl Vm {
 
     pub(in super::super) fn temporal_instant_add(
         &mut self,
-        receiver: &Value,
+        receiver: &ValidatedTemporalReceiver,
         duration_value: &Value,
         negate: bool,
     ) -> Result<Value, RuntimeError> {
-        let epoch = self.temporal_instant_epoch(receiver)?;
+        let epoch = receiver.instant_epoch();
         let duration = self.temporal_duration_from_value(duration_value)?;
         if duration.years != 0 || duration.months != 0 || duration.weeks != 0 || duration.days != 0
         {
@@ -138,10 +119,10 @@ impl Vm {
 
     pub(in super::super) fn temporal_instant_round(
         &mut self,
-        receiver: &Value,
+        receiver: &ValidatedTemporalReceiver,
         options: &Value,
     ) -> Result<Value, RuntimeError> {
-        let epoch = self.temporal_instant_epoch(receiver)?;
+        let epoch = receiver.instant_epoch();
         let options = self.temporal_round_to(options)?;
         // Every option is read and coerced in alphabetical order, before any
         // of them is validated against the others.
@@ -171,12 +152,12 @@ impl Vm {
 
     pub(in super::super) fn temporal_instant_difference(
         &mut self,
-        receiver: &Value,
+        receiver: &ValidatedTemporalReceiver,
         other: &Value,
         options: &Value,
         since: bool,
     ) -> Result<Value, RuntimeError> {
-        let self_epoch = self.temporal_instant_epoch(receiver)?;
+        let self_epoch = receiver.instant_epoch();
         let other_epoch = self.temporal_to_instant_epoch(other)?;
         let options = self.temporal_options(options)?;
         // `GetDifferenceSettings` reads largestUnit, roundingIncrement,
@@ -268,10 +249,10 @@ impl Vm {
 
     pub(in super::super) fn temporal_instant_equals(
         &mut self,
-        receiver: &Value,
+        receiver: &ValidatedTemporalReceiver,
         other: &Value,
     ) -> Result<Value, RuntimeError> {
-        let self_epoch = self.temporal_instant_epoch(receiver)?;
+        let self_epoch = receiver.instant_epoch();
         let other_epoch = self.temporal_to_instant_epoch(other)?;
         Ok(Value::Bool(self_epoch == other_epoch))
     }
@@ -421,10 +402,10 @@ impl Vm {
 
     pub(in super::super) fn temporal_instant_to_string(
         &mut self,
-        receiver: &Value,
+        receiver: &ValidatedTemporalReceiver,
         options: &Value,
     ) -> Result<Value, RuntimeError> {
-        let epoch = self.temporal_instant_epoch(receiver)?;
+        let epoch = receiver.instant_epoch();
         let options = self.temporal_options(options)?;
         // Read (and coerce) every option in alphabetical order first; only
         // then reject a unit this operation does not accept.
@@ -502,11 +483,9 @@ impl Vm {
     /// aliasing `toString`'s ISO serialization.
     pub(in super::super) fn temporal_instant_to_locale_string(
         &mut self,
-        receiver: &Value,
+        receiver: &ValidatedTemporalReceiver,
         args: &[Value],
     ) -> Result<Value, RuntimeError> {
-        // Brand check before any observable option read.
-        self.temporal_instant_epoch(receiver)?;
         let stack_base = self.stack.len();
         let result = (|| {
             let formatter = self.create_date_time_format(
@@ -518,7 +497,7 @@ impl Vm {
                 false,
             )?;
             self.stack.push(formatter.clone());
-            self.date_time_format_format(&formatter, receiver)
+            self.date_time_format_format(&formatter, receiver.value())
         })();
         self.stack.truncate(stack_base);
         result

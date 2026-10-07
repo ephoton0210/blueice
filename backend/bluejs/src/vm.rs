@@ -21,12 +21,16 @@ use std::cmp::Ordering;
 use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
 use std::rc::Rc;
 mod builtins;
+mod classification;
 mod completion;
 mod debugger;
 mod errors;
 mod execution;
+mod for_in;
 mod functions;
 mod host_objects;
+mod host_registration;
+use host_registration::{host_function_index, host_registration_index};
 mod interpreter;
 mod intl;
 mod intrinsics;
@@ -35,6 +39,7 @@ mod lifecycle;
 mod modules;
 mod native_stack;
 mod operations;
+mod promise_reactions;
 mod properties;
 mod realm_reentrancy;
 mod regexp;
@@ -1308,11 +1313,6 @@ impl Vm {
         self.check_string(&result)?;
         Ok(result)
     }
-}
-
-/// Encodes the private native callback tag without narrowing a registry index.
-fn host_function_index(index: usize) -> Result<u32, RuntimeError> {
-    u32::try_from(index).map_err(|_| RuntimeError::RangeError("too many host functions".into()))
 }
 
 impl Vm {

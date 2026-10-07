@@ -98,7 +98,13 @@ def render_report(data, root, report_path):
             total = sum(values.values())
             records.append([name, f"{total:,}", *[f"{values[k]:,}" for k in statuses], f"{100 * values['pass'] / total:.3f}%" if total else "No scheduled modes"])
         table([label, "Scheduled", "Pass", "Fail", "Unsupported", "Excluded", "Stale corpus", "Timeout", "Harness error", "Raw pass rate"], records)
-    selected, modified = data["selected"], data["modified"]
+    selected = data["selected"]
+    # The reviewed manifest distinguishes test/type-only sources from a
+    # genuinely missing executable map. Keep unknown missing sources in the
+    # completion gate rather than treating every absent path as exempt.
+    audited_modified = {name: data["no_counters"][name] for name in data["modified"]
+                        if name not in raw and name in data.get("no_counters", {})}
+    modified = [name for name in data["modified"] if name not in audited_modified]
     complete_count = sum(complete(v) for v in raw.values())
     out = ["# macOS Test262 Report" if os.uname().sysname == "Darwin" else "# BlueJS Test Report", "",
            f"**Measurement: {data['measured_at']}. All numbers use this one verified source snapshot.**", "",
@@ -160,7 +166,12 @@ def render_report(data, root, report_path):
             "Complete" if name in raw and complete(raw[name]) else "Incomplete"] for name, level in sorted(selected.items(), key=lambda p: (-p[1], p[0]))])
     out.extend([f"Selected files complete: **{sum(name in raw and complete(raw[name]) for name in selected)} / {len(selected)}**. "
                 f"Modified production files complete: **{sum(name in raw and complete(raw[name]) for name in modified)} / {len(modified)}**.", "",
-                "### Verification evidence", ""])
+                ])
+    if audited_modified:
+        out.extend(["Changed sources in the reviewed no-counter manifest remain separately audited:", ""])
+        table(["Source file", "Reviewed classification"],
+              [[source(name), reason] for name, reason in sorted(audited_modified.items())])
+    out.extend(["### Verification evidence", ""])
     rust = data["rust"]
     table(["Gate", "Current result"], [["BlueJS Rust", f"{rust['targets']} targets; {rust['counts'][0]:,} passed; {rust['counts'][1]} failed; {rust['counts'][2]} ignored"],
                                        ["Full Test262", f"{summary['results'].get('pass', 0):,} passed"],

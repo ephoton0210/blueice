@@ -47,59 +47,36 @@ impl Vm {
         ))
     }
 
-    /// `CreateDisposableResource ( V, hint [, method ] )`.
+    /// Creates a resource for a using declaration or DisposableStack.use.
     ///
-    /// Returns `None` only for the sync-hint/nullish/no-explicit-method case
+    /// Returns `None` only for the sync-hint/nullish case
     /// that `AddDisposableResource` turns into "add nothing at all" -- every
     /// other outcome either returns a resource or throws.
     pub(in super::super) fn create_disposable_resource(
         &mut self,
         value: Value,
         hint: DisposeHint,
-        method: Option<Value>,
     ) -> Result<Option<DisposableResource>, RuntimeError> {
-        let mut sync_fallback = false;
-        let method = match method {
-            None => {
-                if matches!(value, Value::Null | Value::Undefined) {
-                    if hint == DisposeHint::Sync {
-                        return Ok(None);
-                    }
-                    // `await using x = null` (or an AsyncDisposableStack
-                    // resource explicitly added as nullish) still records a
-                    // method-less resource: DisposeResources still performs
-                    // an Await for it, per the async-dispose hint.
-                    return Ok(Some(DisposableResource {
-                        receiver: Value::Undefined,
-                        argument: None,
-                        method: None,
-                        hint,
-                        sync_fallback: false,
-                    }));
-                }
-                if !matches!(value, Value::Object(_)) {
-                    return Err(RuntimeError::TypeError(
-                        "using declaration value must be an object, null, or undefined".into(),
-                    ));
-                }
-                let (method, fallback) = self.get_dispose_method(&value, hint)?;
-                if method == Value::Undefined {
-                    return Err(RuntimeError::TypeError(
-                        "resource has no Symbol.dispose/Symbol.asyncDispose method".into(),
-                    ));
-                }
-                sync_fallback = fallback;
-                method
-            }
-            Some(method) => {
-                if !self.is_callable(&method)? {
-                    return Err(RuntimeError::TypeError(
-                        "dispose callback must be callable".into(),
-                    ));
-                }
-                method
-            }
-        };
+        if matches!(value, Value::Null | Value::Undefined) {
+            return Ok((hint == DisposeHint::Async).then_some(DisposableResource {
+                receiver: Value::Undefined,
+                argument: None,
+                method: None,
+                hint,
+                sync_fallback: false,
+            }));
+        }
+        if !matches!(value, Value::Object(_)) {
+            return Err(RuntimeError::TypeError(
+                "using declaration value must be an object, null, or undefined".into(),
+            ));
+        }
+        let (method, sync_fallback) = self.get_dispose_method(&value, hint)?;
+        if method == Value::Undefined {
+            return Err(RuntimeError::TypeError(
+                "resource has no Symbol.dispose/Symbol.asyncDispose method".into(),
+            ));
+        }
         Ok(Some(DisposableResource {
             receiver: value,
             argument: None,
@@ -109,15 +86,14 @@ impl Vm {
         }))
     }
 
-    /// `AddDisposableResource ( disposeCapability, V, hint [, method ] )`.
+    /// Adds the resource obtained from the value's disposal method.
     pub(in super::super) fn add_disposable_resource(
         &mut self,
         capability: &mut Vec<DisposableResource>,
         value: Value,
         hint: DisposeHint,
-        method: Option<Value>,
     ) -> Result<(), RuntimeError> {
-        if let Some(resource) = self.create_disposable_resource(value, hint, method)? {
+        if let Some(resource) = self.create_disposable_resource(value, hint)? {
             capability.push(resource);
         }
         Ok(())
@@ -537,7 +513,7 @@ impl Vm {
         } else {
             DisposeHint::Sync
         };
-        let resource = self.create_disposable_resource(value.clone(), hint, None)?;
+        let resource = self.create_disposable_resource(value.clone(), hint)?;
         if let Some(resource) = resource {
             let state = if is_async {
                 self.async_disposable_stacks.get_mut(&id)

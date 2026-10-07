@@ -40,6 +40,8 @@ use std::time::Duration;
 
 mod binary_data;
 pub(crate) use binary_data::{f16_bits_to_f64, f64_to_f16_bits};
+mod capabilities;
+pub(crate) use capabilities::ObjectCapabilities;
 mod collection_iteration;
 pub(crate) use collection_iteration::CollectionEntry;
 mod core;

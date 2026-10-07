@@ -29,6 +29,8 @@ mod plain_date_time_difference;
 mod plain_month_day;
 mod plain_year_month;
 mod receiver;
+mod receiver_kind;
+pub(super) use receiver::ValidatedTemporalReceiver;
 mod rounding;
 mod time_zone;
 mod time_zone_id;

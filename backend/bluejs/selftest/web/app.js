@@ -121,6 +121,7 @@ function svgElement(tag, attributes, text) {
   return element;
 }
 function renderRelationships() {
+  renderSharedFunctions();
   const svg = $("relationship-graph");
   svg.replaceChildren();
   $("selected-source").textContent = selectedSource ? shortPath(selectedSource) : "Select a source file";
@@ -153,6 +154,42 @@ function renderRelationships() {
     row.append(node("td", test.label), node("td", test.kind === "observed" ? "Observed execution" : "Static dependency"), node("td", duration(test.elapsed_seconds)));
     row.title = test.id;
     table.append(row);
+  }
+}
+function renderSharedFunctions() {
+  const list = $("shared-function-list");
+  const functions = (graph?.shared_functions || []).filter(item =>
+    item.definitions.some(definition => definition.source === selectedSource) ||
+    item.references.some(reference => reference.source === selectedSource));
+  $("shared-function-count").textContent = `${functions.length} functions`;
+  list.replaceChildren();
+  let displayed = 0;
+  let total = 0;
+  for (const item of functions) {
+    const owned = item.definitions.some(definition => definition.source === selectedSource);
+    for (const reference of item.references.filter(ref => owned || ref.source === selectedSource)) {
+      total++;
+      if (displayed++ >= 200) continue;
+      const row = node("tr");
+      const name = node("td", item.symbol);
+      name.append(node("div", item.boundary, "muted"));
+      row.append(name, node("td", `${shortPath(reference.source)} · ${reference.function || "module scope"}`), node("td", String(reference.line)));
+      row.title = item.resolution;
+      list.append(row);
+    }
+  }
+  if (!total) {
+    const row = node("tr");
+    const cell = node("td", "Select a shared boundary or its caller to explore references.", "muted");
+    cell.colSpan = 3;
+    row.append(cell);
+    list.append(row);
+  } else if (total > 200) {
+    const row = node("tr");
+    const cell = node("td", `${total - 200} additional source references are retained in the graph data.`, "muted");
+    cell.colSpan = 3;
+    row.append(cell);
+    list.append(row);
   }
 }
 async function showOutput(path, title) {
@@ -252,9 +289,10 @@ async function refresh() {
   refreshInFlight = true;
   try {
     state = await api("/api/state");
-    if (graphVersion !== state.graph.created_at) {
+    const currentGraphVersion = `${state.graph.created_at}:${state.plan.snapshot}`;
+    if (graphVersion !== currentGraphVersion) {
       graph = await api("/api/graph");
-      graphVersion = state.graph.created_at;
+      graphVersion = currentGraphVersion;
       if (!selectedSource) selectedSource = graph.sources.find(p => p.endsWith("vm/builtins/generators.rs")) || graph.sources[0];
       renderSources(); renderRelationships();
     }

@@ -64,6 +64,13 @@ roots stay outside that partition. Public test changes select the changed
 native case names when shared imports, constants and helpers are identical;
 changing a shared input selects the whole owning target.
 
+The isolated common-boundary and payload fixtures also have explicit native
+module and ordinary-library verification contracts. A new fixture or a change
+to its shared setup selects every case in that native module and each public
+wrapper case. An absent verification root, additional public API or exported
+macro keeps broader selection. Fixture corrections therefore do not require
+running unrelated tests in the same library target.
+
 Global property deletion has a contract covering captured eval bindings,
 public deletion cases and Test262 delete/eval/global-code directories.
 Both qualified property deletion and unqualified DeleteBinding reach the same
@@ -168,6 +175,31 @@ configure them. Estimated time is retained serial test work, rather than a
 promise of wall-clock duration on a shared host.
 
 ## Graph and selection contracts
+
+Shared classification, Temporal receiver, host registration, Promise reaction,
+for-in, payload-accounting and Intl boundaries have a separate source-reference
+graph. The dashboard shows each shared function's definitions and callers with
+source line numbers. Comments and literals are ignored, nested function scopes
+are retained, and ambiguous method names keep every matching definition.
+These lexical references add dependency edges; they do not justify dropping a
+measured target or resolving dynamic dispatch.
+
+New observed profiles refresh existing source/target evidence with the source
+hash, test source hash, selection identity, snapshot, executable/coverage hashes
+and profile directory. Earlier source-version evidence remains in edge history;
+partial selections retain the unmeasured owner paths. A fresh complete owning
+harness moves obsolete paths into historical observations. Shared interface,
+type and signature changes still require broader verification. Once the new
+modules are measured, later local algorithm edits can use their own boundaries
+without repeatedly changing the shared producer/classification files.
+
+Only a successful complete engine inventory records a shared module's structural
+contract. A later body edit with identical signatures, types, imports, attributes
+and shared literals uses the actual module observations from that complete
+snapshot. Lexical references through a general dispatcher then remain visible
+without merging all unrelated dispatch branches into the selection. Missing or
+mismatched evidence, a new helper or any shared-interface edit keeps the broad
+fallback. Partition profiles cannot establish this contract.
 
 - Observed edges mean that a target's LLVM profiles contain positive execution
   counters for that source file. Each subsequent successful run retains profiles

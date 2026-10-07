@@ -943,86 +943,6 @@ impl Vm {
         }
     }
 
-    pub(in super::super) fn is_constructor(&self, value: &Value) -> Result<bool, RuntimeError> {
-        let Value::Object(id) = value else {
-            return Ok(false);
-        };
-        if let Some((_, _, _, constructible)) = self.test262_foreign_reference(*id) {
-            return Ok(constructible);
-        }
-        if let Some((_, _, _, constructible)) = self.test262_reverse_reference(*id) {
-            return Ok(constructible);
-        }
-        if let Some((_, constructible)) = self.heap.proxy_capabilities(*id)? {
-            return Ok(constructible);
-        }
-        if let Some(bound) = self
-            .heap
-            .bound_function(*id)
-            .expect("proxy_capabilities validated this live object without executing JavaScript")
-        {
-            return Ok(bound.constructible);
-        }
-        if let Some((code, _, _, _)) = self
-            .heap
-            .closure(*id)
-            .expect("proxy_capabilities validated this live object without executing JavaScript")
-        {
-            return Ok(code.constructible);
-        }
-        Ok(matches!(
-            self.heap.native_function(*id).expect(
-                "proxy_capabilities validated this live object without executing JavaScript"
-            ),
-            Some(
-                NativeFunction::Function
-                    | NativeFunction::String
-                    | NativeFunction::Array
-                    | NativeFunction::Date
-                    | NativeFunction::TemporalConstructor(_)
-                    | NativeFunction::ArrayBuffer
-                    | NativeFunction::SharedArrayBuffer
-                    | NativeFunction::DataView
-                    | NativeFunction::TypedArray(_)
-                    // `%TypedArray%` has [[Construct]] so concrete and host
-                    // subclasses may extend it, even though a direct
-                    // construction attempt deliberately throws.
-                    | NativeFunction::TypedArrayIntrinsic
-                    | NativeFunction::Proxy
-                    | NativeFunction::Map
-                    | NativeFunction::Set
-                    | NativeFunction::WeakMap
-                    | NativeFunction::WeakSet
-                    | NativeFunction::WeakRef
-                    | NativeFunction::FinalizationRegistry
-                    | NativeFunction::DisposableStack { .. }
-                    | NativeFunction::ShadowRealm
-                    | NativeFunction::Promise
-                    // `Symbol` has [[Construct]] (it may head a class `extends`
-                    // clause) but its behavior always throws for `new`.
-                    | NativeFunction::Symbol
-                    | NativeFunction::AsyncFunction
-                    | NativeFunction::GeneratorFunction
-                    | NativeFunction::AsyncGeneratorFunction
-                    | NativeFunction::Object
-                    | NativeFunction::Iterator
-                    | NativeFunction::RegExp
-                    | NativeFunction::Collator
-                    | NativeFunction::IntlService(_)
-                    | NativeFunction::Locale
-                    | NativeFunction::Error(_)
-                    | NativeFunction::PrimitiveConstructor(_)
-                    // BigInt has [[Construct]] (`class Foo extends BigInt`
-                    // is legal, and Reflect.construct(BigInt, ...) doesn't
-                    // fail the IsConstructor check) even though invoking it
-                    // always throws once NewTarget is observed not to be
-                    // undefined -- "is a constructor" and "constructing it
-                    // never actually succeeds" are independent facts.
-                    | NativeFunction::BigInt
-            )
-        ))
-    }
-
     pub(in super::super) fn proxy_constructor(
         &mut self,
         args: &[Value],
@@ -1039,10 +959,9 @@ impl Vm {
         let handler = native::argument(args, 1)
             .object_id()
             .ok_or_else(|| RuntimeError::TypeError("Proxy handler must be an object".into()))?;
-        let callable = self.is_callable(&Value::Object(target))?;
-        let constructible = self
-            .is_constructor(&Value::Object(target))
-            .expect("IsCallable validated the live target without any intervening user code");
+        let capabilities = self.value_capabilities(target)?;
+        let callable = capabilities.callable;
+        let constructible = capabilities.constructible;
         // A Proxy's ordinary prototype slot is never consulted by its
         // internal methods; [[GetPrototypeOf]] delegates to the target.
         // Using Object.prototype also allows ProxyCreate to wrap an already
@@ -1063,10 +982,9 @@ impl Vm {
         let handler = native::argument(args, 1)
             .object_id()
             .ok_or_else(|| RuntimeError::TypeError("Proxy handler must be an object".into()))?;
-        let callable = self.is_callable(&Value::Object(target))?;
-        let constructible = self
-            .is_constructor(&Value::Object(target))
-            .expect("IsCallable validated the live target without any intervening user code");
+        let capabilities = self.value_capabilities(target)?;
+        let callable = capabilities.callable;
+        let constructible = capabilities.constructible;
         let proxy_prototype = Some(self.object_prototype);
         let proxy = self.with_roots(|heap| {
             heap.alloc_proxy(target, handler, proxy_prototype, callable, constructible)

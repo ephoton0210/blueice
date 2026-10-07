@@ -9,17 +9,6 @@ use super::*;
 mod boundary_tests;
 
 impl Vm {
-    /// ECMAScript ToBoolean, including the host-defined Annex B IsHTMLDDA
-    /// override. Ordinary objects remain truthy.
-    pub(super) fn to_boolean(&self, value: &Value) -> Result<bool, RuntimeError> {
-        if let Value::Object(object) = value {
-            if self.heap.is_html_dda(*object)? {
-                return Ok(false);
-            }
-        }
-        Ok(primitive::truthy(value))
-    }
-
     pub(super) fn lookup_global_name(&mut self, name: &str) -> Result<Option<Value>, RuntimeError> {
         if self.dynamic_eval_bindings.contains_key(name)
             || self
@@ -122,23 +111,6 @@ impl Vm {
                 .expect("the checked ordinary object retains its prototype without collection");
         }
         Ok(false)
-    }
-
-    pub(super) fn typeof_value(&self, value: &Value) -> Result<&'static str, RuntimeError> {
-        if let Value::Object(object) = value {
-            if self.heap.is_html_dda(*object)? {
-                return Ok("undefined");
-            }
-        }
-        Ok(
-            if self.is_callable(value).expect(
-                "objects were validated by is_html_dda; primitive callability is infallible",
-            ) {
-                "function"
-            } else {
-                primitive::type_name(value)
-            },
-        )
     }
 
     pub(super) fn error_global(&mut self, name: &str) -> Result<Value, RuntimeError> {

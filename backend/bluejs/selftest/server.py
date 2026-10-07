@@ -123,10 +123,16 @@ def make_server(application, port=8765):
                 if parsed.path == "/api/state":
                     return self.send(200, application.state())
                 if parsed.path == "/api/graph":
+                    from .shared_functions import shared_function_graph
                     graph = application.manager.graph()
-                    sources = sorted({e["source"] for e in graph["edges"]} | {p for p in graph["source_hashes"] if p.endswith(".rs")})
+                    functions = shared_function_graph(application.manager.root)
+                    function_sources = {location["source"] for item in functions
+                                        for location in item["definitions"] + item["references"]}
+                    sources = sorted({e["source"] for e in graph["edges"]}
+                                     | {p for p in graph["source_hashes"] if p.endswith(".rs")} | function_sources)
                     return self.send(200, {"sources": sources, "tests": graph["tests"],
                         "edges": [{k: e[k] for k in ("source", "target", "kind")} for e in graph["edges"]],
+                        "shared_functions": functions,
                         "coverage": graph.get("baseline", {}).get("full_coverage", {}) if graph.get("baseline") else {}})
                 if parsed.path == "/api/current-report":
                     path = application.manager.root / "development/browser_core/phase-13-bluejs-engine/TEST262_MACOS_REPORT.md"
