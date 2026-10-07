@@ -4398,3 +4398,11 @@ This additional failing baseline is committed before those mappings. The
 pending implementation's format and all-target two-crate Clippy pass; its
 long oracle run was stopped after this audit found the remaining work, so a
 complete K.0 test pass is still required. K.3.1, K.3.2, K.3.3 and M7 stay open.
+
+Twenty further pinned source witnesses extend this audit to call/apply/bind,
+generic argument ranges, missing declaration names and non-string imports
+(92 witnesses in total). Their public-boundary replay is committed red before
+the corresponding context refinements. The first failure also identifies the
+existing parser restriction on TypeScript `this` parameters; it must be
+reported as a precise BlueTSC subset restriction, rather than a fabricated TS
+parameter-name diagnostic. No language support is added by these witnesses.

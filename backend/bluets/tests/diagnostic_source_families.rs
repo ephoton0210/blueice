@@ -4,7 +4,9 @@
 
 //! Additional compiler locations outside the existing language matrix.
 
-use blueice_bluets::{Diagnostic, DiagnosticCode, SourceSpan};
+use blueice_bluets::{
+    compile, CompilerOptions, Diagnostic, DiagnosticCode, MapLoader, ModuleSource, SourceSpan,
+};
 use serde_json::Value;
 use std::path::Path;
 use std::process::Command;
@@ -31,6 +33,97 @@ fn lexical_error_families_use_the_recorded_typescript_template() {
             "{id}: {json}"
         );
         assert_eq!(json["btsCode"], "BTS1000");
+    }
+}
+
+#[test]
+fn source_witnesses_have_precise_counterparts_or_recorded_subset_reasons() {
+    let reference: Value =
+        serde_json::from_str(include_str!("fixtures/diagnostics/source-families.json")).unwrap();
+    let known_checker_gaps = [
+        "nonexhaustive-return",
+        "tuple-index",
+        "unused-type",
+        "throw-newline",
+        "throw-empty",
+    ];
+    let subset_refusals = [
+        "rest-alias",
+        "argument-spread-rest",
+        "catch-type",
+        "name-type",
+    ];
+    for case in reference["cases"].as_array().unwrap() {
+        let id = case["id"].as_str().unwrap();
+        let suffix = id.strip_prefix("diagnostics-other-").unwrap();
+        let source = case["source"].as_str().unwrap();
+        let mut options = CompilerOptions::default();
+        if case["flags"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|flag| flag == "--strictBindCallApply")
+        {
+            options.checking = Some(blueice_bluets::CheckingOptions::default());
+        }
+        let result = compile(
+            "memory:///witness.ts",
+            &MapLoader::from([ModuleSource::new("memory:///witness.ts", source)]),
+            options,
+        );
+        if case["accepts"] == true && suffix == "apply-array" {
+            assert!(
+                result.diagnostics.is_empty(),
+                "{id}: {:?}",
+                result.diagnostics
+            );
+            continue;
+        }
+        if known_checker_gaps.contains(&suffix) {
+            assert!(
+                result.diagnostics.is_empty(),
+                "recorded checker gap changed: {id}: {:?}",
+                result.diagnostics
+            );
+            continue;
+        }
+        let primary = result
+            .diagnostics
+            .first()
+            .unwrap_or_else(|| panic!("missing diagnostic: {id}"));
+        let json = primary.to_json();
+        if subset_refusals.contains(&suffix) {
+            assert!(json["typescript"].is_null(), "{id}: {json}");
+            assert!(
+                json["noTypeScriptCounterpart"].as_str().is_some(),
+                "{id}: {json}"
+            );
+        } else {
+            let counterpart = primary
+                .typescript
+                .as_ref()
+                .unwrap_or_else(|| panic!("unmapped {id}: {json}"));
+            assert!(
+                case["diagnostics"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|recorded| {
+                        recorded["code"].as_u64() == Some(u64::from(counterpart.code))
+                    }),
+                "unwitnessed counterpart {id}: {json}"
+            );
+            assert!(json["noTypeScriptCounterpart"].is_null(), "{id}: {json}");
+        }
+        assert!(result.output.is_none(), "{id}");
+        for diagnostic in &result.diagnostics {
+            let json = diagnostic.to_json();
+            assert!(
+                diagnostic.typescript.is_some()
+                    || json["noTypeScriptCounterpart"].as_str().is_some(),
+                "unclassified {id}: {json}"
+            );
+        }
     }
 }
 

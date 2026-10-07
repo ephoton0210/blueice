@@ -1122,6 +1122,333 @@
           "length": 1
         }
       ]
+    },
+    {
+      "id": "diagnostics-other-call-this-missing",
+      "source": "function run(this: { speed: number }, value: number): number { return value; } run.call();",
+      "blueMessage": "",
+      "flags": [
+        "--strictBindCallApply"
+      ],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2555,
+          "message": "Expected at least 1 arguments, but got 0.",
+          "start": 83,
+          "length": 4
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-call-this-type",
+      "source": "function run(this: { speed: number }, value: number): number { return value; } run.call({}, 1);",
+      "blueMessage": "",
+      "flags": [
+        "--strictBindCallApply"
+      ],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type '{}' is not assignable to parameter of type '{ speed: number; }'.\n  Property 'speed' is missing in type '{}' but required in type '{ speed: number; }'.",
+          "start": 88,
+          "length": 2
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-call-arity",
+      "source": "function run(value: number): number { return value; } run.call(undefined);",
+      "blueMessage": "",
+      "flags": [
+        "--strictBindCallApply"
+      ],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2554,
+          "message": "Expected 2 arguments, but got 1.",
+          "start": 58,
+          "length": 4
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-call-argument",
+      "source": "function run(value: number): number { return value; } run.call(undefined, \"bad\");",
+      "blueMessage": "",
+      "flags": [
+        "--strictBindCallApply"
+      ],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+          "start": 74,
+          "length": 5
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-apply-arity",
+      "source": "function run(value: number): number { return value; } run.apply(undefined);",
+      "blueMessage": "",
+      "flags": [
+        "--strictBindCallApply"
+      ],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2684,
+          "message": "The 'this' context of type '(value: number) => number' is not assignable to method's 'this' of type '(this: undefined) => number'.\n  Target signature provides too few arguments. Expected 1 or more, but got 0.",
+          "start": 54,
+          "length": 3
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-apply-argument",
+      "source": "function run(value: number): number { return value; } run.apply(undefined, [\"bad\"]);",
+      "blueMessage": "",
+      "flags": [
+        "--strictBindCallApply"
+      ],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "start": 76,
+          "length": 5
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-bind-argument",
+      "source": "function run(value: number): number { return value; } run.bind(undefined, \"bad\");",
+      "blueMessage": "",
+      "flags": [
+        "--strictBindCallApply"
+      ],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+          "start": 74,
+          "length": 5
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-generic-range",
+      "source": "type Position<T, U = number> = T; const point: Position = 1;",
+      "blueMessage": "",
+      "flags": [],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2707,
+          "message": "Generic type 'Position' requires between 1 and 2 type arguments.",
+          "start": 47,
+          "length": 8
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-generic-nongeneric",
+      "source": "type Position = number; const point: Position<string> = 1;",
+      "blueMessage": "",
+      "flags": [],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2315,
+          "message": "Type 'Position' is not generic.",
+          "start": 37,
+          "length": 16
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-name-klass",
+      "source": "class {}",
+      "blueMessage": "",
+      "flags": [],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 1211,
+          "message": "A class declaration without the 'default' modifier must have a name.",
+          "start": 0,
+          "length": 5
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-name-enumeration",
+      "source": "enum {}",
+      "blueMessage": "",
+      "flags": [],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 1003,
+          "message": "Identifier expected.",
+          "start": 5,
+          "length": 1
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-name-area",
+      "source": "namespace {}",
+      "blueMessage": "",
+      "flags": [],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2304,
+          "message": "Cannot find name 'namespace'.",
+          "start": 0,
+          "length": 9
+        },
+        {
+          "code": 1437,
+          "message": "Namespace must be given a name.",
+          "start": 10,
+          "length": 1
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-setter-result",
+      "source": "class Box { set value(input: number): number {} }",
+      "blueMessage": "",
+      "flags": [],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 1095,
+          "message": "A 'set' accessor cannot have a return type annotation.",
+          "start": 16,
+          "length": 5
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-accessor-setter-count",
+      "source": "class Box { set value() {} }",
+      "blueMessage": "",
+      "flags": [],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 1049,
+          "message": "A 'set' accessor must have exactly one parameter.",
+          "start": 16,
+          "length": 5
+        },
+        {
+          "code": 7032,
+          "message": "Property 'value' implicitly has type 'any', because its set accessor lacks a parameter type annotation.",
+          "start": 16,
+          "length": 5
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-import-export",
+      "source": "export import { value } from \"missing\";",
+      "blueMessage": "",
+      "flags": [],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 1191,
+          "message": "An import declaration cannot have modifiers.",
+          "start": 0,
+          "length": 6
+        },
+        {
+          "code": 2792,
+          "message": "Cannot find module 'missing'. Did you mean to set the 'moduleResolution' option to 'nodenext', or to add aliases to the 'paths' option?",
+          "start": 29,
+          "length": 9
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-import-nonstring",
+      "source": "import { value } from 1;",
+      "blueMessage": "",
+      "flags": [],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 1141,
+          "message": "String literal expected.",
+          "start": 22,
+          "length": 1
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-constructor-default-signature",
+      "source": "class Box { constructor(value: number = 1); constructor(value: number = 1) {} }",
+      "blueMessage": "",
+      "flags": [],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2371,
+          "message": "A parameter initializer is only allowed in a function or constructor implementation.",
+          "start": 24,
+          "length": 17
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-operator-left",
+      "source": "const total: number = \"bad\" - 1;",
+      "blueMessage": "",
+      "flags": [],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2362,
+          "message": "The left-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.",
+          "start": 22,
+          "length": 5
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-operator-bitwise",
+      "source": "const total: number = 1 & \"bad\";",
+      "blueMessage": "",
+      "flags": [],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2363,
+          "message": "The right-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.",
+          "start": 26,
+          "length": 5
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-apply-array",
+      "source": "function run(...values: number[]): void {} const values: number[] = [1]; run.apply(undefined, values);",
+      "blueMessage": "",
+      "flags": [
+        "--strictBindCallApply"
+      ],
+      "accepts": true,
+      "diagnostics": []
     }
   ]
 }
