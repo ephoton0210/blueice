@@ -4406,3 +4406,10 @@ the corresponding context refinements. The first failure also identifies the
 existing parser restriction on TypeScript `this` parameters; it must be
 reported as a precise BlueTSC subset restriction, rather than a fabricated TS
 parameter-name diagnostic. No language support is added by these witnesses.
+
+A 93rd pinned witness confirms that a compatible function property can replace
+a base method in TypeScript. Its BlueTSC public-boundary replay first fails
+because the existing subset refusal is assigned TS2416. This accepted witness
+and failing regression are recorded before committing the refinement; the
+implementation must distinguish actual type incompatibility from the bounded
+member-kind restriction without changing the existing rejection.

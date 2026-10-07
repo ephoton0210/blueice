@@ -1449,6 +1449,14 @@
       ],
       "accepts": true,
       "diagnostics": []
+    },
+    {
+      "id": "diagnostics-other-compatible-function-field",
+      "source": "function work(): number { return 1; } class Parent { run(): number { return 1; } } class Child extends Parent { run: () => number = work; }",
+      "blueMessage": "class defines `run` as a property but the base class defines it as a method",
+      "flags": [],
+      "accepts": true,
+      "diagnostics": []
     }
   ]
 }
