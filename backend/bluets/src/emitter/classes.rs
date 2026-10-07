@@ -176,6 +176,7 @@ pub(super) fn emit_class_declaration(
     output.push_str(prefix);
     output.push_str("class ");
     output.push_str(&class.name);
+    super::emit_type_parameters(output, &class.type_parameters);
     if let Some(base) = &class.extends_name {
         output.push_str(" extends ");
         output.push_str(base);

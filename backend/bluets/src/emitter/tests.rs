@@ -382,7 +382,7 @@ fn retains_generic_constraints_and_defaults_in_declaration_output_only() {
     assert_eq!(
         artifact.declaration.as_deref(),
         Some(
-            "export interface Box<T extends string = string> {\n  value: T;\n}\n\
+            "export interface Box<T extends string = string> {\n    value: T;\n}\n\
                  export declare function echo<T extends string = string>(value?: T): string;\n"
         )
     );
@@ -440,9 +440,9 @@ fn retains_interface_heritage_in_declaration_output_only() {
     assert_eq!(
             artifact.declaration.as_deref(),
             Some(
-                "export interface Envelope<T> {\n  payload: T;\n}\n\
-                 export interface Tagged {\n  tag: string;\n}\n\
-                 export interface Labeled<T extends string = string> extends Envelope<T>, Tagged {\n  label: T;\n}\n"
+                "export interface Envelope<T> {\n    payload: T;\n}\n\
+                 export interface Tagged {\n    tag: string;\n}\n\
+                 export interface Labeled<T extends string = string> extends Envelope<T>, Tagged {\n    label: T;\n}\n"
             )
         );
 }
@@ -469,8 +469,8 @@ fn erases_interface_methods_but_retains_their_exact_public_signature() {
     assert_eq!(
         artifact.declaration.as_deref(),
         Some(
-            "export interface Document {\n  getElementById(id: string): Element | null;\n}\n\
-                 export interface Element {\n  textContent: string;\n}\n"
+            "export interface Document {\n    getElementById(id: string): Element | null;\n}\n\
+                 export interface Element {\n    textContent: string;\n}\n"
         )
     );
 }

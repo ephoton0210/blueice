@@ -103,7 +103,7 @@ pub(super) fn exported_types(
                         class.name.clone(),
                         TypeDefinition {
                             kind: TypeDefinitionKind::Class,
-                            parameters: Vec::new(),
+                            parameters: class.type_parameters.clone(),
                             value: module::class_instance_type(class),
                         },
                     );
@@ -425,7 +425,7 @@ pub(super) fn local_type_definitions(module: &Module) -> BTreeMap<String, TypeDe
                 class.name.clone(),
                 TypeDefinition {
                     kind: TypeDefinitionKind::Class,
-                    parameters: Vec::new(),
+                    parameters: class.type_parameters.clone(),
                     value: module::class_instance_type(class),
                 },
             )),

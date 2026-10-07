@@ -16,6 +16,9 @@ use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 pub use crate::parser::Type;
 
+mod inference;
+use inference::infer_call_substitutions;
+
 mod checking;
 pub(crate) use checking::check_incremental;
 mod member_calls;
@@ -23,6 +26,7 @@ use member_calls::{member_call_parts, member_call_ranges};
 mod properties;
 mod scopes;
 pub(crate) use scopes::flow::VERSION as FLOW_VERSION;
+mod type_operators;
 mod type_relations;
 use properties::{
     contains_readonly_member, mutation_field_type, property_type, readonly_property, PropertyType,
@@ -130,6 +134,7 @@ struct ClassConstructorBinding {
 #[derive(Clone, PartialEq, Eq)]
 struct ExportedClass {
     source_name: String,
+    type_parameters: Vec<TypeParameter>,
     instance_type: Type,
     constructor_type: Type,
     constructor_binding: ClassConstructorBinding,
@@ -324,52 +329,19 @@ fn interface_value_with_heritage(heritage: &[Type], fields: &[TypeField]) -> Typ
     }
 }
 
-fn infer_call_substitutions(
-    signature: &FunctionSignature,
-    actuals: &[Type],
-) -> BTreeMap<String, Type> {
-    let mut substitutions = BTreeMap::new();
-    let type_parameters = signature
-        .type_parameters
-        .iter()
-        .map(|parameter| parameter.name.clone())
-        .collect::<BTreeSet<_>>();
-    for (index, actual) in actuals.iter().enumerate() {
-        let Some(parameter) = function_parameter_for_argument(signature, index) else {
-            break;
-        };
-        let annotation = if parameter.rest {
-            rest_parameter_element_annotation(parameter)
-        } else {
-            parameter.annotation.as_ref()
-        };
-        let Some(annotation) = annotation else {
-            continue;
-        };
-        infer_type_arguments(annotation, actual, &type_parameters, &mut substitutions);
-    }
-    for parameter in &signature.type_parameters {
-        let default = parameter
-            .default
-            .as_ref()
-            .map(|value| substitute_type(value, &substitutions))
-            .unwrap_or(Type::Unknown);
-        substitutions
-            .entry(parameter.name.clone())
-            .or_insert(default);
-    }
-    substitutions
-}
-
 fn function_call_substitutions(
     signature: &FunctionSignature,
     actuals: &[Type],
     explicit_type_arguments: Option<&[Type]>,
+    aliases: &BTreeMap<String, TypeDefinition>,
+    budget: &mut TypeExpansionBudget,
 ) -> Option<BTreeMap<String, Type>> {
     match explicit_type_arguments {
         Some(arguments) => complete_type_arguments(&signature.type_parameters, arguments)
             .map(|arguments| type_parameter_substitutions(&signature.type_parameters, arguments)),
-        None => Some(infer_call_substitutions(signature, actuals)),
+        None => Some(infer_call_substitutions(
+            signature, actuals, aliases, budget,
+        )),
     }
 }
 
@@ -384,13 +356,20 @@ fn function_signature_matches(
     if !function_signature_accepts_argument_count(signature, actuals.len()) {
         return Ok(false);
     }
-    let Some(substitutions) =
-        function_call_substitutions(signature, actuals, explicit_type_arguments)
-    else {
-        return Ok(false);
-    };
     let mut budget = TypeExpansionBudget::new(max_type_expansions);
     budget.checking = checking;
+    let Some(substitutions) = function_call_substitutions(
+        signature,
+        actuals,
+        explicit_type_arguments,
+        aliases,
+        &mut budget,
+    ) else {
+        return Ok(false);
+    };
+    if budget.exhausted {
+        return Err(());
+    }
     for parameter in &signature.type_parameters {
         let Some(constraint) = &parameter.constraint else {
             continue;
@@ -614,6 +593,7 @@ struct ConstructorCall<'a> {
     callee: Token,
     arguments: &'a [Token],
     receiver: Option<&'a Token>,
+    generic: bool,
 }
 
 fn constructor_call_parts(tokens: &[Token]) -> Option<ConstructorCall<'_>> {
@@ -635,6 +615,11 @@ fn constructor_call_parts(tokens: &[Token]) -> Option<ConstructorCall<'_>> {
         callee.end = member.end;
         index += 2;
     }
+    let receiver = (index > 2).then_some(first);
+    let generic = tokens.get(index).is_some_and(|token| token.is("<"));
+    if generic {
+        index = explicit_generic_call_close(tokens, index - 1)? + 1;
+    }
     if !tokens.get(index).is_some_and(|token| token.is("(")) {
         return None;
     }
@@ -643,7 +628,8 @@ fn constructor_call_parts(tokens: &[Token]) -> Option<ConstructorCall<'_>> {
     Some(ConstructorCall {
         callee,
         arguments,
-        receiver: (index > 2).then_some(first),
+        receiver,
+        generic,
     })
 }
 
@@ -701,53 +687,6 @@ fn split_call_arguments(tokens: &[Token]) -> Option<Vec<&[Token]>> {
     }
     arguments.push(&tokens[start..close]);
     Some(arguments)
-}
-
-fn infer_type_arguments(
-    template: &Type,
-    actual: &Type,
-    type_parameters: &BTreeSet<String>,
-    substitutions: &mut BTreeMap<String, Type>,
-) {
-    match (template, actual) {
-        (Type::Named { name, arguments }, actual)
-            if arguments.is_empty() && type_parameters.contains(name) =>
-        {
-            if let Some(previous) = substitutions.get(name) {
-                if previous != actual {
-                    substitutions.insert(name.clone(), Type::Unknown);
-                }
-            } else {
-                substitutions.insert(name.clone(), actual.clone());
-            }
-        }
-        (Type::Array(template), Type::Array(actual)) => {
-            infer_type_arguments(template, actual, type_parameters, substitutions);
-        }
-        (Type::Tuple(templates), Type::Tuple(actuals)) if templates.len() == actuals.len() => {
-            for (template, actual) in templates.iter().zip(actuals) {
-                infer_type_arguments(
-                    &template.annotation,
-                    &actual.annotation,
-                    type_parameters,
-                    substitutions,
-                );
-            }
-        }
-        (Type::Record(templates), Type::Record(actuals)) => {
-            for template in templates {
-                if let Some(actual) = actuals.iter().find(|actual| actual.name == template.name) {
-                    infer_type_arguments(
-                        &template.value,
-                        &actual.value,
-                        type_parameters,
-                        substitutions,
-                    );
-                }
-            }
-        }
-        _ => {}
-    }
 }
 
 /// The type of a single-token element (a literal or a variable) inside a

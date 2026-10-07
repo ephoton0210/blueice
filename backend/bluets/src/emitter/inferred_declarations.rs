@@ -228,6 +228,36 @@ impl<'a> Context<'a> {
 
     fn references(&mut self, value: &Type) {
         match value {
+            Type::KeyOf(value) => self.references(value),
+            Type::IndexedAccess { object, index } => {
+                self.references(object);
+                self.references(index);
+            }
+            Type::GenericFunction {
+                type_parameters,
+                parameters,
+                result,
+                ..
+            } => {
+                let previous = self.used_imports.clone();
+                self.references(&Type::Function {
+                    parameters: parameters.clone(),
+                    result: result.clone(),
+                });
+                for parameter in type_parameters {
+                    if let Some(constraint) = &parameter.constraint {
+                        self.references(constraint);
+                    }
+                    if let Some(default) = &parameter.default {
+                        self.references(default);
+                    }
+                }
+                for parameter in type_parameters {
+                    if !previous.contains(&parameter.name) {
+                        self.used_imports.remove(&parameter.name);
+                    }
+                }
+            }
             Type::Predicate(predicate) => {
                 if let Some(target) = &predicate.target {
                     self.references(target);

@@ -28,10 +28,17 @@ pub(super) fn class_constructor_signatures(class: &ClassDeclaration) -> Vec<Func
     if selected.is_empty() {
         return vec![FunctionSignature {
             parameters: Vec::new(),
-            type_parameters: Vec::new(),
+            type_parameters: class.type_parameters.clone(),
             return_type: Type::Named {
                 name: class.name.clone(),
-                arguments: Vec::new(),
+                arguments: class
+                    .type_parameters
+                    .iter()
+                    .map(|p| Type::Named {
+                        name: p.name.clone(),
+                        arguments: Vec::new(),
+                    })
+                    .collect(),
             },
         }];
     }
@@ -39,10 +46,17 @@ pub(super) fn class_constructor_signatures(class: &ClassDeclaration) -> Vec<Func
         .into_iter()
         .map(|constructor| FunctionSignature {
             parameters: constructor.parameters.clone(),
-            type_parameters: Vec::new(),
+            type_parameters: class.type_parameters.clone(),
             return_type: Type::Named {
                 name: class.name.clone(),
-                arguments: Vec::new(),
+                arguments: class
+                    .type_parameters
+                    .iter()
+                    .map(|p| Type::Named {
+                        name: p.name.clone(),
+                        arguments: Vec::new(),
+                    })
+                    .collect(),
             },
         })
         .collect()

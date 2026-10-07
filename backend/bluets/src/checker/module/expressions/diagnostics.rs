@@ -363,7 +363,10 @@ impl ModuleChecker<'_> {
             detail = self.overload_details(signatures, actuals);
             (2769, Vec::new())
         } else if let Some(signature) = matching_arity.first() {
-            let substitutions = infer_call_substitutions(signature, actuals);
+            let mut inference_budget = TypeExpansionBudget::new(self.max_type_expansions);
+            inference_budget.checking = self.checking;
+            let substitutions =
+                infer_call_substitutions(signature, actuals, &self.types, &mut inference_budget);
             let mismatch = actuals.iter().enumerate().find_map(|(index, actual)| {
                 let parameter = function_parameter_for_argument(signature, index)?;
                 let expected = call_parameter_expected_type(parameter, &substitutions);

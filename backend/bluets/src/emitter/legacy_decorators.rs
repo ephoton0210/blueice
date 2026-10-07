@@ -495,11 +495,14 @@ impl Lowerer<'_, '_> {
                 }
             }
             Type::Void | Type::Undefined | Type::Null | Type::Never => "void 0".to_string(),
-            Type::Any | Type::Unknown | Type::Record(_) | Type::Intersection(_) => {
-                "Object".to_string()
-            }
+            Type::Any
+            | Type::Unknown
+            | Type::Record(_)
+            | Type::Intersection(_)
+            | Type::KeyOf(_)
+            | Type::IndexedAccess { .. } => "Object".to_string(),
             Type::Array(_) | Type::Tuple(_) => "Array".to_string(),
-            Type::Function { .. } => "Function".to_string(),
+            Type::Function { .. } | Type::GenericFunction { .. } => "Function".to_string(),
             Type::Union(parts) => {
                 // `null` and `undefined` do not count; one remaining kind decides.
                 let mut kinds: Vec<String> = Vec::new();

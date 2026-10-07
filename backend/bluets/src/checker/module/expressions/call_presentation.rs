@@ -17,7 +17,10 @@ impl ModuleChecker<'_> {
             if !function_signature_accepts_argument_count(signature, actuals.len()) {
                 continue;
             }
-            let substitutions = infer_call_substitutions(signature, actuals);
+            let mut inference_budget = TypeExpansionBudget::new(self.max_type_expansions);
+            inference_budget.checking = self.checking;
+            let substitutions =
+                infer_call_substitutions(signature, actuals, &self.types, &mut inference_budget);
             let mismatch = actuals.iter().enumerate().find_map(|(index, actual)| {
                 let parameter = function_parameter_for_argument(signature, index)?;
                 let expected = call_parameter_expected_type(parameter, &substitutions);

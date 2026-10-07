@@ -10,6 +10,7 @@ mod call_presentation;
 mod diagnostics;
 mod flow_checks;
 mod function_methods;
+mod generic_inference;
 mod indexing;
 mod inference;
 mod library_presentation;
@@ -56,14 +57,36 @@ impl<'a> ModuleChecker<'a> {
         if self.functions.contains_key(callee) && self.values.get(callee) == Some(bound) {
             return None;
         }
-        let Type::Function { parameters, result } = bound else {
-            return None;
-        };
-        Some(FunctionSignature {
-            parameters: parameters.clone(),
-            type_parameters: Vec::new(),
-            return_type: (**result).clone(),
-        })
+        let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
+        let mut bound = bound.clone();
+        let mut visited = HashSet::new();
+        while let Some(expanded) = instantiate_named(
+            &bound,
+            &self.types,
+            &mut visited,
+            &mut budget,
+            "callable value",
+        ) {
+            bound = expanded;
+        }
+        match bound {
+            Type::Function { parameters, result } => Some(FunctionSignature {
+                parameters,
+                type_parameters: Vec::new(),
+                return_type: *result,
+            }),
+            Type::GenericFunction {
+                parameters,
+                type_parameters,
+                result,
+                ..
+            } => Some(FunctionSignature {
+                parameters,
+                type_parameters,
+                return_type: *result,
+            }),
+            _ => None,
+        }
     }
 
     pub(super) fn infer_function_call(
@@ -96,9 +119,16 @@ impl<'a> ModuleChecker<'a> {
         else {
             return Type::Unknown;
         };
-        let substitutions =
-            function_call_substitutions(signature, &actuals, explicit_type_arguments)
-                .expect("selected function signature has valid substitutions");
+        let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
+        budget.checking = self.checking;
+        let substitutions = function_call_substitutions(
+            signature,
+            &actuals,
+            explicit_type_arguments,
+            &self.types,
+            &mut budget,
+        )
+        .expect("selected function signature has valid substitutions");
         substitute_type(&signature.return_type, &substitutions).runtime_result()
     }
 
@@ -232,24 +262,40 @@ impl<'a> ModuleChecker<'a> {
                 ),
                 DiagnosticCode::TypeMismatch,
             );
+            self.point_last_typescript(std::slice::from_ref(call.callee));
             return;
         }
+        let mut rejected_constraint = None;
         let substitutions = if let Some(explicit) = explicit {
-            let Some(substitutions) =
-                self.check_explicit_function_type_arguments(&signature, explicit, span)
-            else {
+            let Some(substitutions) = self.check_explicit_function_type_arguments(
+                &signature,
+                explicit,
+                span,
+                call.callee.start,
+            ) else {
                 return;
             };
             substitutions
         } else {
-            let substitutions = infer_call_substitutions(&signature, &actuals);
-            self.check_call_type_parameter_constraints(
+            let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
+            budget.checking = self.checking;
+            let inferred = crate::checker::inference::infer_contextual_result(
                 &signature,
-                &substitutions,
-                span,
-                "inferred type",
+                &actuals,
+                &self.types,
+                &mut budget,
+                None,
             );
-            substitutions
+            if budget.exhausted {
+                self.type_error(
+                    span,
+                    "generic inference exceeds its expansion limit".into(),
+                    DiagnosticCode::ResourceLimit,
+                );
+                return;
+            }
+            rejected_constraint = inferred.rejected_constraint;
+            inferred.substitutions
         };
         for (index, actual) in actuals.iter().enumerate() {
             let parameter = function_parameter_for_argument(&signature, index)
@@ -269,15 +315,21 @@ impl<'a> ModuleChecker<'a> {
                                     member,
                                 ) > 1
                         });
+                let message = rejected_constraint.as_ref().filter(|(_, candidate, _)| {
+                    matches!(candidate, Type::Number | Type::String | Type::Boolean | Type::Literal(_))
+                }).map_or_else(
+                    || format!(
+                        "argument {} has type `{}`, which is not assignable to parameter `{}` of type `{}`",
+                        index + 1, type_label(actual), parameter.name, type_label(&expected)
+                    ),
+                    |(name, candidate, constraint)| format!(
+                        "inferred type `{}` does not satisfy constraint `{}` for `{name}`",
+                        type_label(candidate), type_label(constraint)
+                    ),
+                );
                 self.call_argument_error(
                     span,
-                    format!(
-                        "argument {} has type `{}`, which is not assignable to parameter `{}` of type `{}`",
-                        index + 1,
-                        type_label(actual),
-                        parameter.name,
-                        type_label(&expected)
-                    ),
+                    message,
                     actual,
                     &displayed_expected,
                     arguments.get(index).copied().unwrap_or(&[]),
@@ -391,6 +443,25 @@ impl<'a> ModuleChecker<'a> {
                 actuals.extend(self.expanded_call_argument_types(&[argument], scope)?);
                 continue;
             }
+            if positions_known {
+                if let [token] = strip_outer_parentheses(argument) {
+                    if matches!(token.kind, TokenKind::Number | TokenKind::String)
+                        || token.is("true")
+                        || token.is("false")
+                    {
+                        let preserve = signatures.iter().any(|signature| {
+                            let Some(parameter) = function_parameter_for_argument(signature, actuals.len()) else { return false };
+                            let annotation = if parameter.rest { rest_parameter_element_annotation(parameter) } else { parameter.annotation.as_ref() };
+                            matches!(annotation, Some(Type::Named { name, arguments }) if arguments.is_empty() && signature.type_parameters.iter().any(|p| p.name == *name))
+                                && matches!(&signature.return_type, Type::Named { name, arguments } if arguments.is_empty() && signature.type_parameters.iter().any(|p| p.name == *name))
+                        });
+                        if preserve {
+                            actuals.push(Type::Literal(token.text.clone()));
+                            continue;
+                        }
+                    }
+                }
+            }
             // A number literal passed where an enum is expected stays a literal.
             if positions_known {
                 let enum_literal = signatures.iter().find_map(|signature| {
@@ -404,10 +475,12 @@ impl<'a> ModuleChecker<'a> {
                 }
             }
             let contextual = (positions_known
-                && argument
-                    .first()
-                    .is_some_and(|token| token.is("[") || token.is("{")))
-            .then(|| self.contextual_argument_type(argument, scope, actuals.len(), signatures))
+                && argument.first().is_some_and(|token| {
+                    token.is("[")
+                        || token.is("{")
+                        || self.module.nested_functions.contains_key(&token.start)
+                }))
+            .then(|| self.contextual_argument_type(argument, scope, &actuals, signatures))
             .flatten();
             match contextual {
                 Some(actual) => actuals.push(actual),
@@ -421,12 +494,16 @@ impl<'a> ModuleChecker<'a> {
         &self,
         argument: &[Token],
         scope: &BTreeMap<String, Type>,
-        index: usize,
+        actuals: &[Type],
         signatures: &[FunctionSignature],
     ) -> Option<Type> {
         for signature in signatures {
-            let parameter = function_parameter_for_argument(signature, index)?;
-            let expected = call_parameter_expected_type(parameter, &BTreeMap::new());
+            let parameter = function_parameter_for_argument(signature, actuals.len())?;
+            let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
+            budget.checking = self.checking;
+            let substitutions =
+                infer_call_substitutions(signature, actuals, &self.types, &mut budget);
+            let expected = call_parameter_expected_type(parameter, &substitutions);
             let actual = self.infer_in_context(argument, scope, &expected);
             let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
             budget.checking = self.checking;
@@ -543,9 +620,10 @@ impl<'a> ModuleChecker<'a> {
         signature: &FunctionSignature,
         substitutions: &BTreeMap<String, Type>,
         span: &SourceSpan,
+        argument_span: &SourceSpan,
         actual_description: &str,
     ) {
-        for parameter in &signature.type_parameters {
+        for (index, parameter) in signature.type_parameters.iter().enumerate() {
             let Some(constraint) = &parameter.constraint else {
                 continue;
             };
@@ -564,6 +642,7 @@ impl<'a> ModuleChecker<'a> {
                     ),
                     DiagnosticCode::TypeMismatch,
                 );
+                self.point_last_type_argument(argument_span, Some(index));
             }
         }
     }
@@ -573,22 +652,34 @@ impl<'a> ModuleChecker<'a> {
         signature: &FunctionSignature,
         arguments: &[Type],
         span: &SourceSpan,
+        call_start: usize,
     ) -> Option<BTreeMap<String, Type>> {
+        let argument_span = SourceSpan::new(&span.module, call_start, span.end);
         let required = signature
             .type_parameters
             .iter()
             .filter(|parameter| parameter.default.is_none())
             .count();
         if arguments.len() < required || arguments.len() > signature.type_parameters.len() {
-            self.type_error(
+            self.typescript_type_error(
                 span,
                 format!(
                     "function type arguments require {required} to {} argument(s), got {}",
                     signature.type_parameters.len(),
-                    arguments.len(),
+                    arguments.len()
                 ),
                 DiagnosticCode::TypeMismatch,
+                2558,
+                vec![
+                    if required == signature.type_parameters.len() {
+                        required.to_string()
+                    } else {
+                        format!("{required}-{}", signature.type_parameters.len())
+                    },
+                    arguments.len().to_string(),
+                ],
             );
+            self.point_last_type_argument(&argument_span, None);
             return None;
         }
         for argument in arguments {
@@ -600,6 +691,7 @@ impl<'a> ModuleChecker<'a> {
             signature,
             &substitutions,
             span,
+            &argument_span,
             "type argument",
         );
         Some(substitutions)

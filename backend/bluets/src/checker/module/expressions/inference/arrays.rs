@@ -20,6 +20,9 @@ impl<'a> ModuleChecker<'a> {
         if let Some(literal) = self.enum_literal_for(tokens, expected) {
             return literal;
         }
+        if let Some(result) = self.infer_generic_result_in_context(tokens, scope, expected) {
+            return result;
+        }
         let mut contextual = expected.clone();
         let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
         let mut visited = HashSet::new();
@@ -33,7 +36,7 @@ impl<'a> ModuleChecker<'a> {
             contextual = expanded;
         }
         match &contextual {
-            Type::Function { parameters, .. } if self.explicit_checking => {
+            Type::Function { parameters, .. } => {
                 let tokens = strip_outer_parentheses(tokens);
                 if let Some(function) = tokens
                     .first()

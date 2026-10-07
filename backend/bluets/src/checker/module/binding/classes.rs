@@ -119,7 +119,7 @@ impl ModuleChecker<'_> {
             local_name.to_string(),
             TypeDefinition {
                 kind: TypeDefinitionKind::Class,
-                parameters: Vec::new(),
+                parameters: class.type_parameters.clone(),
                 value: specialize_imported_class_type(
                     &class.instance_type,
                     &class.source_name,
@@ -209,7 +209,7 @@ impl ModuleChecker<'_> {
                 class.name.clone(),
                 TypeDefinition {
                     kind: TypeDefinitionKind::Class,
-                    parameters: Vec::new(),
+                    parameters: class.type_parameters.clone(),
                     value: class_instance_type(class),
                 },
             );
@@ -900,7 +900,56 @@ impl ModuleChecker<'_> {
             );
             return;
         };
-        match self.select_function_signature(&binding.signatures, &actuals, None) {
+        let explicit = call
+            .generic
+            .then(|| {
+                self.module
+                    .generic_call_type_arguments
+                    .get(&call.callee.start)
+                    .map(Vec::as_slice)
+            })
+            .flatten();
+        if let Some(arguments) = explicit {
+            if let Some(signature) = signatures.first() {
+                if self
+                    .check_explicit_function_type_arguments(
+                        signature,
+                        arguments,
+                        &call_span,
+                        call.callee.start,
+                    )
+                    .is_none()
+                {
+                    return;
+                }
+            }
+        }
+        let presented = explicit.and_then(|arguments| {
+            let signature = signatures.first()?;
+            let completed = complete_type_arguments(&signature.type_parameters, arguments)?;
+            let substitutions = type_parameter_substitutions(&signature.type_parameters, completed);
+            Some(
+                signatures
+                    .iter()
+                    .map(|signature| FunctionSignature {
+                        parameters: signature
+                            .parameters
+                            .iter()
+                            .map(|p| Parameter {
+                                annotation: p
+                                    .annotation
+                                    .as_ref()
+                                    .map(|ty| substitute_type(ty, &substitutions)),
+                                ..p.clone()
+                            })
+                            .collect(),
+                        type_parameters: Vec::new(),
+                        return_type: substitute_type(&signature.return_type, &substitutions),
+                    })
+                    .collect::<Vec<_>>(),
+            )
+        });
+        match self.select_function_signature(&signatures, &actuals, explicit) {
             Ok(Some(_)) => {}
             Ok(None) => self.rejected_call_error(
                 &call_span,
@@ -908,7 +957,7 @@ impl ModuleChecker<'_> {
                     "no constructor of class {} accepts the supplied argument types",
                     call.callee.text
                 ),
-                &signatures,
+                presented.as_deref().unwrap_or(&signatures),
                 &actuals,
                 self.library_values.contains(&call.callee.text)
                     && crate::diagnostic::templates::constructor_overloads(&call.callee.text) > 1,
@@ -963,6 +1012,12 @@ impl ModuleChecker<'_> {
                     .is_some_and(|token| token.kind == TokenKind::Identifier)
             {
                 opening += 2;
+            }
+            if tokens.get(opening).is_some_and(|token| token.is("<")) {
+                let Some(close) = explicit_generic_call_close(tokens, opening - 1) else {
+                    continue;
+                };
+                opening = close + 1;
             }
             if !tokens.get(opening).is_some_and(|token| token.is("(")) {
                 continue;
@@ -1043,6 +1098,7 @@ impl ModuleChecker<'_> {
 pub(in crate::checker) fn class_export(class: &ClassDeclaration) -> ExportedClass {
     ExportedClass {
         source_name: class.name.clone(),
+        type_parameters: class.type_parameters.clone(),
         instance_type: class_instance_type(class),
         constructor_type: class_constructor_side_type(class),
         constructor_binding: ClassConstructorBinding {

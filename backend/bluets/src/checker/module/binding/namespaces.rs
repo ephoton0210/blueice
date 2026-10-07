@@ -20,7 +20,9 @@
 use super::*;
 use crate::parser::NamespaceDeclaration;
 
+mod type_traversal;
 mod values;
+use type_traversal::{named_types, Qualifier};
 pub(crate) use values::ExportedValue;
 
 /// What one namespace (all its blocks) exports.
@@ -54,46 +56,6 @@ impl std::fmt::Debug for ClassConstructorBinding {
             .debug_struct("ClassConstructorBinding")
             .field("signatures", &self.signatures)
             .finish_non_exhaustive()
-    }
-}
-
-/// Every named type a type mentions.
-fn named_types(value: &Type, into: &mut BTreeSet<String>) {
-    match value {
-        Type::Named { name, arguments } => {
-            into.insert(name.clone());
-            for argument in arguments {
-                named_types(argument, into);
-            }
-        }
-        Type::Literal(text) => {
-            into.insert(text.clone());
-        }
-        Type::Array(element) => named_types(element, into),
-        Type::Tuple(elements) => {
-            for element in elements {
-                named_types(&element.annotation, into);
-            }
-        }
-        Type::Record(fields) => {
-            for field in fields {
-                named_types(&field.value, into);
-            }
-        }
-        Type::Function { parameters, result } => {
-            for parameter in parameters {
-                if let Some(annotation) = &parameter.annotation {
-                    named_types(annotation, into);
-                }
-            }
-            named_types(result, into);
-        }
-        Type::Union(options) | Type::Intersection(options) => {
-            for option in options {
-                named_types(option, into);
-            }
-        }
-        _ => {}
     }
 }
 
@@ -191,100 +153,6 @@ fn declared_in(namespace: &NamespaceDeclaration) -> Declared {
         }
     }
     declared
-}
-
-/// Renames type keys to their qualified form inside a type.
-struct Qualifier<'r> {
-    rename: &'r BTreeMap<String, String>,
-}
-
-impl Qualifier<'_> {
-    fn name(&self, name: &str) -> String {
-        self.rename
-            .get(name)
-            .cloned()
-            .unwrap_or_else(|| name.to_string())
-    }
-
-    fn ty(&self, value: &Type) -> Type {
-        match value {
-            Type::Named { name, arguments } => Type::Named {
-                name: self.name(name),
-                arguments: arguments.iter().map(|argument| self.ty(argument)).collect(),
-            },
-            Type::Literal(text) => Type::Literal(self.name(text)),
-            Type::Array(element) => Type::Array(Box::new(self.ty(element))),
-            Type::Tuple(elements) => Type::Tuple(
-                elements
-                    .iter()
-                    .map(|element| TupleTypeElement {
-                        annotation: self.ty(&element.annotation),
-                        ..element.clone()
-                    })
-                    .collect(),
-            ),
-            Type::Record(fields) => Type::Record(
-                fields
-                    .iter()
-                    .map(|field| TypeField {
-                        value: self.ty(&field.value),
-                        ..field.clone()
-                    })
-                    .collect(),
-            ),
-            Type::Function { parameters, result } => Type::Function {
-                parameters: self.parameters(parameters),
-                result: Box::new(self.ty(result)),
-            },
-            Type::Union(options) => {
-                Type::Union(options.iter().map(|option| self.ty(option)).collect())
-            }
-            Type::Intersection(options) => {
-                Type::Intersection(options.iter().map(|option| self.ty(option)).collect())
-            }
-            other => other.clone(),
-        }
-    }
-
-    fn parameters(&self, parameters: &[Parameter]) -> Vec<Parameter> {
-        parameters
-            .iter()
-            .map(|parameter| Parameter {
-                annotation: parameter.annotation.as_ref().map(|value| self.ty(value)),
-                ..parameter.clone()
-            })
-            .collect()
-    }
-
-    fn type_parameters(&self, parameters: &[TypeParameter]) -> Vec<TypeParameter> {
-        parameters
-            .iter()
-            .map(|parameter| TypeParameter {
-                constraint: parameter.constraint.as_ref().map(|value| self.ty(value)),
-                default: parameter.default.as_ref().map(|value| self.ty(value)),
-                ..parameter.clone()
-            })
-            .collect()
-    }
-
-    fn signatures(&self, signatures: &[FunctionSignature]) -> Vec<FunctionSignature> {
-        signatures
-            .iter()
-            .map(|signature| FunctionSignature {
-                parameters: self.parameters(&signature.parameters),
-                type_parameters: self.type_parameters(&signature.type_parameters),
-                return_type: self.ty(&signature.return_type),
-            })
-            .collect()
-    }
-
-    fn definition(&self, definition: &TypeDefinition) -> TypeDefinition {
-        TypeDefinition {
-            kind: definition.kind,
-            parameters: self.type_parameters(&definition.parameters),
-            value: self.ty(&definition.value),
-        }
-    }
 }
 
 impl ModuleChecker<'_> {

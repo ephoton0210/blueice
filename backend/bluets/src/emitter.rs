@@ -536,7 +536,7 @@ fn emit_declaration(
                 }
                 output.push_str(" {\n");
                 for field in &interface.fields {
-                    output.push_str("  ");
+                    output.push_str("    ");
                     if field.readonly {
                         output.push_str("readonly ");
                     }
@@ -786,6 +786,10 @@ fn emit_type_parameters(output: &mut String, parameters: &[TypeParameter]) {
 
 fn type_to_ts(value: &Type) -> String {
     match value {
+        Type::KeyOf(value) => format!("keyof {}", type_to_ts(value)),
+        Type::IndexedAccess { object, index } => {
+            format!("{}[{}]", type_to_ts(object), type_to_ts(index))
+        }
         Type::Predicate(predicate) => predicate.text(type_to_ts),
         Type::Any => "any".to_string(),
         Type::Unknown => "unknown".to_string(),
@@ -853,6 +857,20 @@ fn type_to_ts(value: &Type) -> String {
                 .collect::<Vec<_>>()
                 .join("; ")
         ),
+        Type::GenericFunction {
+            type_parameters,
+            parameters,
+            result,
+            ..
+        } => {
+            let mut generic = String::new();
+            emit_type_parameters(&mut generic, type_parameters);
+            format!(
+                "{generic}{} => {}",
+                method_parameters_to_ts(parameters),
+                type_to_ts(result)
+            )
+        }
         Type::Function { parameters, result } => {
             format!(
                 "{} => {}",

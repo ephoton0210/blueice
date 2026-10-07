@@ -145,10 +145,20 @@ impl<'a> ModuleChecker<'a> {
                 .is_none_or(|receiver| scope.get(&receiver.text) == self.values.get(&receiver.text))
                 && self.is_bound_class_constructor_value(&call.callee.text, scope)
             {
-                return Type::Named {
-                    name: call.callee.text.clone(),
-                    arguments: Vec::new(),
+                let Some(binding) = self.class_constructors.get(&call.callee.text) else {
+                    return Type::Unknown;
                 };
+                let signatures = &binding.signatures;
+                let explicit = call
+                    .generic
+                    .then(|| {
+                        self.module
+                            .generic_call_type_arguments
+                            .get(&call.callee.start)
+                            .map(Vec::as_slice)
+                    })
+                    .flatten();
+                return self.infer_function_call(signatures, call.arguments, scope, explicit);
             }
         }
         if let Some((_, _, result)) = top_level_binary_parts(tokens, &[","], |start| {
@@ -480,12 +490,11 @@ impl<'a> ModuleChecker<'a> {
                     if let Some(signature) =
                         self.functions.get(&first.text).and_then(|set| set.first())
                     {
-                        if signature.type_parameters.is_empty() {
-                            return Type::Function {
-                                parameters: signature.parameters.clone(),
-                                result: Box::new(signature.return_type.clone()),
-                            };
-                        }
+                        return super::super::binding::declared_function_type(
+                            &signature.parameters,
+                            signature.return_type.clone(),
+                            &signature.type_parameters,
+                        );
                     }
                 }
                 scope.get(&first.text).cloned().unwrap_or(Type::Unknown)

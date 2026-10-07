@@ -5057,3 +5057,50 @@ The shared diagnostic corpus is regenerated to 1,670 programs (758 accept,
 912 reject) and 147 templates. This supplemental baseline commits only
 fixtures, test/recorder observations and plans, measured against the uncommitted
 implementation draft. K.4.3 remains unchecked.
+
+### K.4.3 Bounded candidate inference and generic declarations
+
+Generic calls now collect candidates structurally through arrays, tuples, records,
+callback parameters/results and expanded named applications. Literal candidates
+retain the measured direct-return freshness or widen in the compared container
+and contextual positions. Conflicting candidates retain an argument to check;
+they do not become permissive `unknown`. Callback parameter candidates and return
+contexts participate in the same bounded instantiation path. Defaults substitute
+previously resolved parameters, and inferred constraint fallback leaves invalid
+arguments to the checked relation. Explicit arguments retain constraint/count
+errors and their original type-argument coordinates. The coordinate selector starts at the
+actual callee, so an earlier variable annotation does not supply its brackets.
+
+Generic function types retain their own binders, constraints, defaults and spans.
+Substitution and namespace qualification preserve those binders, and callable
+aliases expose their checked signature. Generic classes retain their lexical type
+parameters and constructor signatures locally and across exports/imports;
+construction instantiates the instance type and dependent defaults. Generic
+interfaces share the existing named instantiation path. Concrete record `keyof`
+and indexed projections supply the measured constraint prerequisites; full type
+operators remain K.4.5, and generic heritage/methods and static-member rules remain K.5.2.
+
+Contextual parameter facts are produced and consumed consistently by both the
+public API and native CLI before checking callback bodies. Strictness flags keep
+their existing diagnostic control. An exhausted contextual inference budget
+reports a precise BTS resource limit and prevents output. Existing BTS constraint
+identity/raw scalar-inference messages remain, separately from the measured
+TypeScript argument diagnostic. Contextual `get`/`set` identifiers remain callable,
+and accessor diagnostic positions select the member name. Interface declaration
+indentation follows pinned TypeScript. Historical unit expectations are updated
+for that formatting and for the generic class parser boundary.
+
+Candidate collection and contextual call diagnostics occupy dedicated modules.
+Namespace type traversal is separated before the expanded AST grows its owning
+module to the source review threshold. The semantic cache marker advances to
+`lexical-flow-v4`; no runtime helper, source authority or capability grant is added.
+
+Validation on the final frozen source passes format, format check and both-crate
+all-target Clippy with warnings denied. The complete Linux K.0 gate passes
+all 1,110 tests in 70 groups, including all 132 ignored oracles in 35 differential suite files. All 74 pinned verdicts/primary and related
+diagnostics, four runtime/declaration witnesses and the contextual budget
+refusal pass. The shared corpus contains 1,670 programs (758 accept,
+912 reject) and 147 templates. Evidence is retained at
+`/logs/blueice-k43-angles-final-status.json` and `/logs/blueice-k43-angles-final-gate.log`.
+Largest production source is 1,143 lines. Broader generic inference and variance
+remain measured gaps in G-T2; K.4.3 is complete, K.4.4 is next and M8 remains open.

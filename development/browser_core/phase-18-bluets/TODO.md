@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: K.4.3 (generic inference).** Sections A to J are complete (summarized below); J.6 closed in its
+**Current leaf: K.4.4 (overloads).** Sections A to J are complete (summarized below); J.6 closed in its
 measured form (`COMPATIBILITY_INVENTORY.md`). Section K closes the gaps that inventory lists.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
@@ -356,13 +356,14 @@ narrowing needs a flow graph or can stay structural, recorded in PLAN.md before 
   - *Failing baseline (2026-10-07):* 61 pinned programs (30 accept, 31 reject), five runtime/declaration witnesses, including imported signatures and callable aliases. Linux replay records 55 checker mismatches and four runtime/declaration failures; fixture completeness and pinned recorder pass. The shared diagnostic corpus is regenerated to 1,582 programs and 145 templates. Production remains unchanged in this baseline.
   - *Call-position replay (2026-10-07):* the 61-program draft passes the full frozen K.0 gate (1,105 tests, all 130 ignored oracles). Fourteen further pinned controls expand the guard corpus to 75 programs (36 accept, 39 reject); eight invalid call effects and two `undefined`/`void` argument rejections fail before their correction. All five runtime/declaration witnesses and the pinned recorder pass. The shared corpus now contains 1,596 programs and 145 templates; the leaf remains open.
   - *Verified (2026-10-07):* all 75 pinned verdicts/primary and related diagnostics, five runtime/declaration witnesses, and the 123-case narrowing regression pass. Statement/comma call effects follow the pinned parenthesis/initializer/argument controls. Format, format check and both-crate all-target Clippy pass; all 1,105 tests in 69 groups pass, including all 130 ignored oracles. Largest production source: 1,185 lines. G-T1 retains the broader unmeasured predicate/exception/capture forms.
-- [ ] **K.4.3 Generic inference (XL).** Inference from arguments (candidates, unification, widening),
+- [x] **K.4.3 Generic inference (XL).** Inference from arguments (candidates, unification, widening),
   from return position and contextual types, constraints (`extends`, `keyof`), defaults, explicit
   arguments, generic function types, generic classes and interfaces; the `instantiate_named` budget
   (`max_type_expansions`) stays and its exhaustion remains a precise diagnostic.
   - *Failing baseline (2026-10-07):* 59 pinned programs (33 accept, 26 reject), three runtime/declaration witnesses. Linux replay records 34 checker/primary-diagnostic mismatches and two runtime/declaration mismatches; completeness and pinned recorder pass. The shared diagnostic corpus contains 1,655 programs and 147 templates. Production remains unchanged in this baseline.
   - *Generic-boundary replay (2026-10-07):* the 59-program draft passes all four focused tests. Eleven further controls expand the corpus to 70 programs (39 accept, 31 reject) and four runtime/declaration witnesses. Linux replay records six checker/diagnostic differences and a missing contextual-inference budget refusal; all four runtime/declaration witnesses, completeness and pinned recorder pass. The shared corpus contains 1,666 programs and 147 templates. The leaf remains open.
   - *Annotated-call replay (2026-10-08):* the 70-program draft passes the full frozen K.0 gate (1,110 tests in 70 groups, all 132 ignored oracles). Four further controls bring the corpus to 74 programs (41 accept, 33 reject); the Linux replay records two TS2344/TS2558 primary-position differences when an earlier variable annotation also has type arguments. All four runtime/declaration witnesses, budget refusal, completeness and recorder pass. The leaf remains open.
+  - *Verified (2026-10-08):* all 74 pinned verdicts/primary and related diagnostics, four runtime/declaration witnesses and contextual-inference budget refusal pass through the measured API/CLI paths. Format, format check and both-crate all-target Clippy pass; all 1,110 tests in 70 groups, including all 132 ignored oracles in 35 differential suite files. Largest production source: 1,143 lines. Generic binders, dependent defaults and imported class/function signatures are retained; full operators, generic heritage/methods and broader variance remain in their dependent leaves and G-T2.
 - [ ] **K.4.4 Overloads (L).** Call/construct/method overload selection in `tsc` order, contextual
   signature selection for callbacks, ambiguity and no-match diagnostics with the right code, implementation
   signature compatibility (TS2394).

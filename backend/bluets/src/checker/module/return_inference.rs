@@ -49,7 +49,7 @@ impl ModuleChecker<'_> {
             .iter()
             .map(|parameter| {
                 let mut inferred = parameter.clone();
-                if inferred.annotation.is_none() && self.explicit_checking {
+                if inferred.annotation.is_none() {
                     inferred.annotation = self
                         .return_inference
                         .parameters

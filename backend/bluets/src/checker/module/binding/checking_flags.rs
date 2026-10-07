@@ -97,26 +97,41 @@ impl ModuleChecker<'_> {
         tokens: &[Token],
         scope: &BTreeMap<String, Type>,
     ) {
-        if !self.explicit_checking {
-            return;
-        }
-        let Some(call) = direct_call_parts(tokens) else {
-            return;
-        };
-        let signatures = self
-            .function_value_signature(&call.callee.text, scope)
-            .map(|s| vec![s])
-            .or_else(|| self.functions.get(&call.callee.text).cloned());
-        let Some(signature) = signatures.as_ref().and_then(|s| s.last()) else {
-            return;
-        };
-        let Some(arguments) = split_call_arguments(call.arguments) else {
-            return;
-        };
-        for (argument, parameter) in arguments.iter().zip(&signature.parameters) {
-            if let Some(expected) = &parameter.annotation {
-                self.infer_in_context(argument, scope, expected);
+        let execution = tokens.first().and_then(|token| {
+            self.scopes
+                .as_ref()
+                .map(|scopes| scopes.flow_execution(token.start))
+        });
+        for (index, token) in tokens.iter().enumerate() {
+            if token.kind != TokenKind::Identifier
+                || !tokens.get(index + 1).is_some_and(|token| token.is("("))
+                || index.checked_sub(1).is_some_and(|previous| {
+                    matches!(tokens[previous].text.as_str(), "." | "?." | "new")
+                })
+                || self
+                    .scopes
+                    .as_ref()
+                    .is_some_and(|scopes| Some(scopes.flow_execution(token.start)) != execution)
+            {
+                continue;
             }
+            let Some(end) = super::super::super::scopes::targets::close(tokens, index + 1) else {
+                continue;
+            };
+            let Some(call) = direct_call_parts(&tokens[index..=end]) else {
+                continue;
+            };
+            let signatures = self
+                .function_value_signature(&call.callee.text, scope)
+                .map(|s| vec![s])
+                .or_else(|| self.functions.get(&call.callee.text).cloned());
+            let Some(signatures) = signatures else {
+                continue;
+            };
+            let Some(arguments) = split_call_arguments(call.arguments) else {
+                continue;
+            };
+            let _ = self.expanded_call_argument_types_for(&arguments, scope, &signatures);
         }
     }
 }

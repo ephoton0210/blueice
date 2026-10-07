@@ -25,6 +25,8 @@ fn text(value: &Type, depth: usize, project: Option<&crate::Project>) -> String 
     }
     let render = |value: &Type| text(value, depth + 1, project);
     match value {
+        Type::KeyOf(value) => format!("keyof {}", render(value)),
+        Type::IndexedAccess { object, index } => format!("{}[{}]", render(object), render(index)),
         Type::Predicate(predicate) => predicate.text(render),
         Type::Literal(value) => {
             if value.starts_with('\'') && value.ends_with('\'') {
@@ -126,6 +128,32 @@ fn text(value: &Type, depth: usize, project: Option<&crate::Project>) -> String 
                 format!("{}{}{}: {value};",if field.readonly {"readonly "} else {""},field.name,if field.optional {"?"} else {""})
             }).collect::<Vec<_>>().join(" ");
             format!("{{ {fields} }}")
+        }
+        Type::GenericFunction {
+            type_parameters,
+            parameters,
+            result,
+            ..
+        } => {
+            let generic = type_parameters
+                .iter()
+                .map(|p| {
+                    let mut text = p.name.clone();
+                    if let Some(constraint) = &p.constraint {
+                        text.push_str(&format!(" extends {}", render(constraint)));
+                    }
+                    if let Some(default) = &p.default {
+                        text.push_str(&format!(" = {}", render(default)));
+                    }
+                    text
+                })
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!(
+                "<{generic}>({}) => {}",
+                parameters::list(parameters, project),
+                render(result)
+            )
         }
         Type::Function { parameters, result } => {
             format!(

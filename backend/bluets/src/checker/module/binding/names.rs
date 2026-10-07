@@ -64,6 +64,10 @@ impl ModuleChecker<'_> {
     /// diagnosed an unresolved annotation at its identifier token.
     pub(in crate::checker::module) fn type_is_bound(&self, value: &Type) -> bool {
         match value {
+            Type::KeyOf(value) => self.type_is_bound(value),
+            Type::IndexedAccess { object, index } => {
+                self.type_is_bound(object) && self.type_is_bound(index)
+            }
             Type::Predicate(predicate) => predicate.return_position,
             Type::Named { name, arguments } => {
                 (self.types.contains_key(name) || self.type_parameters.contains(name))
@@ -93,6 +97,11 @@ impl ModuleChecker<'_> {
 
     pub(in crate::checker::module) fn check_type(&mut self, value: &Type, span: &SourceSpan) {
         match value {
+            Type::KeyOf(value) => self.check_type(value, span),
+            Type::IndexedAccess { object, index } => {
+                self.check_type(object, span);
+                self.check_type(index, span);
+            }
             Type::Predicate(predicate) => self.check_predicate_position(predicate),
             Type::Named { name, arguments } => {
                 if let Some(query) = name.strip_prefix("typeof ") {
@@ -181,6 +190,23 @@ impl ModuleChecker<'_> {
                     self.check_type(&field.value, &field.span);
                 }
             }
+            Type::GenericFunction {
+                type_parameters,
+                parameters,
+                result,
+                ..
+            } => {
+                let previous = self.type_parameters.clone();
+                self.check_type_parameters(type_parameters);
+                self.check_type(
+                    &Type::Function {
+                        parameters: parameters.clone(),
+                        result: result.clone(),
+                    },
+                    span,
+                );
+                self.type_parameters = previous;
+            }
             Type::Function { parameters, result } => {
                 for parameter in parameters {
                     if let Some(annotation) = &parameter.annotation {
@@ -237,6 +263,7 @@ impl ModuleChecker<'_> {
                             ),
                             DiagnosticCode::TypeMismatch,
                         );
+                        self.point_last_type_default(&parameter.span);
                     }
                 }
             }
@@ -287,7 +314,7 @@ impl ModuleChecker<'_> {
             .map(|parameter| parameter.name.clone())
             .zip(arguments)
             .collect::<BTreeMap<_, _>>();
-        for parameter in &definition.parameters {
+        for (index, parameter) in definition.parameters.iter().enumerate() {
             let Some(constraint) = &parameter.constraint else {
                 continue;
             };
@@ -314,6 +341,7 @@ impl ModuleChecker<'_> {
                     ),
                     DiagnosticCode::TypeMismatch,
                 );
+                self.point_last_type_argument(span, Some(index));
             }
         }
     }

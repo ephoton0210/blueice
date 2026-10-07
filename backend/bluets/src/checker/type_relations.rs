@@ -110,6 +110,47 @@ pub(super) fn is_assignable(
     visited: &mut HashSet<String>,
     budget: &mut TypeExpansionBudget,
 ) -> bool {
+    if matches!(actual, Type::GenericFunction { .. })
+        || matches!(expected, Type::GenericFunction { .. })
+    {
+        let normalize = |value: &Type| match value {
+            Type::GenericFunction {
+                type_parameters,
+                parameters,
+                result,
+                ..
+            } => {
+                let substitutions = type_parameters
+                    .iter()
+                    .enumerate()
+                    .map(|(index, p)| {
+                        (
+                            p.name.clone(),
+                            Type::Named {
+                                name: format!("<generic:{index}>"),
+                                arguments: Vec::new(),
+                            },
+                        )
+                    })
+                    .collect();
+                substitute_type(
+                    &Type::Function {
+                        parameters: parameters.clone(),
+                        result: result.clone(),
+                    },
+                    &substitutions,
+                )
+            }
+            value => value.clone(),
+        };
+        return is_assignable(
+            &normalize(actual),
+            &normalize(expected),
+            aliases,
+            visited,
+            budget,
+        );
+    }
     if let Type::Tuple(elements) = actual {
         if elements.iter().any(|element| {
             element.rest && matches!(element.annotation, Type::Named { .. } | Type::Tuple(_))
@@ -208,8 +249,19 @@ pub(super) fn is_assignable(
     if let Some(expanded) = instantiate_named(actual, aliases, visited, budget, "actual") {
         return is_assignable(&expanded, expected, aliases, visited, budget);
     }
-    if let Some(expanded) = instantiate_named(expected, aliases, visited, budget, "expected") {
-        return is_assignable(actual, &expanded, aliases, visited, budget);
+    let mut expected_visited = visited.clone();
+    if let (Type::Record(_), Type::Named { name, .. }) = (actual, expected) {
+        if aliases
+            .get(name)
+            .is_some_and(|definition| matches!(definition.value, Type::Record(_)))
+        {
+            expected_visited.remove(&format!("expected:{}", type_identity(expected)));
+        }
+    }
+    if let Some(expanded) =
+        instantiate_named(expected, aliases, &mut expected_visited, budget, "expected")
+    {
+        return is_assignable(actual, &expanded, aliases, &mut expected_visited, budget);
     }
     if !budget.checking.strict_null_checks
         && matches!(actual, Type::Null | Type::Undefined)
@@ -677,6 +729,9 @@ pub(super) fn instantiate_named(
     budget: &mut TypeExpansionBudget,
     side: &str,
 ) -> Option<Type> {
+    if matches!(value, Type::KeyOf(_) | Type::IndexedAccess { .. }) {
+        return super::type_operators::resolve(value, aliases, visited, budget);
+    }
     let Type::Named { name, arguments } = value else {
         return None;
     };
@@ -731,6 +786,11 @@ pub(super) fn complete_type_arguments(
 
 pub(super) fn substitute_type(value: &Type, substitutions: &BTreeMap<String, Type>) -> Type {
     match value {
+        Type::KeyOf(value) => Type::KeyOf(Box::new(substitute_type(value, substitutions))),
+        Type::IndexedAccess { object, index } => Type::IndexedAccess {
+            object: Box::new(substitute_type(object, substitutions)),
+            index: Box::new(substitute_type(index, substitutions)),
+        },
         Type::Predicate(predicate) => {
             let mut predicate = predicate.clone();
             predicate.target = predicate
@@ -744,7 +804,10 @@ pub(super) fn substitute_type(value: &Type, substitutions: &BTreeMap<String, Typ
             .cloned()
             .unwrap_or_else(|| value.clone()),
         Type::Named { name, arguments } => Type::Named {
-            name: name.clone(),
+            name: match substitutions.get(name) {
+                Some(Type::Named { name, arguments }) if arguments.is_empty() => name.clone(),
+                _ => name.clone(),
+            },
             arguments: arguments
                 .iter()
                 .map(|argument| substitute_type(argument, substitutions))
@@ -774,6 +837,45 @@ pub(super) fn substitute_type(value: &Type, substitutions: &BTreeMap<String, Typ
                 })
                 .collect(),
         ),
+        Type::GenericFunction {
+            type_parameters,
+            parameters,
+            result,
+            span,
+        } => {
+            let mut substitutions = substitutions.clone();
+            for parameter in type_parameters {
+                substitutions.remove(&parameter.name);
+            }
+            let Type::Function { parameters, result } = substitute_type(
+                &Type::Function {
+                    parameters: parameters.clone(),
+                    result: result.clone(),
+                },
+                &substitutions,
+            ) else {
+                unreachable!()
+            };
+            Type::GenericFunction {
+                type_parameters: type_parameters
+                    .iter()
+                    .map(|parameter| TypeParameter {
+                        constraint: parameter
+                            .constraint
+                            .as_ref()
+                            .map(|value| substitute_type(value, &substitutions)),
+                        default: parameter
+                            .default
+                            .as_ref()
+                            .map(|value| substitute_type(value, &substitutions)),
+                        ..parameter.clone()
+                    })
+                    .collect(),
+                parameters,
+                result,
+                span: span.clone(),
+            }
+        }
         Type::Function { parameters, result } => Type::Function {
             parameters: parameters
                 .iter()
@@ -805,6 +907,10 @@ pub(super) fn substitute_type(value: &Type, substitutions: &BTreeMap<String, Typ
 
 pub(super) fn type_identity(value: &Type) -> String {
     match value {
+        Type::KeyOf(value) => format!("keyof {}", type_identity(value)),
+        Type::IndexedAccess { object, index } => {
+            format!("{}[{}]", type_identity(object), type_identity(index))
+        }
         Type::Predicate(predicate) => predicate.text(type_identity),
         Type::Named { name, arguments } => format!(
             "{name}<{}>",
@@ -831,7 +937,7 @@ pub(super) fn type_identity(value: &Type) -> String {
                 .join(",")
         ),
         Type::Record(_) => "record".to_string(),
-        Type::Function { .. } => "function".to_string(),
+        Type::Function { .. } | Type::GenericFunction { .. } => "function".to_string(),
         Type::Union(values) => values
             .iter()
             .map(type_identity)
@@ -848,6 +954,10 @@ pub(super) fn type_identity(value: &Type) -> String {
 
 pub(crate) fn type_label(value: &Type) -> String {
     match value {
+        Type::KeyOf(value) => format!("keyof {}", type_label(value)),
+        Type::IndexedAccess { object, index } => {
+            format!("{}[{}]", type_label(object), type_label(index))
+        }
         Type::Predicate(predicate) => predicate.text(type_label),
         Type::Any => "any".to_string(),
         Type::Unknown => "unknown".to_string(),
@@ -877,7 +987,7 @@ pub(crate) fn type_label(value: &Type) -> String {
                 .join(", ")
         ),
         Type::Record(_) => "record".to_string(),
-        Type::Function { .. } => "function".to_string(),
+        Type::Function { .. } | Type::GenericFunction { .. } => "function".to_string(),
         Type::Union(values) => values
             .iter()
             .map(type_label)

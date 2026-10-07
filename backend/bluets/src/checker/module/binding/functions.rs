@@ -752,7 +752,7 @@ pub(in crate::checker::module) fn hoist_local_functions(
             FunctionBodyItem::Function(function) => {
                 scope.insert(
                     function.name.clone(),
-                    super::nested_functions::erased_function_type(
+                    super::nested_functions::declared_function_type(
                         &function.parameters,
                         super::nested_functions::async_result(
                             function.return_type.clone().unwrap_or(Type::Unknown),

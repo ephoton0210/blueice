@@ -36,6 +36,23 @@ impl ScopeModel<'_> {
         } else {
             format!("{path}.{name}")
         };
+        let arguments = if is_static {
+            Vec::new()
+        } else {
+            self.type_definitions
+                .get(&name)
+                .map(|definition| {
+                    definition
+                        .parameters
+                        .iter()
+                        .map(|p| Type::Named {
+                            name: p.name.clone(),
+                            arguments: Vec::new(),
+                        })
+                        .collect()
+                })
+                .unwrap_or_default()
+        };
         self.value(
             scope,
             "this",
@@ -48,7 +65,7 @@ impl ScopeModel<'_> {
                 } else {
                     name
                 },
-                arguments: Vec::new(),
+                arguments,
             },
         );
     }

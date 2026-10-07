@@ -114,6 +114,7 @@ pub(super) struct ModuleChecker<'a> {
     strict_catch_unknown: bool,
     /// Inference uses `&self`; checked validation emits its first failure.
     record_spread_inference_failure: Cell<Option<(usize, usize, RecordSpreadFailure)>>,
+    generic_inference_failure: Cell<Option<SourceSpan>>,
     return_inference: return_inference::ReturnInference,
 }
 

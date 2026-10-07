@@ -47,7 +47,14 @@ impl ModuleChecker<'_> {
                 "this".to_string(),
                 Type::Named {
                     name: class.name.clone(),
-                    arguments: Vec::new(),
+                    arguments: class
+                        .type_parameters
+                        .iter()
+                        .map(|p| Type::Named {
+                            name: p.name.clone(),
+                            arguments: Vec::new(),
+                        })
+                        .collect(),
                 },
             );
             if let Some(base) = self.super_scope_type(class, false) {
@@ -129,7 +136,14 @@ impl ModuleChecker<'_> {
                     } else {
                         Type::Named {
                             name: class.name.clone(),
-                            arguments: Vec::new(),
+                            arguments: class
+                                .type_parameters
+                                .iter()
+                                .map(|p| Type::Named {
+                                    name: p.name.clone(),
+                                    arguments: Vec::new(),
+                                })
+                                .collect(),
                         }
                     },
                 );

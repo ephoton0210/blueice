@@ -141,9 +141,18 @@ fn assignment(
 }
 
 fn declaration_name(tokens: &[Token]) -> Option<(usize, usize)> {
-    let first = tokens
-        .iter()
-        .position(|token| token.kind == TokenKind::Identifier || token.is("constructor"))?;
+    let first = tokens.iter().position(|token| {
+        let accessor = (token.is("get") || token.is("set"))
+            && tokens
+                .iter()
+                .position(|candidate| candidate.start == token.start)
+                .is_some_and(|index| {
+                    tokens
+                        .get(index + 1)
+                        .is_some_and(|next| next.kind == TokenKind::Identifier)
+                });
+        (token.kind == TokenKind::Identifier && !accessor) || token.is("constructor")
+    })?;
     let token = &tokens[first];
     Some((token.start, token.end))
 }

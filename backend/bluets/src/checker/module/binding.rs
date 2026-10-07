@@ -23,7 +23,7 @@ use modules::specialize_imported_class_type;
 mod namespaces;
 pub(in crate::checker::module) use functions::promise_value_type;
 pub(crate) use namespaces::{ExportedValue, NamespaceExport, NamespaceMembers};
-pub(in crate::checker::module) use nested_functions::async_result;
+pub(in crate::checker::module) use nested_functions::{async_result, declared_function_type};
 mod nested_functions;
 pub(in crate::checker) use classes::{class_export, class_instance_type};
 
@@ -100,6 +100,7 @@ impl<'a> ModuleChecker<'a> {
             max_type_expansions,
             strict_catch_unknown: false,
             record_spread_inference_failure: Cell::new(None),
+            generic_inference_failure: Cell::new(None),
             return_inference: Default::default(),
         }
     }
@@ -460,6 +461,8 @@ impl<'a> ModuleChecker<'a> {
                 Declaration::Class(original) => {
                     let inferred = self.class_with_inferred_returns(original);
                     let class = &inferred;
+                    let previous_parameters = self.type_parameters.clone();
+                    self.check_type_parameters(&class.type_parameters);
                     self.validate_class_heritage_name(class);
                     self.validate_class_constructor_group(class);
                     self.validate_class_method_groups(class);
@@ -473,6 +476,7 @@ impl<'a> ModuleChecker<'a> {
                         checker.check_class_static_blocks(class);
                         checker.check_class_decorators(class);
                     });
+                    self.type_parameters = previous_parameters;
                 }
                 Declaration::Import(_)
                 | Declaration::TypeExport(_)
@@ -486,6 +490,16 @@ impl<'a> ModuleChecker<'a> {
             }
         }
         self.report_return_inference_failures();
+        if let Some(span) = self.generic_inference_failure.take() {
+            self.type_error(
+                &span,
+                format!(
+                    "contextual generic inference exceeds the {} generic-expansion limit",
+                    self.max_type_expansions
+                ),
+                DiagnosticCode::ResourceLimit,
+            );
+        }
         if let Some((start, end, failure)) = self.record_spread_inference_failure.take() {
             let (message, code) = match failure {
                 RecordSpreadFailure::ResourceLimit => (
@@ -601,10 +615,8 @@ impl<'a> ModuleChecker<'a> {
         variable: &crate::parser::VariableDeclaration,
         scope: &BTreeMap<String, Type>,
     ) {
-        if self.explicit_checking {
-            if let Some(annotation) = &variable.annotation {
-                self.infer_in_context(&variable.initializer, scope, annotation);
-            }
+        if let Some(annotation) = &variable.annotation {
+            self.infer_in_context(&variable.initializer, scope, annotation);
         }
         if !variable.initializer.is_empty() && !variable.declared {
             self.check_direct_runtime_expression(&variable.initializer, scope, &variable.span);

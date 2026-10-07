@@ -207,7 +207,28 @@ impl Parser {
     }
 
     pub(super) fn parse_type_primary(&mut self, _stop: &[&str]) -> Type {
-        let mut value = if self.consume("readonly") {
+        let mut value = if self.consume("keyof") {
+            Type::KeyOf(Box::new(self.parse_type_primary(_stop)))
+        } else if self.peek("<") {
+            let start = self.current().start;
+            let type_parameters = self.parse_type_parameters();
+            let function = self.parse_type_primary(_stop);
+            match function {
+                Type::Function { parameters, result } => Type::GenericFunction {
+                    type_parameters,
+                    parameters,
+                    result,
+                    span: SourceSpan::new(&self.id, start, self.previous().end),
+                },
+                _ => {
+                    self.error_here(
+                        DiagnosticCode::ParseError,
+                        "expected a generic function type",
+                    );
+                    Type::Unknown
+                }
+            }
+        } else if self.consume("readonly") {
             self.parse_type_primary(&[])
         } else if self.consume("[") {
             let mut values = Vec::new();
@@ -426,8 +447,16 @@ impl Parser {
         };
 
         while self.consume("[") {
-            self.expect("]");
-            value = Type::Array(Box::new(value));
+            value = if self.consume("]") {
+                Type::Array(Box::new(value))
+            } else {
+                let index = self.parse_type_until(&["]"]);
+                self.expect("]");
+                Type::IndexedAccess {
+                    object: Box::new(value),
+                    index: Box::new(index),
+                }
+            };
         }
         value
     }

@@ -433,7 +433,10 @@ fn lower(
         Type::Any | Type::Unknown | Type::Never => Err(ContractError {
             message: "any, unknown, and never are not automatic runtime contracts".to_string(),
         }),
-        Type::Function { .. } => Err(ContractError {
+        Type::KeyOf(_) | Type::IndexedAccess { .. } => Err(ContractError {
+            message: "type operators require a concrete checked data-boundary contract".into(),
+        }),
+        Type::Function { .. } | Type::GenericFunction { .. } => Err(ContractError {
             message: "function members are not data-boundary runtime contracts".to_string(),
         }),
         Type::Void => Err(ContractError {

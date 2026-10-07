@@ -452,8 +452,11 @@ impl ScopeModel<'_> {
                 span: span.clone(),
             });
         }
-        let scope = self.child(Some(parent), class.body_span.clone(), false, false);
+        let scope = self.child(Some(parent), class.span.clone(), false, false);
         self.private_class(class, scope);
+        for parameter in &class.type_parameters {
+            self.scopes[scope].types.insert(parameter.name.clone());
+        }
         let constructor = self.scopes[parent]
             .values
             .get(&class.name)
@@ -533,10 +536,34 @@ impl ScopeModel<'_> {
 
     pub(super) fn type_scopes(&mut self, value: &Type, span: &SourceSpan, scope: ScopeId) {
         match value {
+            Type::KeyOf(value) => self.type_scopes(value, span, scope),
+            Type::IndexedAccess { object, index } => {
+                self.type_scopes(object, span, scope);
+                self.type_scopes(index, span, scope);
+            }
             Type::Predicate(predicate) => {
                 if let Some(target) = &predicate.target {
                     self.type_scopes(target, span, scope);
                 }
+            }
+            Type::GenericFunction {
+                type_parameters,
+                parameters,
+                result,
+                span,
+            } => {
+                let inner = self.child(Some(scope), span.clone(), false, false);
+                for parameter in type_parameters {
+                    self.scopes[inner].types.insert(parameter.name.clone());
+                }
+                self.type_scopes(
+                    &Type::Function {
+                        parameters: parameters.clone(),
+                        result: result.clone(),
+                    },
+                    span,
+                    inner,
+                );
             }
             Type::Function { parameters, result } => {
                 let start = parameters

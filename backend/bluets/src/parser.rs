@@ -207,6 +207,7 @@ pub struct RawDeclaration {
 /// That intermediate state is rejected by the checker before any emission.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClassDeclaration {
+    pub type_parameters: Vec<TypeParameter>,
     /// The decorators written before the class (before or after `export`).
     pub decorators: Vec<Decorator>,
     pub name: String,
@@ -915,7 +916,11 @@ impl Type {
         let text = render(self);
         if matches!(
             self,
-            Type::Union(_) | Type::Intersection(_) | Type::Function { .. }
+            Type::Union(_)
+                | Type::Intersection(_)
+                | Type::Function { .. }
+                | Type::GenericFunction { .. }
+                | Type::KeyOf(_)
         ) {
             format!("({text})[]")
         } else {
@@ -985,6 +990,17 @@ pub enum Type {
     Function {
         parameters: Vec<Parameter>,
         result: Box<Type>,
+    },
+    KeyOf(Box<Type>),
+    IndexedAccess {
+        object: Box<Type>,
+        index: Box<Type>,
+    },
+    GenericFunction {
+        type_parameters: Vec<TypeParameter>,
+        parameters: Vec<Parameter>,
+        result: Box<Type>,
+        span: SourceSpan,
     },
     Predicate(Box<TypePredicate>),
     Union(Vec<Type>),

@@ -99,6 +99,11 @@ impl<'a> Index<'a> {
                 }
                 Declaration::Function(function) => {
                     self.functions.push(function);
+                    for parameter in &function.type_parameters {
+                        if let Some(constraint) = &parameter.constraint {
+                            self.type_fields("", constraint);
+                        }
+                    }
                     for parameter in &function.parameters {
                         if let Some(ty) = &parameter.annotation {
                             self.type_fields("", ty)
@@ -179,6 +184,50 @@ impl<'a> Index<'a> {
                 .as_ref()
                 .map(|ty| super::super::type_text::render_in(ty, self.project))
                 .unwrap_or_default();
+        }
+        if let Some(module) = self.project.modules.get(&span.module) {
+            for declaration in &module.declarations {
+                let Declaration::Variable(variable) = declaration else {
+                    continue;
+                };
+                if !(variable.span.start <= span.start && span.end <= variable.span.end) {
+                    continue;
+                }
+                let Some(Type::Named { name, arguments }) = &variable.annotation else {
+                    continue;
+                };
+                if name != &field.owner {
+                    continue;
+                }
+                let defaults = module.declarations.iter().find_map(|declaration| {
+                    let Declaration::Interface(interface) = declaration else {
+                        return None;
+                    };
+                    (interface.name == *name)
+                        .then(|| {
+                            interface
+                                .type_parameters
+                                .iter()
+                                .map(|p| p.default.clone())
+                                .collect::<Option<Vec<_>>>()
+                        })
+                        .flatten()
+                });
+                let arguments = if arguments.is_empty() {
+                    defaults.unwrap_or_default()
+                } else {
+                    arguments.clone()
+                };
+                if !arguments.is_empty() {
+                    return super::super::type_text::render_in(
+                        &Type::Named {
+                            name: name.clone(),
+                            arguments,
+                        },
+                        self.project,
+                    );
+                }
+            }
         }
         let source = self.project.source(&span.module).unwrap_or("");
         let mut owner = field.owner.clone();
@@ -286,7 +335,10 @@ impl<'a> Index<'a> {
     fn call_name(&self, span: &SourceSpan) -> Option<String> {
         let tokens = self.tokens.get(&span.module)?;
         let at = tokens.partition_point(|token| token.start < span.start);
-        if tokens.get(at + 1).is_some_and(|token| token.is("(")) {
+        if tokens
+            .get(at + 1)
+            .is_some_and(|token| token.is("(") || token.is("<"))
+        {
             return tokens.get(at).map(|token| token.text.clone());
         }
         let end = tokens.partition_point(|token| token.start < span.end);

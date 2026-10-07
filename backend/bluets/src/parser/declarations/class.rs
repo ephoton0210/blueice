@@ -15,6 +15,15 @@ impl Parser {
         }
         let name_token = self.current().clone();
         self.bump();
+        let type_parameter_start = self.current().start;
+        let type_parameters = self.parse_type_parameters();
+        if !type_parameters.is_empty() {
+            self.edits.push(TextEdit {
+                start: type_parameter_start,
+                end: self.current().start,
+                replacement: String::new(),
+            });
+        }
 
         let heritage = if self.consume("extends") {
             if self.current().kind != TokenKind::Identifier {
@@ -133,6 +142,7 @@ impl Parser {
         let decorators = std::mem::take(&mut self.pending_decorators);
         self.declarations.push(Declaration::Class(ClassDeclaration {
             decorators,
+            type_parameters,
             name: name_token.text,
             name_span,
             extends_name: heritage.as_ref().map(|token| token.text.clone()),
