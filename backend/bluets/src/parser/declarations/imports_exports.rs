@@ -131,6 +131,10 @@ impl Parser {
                     DiagnosticCode::ParseError,
                     "expected a string module specifier",
                 );
+                if !self.at_eof() && !self.peek(";") {
+                    let diagnostic = self.diagnostics.last_mut().expect("module specifier error");
+                    *diagnostic = diagnostic.clone().with_typescript(1141, Vec::new());
+                }
             }
         }
         self.consume(";");
@@ -231,6 +235,10 @@ impl Parser {
                     DiagnosticCode::ParseError,
                     "expected a string module specifier",
                 );
+                if !self.at_eof() && !self.peek(";") {
+                    let diagnostic = self.diagnostics.last_mut().expect("module specifier error");
+                    *diagnostic = diagnostic.clone().with_typescript(1141, Vec::new());
+                }
                 None
             }
         } else {

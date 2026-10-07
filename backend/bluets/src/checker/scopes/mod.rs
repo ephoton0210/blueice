@@ -10,6 +10,7 @@ use super::*;
 use crate::parser::{NestedFunctionBody, VariableDeclaration, VariableKind};
 
 mod checking_flags;
+mod diagnostics;
 mod expressions;
 mod mutations;
 mod private;
@@ -444,7 +445,10 @@ impl<'a> ScopeModel<'a> {
                     } else {
                         code
                     };
-                    diagnostics.push(Diagnostic::error(code, reference.span.clone(), message));
+                    diagnostics.push(self.diagnostic_counterpart(
+                        reference,
+                        Diagnostic::error(code, reference.span.clone(), message),
+                    ));
                 }
             }
         }

@@ -138,14 +138,14 @@ impl<'a> ModuleChecker<'a> {
                 } else {
                     span
                 };
-                self.type_error(
+                self.missing_property_error(
                     diagnostic_span,
-                    format!(
-                        "property `{}` does not exist on type `{}`",
-                        call.member.text,
-                        type_label(&base)
-                    ),
-                    DiagnosticCode::TypeMismatch,
+                    &base,
+                    &call.member.text,
+                    call.receiver
+                        .first()
+                        .filter(|_| call.receiver.len() == 1)
+                        .map(|token| token.text.as_str()),
                 );
                 return;
             }
@@ -365,7 +365,16 @@ impl<'a> ModuleChecker<'a> {
                 .as_ref()
                 .expect("method signature parameters have annotations");
             if !self.is_assignable_bounded(actual, expected, argument_span) {
-                self.type_error(
+                let library_receiver = match &base {
+                    Type::Array(_) => Some("Array".to_string()),
+                    Type::String => Some("String".to_string()),
+                    _ => matches!(call.receiver, [receiver] if self.library_values.contains(&receiver.text))
+                        .then(|| format!("{}Constructor", call.receiver[0].text)),
+                };
+                let overloaded = library_receiver.is_some_and(|receiver| {
+                    crate::diagnostic::templates::member_overloads(&receiver, &call.member.text) > 1
+                });
+                self.call_argument_error(
                     argument_span,
                     format!(
                         "argument {} has type `{}`, which is not assignable to method parameter `{}` of type `{}`",
@@ -374,7 +383,10 @@ impl<'a> ModuleChecker<'a> {
                         parameters[index].name,
                         type_label(expected)
                     ),
-                    DiagnosticCode::TypeMismatch,
+                    actual,
+                    expected,
+                    arguments.get(index).is_some_and(|tokens| tokens.first().is_some_and(|token| token.is("{"))),
+                    overloaded,
                 );
             }
         }

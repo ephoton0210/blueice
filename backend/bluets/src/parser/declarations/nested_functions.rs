@@ -196,6 +196,15 @@ impl Parser {
             return None;
         };
         let close = matching_close(&self.tokens, open, end)?;
+        // A statement block can contain `for (...) { ... }` at the same
+        // brace depth as a method. A loop declaration is not a parameter.
+        if self
+            .tokens
+            .get(open + 1)
+            .is_some_and(|token| matches!(token.text.as_str(), "const" | "let" | "var"))
+        {
+            return None;
+        }
         if !self.simple_parameter_list(open, close) {
             return None;
         }
@@ -214,12 +223,16 @@ impl Parser {
                 DiagnosticCode::ParseError,
                 "a getter takes no parameters",
             ),
-            NestedFunctionKind::Setter if parameters.len() != 1 || return_type.is_some() => self
-                .error_at(
-                    SourceSpan::new(&self.id, start_offset, body_end),
-                    DiagnosticCode::ParseError,
-                    "a setter takes exactly one parameter and no result annotation",
-                ),
+            NestedFunctionKind::Setter if parameters.len() != 1 || return_type.is_some() => {
+                self.diagnostics.push(
+                    Diagnostic::error(
+                        DiagnosticCode::ParseError,
+                        SourceSpan::new(&self.id, start_offset, body_end),
+                        "a setter takes exactly one parameter and no result annotation",
+                    )
+                    .with_typescript(if parameters.len() != 1 { 1049 } else { 1095 }, Vec::new()),
+                )
+            }
             _ => {}
         }
         self.nested_functions.insert(

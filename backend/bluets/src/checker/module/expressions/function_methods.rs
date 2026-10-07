@@ -80,10 +80,12 @@ impl ModuleChecker<'_> {
             return true;
         }
         let Some((this_arg, arguments)) = arguments.split_first() else {
-            self.type_error(
+            self.typescript_type_error(
                 span,
                 format!("{member} requires a this argument"),
                 DiagnosticCode::TypeMismatch,
+                2555,
+                vec!["1".into(), "0".into()],
             );
             return true;
         };
@@ -94,10 +96,15 @@ impl ModuleChecker<'_> {
                 .as_ref()
                 .is_some_and(|expected| !self.is_assignable_bounded(&actual, expected, span))
             {
-                self.type_error(
+                self.typescript_type_error(
                     span,
                     "this argument has an incompatible type".to_string(),
                     DiagnosticCode::TypeMismatch,
+                    2345,
+                    vec![
+                        type_label(&actual),
+                        type_label(parameter.annotation.as_ref().unwrap()),
+                    ],
                 );
             }
         }
@@ -108,10 +115,12 @@ impl ModuleChecker<'_> {
             .collect::<Vec<_>>();
         let actuals = if member == "apply" {
             if arguments.len() != 1 {
-                self.type_error(
+                self.typescript_type_error(
                     span,
                     "apply requires one tuple of arguments".to_string(),
                     DiagnosticCode::TypeMismatch,
+                    if arguments.is_empty() { 2684 } else { 2554 },
+                    Vec::new(),
                 );
                 return true;
             }
@@ -152,10 +161,15 @@ impl ModuleChecker<'_> {
         if (member != "bind" && actuals.len() < required)
             || (actuals.len() > parameters.len() && !parameters.last().is_some_and(|p| p.rest))
         {
-            self.type_error(
+            self.typescript_type_error(
                 span,
                 format!("{member} argument count does not match the function"),
                 DiagnosticCode::TypeMismatch,
+                if member == "apply" { 2345 } else { 2554 },
+                vec![
+                    (parameters.len() + 1).to_string(),
+                    (actuals.len() + 1).to_string(),
+                ],
             );
         }
         for (index, actual) in actuals.iter().enumerate() {
@@ -173,10 +187,12 @@ impl ModuleChecker<'_> {
                         expected
                     };
                     if !self.is_assignable_bounded(actual, expected, span) {
-                        self.type_error(
+                        self.typescript_type_error(
                             span,
                             format!("{member} argument {} has an incompatible type", index + 1),
                             DiagnosticCode::TypeMismatch,
+                            if member == "apply" { 2322 } else { 2345 },
+                            vec![type_label(actual), type_label(expected)],
                         );
                     }
                 }

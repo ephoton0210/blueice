@@ -339,7 +339,11 @@ impl Parser {
         self.expect("(");
         let mut parameters = Vec::new();
         while !self.at_eof() && !self.consume(")") {
-            let property_modifiers = if self.parameter_property_mode {
+            let property_modifiers = if self.parameter_property_mode
+                || matches!(
+                    self.current().text.as_str(),
+                    "public" | "protected" | "private" | "readonly"
+                ) {
                 self.consume_parameter_property_modifiers()
             } else {
                 None
@@ -383,7 +387,16 @@ impl Parser {
                     }
                 }
             } else {
-                self.require_identifier("expected a parameter name")
+                let this_parameter = self.peek("this");
+                let name = self.require_identifier("expected a parameter name");
+                if this_parameter {
+                    if let Some(diagnostic) = self.diagnostics.last_mut() {
+                        *diagnostic = diagnostic.clone().blue_only(
+                            "BlueTSC's named parameter subset does not parse TypeScript this parameters.",
+                        );
+                    }
+                }
+                name
             };
             let optional_start = self.current().start;
             let mut optional = self.consume("?");
@@ -429,18 +442,33 @@ impl Parser {
             };
             let parameter_end = self.previous().end;
             if let Some((visibility, readonly)) = property_modifiers {
-                if rest || pattern.is_some() {
-                    self.error_at(
-                        SourceSpan::new(&self.id, parameter_start, parameter_end),
-                        DiagnosticCode::ParseError,
-                        "a parameter property cannot be a rest parameter or a binding pattern",
+                if !self.parameter_property_mode {
+                    self.diagnostics.push(
+                        Diagnostic::error(
+                            DiagnosticCode::ParseError,
+                            SourceSpan::new(&self.id, parameter_start, parameter_end),
+                            "a parameter property is only allowed in a constructor implementation",
+                        )
+                        .with_typescript(2369, Vec::new()),
                     );
                 }
-                self.parameter_properties.push(ParameterProperty {
-                    parameter_index: parameters.len(),
-                    visibility,
-                    readonly,
-                });
+                if rest || pattern.is_some() {
+                    self.diagnostics.push(
+                        Diagnostic::error(
+                            DiagnosticCode::ParseError,
+                            SourceSpan::new(&self.id, parameter_start, parameter_end),
+                            "a parameter property cannot be a rest parameter or a binding pattern",
+                        )
+                        .with_typescript(if rest { 1317 } else { 1187 }, Vec::new()),
+                    );
+                }
+                if self.parameter_property_mode {
+                    self.parameter_properties.push(ParameterProperty {
+                        parameter_index: parameters.len(),
+                        visibility,
+                        readonly,
+                    });
+                }
             }
             parameters.push(Parameter {
                 decorators,

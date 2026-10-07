@@ -54,10 +54,16 @@ impl<'a> ModuleChecker<'a> {
                 );
             }
             if parameter.rest && parameter.optional {
-                self.type_error(
+                self.typescript_type_error(
                     &parameter.span,
                     "a rest parameter cannot be optional or have a default initializer".to_string(),
                     DiagnosticCode::TypeMismatch,
+                    if parameter.default.is_some() {
+                        1048
+                    } else {
+                        2370
+                    },
+                    Vec::new(),
                 );
             }
             if parameter.rest
@@ -66,11 +72,7 @@ impl<'a> ModuleChecker<'a> {
                     .as_ref()
                     .is_some_and(|annotation| !matches!(annotation, Type::Array(_)))
             {
-                self.type_error(
-                    &parameter.span,
-                    "the bounded rest-parameter rule requires an array annotation".to_string(),
-                    DiagnosticCode::TypeMismatch,
-                );
+                self.rest_annotation_error(parameter);
             }
             if let Some(default) = &parameter.default {
                 self.check_direct_runtime_expression(default, &scope, &parameter.span);
@@ -192,13 +194,19 @@ impl<'a> ModuleChecker<'a> {
                     StructuredTermination::FallsThrough
                 )
             {
-                self.type_error(
+                self.typescript_type_error(
                     &function.span,
                     format!(
                         "function with return type `{}` can complete without returning a value",
                         type_label(return_type)
                     ),
                     DiagnosticCode::ReturnTypeMismatch,
+                    if return_inference::has_return(&function.body) {
+                        2366
+                    } else {
+                        2355
+                    },
+                    Vec::new(),
                 );
             }
         }

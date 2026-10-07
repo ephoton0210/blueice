@@ -245,10 +245,13 @@ impl ModuleChecker<'_> {
         };
         match self.select_function_signature(&signatures, &actuals, None) {
             Ok(Some(_)) => {}
-            Ok(None) => self.type_error(
+            Ok(None) => self.rejected_call_error(
                 span,
                 format!("no constructor of class {base} accepts the `super` call arguments"),
-                DiagnosticCode::TypeMismatch,
+                &signatures,
+                &actuals,
+                self.library_values.contains(base)
+                    && crate::diagnostic::templates::constructor_overloads(base) > 1,
             ),
             Err(()) => self.type_error(
                 span,

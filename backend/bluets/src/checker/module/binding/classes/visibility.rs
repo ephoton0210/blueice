@@ -377,13 +377,22 @@ impl ModuleChecker<'_> {
                 .and_then(|name| self.local_class(name))
                 .is_some_and(|class| class_declares_private_name(class, &token.text));
             if !declared {
-                self.type_error(
+                self.typescript_type_error(
                     &token_span,
                     format!(
                         "private identifier `{}` is not declared by the enclosing class",
                         token.text
                     ),
                     DiagnosticCode::UnknownName,
+                    if self.access_class.is_none() {
+                        18016
+                    } else {
+                        2339
+                    },
+                    vec![
+                        token.text.clone(),
+                        self.access_class.clone().unwrap_or_default(),
+                    ],
                 );
             }
         }
@@ -509,7 +518,32 @@ impl ModuleChecker<'_> {
                 PropertyType::Missing => {
                     if let Some((visibility, owner)) = self.hidden_member(&receiver, &member.text) {
                         let owner = owner.split('@').next().unwrap_or(&owner).to_string();
-                        self.type_error(
+                        let (code, arguments) = if member.text.starts_with('#') {
+                            (18013, vec![member.text.clone(), owner.clone()])
+                        } else if visibility == Visibility::Protected
+                            && self.access_class.as_deref().is_some_and(|current| {
+                                self.local_class_derives_from(current, &owner)
+                            })
+                        {
+                            (
+                                2446,
+                                vec![
+                                    member.text.clone(),
+                                    self.access_class.clone().unwrap(),
+                                    type_label(&receiver),
+                                ],
+                            )
+                        } else {
+                            (
+                                if visibility == Visibility::Private {
+                                    2341
+                                } else {
+                                    2445
+                                },
+                                vec![member.text.clone(), owner.clone()],
+                            )
+                        };
+                        self.typescript_type_error(
                             &member_span,
                             format!(
                                 "property `{}` is {} and only accessible within class `{owner}`",
@@ -517,6 +551,8 @@ impl ModuleChecker<'_> {
                                 visibility.keyword(),
                             ),
                             DiagnosticCode::TypeMismatch,
+                            code,
+                            arguments,
                         );
                     } else if member.text.starts_with('#') {
                         self.type_error(

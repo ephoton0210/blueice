@@ -792,10 +792,23 @@ impl ModuleChecker<'_> {
             && !members.types.contains(&root)
             && !members.values.contains(&root);
         if hidden {
-            self.type_error(
+            let suggestion = members
+                .types
+                .iter()
+                .chain(members.values.iter())
+                .find(|name| name.eq_ignore_ascii_case(&root))
+                .cloned();
+            let (code, arguments) = if let Some(suggestion) = suggestion {
+                (2724, vec![path.clone(), root.clone(), suggestion])
+            } else {
+                (2694, vec![path.clone(), root.clone()])
+            };
+            self.typescript_type_error(
                 span,
                 format!("namespace `{path}` has no exported member `{root}`"),
                 DiagnosticCode::UnknownType,
+                code,
+                arguments,
             );
         }
         hidden

@@ -54,7 +54,9 @@ pub use debug_info::{
     source_locations_for_spans, BlueTsDebugInfo, ContractId, DebugContract, DebugSource,
     DebugSourceLocation, DebugSourcePosition, DebugSymbol, DebugType, SourceId, SymbolId, TypeId,
 };
-pub use diagnostic::{Diagnostic, DiagnosticCode, Severity, SourceSpan};
+pub use diagnostic::{
+    Diagnostic, DiagnosticCode, Severity, SourceSpan, TypeScriptDiagnostic, DIAGNOSTICS_VERSION,
+};
 pub use emitter::{
     BuildArtifact, BuildOutput, EmittedRuntimeBoundary, EmittedRuntimeSite, EmittedStrictModule,
     SourceMap, CLASS_HELPER_V1_VERSION, DECORATOR_HELPER_V1_VERSION,

@@ -1,0 +1,200 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+//! Diagnostic causes determined from the checked call signatures.
+
+use super::*;
+
+impl ModuleChecker<'_> {
+    pub(in crate::checker::module) fn call_argument_error(
+        &mut self,
+        span: &SourceSpan,
+        message: String,
+        actual: &Type,
+        expected: &Type,
+        object_literal: bool,
+        overloaded: bool,
+    ) {
+        if overloaded {
+            self.typescript_type_error(
+                span,
+                message,
+                DiagnosticCode::TypeMismatch,
+                2769,
+                Vec::new(),
+            );
+            return;
+        }
+        if object_literal {
+            let (Some(actual_fields), false) = self.expanded_record_fields(actual.clone()) else {
+                self.typescript_type_error(
+                    span,
+                    message,
+                    DiagnosticCode::TypeMismatch,
+                    2345,
+                    vec![type_label(actual), type_label(expected)],
+                );
+                return;
+            };
+            if let (Some(expected_fields), false) = self.expanded_record_fields(expected.clone()) {
+                for field in actual_fields {
+                    let Some(expected) = expected_fields
+                        .iter()
+                        .find(|expected| expected.name == field.name)
+                    else {
+                        continue;
+                    };
+                    let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
+                    budget.checking = self.checking;
+                    if !is_assignable(
+                        &field.value,
+                        &expected.value,
+                        &self.types,
+                        &mut HashSet::new(),
+                        &mut budget,
+                    ) && !budget.exhausted
+                    {
+                        self.typescript_type_error(
+                            span,
+                            message,
+                            DiagnosticCode::TypeMismatch,
+                            2322,
+                            vec![type_label(&field.value), type_label(&expected.value)],
+                        );
+                        return;
+                    }
+                }
+            }
+        }
+        self.typescript_type_error(
+            span,
+            message,
+            DiagnosticCode::TypeMismatch,
+            2345,
+            vec![type_label(actual), type_label(expected)],
+        );
+    }
+
+    pub(in crate::checker::module) fn assignment_error(
+        &mut self,
+        span: &SourceSpan,
+        message: String,
+        bts_code: DiagnosticCode,
+        actual: &Type,
+        expected: &Type,
+    ) {
+        let (actual_fields, actual_exhausted) = self.expanded_record_fields(actual.clone());
+        let (expected_fields, expected_exhausted) = self.expanded_record_fields(expected.clone());
+        if !actual_exhausted && !expected_exhausted {
+            if let (Some(actual_fields), Some(expected_fields)) = (actual_fields, expected_fields) {
+                let missing = expected_fields
+                    .iter()
+                    .filter(|field| {
+                        !field.optional
+                            && !actual_fields.iter().any(|actual| actual.name == field.name)
+                    })
+                    .collect::<Vec<_>>();
+                if let [field] = missing.as_slice() {
+                    let name = field.name.rsplit(' ').next().unwrap_or(&field.name);
+                    // A public/private mismatch or two private declarations
+                    // is an incompatible identity, rather than an absent field.
+                    let restricted = field.name.contains(' ') && !name.starts_with('#');
+                    let conflicting = actual_fields
+                        .iter()
+                        .any(|actual| actual.name.rsplit(' ').next() == Some(name));
+                    if !restricted && !conflicting {
+                        self.typescript_type_error(
+                            span,
+                            message,
+                            bts_code,
+                            2741,
+                            vec![name.into(), type_label(actual), type_label(expected)],
+                        );
+                        return;
+                    }
+                }
+                if self.checking.exact_optional_property_types
+                    && expected_fields.iter().any(|field| {
+                        field.optional
+                            && actual_fields.iter().any(|actual| {
+                                actual.name == field.name
+                                    && actual.value == Type::Undefined
+                                    && field.value != Type::Undefined
+                            })
+                    })
+                {
+                    self.typescript_type_error(
+                        span,
+                        message,
+                        bts_code,
+                        2375,
+                        vec![type_label(actual), type_label(expected)],
+                    );
+                    return;
+                }
+            }
+        }
+        self.typescript_type_error(
+            span,
+            message,
+            bts_code,
+            2322,
+            vec![type_label(actual), type_label(expected)],
+        );
+    }
+
+    pub(in crate::checker::module) fn rejected_call_error(
+        &mut self,
+        span: &SourceSpan,
+        message: String,
+        signatures: &[FunctionSignature],
+        actuals: &[Type],
+        typescript_overloads: bool,
+    ) {
+        let matching_arity = signatures
+            .iter()
+            .filter(|signature| function_signature_accepts_argument_count(signature, actuals.len()))
+            .collect::<Vec<_>>();
+        let (code, arguments) = if matching_arity.is_empty() && !signatures.is_empty() {
+            let minimum = signatures
+                .iter()
+                .map(function_signature_required_arguments)
+                .min()
+                .unwrap();
+            let maximum = signatures
+                .iter()
+                .map(|signature| signature.parameters.len())
+                .max()
+                .unwrap();
+            let expected = if minimum == maximum {
+                minimum.to_string()
+            } else {
+                format!("{minimum}-{maximum}")
+            };
+            (2554, vec![expected, actuals.len().to_string()])
+        } else if signatures.len() > 1 || typescript_overloads {
+            (2769, Vec::new())
+        } else if let Some(signature) = matching_arity.first() {
+            let substitutions = infer_call_substitutions(signature, actuals);
+            let mismatch = actuals.iter().enumerate().find_map(|(index, actual)| {
+                let parameter = function_parameter_for_argument(signature, index)?;
+                let expected = call_parameter_expected_type(parameter, &substitutions);
+                let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
+                budget.checking = self.checking;
+                (!is_assignable(
+                    actual,
+                    &expected,
+                    &self.types,
+                    &mut HashSet::new(),
+                    &mut budget,
+                ))
+                .then(|| vec![type_label(actual), type_label(&expected)])
+            });
+            (2345, mismatch.unwrap_or_default())
+        } else {
+            (2345, Vec::new())
+        };
+        self.typescript_type_error(span, message, DiagnosticCode::TypeMismatch, code, arguments);
+    }
+}

@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: K.3.1.** Sections A to J are complete (summarized below); J.6 closed in its
+**Current leaf: K.3.2.** Sections A to J are complete (summarized below); J.6 closed in its
 measured form (`COMPATIBILITY_INVENTORY.md`). Section K closes the gaps that inventory lists.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
@@ -315,10 +315,11 @@ and import rules.
 
 - *Source audit baseline:* 72 further pinned diagnostic witnesses cover lexical errors and semantic families outside the language matrix; their failing replay is recorded before the remaining mappings. The language corpus alone does not close K.3.1.
 
-- [ ] **K.3.1 Code and message mapping (M).** A table from every BlueTSC diagnostic to the `TSnnnn` code
+- [x] **K.3.1 Code and message mapping (M).** A table from every BlueTSC diagnostic to the `TSnnnn` code
   and message template recorded from the pinned compiler (`tools/` script that runs `tsc` over the
   fixture corpus and extracts the first code per entry); `BTSnnnn` stays as an alias in machine-readable
   output. Diagnostics with no `tsc` counterpart are listed explicitly.
+  - *Verified (2026-10-07):* 263 base message families plus semantic context refinements, a reproducible 2,121-template TypeScript 5.9.3 catalog, 1,398 primary code/template replays and 97 additional diagnostic source witnesses. Machine JSON preserves BTS aliases and explicit owner/subset reasons. K.0: format and Clippy pass; 1,083 tests in 64 groups pass, including all 124 ignored oracles. Largest production source: 1,185 lines. Position and presentation parity remain in K.3.2/K.3.3.
 - [ ] **K.3.2 Position parity (M).** Compare line, column and length of the primary span with `tsc` in
   every accepted/rejected matrix; each mismatch is a tracked row until zero (expect many: BlueTS spans
   are statement-granular in places).

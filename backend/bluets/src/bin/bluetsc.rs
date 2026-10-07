@@ -137,6 +137,7 @@ fn main() -> ExitCode {
         &invocation.entries,
         &loader,
         invocation.options.clone(),
+        args.diagnostics_json,
     );
     if summary.has_errors {
         return ExitCode::FAILURE;
@@ -368,6 +369,7 @@ fn compile_entries(
     entries: &[PathBuf],
     loader: &FileLoader,
     options: CompilerOptions,
+    diagnostics_json: bool,
 ) -> CompileSummary {
     let mut artifacts = BTreeMap::new();
     let mut declaration_modules = BTreeMap::new();
@@ -389,14 +391,18 @@ fn compile_entries(
         }
         let result = compile(&module, loader, entry_options);
         for diagnostic in &result.diagnostics {
-            eprintln!(
-                "{}:{}:{}: {}: {}",
-                diagnostic.span.module,
-                diagnostic.span.start,
-                diagnostic.span.end,
-                diagnostic.code,
-                diagnostic.message
-            );
+            if diagnostics_json {
+                eprintln!("{}", diagnostic.to_json());
+            } else {
+                eprintln!(
+                    "{}:{}:{}: {}: {}",
+                    diagnostic.span.module,
+                    diagnostic.span.start,
+                    diagnostic.span.end,
+                    diagnostic.code,
+                    diagnostic.message
+                );
+            }
         }
         has_errors |= result.has_errors();
         modules.extend(result.project.modules.keys().cloned());

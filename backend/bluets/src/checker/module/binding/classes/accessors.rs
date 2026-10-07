@@ -375,6 +375,17 @@ impl ModuleChecker<'_> {
             if base_kind == kind {
                 continue;
             }
+            if kind == BaseMemberKind::Field && base_kind == BaseMemberKind::Method {
+                if let Some(field) = class
+                    .members
+                    .iter()
+                    .filter_map(|member| member.field.as_ref())
+                    .find(|field| field.name == name && field.is_static == is_static)
+                {
+                    self.field_method_error(class, field);
+                }
+                continue;
+            }
             let describe = |kind: BaseMemberKind| match kind {
                 BaseMemberKind::Field => "a property",
                 BaseMemberKind::Method => "a method",

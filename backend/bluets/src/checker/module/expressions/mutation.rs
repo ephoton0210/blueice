@@ -45,14 +45,11 @@ impl<'a> ModuleChecker<'a> {
                 } else {
                     span
                 };
-                self.type_error(
+                self.missing_property_error(
                     diagnostic_span,
-                    format!(
-                        "property `{}` does not exist on type `{}`",
-                        property.text,
-                        type_label(&value)
-                    ),
-                    DiagnosticCode::TypeMismatch,
+                    &value,
+                    &property.text,
+                    Some(&base.text),
                 );
             }
             PropertyType::Exhausted => self.type_error(

@@ -295,7 +295,7 @@ impl ScopeModel<'_> {
         if own_constructor {
             return None;
         }
-        Some(Diagnostic::error(
+        let mut diagnostic = Diagnostic::error(
             DiagnosticCode::TypeMismatch,
             token.span(&self.module.id),
             format!(
@@ -307,7 +307,23 @@ impl ScopeModel<'_> {
                 },
                 property.unwrap_or("computed")
             ),
-        ))
+        );
+        if property.is_none() {
+            let owner =
+                self.target_type(receiver, usage.scope, &mut BTreeSet::new(), &mut budget, 0);
+            let index = targets::strip(&usage.target)
+                .get(receiver.len() + 1..usage.target.len().saturating_sub(1));
+            let index = index.and_then(|tokens| {
+                self.target_type(tokens, usage.scope, &mut BTreeSet::new(), &mut budget, 0)
+            });
+            if let (Some(owner), Some(index)) = (owner, index) {
+                if matches!(index, Type::String | Type::Number) && !budget.exhausted {
+                    diagnostic = diagnostic
+                        .with_typescript(7053, vec![type_label(&index), type_label(&owner)]);
+                }
+            }
+        }
+        Some(diagnostic)
     }
 
     fn member_key(&self, tokens: &[Token], scope: ScopeId) -> Option<String> {

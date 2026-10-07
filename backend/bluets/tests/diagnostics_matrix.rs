@@ -118,6 +118,13 @@ fn primary_codes_and_message_templates_match_the_pinned_corpus() {
             continue;
         };
         let expected = &case["first"];
+        for diagnostic in &diagnostics {
+            if diagnostic["typescript"].is_null()
+                && diagnostic["noTypeScriptCounterpart"].as_str().is_none()
+            {
+                failures.push(format!("{id}: unmapped diagnostic: {diagnostic}"));
+            }
+        }
         if let Some(recorded) = no_counterpart.iter().find(|entry| entry["id"] == id) {
             let Some(primary) = diagnostics.first() else {
                 failures.push(format!("{id}: missing recorded subset refusal"));
@@ -174,6 +181,15 @@ fn primary_codes_and_message_templates_match_the_pinned_corpus() {
 #[test]
 #[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
 fn recorded_codes_messages_and_spans_match_pinned_typescript() {
+    let catalog = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../development/browser_core/phase-18-bluets/tools/record_diagnostic_catalog.cjs");
+    let output = Command::new("node").arg(catalog).output().unwrap();
+    assert!(
+        output.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
     let script = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../development/browser_core/phase-18-bluets/tools/record_diagnostics.cjs");
     let output = Command::new("node").arg(script).output().unwrap();

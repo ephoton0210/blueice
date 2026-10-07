@@ -20,6 +20,7 @@ pub(super) struct Args {
     pub(super) command: Command,
     pub(super) input: Input,
     pub(super) show_config: bool,
+    pub(super) diagnostics_json: bool,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -159,19 +160,23 @@ pub(super) fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, Str
             .next()
             .ok_or_else(|| "--config requires a JSON file".to_string())?;
         let mut show_config = false;
-        if let Some(extra) = args.next() {
-            if extra == "--showConfig" && args.next().is_none() {
-                show_config = true;
-            } else {
-                return Err(format!(
-                    "`--config` owns project settings; unsupported extra argument `{extra}`"
-                ));
+        let mut diagnostics_json = false;
+        for extra in args {
+            match extra.as_str() {
+                "--showConfig" => show_config = true,
+                "--diagnostics-json" => diagnostics_json = true,
+                _ => {
+                    return Err(format!(
+                        "`--config` owns project settings; unsupported extra argument `{extra}`"
+                    ))
+                }
             }
         }
         return Ok(Args {
             command,
             input: Input::Config(PathBuf::from(path)),
             show_config,
+            diagnostics_json,
         });
     }
     if command == Command::FetchDeclarations {
@@ -181,12 +186,14 @@ pub(super) fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, Str
     let mut project_root = None;
     let mut out_dir = None;
     let mut options = CompilerOptions::default();
+    let mut diagnostics_json = false;
     while let Some(flag) = args.next() {
         let mut value = || {
             args.next()
                 .ok_or_else(|| format!("{flag} requires a value"))
         };
         match flag.as_str() {
+            "--diagnostics-json" => diagnostics_json = true,
             "--project-root" => project_root = Some(PathBuf::from(value()?)),
             "--out-dir" => out_dir = Some(PathBuf::from(value()?)),
             "--source-map" => options.source_map = true,
@@ -270,11 +277,12 @@ pub(super) fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, Str
             options: Box::new(options),
         },
         show_config: false,
+        diagnostics_json,
     })
 }
 
 pub(super) fn usage() -> &'static str {
-    "Usage:\n  bluetsc check <entry.ts> [--project-root <directory>] [--target es2020|es2022] [--use-define-for-class-fields true|false] [--preserve-const-enums] [--isolated-modules] [--module esnext|commonjs] [--es-module-interop] [--experimental-decorators] [--emit-decorator-metadata] [--jsx preserve|react-native|react|react-jsx|react-jsxdev] [--jsx-factory <name>] [--jsx-fragment-factory <name>] [--jsx-import-source <module>] [--runtime-policy transpile-only|checked|strict-runtime]\n  bluetsc build <entry.ts> --out-dir <directory> [--project-root <directory>] [--source-map] [--declaration] [--target es2020|es2022] [--use-define-for-class-fields true|false] [--preserve-const-enums] [--isolated-modules] [--module esnext|commonjs] [--es-module-interop] [--experimental-decorators] [--emit-decorator-metadata] [--jsx preserve|react-native|react|react-jsx|react-jsxdev] [--jsx-factory <name>] [--jsx-fragment-factory <name>] [--jsx-import-source <module>] [--runtime-policy transpile-only|checked|strict-runtime]\n  bluetsc fetch-declarations --config <bluetsc.json>\n  bluetsc check --config <bluetsc.json>\n  bluetsc check --config <tsconfig.json> [--showConfig]\n  bluetsc build --config <bluetsc.json>\n  bluetsc build --config <tsconfig.json> [--showConfig]\n\nConfig fields: entries, projectRoot, outDir, sourceMap, declaration, target, useDefineForClassFields, preserveConstEnums, isolatedModules, module, esModuleInterop, experimentalDecorators, emitDecoratorMetadata, jsx, jsxFactory, jsxFragmentFactory, jsxImportSource, runtimePolicy, imports, moduleResolution, packageRoots, customConditions, remoteDeclarations, declarationCache, strictBoundaries, tsconfig."
+    "Usage:\n  bluetsc check <entry.ts> [--project-root <directory>] [--target es2020|es2022] [--use-define-for-class-fields true|false] [--preserve-const-enums] [--isolated-modules] [--module esnext|commonjs] [--es-module-interop] [--experimental-decorators] [--emit-decorator-metadata] [--jsx preserve|react-native|react|react-jsx|react-jsxdev] [--jsx-factory <name>] [--jsx-fragment-factory <name>] [--jsx-import-source <module>] [--runtime-policy transpile-only|checked|strict-runtime] [--diagnostics-json]\n  bluetsc build <entry.ts> --out-dir <directory> [--project-root <directory>] [--source-map] [--declaration] [--target es2020|es2022] [--use-define-for-class-fields true|false] [--preserve-const-enums] [--isolated-modules] [--module esnext|commonjs] [--es-module-interop] [--experimental-decorators] [--emit-decorator-metadata] [--jsx preserve|react-native|react|react-jsx|react-jsxdev] [--jsx-factory <name>] [--jsx-fragment-factory <name>] [--jsx-import-source <module>] [--runtime-policy transpile-only|checked|strict-runtime] [--diagnostics-json]\n  bluetsc fetch-declarations --config <bluetsc.json>\n  bluetsc check --config <bluetsc.json>\n  bluetsc check --config <tsconfig.json> [--showConfig] [--diagnostics-json]\n  bluetsc build --config <bluetsc.json>\n  bluetsc build --config <tsconfig.json> [--showConfig] [--diagnostics-json]\n\nConfig fields: entries, projectRoot, outDir, sourceMap, declaration, target, useDefineForClassFields, preserveConstEnums, isolatedModules, module, esModuleInterop, experimentalDecorators, emitDecoratorMetadata, jsx, jsxFactory, jsxFragmentFactory, jsxImportSource, runtimePolicy, imports, moduleResolution, packageRoots, customConditions, remoteDeclarations, declarationCache, strictBoundaries, tsconfig."
 }
 
 pub(super) fn resolve_invocation(input: Input) -> Result<Invocation, String> {

@@ -411,14 +411,43 @@ impl<'a> ModuleChecker<'a> {
                         .get(resolved)
                         .is_some_and(|(names, open)| !open && !names.contains(&binding.imported))
                 {
-                    self.diagnostics.push(Diagnostic::error(
-                        DiagnosticCode::UnknownName,
-                        import.span.clone(),
-                        format!(
-                            "module `{}` has no exported member `{}`",
-                            import.specifier, binding.imported
-                        ),
-                    ));
+                    let names = &self.exports.exported_names.get(resolved).unwrap().0;
+                    let suggestion = crate::diagnostic::spelling::suggestion(
+                        &binding.imported,
+                        names.iter().map(String::as_str),
+                    );
+                    let (typescript_code, arguments) = if binding.imported == "default" {
+                        if names.contains(&binding.local) {
+                            (2613, vec![import.specifier.clone(), binding.local.clone()])
+                        } else {
+                            (1192, vec![import.specifier.clone()])
+                        }
+                    } else if let Some(suggestion) = suggestion {
+                        (
+                            2724,
+                            vec![
+                                import.specifier.clone(),
+                                binding.imported.clone(),
+                                suggestion.into(),
+                            ],
+                        )
+                    } else {
+                        (
+                            2305,
+                            vec![import.specifier.clone(), binding.imported.clone()],
+                        )
+                    };
+                    self.diagnostics.push(
+                        Diagnostic::error(
+                            DiagnosticCode::UnknownName,
+                            import.span.clone(),
+                            format!(
+                                "module `{}` has no exported member `{}`",
+                                import.specifier, binding.imported
+                            ),
+                        )
+                        .with_typescript(typescript_code, arguments),
+                    );
                     continue;
                 }
                 if let Some(class) = exported_classes

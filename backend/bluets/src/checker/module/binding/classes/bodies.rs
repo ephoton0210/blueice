@@ -17,6 +17,7 @@ pub(super) enum ClassBodyReturnRule<'a> {
     Method {
         return_type: Option<&'a Type>,
         allows_implicit_undefined: bool,
+        setter: bool,
     },
     /// A `static { .. }` block, which cannot `return`.
     StaticBlock,
@@ -93,6 +94,11 @@ impl ModuleChecker<'_> {
             .filter_map(|member| member.method.as_ref())
             .chain(accessor_methods.iter())
         {
+            let accessor = class
+                .members
+                .iter()
+                .filter_map(|member| member.accessor.as_ref())
+                .find(|accessor| accessor.span == method.span);
             self.validate_class_parameters(&method.parameters, method.body.is_some(), "method");
             let return_type = method.return_type.as_ref().filter(|return_type| {
                 let before = self.diagnostics.len();
@@ -131,6 +137,7 @@ impl ModuleChecker<'_> {
                     ClassBodyReturnRule::Method {
                         return_type,
                         allows_implicit_undefined,
+                        setter: accessor.is_some_and(|accessor| !accessor.getter),
                     },
                 );
                 if let Some(return_type) = return_type {
@@ -140,13 +147,15 @@ impl ModuleChecker<'_> {
                             StructuredTermination::FallsThrough
                         )
                     {
-                        self.type_error(
+                        self.typescript_type_error(
                             &method.span,
                             format!(
                                 "class method with return type `{}` can complete without returning a value",
                                 type_label(return_type)
                             ),
                             DiagnosticCode::ReturnTypeMismatch,
+                            if accessor.is_some_and(|accessor| accessor.getter) { 2378 } else { 2366 },
+                            Vec::new(),
                         );
                     }
                 }
@@ -286,6 +295,7 @@ impl ModuleChecker<'_> {
                         ClassBodyReturnRule::Method {
                             return_type: Some(return_type),
                             allows_implicit_undefined,
+                            setter,
                         } => {
                             let actual = if tokens.is_empty() {
                                 Type::Undefined
@@ -295,15 +305,28 @@ impl ModuleChecker<'_> {
                             if (!tokens.is_empty() || !allows_implicit_undefined)
                                 && !self.is_assignable_bounded(&actual, return_type, span)
                             {
-                                self.type_error(
-                                    span,
-                                    format!(
-                                        "class method return type `{}` is not assignable to `{}`",
-                                        type_label(&actual),
-                                        type_label(return_type)
-                                    ),
-                                    DiagnosticCode::ReturnTypeMismatch,
+                                let message = format!(
+                                    "class method return type `{}` is not assignable to `{}`",
+                                    type_label(&actual),
+                                    type_label(return_type)
                                 );
+                                if setter {
+                                    self.typescript_type_error(
+                                        span,
+                                        message,
+                                        DiagnosticCode::ReturnTypeMismatch,
+                                        2408,
+                                        Vec::new(),
+                                    );
+                                } else {
+                                    self.assignment_error(
+                                        span,
+                                        message,
+                                        DiagnosticCode::ReturnTypeMismatch,
+                                        &actual,
+                                        return_type,
+                                    );
+                                }
                             }
                         }
                         ClassBodyReturnRule::StaticBlock => self.type_error(

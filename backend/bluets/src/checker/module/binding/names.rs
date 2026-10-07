@@ -247,7 +247,8 @@ impl ModuleChecker<'_> {
             .filter(|parameter| parameter.default.is_none())
             .count();
         if arguments.len() < required || arguments.len() > definition.parameters.len() {
-            self.type_error(
+            let total = definition.parameters.len();
+            self.typescript_type_error(
                 span,
                 format!(
                     "type `{name}` requires {required} to {} type argument(s), got {}",
@@ -255,6 +256,14 @@ impl ModuleChecker<'_> {
                     arguments.len(),
                 ),
                 DiagnosticCode::TypeMismatch,
+                if total == 0 {
+                    2315
+                } else if required == total {
+                    2314
+                } else {
+                    2707
+                },
+                vec![name.into(), required.to_string(), total.to_string()],
             );
         }
         for argument in arguments {
@@ -309,6 +318,35 @@ impl ModuleChecker<'_> {
         if self.enforce_types {
             self.diagnostics
                 .push(Diagnostic::error(code, span.clone(), message));
+        }
+    }
+
+    pub(in crate::checker::module) fn typescript_type_error(
+        &mut self,
+        span: &SourceSpan,
+        message: String,
+        code: DiagnosticCode,
+        typescript_code: u32,
+        arguments: Vec<String>,
+    ) {
+        if self.enforce_types {
+            self.diagnostics.push(
+                Diagnostic::error(code, span.clone(), message)
+                    .with_typescript(typescript_code, arguments),
+            );
+        }
+    }
+
+    pub(in crate::checker::module) fn blue_only_type_error(
+        &mut self,
+        span: &SourceSpan,
+        message: String,
+        code: DiagnosticCode,
+        reason: &'static str,
+    ) {
+        if self.enforce_types {
+            self.diagnostics
+                .push(Diagnostic::error(code, span.clone(), message).blue_only(reason));
         }
     }
 }

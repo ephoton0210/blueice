@@ -439,14 +439,7 @@ impl ModuleChecker<'_> {
                 continue;
             };
             if base_declares_method(base, &field.name, field.is_static) {
-                self.type_error(
-                    &field.name_span,
-                    format!(
-                        "class defines `{}` as a property but the base class defines it as a method",
-                        field.name
-                    ),
-                    DiagnosticCode::TypeMismatch,
-                );
+                self.field_method_error(class, field);
                 continue;
             }
             let declared = if field.optional {
@@ -466,6 +459,47 @@ impl ModuleChecker<'_> {
                     DiagnosticCode::TypeMismatch,
                 );
             }
+        }
+    }
+
+    pub(super) fn field_method_error(&mut self, class: &ClassDeclaration, field: &ClassField) {
+        let message = format!(
+            "class defines `{}` as a property but the base class defines it as a method",
+            field.name,
+        );
+        let base_name = class.extends_name.as_deref().unwrap_or_default();
+        let incompatible = class_field_type(field)
+            .zip(self.inherited_member(base_name, &field.name, field.is_static))
+            .is_some_and(|(own, inherited)| {
+                !self.is_assignable_bounded(&own, &inherited, &field.span)
+            });
+        if incompatible {
+            let (code, arguments) = if field.is_static {
+                (
+                    2417,
+                    vec![
+                        format!("typeof {}", class.name),
+                        format!("typeof {base_name}"),
+                    ],
+                )
+            } else {
+                (
+                    2416,
+                    vec![field.name.clone(), class.name.clone(), base_name.into()],
+                )
+            };
+            self.typescript_type_error(
+                &field.name_span,
+                message,
+                DiagnosticCode::TypeMismatch,
+                code,
+                arguments,
+            );
+        } else {
+            self.blue_only_type_error(
+                &field.name_span, message, DiagnosticCode::TypeMismatch,
+                "BlueTSC refuses a field in place of a base method even where TypeScript permits a compatible function property.",
+            );
         }
     }
 

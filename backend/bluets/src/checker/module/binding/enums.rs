@@ -210,7 +210,7 @@ impl ModuleChecker<'_> {
                     .and_then(|before| tokens.get(before))
                     .is_some_and(|before| before.is("."));
                 if !after_dot && siblings.contains(&token.text.as_str()) {
-                    self.diagnostics.push(Diagnostic::error(
+                    let mut diagnostic = Diagnostic::error(
                         DiagnosticCode::UnsupportedSyntax,
                         SourceSpan::new(&member.span.module, token.start, token.end),
                         format!(
@@ -218,7 +218,19 @@ impl ModuleChecker<'_> {
                              as `{}.{}`",
                             token.text, declaration.name, token.text
                         ),
-                    ));
+                    );
+                    if declaration
+                        .members
+                        .iter()
+                        .position(|sibling| sibling.name == token.text)
+                        > declaration
+                            .members
+                            .iter()
+                            .position(|sibling| sibling.name == member.name)
+                    {
+                        diagnostic = diagnostic.with_typescript(2651, Vec::new());
+                    }
+                    self.diagnostics.push(diagnostic);
                 }
             }
             let scope = self.values.clone();

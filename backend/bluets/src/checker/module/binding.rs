@@ -8,6 +8,7 @@ use super::*;
 
 mod checking_flags;
 mod classes;
+mod diagnostics;
 mod enums;
 mod functions;
 mod generators;
@@ -228,12 +229,12 @@ impl<'a> ModuleChecker<'a> {
                     // (constructors and methods) is admitted, so emitted
                     // JavaScript never carries unerased TypeScript.
                     if !classes::class_is_fully_structured(class) {
-                        self.diagnostics.push(Diagnostic::error(
+                        self.diagnostics.push(self.class_shape_counterpart(class, Diagnostic::error(
                             DiagnosticCode::UnsupportedSyntax,
                             class.span.clone(),
                             "a class member other than a constructor, method, field or accessor \
                              (a computed, generator or `accessor` member) is not supported yet",
-                        ));
+                        )));
                     }
                 }
                 Declaration::Namespace(namespace) => self.bind_namespace(namespace),
@@ -385,10 +386,13 @@ impl<'a> ModuleChecker<'a> {
     }
 
     pub(super) fn duplicate(&mut self, name: &str, span: SourceSpan) {
-        self.diagnostics.push(Diagnostic::error(
-            DiagnosticCode::DuplicateDeclaration,
-            span,
-            format!("duplicate declaration of `{name}`"),
+        self.diagnostics.push(self.duplicate_counterpart(
+            name,
+            Diagnostic::error(
+                DiagnosticCode::DuplicateDeclaration,
+                span,
+                format!("duplicate declaration of `{name}`"),
+            ),
         ));
     }
 
@@ -612,7 +616,7 @@ impl<'a> ModuleChecker<'a> {
         }
         let inferred = self.infer_in_context(&variable.initializer, scope, annotation);
         if !self.is_assignable_bounded(&inferred, annotation, &variable.span) {
-            self.type_error(
+            self.assignment_error(
                 &variable.span,
                 format!(
                     "initializer has type `{}`, which is not assignable to `{}`",
@@ -620,6 +624,8 @@ impl<'a> ModuleChecker<'a> {
                     type_label(annotation)
                 ),
                 DiagnosticCode::TypeMismatch,
+                &inferred,
+                annotation,
             );
         }
     }

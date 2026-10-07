@@ -137,7 +137,7 @@ impl<'a> ModuleChecker<'a> {
         let accepted = (operator.is("+") && (left == &Type::String || right == &Type::String))
             || (left == &Type::Number && right == &Type::Number);
         if !accepted {
-            self.type_error(
+            self.typescript_type_error(
                 span,
                 format!(
                     "operator `{}` cannot be applied to types `{}` and `{}`",
@@ -146,6 +146,14 @@ impl<'a> ModuleChecker<'a> {
                     type_label(right),
                 ),
                 DiagnosticCode::TypeMismatch,
+                if operator.is("+") {
+                    2365
+                } else if left != &Type::Number {
+                    2362
+                } else {
+                    2363
+                },
+                vec![operator.text.clone(), type_label(left), type_label(right)],
             );
         }
     }
@@ -185,7 +193,7 @@ impl<'a> ModuleChecker<'a> {
             return;
         }
         if left != &Type::Number || right != &Type::Number {
-            self.type_error(
+            self.typescript_type_error(
                 span,
                 format!(
                     "operator `{operator}` cannot be applied to types `{}` and `{}`",
@@ -193,6 +201,8 @@ impl<'a> ModuleChecker<'a> {
                     type_label(right),
                 ),
                 DiagnosticCode::TypeMismatch,
+                if left != &Type::Number { 2362 } else { 2363 },
+                Vec::new(),
             );
         }
     }

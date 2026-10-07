@@ -250,11 +250,29 @@ impl ModuleChecker<'_> {
             return;
         }
         match self.values.get(base_name) {
-            None => self.type_error(
-                span,
-                format!("unknown class heritage name {base_name}"),
-                DiagnosticCode::UnknownName,
-            ),
+            None => {
+                let message = format!("unknown class heritage name {base_name}");
+                if let Some((namespace, member)) = base_name
+                    .rsplit_once('.')
+                    .filter(|(namespace, _)| self.values.contains_key(*namespace))
+                {
+                    self.typescript_type_error(
+                        span,
+                        message,
+                        DiagnosticCode::UnknownName,
+                        2339,
+                        vec![member.into(), format!("typeof {namespace}")],
+                    );
+                } else {
+                    self.typescript_type_error(
+                        span,
+                        message,
+                        DiagnosticCode::UnknownName,
+                        2304,
+                        vec![base_name.clone()],
+                    );
+                }
+            }
             Some(Type::Any | Type::Unknown) => {}
             Some(_) if self.functions.contains_key(base_name) => {}
             Some(_) => self.type_error(
@@ -585,10 +603,16 @@ impl ModuleChecker<'_> {
                 );
             }
             if parameter.rest && parameter.optional {
-                self.type_error(
+                self.typescript_type_error(
                     &parameter.span,
                     "a rest parameter cannot be optional or have a default initializer".to_string(),
                     DiagnosticCode::TypeMismatch,
+                    if parameter.default.is_some() {
+                        1048
+                    } else {
+                        2370
+                    },
+                    Vec::new(),
                 );
             }
             if parameter.rest
@@ -775,13 +799,17 @@ impl ModuleChecker<'_> {
                     .get(&call.callee.text)
                     .is_some_and(|value| !matches!(value, Type::Any | Type::Unknown))
             {
-                self.type_error(
+                let callable = self.functions.contains_key(&call.callee.text)
+                    || matches!(scope.get(&call.callee.text), Some(Type::Function { .. }));
+                self.typescript_type_error(
                     &call.callee.span(&span.module),
                     format!(
                         "imported value `{}` has no construct signature",
                         call.callee.text
                     ),
                     DiagnosticCode::TypeMismatch,
+                    if callable { 7009 } else { 2351 },
+                    Vec::new(),
                 );
             }
             return;
@@ -813,8 +841,23 @@ impl ModuleChecker<'_> {
             return;
         };
         if binding.inherited {
-            // The base signature is unresolved. Its heritage diagnostic and
-            // the class-output refusal prevent an invented constructor check.
+            // Keep the unresolved base and its refusal. TypeScript diagnoses
+            // arguments against the omitted constructor's zero-argument
+            // recovery signature; this metadata cannot admit the class.
+            let arguments = split_call_arguments(call.arguments)
+                .expect("constructor call has a balanced argument list");
+            if !arguments.is_empty() {
+                self.typescript_type_error(
+                    &call_span,
+                    format!(
+                        "no constructor of class {} accepts the supplied argument types",
+                        call.callee.text
+                    ),
+                    DiagnosticCode::TypeMismatch,
+                    2554,
+                    vec!["0".into(), arguments.len().to_string()],
+                );
+            }
             return;
         }
         let arguments = split_call_arguments(call.arguments)
@@ -839,13 +882,16 @@ impl ModuleChecker<'_> {
         };
         match self.select_function_signature(&binding.signatures, &actuals, None) {
             Ok(Some(_)) => {}
-            Ok(None) => self.type_error(
+            Ok(None) => self.rejected_call_error(
                 &call_span,
                 format!(
                     "no constructor of class {} accepts the supplied argument types",
                     call.callee.text
                 ),
-                DiagnosticCode::TypeMismatch,
+                &signatures,
+                &actuals,
+                self.library_values.contains(&call.callee.text)
+                    && crate::diagnostic::templates::constructor_overloads(&call.callee.text) > 1,
             ),
             Err(()) => self.type_error(
                 &call_span,

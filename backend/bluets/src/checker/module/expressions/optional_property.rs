@@ -82,6 +82,19 @@ impl ModuleChecker<'_> {
         if !tokens.iter().any(|token| token.is("?.")) {
             return false;
         }
+        if tokens
+            .windows(2)
+            .any(|pair| pair[0].is("?.") && pair[1].text.starts_with('#'))
+        {
+            self.typescript_type_error(
+                span,
+                "unsupported optional property read".into(),
+                DiagnosticCode::TypeMismatch,
+                18030,
+                Vec::new(),
+            );
+            return true;
+        }
         let selected = match tokens {
             [receiver, optional, property] | [receiver, optional, property, _, ..]
                 if receiver.kind == TokenKind::Identifier
@@ -100,6 +113,33 @@ impl ModuleChecker<'_> {
             self.optional_property_error(span, "unsupported optional property read".into());
             return true;
         };
+        if let Some(receiver_type) = scope.get(&receiver.text) {
+            let non_nullable = match receiver_type {
+                Type::Union(parts) => parts
+                    .iter()
+                    .find(|part| !matches!(part, Type::Null | Type::Undefined)),
+                value => Some(value),
+            };
+            if let Some((visibility, owner)) =
+                non_nullable.and_then(|value| self.hidden_member(value, &property.text))
+            {
+                self.typescript_type_error(
+                    span,
+                    "unsupported optional property read".into(),
+                    DiagnosticCode::TypeMismatch,
+                    if visibility == crate::parser::Visibility::Private {
+                        2341
+                    } else {
+                        2445
+                    },
+                    vec![
+                        property.text.clone(),
+                        owner.split('@').next().unwrap_or(&owner).into(),
+                    ],
+                );
+                return true;
+            }
+        }
         let top_level = self.module.declarations.iter().any(|declaration| {
             declaration.span() == span
                 && matches!(declaration, Declaration::Variable(_) | Declaration::Raw(_))

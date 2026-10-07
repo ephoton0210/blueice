@@ -25,7 +25,8 @@ impl Args {
                             .ok_or_else(|| format!("{arg} requires a path"))?,
                     ));
                 }
-                "--noEmit" | "--showConfig" | "--listFiles" | "--listEmittedFiles" | "--pretty" => {
+                "--noEmit" | "--showConfig" | "--listFiles" | "--listEmittedFiles" | "--pretty"
+                | "--diagnostics-json" => {
                     let value = match args.peek().map(String::as_str) {
                         Some("true") => {
                             args.next();

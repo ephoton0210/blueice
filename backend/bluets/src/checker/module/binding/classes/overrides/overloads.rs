@@ -154,13 +154,16 @@ impl ModuleChecker<'_> {
                 DiagnosticCode::ResourceLimit,
             );
         } else if !compatible {
-            self.type_error(
+            let (code, arguments) = super::diagnostics::override_context(class, group);
+            self.typescript_type_error(
                 &group.span,
                 format!(
                     "class method `{}` is not assignable to the inherited overload set of `{}`",
                     group.name, base.name
                 ),
                 DiagnosticCode::TypeMismatch,
+                code,
+                arguments,
             );
         }
         true

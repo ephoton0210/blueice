@@ -4430,3 +4430,45 @@ the implementation: a custom owner loader refusal needs an explicit owner
 reason, and the existing missing-module counterpart must also match Windows
 filesystem error wording. These failures are recorded before refinement;
 the final source still requires its own complete gate. K.3.1 remains open.
+
+### K.3.1 Code and message mapping delivered
+
+Compiler diagnostics now retain their stable BTS code, original message and
+byte span while exposing a separate TypeScript counterpart. The public
+`Diagnostic::to_json` API and opt-in `--diagnostics-json` CLI flag include the
+pinned code, exact message template, semantic arguments and counterpart span.
+Owner budgets, contracts, loader refusals and enumerated checker/parser subset
+restrictions have explicit reasons when there is no TypeScript counterpart.
+The five existing language-corpus subset refusals remain exact recorded entries;
+the replay does not use a blanket unsupported-syntax exemption.
+
+The mapping has 263 base message families, with checker/parser refinements for
+overloads, declaration kinds, member sides, visibility, names, decorators,
+generic arities and parameter restrictions. `record_diagnostic_catalog.cjs`
+reproduces all 2,121 TypeScript 5.9.3 message templates and bounded standard
+library overload/member metadata. This is diagnostic data, not copied checking
+algorithms or fixture-identity dispatch. Its upstream Apache notice/license is
+preserved beside the embedded data. `DIAGNOSTICS_VERSION` participates in the
+compiler fingerprint; no filesystem, network or runtime authority is added.
+
+All 1,398 existing language/strictness entries replay with zero primary
+code/template differences. Ninety-seven further pinned source witnesses and
+public-boundary controls cover lexical, less-frequent semantic and precise
+subset/owner causes, including valid function-field and destructured-setter
+refusals and Windows missing-file wording. Four source witnesses still expose
+existing checker/parser gaps (unbraced nonexhaustive returns, standalone tuple
+index and throw forms); these are recorded separately and do not establish new
+language support. Rendered wording, related information, UTF-16 positions and
+presentation remain the next K.3 leaves.
+
+The final frozen Linux K.0 gate (`blueice-k31-portable-*`) passes format,
+format-check, both-crate all-target Clippy with warnings denied, and 1,083 tests
+in 64 target/doctest groups. All 124 ignored TypeScript oracles run, with zero
+failures or ignored tests. The gate ends at 2026-10-07 04:26:52 UTC; source
+hashes agree with the tested snapshot. Section 4 of the compatibility inventory
+is regenerated (163 refusal sites in nine areas). The largest production Rust
+source is 1,185 lines, below the 1,200-line review threshold, so no split is due.
+
+K.3.1 is complete. The ordered next leaf is K.3.2. K.3.3 and the final M7
+workspace/platform/coverage gate remain required; full TypeScript parity is
+not claimed.

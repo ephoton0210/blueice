@@ -6,12 +6,14 @@
 
 use super::*;
 
+mod diagnostics;
 mod function_methods;
 mod indexing;
 mod inference;
 mod iterator_guards;
 mod method_overloads;
 mod optional_property;
+mod property_diagnostics;
 mod readonly;
 
 pub(super) use indexing::indexed_value_type;
@@ -147,14 +149,27 @@ impl<'a> ModuleChecker<'a> {
         let actuals = match self.expanded_call_argument_types_for(&arguments, scope, &signatures) {
             Ok(actuals) => actuals,
             Err(()) => {
-                self.type_error(
-                    span,
-                    format!(
-                        "a spread argument for function {} must have a fixed-length tuple type",
-                        call.callee.text
-                    ),
-                    DiagnosticCode::TypeMismatch,
+                let message = format!(
+                    "a spread argument for function {} must have a fixed-length tuple type",
+                    call.callee.text,
                 );
+                if signatures
+                    .iter()
+                    .any(|signature| signature.parameters.last().is_some_and(|p| p.rest))
+                {
+                    self.blue_only_type_error(
+                        span, message, DiagnosticCode::TypeMismatch,
+                        "BlueTSC's call spread subset requires a fixed tuple even when TypeScript permits an array passed to a rest parameter.",
+                    );
+                } else {
+                    self.typescript_type_error(
+                        span,
+                        message,
+                        DiagnosticCode::TypeMismatch,
+                        2556,
+                        Vec::new(),
+                    );
+                }
                 return;
             }
         };
@@ -238,7 +253,18 @@ impl<'a> ModuleChecker<'a> {
                 .expect("an accepted function call has a parameter for every argument");
             let expected = call_parameter_expected_type(parameter, &substitutions);
             if !self.is_assignable_bounded(actual, &expected, span) {
-                self.type_error(
+                let overloaded =
+                    call.callee
+                        .text
+                        .split_once('.')
+                        .is_some_and(|(receiver, member)| {
+                            self.library_values.contains(receiver)
+                                && crate::diagnostic::templates::member_overloads(
+                                    &format!("{receiver}Constructor"),
+                                    member,
+                                ) > 1
+                        });
+                self.call_argument_error(
                     span,
                     format!(
                         "argument {} has type `{}`, which is not assignable to parameter `{}` of type `{}`",
@@ -247,7 +273,10 @@ impl<'a> ModuleChecker<'a> {
                         parameter.name,
                         type_label(&expected)
                     ),
-                    DiagnosticCode::TypeMismatch,
+                    actual,
+                    &expected,
+                    arguments.get(index).is_some_and(|tokens| tokens.first().is_some_and(|token| token.is("{"))),
+                    overloaded,
                 );
             }
         }

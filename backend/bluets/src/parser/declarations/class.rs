@@ -429,7 +429,31 @@ impl Parser {
             None
         };
         if let Some(message) = arity_error {
-            self.error_at(member.span.clone(), DiagnosticCode::ParseError, message);
+            let mut diagnostic =
+                Diagnostic::error(DiagnosticCode::ParseError, member.span.clone(), message);
+            if !getter && parameters.len() != 1 {
+                diagnostic = diagnostic.with_typescript(1049, Vec::new());
+            }
+            if !getter && parameters.len() == 1 {
+                let parameter = &parameters[0];
+                let code = if parameter.rest {
+                    Some(1053)
+                } else if parameter.default.is_some() {
+                    Some(1052)
+                } else if parameter.optional {
+                    Some(1051)
+                } else if return_type.is_some() {
+                    Some(1095)
+                } else {
+                    None
+                };
+                diagnostic = if let Some(code) = code {
+                    diagnostic.with_typescript(code, Vec::new())
+                } else {
+                    diagnostic.blue_only("BlueTSC's class setter subset does not accept destructured parameters; TypeScript permits them.")
+                };
+            }
+            self.diagnostics.push(diagnostic);
         }
         if !self.consume("{") {
             self.error_here(DiagnosticCode::ParseError, "expected an accessor body");

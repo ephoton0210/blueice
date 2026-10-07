@@ -7,6 +7,7 @@
 use super::*;
 use crate::parser::{ClassMethodGroup, Parameter};
 
+mod diagnostics;
 mod overloads;
 mod signatures;
 
@@ -974,13 +975,16 @@ impl ModuleChecker<'_> {
                     DiagnosticCode::ResourceLimit,
                 );
             } else if !compatible {
-                self.type_error(
+                let (code, arguments) = diagnostics::override_context(class, group);
+                self.typescript_type_error(
                     &derived.span,
                     format!(
                         "class method `{}` is incompatible with inherited method from `{}`",
                         group.name, inherited.base_name
                     ),
                     DiagnosticCode::TypeMismatch,
+                    code,
+                    arguments,
                 );
             }
         }

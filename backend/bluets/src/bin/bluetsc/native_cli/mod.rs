@@ -36,6 +36,11 @@ pub(super) fn run(arguments: Vec<String>) -> ExitCode {
         .remove("showConfig")
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
+    let diagnostics_json = args
+        .flags
+        .remove("diagnostics-json")
+        .and_then(|value| value.as_bool())
+        .unwrap_or(false);
     project.options.extend(args.flags);
     let enabled = |name: &str| {
         project
@@ -79,7 +84,11 @@ pub(super) fn run(arguments: Vec<String>) -> ExitCode {
     };
     let (mut summary, files, diagnostics) = compile_project(&invocation, &loader);
     for diagnostic in &diagnostics {
-        report(diagnostic, pretty);
+        if diagnostics_json {
+            eprintln!("{}", diagnostic.to_json());
+        } else {
+            report(diagnostic, pretty);
+        }
     }
     if list_files {
         for file in &files {

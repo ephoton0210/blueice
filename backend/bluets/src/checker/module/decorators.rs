@@ -234,7 +234,7 @@ impl<'a> ModuleChecker<'a> {
             Target::Field => (2, 2),
             Target::Method | Target::Getter | Target::Setter => (2, 3),
             Target::Parameter => (3, 3),
-            Target::Accessor => (2, 3),
+            Target::Accessor => (3, 3),
         };
         let required = parameters
             .iter()
@@ -244,7 +244,7 @@ impl<'a> ModuleChecker<'a> {
             .count();
         let rest = parameters.last().is_some_and(|parameter| parameter.rest);
         if required > maximum || (!rest && parameters.len() < minimum) {
-            self.type_error(
+            self.typescript_type_error(
                 &decorator.span,
                 format!(
                     "unable to resolve the signature of this {} decorator when called as an expression (it must accept {} argument(s))",
@@ -252,6 +252,8 @@ impl<'a> ModuleChecker<'a> {
                     if minimum == maximum { minimum.to_string() } else { format!("{minimum} or {maximum}") }
                 ),
                 DiagnosticCode::TypeMismatch,
+                if parameters.is_empty() { 1329 } else { match target { Target::Class => 1238, Target::Field | Target::Accessor => 1240, Target::Parameter => 1239, _ => 1241 } },
+                Vec::new(),
             );
             return;
         }
@@ -269,7 +271,7 @@ impl<'a> ModuleChecker<'a> {
             _ => None,
         };
         if let Some(bad) = bad {
-            self.type_error(
+            self.typescript_type_error(
                 &decorator.span,
                 format!(
                     "this decorator returns `{}`, which a {} decorator cannot return",
@@ -277,6 +279,12 @@ impl<'a> ModuleChecker<'a> {
                     target.label()
                 ),
                 DiagnosticCode::TypeMismatch,
+                if matches!(target, Target::Field | Target::Parameter) {
+                    1271
+                } else {
+                    1270
+                },
+                vec![type_label(&bad)],
             );
         }
     }
