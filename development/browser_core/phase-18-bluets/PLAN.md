@@ -4719,3 +4719,25 @@ execution and declaration comparisons. The K.0 gate, removal of the three
 measured type-fact allowances and G-T1 inventory update are required before
 checking K.4.1 complete; K.4.2 through K.4.7 remain ordered later leaves.
 This design decision introduces no source, filesystem, network or runtime grant.
+
+### K.4.1 Pinned failing replay
+
+Before production changes, TypeScript 5.9.3 records 97 isolated `narrow-*`
+programs: 67 accept and 30 reject, including eleven accepted runtime witnesses.
+The matrix covers positive/negative/reversed predicates, discriminants and
+aliases, truthiness, logical and optional chains, switches, abrupt completion,
+reachable joins, loop backedges and breaks, assignment resets, lexical shadows,
+and stable versus invalidated captures. Copies of the three measured G-T1
+iterator-result programs compare the actual narrowed diagnostic type.
+
+The public library replay checks fail-closed output, verdict, primary code,
+rendered message, original UTF-16 position and related information, without
+subset exemptions. Accepted witnesses build through the CLI, execute under
+Node and compare exact declarations with TypeScript. The pinned recorder and
+fixture-completeness tests pass on Linux; the checker replay reports 82
+mismatches and ten of eleven runtime/declaration witnesses fail before the
+implementation. The complete four-test run includes both ignored oracles,
+finishes in 41.46 seconds and preserves the failure log at
+`/logs/blueice-k41-red.log` in the existing Linux validation container.
+The existing diagnostic corpus is also regenerated to include this matrix.
+These failures are intentional K.0 evidence; K.4.1 remains unchecked.

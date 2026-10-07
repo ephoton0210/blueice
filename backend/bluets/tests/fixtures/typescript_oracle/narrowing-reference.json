@@ -1,0 +1,887 @@
+{
+  "version": "5.9.3",
+  "cases": [
+    {
+      "entry": "narrow-and-expression/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "narrow-and-typeof/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "narrow-assignment-invalid/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type 'boolean' is not assignable to type 'string | number'.",
+        "module": "main.ts",
+        "position": {
+          "line": 7,
+          "column": 48,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "narrow-assignment-number/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "narrow-assignment-number-wrong/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2345,
+        "message": "Argument of type 'number' is not assignable to parameter of type 'string'.",
+        "module": "main.ts",
+        "position": {
+          "line": 7,
+          "column": 70,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "narrow-assignment-reset/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "narrow-assignment-reset-wrong/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2345,
+        "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+        "module": "main.ts",
+        "position": {
+          "line": 7,
+          "column": 111,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "narrow-assignment-shadow/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "narrow-assignment-shadow-outer/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "narrow-capture-after-assignment/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "narrow-capture-const/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "narrow-capture-delayed/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2339,
+        "message": "Property 'length' does not exist on type 'string | number'.\n  Property 'length' does not exist on type 'number'.",
+        "module": "main.ts",
+        "position": {
+          "line": 7,
+          "column": 119,
+          "length": 6
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "narrow-capture-iife/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "narrow-capture-iife-write/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "narrow-capture-let-later-write/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2339,
+        "message": "Property 'length' does not exist on type 'string | number'.\n  Property 'length' does not exist on type 'number'.",
+        "module": "main.ts",
+        "position": {
+          "line": 7,
+          "column": 105,
+          "length": 6
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "narrow-capture-let-stable/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "narrow-conditional-expression/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "narrow-discriminant/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "narrow-discriminant-alias/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "narrow-discriminant-negative/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "narrow-discriminant-wrong/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2345,
+        "message": "Argument of type 'number' is not assignable to parameter of type 'string'.",
+        "module": "main.ts",
+        "position": {
+          "line": 8,
+          "column": 81,
+          "length": 11
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "narrow-in-left/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "narrow-in-left-wrong/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2339,
+        "message": "Property 'right' does not exist on type 'Left'.",
+        "module": "main.ts",
+        "position": {
+          "line": 8,
+          "column": 85,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "narrow-in-logical/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "narrow-in-nullish/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 18047,
+        "message": "'value' is possibly 'null'.",
+        "module": "main.ts",
+        "position": {
+          "line": 8,
+          "column": 58,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "narrow-in-optional/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "narrow-instanceof-left/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "narrow-instanceof-negative/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "narrow-instanceof-null/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "narrow-instanceof-wrong/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2339,
+        "message": "Property 'right' does not exist on type 'Left'.",
+        "module": "main.ts",
+        "position": {
+          "line": 8,
+          "column": 91,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "narrow-iterator-following/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2345,
+        "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 192,
+          "length": 10
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "narrow-iterator-return-assigned/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2345,
+        "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 183,
+          "length": 10
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "narrow-iterator-shadowed/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2345,
+        "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 217,
+          "length": 10
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "narrow-join-both-number/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "narrow-join-return/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "narrow-join-some-number/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "narrow-join-throw/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "narrow-join-wide/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2345,
+        "message": "Argument of type 'string | number' is not assignable to parameter of type 'number'.\n  Type 'string' is not assignable to type 'number'.",
+        "module": "main.ts",
+        "position": {
+          "line": 7,
+          "column": 133,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "narrow-literal-boolean/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "narrow-literal-number/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "narrow-literal-number-wrong/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type '1' is not assignable to type '2'.",
+        "module": "main.ts",
+        "position": {
+          "line": 7,
+          "column": 63,
+          "length": 8
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "narrow-literal-string/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "narrow-literal-string-negative/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "narrow-literal-string-wrong/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type '\"left\"' is not assignable to type '\"right\"'.",
+        "module": "main.ts",
+        "position": {
+          "line": 7,
+          "column": 79,
+          "length": 8
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "narrow-loop-body/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "narrow-loop-break-number/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "narrow-loop-break-wide/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2345,
+        "message": "Argument of type 'string | number' is not assignable to parameter of type 'number'.\n  Type 'string' is not assignable to type 'number'.",
+        "module": "main.ts",
+        "position": {
+          "line": 7,
+          "column": 104,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "narrow-loop-continue/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "narrow-loop-do/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "narrow-loop-for/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "narrow-loop-post/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "narrow-loop-reset-wrong/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2345,
+        "message": "Argument of type 'number' is not assignable to parameter of type 'string'.",
+        "module": "main.ts",
+        "position": {
+          "line": 7,
+          "column": 106,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "narrow-null-loose/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "narrow-null-loose-negative/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2345,
+        "message": "Argument of type 'null | undefined' is not assignable to parameter of type 'number'.\n  Type 'undefined' is not assignable to type 'number'.",
+        "module": "main.ts",
+        "position": {
+          "line": 7,
+          "column": 90,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "narrow-null-negative/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2345,
+        "message": "Argument of type 'null' is not assignable to parameter of type 'number'.",
+        "module": "main.ts",
+        "position": {
+          "line": 7,
+          "column": 79,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "narrow-null-return/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "narrow-null-strict/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "narrow-null-strict-keeps-undefined/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2345,
+        "message": "Argument of type 'number | undefined' is not assignable to parameter of type 'number'.\n  Type 'undefined' is not assignable to type 'number'.",
+        "module": "main.ts",
+        "position": {
+          "line": 7,
+          "column": 91,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "narrow-null-throw/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "narrow-null-unbraced-return/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "narrow-optional-chain/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "narrow-optional-chain-negative/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 18048,
+        "message": "'value' is possibly 'undefined'.",
+        "module": "main.ts",
+        "position": {
+          "line": 7,
+          "column": 92,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "narrow-or-expression/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2345,
+        "message": "Argument of type 'string | null' is not assignable to parameter of type 'string'.\n  Type 'null' is not assignable to type 'string'.",
+        "module": "main.ts",
+        "position": {
+          "line": 7,
+          "column": 66,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "narrow-or-typeof/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "narrow-runtime-assignment/main.ts",
+      "accepts": true,
+      "runtime": true,
+      "first": null
+    },
+    {
+      "entry": "narrow-runtime-capture/main.ts",
+      "accepts": true,
+      "runtime": true,
+      "first": null
+    },
+    {
+      "entry": "narrow-runtime-discriminant/main.ts",
+      "accepts": true,
+      "runtime": true,
+      "first": null
+    },
+    {
+      "entry": "narrow-runtime-in/main.ts",
+      "accepts": true,
+      "runtime": true,
+      "first": null
+    },
+    {
+      "entry": "narrow-runtime-instanceof/main.ts",
+      "accepts": true,
+      "runtime": true,
+      "first": null
+    },
+    {
+      "entry": "narrow-runtime-loop/main.ts",
+      "accepts": true,
+      "runtime": true,
+      "first": null
+    },
+    {
+      "entry": "narrow-runtime-nullish/main.ts",
+      "accepts": true,
+      "runtime": true,
+      "first": null
+    },
+    {
+      "entry": "narrow-runtime-optional/main.ts",
+      "accepts": true,
+      "runtime": true,
+      "first": null
+    },
+    {
+      "entry": "narrow-runtime-switch/main.ts",
+      "accepts": true,
+      "runtime": true,
+      "first": null
+    },
+    {
+      "entry": "narrow-runtime-truthy/main.ts",
+      "accepts": true,
+      "runtime": true,
+      "first": null
+    },
+    {
+      "entry": "narrow-runtime-typeof/main.ts",
+      "accepts": true,
+      "runtime": true,
+      "first": null
+    },
+    {
+      "entry": "narrow-switch-discriminant/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "narrow-switch-discriminant-wrong/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2345,
+        "message": "Argument of type 'number' is not assignable to parameter of type 'string'.",
+        "module": "main.ts",
+        "position": {
+          "line": 8,
+          "column": 87,
+          "length": 11
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "narrow-switch-fallthrough/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type '2 | 1' is not assignable to type '1'.\n  Type '2' is not assignable to type '1'.",
+        "module": "main.ts",
+        "position": {
+          "line": 7,
+          "column": 79,
+          "length": 8
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "narrow-switch-literal/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "narrow-switch-typeof/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "narrow-truthy-else/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "narrow-truthy-false-contains-empty/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type 'string | null' is not assignable to type 'null'.\n  Type 'string' is not assignable to type 'null'.",
+        "module": "main.ts",
+        "position": {
+          "line": 7,
+          "column": 66,
+          "length": 8
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "narrow-truthy-negative/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2345,
+        "message": "Argument of type 'number | null' is not assignable to parameter of type 'number'.\n  Type 'null' is not assignable to type 'number'.",
+        "module": "main.ts",
+        "position": {
+          "line": 7,
+          "column": 71,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "narrow-truthy-nullish/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "narrow-truthy-zero/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "narrow-typeof-boolean/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "narrow-typeof-negative/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "narrow-typeof-number/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "narrow-typeof-number-wrong/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2345,
+        "message": "Argument of type 'number' is not assignable to parameter of type 'string'.",
+        "module": "main.ts",
+        "position": {
+          "line": 7,
+          "column": 92,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "narrow-typeof-object/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "narrow-typeof-object-null/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 18047,
+        "message": "'value' is possibly 'null'.",
+        "module": "main.ts",
+        "position": {
+          "line": 7,
+          "column": 97,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "narrow-typeof-reversed/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "narrow-typeof-unbraced/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "narrow-typeof-unknown/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "narrow-typeof-unrelated/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2345,
+        "message": "Argument of type 'string | number' is not assignable to parameter of type 'number'.\n  Type 'string' is not assignable to type 'number'.",
+        "module": "main.ts",
+        "position": {
+          "line": 7,
+          "column": 119,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "narrow-undefined-strict/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "narrow-undefined-wrong/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2345,
+        "message": "Argument of type 'undefined' is not assignable to parameter of type 'number'.",
+        "module": "main.ts",
+        "position": {
+          "line": 7,
+          "column": 89,
+          "length": 5
+        },
+        "related": []
+      }
+    }
+  ]
+}
