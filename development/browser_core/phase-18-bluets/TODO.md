@@ -360,6 +360,7 @@ narrowing needs a flow graph or can stay structural, recorded in PLAN.md before 
   from return position and contextual types, constraints (`extends`, `keyof`), defaults, explicit
   arguments, generic function types, generic classes and interfaces; the `instantiate_named` budget
   (`max_type_expansions`) stays and its exhaustion remains a precise diagnostic.
+  - *Failing baseline (2026-10-07):* 59 pinned programs (33 accept, 26 reject), three runtime/declaration witnesses. Linux replay records 34 checker/primary-diagnostic mismatches and two runtime/declaration mismatches; completeness and pinned recorder pass. The shared diagnostic corpus contains 1,655 programs and 147 templates. Production remains unchanged in this baseline.
 - [ ] **K.4.4 Overloads (L).** Call/construct/method overload selection in `tsc` order, contextual
   signature selection for callbacks, ambiguity and no-match diagnostics with the right code, implementation
   signature compatibility (TS2394).

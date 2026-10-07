@@ -4972,3 +4972,41 @@ witnesses pass. The shared corpus contains 1,596 programs (717 accept,
 1,185 lines; no source crosses the modularity review threshold.
 Broader inferred predicates, exceptional-flow and dotted capture precision
 remain recorded in G-T1. K.4.2 is complete; K.4.3 is next and M8 remains open.
+
+### K.4.3 Generic inference and instantiation
+
+Collect inference candidates from parameters and arguments, preserving the
+parameter structure for arrays, tuples, records, callbacks and named generic
+applications. Widen fresh argument literals only where the pinned compiler
+does. Return/contextual candidates, constraints, defaults and explicit type
+arguments participate in one bounded instantiation path; failed constraints
+and arities retain their original TypeScript diagnostics and source positions.
+
+Retain generic callable signatures and generic class/interface parameters in
+the AST, lexical type scope and exported signatures. Constructors infer the
+instance arguments, declaration output preserves generic parameters/defaults,
+and all type substitutions reuse the existing expansion budget. Basic
+`keyof T` constraint and indexed projection cases needed for inference are
+bounded here; full conditional/mapped/template operators remain K.4.5.
+Generic heritage and generic methods remain the dependent K.5.2 work.
+
+The unique `ginfer-*` corpus contains 59 pinned TypeScript 5.9.3 programs
+(33 accept, 26 reject), including three runtime/declaration witnesses. Record
+and commit the public failing replay before implementation. Compare exact
+primary diagnostics, fail-closed output, Node behavior and every emitted
+`.d.ts`, then run K.0 and regenerate the inventory before checking completion.
+
+### K.4.3 Pinned failing replay
+
+The 59-program TypeScript 5.9.3 corpus records 33 accept and 26 reject cases,
+including three runtime/declaration witnesses. The Linux public compiler
+replay reports 34 checker/primary-diagnostic mismatches and two runtime/
+declaration mismatches. Fixture completeness and the pinned recorder pass.
+All four tests, including both ignored oracles, run in 11.74 seconds; the
+failing evidence is retained at `/logs/blueice-k43-red.log`.
+
+The shared diagnostic corpus is regenerated to 1,655 programs (750 accept,
+905 reject) and 147 templates. This baseline changes no production source.
+It commits exact verdicts, messages, UTF-16 coordinates, related records and
+runtime/declaration expectations before generic inference implementation.
+K.4.3 remains unchecked.

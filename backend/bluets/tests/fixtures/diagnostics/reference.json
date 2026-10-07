@@ -155,6 +155,10 @@
       "message": "Property '{0}' is private and only accessible within class '{1}'."
     },
     {
+      "code": 2344,
+      "message": "Type '{0}' does not satisfy the constraint '{1}'."
+    },
+    {
       "code": 2345,
       "message": "Argument of type '{0}' is not assignable to parameter of type '{1}'."
     },
@@ -325,6 +329,10 @@
     {
       "code": 2554,
       "message": "Expected {0} arguments, but got {1}."
+    },
+    {
+      "code": 2558,
+      "message": "Expected {0} type arguments, but got {1}."
     },
     {
       "code": 2564,
@@ -36865,6 +36873,1837 @@
       "verdict": "accept",
       "inputs": [
         "typescript_oracle/infer-return-decl-escaped-literals/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "inference:ginfer-array-candidate/main.ts",
+      "matrix": "inference",
+      "entry": "ginfer-array-candidate/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/ginfer-array-candidate/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "inference:ginfer-array-candidate-error/main.ts",
+      "matrix": "inference",
+      "entry": "ginfer-array-candidate-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/ginfer-array-candidate-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'string' is not assignable to type 'number'.",
+        "file": "typescript_oracle/ginfer-array-candidate-error/main.ts",
+        "start": 273,
+        "length": 6,
+        "line": 5,
+        "column": 70
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "file": "typescript_oracle/ginfer-array-candidate-error/main.ts",
+          "start": 273,
+          "length": 6,
+          "line": 5,
+          "column": 70
+        }
+      ]
+    },
+    {
+      "id": "inference:ginfer-array-return-error/main.ts",
+      "matrix": "inference",
+      "entry": "ginfer-array-return-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/ginfer-array-return-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'string[]' is not assignable to type 'number[]'.\n  Type 'string' is not assignable to type 'number'.",
+        "file": "typescript_oracle/ginfer-array-return-error/main.ts",
+        "start": 272,
+        "length": 6,
+        "line": 5,
+        "column": 69
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'string[]' is not assignable to type 'number[]'.\n  Type 'string' is not assignable to type 'number'.",
+          "file": "typescript_oracle/ginfer-array-return-error/main.ts",
+          "start": 272,
+          "length": 6,
+          "line": 5,
+          "column": 69
+        }
+      ]
+    },
+    {
+      "id": "inference:ginfer-array-widening/main.ts",
+      "matrix": "inference",
+      "entry": "ginfer-array-widening/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/ginfer-array-widening/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "inference:ginfer-box-constraint-error/main.ts",
+      "matrix": "inference",
+      "entry": "ginfer-box-constraint-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/ginfer-box-constraint-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2345,
+        "category": "error",
+        "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+        "file": "typescript_oracle/ginfer-box-constraint-error/main.ts",
+        "start": 298,
+        "length": 5,
+        "line": 5,
+        "column": 95
+      },
+      "diagnostics": [
+        {
+          "code": 2345,
+          "category": "error",
+          "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+          "file": "typescript_oracle/ginfer-box-constraint-error/main.ts",
+          "start": 298,
+          "length": 5,
+          "line": 5,
+          "column": 95
+        }
+      ]
+    },
+    {
+      "id": "inference:ginfer-box-default/main.ts",
+      "matrix": "inference",
+      "entry": "ginfer-box-default/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/ginfer-box-default/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "inference:ginfer-box-explicit/main.ts",
+      "matrix": "inference",
+      "entry": "ginfer-box-explicit/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/ginfer-box-explicit/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "inference:ginfer-box-explicit-error/main.ts",
+      "matrix": "inference",
+      "entry": "ginfer-box-explicit-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/ginfer-box-explicit-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2345,
+        "category": "error",
+        "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+        "file": "typescript_oracle/ginfer-box-explicit-error/main.ts",
+        "start": 291,
+        "length": 5,
+        "line": 5,
+        "column": 88
+      },
+      "diagnostics": [
+        {
+          "code": 2345,
+          "category": "error",
+          "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+          "file": "typescript_oracle/ginfer-box-explicit-error/main.ts",
+          "start": 291,
+          "length": 5,
+          "line": 5,
+          "column": 88
+        }
+      ]
+    },
+    {
+      "id": "inference:ginfer-box-inference/main.ts",
+      "matrix": "inference",
+      "entry": "ginfer-box-inference/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/ginfer-box-inference/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "inference:ginfer-box-inference-error/main.ts",
+      "matrix": "inference",
+      "entry": "ginfer-box-inference-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/ginfer-box-inference-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'string' is not assignable to type 'number'.",
+        "file": "typescript_oracle/ginfer-box-inference-error/main.ts",
+        "start": 298,
+        "length": 6,
+        "line": 5,
+        "column": 95
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "file": "typescript_oracle/ginfer-box-inference-error/main.ts",
+          "start": 298,
+          "length": 6,
+          "line": 5,
+          "column": 95
+        }
+      ]
+    },
+    {
+      "id": "inference:ginfer-constraint-default-error/main.ts",
+      "matrix": "inference",
+      "entry": "ginfer-constraint-default-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/ginfer-constraint-default-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2344,
+        "category": "error",
+        "message": "Type 'string' does not satisfy the constraint 'number'.",
+        "file": "typescript_oracle/ginfer-constraint-default-error/main.ts",
+        "start": 246,
+        "length": 6,
+        "line": 5,
+        "column": 43
+      },
+      "diagnostics": [
+        {
+          "code": 2344,
+          "category": "error",
+          "message": "Type 'string' does not satisfy the constraint 'number'.",
+          "file": "typescript_oracle/ginfer-constraint-default-error/main.ts",
+          "start": 246,
+          "length": 6,
+          "line": 5,
+          "column": 43
+        }
+      ]
+    },
+    {
+      "id": "inference:ginfer-constraint-explicit-error/main.ts",
+      "matrix": "inference",
+      "entry": "ginfer-constraint-explicit-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/ginfer-constraint-explicit-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2344,
+        "category": "error",
+        "message": "Type 'string' does not satisfy the constraint 'number'.",
+        "file": "typescript_oracle/ginfer-constraint-explicit-error/main.ts",
+        "start": 302,
+        "length": 6,
+        "line": 5,
+        "column": 99
+      },
+      "diagnostics": [
+        {
+          "code": 2344,
+          "category": "error",
+          "message": "Type 'string' does not satisfy the constraint 'number'.",
+          "file": "typescript_oracle/ginfer-constraint-explicit-error/main.ts",
+          "start": 302,
+          "length": 6,
+          "line": 5,
+          "column": 99
+        }
+      ]
+    },
+    {
+      "id": "inference:ginfer-constraint-key/main.ts",
+      "matrix": "inference",
+      "entry": "ginfer-constraint-key/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/ginfer-constraint-key/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "inference:ginfer-constraint-key-error/main.ts",
+      "matrix": "inference",
+      "entry": "ginfer-constraint-key-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/ginfer-constraint-key-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2345,
+        "category": "error",
+        "message": "Argument of type '\"missing\"' is not assignable to parameter of type '\"value\"'.",
+        "file": "typescript_oracle/ginfer-constraint-key-error/main.ts",
+        "start": 327,
+        "length": 9,
+        "line": 5,
+        "column": 124
+      },
+      "diagnostics": [
+        {
+          "code": 2345,
+          "category": "error",
+          "message": "Argument of type '\"missing\"' is not assignable to parameter of type '\"value\"'.",
+          "file": "typescript_oracle/ginfer-constraint-key-error/main.ts",
+          "start": 327,
+          "length": 9,
+          "line": 5,
+          "column": 124
+        }
+      ]
+    },
+    {
+      "id": "inference:ginfer-constraint-number/main.ts",
+      "matrix": "inference",
+      "entry": "ginfer-constraint-number/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/ginfer-constraint-number/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "inference:ginfer-constraint-number-error/main.ts",
+      "matrix": "inference",
+      "entry": "ginfer-constraint-number-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/ginfer-constraint-number-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2345,
+        "category": "error",
+        "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+        "file": "typescript_oracle/ginfer-constraint-number-error/main.ts",
+        "start": 302,
+        "length": 5,
+        "line": 5,
+        "column": 99
+      },
+      "diagnostics": [
+        {
+          "code": 2345,
+          "category": "error",
+          "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+          "file": "typescript_oracle/ginfer-constraint-number-error/main.ts",
+          "start": 302,
+          "length": 5,
+          "line": 5,
+          "column": 99
+        }
+      ]
+    },
+    {
+      "id": "inference:ginfer-constraint-record/main.ts",
+      "matrix": "inference",
+      "entry": "ginfer-constraint-record/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/ginfer-constraint-record/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "inference:ginfer-constraint-record-error/main.ts",
+      "matrix": "inference",
+      "entry": "ginfer-constraint-record-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/ginfer-constraint-record-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'string' is not assignable to type 'number'.",
+        "file": "typescript_oracle/ginfer-constraint-record-error/main.ts",
+        "start": 315,
+        "length": 5,
+        "line": 5,
+        "column": 112,
+        "related": [
+          {
+            "code": 6500,
+            "category": "message",
+            "message": "The expected type comes from property 'value' which is declared here on type '{ value: number; }'",
+            "file": "typescript_oracle/ginfer-constraint-record-error/main.ts",
+            "start": 234,
+            "length": 5,
+            "line": 5,
+            "column": 31
+          }
+        ]
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "file": "typescript_oracle/ginfer-constraint-record-error/main.ts",
+          "start": 315,
+          "length": 5,
+          "line": 5,
+          "column": 112,
+          "related": [
+            {
+              "code": 6500,
+              "category": "message",
+              "message": "The expected type comes from property 'value' which is declared here on type '{ value: number; }'",
+              "file": "typescript_oracle/ginfer-constraint-record-error/main.ts",
+              "start": 234,
+              "length": 5,
+              "line": 5,
+              "column": 31
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "inference:ginfer-contextual-arrow/main.ts",
+      "matrix": "inference",
+      "entry": "ginfer-contextual-arrow/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/ginfer-contextual-arrow/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "inference:ginfer-contextual-arrow-error/main.ts",
+      "matrix": "inference",
+      "entry": "ginfer-contextual-arrow-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/ginfer-contextual-arrow-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'number' is not assignable to type 'string'.",
+        "file": "typescript_oracle/ginfer-contextual-arrow-error/main.ts",
+        "start": 308,
+        "length": 6,
+        "line": 5,
+        "column": 105
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "file": "typescript_oracle/ginfer-contextual-arrow-error/main.ts",
+          "start": 308,
+          "length": 6,
+          "line": 5,
+          "column": 105
+        }
+      ]
+    },
+    {
+      "id": "inference:ginfer-contextual-record/main.ts",
+      "matrix": "inference",
+      "entry": "ginfer-contextual-record/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/ginfer-contextual-record/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "inference:ginfer-contextual-record-error/main.ts",
+      "matrix": "inference",
+      "entry": "ginfer-contextual-record-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/ginfer-contextual-record-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type '{ value: string; }' is not assignable to type '{ value: number; }'.\n  Types of property 'value' are incompatible.\n    Type 'string' is not assignable to type 'number'.",
+        "file": "typescript_oracle/ginfer-contextual-record-error/main.ts",
+        "start": 286,
+        "length": 6,
+        "line": 5,
+        "column": 83
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type '{ value: string; }' is not assignable to type '{ value: number; }'.\n  Types of property 'value' are incompatible.\n    Type 'string' is not assignable to type 'number'.",
+          "file": "typescript_oracle/ginfer-contextual-record-error/main.ts",
+          "start": 286,
+          "length": 6,
+          "line": 5,
+          "column": 83
+        }
+      ]
+    },
+    {
+      "id": "inference:ginfer-default-context/main.ts",
+      "matrix": "inference",
+      "entry": "ginfer-default-context/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/ginfer-default-context/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "inference:ginfer-default-explicit/main.ts",
+      "matrix": "inference",
+      "entry": "ginfer-default-explicit/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/ginfer-default-explicit/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "inference:ginfer-default-inference/main.ts",
+      "matrix": "inference",
+      "entry": "ginfer-default-inference/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/ginfer-default-inference/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "inference:ginfer-default-required-error/main.ts",
+      "matrix": "inference",
+      "entry": "ginfer-default-required-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/ginfer-default-required-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2554,
+        "category": "error",
+        "message": "Expected 2 arguments, but got 0.",
+        "file": "typescript_oracle/ginfer-default-required-error/main.ts",
+        "start": 293,
+        "length": 4,
+        "line": 5,
+        "column": 90,
+        "related": [
+          {
+            "code": 6210,
+            "category": "message",
+            "message": "An argument for 'first' was not provided.",
+            "file": "typescript_oracle/ginfer-default-required-error/main.ts",
+            "start": 228,
+            "length": 8,
+            "line": 5,
+            "column": 25
+          }
+        ]
+      },
+      "diagnostics": [
+        {
+          "code": 2554,
+          "category": "error",
+          "message": "Expected 2 arguments, but got 0.",
+          "file": "typescript_oracle/ginfer-default-required-error/main.ts",
+          "start": 293,
+          "length": 4,
+          "line": 5,
+          "column": 90,
+          "related": [
+            {
+              "code": 6210,
+              "category": "message",
+              "message": "An argument for 'first' was not provided.",
+              "file": "typescript_oracle/ginfer-default-required-error/main.ts",
+              "start": 228,
+              "length": 8,
+              "line": 5,
+              "column": 25
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "inference:ginfer-explicit-count-error/main.ts",
+      "matrix": "inference",
+      "entry": "ginfer-explicit-count-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/ginfer-explicit-count-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2558,
+        "category": "error",
+        "message": "Expected 1 type arguments, but got 2.",
+        "file": "typescript_oracle/ginfer-explicit-count-error/main.ts",
+        "start": 287,
+        "length": 14,
+        "line": 5,
+        "column": 84
+      },
+      "diagnostics": [
+        {
+          "code": 2558,
+          "category": "error",
+          "message": "Expected 1 type arguments, but got 2.",
+          "file": "typescript_oracle/ginfer-explicit-count-error/main.ts",
+          "start": 287,
+          "length": 14,
+          "line": 5,
+          "column": 84
+        }
+      ]
+    },
+    {
+      "id": "inference:ginfer-explicit-type-error/main.ts",
+      "matrix": "inference",
+      "entry": "ginfer-explicit-type-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/ginfer-explicit-type-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2345,
+        "category": "error",
+        "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+        "file": "typescript_oracle/ginfer-explicit-type-error/main.ts",
+        "start": 295,
+        "length": 5,
+        "line": 5,
+        "column": 92
+      },
+      "diagnostics": [
+        {
+          "code": 2345,
+          "category": "error",
+          "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+          "file": "typescript_oracle/ginfer-explicit-type-error/main.ts",
+          "start": 295,
+          "length": 5,
+          "line": 5,
+          "column": 92
+        }
+      ]
+    },
+    {
+      "id": "inference:ginfer-function-argument/main.ts",
+      "matrix": "inference",
+      "entry": "ginfer-function-argument/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/ginfer-function-argument/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "inference:ginfer-function-argument-error/main.ts",
+      "matrix": "inference",
+      "entry": "ginfer-function-argument-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/ginfer-function-argument-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2345,
+        "category": "error",
+        "message": "Argument of type 'number' is not assignable to parameter of type 'string'.",
+        "file": "typescript_oracle/ginfer-function-argument-error/main.ts",
+        "start": 385,
+        "length": 2,
+        "line": 5,
+        "column": 182
+      },
+      "diagnostics": [
+        {
+          "code": 2345,
+          "category": "error",
+          "message": "Argument of type 'number' is not assignable to parameter of type 'string'.",
+          "file": "typescript_oracle/ginfer-function-argument-error/main.ts",
+          "start": 385,
+          "length": 2,
+          "line": 5,
+          "column": 182
+        }
+      ]
+    },
+    {
+      "id": "inference:ginfer-generic-default-value/main.ts",
+      "matrix": "inference",
+      "entry": "ginfer-generic-default-value/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/ginfer-generic-default-value/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "inference:ginfer-generic-parameter/main.ts",
+      "matrix": "inference",
+      "entry": "ginfer-generic-parameter/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/ginfer-generic-parameter/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "inference:ginfer-generic-value/main.ts",
+      "matrix": "inference",
+      "entry": "ginfer-generic-value/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/ginfer-generic-value/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "inference:ginfer-generic-value-error/main.ts",
+      "matrix": "inference",
+      "entry": "ginfer-generic-value-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/ginfer-generic-value-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'string' is not assignable to type 'number'.",
+        "file": "typescript_oracle/ginfer-generic-value-error/main.ts",
+        "start": 307,
+        "length": 6,
+        "line": 5,
+        "column": 104
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "file": "typescript_oracle/ginfer-generic-value-error/main.ts",
+          "start": 307,
+          "length": 6,
+          "line": 5,
+          "column": 104
+        }
+      ]
+    },
+    {
+      "id": "inference:ginfer-identity-error/main.ts",
+      "matrix": "inference",
+      "entry": "ginfer-identity-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/ginfer-identity-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'string' is not assignable to type 'number'.",
+        "file": "typescript_oracle/ginfer-identity-error/main.ts",
+        "start": 269,
+        "length": 6,
+        "line": 5,
+        "column": 66
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "file": "typescript_oracle/ginfer-identity-error/main.ts",
+          "start": 269,
+          "length": 6,
+          "line": 5,
+          "column": 66
+        }
+      ]
+    },
+    {
+      "id": "inference:ginfer-identity-literal/main.ts",
+      "matrix": "inference",
+      "entry": "ginfer-identity-literal/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/ginfer-identity-literal/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "inference:ginfer-identity-number/main.ts",
+      "matrix": "inference",
+      "entry": "ginfer-identity-number/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/ginfer-identity-number/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "inference:ginfer-identity-string/main.ts",
+      "matrix": "inference",
+      "entry": "ginfer-identity-string/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/ginfer-identity-string/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "inference:ginfer-interface-constraint-error/main.ts",
+      "matrix": "inference",
+      "entry": "ginfer-interface-constraint-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/ginfer-interface-constraint-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2344,
+        "category": "error",
+        "message": "Type 'string' does not satisfy the constraint 'number'.",
+        "file": "typescript_oracle/ginfer-interface-constraint-error/main.ts",
+        "start": 275,
+        "length": 6,
+        "line": 5,
+        "column": 72
+      },
+      "diagnostics": [
+        {
+          "code": 2344,
+          "category": "error",
+          "message": "Type 'string' does not satisfy the constraint 'number'.",
+          "file": "typescript_oracle/ginfer-interface-constraint-error/main.ts",
+          "start": 275,
+          "length": 6,
+          "line": 5,
+          "column": 72
+        }
+      ]
+    },
+    {
+      "id": "inference:ginfer-interface-default/main.ts",
+      "matrix": "inference",
+      "entry": "ginfer-interface-default/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/ginfer-interface-default/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "inference:ginfer-interface-default-error/main.ts",
+      "matrix": "inference",
+      "entry": "ginfer-interface-default-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/ginfer-interface-default-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'string' is not assignable to type 'number'.",
+        "file": "typescript_oracle/ginfer-interface-default-error/main.ts",
+        "start": 273,
+        "length": 5,
+        "line": 5,
+        "column": 70,
+        "related": [
+          {
+            "code": 6500,
+            "category": "message",
+            "message": "The expected type comes from property 'value' which is declared here on type 'Box<number>'",
+            "file": "typescript_oracle/ginfer-interface-default-error/main.ts",
+            "start": 232,
+            "length": 5,
+            "line": 5,
+            "column": 29
+          }
+        ]
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "file": "typescript_oracle/ginfer-interface-default-error/main.ts",
+          "start": 273,
+          "length": 5,
+          "line": 5,
+          "column": 70,
+          "related": [
+            {
+              "code": 6500,
+              "category": "message",
+              "message": "The expected type comes from property 'value' which is declared here on type 'Box<number>'",
+              "file": "typescript_oracle/ginfer-interface-default-error/main.ts",
+              "start": 232,
+              "length": 5,
+              "line": 5,
+              "column": 29
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "inference:ginfer-interface-inference/main.ts",
+      "matrix": "inference",
+      "entry": "ginfer-interface-inference/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/ginfer-interface-inference/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "inference:ginfer-interface-inference-error/main.ts",
+      "matrix": "inference",
+      "entry": "ginfer-interface-inference-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/ginfer-interface-inference-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'string' is not assignable to type 'number'.",
+        "file": "typescript_oracle/ginfer-interface-inference-error/main.ts",
+        "start": 307,
+        "length": 6,
+        "line": 5,
+        "column": 104
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "file": "typescript_oracle/ginfer-interface-inference-error/main.ts",
+          "start": 307,
+          "length": 6,
+          "line": 5,
+          "column": 104
+        }
+      ]
+    },
+    {
+      "id": "inference:ginfer-nested-record-candidate/main.ts",
+      "matrix": "inference",
+      "entry": "ginfer-nested-record-candidate/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/ginfer-nested-record-candidate/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "inference:ginfer-optional-candidate/main.ts",
+      "matrix": "inference",
+      "entry": "ginfer-optional-candidate/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/ginfer-optional-candidate/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "inference:ginfer-optional-candidate-error/main.ts",
+      "matrix": "inference",
+      "entry": "ginfer-optional-candidate-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/ginfer-optional-candidate-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'number | undefined' is not assignable to type 'number'.\n  Type 'undefined' is not assignable to type 'number'.",
+        "file": "typescript_oracle/ginfer-optional-candidate-error/main.ts",
+        "start": 280,
+        "length": 6,
+        "line": 5,
+        "column": 77
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'number | undefined' is not assignable to type 'number'.\n  Type 'undefined' is not assignable to type 'number'.",
+          "file": "typescript_oracle/ginfer-optional-candidate-error/main.ts",
+          "start": 280,
+          "length": 6,
+          "line": 5,
+          "column": 77
+        }
+      ]
+    },
+    {
+      "id": "inference:ginfer-pair-candidates/main.ts",
+      "matrix": "inference",
+      "entry": "ginfer-pair-candidates/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/ginfer-pair-candidates/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "inference:ginfer-pair-conflict-error/main.ts",
+      "matrix": "inference",
+      "entry": "ginfer-pair-conflict-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/ginfer-pair-conflict-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2345,
+        "category": "error",
+        "message": "Argument of type '\"Ada\"' is not assignable to parameter of type '1'.",
+        "file": "typescript_oracle/ginfer-pair-conflict-error/main.ts",
+        "start": 297,
+        "length": 5,
+        "line": 5,
+        "column": 94
+      },
+      "diagnostics": [
+        {
+          "code": 2345,
+          "category": "error",
+          "message": "Argument of type '\"Ada\"' is not assignable to parameter of type '1'.",
+          "file": "typescript_oracle/ginfer-pair-conflict-error/main.ts",
+          "start": 297,
+          "length": 5,
+          "line": 5,
+          "column": 94
+        }
+      ]
+    },
+    {
+      "id": "inference:ginfer-pair-explicit-union/main.ts",
+      "matrix": "inference",
+      "entry": "ginfer-pair-explicit-union/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/ginfer-pair-explicit-union/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "inference:ginfer-record-candidate/main.ts",
+      "matrix": "inference",
+      "entry": "ginfer-record-candidate/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/ginfer-record-candidate/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "inference:ginfer-record-candidate-error/main.ts",
+      "matrix": "inference",
+      "entry": "ginfer-record-candidate-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/ginfer-record-candidate-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'string' is not assignable to type 'number'.",
+        "file": "typescript_oracle/ginfer-record-candidate-error/main.ts",
+        "start": 279,
+        "length": 6,
+        "line": 5,
+        "column": 76
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "file": "typescript_oracle/ginfer-record-candidate-error/main.ts",
+          "start": 279,
+          "length": 6,
+          "line": 5,
+          "column": 76
+        }
+      ]
+    },
+    {
+      "id": "inference:ginfer-recursive-record-inference/main.ts",
+      "matrix": "inference",
+      "entry": "ginfer-recursive-record-inference/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/ginfer-recursive-record-inference/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "inference:ginfer-rest-candidate/main.ts",
+      "matrix": "inference",
+      "entry": "ginfer-rest-candidate/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/ginfer-rest-candidate/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "inference:ginfer-rest-candidate-error/main.ts",
+      "matrix": "inference",
+      "entry": "ginfer-rest-candidate-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/ginfer-rest-candidate-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2345,
+        "category": "error",
+        "message": "Argument of type '\"Ada\"' is not assignable to parameter of type '1'.",
+        "file": "typescript_oracle/ginfer-rest-candidate-error/main.ts",
+        "start": 294,
+        "length": 5,
+        "line": 5,
+        "column": 91
+      },
+      "diagnostics": [
+        {
+          "code": 2345,
+          "category": "error",
+          "message": "Argument of type '\"Ada\"' is not assignable to parameter of type '1'.",
+          "file": "typescript_oracle/ginfer-rest-candidate-error/main.ts",
+          "start": 294,
+          "length": 5,
+          "line": 5,
+          "column": 91
+        }
+      ]
+    },
+    {
+      "id": "inference:ginfer-return-context/main.ts",
+      "matrix": "inference",
+      "entry": "ginfer-return-context/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/ginfer-return-context/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "inference:ginfer-return-context-nullish-error/main.ts",
+      "matrix": "inference",
+      "entry": "ginfer-return-context-nullish-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/ginfer-return-context-nullish-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'number | undefined' is not assignable to type 'number'.\n  Type 'undefined' is not assignable to type 'number'.",
+        "file": "typescript_oracle/ginfer-return-context-nullish-error/main.ts",
+        "start": 266,
+        "length": 6,
+        "line": 5,
+        "column": 63
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'number | undefined' is not assignable to type 'number'.\n  Type 'undefined' is not assignable to type 'number'.",
+          "file": "typescript_oracle/ginfer-return-context-nullish-error/main.ts",
+          "start": 266,
+          "length": 6,
+          "line": 5,
+          "column": 63
+        }
+      ]
+    },
+    {
+      "id": "inference:ginfer-runtime-box/main.ts",
+      "matrix": "inference",
+      "entry": "ginfer-runtime-box/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/ginfer-runtime-box/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "inference:ginfer-runtime-functions/main.ts",
+      "matrix": "inference",
+      "entry": "ginfer-runtime-functions/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/ginfer-runtime-functions/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "inference:ginfer-runtime-interface/main.ts",
+      "matrix": "inference",
+      "entry": "ginfer-runtime-interface/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/ginfer-runtime-interface/main.ts"
       ],
       "accepts": true,
       "first": null,
