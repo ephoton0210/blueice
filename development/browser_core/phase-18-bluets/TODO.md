@@ -379,6 +379,7 @@ narrowing needs a flow graph or can stay structural, recorded in PLAN.md before 
 - [ ] **K.4.6 More types (L).** Index signatures, readonly arrays/tuples, `bigint`, `symbol`/`unique
   symbol`, `satisfies`, `as const`, optional/rest/named tuple elements, `unknown`/`never` flow rules,
   `enum`-literal inference, `void` vs `undefined` rules.
+  - *Failing baseline (2026-10-08):* 84 pinned programs (38 accept, 46 reject), three runtime/declaration witnesses. Linux reports 51 checker/primary-diagnostic differences and two runtime compile failures; completeness and the pinned recorder pass. The shared diagnostic corpus records 1,910 programs and 163 templates. Production remains unchanged in this baseline.
 - [ ] **K.4.7 Compatibility details (L).** Excess-property checks in every position, weak types,
   `strictFunctionTypes` vs method bivariance, optional vs `undefined`, variance annotations (`in`/`out`),
   `exactOptionalPropertyTypes`.

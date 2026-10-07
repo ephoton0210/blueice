@@ -5306,3 +5306,32 @@ G-T3 retains unmeasured nested patterns, overloaded queries, escape normalizatio
 and broader library/primitive-key combinations. Index/readonly/symbol and mapped
 array/tuple composition remain in K.4.6; wider relations remain in K.4.7. M8 and
 the final workspace/coverage gate remain open.
+
+### K.4.6 more types failing baseline — 2026-10-08
+
+Retain index signatures, readonly arrays/tuples, bigint and unique symbol identity,
+satisfies and const assertions, and optional/rest/named tuple metadata explicitly.
+Indexed reads and writes share readonly and key compatibility checks. Literal
+inference preserves bigint/enum/const identities, while satisfies checks its
+operand without replacing the inferred type. Distinguish explicit unknown from
+an opaque inference result, complete unknown/never union and intersection rules,
+and preserve the difference between void promises and undefined returns.
+The isolated corpus records strict TypeScript 5.9.3 verdicts, exact primary and
+related diagnostics, and three Node/declaration witnesses. Commit the failing
+public replay before implementing these forms, run K.0, and regenerate G-T5/G-T6
+and refusal evidence. Runtime contracts and bridge support retain their existing
+precise refusals until their own explicitly authorized implementation.
+
+Eight further controls measure K.4.5 homomorphic mapped operators over the
+new array/tuple forms: copying elements, preserving tuple positions, adding
+readonly, refusing readonly-to-mutable assignment and removing readonly.
+Both accepted and rejected operands retain the native diagnostic boundary.
+
+Pinned TypeScript 5.9.3 records 84 programs (38 accept, 46 reject), including
+three runtime/declaration witnesses. The unchanged K.4.5 implementation fails
+51 checker/primary-diagnostic comparisons and two runtime compilation witnesses;
+fixture completeness and the pinned recorder pass. Linux evidence:
+`/private/tmp/blueice-k14-linux/blueice-k46-red-gate.log` (two tests pass,
+two fail). The shared diagnostic corpus now records 1,910 programs
+(874 accept, 1,036 reject) and 163 templates. Production sources remain
+unchanged in this baseline; K.4.6 stays open.

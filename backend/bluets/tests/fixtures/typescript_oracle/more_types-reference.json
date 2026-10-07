@@ -1,0 +1,1005 @@
+{
+  "version": "5.9.3",
+  "cases": [
+    {
+      "entry": "mtypes-bigint-arithmetic/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "mtypes-bigint-literal/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "mtypes-bigint-literal-type/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "mtypes-bigint-literal-type-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type '43n' is not assignable to type '42n'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 14,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "mtypes-bigint-mixed-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2365,
+        "message": "Operator '+' cannot be applied to types 'bigint' and '1'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 53,
+          "length": 9
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "mtypes-bigint-number-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type 'number' is not assignable to type 'bigint'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 14,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "mtypes-bigint-unary-plus-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type 'number' is not assignable to type 'bigint'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 46,
+          "length": 6
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "mtypes-const-assertion-expression-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 1355,
+        "message": "A 'const' assertions can only be applied to references to enum members, or string, number, boolean, array, or object literals.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 45,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "mtypes-const-record/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "mtypes-const-record-write-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2540,
+        "message": "Cannot assign to 'answer' because it is a read-only property.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 44,
+          "length": 6
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "mtypes-const-tuple/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "mtypes-const-tuple-write-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2540,
+        "message": "Cannot assign to '1' because it is a read-only property.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 41,
+          "length": 1
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "mtypes-enum-literal/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "mtypes-enum-literal-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type 'Choice.Two' is not assignable to type 'Choice.One'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 45,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "mtypes-enum-numeric-literal-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type '2' is not assignable to type 'Choice.One'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 45,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "mtypes-index-boolean-key-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 1268,
+        "message": "An index signature parameter type must be 'string', 'number', 'symbol', or a template literal type.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 16,
+          "length": 3
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "mtypes-index-declared-property-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2411,
+        "message": "Property 'name' of type 'string' is not assignable to 'string' index type 'number'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 38,
+          "length": 4
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "mtypes-index-number/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "mtypes-index-number-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type 'number' is not assignable to type 'string'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 68,
+          "length": 1
+        },
+        "related": [
+          {
+            "code": 6501,
+            "message": "The expected type comes from this index signature.",
+            "module": "main.ts",
+            "position": {
+              "line": 5,
+              "column": 15,
+              "length": 21
+            },
+            "related": []
+          }
+        ]
+      }
+    },
+    {
+      "entry": "mtypes-index-number-string-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2413,
+        "message": "'number' index type 'number' is not assignable to 'string' index type 'string'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 38,
+          "length": 21
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "mtypes-index-read/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "mtypes-index-read-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type 'number' is not assignable to type 'string'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 63,
+          "length": 6
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "mtypes-index-readonly-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2542,
+        "message": "Index signature in type '{ readonly [key: string]: number; }' only permits reading.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 70,
+          "length": 15
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "mtypes-index-string/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "mtypes-index-string-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type 'string' is not assignable to type 'number'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 68,
+          "length": 1
+        },
+        "related": [
+          {
+            "code": 6501,
+            "message": "The expected type comes from this index signature.",
+            "module": "main.ts",
+            "position": {
+              "line": 5,
+              "column": 15,
+              "length": 21
+            },
+            "related": []
+          }
+        ]
+      }
+    },
+    {
+      "entry": "mtypes-mapped-array/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "mtypes-mapped-array-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type 'string' is not assignable to type 'number'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 81,
+          "length": 3
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "mtypes-mapped-mutable-array/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "mtypes-mapped-readonly-array-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2542,
+        "message": "Index signature in type 'readonly number[]' only permits reading.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 104,
+          "length": 8
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "mtypes-mapped-readonly-to-mutable-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 4104,
+        "message": "The type 'readonly number[]' is 'readonly' and cannot be assigned to the mutable type 'number[]'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 103,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "mtypes-mapped-readonly-tuple-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2540,
+        "message": "Cannot assign to '0' because it is a read-only property.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 118,
+          "length": 1
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "mtypes-mapped-tuple/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "mtypes-mapped-tuple-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type 'string' is not assignable to type 'number'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 91,
+          "length": 3
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "mtypes-mutable-array-to-readonly/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "mtypes-never-intersection-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type '42' is not assignable to type 'never'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 14,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "mtypes-never-source/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "mtypes-never-target-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type '42' is not assignable to type 'never'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 14,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "mtypes-never-union/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "mtypes-number-bigint-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type 'bigint' is not assignable to type 'number'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 14,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "mtypes-optional-tuple/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "mtypes-optional-tuple-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type 'string' is not assignable to type 'number'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 60,
+          "length": 3
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "mtypes-optional-tuple-read-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type 'number | undefined' is not assignable to type 'number'.\n  Type 'undefined' is not assignable to type 'number'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 70,
+          "length": 6
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "mtypes-optional-tuple-undefined/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "mtypes-readonly-array/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "mtypes-readonly-array-element-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type 'string' is not assignable to type 'number'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 45,
+          "length": 3
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "mtypes-readonly-array-push-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2339,
+        "message": "Property 'push' does not exist on type 'readonly number[]'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 61,
+          "length": 4
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "mtypes-readonly-array-to-mutable-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 4104,
+        "message": "The type 'readonly number[]' is 'readonly' and cannot be assigned to the mutable type 'number[]'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 54,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "mtypes-readonly-array-write-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2542,
+        "message": "Index signature in type 'readonly number[]' only permits reading.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 55,
+          "length": 8
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "mtypes-readonly-tuple/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "mtypes-readonly-tuple-element-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type 'string' is not assignable to type 'number'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 55,
+          "length": 3
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "mtypes-readonly-tuple-to-mutable-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 4104,
+        "message": "The type 'readonly [string, number]' is 'readonly' and cannot be assigned to the mutable type '[string, number]'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 62,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "mtypes-readonly-tuple-write-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2540,
+        "message": "Cannot assign to '0' because it is a read-only property.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 69,
+          "length": 1
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "mtypes-rest-tuple/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "mtypes-rest-tuple-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type '[string, number, string]' is not assignable to type '[head: string, ...tail: number[]]'.\n  Type at positions 1 through 2 in source is not compatible with type at position 1 in target.\n    Type 'string' is not assignable to type 'number'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 14,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "mtypes-rest-tuple-read/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "mtypes-rest-tuple-required-suffix/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "mtypes-rest-tuple-required-suffix-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type '[number, number]' is not assignable to type '[...head: number[], tail: string]'.\n  Type at position 1 in source is not compatible with type at position 1 in target.\n    Type 'number' is not assignable to type 'string'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 14,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "mtypes-runtime-bigint/main.ts",
+      "accepts": true,
+      "runtime": true,
+      "first": null
+    },
+    {
+      "entry": "mtypes-runtime-const-tuple/main.ts",
+      "accepts": true,
+      "runtime": true,
+      "first": null
+    },
+    {
+      "entry": "mtypes-runtime-satisfies/main.ts",
+      "accepts": true,
+      "runtime": true,
+      "first": null
+    },
+    {
+      "entry": "mtypes-satisfies-excess-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2353,
+        "message": "Object literal may only specify known properties, and 'extra' does not exist in type '{ answer: number; }'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 35,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "mtypes-satisfies-record/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "mtypes-satisfies-record-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type 'string' is not assignable to type 'number'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 23,
+          "length": 6
+        },
+        "related": [
+          {
+            "code": 6500,
+            "message": "The expected type comes from property 'answer' which is declared here on type '{ answer: number; }'",
+            "module": "main.ts",
+            "position": {
+              "line": 5,
+              "column": 47,
+              "length": 6
+            },
+            "related": []
+          }
+        ]
+      }
+    },
+    {
+      "entry": "mtypes-satisfies-retains-type/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "mtypes-satisfies-retains-type-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type 'number' is not assignable to type 'string'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 78,
+          "length": 6
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "mtypes-symbol/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "mtypes-symbol-number-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type 'number' is not assignable to type 'symbol'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 14,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "mtypes-undefined-return/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "mtypes-undefined-void-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type 'void' is not assignable to type 'undefined'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 41,
+          "length": 6
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "mtypes-unique-symbol/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "mtypes-unique-symbol-identity-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type 'typeof second' is not assignable to type 'typeof first'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 108,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "mtypes-unique-symbol-inferred/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "mtypes-unique-symbol-let-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 1332,
+        "message": "A variable whose type is a 'unique symbol' type must be 'const'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 12,
+          "length": 3
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "mtypes-unique-symbol-parameter-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 1335,
+        "message": "'unique symbol' types are not allowed here.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 29,
+          "length": 13
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "mtypes-unknown-any-target/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "mtypes-unknown-intersection/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "mtypes-unknown-property-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 18046,
+        "message": "'value' is of type 'unknown'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 54,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "mtypes-unknown-source-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type 'unknown' is not assignable to type 'number'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 47,
+          "length": 6
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "mtypes-unknown-target/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "mtypes-unknown-typeof-function/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "mtypes-unknown-union/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "mtypes-void-function-assignment/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "mtypes-void-undefined-source/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "mtypes-void-value-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type 'number' is not assignable to type 'void'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 31,
+          "length": 6
+        },
+        "related": []
+      }
+    }
+  ]
+}
