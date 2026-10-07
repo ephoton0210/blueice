@@ -1,4 +1,6 @@
 over-call-arity-error/main.ts	reject
+over-call-boolean-priority/main.ts	accept
+over-call-boolean-priority-error/main.ts	reject
 over-call-contextual-arrow/main.ts	accept
 over-call-contextual-arrow-error/main.ts	reject
 over-call-contextual-count/main.ts	accept
@@ -7,9 +9,15 @@ over-call-first-return-error/main.ts	reject
 over-call-generic/main.ts	accept
 over-call-generic-error/main.ts	reject
 over-call-implementation-hidden-error/main.ts	reject
+over-call-literal-context/main.ts	accept
+over-call-literal-context-error/main.ts	reject
 over-call-literal-priority/main.ts	accept
 over-call-literal-priority-error/main.ts	reject
 over-call-no-match-error/main.ts	reject
+over-call-null-priority/main.ts	accept
+over-call-null-priority-error/main.ts	reject
+over-call-number-priority/main.ts	accept
+over-call-number-priority-error/main.ts	reject
 over-call-optional/main.ts	accept
 over-call-optional-zero/main.ts	accept
 over-call-optional-zero-error/main.ts	reject
@@ -40,6 +48,14 @@ over-implementation-result-error/main.ts	reject
 over-implementation-return-valid/main.ts	accept
 over-import-function/main.ts	accept
 over-import-function-error/main.ts	reject
+over-interface-call/main.ts	accept
+over-interface-call-error/main.ts	reject
+over-interface-construct/main.ts	accept
+over-interface-construct-error/main.ts	reject
+over-interface-merged-method/main.ts	accept
+over-interface-merged-method-error/main.ts	reject
+over-interface-merged-order/main.ts	accept
+over-interface-merged-order-error/main.ts	reject
 over-interface-method-order/main.ts	accept
 over-interface-method-order-error/main.ts	reject
 over-method-contextual/main.ts	accept
@@ -53,5 +69,6 @@ over-method-second/main.ts	accept
 over-runtime-call/main.ts	accept
 over-runtime-constructor/main.ts	accept
 over-runtime-imports/main.ts	accept
+over-runtime-interface/main.ts	accept
 over-runtime-method/main.ts	accept
 over-runtime-types/main.ts	accept

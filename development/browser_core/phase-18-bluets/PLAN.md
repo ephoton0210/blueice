@@ -5149,3 +5149,20 @@ The shared diagnostic corpus is regenerated to 1,727 programs (788 accept,
 939 reject) and 147 templates. This baseline changes no production source and
 commits exact codes, UTF-16 positions, rendered messages, related records and
 runtime/declaration controls before implementation. K.4.4 remains unchecked.
+
+### K.4.4 interface and candidate-order failing replay — 2026-10-08
+
+The implementation draft passes the original 57 overload programs and all 74
+K.4.3 generic programs. Seventeen additional pinned controls extend the overload
+corpus to 74 programs (39 accept, 35 reject) and six runtime/declaration
+witnesses. They measure anonymous interface call/construct signatures, generic
+interface methods in declaration output, later merged-interface overload groups,
+numeric/boolean/null literal priority, and literal-priority callback context.
+The Linux replay reports 12 checker/primary differences and one additional
+runtime/declaration compile failure; all five earlier runtime/declaration
+witnesses, completeness and pinned recorder pass. Evidence:
+`/private/tmp/blueice-k14-linux/blueice-k44-extended-red.log`.
+
+This commit records only the new test evidence; production remains an
+uncommitted implementation draft. The shared diagnostic corpus regeneration is
+running and will be recorded after completion. The leaf remains open.

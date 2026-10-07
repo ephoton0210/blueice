@@ -368,6 +368,7 @@ narrowing needs a flow graph or can stay structural, recorded in PLAN.md before 
   signature selection for callbacks, ambiguity and no-match diagnostics with the right code, implementation
   signature compatibility (TS2394).
   - *Failing baseline (2026-10-08):* 57 pinned programs (30 accept, 27 reject), five runtime/declaration witnesses. Linux replay reports 24 checker/primary-diagnostic differences and one anonymous-signature runtime/declaration compile failure; four other runtime/declaration witnesses, completeness and pinned recorder pass. The shared corpus contains 1,727 programs and 147 templates. Production remains unchanged in this baseline.
+  - *Interface/order replay (2026-10-08):* the original 57 overload programs and all 74 K.4.3 generic programs pass. Seventeen further controls extend the overload corpus to 74 programs (39 accept, 35 reject) and six runtime/declaration witnesses. Linux reports 12 checker/primary differences and one additional declaration compile failure; completeness, pinned recorder and the five previous runtime/declaration witnesses pass. The leaf remains open.
 - [ ] **K.4.5 Type operators (XL).** `keyof`, `typeof`, indexed access, conditional types (distributive),
   `infer`, mapped types with `readonly`/`?` modifiers and `as` clauses, template-literal types, recursive
   aliases within a depth budget; each operator needs the assignability relation extended.
