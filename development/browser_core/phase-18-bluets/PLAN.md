@@ -4500,3 +4500,40 @@ controls independently record UTF-16 columns after a supplementary Unicode
 character and original LF, CRLF and CR line endings. This second failing replay
 is also committed before implementation. K.3.2, K.3.3 and the final M7 gate
 remain open.
+
+
+### K.3.2 Original-source positions delivered
+
+TypeScript counterparts now expose one-based UTF-16 line/column and UTF-16
+length while BTS byte spans and raw messages remain unchanged. A separate
+position layer selects declaration names, members, argument expressions,
+accessor/parameter syntax, decorators, JSX names and circular inference
+bindings. Checker sites supply exact argument/property nodes where available.
+The layer uses only owner-supplied sources, with no additional loading or
+filesystem access. Failed parser inputs remain bounded by source budgets,
+are available through `Project::source`, and participate in fingerprints.
+Diagnostic identity advances to `typescript-5.9.3-diagnostics-v2`.
+
+Native configuration and argument failures have source-free machine reports.
+Configuration positions use the reader's existing authorized bytes. The
+pinned catalog also records compiler option names, so a valid option outside
+BlueTSC's command subset keeps an explicit refusal instead of being mislabeled
+as a TypeScript unknown option. Original human failure messages are preserved.
+
+`position-status.json` records zero remaining differences across 1,398
+language/strictness cases and 867 configuration/CLI/option-combination cases.
+The earlier 800 + 16 primary failures and 543 old-span differences remain in
+committed baseline records. Tests also enforce source module identity,
+supplementary Unicode, LF/CRLF/CR, parser-failure source retention without
+reloading, failed-source fingerprints and invalid byte boundaries. The final
+frozen Linux K.0 gate (`blueice-k32-final-*`) passes format, format-check,
+both-crate all-target Clippy with warnings denied, and 1,091 tests in 65
+target/doctest groups. All 125 ignored TypeScript oracles run, with zero
+failures or ignored tests. The gate ends at 2026-10-07 05:51:26 UTC; the 25
+frozen changed backend inputs retain identical hashes on the host and tested
+snapshot. Section 4 of the compatibility inventory is regenerated (164
+refusal sites in ten areas). Production Rust sources remain at most 1,185
+lines, below the review threshold.
+
+K.3.2 is complete. K.3.3 and the final M7 workspace/platform/coverage gate
+remain required; full TypeScript parity is not claimed.

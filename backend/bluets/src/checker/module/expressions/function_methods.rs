@@ -106,6 +106,7 @@ impl ModuleChecker<'_> {
                         type_label(parameter.annotation.as_ref().unwrap()),
                     ],
                 );
+                self.point_last_typescript(this_arg);
             }
         }
         let parameters = signature
@@ -194,6 +195,11 @@ impl ModuleChecker<'_> {
                             if member == "apply" { 2322 } else { 2345 },
                             vec![type_label(actual), type_label(expected)],
                         );
+                        if member != "apply" {
+                            if let Some(argument) = arguments.get(index) {
+                                self.point_last_typescript(argument);
+                            }
+                        }
                     }
                 }
             }

@@ -177,6 +177,26 @@ fn primary_codes_templates_and_positions_match_the_pinned_corpus() {
                 actual["position"]
             ));
         }
+        let source_root = if let Some(config) = case["config"].as_str() {
+            Path::new(config).parent().unwrap().to_path_buf()
+        } else {
+            Path::new("typescript_oracle")
+                .join(case["entry"].as_str().unwrap())
+                .parent()
+                .unwrap()
+                .to_path_buf()
+        };
+        let expected_module = Path::new(expected["file"].as_str().unwrap())
+            .strip_prefix(source_root)
+            .unwrap()
+            .to_string_lossy()
+            .replace('\\', "/");
+        if actual["span"]["module"] != expected_module {
+            failures.push(format!(
+                "{id}: expected source module {expected_module}; received {}",
+                actual["span"]["module"]
+            ));
+        }
     }
     let count = failures.len();
     failures.truncate(20);

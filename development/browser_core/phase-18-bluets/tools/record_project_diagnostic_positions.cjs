@@ -13,6 +13,7 @@ const ts = require(path.join(fixtures, 'oracle_support/load_typescript.cjs'))(
     process.env.BLUEICE_BLUETSC_ORACLE || 'tsc');
 const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'bluets-position-oracle-'));
 const cases = [];
+const mismatches = [];
 const libraryRoot = path.dirname(ts.getDefaultLibFilePath({}));
 const libraries = new Map();
 const slash = value => value.replaceAll('\\', '/');
@@ -63,7 +64,23 @@ function commandError(directory, args) {
 function record(id, directory, args, metadata, accepts) {
     const diagnostics = ts.sortAndDeduplicateDiagnostics(config(directory, args, args.includes('--showConfig')));
     if ((diagnostics.length === 0) !== accepts) throw new Error(`${id}: verdict changed`);
-    cases.push({ id, ...metadata, args, accepts, first: diagnostics[0] ? serialize(diagnostics[0], directory) : null });
+    const first = diagnostics[0] ? serialize(diagnostics[0], directory) : null;
+    cases.push({ id, ...metadata, args, accepts, first });
+    if (process.env.BLUEICE_PROJECT_POSITION_BINARY) {
+        const replay = [...args];
+        if (accepts && !args.includes('--showConfig')) replay.push('--noEmit');
+        replay.push('--diagnostics-json');
+        const output = spawnSync(process.env.BLUEICE_PROJECT_POSITION_BINARY, replay, { cwd: directory, encoding: 'utf8' });
+        let actual;
+        try { actual = output.stderr.trim().split(/\r?\n/).filter(Boolean).map(line => JSON.parse(line)); }
+        catch { mismatches.push({ id, expected: first, actual: 'unstructured diagnostic' }); return; }
+        const primary = actual[0]?.typescript || null;
+        const same = first ? primary && primary.code === first.code
+            && (first.position === null ? primary.position === null : ['line', 'column', 'length'].every(key => primary.position?.[key] === first.position[key]))
+            && (!first.file || primary.span.module === first.file)
+            : output.status === 0 && actual.length === 0;
+        if (!same) mismatches.push({ id, expected: first, actual: primary });
+    }
 }
 try {
     const coordinateCases = [];
@@ -115,6 +132,11 @@ try {
     if (process.env.BLUEICE_WRITE_PROJECT_POSITIONS === '1') fs.writeFileSync(destination, output);
     else if (fs.readFileSync(destination, 'utf8').replaceAll('\r\n', '\n') !== output) throw new Error('Project position evidence changed');
     process.stdout.write(JSON.stringify({ cases: cases.length, primaries: cases.filter(c => c.first).length }) + '\n');
+    if (process.env.BLUEICE_PROJECT_POSITION_STATUS_PATH) {
+        if (!process.env.BLUEICE_PROJECT_POSITION_BINARY) throw new Error('A replay binary is required for position status');
+        fs.writeFileSync(process.env.BLUEICE_PROJECT_POSITION_STATUS_PATH, JSON.stringify({ version: ts.version, cases: cases.length, mismatches }, null, 2) + '\n');
+        process.stdout.write(`Project position mismatches: ${mismatches.length}\n`);
+    }
 } finally {
     fs.rmSync(temporary, { recursive: true, force: true });
 }

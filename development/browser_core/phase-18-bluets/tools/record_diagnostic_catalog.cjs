@@ -41,7 +41,8 @@ for (const name of ['Array', 'String', 'Number', 'Boolean']) {
         member.name, checker.getTypeOfSymbolAtLocation(member, source).getCallSignatures().length,
     ]).sort(([left], [right]) => left.localeCompare(right, 'en')));
 }
-const catalog = { version: ts.version, templates, constructors, members };
+const compilerOptionNames = ts.optionDeclarations.map(option => option.name).sort();
+const catalog = { version: ts.version, templates, constructors, members, compilerOptionNames };
 const text = JSON.stringify(catalog, null, 2) + '\n';
 const destination = path.join(root, 'backend/bluets/src/diagnostic/typescript-5.9.3.json');
 if (process.env.BLUEICE_WRITE_DIAGNOSTICS_MATRIX === '1') fs.writeFileSync(destination, text);

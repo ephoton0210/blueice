@@ -275,7 +275,7 @@ impl<'a> ModuleChecker<'a> {
                     ),
                     actual,
                     &expected,
-                    arguments.get(index).is_some_and(|tokens| tokens.first().is_some_and(|token| token.is("{"))),
+                    arguments.get(index).copied().unwrap_or(&[]),
                     overloaded,
                 );
             }

@@ -38,6 +38,7 @@ pub(super) struct Reader {
     pub(super) extra_roots: Vec<PathBuf>,
     active: BTreeSet<PathBuf>,
     pub(super) inputs: BTreeMap<PathBuf, Vec<u8>>,
+    pub(super) diagnostic: Option<blueice_bluets::Diagnostic>,
 }
 
 impl Reader {
@@ -47,6 +48,7 @@ impl Reader {
             extra_roots,
             active: BTreeSet::new(),
             inputs: BTreeMap::new(),
+            diagnostic: None,
         }
     }
 
@@ -110,12 +112,32 @@ impl Reader {
         let canonical = fs::canonicalize(path)
             .map_err(|error| format!("cannot read config {}: {error}", path.display()))?;
         if self.active.len() >= 64 || !self.active.insert(canonical.clone()) {
-            return Err(format!(
+            let message = format!(
                 "circular or over-depth config inheritance at {}",
                 path.display()
-            ));
+            );
+            if self.active.len() < 64 {
+                self.diagnostic = Some(
+                    blueice_bluets::Diagnostic::error(
+                        blueice_bluets::DiagnosticCode::ParseError,
+                        SourceSpan::new(path.to_string_lossy(), 0, 0),
+                        &message,
+                    )
+                    .with_typescript(18000, vec![path.display().to_string()]),
+                );
+            }
+            return Err(message);
         }
         let result = self.load_inner(&canonical);
+        if let Err(error) = &result {
+            if self.diagnostic.is_none() {
+                self.diagnostic = diagnostics::error(
+                    error,
+                    &canonical,
+                    self.inputs.get(&canonical).map(Vec::as_slice),
+                );
+            }
+        }
         self.active.remove(&canonical);
         result
     }

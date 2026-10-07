@@ -13,20 +13,32 @@ use args::Args;
 
 pub(super) fn run(arguments: Vec<String>) -> ExitCode {
     let empty_command = arguments.is_empty();
+    let diagnostics_json = arguments
+        .iter()
+        .enumerate()
+        .rfind(|(_, arg)| arg.as_str() == "--diagnostics-json")
+        .is_some_and(|(index, _)| {
+            arguments
+                .get(index + 1)
+                .is_none_or(|value| value != "false")
+        });
+    let fail = |message: &str, pretty| failure(message, pretty, diagnostics_json, None);
     let pretty = arguments
         .windows(2)
         .any(|pair| pair[0] == "--pretty" && pair[1] == "true");
-    let mut args = match Args::parse(arguments) {
+    let mut args = match Args::parse(args::without_machine_flags(arguments)) {
         Ok(args) => args,
         Err(_) if empty_command => {
             eprintln!("bluetsc: a command is required\n\n{}", usage());
             return ExitCode::FAILURE;
         }
-        Err(error) => return fail(&error, pretty),
+        Err(error) => return failure(&error, pretty, diagnostics_json, args::diagnostic(&error)),
     };
-    let mut invocation = match resolve_invocation(Input::Config(args.project)) {
+    let mut config_diagnostic = None;
+    let mut invocation = match resolve_config_with_diagnostic(args.project, &mut config_diagnostic)
+    {
         Ok(invocation) => invocation,
-        Err(error) => return fail(&error, pretty),
+        Err(error) => return failure(&error, pretty, diagnostics_json, config_diagnostic),
     };
     let Some(project) = &mut invocation.project_config else {
         return fail("--project requires a TypeScript configuration", pretty);
@@ -36,11 +48,7 @@ pub(super) fn run(arguments: Vec<String>) -> ExitCode {
         .remove("showConfig")
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
-    let diagnostics_json = args
-        .flags
-        .remove("diagnostics-json")
-        .and_then(|value| value.as_bool())
-        .unwrap_or(false);
+    args.flags.remove("diagnostics-json");
     project.options.extend(args.flags);
     let enabled = |name: &str| {
         project
@@ -123,8 +131,21 @@ pub(super) fn run(arguments: Vec<String>) -> ExitCode {
     }
     ExitCode::SUCCESS
 }
-fn fail(message: &str, pretty: bool) -> ExitCode {
-    if pretty {
+fn failure(message: &str, pretty: bool, json: bool, diagnostic: Option<Diagnostic>) -> ExitCode {
+    if json {
+        let diagnostic = diagnostic.unwrap_or_else(|| {
+            let mut diagnostic = Diagnostic::error(
+                blueice_bluets::DiagnosticCode::UnsupportedSyntax,
+                SourceSpan::new("", 0, 0),
+                message,
+            );
+            diagnostic.typescript = None;
+            diagnostic.no_typescript_counterpart =
+                Some("BlueTSC configuration or an explicit owner policy refused this input.");
+            diagnostic
+        });
+        eprintln!("{}", diagnostic.to_json());
+    } else if pretty {
         eprintln!("\x1b[91mbluetsc: {message}\x1b[0m");
     } else {
         eprintln!("bluetsc: {message}");

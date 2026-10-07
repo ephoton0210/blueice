@@ -82,9 +82,18 @@ use std::sync::LazyLock;
 
 #[derive(Deserialize)]
 struct Catalog {
+    #[serde(rename = "compilerOptionNames")]
+    compiler_option_names: Vec<String>,
     templates: BTreeMap<u32, String>,
     constructors: BTreeMap<String, usize>,
     members: BTreeMap<String, BTreeMap<String, usize>>,
+}
+
+pub(super) fn is_known_compiler_option(name: &str) -> bool {
+    CATALOG
+        .compiler_option_names
+        .iter()
+        .any(|option| option == name)
 }
 
 static CATALOG: LazyLock<Catalog> = LazyLock::new(|| {

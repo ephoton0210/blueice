@@ -4,6 +4,7 @@
 
 //! Primary coordinates at the configuration and native project boundaries.
 use serde_json::{json, Value};
+use std::collections::BTreeSet;
 use std::{env, fs, path::Path, process::Command};
 
 fn copy(from: &Path, to: &Path) {
@@ -16,6 +17,44 @@ fn copy(from: &Path, to: &Path) {
             fs::copy(entry.path(), to.join(entry.file_name())).unwrap();
         }
     }
+}
+
+#[test]
+fn project_position_record_covers_every_existing_matrix() {
+    let record: Value =
+        serde_json::from_str(include_str!("fixtures/diagnostics/project-positions.json")).unwrap();
+    let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
+    let actual = record["cases"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|case| case["id"].as_str().unwrap().to_string())
+        .collect::<BTreeSet<_>>();
+    let mut expected = BTreeSet::new();
+    for (directory, filename, prefix) in [
+        ("project_config", "config-checker-matrix.tsv", "config"),
+        ("cli_surface", "cli-checker-matrix.tsv", "cli"),
+        (
+            "option_combinations",
+            "options-checker-matrix.tsv",
+            "options",
+        ),
+    ] {
+        for line in fs::read_to_string(fixtures.join(directory).join(filename))
+            .unwrap()
+            .lines()
+        {
+            let (id, _) = line.split_once('\t').unwrap();
+            let id = if prefix == "cli" {
+                id.strip_prefix("cli-").unwrap()
+            } else {
+                id
+            };
+            expected.insert(format!("{prefix}:{id}"));
+        }
+    }
+    assert_eq!(actual.len(), record["cases"].as_array().unwrap().len());
+    assert_eq!(actual, expected);
 }
 
 #[test]
@@ -146,6 +185,8 @@ fn primary_project_positions_match_every_existing_matrix() {
                 if !primary.is_some_and(|value| {
                     value["code"] == case["first"]["code"]
                         && value["position"] == case["first"]["position"]
+                        && (case["first"]["file"].is_null()
+                            || value["span"]["module"] == case["first"]["file"])
                 }) {
                     failures.push(format!(
                         "{id}: expected {}; received {primary:?}",
@@ -164,6 +205,22 @@ fn primary_project_positions_match_every_existing_matrix() {
         failures.is_empty(),
         "{count} project position mismatches:\n{}",
         failures.join("\n")
+    );
+}
+
+#[test]
+fn native_known_subset_option_refusals_do_not_invent_unknown_option_errors() {
+    let output = Command::new(env!("CARGO_BIN_EXE_bluetsc"))
+        .args(["--target", "es2022", "--diagnostics-json"])
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    let diagnostic: Value = serde_json::from_slice(&output.stderr).unwrap();
+    assert!(diagnostic["typescript"].is_null());
+    assert!(diagnostic["noTypeScriptCounterpart"].as_str().is_some());
+    assert_eq!(
+        diagnostic["rawMessage"],
+        "unknown compiler option `--target`"
     );
 }
 

@@ -8,13 +8,14 @@ use std::fmt;
 
 mod blue_only_rules;
 mod mapping;
+pub(crate) mod positions;
 mod rules;
 mod source_rules;
 pub(crate) mod spelling;
 pub(crate) mod templates;
 
 /// Diagnostic compatibility data is part of compiler/cache identity.
-pub const DIAGNOSTICS_VERSION: &str = "typescript-5.9.3-diagnostics-v1";
+pub const DIAGNOSTICS_VERSION: &str = "typescript-5.9.3-diagnostics-v2";
 
 /// A TypeScript diagnostic counterpart, separate from the stable BTS alias.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -24,6 +25,15 @@ pub struct TypeScriptDiagnostic {
     pub arguments: Vec<String>,
     pub message: String,
     pub span: SourceSpan,
+    pub position: Option<TypeScriptPosition>,
+}
+
+/// Original-source coordinates matching TypeScript's UTF-16 convention.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TypeScriptPosition {
+    pub line: usize,
+    pub column: usize,
+    pub length: usize,
 }
 
 /// A half-open byte range in a particular source module.
@@ -106,9 +116,21 @@ pub struct Diagnostic {
 impl Diagnostic {
     /// Attach semantic details at a checker site instead of inferring them
     /// from a broad BTS category or a user-controlled source identity.
-    pub(crate) fn with_typescript(mut self, code: u32, arguments: Vec<String>) -> Self {
+    pub fn with_typescript(mut self, code: u32, arguments: Vec<String>) -> Self {
         self.typescript = mapping::build(code, &self.span, arguments, &self.message).map(Box::new);
-        self.no_typescript_counterpart = None;
+        self.no_typescript_counterpart = self
+            .typescript
+            .is_none()
+            .then_some("The code is absent from the pinned TypeScript diagnostic catalog.");
+        self
+    }
+
+    /// Convert a known byte span using source explicitly supplied by the caller.
+    /// No source is retained in the diagnostic and this performs no I/O.
+    pub fn with_source_position(mut self, source: &str) -> Self {
+        if let Some(counterpart) = &mut self.typescript {
+            counterpart.position = positions::from_source(source, &counterpart.span);
+        }
         self
     }
 
@@ -146,6 +168,9 @@ impl Diagnostic {
                     "start": diagnostic.span.start,
                     "end": diagnostic.span.end,
                 },
+                "position": diagnostic.position.as_ref().map(|position| serde_json::json!({
+                    "line": position.line, "column": position.column, "length": position.length,
+                })),
             })
         });
         serde_json::json!({
@@ -156,5 +181,12 @@ impl Diagnostic {
             "typescript": counterpart,
             "noTypeScriptCounterpart": if self.typescript.is_none() { self.no_typescript_counterpart } else { None },
         })
+    }
+}
+
+impl TypeScriptDiagnostic {
+    /// Distinguish an unknown option from an option outside BlueTSC's subset.
+    pub fn is_known_compiler_option(name: &str) -> bool {
+        templates::is_known_compiler_option(name)
     }
 }

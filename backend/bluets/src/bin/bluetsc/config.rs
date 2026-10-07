@@ -334,12 +334,27 @@ pub(super) fn resolve_explicit_invocation(
 }
 
 pub(super) fn resolve_config_invocation(path: PathBuf) -> Result<Invocation, String> {
-    let config_path = absolute_existing_path(&path)
-        .map_err(|error| format!("cannot read config {}: {error}", path.display()))?;
+    resolve_config_with_diagnostic(path, &mut None)
+}
+
+pub(super) fn resolve_config_with_diagnostic(
+    path: PathBuf,
+    report: &mut Option<blueice_bluets::Diagnostic>,
+) -> Result<Invocation, String> {
+    let config_path = absolute_existing_path(&path).map_err(|error| {
+        let message = format!("cannot read config {}: {error}", path.display());
+        if error.kind() == io::ErrorKind::NotFound {
+            *report = Some(tsconfig::diagnostics::missing_project(&message, &path));
+        }
+        message
+    })?;
     let config_text = fs::read_to_string(&config_path)
         .map_err(|error| format!("cannot read config {}: {error}", config_path.display()))?;
-    let value = tsconfig::parse_jsonc(&config_text)
-        .map_err(|error| format!("invalid config {}: {error}", config_path.display()))?;
+    let value = tsconfig::parse_jsonc(&config_text).map_err(|error| {
+        let message = format!("invalid config {}: {error}", config_path.display());
+        *report = tsconfig::diagnostics::invalid_json(&message, &config_path, &config_text);
+        message
+    })?;
     if !value.is_object() {
         return Err(format!(
             "invalid config {}: expected an object",
@@ -362,6 +377,7 @@ pub(super) fn resolve_config_invocation(path: PathBuf) -> Result<Invocation, Str
         return tsconfig::resolve(
             &config_path,
             owner_path.is_file().then_some(owner_path.as_path()),
+            report,
         );
     }
     let selected = value
@@ -376,7 +392,7 @@ pub(super) fn resolve_config_invocation(path: PathBuf) -> Result<Invocation, Str
         return Err("owner tsconfig requires a string path".to_string());
     }
     if value.get("tsconfig").is_some() || selected.is_file() {
-        return tsconfig::resolve(&selected, Some(&config_path));
+        return tsconfig::resolve(&selected, Some(&config_path), report);
     }
     if value.get("entries").is_none() {
         return Err(format!(

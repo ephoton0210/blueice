@@ -41,6 +41,7 @@ pub(super) fn build(
         arguments,
         message: rendered,
         span: span.clone(),
+        position: None,
     })
 }
 

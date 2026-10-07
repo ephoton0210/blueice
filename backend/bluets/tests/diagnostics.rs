@@ -32,7 +32,7 @@ fn checked_errors_preserve_bts_identity_and_expose_a_typescript_counterpart() {
     );
     assert!(json["noTypeScriptCounterpart"].is_null());
     assert!(json.get("source").is_none());
-    assert_eq!(DIAGNOSTICS_VERSION, "typescript-5.9.3-diagnostics-v1");
+    assert_eq!(DIAGNOSTICS_VERSION, "typescript-5.9.3-diagnostics-v2");
 }
 
 #[test]
@@ -172,4 +172,68 @@ fn semantic_counterparts_follow_renamed_declarations_and_bindings() {
             diagnostic.typescript.as_ref().is_some_and(|diagnostic| diagnostic.code == expected)
         }), "expected TS{expected}: {source}: {:?}", result.diagnostics);
     }
+}
+
+#[test]
+fn failed_parsing_keeps_the_original_authorized_source_without_reloading() {
+    use std::cell::Cell;
+    struct OnceLoader {
+        calls: Cell<usize>,
+        source: &'static str,
+    }
+    impl ModuleLoader for OnceLoader {
+        fn load(&self, id: &str) -> Result<ModuleSource, String> {
+            self.calls.set(self.calls.get() + 1);
+            assert_eq!(self.calls.get(), 1, "diagnostics must not reload source");
+            Ok(ModuleSource::new(id, self.source))
+        }
+    }
+    let source = "// 🧊\r\nclass Skater { get speed(value: number): number {} }";
+    let loader = OnceLoader {
+        calls: Cell::new(0),
+        source,
+    };
+    let result = compile("memory:///invalid.ts", &loader, CompilerOptions::default());
+    assert!(result.has_errors());
+    assert!(result.project.modules.is_empty());
+    assert_eq!(result.project.source("memory:///invalid.ts"), Some(source));
+    assert_eq!(result.project.source("memory:///unrequested.ts"), None);
+    let diagnostic = result.diagnostics[0].to_json();
+    assert_eq!(diagnostic["typescript"]["code"], 1054);
+    assert_eq!(
+        diagnostic["typescript"]["position"],
+        serde_json::json!({"line": 2, "column": 20, "length": 5})
+    );
+    assert!(!diagnostic.to_string().contains("🧊"));
+}
+
+#[test]
+fn failed_source_bytes_participate_in_project_fingerprints() {
+    let compile_source = |source| {
+        compile(
+            "memory:///invalid.ts",
+            &MapLoader::from([ModuleSource::new("memory:///invalid.ts", source)]),
+            CompilerOptions::default(),
+        )
+    };
+    let first = compile_source("class Skater { get speed(value: number): number {} }");
+    let changed = compile_source("class Skater { get speed(value: number): number {} }\r\n");
+    assert!(first.has_errors() && changed.has_errors());
+    assert_ne!(first.project_fingerprint, changed.project_fingerprint);
+}
+
+#[test]
+fn explicit_source_coordinates_reject_non_boundary_or_out_of_range_spans() {
+    for (start, end) in [(1, 2), (0, 9), (4, 3)] {
+        let diagnostic = Diagnostic::error(
+            DiagnosticCode::UnknownName,
+            SourceSpan::new("memory:///input.ts", start, end),
+            "cannot find name `missing`",
+        )
+        .with_typescript(2304, vec!["missing".into()])
+        .with_source_position("🧊");
+        assert!(diagnostic.to_json()["typescript"]["position"].is_null());
+    }
+    assert!(blueice_bluets::TypeScriptDiagnostic::is_known_compiler_option("incremental"));
+    assert!(!blueice_bluets::TypeScriptDiagnostic::is_known_compiler_option("unknownOption"));
 }

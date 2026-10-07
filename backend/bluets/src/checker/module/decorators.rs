@@ -255,6 +255,23 @@ impl<'a> ModuleChecker<'a> {
                 if parameters.is_empty() { 1329 } else { match target { Target::Class => 1238, Target::Field | Target::Accessor => 1240, Target::Parameter => 1239, _ => 1241 } },
                 Vec::new(),
             );
+            if required > maximum {
+                if let Some(diagnostic) = self.diagnostics.last_mut() {
+                    if let Some(counterpart) = &mut diagnostic.typescript {
+                        counterpart.span = SourceSpan::new(
+                            &self.module.id,
+                            decorator.span.start,
+                            decorator.span.end,
+                        );
+                        // The full decorator node distinguishes an arity failure
+                        // from a value-type failure at its expression.
+                        counterpart.position = crate::diagnostic::positions::from_source(
+                            &self.module.source,
+                            &counterpart.span,
+                        );
+                    }
+                }
+            }
             return;
         }
         // A property or parameter decorator returns nothing; the others return

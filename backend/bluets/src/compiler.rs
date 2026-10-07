@@ -340,9 +340,18 @@ pub struct Project {
     pub modules: BTreeMap<String, Module>,
     pub(crate) resolutions: BTreeMap<(String, String), String>,
     pub(crate) ambient_declaration_modules: BTreeSet<String>,
+    failed_sources: BTreeMap<String, String>,
 }
 
 impl Project {
+    /// Returns input already supplied by the owner, including a source whose
+    /// parsing failed. This performs no I/O and does not resolve new inputs.
+    pub fn source(&self, module_id: &str) -> Option<&str> {
+        self.modules
+            .get(module_id)
+            .map(|module| module.source.as_str())
+            .or_else(|| self.failed_sources.get(module_id).map(String::as_str))
+    }
     /// Returns the caller-authorized canonical target selected for one source
     /// module request. Runtime bridges use this rather than independently
     /// resolving a TypeScript specifier under a potentially different policy.
@@ -438,6 +447,7 @@ impl Project {
             modules: BTreeMap::new(),
             resolutions: BTreeMap::new(),
             ambient_declaration_modules: BTreeSet::new(),
+            failed_sources: BTreeMap::new(),
         }
     }
 }
@@ -537,6 +547,7 @@ fn compile_with_cache(
             }
         }
     };
+    crate::diagnostic::positions::attach(&project, &mut diagnostics);
     let debug_info = output
         .as_ref()
         .map(|_| debug_info::build(&checked, &options));
@@ -562,10 +573,14 @@ fn compile_with_cache(
 
 fn changed_modules(previous: &Project, current: &Project) -> BTreeSet<String> {
     let mut changed = BTreeSet::new();
-    for module_id in previous.modules.keys().chain(current.modules.keys()) {
-        if previous.modules.get(module_id).map(|module| &module.source)
-            != current.modules.get(module_id).map(|module| &module.source)
-        {
+    for module_id in previous
+        .modules
+        .keys()
+        .chain(current.modules.keys())
+        .chain(previous.failed_sources.keys())
+        .chain(current.failed_sources.keys())
+    {
+        if previous.source(module_id) != current.source(module_id) {
             changed.insert(module_id.clone());
         }
     }
@@ -785,6 +800,7 @@ impl<'a> ProjectBuilder<'a> {
             module.clone()
         } else {
             self.parsed_modules.insert(module_id.to_string());
+            let failed_source = source.text.clone();
             let parsed = if self.limits.parser == ParserLimits::default() {
                 parse_module(source.id.clone(), source.text)
             } else {
@@ -793,6 +809,9 @@ impl<'a> ProjectBuilder<'a> {
             match parsed {
                 Ok(module) => module,
                 Err(mut parse_diagnostics) => {
+                    self.project
+                        .failed_sources
+                        .insert(module_id.to_string(), failed_source);
                     self.diagnostics.append(&mut parse_diagnostics);
                     self.state.insert(module_id.to_string(), VisitState::Done);
                     return;
@@ -1038,6 +1057,10 @@ pub(crate) fn fingerprint(project: &Project, options: &CompilerOptions) -> Strin
     for (id, module) in &project.modules {
         add(id);
         add(&module.source);
+    }
+    for (id, source) in &project.failed_sources {
+        add(id);
+        add(source);
     }
     format!("bts-{hash:016x}")
 }

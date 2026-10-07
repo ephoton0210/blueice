@@ -55,7 +55,8 @@ pub use debug_info::{
     DebugSourceLocation, DebugSourcePosition, DebugSymbol, DebugType, SourceId, SymbolId, TypeId,
 };
 pub use diagnostic::{
-    Diagnostic, DiagnosticCode, Severity, SourceSpan, TypeScriptDiagnostic, DIAGNOSTICS_VERSION,
+    Diagnostic, DiagnosticCode, Severity, SourceSpan, TypeScriptDiagnostic, TypeScriptPosition,
+    DIAGNOSTICS_VERSION,
 };
 pub use emitter::{
     BuildArtifact, BuildOutput, EmittedRuntimeBoundary, EmittedRuntimeSite, EmittedStrictModule,

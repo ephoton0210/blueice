@@ -13,7 +13,7 @@ impl ModuleChecker<'_> {
         message: String,
         actual: &Type,
         expected: &Type,
-        object_literal: bool,
+        argument: &[Token],
         overloaded: bool,
     ) {
         if overloaded {
@@ -24,9 +24,10 @@ impl ModuleChecker<'_> {
                 2769,
                 Vec::new(),
             );
+            self.point_last_typescript(argument);
             return;
         }
-        if object_literal {
+        if argument.first().is_some_and(|token| token.is("{")) {
             let (Some(actual_fields), false) = self.expanded_record_fields(actual.clone()) else {
                 self.typescript_type_error(
                     span,
@@ -35,6 +36,7 @@ impl ModuleChecker<'_> {
                     2345,
                     vec![type_label(actual), type_label(expected)],
                 );
+                self.point_last_typescript(argument);
                 return;
             };
             if let (Some(expected_fields), false) = self.expanded_record_fields(expected.clone()) {
@@ -62,6 +64,9 @@ impl ModuleChecker<'_> {
                             2322,
                             vec![type_label(&field.value), type_label(&expected.value)],
                         );
+                        if let Some(token) = argument.iter().find(|token| token.is(&field.name)) {
+                            self.point_last_typescript(std::slice::from_ref(token));
+                        }
                         return;
                     }
                 }
@@ -74,6 +79,20 @@ impl ModuleChecker<'_> {
             2345,
             vec![type_label(actual), type_label(expected)],
         );
+        self.point_last_typescript(argument);
+    }
+
+    pub(in crate::checker::module) fn point_last_typescript(&mut self, tokens: &[Token]) {
+        if !self.enforce_types {
+            return;
+        }
+        if let (Some(first), Some(last), Some(diagnostic)) =
+            (tokens.first(), tokens.last(), self.diagnostics.last_mut())
+        {
+            if let Some(counterpart) = &mut diagnostic.typescript {
+                counterpart.span = SourceSpan::new(&self.module.id, first.start, last.end);
+            }
+        }
     }
 
     pub(in crate::checker::module) fn assignment_error(
@@ -132,6 +151,55 @@ impl ModuleChecker<'_> {
                         vec![type_label(actual), type_label(expected)],
                     );
                     return;
+                }
+                for field in &actual_fields {
+                    let Some(expected_field) = expected_fields
+                        .iter()
+                        .find(|expected| expected.name == field.name)
+                    else {
+                        continue;
+                    };
+                    let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
+                    budget.checking = self.checking;
+                    if !is_assignable(
+                        &field.value,
+                        &expected_field.value,
+                        &self.types,
+                        &mut HashSet::new(),
+                        &mut budget,
+                    ) && !budget.exhausted
+                    {
+                        self.typescript_type_error(
+                            span,
+                            message,
+                            bts_code,
+                            2322,
+                            vec![type_label(&field.value), type_label(&expected_field.value)],
+                        );
+                        if let Ok(tokens) = crate::syntax::lex(&self.module.id, &self.module.source)
+                        {
+                            let selected = tokens
+                                .iter()
+                                .filter(|token| token.start >= span.start && token.end <= span.end)
+                                .collect::<Vec<_>>();
+                            let initializer = selected
+                                .iter()
+                                .position(|token| token.is("="))
+                                .and_then(|index| selected.get(index + 1))
+                                .filter(|token| token.is("{"));
+                            if let Some(pair) = tokens
+                                .windows(2)
+                                .filter(|pair| {
+                                    initializer.is_some_and(|start| pair[0].start > start.start)
+                                        && pair[0].end <= span.end
+                                })
+                                .rfind(|pair| pair[0].is(&field.name) && pair[1].is(":"))
+                            {
+                                self.point_last_typescript(&pair[..1]);
+                            }
+                        }
+                        return;
+                    }
                 }
             }
         }

@@ -385,9 +385,13 @@ impl<'a> ModuleChecker<'a> {
                     ),
                     actual,
                     expected,
-                    arguments.get(index).is_some_and(|tokens| tokens.first().is_some_and(|token| token.is("{"))),
+                    arguments.get(index).copied().unwrap_or(&[]),
                     overloaded,
                 );
+                if overloaded && index + 1 == parameters.len() && matches!(expected, Type::Union(_))
+                {
+                    self.point_last_typescript(std::slice::from_ref(call.member));
+                }
             }
         }
     }

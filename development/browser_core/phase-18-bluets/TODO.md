@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: K.3.2.** Sections A to J are complete (summarized below); J.6 closed in its
+**Current leaf: K.3.3.** Sections A to J are complete (summarized below); J.6 closed in its
 measured form (`COMPATIBILITY_INVENTORY.md`). Section K closes the gaps that inventory lists.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
@@ -320,10 +320,11 @@ and import rules.
   fixture corpus and extracts the first code per entry); `BTSnnnn` stays as an alias in machine-readable
   output. Diagnostics with no `tsc` counterpart are listed explicitly.
   - *Verified (2026-10-07):* 263 base message families plus semantic context refinements, a reproducible 2,121-template TypeScript 5.9.3 catalog, 1,398 primary code/template replays and 97 additional diagnostic source witnesses. Machine JSON preserves BTS aliases and explicit owner/subset reasons. K.0: format and Clippy pass; 1,083 tests in 64 groups pass, including all 124 ignored oracles. Largest production source: 1,185 lines. Position and presentation parity remain in K.3.2/K.3.3.
-- [ ] **K.3.2 Position parity (M).** Compare line, column and length of the primary span with `tsc` in
+- [x] **K.3.2 Position parity (M).** Compare line, column and length of the primary span with `tsc` in
   every accepted/rejected matrix; each mismatch is a tracked row until zero (expect many: BlueTS spans
   are statement-granular in places).
   - *Test-first baseline (2026-10-07):* 800 primary coordinates are absent from machine JSON; derived byte spans differ in 543 entries of the 1,398 language/strictness cases. Another 867 configuration/CLI/option-combination cases add 16 tracked primary failures (14 unstructured configuration/argument failures and two missing source positions). Four pinned controls cover UTF-16 columns and LF/CRLF/CR. Every mismatch remains tracked until zero.
+  - *Verified (2026-10-07):* zero primary position differences across 1,398 language/strictness and 867 configuration/CLI/option-combination cases; UTF-16 and original source module identity are enforced. Failed parser sources remain authorized and fingerprinted without reloading. K.0: format and Clippy pass; 1,091 tests in 65 groups pass, including all 125 ignored oracles. Largest production source: 1,185 lines.
 - [ ] **K.3.3 Presentation (S).** Related information, `--pretty` output, `--diagnostics`-style summary,
   and exit codes as `tsc` (0, 1 with emit, 2 without).
 

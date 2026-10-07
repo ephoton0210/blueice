@@ -8,6 +8,7 @@ use super::*;
 use inheritance::{Document, Reader};
 use serde_json::{json, Map, Value};
 
+pub(super) mod diagnostics;
 mod discovery;
 mod inheritance;
 mod jsonc;
@@ -41,7 +42,11 @@ impl ProjectConfig {
     }
 }
 
-pub(super) fn resolve(path: &Path, owner_path: Option<&Path>) -> Result<Invocation, String> {
+pub(super) fn resolve(
+    path: &Path,
+    owner_path: Option<&Path>,
+    report: &mut Option<blueice_bluets::Diagnostic>,
+) -> Result<Invocation, String> {
     let directory = path
         .parent()
         .ok_or_else(|| "tsconfig has no parent".to_string())?
@@ -98,7 +103,13 @@ pub(super) fn resolve(path: &Path, owner_path: Option<&Path>) -> Result<Invocati
         }
     }
     let mut reader = Reader::new(root.clone(), extra_roots);
-    let mut document = reader.load(path)?;
+    let mut document = match reader.load(path) {
+        Ok(document) => document,
+        Err(error) => {
+            *report = reader.diagnostic.take();
+            return Err(error);
+        }
+    };
     // Owner fields replace only explicitly supplied compiler settings.
     let mut owner_compiler = Map::new();
     for (key, value) in owner {
@@ -162,7 +173,13 @@ pub(super) fn resolve(path: &Path, owner_path: Option<&Path>) -> Result<Invocati
         document.local_empty_files = false;
         document.include = Some(Vec::new());
     }
-    let files = discovery::select(&document, &reader)?;
+    let files = match discovery::select(&document, &reader) {
+        Ok(files) => files,
+        Err(error) => {
+            *report = diagnostics::error(&error, path, reader.inputs.get(path).map(Vec::as_slice));
+            return Err(error);
+        }
+    };
     let emit_root = match document.options.get("rootDir").and_then(Value::as_str) {
         Some(root) => PathBuf::from(root),
         None => common_source_root(&files, &root),

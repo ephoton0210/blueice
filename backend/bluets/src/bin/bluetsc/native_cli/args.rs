@@ -74,3 +74,52 @@ fn find_config() -> Result<PathBuf, String> {
         }
     }
 }
+
+pub(super) fn diagnostic(message: &str) -> Option<Diagnostic> {
+    let (code, arguments) = if message.starts_with("unknown compiler option ") {
+        let name = message.split('`').nth(1)?.trim_start_matches('-');
+        if blueice_bluets::TypeScriptDiagnostic::is_known_compiler_option(name) {
+            return None;
+        }
+        (5023, vec![name.to_string()])
+    } else if message.ends_with("requires a path") {
+        (
+            6044,
+            vec![message
+                .split_whitespace()
+                .next()?
+                .trim_start_matches('-')
+                .to_string()],
+        )
+    } else if message == "--project cannot be mixed with source files" {
+        (5042, Vec::new())
+    } else {
+        return None;
+    };
+    Some(
+        Diagnostic::error(
+            blueice_bluets::DiagnosticCode::ParseError,
+            SourceSpan::new("", 0, 0),
+            message,
+        )
+        .with_typescript(code, arguments),
+    )
+}
+
+pub(super) fn without_machine_flags(arguments: Vec<String>) -> Vec<String> {
+    let mut arguments = arguments.into_iter().peekable();
+    let mut result = Vec::new();
+    while let Some(argument) = arguments.next() {
+        if argument == "--diagnostics-json" {
+            if arguments
+                .peek()
+                .is_some_and(|value| value == "true" || value == "false")
+            {
+                arguments.next();
+            }
+        } else {
+            result.push(argument);
+        }
+    }
+    result
+}
