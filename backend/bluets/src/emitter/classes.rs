@@ -171,6 +171,7 @@ pub(super) fn emit_class_declaration(
     class: &ClassDeclaration,
     prefix: &str,
     output: &mut String,
+    context: Option<&super::inferred_declarations::Context<'_>>,
 ) -> Result<(), Diagnostic> {
     output.push_str(prefix);
     output.push_str("class ");
@@ -392,7 +393,12 @@ pub(super) fn emit_class_declaration(
                 output.push_str(&method.name);
                 output.push_str(&parameters_to_ts(&method.parameters));
                 output.push_str(": ");
-                output.push_str(&type_to_ts(result));
+                output.push_str(
+                    &context
+                        .and_then(|context| context.return_type(method.span.start))
+                        .map(str::to_string)
+                        .unwrap_or_else(|| type_to_ts(result)),
+                );
                 output.push_str(";\n");
             }
         }

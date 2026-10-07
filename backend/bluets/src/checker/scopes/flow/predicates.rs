@@ -137,6 +137,9 @@ fn narrow_at(
             }
         }
     }
+    if let Some(next) = calls::predicate(scopes, state, tokens, positive) {
+        return Some(next);
+    }
     if let [literal] = tokens {
         if matches!(
             literal.text.as_str(),
@@ -239,7 +242,7 @@ pub(super) fn parts(scopes: &ScopeModel<'_>, value: &Type) -> Vec<Type> {
     }
 }
 
-fn filter(
+pub(super) fn filter(
     scopes: &ScopeModel<'_>,
     state: &State,
     id: BindingId,

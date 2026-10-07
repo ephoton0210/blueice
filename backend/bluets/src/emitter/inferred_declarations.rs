@@ -110,6 +110,10 @@ impl<'a> Context<'a> {
                     }
                     if let Some(value) = &function.return_type {
                         context.references(value);
+                        if record_annotation(value) {
+                            let rendered = context.render(value, 0, &function.span)?;
+                            context.return_types.insert(function.span.start, rendered);
+                        }
                     } else if let Some(value) = checked.inferred_returns.get(&function.span.start) {
                         let value = super::inferred_returns::canonical(value);
                         let rendered = context.render(&value, 0, &function.span)?;
@@ -138,6 +142,10 @@ impl<'a> Context<'a> {
                             }
                             if let Some(value) = &method.return_type {
                                 context.references(value);
+                                if record_annotation(value) {
+                                    let rendered = context.render(value, 4, &method.span)?;
+                                    context.return_types.insert(method.span.start, rendered);
+                                }
                             } else if let Some(value) =
                                 checked.inferred_returns.get(&method.span.start)
                             {
@@ -220,6 +228,11 @@ impl<'a> Context<'a> {
 
     fn references(&mut self, value: &Type) {
         match value {
+            Type::Predicate(predicate) => {
+                if let Some(target) = &predicate.target {
+                    self.references(target);
+                }
+            }
             Type::Named { name, arguments } => {
                 self.retain(name);
                 for argument in arguments {
@@ -295,6 +308,14 @@ impl<'a> Context<'a> {
         span: &SourceSpan,
     ) -> Result<String, Diagnostic> {
         Ok(match value {
+            Type::Predicate(predicate) => {
+                let target = predicate
+                    .target
+                    .as_deref()
+                    .map(|target| self.render(target, indent, span))
+                    .transpose()?;
+                predicate.text(|_| target.unwrap_or_default())
+            }
             Type::Named { name, arguments } => {
                 let name = if let Some((bare, id)) = name.split_once('@') {
                     let (root, suffix) = bare
@@ -656,6 +677,7 @@ fn declares_symbol_value(module: &Module) -> bool {
 fn record_annotation(value: &Type) -> bool {
     match value {
         Type::Record(_) => true,
+        Type::Predicate(predicate) => predicate.target.as_deref().is_some_and(record_annotation),
         Type::Union(parts) | Type::Intersection(parts) => parts.iter().any(record_annotation),
         _ => false,
     }

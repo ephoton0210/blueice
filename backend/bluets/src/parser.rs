@@ -924,6 +924,42 @@ impl Type {
     }
 }
 
+/// An explicit guard/assertion result, retained separately from its runtime
+/// boolean/void result so calls can refine the corresponding lexical value.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TypePredicate {
+    pub parameter: String,
+    pub asserts: bool,
+    pub target: Option<Box<Type>>,
+    pub span: SourceSpan,
+    pub parameter_span: SourceSpan,
+    pub is_span: Option<SourceSpan>,
+    pub target_span: Option<SourceSpan>,
+    pub return_position: bool,
+}
+
+impl TypePredicate {
+    pub(crate) fn runtime_type(&self) -> Type {
+        if self.asserts {
+            Type::Void
+        } else {
+            Type::Boolean
+        }
+    }
+
+    pub(crate) fn text(&self, render: impl FnOnce(&Type) -> String) -> String {
+        format!(
+            "{}{}{}",
+            if self.asserts { "asserts " } else { "" },
+            self.parameter,
+            self.target
+                .as_deref()
+                .map(|target| format!(" is {}", render(target)))
+                .unwrap_or_default()
+        )
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Type {
     Any,
@@ -950,8 +986,18 @@ pub enum Type {
         parameters: Vec<Parameter>,
         result: Box<Type>,
     },
+    Predicate(Box<TypePredicate>),
     Union(Vec<Type>),
     Intersection(Vec<Type>),
+}
+
+impl Type {
+    pub(crate) fn runtime_result(&self) -> Type {
+        match self {
+            Type::Predicate(predicate) => predicate.runtime_type(),
+            value => value.clone(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

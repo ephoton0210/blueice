@@ -46,6 +46,7 @@ fn run_graph(
 ) -> State {
     let mut incoming = vec![None; graph.nodes.len()];
     incoming[0] = Some(seed.clone());
+    let mut outgoing: Vec<Option<State>> = vec![None; graph.nodes.len()];
     let mut queue = VecDeque::from([0]);
     while let Some(index) = queue.pop_front() {
         let node = &graph.nodes[index];
@@ -92,11 +93,13 @@ fn run_graph(
             model,
             &node.tokens,
             &preferred_state,
+            node.expression_statement,
             infer,
             graph.execution,
             depth + 1,
             remaining,
         );
+        outgoing[index] = Some(state.clone());
         for (next, guard) in &node.edges {
             let next_state = match guard {
                 Some((tokens, positive)) => predicates::narrow(scopes, &state, tokens, *positive),
@@ -118,6 +121,32 @@ fn run_graph(
         }
     }
 
+    if graph.completion_known {
+        model.completions.insert(
+            graph.creation,
+            graph.normal_exits.iter().any(|exit| {
+                outgoing[*exit]
+                    .as_ref()
+                    .is_some_and(|state| state.reachable)
+            }),
+        );
+    }
+    model.returns.insert(
+        graph.creation,
+        graph
+            .returns
+            .iter()
+            .map(|index| {
+                let tokens = &graph.nodes[*index].tokens;
+                if tokens.last().is_some_and(|token| token.is(";")) {
+                    tokens[..tokens.len() - 1].to_vec()
+                } else {
+                    tokens.clone()
+                }
+            })
+            .collect(),
+    );
+    calls::check_cases(scopes, model, graph, infer);
     graph
         .exits
         .iter()
@@ -128,6 +157,7 @@ fn run_graph(
                     model,
                     &graph.nodes[*exit].tokens,
                     state,
+                    graph.nodes[*exit].expression_statement,
                     infer,
                     graph.execution,
                     depth + 1,
@@ -155,6 +185,7 @@ fn expression(
     model: &mut FlowModel,
     tokens: &[Token],
     state: &State,
+    effects_allowed: bool,
     infer: &impl Fn(&[Token], &BTreeMap<String, Type>, &Type) -> Type,
     execution: ScopeId,
     depth: usize,
@@ -165,6 +196,7 @@ fn expression(
     } else {
         tokens
     };
+    let bare_expression = super::super::targets::strip(tokens).len() == tokens.len();
     let tokens = super::super::targets::strip(tokens);
     if depth > scopes.max_type_expansions.max(32) {
         scopes.flow_limit(tokens, "flow expression exceeds its bounded nesting limit");
@@ -182,12 +214,15 @@ fn expression(
             record(scopes, model, token, state);
         }
     }
+    // Comma operands have their own call effects even within an initializer
+    // or argument; parentheses around a call preserve its separate eligibility.
     if let Some(index) = super::super::targets::top_level(tokens, ",") {
         let left = expression(
             scopes,
             model,
             &tokens[..index],
             state,
+            true,
             infer,
             execution,
             depth + 1,
@@ -198,6 +233,7 @@ fn expression(
             model,
             &tokens[index + 1..],
             &left,
+            true,
             infer,
             execution,
             depth + 1,
@@ -218,6 +254,7 @@ fn expression(
             model,
             &tokens[equal + 1..],
             state,
+            false,
             infer,
             execution,
             depth + 1,
@@ -235,6 +272,26 @@ fn expression(
                             &declared,
                         )
                     });
+                if actual == Type::Unknown {
+                    if let [keyword, constructor, open, close] = &tokens[equal + 1..] {
+                        if keyword.is("new") && open.is("(") && close.is(")") {
+                            if let Some(constructor_id) =
+                                scopes.flow_binding(&constructor.text, constructor.start)
+                            {
+                                if scopes.scopes[constructor_id.0]
+                                    .values
+                                    .get(&constructor_id.1)
+                                    .is_some_and(|binding| binding.kind == BindingKind::Class)
+                                {
+                                    actual = Type::Named {
+                                        name: constructor_id.1,
+                                        arguments: Vec::new(),
+                                    };
+                                }
+                            }
+                        }
+                    }
+                }
                 if declared == Type::Any
                     || (declared == Type::Unknown && scopes.flow_annotated(&id))
                     || !matches!(
@@ -294,6 +351,7 @@ fn expression(
                         model,
                         &tokens[range],
                         &required,
+                        false,
                         infer,
                         execution,
                         depth + 1,
@@ -314,6 +372,7 @@ fn expression(
                 model,
                 &tokens[..index],
                 state,
+                false,
                 infer,
                 execution,
                 depth + 1,
@@ -336,6 +395,7 @@ fn expression(
                     model,
                     &tokens[index + 1..],
                     &required,
+                    false,
                     infer,
                     execution,
                     depth + 1,
@@ -392,6 +452,7 @@ fn expression(
                     model,
                     &tokens[index + 1..end],
                     &next,
+                    false,
                     infer,
                     execution,
                     depth + 1,
@@ -403,5 +464,9 @@ fn expression(
         }
         index += 1;
     }
-    next
+    if effects_allowed && bare_expression {
+        calls::effect(scopes, model, tokens, &next).unwrap_or(next)
+    } else {
+        next
+    }
 }

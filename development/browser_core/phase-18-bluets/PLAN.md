@@ -4921,3 +4921,54 @@ The shared diagnostic corpus is regenerated to 1,596 programs (717 accept,
 879 reject), retaining 145 templates. This supplemental baseline commits only
 fixtures, replay metadata and plans before correcting call-effect eligibility
 or the measured `undefined`/`void` prerequisite. K.4.2 remains unchecked.
+
+### K.4.2 Predicate signatures and lexical call effects
+
+Predicate types retain their subject, assertion flag, optional target and original
+source spans, separately from the runtime boolean/void return. Signature validation
+compares the asserted target with the named formal parameter, including missing,
+rest and destructured parameters. Type traversal, substitution, contracts,
+decorator metadata and declarations preserve the signature or its existing runtime
+result without introducing a runtime helper or capability grant.
+
+The lexical flow solver resolves guard calls from their binding, maps the formal
+parameter index to the actual reference/property path, and narrows both successors.
+Assertions narrow the following state only with the explicit declaration required
+by TypeScript; TS2775 includes the original target and TS2782 declaration location.
+Receiver predicates retain the owning class and property facts. Known `never` calls
+terminate normal successors, and `never` is assignable as a bottom type.
+
+The graph records normal exits and retained return expressions separately. The
+checker now validates returns retained in unbraced/switch expression adapters and
+reports TS2366/TS2678 for incomplete or incompatible switches. Explicitly annotated
+`unknown` return operands use the existing strict-unknown relation, while opaque
+inference results retain their separate conservative behavior. Exceptional completion
+continues through the existing structured checker; the balanced try adapter resumes
+at the following statement without claiming broader exceptional-flow precision.
+The semantic cache marker advances to `lexical-flow-v3`.
+
+The historical `diagnostics-other-nonexhaustive-return` checker-gap allowance is
+removed because its original pinned TS2366 witness is now diagnosed. The bridge's
+opaque-branch control gains a final return, preserving its opaque AST/refusal purpose:
+TypeScript 5.9.3 rejects the previous source with TS2366 and accepts the completed
+source. No runtime lowering or refusal allowance is broadened.
+
+Call effects are restricted to the statement and comma-operand contexts witnessed
+by the pinned compiler. Ordinary initializers, arguments, parenthesized calls and
+expression-bodied arrows do not inherit statement effects; comma operands retain
+their own eligibility. Fourteen positive/negative call-position controls bring the
+corpus to 75 cases (36 accept, 39 reject). The measured `undefined`-to-`void`
+argument relation is corrected without changing emitted JavaScript.
+
+Validation on the final frozen source passes format, format check and both-crate
+all-target Clippy with warnings denied. The complete Linux K.0 gate passes all
+1,105 tests in 69 groups, including every one of the 130 ignored oracles in
+34 differential suite files. All 75 guard cases, five runtime/declaration
+witnesses, 123 narrowing cases and fourteen narrowing runtime/declaration
+witnesses pass. The shared corpus contains 1,596 programs (717 accept,
+879 reject) and 145 templates. Evidence is retained at
+`/logs/blueice-k42-effects-final-status.json` and
+`/logs/blueice-k42-effects-final-gate.log`. Largest production source is
+1,185 lines; no source crosses the modularity review threshold.
+Broader inferred predicates, exceptional-flow and dotted capture precision
+remain recorded in G-T1. K.4.2 is complete; K.4.3 is next and M8 remains open.

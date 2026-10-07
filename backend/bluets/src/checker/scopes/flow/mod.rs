@@ -8,12 +8,13 @@ use super::flow_bindings::BindingId;
 use super::*;
 
 mod assignments;
+mod calls;
 mod evaluate;
 mod graph;
 mod predicates;
 mod properties;
 
-pub(crate) const VERSION: &str = "lexical-flow-v1";
+pub(crate) const VERSION: &str = "lexical-flow-v3";
 #[derive(Clone, Debug, PartialEq)]
 struct State {
     reachable: bool,
@@ -57,6 +58,8 @@ impl std::ops::DerefMut for State {
 #[derive(Default)]
 pub(in crate::checker) struct FlowModel {
     facts: BTreeMap<usize, State>,
+    completions: BTreeMap<usize, bool>,
+    returns: BTreeMap<usize, Vec<Vec<Token>>>,
     pub(in crate::checker) diagnostics: Vec<Diagnostic>,
 }
 
@@ -66,6 +69,34 @@ impl FlowModel {
         infer: impl Fn(&[Token], &BTreeMap<String, Type>, &Type) -> Type,
     ) -> Self {
         evaluate::build(scopes, &infer)
+    }
+
+    pub(in crate::checker) fn has_return(&self, start: usize) -> bool {
+        self.returns
+            .get(&start)
+            .is_some_and(|returned| !returned.is_empty())
+    }
+
+    pub(in crate::checker) fn completes(&self, start: usize) -> Option<bool> {
+        self.completions.get(&start).copied()
+    }
+
+    pub(in crate::checker) fn returned_in(
+        &self,
+        function: usize,
+        span: &SourceSpan,
+    ) -> Vec<Vec<Token>> {
+        self.returns
+            .get(&function)
+            .into_iter()
+            .flatten()
+            .filter(|tokens| {
+                tokens
+                    .first()
+                    .is_some_and(|token| span.start <= token.start && token.start < span.end)
+            })
+            .cloned()
+            .collect()
     }
 
     pub(in crate::checker) fn query(&self, scopes: &ScopeModel<'_>, token: &Token) -> Option<Type> {

@@ -401,7 +401,7 @@ impl Parser {
         let return_start = self.current().start;
         let (return_type, return_type_span) = if self.consume(":") {
             let type_start = self.current().start;
-            let value = self.parse_type_until(&["{"]);
+            let value = self.parse_return_type_until(&["{"]);
             let type_end = self.previous().end;
             self.edits.push(TextEdit {
                 start: return_start,
@@ -502,7 +502,7 @@ impl Parser {
         let return_start = self.current().start;
         let (return_type, return_type_span) = if self.consume(":") {
             let type_start = self.current().start;
-            let value = self.parse_type_until(&["{", ";"]);
+            let value = self.parse_return_type_until(&["{", ";"]);
             let type_end = self.previous().end;
             self.edits.push(TextEdit {
                 start: return_start,

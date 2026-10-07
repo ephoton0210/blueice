@@ -42,7 +42,13 @@ impl ModuleChecker<'_> {
         scope: &BTreeMap<String, Type>,
         span: &SourceSpan,
     ) {
-        if direct_call_parts(tokens).is_some() {
+        if direct_call_parts(tokens).is_some()
+            && tokens
+                .iter()
+                .position(|token| token.is("("))
+                .and_then(|open| super::super::super::scopes::targets::close(tokens, open))
+                == tokens.len().checked_sub(1)
+        {
             return;
         }
         let execution = self

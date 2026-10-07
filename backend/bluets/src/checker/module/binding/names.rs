@@ -64,6 +64,7 @@ impl ModuleChecker<'_> {
     /// diagnosed an unresolved annotation at its identifier token.
     pub(in crate::checker::module) fn type_is_bound(&self, value: &Type) -> bool {
         match value {
+            Type::Predicate(predicate) => predicate.return_position,
             Type::Named { name, arguments } => {
                 (self.types.contains_key(name) || self.type_parameters.contains(name))
                     && arguments
@@ -92,6 +93,7 @@ impl ModuleChecker<'_> {
 
     pub(in crate::checker::module) fn check_type(&mut self, value: &Type, span: &SourceSpan) {
         match value {
+            Type::Predicate(predicate) => self.check_predicate_position(predicate),
             Type::Named { name, arguments } => {
                 if let Some(query) = name.strip_prefix("typeof ") {
                     if let Some((value_name, position)) = query
@@ -186,6 +188,7 @@ impl ModuleChecker<'_> {
                     }
                 }
                 self.check_type(result, span);
+                self.check_predicate_signature(result, parameters);
             }
             _ => {}
         }

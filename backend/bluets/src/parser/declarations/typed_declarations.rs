@@ -12,7 +12,13 @@ impl Parser {
         start: usize,
         exported: bool,
     ) {
-        let name = self.require_identifier("expected a type alias name");
+        let name = if self.peek("asserts") || self.peek("is") {
+            let name = self.current().text.clone();
+            self.bump();
+            name
+        } else {
+            self.require_identifier("expected a type alias name")
+        };
         let type_parameters = self.parse_type_parameters();
         self.expect("=");
         let value = self.parse_type_until(&[";"]);
@@ -220,7 +226,7 @@ impl Parser {
         let parameters = self.parse_parameters();
         let return_start = self.current().start;
         let return_type = if self.consume(":") {
-            let value = self.parse_type_until(&["{", ";"]);
+            let value = self.parse_return_type_until(&["{", ";"]);
             let return_end = self.current().start;
             self.edits.push(TextEdit {
                 start: return_start,

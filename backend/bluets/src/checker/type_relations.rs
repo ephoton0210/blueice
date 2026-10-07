@@ -149,7 +149,10 @@ pub(super) fn is_assignable(
     {
         return true;
     }
-    if actual == expected {
+    if actual == &Type::Never
+        || actual == expected
+        || (actual == &Type::Undefined && expected == &Type::Void)
+    {
         return true;
     }
     // Array syntax and the original Array/ReadonlyArray declarations describe
@@ -251,6 +254,20 @@ pub(super) fn is_assignable(
             .any(|part| is_assignable(part, expected, aliases, &mut visited.clone(), budget));
     }
     match (actual, expected) {
+        (Type::Predicate(actual), Type::Predicate(expected)) => {
+            actual.asserts == expected.asserts
+                && match (actual.target.as_deref(), expected.target.as_deref()) {
+                    (Some(actual), Some(expected)) => {
+                        is_assignable(actual, expected, aliases, visited, budget)
+                    }
+                    (None, None) => true,
+                    (Some(_), None) => expected.asserts,
+                    _ => false,
+                }
+        }
+        (Type::Predicate(actual), _) => {
+            is_assignable(&actual.runtime_type(), expected, aliases, visited, budget)
+        }
         (Type::Literal(value), Type::String) => {
             value.starts_with('\'')
                 || value.starts_with('\"')
@@ -327,8 +344,29 @@ pub(super) fn is_assignable(
                 })
                 // A function type whose result is `void` accepts a function that
                 // returns anything: its result is simply ignored.
-                && (matches!(**expected_result, Type::Void)
-                    || is_assignable(actual_result, expected_result, aliases, visited, budget))
+                && match (actual_result.as_ref(), expected_result.as_ref()) {
+                    (_, Type::Void) => true,
+                    (_, Type::Predicate(predicate)) if predicate.asserts => true,
+                    (Type::Predicate(actual), Type::Predicate(expected)) => {
+                        let actual_index = actual_parameters
+                            .iter()
+                            .position(|parameter| parameter.name == actual.parameter);
+                        let expected_index = expected_parameters
+                            .iter()
+                            .position(|parameter| parameter.name == expected.parameter);
+                        actual_index == expected_index
+                            && (actual_index.is_some()
+                                || (actual.parameter == "this" && expected.parameter == "this"))
+                            && is_assignable(
+                                actual_result,
+                                expected_result,
+                                aliases,
+                                visited,
+                                budget,
+                            )
+                    }
+                    _ => is_assignable(actual_result, expected_result, aliases, visited, budget),
+                }
         }
         (Type::Tuple(actual), Type::Tuple(expected)) => {
             if actual.iter().any(|element| element.rest)
@@ -693,6 +731,14 @@ pub(super) fn complete_type_arguments(
 
 pub(super) fn substitute_type(value: &Type, substitutions: &BTreeMap<String, Type>) -> Type {
     match value {
+        Type::Predicate(predicate) => {
+            let mut predicate = predicate.clone();
+            predicate.target = predicate
+                .target
+                .as_ref()
+                .map(|target| Box::new(substitute_type(target, substitutions)));
+            Type::Predicate(predicate)
+        }
         Type::Named { name, arguments } if arguments.is_empty() => substitutions
             .get(name)
             .cloned()
@@ -759,6 +805,7 @@ pub(super) fn substitute_type(value: &Type, substitutions: &BTreeMap<String, Typ
 
 pub(super) fn type_identity(value: &Type) -> String {
     match value {
+        Type::Predicate(predicate) => predicate.text(type_identity),
         Type::Named { name, arguments } => format!(
             "{name}<{}>",
             arguments
@@ -801,6 +848,7 @@ pub(super) fn type_identity(value: &Type) -> String {
 
 pub(crate) fn type_label(value: &Type) -> String {
     match value {
+        Type::Predicate(predicate) => predicate.text(type_label),
         Type::Any => "any".to_string(),
         Type::Unknown => "unknown".to_string(),
         Type::Never => "never".to_string(),

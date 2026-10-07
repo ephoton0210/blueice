@@ -40,12 +40,7 @@ fn lexical_error_families_use_the_recorded_typescript_template() {
 fn source_witnesses_have_precise_counterparts_or_recorded_subset_reasons() {
     let reference: Value =
         serde_json::from_str(include_str!("fixtures/diagnostics/source-families.json")).unwrap();
-    let known_checker_gaps = [
-        "nonexhaustive-return",
-        "tuple-index",
-        "throw-newline",
-        "throw-empty",
-    ];
+    let known_checker_gaps = ["tuple-index", "throw-newline", "throw-empty"];
     let subset_refusals = [
         "rest-alias",
         "argument-spread-rest",

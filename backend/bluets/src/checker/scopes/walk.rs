@@ -92,6 +92,28 @@ impl ScopeModel<'_> {
                                 BindingKind::Import
                             },
                         );
+                        if let Some(function) = source.and_then(|source| {
+                            source
+                                .declarations
+                                .iter()
+                                .find_map(|declaration| match declaration {
+                                    Declaration::Function(function)
+                                        if function.name == binding.imported =>
+                                    {
+                                        Some(function)
+                                    }
+                                    _ => None,
+                                })
+                        }) {
+                            if let Some(value) = self.scopes[scope].values.get_mut(&binding.local) {
+                                if !matches!(value.declared_type, Type::Function { .. }) {
+                                    value.declared_type = Type::Function {
+                                        parameters: function.parameters.clone(),
+                                        result: Box::new(value.declared_type.clone()),
+                                    };
+                                }
+                            }
+                        }
                         // Qualified namespace members resolve from the bound
                         // type map; a namespace root is not itself a type.
                         if self.qualified_types.contains(&binding.local) {
@@ -511,6 +533,11 @@ impl ScopeModel<'_> {
 
     pub(super) fn type_scopes(&mut self, value: &Type, span: &SourceSpan, scope: ScopeId) {
         match value {
+            Type::Predicate(predicate) => {
+                if let Some(target) = &predicate.target {
+                    self.type_scopes(target, span, scope);
+                }
+            }
             Type::Function { parameters, result } => {
                 let start = parameters
                     .first()

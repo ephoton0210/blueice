@@ -148,6 +148,7 @@ impl<'a> ModuleChecker<'a> {
         self.check_function_body_expressions(&function.body, &scope);
         if let Some(return_type) = &function.return_type {
             self.check_type(return_type, &function.span);
+            self.check_predicate_signature(return_type, &function.parameters);
         }
         // An `async` function's body returns the type inside its `Promise<T>`.
         let body_return_type = match (&function.return_type, function.async_function) {
@@ -167,6 +168,7 @@ impl<'a> ModuleChecker<'a> {
                 .generator_context
                 .as_ref()
                 .and_then(|context| context.return_type.clone()),
+            (Some(return_type), false) => Some(return_type.runtime_result()),
             (return_type, _) => return_type.clone(),
         };
         let allows_implicit_undefined = if let Some(return_type) = &body_return_type {
@@ -185,10 +187,20 @@ impl<'a> ModuleChecker<'a> {
             if !function.declared
                 && !function.overload
                 && !allows_implicit_undefined
-                && matches!(
+                && !matches!(
                     Self::function_body_termination(&function.body),
-                    StructuredTermination::FallsThrough
+                    StructuredTermination::Terminates
                 )
+                && self
+                    .flow
+                    .as_ref()
+                    .and_then(|flow| flow.completes(function.span.start))
+                    .unwrap_or_else(|| {
+                        matches!(
+                            Self::function_body_termination(&function.body),
+                            StructuredTermination::FallsThrough
+                        )
+                    })
             {
                 self.typescript_type_error(
                     &function.span,
@@ -197,7 +209,13 @@ impl<'a> ModuleChecker<'a> {
                         type_label(return_type)
                     ),
                     DiagnosticCode::ReturnTypeMismatch,
-                    if return_inference::has_return(&function.body) {
+                    if return_inference::has_return(&function.body)
+                        || !function.returns.is_empty()
+                        || self
+                            .flow
+                            .as_ref()
+                            .is_some_and(|flow| flow.has_return(function.span.start))
+                    {
                         2366
                     } else {
                         2355
@@ -517,12 +535,25 @@ impl<'a> ModuleChecker<'a> {
                         );
                     }
                 }
+                FunctionBodyItem::Opaque(span) | FunctionBodyItem::Expression { span, .. } => {
+                    let returned = self
+                        .flow
+                        .as_ref()
+                        .map(|flow| flow.returned_in(function_span.start, span))
+                        .unwrap_or_default();
+                    for tokens in returned {
+                        self.check_function_return_tokens(
+                            &tokens,
+                            &current_scope,
+                            return_type,
+                            allows_implicit_undefined,
+                            function_span,
+                        );
+                    }
+                }
                 FunctionBodyItem::Variable(_) => {}
                 // A nested function's returns belong to that function.
-                FunctionBodyItem::Expression { .. }
-                | FunctionBodyItem::Throw { .. }
-                | FunctionBodyItem::Function(_)
-                | FunctionBodyItem::Opaque(_) => {}
+                FunctionBodyItem::Throw { .. } | FunctionBodyItem::Function(_) => {}
             }
         }
     }
@@ -561,7 +592,7 @@ impl<'a> ModuleChecker<'a> {
         }
     }
 
-    fn check_function_return_tokens(
+    pub(in crate::checker::module) fn check_function_return_tokens(
         &mut self,
         returned: &[Token],
         scope: &BTreeMap<String, Type>,
@@ -587,8 +618,17 @@ impl<'a> ModuleChecker<'a> {
             return;
         };
         let actual = self.infer_in_context(returned, scope, return_type);
+        let explicit_unknown = actual == Type::Unknown
+            && returned.len() == 1
+            && self
+                .scopes
+                .as_ref()
+                .is_some_and(|scopes| scopes.flow_explicit_unknown(&returned[0]));
+        let previous_unknown = self.strict_catch_unknown;
+        self.strict_catch_unknown |= explicit_unknown;
         let return_is_assignable = (matches!(actual, Type::Undefined) && allows_implicit_undefined)
             || self.is_assignable_bounded(&actual, return_type, function_span);
+        self.strict_catch_unknown = previous_unknown;
         if !return_is_assignable {
             self.assignment_error(
                 function_span,

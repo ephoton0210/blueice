@@ -479,6 +479,9 @@ impl Lowerer<'_, '_> {
             return Ok("Object".to_string());
         }
         Ok(match value {
+            Type::Predicate(predicate) => {
+                self.serialize_at(class, &predicate.runtime_type(), span, depth + 1)?
+            }
             Type::Number => "Number".to_string(),
             Type::String => "String".to_string(),
             Type::Boolean => "Boolean".to_string(),

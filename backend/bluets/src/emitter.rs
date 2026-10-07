@@ -692,7 +692,7 @@ fn emit_declaration(
                 } else {
                     "declare "
                 };
-                classes::emit_class_declaration(class, prefix, &mut output)?;
+                classes::emit_class_declaration(class, prefix, &mut output, inferred)?;
             }
             Declaration::TypeExport(export) => {
                 output.push_str("export type ");
@@ -786,6 +786,7 @@ fn emit_type_parameters(output: &mut String, parameters: &[TypeParameter]) {
 
 fn type_to_ts(value: &Type) -> String {
     match value {
+        Type::Predicate(predicate) => predicate.text(type_to_ts),
         Type::Any => "any".to_string(),
         Type::Unknown => "unknown".to_string(),
         Type::Never => "never".to_string(),

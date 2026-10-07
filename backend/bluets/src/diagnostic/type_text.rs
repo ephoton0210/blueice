@@ -25,6 +25,7 @@ fn text(value: &Type, depth: usize, project: Option<&crate::Project>) -> String 
     }
     let render = |value: &Type| text(value, depth + 1, project);
     match value {
+        Type::Predicate(predicate) => predicate.text(render),
         Type::Literal(value) => {
             if value.starts_with('\'') && value.ends_with('\'') {
                 serde_json::to_string(&value[1..value.len() - 1]).unwrap()

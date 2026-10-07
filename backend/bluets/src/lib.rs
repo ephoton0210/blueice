@@ -76,7 +76,7 @@ pub use parser::{
     FunctionIfStatement, FunctionTryStatement, FunctionWhileStatement, ImportDeclaration,
     InterfaceDeclaration, Module, NamespaceDeclaration, Parameter, ParameterProperty,
     ParameterPropertyInsertion, ParserLimits, RawDeclaration, TupleTypeElement,
-    TypeAliasDeclaration, TypeExportDeclaration, TypeParameter, ValueExportBinding,
+    TypeAliasDeclaration, TypeExportDeclaration, TypeParameter, TypePredicate, ValueExportBinding,
     ValueExportDeclaration, VariableDeclaration, VariableKind, Visibility,
 };
 pub use performance::CompilerPerformance;

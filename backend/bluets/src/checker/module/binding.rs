@@ -15,6 +15,7 @@ mod generators;
 pub(in crate::checker::module) use generators::GeneratorContext;
 mod modules;
 mod names;
+mod predicates;
 mod return_types;
 mod standard_library;
 

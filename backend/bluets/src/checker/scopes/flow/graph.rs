@@ -13,6 +13,7 @@ pub(super) struct Node {
     pub(super) tokens: Vec<Token>,
     pub(super) edges: Vec<Edge>,
     pub(super) preferred: Option<Vec<Token>>,
+    pub(super) expression_statement: bool,
 }
 
 pub(super) struct Graph {
@@ -21,6 +22,10 @@ pub(super) struct Graph {
     pub(super) execution: ScopeId,
     pub(super) hoisted: bool,
     pub(super) exits: Vec<usize>,
+    pub(super) normal_exits: Vec<usize>,
+    pub(super) completion_known: bool,
+    pub(super) returns: Vec<usize>,
+    pub(super) comparisons: Vec<(Vec<Token>, Vec<Token>)>,
 }
 
 pub(super) fn graphs(scopes: &ScopeModel<'_>) -> Vec<Graph> {
@@ -66,14 +71,31 @@ pub(super) fn execution(scopes: &ScopeModel<'_>, id: ScopeId) -> Option<Graph> {
             tokens: Vec::new(),
             edges: Vec::new(),
             preferred: None,
+            expression_statement: false,
         }],
         breaks: Vec::new(),
         continues: Vec::new(),
         returns: Vec::new(),
+        comparisons: Vec::new(),
+        completion_known: true,
         execution: id,
         depth: 0,
     };
     let mut exits = builder.sequence(vec![0]);
+    let expression_body = scopes
+        .module
+        .nested_functions
+        .get(&scope.span.start)
+        .is_some_and(|function| matches!(function.body, NestedFunctionBody::Expression(_)));
+    let normal_exits = if expression_body {
+        builder.returns.extend_from_slice(&exits);
+        for node in &mut builder.nodes {
+            node.expression_statement = false;
+        }
+        Vec::new()
+    } else {
+        exits.clone()
+    };
     exits.extend_from_slice(&builder.returns);
     Some(Graph {
         nodes: builder.nodes,
@@ -85,6 +107,10 @@ pub(super) fn execution(scopes: &ScopeModel<'_>, id: ScopeId) -> Option<Graph> {
                 .nested_functions
                 .contains_key(&scope.span.start),
         exits,
+        normal_exits,
+        completion_known: builder.completion_known,
+        returns: builder.returns,
+        comparisons: builder.comparisons,
     })
 }
 
@@ -96,6 +122,8 @@ struct Builder<'a, 'b> {
     breaks: Vec<usize>,
     continues: Vec<usize>,
     returns: Vec<usize>,
+    comparisons: Vec<(Vec<Token>, Vec<Token>)>,
+    completion_known: bool,
     execution: ScopeId,
     depth: usize,
 }
@@ -107,6 +135,7 @@ impl Builder<'_, '_> {
             tokens: tokens.to_vec(),
             edges: Vec::new(),
             preferred: None,
+            expression_statement: false,
         });
         for previous in incoming {
             self.edge(*previous, id, None);
@@ -172,6 +201,7 @@ impl Builder<'_, '_> {
             "if" => self.branch(incoming),
             "while" | "for" | "do" => self.loop_statement(incoming),
             "switch" => self.switch_statement(incoming),
+            "try" => self.try_statement(incoming),
             "break" | "continue" => {
                 let target = if token.is("break") {
                     self.breaks.last()
@@ -214,6 +244,8 @@ impl Builder<'_, '_> {
             _ => {
                 let end = self.end_expression(self.index);
                 let node = self.node(&self.tokens[self.index..end], &incoming);
+                self.nodes[node].expression_statement =
+                    !matches!(token.text.as_str(), "const" | "let" | "var");
                 self.index = end.max(self.index + 1);
                 vec![node]
             }
@@ -330,6 +362,10 @@ impl Builder<'_, '_> {
                     start: 0,
                     end: 0,
                 });
+                if !is_default {
+                    self.comparisons
+                        .push((expression.clone(), self.tokens[start..self.index].to_vec()));
+                }
                 condition.extend_from_slice(&self.tokens[start..self.index]);
                 self.index += usize::from(self.index < self.tokens.len());
                 let case = self.node(&[], &fallthrough);
@@ -375,6 +411,51 @@ impl Builder<'_, '_> {
             index += 1;
         }
         index
+    }
+
+    fn try_statement(&mut self, incoming: Vec<usize>) -> Vec<usize> {
+        self.completion_known = false;
+        let start = self.index;
+        self.index += 1;
+        if self
+            .tokens
+            .get(self.index)
+            .is_some_and(|token| token.is("{"))
+        {
+            self.index = super::super::targets::close(self.tokens, self.index)
+                .map_or(self.tokens.len(), |end| end + 1);
+        }
+        for keyword in ["catch", "finally"] {
+            if !self
+                .tokens
+                .get(self.index)
+                .is_some_and(|token| token.is(keyword))
+            {
+                continue;
+            }
+            self.index += 1;
+            if keyword == "catch"
+                && self
+                    .tokens
+                    .get(self.index)
+                    .is_some_and(|token| token.is("("))
+            {
+                self.index = super::super::targets::close(self.tokens, self.index)
+                    .map_or(self.tokens.len(), |end| end + 1);
+            }
+            if self
+                .tokens
+                .get(self.index)
+                .is_some_and(|token| token.is("{"))
+            {
+                self.index = super::super::targets::close(self.tokens, self.index)
+                    .map_or(self.tokens.len(), |end| end + 1);
+            }
+        }
+        // Structured completion owns exceptional exits. The adapter retains
+        // the lexical boundary and resumes at the following normal statement.
+        let node = self.node(&self.tokens[start..self.index], &incoming);
+        vec![node]
     }
 
     fn skip_declaration(&mut self) {

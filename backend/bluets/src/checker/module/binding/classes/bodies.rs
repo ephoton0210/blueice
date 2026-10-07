@@ -110,6 +110,11 @@ impl ModuleChecker<'_> {
                     .iter()
                     .any(|diagnostic| diagnostic.code == DiagnosticCode::UnknownType)
             });
+            if let Some(return_type) = return_type {
+                self.check_predicate_signature(return_type, &method.parameters);
+            }
+            let runtime_return_type = return_type.map(Type::runtime_result);
+            let return_type = runtime_return_type.as_ref();
             if let Some(body) = &method.body {
                 let mut scope = self.class_body_parameter_scope(&method.parameters);
                 if let Some(base) = self.super_scope_type(class, method.is_static) {

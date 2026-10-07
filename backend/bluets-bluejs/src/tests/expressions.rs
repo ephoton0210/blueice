@@ -541,7 +541,7 @@ fn preserves_an_opaque_braced_branch_for_direct_bridge_rejection() {
         ENTRY,
         &MapLoader::from([ModuleSource::new(
             ENTRY,
-            "function answer(value: number): number { if (value > 0) { if (value > 1) return value; } else { return 0; } } answer(2);",
+            "function answer(value: number): number { if (value > 0) { if (value > 1) return value; } else { return 0; } return 0; } answer(2);",
         )]),
         CompilerOptions::default(),
     );

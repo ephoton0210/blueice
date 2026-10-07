@@ -99,7 +99,7 @@ impl<'a> ModuleChecker<'a> {
         let substitutions =
             function_call_substitutions(signature, &actuals, explicit_type_arguments)
                 .expect("selected function signature has valid substitutions");
-        substitute_type(&signature.return_type, &substitutions)
+        substitute_type(&signature.return_type, &substitutions).runtime_result()
     }
 
     pub(super) fn check_function_call(

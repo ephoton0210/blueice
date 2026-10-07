@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: K.4.2 (call-position replay).** Sections A to J are complete (summarized below); J.6 closed in its
+**Current leaf: K.4.3 (generic inference).** Sections A to J are complete (summarized below); J.6 closed in its
 measured form (`COMPATIBILITY_INVENTORY.md`). Section K closes the gaps that inventory lists.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
@@ -351,10 +351,11 @@ narrowing needs a flow graph or can stay structural, recorded in PLAN.md before 
   - *Supplemental baseline (2026-10-07):* twenty additional path/execution witnesses bring the corpus to 117 cases (81 accept, 36 reject) and thirteen runtime witnesses. Before the extension, Linux replay records eighteen checker mismatches and two runtime failures; recorder and completeness pass.
   - *Optional receiver boundary (2026-10-07):* six additional pinned controls bring the corpus to 123 cases (83 accept, 40 reject) and fourteen runtime witnesses. All six disagree with the pre-fix Linux CLI. Known-null receivers remain rejected with TS2339; nullable aliases and missing-member metadata require correction.
   - *Verified (2026-10-07):* all 123 pinned verdicts/primary diagnostics and fourteen runtime/declaration witnesses pass; 840 CLI primary messages/related records agree with TypeScript. Format and both-crate all-target Clippy pass. The complete 68-group run passes 1,099 tests and all 128 ignored oracles; two legacy bridge examples use TypeScript-invalid known-null sources. Correcting only those test sources preserves AST/debugger assertions and adds a direct TS2339 refusal control; the full 973-test ordinary suite then passes on identical production bytes. Combined: all 1,101 unique tests pass. Largest production source: 1,185 lines. The three historical M7 iterator wording gaps are resolved without allowances; broader exception flow and dotted capture precision stay recorded in G-T1.
-- [ ] **K.4.2 Guards and assertions (M).** `x is T`, `this is T`, `asserts x`, `asserts x is T`, `never`
+- [x] **K.4.2 Guards and assertions (M).** `x is T`, `this is T`, `asserts x`, `asserts x is T`, `never`
   exhaustiveness (TS2366, TS2678).
   - *Failing baseline (2026-10-07):* 61 pinned programs (30 accept, 31 reject), five runtime/declaration witnesses, including imported signatures and callable aliases. Linux replay records 55 checker mismatches and four runtime/declaration failures; fixture completeness and pinned recorder pass. The shared diagnostic corpus is regenerated to 1,582 programs and 145 templates. Production remains unchanged in this baseline.
   - *Call-position replay (2026-10-07):* the 61-program draft passes the full frozen K.0 gate (1,105 tests, all 130 ignored oracles). Fourteen further pinned controls expand the guard corpus to 75 programs (36 accept, 39 reject); eight invalid call effects and two `undefined`/`void` argument rejections fail before their correction. All five runtime/declaration witnesses and the pinned recorder pass. The shared corpus now contains 1,596 programs and 145 templates; the leaf remains open.
+  - *Verified (2026-10-07):* all 75 pinned verdicts/primary and related diagnostics, five runtime/declaration witnesses, and the 123-case narrowing regression pass. Statement/comma call effects follow the pinned parenthesis/initializer/argument controls. Format, format check and both-crate all-target Clippy pass; all 1,105 tests in 69 groups pass, including all 130 ignored oracles. Largest production source: 1,185 lines. G-T1 retains the broader unmeasured predicate/exception/capture forms.
 - [ ] **K.4.3 Generic inference (XL).** Inference from arguments (candidates, unification, widening),
   from return position and contextual types, constraints (`extends`, `keyof`), defaults, explicit
   arguments, generic function types, generic classes and interfaces; the `instantiate_named` budget

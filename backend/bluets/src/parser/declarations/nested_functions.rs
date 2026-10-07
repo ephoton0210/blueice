@@ -205,6 +205,15 @@ impl Parser {
         {
             return None;
         }
+        // A call in a statement block has no method body/result annotation.
+        // Check this before parsing its arguments as formal parameters.
+        if !self
+            .tokens
+            .get(close + 1)
+            .is_some_and(|token| token.is("{") || token.is(":"))
+        {
+            return None;
+        }
         if !self.simple_parameter_list(open, close) {
             return None;
         }
@@ -266,7 +275,7 @@ impl Parser {
         let parameters = self.parse_parameters();
         let return_start = self.current().start;
         let return_type = if self.consume(":") {
-            let value = self.parse_type_until(&["{"]);
+            let value = self.parse_return_type_until(&["{"]);
             // Keep the space before `{`.
             let return_end = self.previous().end;
             self.edits.push(TextEdit {
@@ -504,7 +513,7 @@ impl Parser {
         };
         let return_start = self.current().start;
         let return_type = if self.consume(":") {
-            let value = self.parse_type_until(&["=>"]);
+            let value = self.parse_return_type_until(&["=>"]);
             // Keep the space before `=>`.
             let return_end = self.previous().end;
             self.edits.push(TextEdit {

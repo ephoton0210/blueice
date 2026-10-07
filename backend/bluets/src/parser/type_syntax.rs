@@ -42,7 +42,7 @@ impl Parser {
         self.expect(":");
         Type::Function {
             parameters,
-            result: Box::new(self.parse_type_until(result_stop)),
+            result: Box::new(self.parse_return_type_until(result_stop)),
         }
     }
 
@@ -76,6 +76,14 @@ impl Parser {
     }
 
     pub(super) fn parse_type_until(&mut self, stop: &[&str]) -> Type {
+        self.parse_type_expression_until(stop, false)
+    }
+
+    pub(super) fn parse_return_type_until(&mut self, stop: &[&str]) -> Type {
+        self.parse_type_expression_until(stop, true)
+    }
+
+    fn parse_type_expression_until(&mut self, stop: &[&str], return_position: bool) -> Type {
         if self.type_depth >= self.max_type_depth {
             self.error_here(
                 DiagnosticCode::ResourceLimit,
@@ -89,13 +97,76 @@ impl Parser {
         }
         self.type_depth += 1;
         let type_start = self.index;
-        let value = self.parse_union(stop);
+        let assertion = self.peek("asserts")
+            && self.tokens.get(self.index + 1).is_some_and(|token| {
+                !token.is("is") && (token.kind == TokenKind::Identifier || token.is("this"))
+            });
+        let predicate = assertion
+            || ((self.current().kind == TokenKind::Identifier || self.peek("this"))
+                && self
+                    .tokens
+                    .get(self.index + 1)
+                    .is_some_and(|token| token.is("is")));
+        let value = if predicate {
+            self.parse_predicate_until(stop, assertion, return_position)
+        } else {
+            self.parse_union(stop)
+        };
         if self.index == type_start && !self.at_eof() && !stop.iter().any(|stop| self.peek(stop)) {
             self.error_here(DiagnosticCode::ParseError, "expected a type");
             self.bump();
         }
         self.type_depth -= 1;
         value
+    }
+
+    fn parse_predicate_until(
+        &mut self,
+        stop: &[&str],
+        asserts: bool,
+        return_position: bool,
+    ) -> Type {
+        let start = self.current().start;
+        if asserts {
+            self.bump();
+        }
+        let parameter = self.current().clone();
+        self.bump();
+        if !return_position && !asserts {
+            self.type_references.push(TypeReference {
+                name: parameter.text.clone(),
+                value_query: false,
+                span: parameter.span(&self.id),
+            });
+        }
+        let is_span = self.peek("is").then(|| self.current().span(&self.id));
+        let (target, target_span) = if self.consume("is") {
+            let start = self.current().start;
+            let value = self.parse_type_until(stop);
+            let span = SourceSpan::new(&self.id, start, self.previous().end);
+            if return_position {
+                // Polymorphic `this` is resolved in the containing signature,
+                // rather than as a module-owned named type.
+                self.type_references.retain(|reference| {
+                    reference.name != "this"
+                        || reference.span.start < span.start
+                        || reference.span.end > span.end
+                });
+            }
+            (Some(Box::new(value)), Some(span))
+        } else {
+            (None, None)
+        };
+        Type::Predicate(Box::new(TypePredicate {
+            parameter: parameter.text.clone(),
+            asserts,
+            target,
+            span: SourceSpan::new(&self.id, start, self.previous().end),
+            parameter_span: parameter.span(&self.id),
+            is_span,
+            target_span,
+            return_position,
+        }))
     }
 
     pub(super) fn skip_type_until(&mut self, stop: &[&str]) {
@@ -275,7 +346,7 @@ impl Parser {
             self.expect("=>");
             Type::Function {
                 parameters,
-                result: Box::new(self.parse_type_until(_stop)),
+                result: Box::new(self.parse_return_type_until(_stop)),
             }
         } else if self.current().kind == TokenKind::String
             || self.current().kind == TokenKind::Number

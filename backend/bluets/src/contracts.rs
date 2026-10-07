@@ -341,6 +341,9 @@ fn lower(
     active: &mut HashSet<String>,
 ) -> Result<Contract, ContractError> {
     match value {
+        Type::Predicate(predicate) => {
+            lower(&predicate.runtime_type(), named_types, definitions, active)
+        }
         Type::Null => Ok(Contract::Null),
         Type::Undefined => Ok(Contract::Undefined),
         Type::Boolean => Ok(Contract::Boolean),
