@@ -131,6 +131,10 @@
       "message": "'infer' declarations are only permitted in the 'extends' clause of a conditional type."
     },
     {
+      "code": 1354,
+      "message": "'readonly' type modifier is only permitted on array and tuple literal types."
+    },
+    {
       "code": 1355,
       "message": "A 'const' assertions can only be applied to references to enum members, or string, number, boolean, array, or object literals."
     },
@@ -46242,6 +46246,68 @@
       ]
     },
     {
+      "id": "more_types:mtypes-bigint-negative/main.ts",
+      "matrix": "more_types",
+      "entry": "mtypes-bigint-negative/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/mtypes-bigint-negative/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "more_types:mtypes-bigint-negative-error/main.ts",
+      "matrix": "more_types",
+      "entry": "mtypes-bigint-negative-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/mtypes-bigint-negative-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type '-43n' is not assignable to type '-42n'.",
+        "file": "typescript_oracle/mtypes-bigint-negative-error/main.ts",
+        "start": 217,
+        "length": 5,
+        "line": 5,
+        "column": 14
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type '-43n' is not assignable to type '-42n'.",
+          "file": "typescript_oracle/mtypes-bigint-negative-error/main.ts",
+          "start": 217,
+          "length": 5,
+          "line": 5,
+          "column": 14
+        }
+      ]
+    },
+    {
       "id": "more_types:mtypes-bigint-number-error/main.ts",
       "matrix": "more_types",
       "entry": "mtypes-bigint-number-error/main.ts",
@@ -46680,6 +46746,133 @@
           "length": 4,
           "line": 5,
           "column": 38
+        }
+      ]
+    },
+    {
+      "id": "more_types:mtypes-index-interface/main.ts",
+      "matrix": "more_types",
+      "entry": "mtypes-index-interface/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/mtypes-index-interface/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "more_types:mtypes-index-interface-error/main.ts",
+      "matrix": "more_types",
+      "entry": "mtypes-index-interface-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/mtypes-index-interface-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'string' is not assignable to type 'number'.",
+        "file": "typescript_oracle/mtypes-index-interface-error/main.ts",
+        "start": 273,
+        "length": 6,
+        "line": 5,
+        "column": 70,
+        "related": [
+          {
+            "code": 6501,
+            "category": "message",
+            "message": "The expected type comes from this index signature.",
+            "file": "typescript_oracle/mtypes-index-interface-error/main.ts",
+            "start": 221,
+            "length": 21,
+            "line": 5,
+            "column": 18
+          }
+        ]
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "file": "typescript_oracle/mtypes-index-interface-error/main.ts",
+          "start": 273,
+          "length": 6,
+          "line": 5,
+          "column": 70,
+          "related": [
+            {
+              "code": 6501,
+              "category": "message",
+              "message": "The expected type comes from this index signature.",
+              "file": "typescript_oracle/mtypes-index-interface-error/main.ts",
+              "start": 221,
+              "length": 21,
+              "line": 5,
+              "column": 18
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "more_types:mtypes-index-interface-readonly-error/main.ts",
+      "matrix": "more_types",
+      "entry": "mtypes-index-interface-readonly-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/mtypes-index-interface-readonly-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2542,
+        "category": "error",
+        "message": "Index signature in type 'Table' only permits reading.",
+        "file": "typescript_oracle/mtypes-index-interface-readonly-error/main.ts",
+        "start": 295,
+        "length": 15,
+        "line": 5,
+        "column": 92
+      },
+      "diagnostics": [
+        {
+          "code": 2542,
+          "category": "error",
+          "message": "Index signature in type 'Table' only permits reading.",
+          "file": "typescript_oracle/mtypes-index-interface-readonly-error/main.ts",
+          "start": 295,
+          "length": 15,
+          "line": 5,
+          "column": 92
         }
       ]
     },
@@ -47763,6 +47956,151 @@
       ]
     },
     {
+      "id": "more_types:mtypes-readonly-library-array/main.ts",
+      "matrix": "more_types",
+      "entry": "mtypes-readonly-library-array/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/mtypes-readonly-library-array/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "more_types:mtypes-readonly-library-to-mutable-error/main.ts",
+      "matrix": "more_types",
+      "entry": "mtypes-readonly-library-to-mutable-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/mtypes-readonly-library-to-mutable-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 4104,
+        "category": "error",
+        "message": "The type 'readonly number[]' is 'readonly' and cannot be assigned to the mutable type 'number[]'.",
+        "file": "typescript_oracle/mtypes-readonly-library-to-mutable-error/main.ts",
+        "start": 261,
+        "length": 5,
+        "line": 5,
+        "column": 58
+      },
+      "diagnostics": [
+        {
+          "code": 4104,
+          "category": "error",
+          "message": "The type 'readonly number[]' is 'readonly' and cannot be assigned to the mutable type 'number[]'.",
+          "file": "typescript_oracle/mtypes-readonly-library-to-mutable-error/main.ts",
+          "start": 261,
+          "length": 5,
+          "line": 5,
+          "column": 58
+        }
+      ]
+    },
+    {
+      "id": "more_types:mtypes-readonly-library-to-syntax/main.ts",
+      "matrix": "more_types",
+      "entry": "mtypes-readonly-library-to-syntax/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/mtypes-readonly-library-to-syntax/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "more_types:mtypes-readonly-primitive-error/main.ts",
+      "matrix": "more_types",
+      "entry": "mtypes-readonly-primitive-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/mtypes-readonly-primitive-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 1354,
+        "category": "error",
+        "message": "'readonly' type modifier is only permitted on array and tuple literal types.",
+        "file": "typescript_oracle/mtypes-readonly-primitive-error/main.ts",
+        "start": 224,
+        "length": 8,
+        "line": 5,
+        "column": 21
+      },
+      "diagnostics": [
+        {
+          "code": 1354,
+          "category": "error",
+          "message": "'readonly' type modifier is only permitted on array and tuple literal types.",
+          "file": "typescript_oracle/mtypes-readonly-primitive-error/main.ts",
+          "start": 224,
+          "length": 8,
+          "line": 5,
+          "column": 21
+        }
+      ]
+    },
+    {
+      "id": "more_types:mtypes-readonly-syntax-to-library/main.ts",
+      "matrix": "more_types",
+      "entry": "mtypes-readonly-syntax-to-library/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/mtypes-readonly-syntax-to-library/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
       "id": "more_types:mtypes-readonly-tuple/main.ts",
       "matrix": "more_types",
       "entry": "mtypes-readonly-tuple/main.ts",
@@ -48073,6 +48411,27 @@
       "diagnostics": []
     },
     {
+      "id": "more_types:mtypes-runtime-const-record/main.ts",
+      "matrix": "more_types",
+      "entry": "mtypes-runtime-const-record/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/mtypes-runtime-const-record/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
       "id": "more_types:mtypes-runtime-const-tuple/main.ts",
       "matrix": "more_types",
       "entry": "mtypes-runtime-const-tuple/main.ts",
@@ -48094,6 +48453,27 @@
       "diagnostics": []
     },
     {
+      "id": "more_types:mtypes-runtime-index-interface/main.ts",
+      "matrix": "more_types",
+      "entry": "mtypes-runtime-index-interface/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/mtypes-runtime-index-interface/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
       "id": "more_types:mtypes-runtime-satisfies/main.ts",
       "matrix": "more_types",
       "entry": "mtypes-runtime-satisfies/main.ts",
@@ -48109,6 +48489,27 @@
       "verdict": "accept",
       "inputs": [
         "typescript_oracle/mtypes-runtime-satisfies/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "more_types:mtypes-runtime-unique-symbol/main.ts",
+      "matrix": "more_types",
+      "entry": "mtypes-runtime-unique-symbol/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/mtypes-runtime-unique-symbol/main.ts"
       ],
       "accepts": true,
       "first": null,
@@ -48428,6 +48829,47 @@
       ]
     },
     {
+      "id": "more_types:mtypes-unique-inferred-identity-error/main.ts",
+      "matrix": "more_types",
+      "entry": "mtypes-unique-inferred-identity-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/mtypes-unique-inferred-identity-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'typeof second' is not assignable to type 'typeof first'.",
+        "file": "typescript_oracle/mtypes-unique-inferred-identity-error/main.ts",
+        "start": 281,
+        "length": 5,
+        "line": 5,
+        "column": 78
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'typeof second' is not assignable to type 'typeof first'.",
+          "file": "typescript_oracle/mtypes-unique-inferred-identity-error/main.ts",
+          "start": 281,
+          "length": 5,
+          "line": 5,
+          "column": 78
+        }
+      ]
+    },
+    {
       "id": "more_types:mtypes-unique-symbol/main.ts",
       "matrix": "more_types",
       "entry": "mtypes-unique-symbol/main.ts",
@@ -48589,6 +49031,47 @@
           "length": 13,
           "line": 5,
           "column": 29
+        }
+      ]
+    },
+    {
+      "id": "more_types:mtypes-unknown-alias-property-error/main.ts",
+      "matrix": "more_types",
+      "entry": "mtypes-unknown-alias-property-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/mtypes-unknown-alias-property-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 18046,
+        "category": "error",
+        "message": "'value' is of type 'unknown'.",
+        "file": "typescript_oracle/mtypes-unknown-alias-property-error/main.ts",
+        "start": 279,
+        "length": 5,
+        "line": 5,
+        "column": 76
+      },
+      "diagnostics": [
+        {
+          "code": 18046,
+          "category": "error",
+          "message": "'value' is of type 'unknown'.",
+          "file": "typescript_oracle/mtypes-unknown-alias-property-error/main.ts",
+          "start": 279,
+          "length": 5,
+          "line": 5,
+          "column": 76
         }
       ]
     },
@@ -48778,6 +49261,47 @@
       "accepts": true,
       "first": null,
       "diagnostics": []
+    },
+    {
+      "id": "more_types:mtypes-unknown-union-source-error/main.ts",
+      "matrix": "more_types",
+      "entry": "mtypes-unknown-union-source-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/mtypes-unknown-union-source-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'unknown' is not assignable to type 'number'.",
+        "file": "typescript_oracle/mtypes-unknown-union-source-error/main.ts",
+        "start": 259,
+        "length": 6,
+        "line": 5,
+        "column": 56
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'unknown' is not assignable to type 'number'.",
+          "file": "typescript_oracle/mtypes-unknown-union-source-error/main.ts",
+          "start": 259,
+          "length": 6,
+          "line": 5,
+          "column": 56
+        }
+      ]
     },
     {
       "id": "more_types:mtypes-void-function-assignment/main.ts",

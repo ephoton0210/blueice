@@ -53,10 +53,10 @@ fn position(position: &Option<blueice_bluets::TypeScriptPosition>) -> Value {
 #[test]
 fn matrix_covers_every_more_types_fixture() {
     let cases = cases();
-    assert_eq!(cases.len(), 84);
+    assert_eq!(cases.len(), 100);
     assert_eq!(
         cases.iter().filter(|case| case["runtime"] == true).count(),
-        3
+        6
     );
     let recorded = cases
         .iter()
@@ -109,14 +109,24 @@ fn more_types_match_pinned_verdicts_and_primary_diagnostics() {
                     fs::read_to_string(path).unwrap(),
                 )
             });
-        let result = compile(
-            "main.ts",
-            &FixtureLoader(MapLoader::from(sources)),
-            CompilerOptions {
-                checking: Some(CheckingOptions::default()),
-                ..CompilerOptions::default()
-            },
-        );
+        let loader = FixtureLoader(MapLoader::from(sources));
+        let result = std::panic::catch_unwind(|| {
+            compile(
+                "main.ts",
+                &loader,
+                CompilerOptions {
+                    checking: Some(CheckingOptions::default()),
+                    ..CompilerOptions::default()
+                },
+            )
+        });
+        let result = match result {
+            Ok(result) => result,
+            Err(_) => {
+                failures.push(format!("{entry}: compiler panicked"));
+                continue;
+            }
+        };
         let accepts = case["accepts"] == true;
         if result.has_errors() == accepts || result.output.is_some() != accepts {
             failures.push(format!(

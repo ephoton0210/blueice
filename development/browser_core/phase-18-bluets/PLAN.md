@@ -5335,3 +5335,7 @@ fixture completeness and the pinned recorder pass. Linux evidence:
 two fail). The shared diagnostic corpus now records 1,910 programs
 (874 accept, 1,036 reject) and 163 templates. Production sources remain
 unchanged in this baseline; K.4.6 stays open.
+
+### K.4.6 additional boundary baseline — 2026-10-08
+
+The isolated 16-control supplement expands the corpus to 100 programs (46 accept, 54 reject), with six runtime/declaration witnesses. The 84-program implementation passes all four focused oracle tests and Clippy; its unit replay exposes two legacy opaque-receiver regressions that remain open. Before the supplement fixes, Linux records 13 checker/primary differences, including four compiler panics on interface index signatures, and two runtime/declaration failures. Completeness and the pinned recorder pass. Evidence: `/private/tmp/blueice-k14-linux/blueice-k46-supplement-red-gate.log`. The shared corpus records 1,926 programs (882 accept, 1044 reject) and 164 templates. Production implementation changes remain unstaged; K.4.6 stays open.

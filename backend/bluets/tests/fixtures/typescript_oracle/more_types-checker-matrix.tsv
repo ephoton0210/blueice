@@ -3,6 +3,8 @@ mtypes-bigint-literal/main.ts	accept
 mtypes-bigint-literal-type/main.ts	accept
 mtypes-bigint-literal-type-error/main.ts	reject
 mtypes-bigint-mixed-error/main.ts	reject
+mtypes-bigint-negative/main.ts	accept
+mtypes-bigint-negative-error/main.ts	reject
 mtypes-bigint-number-error/main.ts	reject
 mtypes-bigint-unary-plus-error/main.ts	reject
 mtypes-const-assertion-expression-error/main.ts	reject
@@ -15,6 +17,9 @@ mtypes-enum-literal-error/main.ts	reject
 mtypes-enum-numeric-literal-error/main.ts	reject
 mtypes-index-boolean-key-error/main.ts	reject
 mtypes-index-declared-property-error/main.ts	reject
+mtypes-index-interface/main.ts	accept
+mtypes-index-interface-error/main.ts	reject
+mtypes-index-interface-readonly-error/main.ts	reject
 mtypes-index-number/main.ts	accept
 mtypes-index-number-error/main.ts	reject
 mtypes-index-number-string-error/main.ts	reject
@@ -46,6 +51,11 @@ mtypes-readonly-array-element-error/main.ts	reject
 mtypes-readonly-array-push-error/main.ts	reject
 mtypes-readonly-array-to-mutable-error/main.ts	reject
 mtypes-readonly-array-write-error/main.ts	reject
+mtypes-readonly-library-array/main.ts	accept
+mtypes-readonly-library-to-mutable-error/main.ts	reject
+mtypes-readonly-library-to-syntax/main.ts	accept
+mtypes-readonly-primitive-error/main.ts	reject
+mtypes-readonly-syntax-to-library/main.ts	accept
 mtypes-readonly-tuple/main.ts	accept
 mtypes-readonly-tuple-element-error/main.ts	reject
 mtypes-readonly-tuple-to-mutable-error/main.ts	reject
@@ -56,8 +66,11 @@ mtypes-rest-tuple-read/main.ts	accept
 mtypes-rest-tuple-required-suffix/main.ts	accept
 mtypes-rest-tuple-required-suffix-error/main.ts	reject
 mtypes-runtime-bigint/main.ts	accept
+mtypes-runtime-const-record/main.ts	accept
 mtypes-runtime-const-tuple/main.ts	accept
+mtypes-runtime-index-interface/main.ts	accept
 mtypes-runtime-satisfies/main.ts	accept
+mtypes-runtime-unique-symbol/main.ts	accept
 mtypes-satisfies-excess-error/main.ts	reject
 mtypes-satisfies-record/main.ts	accept
 mtypes-satisfies-record-error/main.ts	reject
@@ -67,11 +80,13 @@ mtypes-symbol/main.ts	accept
 mtypes-symbol-number-error/main.ts	reject
 mtypes-undefined-return/main.ts	accept
 mtypes-undefined-void-error/main.ts	reject
+mtypes-unique-inferred-identity-error/main.ts	reject
 mtypes-unique-symbol/main.ts	accept
 mtypes-unique-symbol-identity-error/main.ts	reject
 mtypes-unique-symbol-inferred/main.ts	accept
 mtypes-unique-symbol-let-error/main.ts	reject
 mtypes-unique-symbol-parameter-error/main.ts	reject
+mtypes-unknown-alias-property-error/main.ts	reject
 mtypes-unknown-any-target/main.ts	accept
 mtypes-unknown-intersection/main.ts	accept
 mtypes-unknown-property-error/main.ts	reject
@@ -79,6 +94,7 @@ mtypes-unknown-source-error/main.ts	reject
 mtypes-unknown-target/main.ts	accept
 mtypes-unknown-typeof-function/main.ts	accept
 mtypes-unknown-union/main.ts	accept
+mtypes-unknown-union-source-error/main.ts	reject
 mtypes-void-function-assignment/main.ts	accept
 mtypes-void-undefined-source/main.ts	accept
 mtypes-void-value-error/main.ts	reject
