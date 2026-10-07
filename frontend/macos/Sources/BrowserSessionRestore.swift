@@ -63,6 +63,16 @@ struct SavedBrowserSession: Codable, Equatable {
     let version: Int
     let profiles: [Profile]
     let active: UUID
+    func removingWindow(_ key: UUID) -> SavedBrowserSession? {
+        let remaining = profiles.map { profile in
+            Profile(key: profile.key, groups: profile.groups, windows: profile.windows.filter { $0.key != key })
+        }
+        let windows = remaining.flatMap(\.windows)
+        guard let first = windows.first else { return nil }
+        let result = SavedBrowserSession(version: version, profiles: remaining,
+                                        active: windows.contains(where: { $0.key == active }) ? active : first.key)
+        return result.valid ? result : nil
+    }
     var valid: Bool {
         guard version == 1, (1...16).contains(profiles.count), Set(profiles.map(\.key)).count == profiles.count else { return false }
         let windows = profiles.flatMap(\.windows); let tabs = windows.flatMap(\.tabs)
@@ -143,6 +153,7 @@ struct BrowserSessionSettingsView: View {
                 Toggle(BrowserStrings.text("Reopen saved session on startup"), isOn: Binding(get: { preferences.reopen }, set: preferences.setReopen))
                     .disabled(!preferences.remember).accessibilityIdentifier("session-reopen")
                 Text(BrowserStrings.text("Saves visited URLs, history, groups, selected tabs, window positions and zoom. Pages are reviewed again when reopened. Form contents, passwords, selected files and POST bodies are not saved.")).font(.caption)
+                Text(BrowserStrings.text("Recovery keeps your current windows and tabs available while BlueIce remains open. Remembering also retains them for future launches.")).font(.caption)
                 // Keep the switches stationary when the first save completes.
                 Text(verbatim: preferences.localizedStatus)
                     .font(.caption).accessibilityIdentifier("session-status")

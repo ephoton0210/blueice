@@ -10,7 +10,7 @@ struct BrowserDownloadsCommands: Commands {
     var body: some Commands {
         CommandGroup(after: .newItem) {
             Button(BrowserStrings.text("Downloads…")) { model.downloadsPresented = true }
-                .keyboardShortcut("l",modifiers: [.command,.option]).disabled(!model.ready)
+                .keyboardShortcut("l",modifiers: [.command,.option]).disabled(!model.canInteract)
         }
     }
 }

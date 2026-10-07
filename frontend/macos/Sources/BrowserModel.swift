@@ -11,8 +11,8 @@ final class BrowserModel: ObservableObject {
     @Published var assistantPresented = false
     private var assistantRequestIDs: Set<UInt64> = []
     private var assistantObservation: AnyCancellable?
-    var canAskAssistant: Bool { ready && status != "Loading…" && selected.flatMap { assistant.page($0)?.translation } != nil }
-    var canOpenAssistantTask: Bool { ready && status != "Loading…" && textInputState != nil }
+    var canAskAssistant: Bool { canInteract && status != "Loading…" && selected.flatMap { assistant.page($0)?.translation } != nil }
+    var canOpenAssistantTask: Bool { canInteract && status != "Loading…" && textInputState != nil }
     func showAndAskAssistant(organize: Bool = false) {
         guard canOpenAssistantTask, let tab = selected else { return }
         assistantPresented = true; observeAssistant(tab)
@@ -46,7 +46,7 @@ final class BrowserModel: ObservableObject {
         if let operation = assistant.begin(tab, task: task) { performAssistant(operation) }
     }
     func changeTranslation(_ action: AssistantTranslationAction) {
-        guard ready, status != "Loading…", let tab = selected else { return }
+        guard canInteract, status != "Loading…", let tab = selected else { return }
         observeAssistant(tab)
         if let operation = assistant.translate(tab, action: action) { performAssistant(operation) }
     }
@@ -77,7 +77,7 @@ final class BrowserModel: ObservableObject {
     private var fileReplies: [IncomingEnvelope] = []
     func presentFileInputError(_ text: String) { fileInputError = text; fileInputErrorPresented = true }
     func fileInputIsCurrent(_ context: FileInputContext, tab: UInt64) -> Bool {
-        ready && selected == tab && context.tab_id == tab && tabs.contains(where: { $0.id == tab }) && status != "Loading…"
+        canInteract && selected == tab && context.tab_id == tab && tabs.contains(where: { $0.id == tab }) && status != "Loading…"
             && context.frame_source == PageRepresentation.frameSource(directory: session.frameDirectory.path)
             && textInputState?.document_generation == context.document_generation
     }
@@ -99,7 +99,7 @@ final class BrowserModel: ObservableObject {
         return nil
     }
     func prepareFileInput(_ node: UInt64) async -> FileInputState? {
-        guard ready, !textInputBusy, let tab = selected, let input = textInputState,
+        guard canInteract, !textInputBusy, let tab = selected, let input = textInputState,
               representation?.nodes.contains(where: { $0.id == node && $0.state.fileInput && !$0.state.disabled }) == true else { return nil }
         guard let state = await fileReply(.prepare(input.frame_source,input.document_generation,node),tab: tab),
               state.context.tab_id == tab,
@@ -124,7 +124,7 @@ final class BrowserModel: ObservableObject {
     private(set) var printError = ""
     weak var nativeWindow: NSWindow?
     var canPrint: Bool {
-        ready && !printBusy && generation > 0 && status != "Loading…" && selected != nil
+        canInteract && !printBusy && generation > 0 && status != "Loading…" && selected != nil
             && representation?.tabID == selected && textInputState?.tab_id == selected
     }
     func printCurrentPage() async {
@@ -144,7 +144,7 @@ final class BrowserModel: ObservableObject {
                 catch { printer.end(); throw error }
             }.value
             defer { printer.end() }
-            guard ready, selected == tab, contextID == context else { return }
+            guard canInteract, selected == tab, contextID == context else { return }
             let view = BrowserPrintView(session: printer,output: output)
             let operation = NSPrintOperation(view: view,printInfo: info)
             view.operation = operation
@@ -178,6 +178,7 @@ final class BrowserModel: ObservableObject {
     init(appearance: BrowserAppearance? = nil, workspace: BrowserWorkspace? = nil, windowID: UInt64 = 1) {
         self.appearance = appearance ?? BrowserAppearance()
         self.workspace = workspace; self.windowID = windowID
+        self.interactionSuspended = workspace?.interactionSuspended ?? false
         self.session = workspace?.session ?? BrowserSession()
         assistantObservation = assistant.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
         assistant.languageConfirmed = { [weak self] language in
@@ -223,6 +224,7 @@ final class BrowserModel: ObservableObject {
     @Published var permissionsErrorPresented = false
 
     func openPermissions() {
+        guard canInteract else { return }
         (nativeWindow as? BrowserWindow)?.chromeFocus?.discardQueuedInput()
         if !session.openPermissions() { permissionsErrorPresented = true }
     }
@@ -236,6 +238,15 @@ final class BrowserModel: ObservableObject {
             window?.pageInput?.supersedeKeyboardFocus()
             window?.chromeFocus?.discardQueuedInput()
         }
+    }
+    @Published private(set) var interactionSuspended = false
+    var canInteract: Bool { ready && !interactionSuspended }
+    func suspendInteraction(_ value: Bool) {
+        guard value != interactionSuspended else { return }
+        interactionSuspended = value
+        (nativeWindow as? BrowserWindow)?.pageInput?.supersedeKeyboardFocus()
+        (nativeWindow as? BrowserWindow)?.chromeFocus?.discardQueuedInput()
+        if value { clearTextInput() }
     }
     @Published private(set) var image: CGImage?
     @Published private(set) var generation: UInt64 = 0
@@ -251,13 +262,13 @@ final class BrowserModel: ObservableObject {
     var zoomPercent: Int { Int(((displayState?.zoom ?? 1) * 100).rounded()) }
     private let zoomSteps: [Double] = [0.25, 0.33, 0.5, 0.67, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4, 5]
     func changeZoom(increase: Bool) {
-        guard ready, selected != nil else { return }
+        guard canInteract, selected != nil else { return }
         let current = selected.flatMap { desiredZooms[$0] } ?? displayState?.zoom ?? 1
         let value = increase ? zoomSteps.first(where: { $0 > current + 0.001 }) : zoomSteps.last(where: { $0 < current - 0.001 })
         if let value { setZoom(value) }
     }
     func setZoom(_ zoom: Double) {
-        guard ready, let tab = selected, zoom.isFinite, (0.25...5).contains(zoom) else { return }
+        guard canInteract, let tab = selected, zoom.isFinite, (0.25...5).contains(zoom) else { return }
         workspace?.scheduleSessionSave()
         desiredZooms[tab] = zoom
         zoomWrites[tab] = zoom
@@ -642,12 +653,13 @@ final class BrowserModel: ObservableObject {
     }
 
     func action(_ command: BrowserCommand, tab: UInt64? = nil) {
+        guard canInteract else { return }
         let target = tab ?? selected
         if workspace != nil, case .values("OpenTab", let fields) = command {
             let url: String? = { if case .string(let text) = fields["url"] { return text }; return nil }()
-            Task { await send(.window(.open(windowID, url))) }; return
+            Task { guard canInteract else { return }; await send(.window(.open(windowID, url))) }; return
         }
-        Task { await send(command, tab: target) }
+        Task { guard canInteract else { return }; await send(command, tab: target) }
     }
 
     func prepareManagedSession(_ value: Bool) {
@@ -676,7 +688,7 @@ final class BrowserModel: ObservableObject {
     }
 
     func beginTabGroupEditor(group: UInt64? = nil, tab: UInt64? = nil) {
-        guard ready, groupsAvailable, !groupBusy else { return }
+        guard canInteract, groupsAvailable, !groupBusy else { return }
         groupError = nil
         if let group, let current = groups.first(where: { $0.id == group }) {
             groupEditor = TabGroupEditor(groupID: group, name: current.name, color: current.color, tabID: nil)
@@ -780,7 +792,7 @@ final class BrowserModel: ObservableObject {
     }
 
     func requestContextMenu(x: Double, y: Double) async -> PageContextMenu? {
-        guard ready, !textInputBusy, let tab = selected, let frame = frames[tab] else { return nil }
+        guard canInteract, !textInputBusy, let tab = selected, let frame = frames[tab] else { return nil }
         let operation = UUID(), epoch = documentEpochs[tab, default: 0]
         menuOperation = operation; menuReplies.removeAll()
         defer { if menuOperation == operation { menuOperation = nil; menuReplies.removeAll() } }
@@ -859,7 +871,7 @@ final class BrowserModel: ObservableObject {
     }
 
     func showFind() {
-        guard ready, let selected else { return }
+        guard canInteract, let selected else { return }
         var panel = findPanels[selected] ?? FindPanel()
         let wasShown = panel.shown
         panel.shown = true; findPanels[selected] = panel
@@ -980,7 +992,7 @@ final class BrowserModel: ObservableObject {
     }
 
     func accessibilityText(_ snapshot: PageRepresentation, epoch: UInt64, node: PageNode, action: AccessibilityTextAction) -> AccessibilityTextResult? {
-        guard ready, selected == snapshot.tabID, accessibilityEpoch == epoch, !textInputBusy,
+        guard canInteract, selected == snapshot.tabID, accessibilityEpoch == epoch, !textInputBusy,
               let input = textInputState, input.tab_id == snapshot.tabID,
               input.frame_generation == snapshot.generation, generation == snapshot.generation,
               representation?.generation == snapshot.generation,
@@ -1028,7 +1040,7 @@ final class BrowserModel: ObservableObject {
     }
 
     func accessibilityAction(_ snapshot: PageRepresentation, epoch: UInt64, node: PageNode, toggleSelect: Bool = false, focusOnly: Bool = false) -> Bool {
-        guard ready, selected == snapshot.tabID, documentEpochs[snapshot.tabID, default: 0] == epoch,
+        guard canInteract, selected == snapshot.tabID, documentEpochs[snapshot.tabID, default: 0] == epoch,
               let frame = frames[snapshot.tabID], representation?.generation == snapshot.generation,
               snapshot.matches(tab: snapshot.tabID, generation: frame.generation,
                                source: PageRepresentation.frameSource(directory: session.frameDirectory.path),
@@ -1047,7 +1059,7 @@ final class BrowserModel: ObservableObject {
     // Serialize edits through acknowledgements. An IME can issue several
     // callbacks in one event; none may use a different document or focus.
     func textInput(_ action: TextInputAction) {
-        guard ready, let tab = selected else { return }
+        guard canInteract, let tab = selected else { return }
         if case .documentPointer(_, _, true, 1) = action, let last = inputQueue.last,
            case .documentPointer(_, _, true, 1) = last.action, last.clipboard == nil,
            last.tab == tab, last.epoch == documentEpochs[tab, default: 0], last.serial == inputSerials[tab, default: 0] {
@@ -1071,7 +1083,7 @@ final class BrowserModel: ObservableObject {
         drainTextInput()
     }
     private func enqueueClipboard(_ command: ClipboardAction) {
-        guard ready, let tab = selected, inputQueue.count < 128 else { return }
+        guard canInteract, let tab = selected, inputQueue.count < 128 else { return }
         inputStates.removeValue(forKey: tab)
         inputQueue.append(InputEdit(tab: tab, epoch: documentEpochs[tab, default: 0],
                                     serial: inputSerials[tab, default: 0], action: .replace("", nil), clipboard: command))
@@ -1080,7 +1092,7 @@ final class BrowserModel: ObservableObject {
     }
 
     func focusPage(x: Double, y: Double, extend: Bool = false, clickCount: Int = 1, toggleSelect: Bool = false, focusOnly: Bool = false) {
-        guard ready, let tab = selected else { return }
+        guard canInteract, let tab = selected else { return }
         inputSerials[tab, default: 0] += 1
         inputFocusPending.insert(tab)
         inputStates.removeValue(forKey: tab); textInputState = nil
@@ -1110,7 +1122,7 @@ final class BrowserModel: ObservableObject {
     }
 
     private func drainTextInput() {
-        guard ready, inputFlight == nil else { return }
+        guard canInteract, inputFlight == nil else { return }
         while let edit = inputQueue.first {
             guard edit.epoch == documentEpochs[edit.tab, default: 0], edit.serial == inputSerials[edit.tab, default: 0],
                   tabs.contains(where: { $0.id == edit.tab }) else { inputQueue.removeFirst(); continue }
@@ -1240,6 +1252,7 @@ final class BrowserModel: ObservableObject {
     }
 
     func navigateAddress() {
+        guard canInteract else { return }
         var url = address.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !url.isEmpty, let selected else { return }
         if !url.contains(":") { url = "https://" + url }
@@ -1249,6 +1262,7 @@ final class BrowserModel: ObservableObject {
     }
 
     func reload() {
+        guard canInteract else { return }
         guard let selected, tabs.first(where: { $0.id == selected })?.url != nil else { return }
         status = "Loading…"
         action(.unit("Reload"), tab: selected)

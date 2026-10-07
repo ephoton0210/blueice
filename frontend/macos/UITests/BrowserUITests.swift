@@ -330,8 +330,8 @@ final class BrowserUITests: XCTestCase {
         try wasm.write(to: root.appendingPathComponent("extension.wasm"))
         return manifest
     }
-    private func openPermissionPanel() -> XCUIApplication {
-        app.buttons["permissions"].click()
+    private func openPermissionPanel(in window: XCUIElement? = nil) -> XCUIApplication {
+        (window ?? app).buttons["permissions"].click()
         let panels = XCUIApplication(bundleIdentifier: "cc.blueice.BlueIcePanels")
         XCTAssertTrue(panels.windows["permissions-window"].waitForExistence(timeout: 10), panels.debugDescription)
         return panels
@@ -406,6 +406,34 @@ final class BrowserUITests: XCTestCase {
         waitPermissionValue(panels.staticTexts["permissions-notice"], "One DOM read allowed for the reviewed document. This is not a persistent permission.")
         waitPermissionValue(panels.staticTexts["permission-state-storage"], "Not allowed")
     }
+    private func terminateOwnedPermissionChild(started: Date) throws -> pid_t {
+        // This companion is launcher-owned, so XCTest's terminate/reap path
+        // races the launcher's own waitpid. Kill only the uniquely identified
+        // child and observe both applications through their ordinary UI.
+        let ownedPanels = NSRunningApplication.runningApplications(withBundleIdentifier: "cc.blueice.BlueIcePanels")
+        let applications = NSRunningApplication.runningApplications(withBundleIdentifier: "cc.blueice.BlueIce")
+        guard ownedPanels.count == 1, applications.count == 1,
+              let application = applications.first,
+              application.launchDate.map({ $0 >= started.addingTimeInterval(-2) }) == true else {
+            throw NSError(domain: "BlueIceUITestOwnership", code: 1, userInfo: [NSLocalizedDescriptionKey:
+                "Identify this test's application and permission child before terminating a process"])
+        }
+        let child = try XCTUnwrap(ownedPanels.first)
+        let launcher = getpgid(child.processIdentifier)
+        guard launcher > 0 else {
+            throw NSError(domain: "BlueIceUITestOwnership", code: 2, userInfo: [NSLocalizedDescriptionKey:
+                "The permission child must belong to an owned launcher group"])
+        }
+        var launcherInfo = proc_bsdinfo()
+        let infoSize = Int32(MemoryLayout<proc_bsdinfo>.stride)
+        guard proc_pidinfo(launcher, PROC_PIDTBSDINFO, 0, &launcherInfo, infoSize) == infoSize,
+              launcherInfo.pbi_ppid == UInt32(application.processIdentifier) else {
+            throw NSError(domain: "BlueIceUITestOwnership", code: 3, userInfo: [NSLocalizedDescriptionKey:
+                "The child's launcher must be a direct child of this test's BlueIce application"])
+        }
+        XCTAssertEqual(kill(child.processIdentifier, SIGKILL), 0)
+        return launcher
+    }
     func testNativePermissionChildExitClosesTheOwnedServiceConnection() throws {
         let started = Date()
         app.launchArguments += ["-browser.contexts", "malformed-profile-fixture"]
@@ -415,26 +443,7 @@ final class BrowserUITests: XCTestCase {
         let panels = openPermissionPanel()
         XCTAssertTrue(panels.staticTexts["permissions-empty"].waitForExistence(timeout: 10))
         app.activate(); app.groups["page"].click()
-        // This companion is launcher-owned, so XCTest's terminate/reap path
-        // races the launcher's own waitpid. Kill only the uniquely identified
-        // child and observe both applications through their ordinary UI.
-        let ownedPanels = NSRunningApplication.runningApplications(withBundleIdentifier: "cc.blueice.BlueIcePanels")
-        let applications = NSRunningApplication.runningApplications(withBundleIdentifier: "cc.blueice.BlueIce")
-        guard ownedPanels.count == 1, applications.count == 1,
-              let application = applications.first,
-              application.launchDate.map({ $0 >= started.addingTimeInterval(-2) }) == true else {
-            XCTFail("Identify this test's application and permission child before terminating a process"); return
-        }
-        let child = try XCTUnwrap(ownedPanels.first)
-        let launcher = getpgid(child.processIdentifier)
-        guard launcher > 0 else { XCTFail("The permission child must belong to an owned launcher group"); return }
-        var launcherInfo = proc_bsdinfo()
-        let infoSize = Int32(MemoryLayout<proc_bsdinfo>.stride)
-        guard proc_pidinfo(launcher, PROC_PIDTBSDINFO, 0, &launcherInfo, infoSize) == infoSize,
-              launcherInfo.pbi_ppid == UInt32(application.processIdentifier) else {
-            XCTFail("The child's launcher must be a direct child of this test's BlueIce application"); return
-        }
-        XCTAssertEqual(kill(child.processIdentifier, SIGKILL), 0)
+        _ = try terminateOwnedPermissionChild(started: started)
         XCTAssertTrue(panels.wait(for: .notRunning, timeout: 10))
         let status = app.staticTexts["status"]
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate:
@@ -445,6 +454,8 @@ final class BrowserUITests: XCTestCase {
         app.activate()
         XCTAssertFalse(app.buttons["reload"].isEnabled)
         XCTAssertTrue(app.buttons["retry-windows"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["restart-browser"].isEnabled)
+        app.typeKey(.tab, modifierFlags: [])
         app.typeKey(.tab, modifierFlags: [])
         app.typeKey(.tab, modifierFlags: [])
         app.typeKey(" ", modifierFlags: [])
@@ -452,6 +463,169 @@ final class BrowserUITests: XCTestCase {
             predicate: NSPredicate(format: "exists == false"), object: notice)], timeout: 5), .completed,
                        "The surviving notice controls must accept Tab and Space after the core becomes unavailable")
         XCTAssertFalse(app.buttons["reload"].isEnabled)
+    }
+
+    func testBrowserServiceRestartRestoresVolatileWindowsHistoryAndZoomWithoutSaving() throws {
+        let started = Date()
+        let fixture = try HTTPFixture(); defer { fixture.stop() }
+        app.launchArguments += ["-browser.session.remember", "NO", "-browser.session.reopen", "NO"]
+        launch()
+        let root = app.windows["browser-window"]
+        enter(fixture.origin + "/first"); enter(fixture.origin + "/second")
+        app.buttons["back"].click(); waitValue(app.textFields["address"], fixture.origin + "/first")
+        app.menuBars.menuBarItems["View"].click(); app.menuItems["Page Zoom"].hover(); app.menuItems["150%"].click()
+        waitValue(app.buttons["page-zoom"], "150%")
+        app.buttons["new-tab-group"].click(); XCTAssertTrue(app.textFields["group-name"].waitForExistence(timeout: 10))
+        paste("Recovery study", into: app.textFields["group-name"]); app.buttons["group-save"].click()
+        XCTAssertTrue(app.buttons["tab-group-1"].waitForExistence(timeout: 10))
+        app.buttons["add-tab"].click(); waitValue(app.textFields["address"], "about:credits")
+        enter(fixture.origin + "/appearance")
+        app.typeKey("n", modifierFlags: .command)
+        let second = app.windows["browser-window-2"]
+        XCTAssertTrue(second.waitForExistence(timeout: 15)); enter(fixture.origin + "/editing", in: second)
+        XCTAssertTrue(second.textFields["Editor"].waitForExistence(timeout: 15))
+        paste("unsaved-recovery-page-value", into: second.textFields["Editor"])
+        activateWindow(1)
+        let application = try XCTUnwrap(NSRunningApplication.runningApplications(withBundleIdentifier: "cc.blueice.BlueIce").first)
+        let originalPID = application.processIdentifier
+        let panels = openPermissionPanel(in: root)
+        XCTAssertTrue(panels.staticTexts["permissions-empty"].waitForExistence(timeout: 10))
+        let oldLauncher = try terminateOwnedPermissionChild(started: started)
+        XCTAssertTrue(panels.wait(for: .notRunning, timeout: 10)); app.activate()
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate:
+            NSPredicate(format: "value BEGINSWITH 'Browser service connection ended:'"), object: root.staticTexts["status"])], timeout: 15), .completed)
+        XCTAssertFalse(root.textFields["address"].isEnabled)
+        let restart = root.buttons["restart-browser"]
+        guard restart.waitForExistence(timeout: 5) else {
+            XCTFail("A stopped browser must offer an owned in-app restart and restore its current session without enabling disk persistence")
+            return
+        }
+        XCTAssertTrue(restart.isEnabled)
+        waitAssistantText(root.staticTexts["recovery-details"], "Windows to restore: 2; tabs: 3. Unsaved page changes will be lost.")
+        let stoppedImage = XCTAttachment(screenshot: root.screenshot()); stoppedImage.name = "macos-browser-service-stopped"; stoppedImage.lifetime = .keepAlways; add(stoppedImage)
+        app.typeKey(.tab, modifierFlags: []); app.typeKey(" ", modifierFlags: [])
+        let restored = app.windows["browser-window-2"], recoveredEditor = app.windows["browser-window-3"]
+        XCTAssertTrue(recoveredEditor.waitForExistence(timeout: 20))
+        waitValue(restored.textFields["address"], fixture.origin + "/appearance")
+        waitValue(recoveredEditor.textFields["address"], fixture.origin + "/editing")
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate:
+            NSPredicate(format: "exists == false"), object: app.windows["browser-window"])], timeout: 15), .completed)
+        XCTAssertEqual(app.windows.matching(NSPredicate(format: "identifier BEGINSWITH 'browser-window'")).count, 2)
+        XCTAssertTrue(restored.textFields["address"].isEnabled)
+        let running = NSRunningApplication.runningApplications(withBundleIdentifier: "cc.blueice.BlueIce")
+        XCTAssertEqual(running.count, 1); XCTAssertEqual(running.first?.processIdentifier, originalPID)
+        let newPanel = try XCTUnwrap(NSRunningApplication.runningApplications(withBundleIdentifier: "cc.blueice.BlueIcePanels").first)
+        XCTAssertNotEqual(getpgid(newPanel.processIdentifier), oldLauncher)
+        activateWindow(3); waitValue(recoveredEditor.textFields["Editor"], "A😀B")
+        activateWindow(2)
+        let first = restored.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'tab-' AND label == %@", fixture.origin + "/first")).firstMatch
+        XCTAssertTrue(first.exists); first.click()
+        waitValue(restored.textFields["address"], fixture.origin + "/first")
+        waitValue(restored.buttons["page-zoom"], "150%")
+        XCTAssertEqual(restored.buttons["tab-group-1"].label, "Recovery study")
+        XCTAssertTrue(restored.buttons["forward"].isEnabled)
+        restored.buttons["forward"].click(); waitValue(restored.textFields["address"], fixture.origin + "/second")
+        XCTAssertEqual(fixture.requests, ["/first", "/second", "/first", "/appearance", "/editing", "/first", "/appearance", "/editing", "/second"])
+        let settings = preferenceWindow()
+        XCTAssertTrue(NSPredicate(format: "value == 0 OR value == '0'").evaluate(with: settings.checkBoxes["session-remember"]))
+        XCTAssertFalse(settings.checkBoxes["session-reopen"].isEnabled)
+        XCTAssertNil(storedSessionArchive(), "Crash recovery must not turn opt-in persistence on")
+        settings.buttons[XCUIIdentifierCloseWindow].click()
+        let image = XCTAttachment(screenshot: restored.screenshot()); image.name = "macos-browser-service-recovered"; image.lifetime = .keepAlways; add(image)
+
+        // A second service failure must remain recoverable. Closing a stopped
+        // native window is an explicit choice that recovery must respect.
+        activateWindow(3)
+        let secondPanels = openPermissionPanel(in: recoveredEditor)
+        XCTAssertTrue(secondPanels.staticTexts["permissions-empty"].waitForExistence(timeout: 10))
+        let secondLauncher = try terminateOwnedPermissionChild(started: started)
+        XCTAssertTrue(secondPanels.wait(for: .notRunning, timeout: 10)); app.activate()
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate:
+            NSPredicate(format: "value BEGINSWITH 'Browser service connection ended:'"), object: recoveredEditor.staticTexts["status"])], timeout: 15), .completed)
+        recoveredEditor.buttons[XCUIIdentifierCloseWindow].click()
+        guard XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: recoveredEditor)], timeout: 10) == .completed else {
+            XCTFail("A stopped browser must close an individual native window and omit it from the next recovery")
+            return
+        }
+        waitAssistantText(restored.staticTexts["recovery-details"], "Windows to restore: 1; tabs: 2. Unsaved page changes will be lost.")
+        app.typeKey(.tab, modifierFlags: []); app.typeKey(" ", modifierFlags: [])
+        waitValue(restored.textFields["address"], fixture.origin + "/second")
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate:
+            NSPredicate(format: "enabled == true"), object: restored.textFields["address"])], timeout: 15), .completed,
+                       "The old stopped window can share the new core's ID and URL; wait for the replacement to finish restoring")
+        XCTAssertEqual(app.windows.matching(NSPredicate(format: "identifier BEGINSWITH 'browser-window'")).count, 1)
+        XCTAssertFalse(recoveredEditor.exists)
+        XCTAssertEqual(NSRunningApplication.runningApplications(withBundleIdentifier: "cc.blueice.BlueIce").first?.processIdentifier, originalPID)
+        let thirdPanel = try XCTUnwrap(NSRunningApplication.runningApplications(withBundleIdentifier: "cc.blueice.BlueIcePanels").first)
+        XCTAssertNotEqual(getpgid(thirdPanel.processIdentifier), secondLauncher)
+        waitValue(restored.buttons["page-zoom"], "150%")
+        XCTAssertEqual(restored.buttons["tab-group-1"].label, "Recovery study")
+        XCTAssertEqual(fixture.requests, ["/first", "/second", "/first", "/appearance", "/editing", "/first", "/appearance", "/editing", "/second", "/second", "/appearance"])
+        XCTAssertNil(storedSessionArchive())
+    }
+    func testBrowserServiceRecoveryNeverReplaysPostOrRestoresItsPrivateBody() throws {
+        let started = Date()
+        let fixture = try HTTPFixture(); defer { fixture.stop() }
+        app.launchArguments += ["-browser.session.remember", "NO", "-browser.session.reopen", "NO"]
+        launch(); enter(fixture.origin + "/forms")
+        let originalPID = try XCTUnwrap(NSRunningApplication.runningApplications(withBundleIdentifier: "cc.blueice.BlueIce").first).processIdentifier
+        let query = app.groups["page"].textFields["Query"]
+        XCTAssertTrue(query.waitForExistence(timeout: 15)); paste("private-post-recovery-value", into: query)
+        app.groups["page"].buttons["Send POST"].click()
+        waitValue(app.textFields["address"], fixture.origin + "/posted?kept=1")
+        XCTAssertEqual(fixture.records.last?.method, "POST")
+        XCTAssertTrue(String(decoding: try XCTUnwrap(fixture.records.last?.body), as: UTF8.self).contains("private-post-recovery-value"))
+        let panels = openPermissionPanel()
+        XCTAssertTrue(panels.staticTexts["permissions-empty"].waitForExistence(timeout: 10))
+        _ = try terminateOwnedPermissionChild(started: started)
+        XCTAssertTrue(panels.wait(for: .notRunning, timeout: 10)); app.activate()
+        let restart = app.buttons["restart-browser"]
+        XCTAssertTrue(restart.waitForExistence(timeout: 10)); XCTAssertTrue(restart.isEnabled)
+        waitAssistantText(app.staticTexts["recovery-details"], "Windows to restore: 1; tabs: 1. Unsaved page changes will be lost.")
+        app.typeKey(.tab, modifierFlags: []); app.typeKey(" ", modifierFlags: [])
+        let restored = app.windows["browser-window-2"]
+        XCTAssertTrue(restored.waitForExistence(timeout: 20)); waitValue(restored.textFields["address"], fixture.origin + "/posted?kept=1")
+        waitPageContent("POST page could not be restored")
+        XCTAssertEqual(fixture.records.map(\.method), ["GET", "POST"])
+        restored.buttons["reload"].click()
+        waitAssistantText(restored.staticTexts["status"], "Form data has expired; submit the form again")
+        XCTAssertEqual(fixture.records.count, 2)
+        XCTAssertFalse(restored.sheets.buttons["Resend"].exists)
+        XCTAssertEqual(NSRunningApplication.runningApplications(withBundleIdentifier: "cc.blueice.BlueIce").first?.processIdentifier, originalPID)
+        XCTAssertNil(storedSessionArchive())
+    }
+    func testBrowserServiceRecoveryDiscardsPendingAssistantResultAndInstruction() throws {
+        let started = Date()
+        let fixture = try HTTPFixture(); defer { fixture.stop() }
+        let assistant = try AssistantModelFixture(); defer { assistant.stop() }; try configureAssistant(assistant)
+        app.launchArguments += ["-browser.session.remember", "NO", "-browser.session.reopen", "NO"]
+        launch(); enter(fixture.origin + "/assistant")
+        openAssistant()
+        paste("private-recovery-instruction", into: app.textFields["assistant-instruction"])
+        assistant.hold(); app.buttons["assistant-organize"].click(); waitModelRequests(assistant, count: 1)
+        let panels = openPermissionPanel()
+        XCTAssertTrue(panels.staticTexts["permissions-empty"].waitForExistence(timeout: 10))
+        _ = try terminateOwnedPermissionChild(started: started)
+        XCTAssertTrue(panels.wait(for: .notRunning, timeout: 10)); app.activate()
+        XCTAssertTrue(app.buttons["restart-browser"].waitForExistence(timeout: 10))
+        waitAssistantText(app.staticTexts["recovery-details"], "Windows to restore: 1; tabs: 1. Unsaved page changes will be lost.")
+        app.typeKey(.tab, modifierFlags: []); app.typeKey(" ", modifierFlags: [])
+        let restored = app.windows["browser-window-2"]
+        XCTAssertTrue(restored.waitForExistence(timeout: 20)); waitValue(restored.textFields["address"], fixture.origin + "/assistant")
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate:
+            NSPredicate(format: "enabled == true"), object: restored.buttons["assistant"])], timeout: 15), .completed)
+        assistant.release()
+        XCTAssertFalse(restored.staticTexts["assistant-result"].exists)
+        openAssistant(in: restored)
+        waitValue(restored.textFields["assistant-instruction"], "Group the main points.")
+        XCTAssertFalse(restored.staticTexts["assistant-result"].exists)
+        XCTAssertFalse(restored.buttons["assistant-stop"].exists)
+        XCTAssertEqual(assistant.prompts.count, 1, "Recovery cannot silently repeat a pending human-requested AI task")
+        restored.buttons["assistant-summarize"].click()
+        waitAssistantText(restored.staticTexts["assistant-result"], AssistantModelFixture.summary)
+        XCTAssertEqual(assistant.prompts.count, 2)
+        XCTAssertEqual(fixture.requests, ["/assistant", "/assistant"])
+        XCTAssertNil(storedSessionArchive())
     }
     func testNativeOneShotLongURLKeepsConfirmationReachable() throws {
         let fixture = try HTTPFixture(); defer { fixture.stop() }
@@ -2905,13 +3079,37 @@ final class BrowserUITests: XCTestCase {
         add(attachment)
     }
 
-    func testMissingLauncherShowsFailureAndDisabledNavigation() {
-        app.launchArguments += ["--launcher-exe", "/nonexistent/blueice-launcher"]
+    func testMissingLauncherShowsFailureAndDisabledNavigation() throws {
+        let fixtureRoot = FileManager.default.temporaryDirectory.appendingPathComponent("blueice-launcher-retry-" + UUID().uuidString)
+        let directory = fixtureRoot.appendingPathComponent("BlueIce.app/Contents/MacOS")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureRoot) }
+        app.launchArguments += ["--launcher-exe", directory.appendingPathComponent("blueice-launcher").path]
         app.launch()
         let failed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value CONTAINS[c] 'launcher' OR label CONTAINS[c] 'launcher'"), object: app.staticTexts["status"])
         XCTAssertEqual(XCTWaiter.wait(for: [failed], timeout: 10), .completed, app.debugDescription)
         XCTAssertFalse(app.buttons["reload"].isEnabled)
         XCTAssertFalse(app.buttons["add-tab"].isEnabled)
+        let application = try XCTUnwrap(NSRunningApplication.runningApplications(withBundleIdentifier: "cc.blueice.BlueIce").first)
+        let originalPID = application.processIdentifier
+        XCTAssertTrue(app.buttons["restart-browser"].isEnabled)
+        waitAssistantText(app.staticTexts["recovery-details"], "No confirmed session is available. Restart opens a new page.")
+        app.typeKey(.tab, modifierFlags: []); app.typeKey(" ", modifierFlags: [])
+        XCTAssertTrue(app.buttons["restart-browser"].waitForExistence(timeout: 10))
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate:
+            NSPredicate(format: "enabled == true"), object: app.buttons["restart-browser"])], timeout: 10), .completed)
+        XCTAssertFalse(app.buttons["reload"].isEnabled)
+        let bundled = try XCTUnwrap(application.bundleURL).appendingPathComponent("Contents/MacOS")
+        for name in ["blueice-launcher", "blueice-core", "blueice-ai-gatekeeper", "BlueIcePanels.app"] {
+            try FileManager.default.createSymbolicLink(at: directory.appendingPathComponent(name), withDestinationURL: bundled.appendingPathComponent(name))
+        }
+        app.buttons["restart-browser"].click()
+        waitValue(app.textFields["address"], "about:credits")
+        waitAssistantText(app.staticTexts["status"], "Ready")
+        XCTAssertTrue(app.buttons["reload"].isEnabled)
+        XCTAssertFalse(app.buttons["restart-browser"].exists)
+        XCTAssertEqual(NSRunningApplication.runningApplications(withBundleIdentifier: "cc.blueice.BlueIce").first?.processIdentifier, originalPID)
+        XCTAssertEqual(app.windows.matching(NSPredicate(format: "identifier BEGINSWITH 'browser-window'")).count, 1)
     }
 
     func testWindowCloseTerminatesApplication() {

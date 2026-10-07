@@ -66,7 +66,7 @@ struct PageViewport: NSViewRepresentable {
         view.invalidateContextMenu()
         view.invalidateSelectMenu()
         view.setAccessibilityValue(model.image.map { BrowserStrings.format("Rendered %llu × %llu, frame %llu", UInt64($0.width), UInt64($0.height), model.generation) } ?? BrowserStrings.text("No rendered page"))
-        view.accessibilityTree.update(model.representation, epoch: model.accessibilityEpoch,
+        view.accessibilityTree.update(model.canInteract ? model.representation : nil, epoch: model.accessibilityEpoch,
                                       imageSize: model.cssViewportSize ?? .zero, tab: model.selected)
         view.needsDisplay = true
         if view.pageFocusSerial != model.pageFocusSerial {
@@ -271,7 +271,7 @@ final class CorePageView: NSView, NSTextInputClient, NSUserInterfaceValidations 
         if event.modifierFlags.contains(.control) { rightMouseDown(with: event); return }
         guard bounds.width > 0, bounds.height > 0 else { return }
         window?.makeFirstResponder(self)
-        if let model, model.ready, let tab = model.selected {
+        if let model, model.canInteract, let tab = model.selected {
             pointerTransition = PointerTransition(owner: ObjectIdentifier(model), tab: tab,
                 epoch: model.accessibilityEpoch, document: model.textInputState?.document_generation,
                 viewSize: bounds.size, deadline: Date().addingTimeInterval(2))
@@ -316,7 +316,7 @@ final class CorePageView: NSView, NSTextInputClient, NSUserInterfaceValidations 
     }
 
     private func deferMouseGesture(_ event: NSEvent) {
-        guard let model, model.ready, let tab = model.selected,
+        guard let model, model.canInteract, let tab = model.selected,
               let document = model.textInputState?.document_generation else { return }
         let gesture = PendingMouseGesture(owner: ObjectIdentifier(model), tab: tab, epoch: model.accessibilityEpoch,
             document: document, viewSize: bounds.size, events: [event])
@@ -324,7 +324,7 @@ final class CorePageView: NSView, NSTextInputClient, NSUserInterfaceValidations 
         pendingMouseTask = Task { @MainActor [weak self, weak model] in
             let deadline = Date().addingTimeInterval(2)
             while !Task.isCancelled, Date() < deadline {
-                guard let self, let model, self.model === model, model.ready,
+                guard let self, let model, self.model === model, model.canInteract,
                       let pending = self.pendingMouseGesture, pending.id == gesture.id,
                       pending.owner == ObjectIdentifier(model), model.selected == pending.tab,
                       model.accessibilityEpoch == pending.epoch,
@@ -514,7 +514,7 @@ final class CorePageView: NSView, NSTextInputClient, NSUserInterfaceValidations 
 
     private func documentGestureIsCurrent(_ gesture: DocumentGesture) -> Bool {
         guard let model else { return false }
-        return model.ready && ObjectIdentifier(model) == gesture.owner && model.selected == gesture.tab
+        return model.canInteract && ObjectIdentifier(model) == gesture.owner && model.selected == gesture.tab
             && model.accessibilityEpoch == gesture.epoch && model.textInputState?.document_generation == gesture.document
             && bounds.size == gesture.viewSize
             // A selection frame temporarily suspends display-state reads.
@@ -676,7 +676,7 @@ final class CorePageView: NSView, NSTextInputClient, NSUserInterfaceValidations 
     }
 
     private func beginTabTransition(shift: Bool) {
-        guard let model, model.ready, let tab = model.selected else { return }
+        guard let model, model.canInteract, let tab = model.selected else { return }
         tabTransition = TabTransition(tab: tab, epoch: model.accessibilityEpoch,
             document: model.textInputState?.document_generation, focus: model.textInputState?.focus_generation)
         model.textInput(.key(.tab, shift))
@@ -684,7 +684,7 @@ final class CorePageView: NSView, NSTextInputClient, NSUserInterfaceValidations 
 
     private func replayPendingKeys() {
         if let transition = pointerTransition {
-            guard let model, model.ready, ObjectIdentifier(model) == transition.owner,
+            guard let model, model.canInteract, ObjectIdentifier(model) == transition.owner,
                   model.selected == transition.tab, model.accessibilityEpoch == transition.epoch,
                   bounds.size == transition.viewSize, window?.firstResponder === self,
                   Date() < transition.deadline else {
@@ -704,7 +704,7 @@ final class CorePageView: NSView, NSTextInputClient, NSUserInterfaceValidations 
             return
         }
         guard let transition = tabTransition else { return }
-        guard let model, model.ready, model.selected == transition.tab, model.accessibilityEpoch == transition.epoch else {
+        guard let model, model.canInteract, model.selected == transition.tab, model.accessibilityEpoch == transition.epoch else {
             tabTransition = nil; pendingKeys.removeAll(); return
         }
         guard !model.textInputBusy else { return }

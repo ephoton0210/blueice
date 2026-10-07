@@ -316,3 +316,16 @@ attempts and the unchanged-source/product audit are recorded in
 [MACOS_DOCUMENT_SELECTION_RESULTS.md](MACOS_DOCUMENT_SELECTION_RESULTS.md).
 Complete ARIA semantics, physical VoiceOver and the remaining browser requirements
 stay open in the macOS delivery plan.
+
+The browser-service recovery increment adds a visible keyboard Restart action,
+bounded confirmed session capture in memory regardless of disk remembering,
+fresh supervised/workspace/native-window ownership, and input suspension during
+restoration. Consecutive faults, failed startup/retry, stopped-window closure,
+POST refusal and pending assistant isolation are covered. Complete native
+acceptance passed 217 methods with one existing physical Zhuyin skip; fresh
+engine/IPC gates passed 1,004 cases together with formatting, strict Clippy and
+the all-targets build. The 7,307-case complete Rust workspace baseline is carried
+only for 1,697 unchanged backend inputs. The source/product/signature/process
+audits and all unsuccessful iterations are recorded in
+[MACOS_RECOVERY_RESULTS.md](MACOS_RECOVERY_RESULTS.md). The complete macOS browser
+delivery plan remains active.

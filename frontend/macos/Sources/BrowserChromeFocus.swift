@@ -182,7 +182,7 @@ final class BrowserChromeFocus: ObservableObject {
 
     var acceptsInput: Bool {
         guard let window, let model else { return false }
-        return window.pageInput?.model === model && window.isKeyWindow
+        return !model.interactionSuspended && window.pageInput?.model === model && window.isKeyWindow
             && window.attachedSheet == nil && !model.downloadsPresented && model.groupEditor == nil
             && model.profileEditor == nil && !model.resubmissionPresented && !model.printErrorPresented
             && !model.fileInputErrorPresented && !model.permissionsErrorPresented

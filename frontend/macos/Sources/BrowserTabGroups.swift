@@ -93,7 +93,7 @@ struct BrowserTabStrip: View {
             .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(appearance.resolved.highContrast ? Color.primary : Color.clear, lineWidth: 1).allowsHitTesting(false).accessibilityHidden(true))
             .keyboardShortcut("t", modifiers: .command)
             .modifier(BrowserTabDropArea(model: model, target: .ungroupedEnd))
-        }.disabled(!model.ready).padding(.horizontal, 12).padding(.vertical, 8)
+        }.disabled(!model.canInteract).padding(.horizontal, 12).padding(.vertical, 8)
     }
     private func tabView(_ tab: BrowserTab) -> some View {
         HStack(spacing: 4) {
@@ -171,7 +171,7 @@ struct BrowserTabGroupEditor: View {
                 Button(BrowserStrings.text("Cancel")) { model.groupEditor = nil }.keyboardShortcut(.cancelAction).accessibilityIdentifier("group-cancel")
                     .disabled(model.groupBusy)
                 Button(BrowserStrings.text(model.groupBusy ? "Saving…" : "Save"), action: save).keyboardShortcut(.defaultAction)
-                    .accessibilityIdentifier("group-save").disabled(!valid || model.groupBusy || !model.ready)
+                    .accessibilityIdentifier("group-save").disabled(!valid || model.groupBusy || !model.canInteract)
             }
         }.padding(24).frame(width: 420).onAppear { nameFocused = true }
     }
@@ -204,7 +204,7 @@ struct BrowserTabGroupCommands: Commands {
                         Button(BrowserStrings.text("Ungroup and Remove Group")) { Task { await model.removeTabGroup(group.id) } }
                     }
                 }
-            }.disabled(!model.ready || !model.groupsAvailable || model.groupBusy)
+            }.disabled(!model.canInteract || !model.groupsAvailable || model.groupBusy)
         }
     }
 }

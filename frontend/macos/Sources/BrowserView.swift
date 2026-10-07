@@ -53,7 +53,7 @@ struct BrowserView: View {
                         } message: { Text(BrowserStrings.text("This browser's permission window is unavailable.")) }
                 }
             }
-            .disabled(!model.ready || model.selected == nil)
+            .disabled(!model.canInteract || model.selected == nil)
             .padding(12)
             Divider()
             if model.findVisible {
@@ -72,14 +72,14 @@ struct BrowserView: View {
                         .disabled(model.findResult?.matchCount ?? 0 == 0)
                     button("xmark", "Close find", "find-close") { model.closeFind() }
                 }
-                .disabled(!model.ready || model.selected == nil)
+                .disabled(!model.canInteract || model.selected == nil)
                 .padding(.horizontal, 12).padding(.vertical, 8)
                 Divider()
             }
             HSplitView {
                 ZStack {
                     PageViewport(model: model)
-                        .chromeTarget("page").disabled(!model.ready || model.selected == nil)
+                        .chromeTarget("page").disabled(!model.canInteract || model.selected == nil)
                     if model.image == nil {
                         Text(BrowserStrings.text(model.selected == nil ? "Open a new tab" : "Waiting for page…"))
                             .foregroundStyle(.secondary)
@@ -100,10 +100,11 @@ struct BrowserView: View {
                     .accessibilityIdentifier("page-zoom")
                     .help(BrowserStrings.text("Reset page zoom"))
                     .chromeFocusable("page-zoom", activate: { model.setZoom(1) })
-                    .disabled(!model.ready || model.selected == nil)
+                    .disabled(!model.canInteract || model.selected == nil)
             }
             .font(.caption).foregroundStyle(appearance.resolved.highContrast ? .primary : .secondary).padding(.horizontal, 12).padding(.vertical, 6)
         }
+        .disabled(model.interactionSuspended)
         .alert(BrowserStrings.text("Resend form data?"), isPresented: $model.resubmissionPresented, presenting: model.resubmission) { prompt in
             Button(BrowserStrings.text("Resend")) { model.resolveResubmission(prompt.confirmationID, accept: true) }
             Button(BrowserStrings.text("Cancel"), role: .cancel) { model.resolveResubmission(prompt.confirmationID, accept: false) }
@@ -169,7 +170,7 @@ private struct FindField: NSViewRepresentable {
         // AppKit owns temporary marked text. A repaint must not replace a
         // pending dead key/IME sequence with the last committed model query.
         if !composing && field.stringValue != model.findQuery { field.stringValue = model.findQuery }
-        field.isEnabled = model.ready && model.selected != nil
+        field.isEnabled = model.canInteract && model.selected != nil
         guard context.coordinator.serial != model.findFocusSerial else { return }
         context.coordinator.serial = model.findFocusSerial
         let serial = model.findFocusSerial

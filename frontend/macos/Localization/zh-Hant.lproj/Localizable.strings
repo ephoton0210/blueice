@@ -343,3 +343,10 @@
 
 "Move Tab Left" = "將分頁向左移動";
 "Move Tab Right" = "將分頁向右移動";
+
+"BlueIce stopped." = "BlueIce 已停止。";
+"Restarting BlueIce…" = "正在重新啟動 BlueIce…";
+"Restart BlueIce" = "重新啟動 BlueIce";
+"No confirmed session is available. Restart opens a new page." = "沒有可復原的已確認工作階段。重新啟動後會開啟新頁面。";
+"Windows to restore: %llu; tabs: %llu. Unsaved page changes will be lost." = "復原 %llu 個視窗與 %llu 個分頁。未儲存的頁面變更將會遺失。";
+"Recovery keeps your current windows and tabs available while BlueIce remains open. Remembering also retains them for future launches." = "BlueIce 開啟期間可復原目前的視窗與分頁。啟用記住功能後，下次啟動也能還原。";

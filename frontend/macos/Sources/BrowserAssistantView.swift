@@ -60,7 +60,7 @@ struct BrowserAssistantView: View {
                         if page.translation?.available == false { Text(BrowserStrings.text("This page has no translation.")).font(.caption) }
                         Button(BrowserStrings.text("Refresh translation state")) { model.refreshAssistantTranslation() }.accessibilityIdentifier("assistant-translation-refresh")
                             .chromeFocusable("assistant-translation-refresh", activate: { model.refreshAssistantTranslation() })
-                    }.frame(maxWidth: .infinity, alignment: .leading).disabled(!model.ready || page.translating != nil || model.status == "Loading…")
+                    }.frame(maxWidth: .infinity, alignment: .leading).disabled(!model.canInteract || page.translating != nil || model.status == "Loading…")
                 }
                 if let notice = page.notice { Text(verbatim: BrowserStrings.text(notice)).font(.caption).textSelection(.enabled).accessibilityIdentifier("assistant-notice") }
                 if let result = page.result {

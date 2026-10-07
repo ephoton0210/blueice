@@ -18,6 +18,9 @@ final class BrowserWorkspace: ObservableObject {
     let contextPreferences: BrowserContextPreferences
     let sessionPreferences: BrowserSessionPreferences
     @Published private(set) var restoringSession = false
+    @Published private(set) var interactionSuspended = true {
+        didSet { for model in models.values { model.suspendInteraction(interactionSuspended) } }
+    }
     @Published private var sessionReady = false
     private var sessionRestored = false
     private var captureArmed = false
@@ -39,6 +42,14 @@ final class BrowserWorkspace: ObservableObject {
     let tabDragging = BrowserTabDragging()
     @Published private(set) var busy = false
     @Published private(set) var notice: String?
+    @Published private(set) var failureMessage: String?
+    @Published private(set) var recovering = false
+    private(set) var recoverySnapshot: SavedBrowserSession?
+    private let recoverySeed: SavedBrowserSession?
+    private let contextDefaults: UserDefaults?
+    private let downloadConfiguration: DownloadConfiguration
+    private var launchURL: URL?
+    var onRecovery: ((BrowserWorkspace) async -> Void)?
     private(set) var models: [UInt64: BrowserModel] = [:]
     var onWindowCreated: ((BrowserModel) -> Void)?
     var onWindowClosed: ((UInt64) -> Void)?
@@ -57,9 +68,14 @@ final class BrowserWorkspace: ObservableObject {
     private var sentPreferences: DisplayPreferences?
     var processID: Int32? { session.processID }
 
-    init(appearance: BrowserAppearance? = nil, contextDefaults: UserDefaults? = nil, downloadConfiguration: DownloadConfiguration? = nil) {
+    init(appearance: BrowserAppearance? = nil, contextDefaults: UserDefaults? = nil, downloadConfiguration: DownloadConfiguration? = nil, recovery: SavedBrowserSession? = nil) {
         self.appearance = appearance ?? BrowserAppearance()
-        self.downloads = BrowserDownloadsModel(browser: session,configuration: downloadConfiguration ?? .configured())
+        self.contextDefaults = contextDefaults
+        let configuration = downloadConfiguration ?? .configured()
+        self.downloadConfiguration = configuration
+        self.downloads = BrowserDownloadsModel(browser: session,configuration: configuration)
+        self.recoverySeed = recovery?.valid == true ? recovery : nil
+        self.recoverySnapshot = self.recoverySeed
         self.contextPreferences = BrowserContextPreferences(defaults: contextDefaults)
         self.sessionPreferences = BrowserSessionPreferences(defaults: contextDefaults)
         captureArmed = self.sessionPreferences.saved == nil
@@ -73,6 +89,8 @@ final class BrowserWorkspace: ObservableObject {
     }
     func start(launcher: URL? = nil) async {
         guard !started else { return }; started = true
+        defer { interactionSuspended = false }
+        launchURL = launcher
         session.received = { [weak self, directory = session.frameDirectory] result in
             do {
                 let envelope = try result.get()
@@ -88,6 +106,7 @@ final class BrowserWorkspace: ObservableObject {
                 DispatchQueue.main.async { [weak self] in
                     guard let self else { return }
                     self.connected = false; self.canManageWindows = false; self.canPlaceTabs = false; self.tabDragging.cancel()
+                    self.failureMessage = message; self.canManageContexts = false
                     for model in self.models.values { model.workspaceFailed(message) }
                     Task { await self.downloads.stop(); await self.session.stop() }
                 }
@@ -110,17 +129,44 @@ final class BrowserWorkspace: ObservableObject {
             if let error = contextPreferences.error { notice = error }
             guard await command(.list) != nil else { throw BrowserFailure.invalid(notice ?? "Browser window state unavailable") }
             sessionReady = true
-            if sessionPreferences.remember, sessionPreferences.reopen, sessionPreferences.saved != nil {
+            if let recoverySeed {
+                await restoreSession(recoverySeed)
+                if !sessionRestored { await models[1]?.openInitialPage() }
+            } else if sessionPreferences.remember, sessionPreferences.reopen, sessionPreferences.saved != nil {
                 await restoreSavedSession()
                 if !sessionRestored { await models[1]?.openInitialPage() }
             } else { await models[1]?.openInitialPage() }
         } catch {
             connected = false; canManageWindows = false; canPlaceTabs = false; tabDragging.cancel()
+            failureMessage = error.localizedDescription; canManageContexts = false
             for model in models.values { model.workspaceFailed(error.localizedDescription) }
             await downloads.stop()
             await session.stop()
         }
     }
+    var canRestart: Bool { failureMessage != nil && !connected && !interactionSuspended && !recovering && !finishing && !stopping && onRecovery != nil }
+    var recoveryDetails: String {
+        guard let snapshot = recoverySnapshot else { return BrowserStrings.text("No confirmed session is available. Restart opens a new page.") }
+        let windows = snapshot.profiles.flatMap(\.windows)
+        return BrowserStrings.format("Windows to restore: %llu; tabs: %llu. Unsaved page changes will be lost.",
+                                     UInt64(windows.count), UInt64(windows.flatMap(\.tabs).count))
+    }
+    func restartBrowser() async {
+        guard canRestart, let onRecovery else { return }
+        recovering = true
+        interactionSuspended = true
+        for model in models.values {
+            (model.nativeWindow as? BrowserWindow)?.chromeFocus?.discardQueuedInput()
+            (model.nativeWindow as? BrowserWindow)?.pageInput?.supersedeKeyboardFocus()
+        }
+        let snapshot = recoverySnapshot, launcher = launchURL
+        await stop()
+        let replacement = BrowserWorkspace(appearance: appearance, contextDefaults: contextDefaults,
+                                           downloadConfiguration: downloadConfiguration, recovery: snapshot)
+        replacement.launchURL = launcher
+        await onRecovery(replacement)
+    }
+    func startReplacement() async { await start(launcher: launchURL) }
     func send(_ command: BrowserCommand, tab: UInt64? = nil, owner: BrowserModel? = nil, willSend: (@Sendable (UInt64) -> Void)? = nil) async throws -> UInt64 {
         guard connected, !stopping else { throw BrowserFailure.invalid("Browser workspace is closed") }
         let window = owner?.windowID
@@ -314,7 +360,7 @@ final class BrowserWorkspace: ObservableObject {
         _ = await command(.resize(id, viewport), wait: false)
     }
     func createWindow(openTab: Bool = true, contextID: UInt64? = nil, viewport: WindowViewport = WindowViewport(width: 900, height: 600, deviceScale: 1, backingScale: 1)) async -> UInt64? {
-        guard canManageWindows, !busy else { return nil }; busy = true; defer { busy = false }
+        guard canManageWindows, !interactionSuspended, !busy else { return nil }; busy = true; defer { busy = false }
         notice = nil
         let context = contextID ?? contextForWindow(activeWindowID)?.id ?? 1
         guard let state = await command(.createInContext(context, viewport)), case .created(let id) = state.event else { return nil }
@@ -352,6 +398,18 @@ final class BrowserWorkspace: ObservableObject {
         _ = await moveTab(tab, to: id)
     }
     func closeWindow(_ id: UInt64) async -> Bool {
+        guard !interactionSuspended, !recovering, !finishing, !stopping, !Task.isCancelled else { return false }
+        if failureMessage != nil, !connected {
+            guard windows.count > 1, models[id] != nil else { return false }
+            if let key = windowKeys[id] { recoverySnapshot = recoverySnapshot?.removingWindow(key) }
+            windows.removeAll { $0.id == id }
+            contexts = contexts.map { .init(id: $0.id, name: $0.name, windows: $0.windows.filter { $0 != id }, groups: $0.groups) }
+            windowKeys.removeValue(forKey: id)
+            if let model = models.removeValue(forKey: id) { await model.stop() }
+            if activeWindowID == id, let next = windows.first?.id { activeWindowID = next }
+            onWindowClosed?(id)
+            return true
+        }
         while busy, connected, !stopping, !Task.isCancelled {
             try? await Task.sleep(for: .milliseconds(10))
         }
@@ -390,18 +448,18 @@ final class BrowserWorkspace: ObservableObject {
         return nil
     }
     func createContext(_ name: String) async -> UInt64? {
-        guard canManageContexts, !busy else { return nil }; busy = true; defer { busy = false }
+        guard canManageContexts, !interactionSuspended, !busy else { return nil }; busy = true; defer { busy = false }
         pendingProfileKey = UUID(); defer { pendingProfileKey = nil }
         guard let state = await contextCommand(.create(name)), case .created(let id) = state.event else { return nil }
         notice = nil; return id
     }
     func renameContext(_ id: UInt64, name: String) async -> Bool {
-        guard canManageContexts, !busy else { return false }; busy = true; defer { busy = false }
+        guard canManageContexts, !interactionSuspended, !busy else { return false }; busy = true; defer { busy = false }
         guard let state = await contextCommand(.rename(id, name)), case .renamed(let renamed) = state.event else { return false }
         notice = nil; return renamed == id
     }
     func closeContext(_ id: UInt64) async -> Bool {
-        guard canManageContexts, !busy, id != 1 else { return false }; busy = true; defer { busy = false }
+        guard canManageContexts, !interactionSuspended, !busy, id != 1 else { return false }; busy = true; defer { busy = false }
         guard let state = await contextCommand(.close(id)), case .closed(let closed) = state.event else { return false }
         notice = nil; return closed == id
     }
@@ -421,7 +479,7 @@ final class BrowserWorkspace: ObservableObject {
     func stop() async {
         guard !finishing, !stopping else { return }; finishing = true
         saveTask?.cancel(); await saveTask?.value; saveTask = nil
-        if sessionReady, captureArmed, !restoringSession { await saveSession() }
+        if sessionReady, captureArmed, !restoringSession, sessionPreferences.remember { await saveSession() }
         guard !stopping else { return }; stopping = true; connected = false; canManageWindows = false; canPlaceTabs = false; tabDragging.cancel()
         canManageContexts = false; contextRequests = []; contextReplies = []
         assistantRequests.removeAll()
@@ -438,19 +496,19 @@ final class BrowserWorkspace: ObservableObject {
     func setRememberSession(_ value: Bool) {
         sessionPreferences.setRemember(value)
         if value { scheduleSessionSave() }
-        else { saveRevision &+= 1; saveTask?.cancel() }
+        else { saveRevision &+= 1 }
     }
     func scheduleSessionSave(arm: Bool = true) {
         guard sessionReady, !restoringSession, !stopping, !finishing else { return }
         if arm { captureArmed = true }
         saveRevision &+= 1
-        guard captureArmed, sessionPreferences.remember, sessionPreferences.error == nil, saveTask == nil else { return }
+        guard saveTask == nil else { return }
         saveTask = Task {
             defer {
                 saveTask = nil
-                if Task.isCancelled, sessionPreferences.remember { scheduleSessionSave(arm: false) }
+                if Task.isCancelled { scheduleSessionSave(arm: false) }
             }
-            while !Task.isCancelled, connected, !stopping, sessionPreferences.remember {
+            while !Task.isCancelled, connected, !stopping {
                 let revision = saveRevision
                 try? await Task.sleep(for: .milliseconds(300))
                 guard !Task.isCancelled else { return }
@@ -460,7 +518,7 @@ final class BrowserWorkspace: ObservableObject {
             }
         }
     }
-    private func sessionCall(_ message: BrowserCommand, tab: UInt64, owner: BrowserModel, navigation: Bool = false) async -> BrowserMessage? {
+    private func sessionCall(_ message: BrowserCommand, tab: UInt64, owner: BrowserModel, navigation: Bool = false, reportFailure: Bool = true) async -> BrowserMessage? {
         do {
             let request = try await send(message, tab: tab, owner: owner) { [weak self] id in
                 DispatchQueue.main.async { [weak self] in self?.sessionRequests[id] = navigation }
@@ -473,17 +531,17 @@ final class BrowserWorkspace: ObservableObject {
                 }
                 try? await Task.sleep(for: .milliseconds(10))
             }
-            if !Task.isCancelled { sessionPreferences.status = "A session action did not complete." }
-        } catch { sessionPreferences.status = error.localizedDescription }
+            if reportFailure, !Task.isCancelled { sessionPreferences.status = "A session action did not complete." }
+        } catch { if reportFailure { sessionPreferences.status = error.localizedDescription } }
         return nil
     }
     private func inspectSession(_ tab: UInt64, model: BrowserModel) async -> NavigationSessionState? {
-        guard case .navigationSessionState(let state) = await sessionCall(.navigationSession(.inspect), tab: tab, owner: model),
+        guard case .navigationSessionState(let state) = await sessionCall(.navigationSession(.inspect), tab: tab, owner: model, reportFailure: sessionPreferences.remember || restoringSession),
               state.context.tab_id == tab else { return nil }
         return state
     }
     private func saveSession() async {
-        guard connected, !stopping, !restoringSession, sessionPreferences.remember, sessionPreferences.error == nil, !windows.isEmpty else { return }
+        guard connected, !stopping, !restoringSession, !windows.isEmpty else { return }
         let revision = saveRevision
         let snapshot = windows
         var profiles: [SavedBrowserSession.Profile] = []
@@ -496,7 +554,8 @@ final class BrowserWorkspace: ObservableObject {
                 var tabs: [SavedBrowserSession.Tab] = []
                 for tab in window.tabs {
                     guard let state = await inspectSession(tab.id, model: model), !Task.isCancelled else {
-                        sessionPreferences.status = "Could not save every tab. The previous session was kept."; return
+                        if sessionPreferences.remember { sessionPreferences.status = "Could not save every tab. The previous session was kept." }
+                        return
                     }
                     let history: NavigationHistory
                     if state.history.current.url == nil, let previous = unrestoredHistory[tab.id] { history = previous }
@@ -508,23 +567,36 @@ final class BrowserWorkspace: ObservableObject {
             }
             profiles.append(.init(key: key, groups: groups, windows: savedWindows))
         }
-        guard revision == saveRevision, !Task.isCancelled, !restoringSession, sessionPreferences.remember,
+        guard revision == saveRevision, connected, !stopping, !Task.isCancelled, !restoringSession,
               let active = windowKeys[activeWindowID], snapshot.contains(where: { $0.id == activeWindowID }) else { return }
-        do { try sessionPreferences.save(.init(version: 1, profiles: profiles, active: active)) }
+        let captured = SavedBrowserSession(version: 1, profiles: profiles, active: active)
+        guard captured.valid else { return }
+        recoverySnapshot = captured
+        guard captureArmed, sessionPreferences.remember, sessionPreferences.error == nil else { return }
+        do { try sessionPreferences.save(captured) }
         catch { sessionPreferences.status = error.localizedDescription }
     }
     func restoreSavedSession() async {
         guard canRestoreSession, let saved = sessionPreferences.saved else { return }
+        await restoreSession(saved)
+    }
+    private func restoreSession(_ saved: SavedBrowserSession) async {
+        guard saved.valid, sessionReady, connected, canManageWindows, !busy, !restoringSession, !sessionRestored,
+              windows.count == 1, let model = models[windows[0].id], model.tabs.count <= 1,
+              model.tabs.allSatisfy({ $0.url == nil || $0.url == "about:credits" }) else { return }
         guard saved.profiles.allSatisfy({ profile in contextKeys.values.contains(profile.key) }) else {
             sessionPreferences.status = "A saved profile is unavailable. The previous session was kept."; return
         }
         restoringSession = true
+        let previouslySuspended = interactionSuspended
+        interactionSuspended = true
         saveTask?.cancel(); await saveTask?.value; saveTask = nil
         busy = true
         var complete = true
         var restoredWindows: [UUID: UInt64] = [:]
         defer {
             busy = false; restoringSession = false; sessionRestored = true; captureArmed = true
+            interactionSuspended = previouslySuspended
             sessionPreferences.status = complete ? "Session restored. Pages were reviewed again." : "Some pages could not be restored. Their saved URLs were kept."
             if complete { scheduleSessionSave(arm: false) }
         }
@@ -619,6 +691,21 @@ struct BrowserWorkspaceNotice: View {
     @ObservedObject private var localization = BrowserLocalization.shared
     @ObservedObject var workspace: BrowserWorkspace
     var body: some View {
+        if workspace.failureMessage != nil {
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(BrowserStrings.text(workspace.recovering ? "Restarting BlueIce…" : "BlueIce stopped.")).font(.headline)
+                    Text(verbatim: workspace.recoveryDetails).font(.caption).accessibilityIdentifier("recovery-details")
+                }
+                Spacer()
+                if workspace.recovering { ProgressView().controlSize(.small) }
+                Button(BrowserStrings.text("Restart BlueIce")) { Task { await workspace.restartBrowser() } }
+                    .accessibilityIdentifier("restart-browser")
+                    .chromeFocusable("restart-browser", activate: { Task { await workspace.restartBrowser() } })
+                    .disabled(!workspace.canRestart)
+            }.padding(12).accessibilityElement(children: .contain).accessibilityIdentifier("browser-recovery")
+            Divider()
+        }
         if workspace.restoringSession {
             HStack { ProgressView().controlSize(.small); Text(BrowserStrings.text("Restoring saved windows and tabs…")) }
                 .font(.caption).padding(8).accessibilityIdentifier("session-progress")
@@ -632,7 +719,7 @@ struct BrowserWorkspaceNotice: View {
                 Button { workspace.dismissNotice() } label: { Image(systemName: "xmark") }
                     .accessibilityLabel(BrowserStrings.text("Dismiss window notice")).accessibilityIdentifier("dismiss-window-notice")
                     .chromeFocusable("dismiss-window-notice", activate: { workspace.dismissNotice() })
-            }.font(.caption).padding(.horizontal, 12).padding(.vertical, 6)
+            }.font(.caption).padding(.horizontal, 12).padding(.vertical, 6).disabled(workspace.recovering)
             Divider()
         }
     }

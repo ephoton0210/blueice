@@ -53,19 +53,19 @@ struct NativeEditingCommands: Commands {
     var body: some Commands {
         CommandGroup(after: .toolbar) {
             Button(BrowserStrings.text("Open Location…")) { model.requestAddressFocus() }
-                .keyboardShortcut("l", modifiers: .command).disabled(!model.ready)
+                .keyboardShortcut("l", modifiers: .command).disabled(!model.canInteract)
             Divider()
             Button(BrowserStrings.text("Zoom In")) { model.changeZoom(increase: true) }
-                .keyboardShortcut("+", modifiers: .command).disabled(!model.ready || model.selected == nil)
+                .keyboardShortcut("+", modifiers: .command).disabled(!model.canInteract || model.selected == nil)
             Button(BrowserStrings.text("Zoom Out")) { model.changeZoom(increase: false) }
-                .keyboardShortcut("-", modifiers: .command).disabled(!model.ready || model.selected == nil)
+                .keyboardShortcut("-", modifiers: .command).disabled(!model.canInteract || model.selected == nil)
             Button(BrowserStrings.text("Actual Size")) { model.setZoom(1) }
-                .keyboardShortcut("0", modifiers: .command).disabled(!model.ready || model.selected == nil)
+                .keyboardShortcut("0", modifiers: .command).disabled(!model.canInteract || model.selected == nil)
             Menu(BrowserStrings.text("Page Zoom")) {
                 ForEach([25, 50, 75, 100, 125, 150, 200, 300, 400, 500], id: \.self) { percent in
                     Button("\(percent)%") { model.setZoom(Double(percent) / 100) }
                 }
-            }.disabled(!model.ready || model.selected == nil)
+            }.disabled(!model.canInteract || model.selected == nil)
             Divider()
             Button(BrowserStrings.text("Toggle Full Screen")) { NSApp.keyWindow?.toggleFullScreen(nil) }
                 .keyboardShortcut("f", modifiers: [.command, .control])
@@ -73,11 +73,11 @@ struct NativeEditingCommands: Commands {
         CommandGroup(after: .textEditing) {
             Menu(BrowserStrings.text("Find")) {
                 Button(BrowserStrings.text("Find in Page…")) { model.showFind() }
-                    .keyboardShortcut("f", modifiers: .command).disabled(!model.ready || model.selected == nil)
+                    .keyboardShortcut("f", modifiers: .command).disabled(!model.canInteract || model.selected == nil)
                 Button(BrowserStrings.text("Find Next")) { model.findNext() }
-                    .keyboardShortcut("g", modifiers: .command).disabled(!model.ready || model.selected == nil)
+                    .keyboardShortcut("g", modifiers: .command).disabled(!model.canInteract || model.selected == nil)
                 Button(BrowserStrings.text("Find Previous")) { model.findNext(backwards: true) }
-                    .keyboardShortcut("g", modifiers: [.command, .shift]).disabled(!model.ready || model.selected == nil)
+                    .keyboardShortcut("g", modifiers: [.command, .shift]).disabled(!model.canInteract || model.selected == nil)
             }
             Menu(BrowserStrings.text("Input Source")) {
                 ForEach(menu.sources) { source in
