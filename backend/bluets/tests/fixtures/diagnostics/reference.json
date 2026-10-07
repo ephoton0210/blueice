@@ -22519,6 +22519,47 @@
       "diagnostics": []
     },
     {
+      "id": "guards:guard-assert-argument-error/main.ts",
+      "matrix": "guards",
+      "entry": "guard-assert-argument-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/guard-assert-argument-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'unknown' is not assignable to type 'string'.",
+        "file": "typescript_oracle/guard-assert-argument-error/main.ts",
+        "start": 425,
+        "length": 6,
+        "line": 5,
+        "column": 222
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'unknown' is not assignable to type 'string'.",
+          "file": "typescript_oracle/guard-assert-argument-error/main.ts",
+          "start": 425,
+          "length": 6,
+          "line": 5,
+          "column": 222
+        }
+      ]
+    },
+    {
       "id": "guards:guard-assert-assignment-error/main.ts",
       "matrix": "guards",
       "entry": "guard-assert-assignment-error/main.ts",
@@ -22799,6 +22840,110 @@
       ]
     },
     {
+      "id": "guards:guard-assert-comma/main.ts",
+      "matrix": "guards",
+      "entry": "guard-assert-comma/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/guard-assert-comma/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "guards:guard-assert-comma-argument/main.ts",
+      "matrix": "guards",
+      "entry": "guard-assert-comma-argument/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/guard-assert-comma-argument/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "guards:guard-assert-comma-initializer/main.ts",
+      "matrix": "guards",
+      "entry": "guard-assert-comma-initializer/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/guard-assert-comma-initializer/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "guards:guard-assert-comma-parenthesized-error/main.ts",
+      "matrix": "guards",
+      "entry": "guard-assert-comma-parenthesized-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/guard-assert-comma-parenthesized-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'unknown' is not assignable to type 'string'.",
+        "file": "typescript_oracle/guard-assert-comma-parenthesized-error/main.ts",
+        "start": 426,
+        "length": 6,
+        "line": 5,
+        "column": 223
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'unknown' is not assignable to type 'string'.",
+          "file": "typescript_oracle/guard-assert-comma-parenthesized-error/main.ts",
+          "start": 426,
+          "length": 6,
+          "line": 5,
+          "column": 223
+        }
+      ]
+    },
+    {
       "id": "guards:guard-assert-equality/main.ts",
       "matrix": "guards",
       "entry": "guard-assert-equality/main.ts",
@@ -22878,6 +23023,88 @@
           "length": 6,
           "line": 5,
           "column": 113
+        }
+      ]
+    },
+    {
+      "id": "guards:guard-assert-initializer-error/main.ts",
+      "matrix": "guards",
+      "entry": "guard-assert-initializer-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/guard-assert-initializer-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'unknown' is not assignable to type 'string'.",
+        "file": "typescript_oracle/guard-assert-initializer-error/main.ts",
+        "start": 434,
+        "length": 6,
+        "line": 5,
+        "column": 231
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'unknown' is not assignable to type 'string'.",
+          "file": "typescript_oracle/guard-assert-initializer-error/main.ts",
+          "start": 434,
+          "length": 6,
+          "line": 5,
+          "column": 231
+        }
+      ]
+    },
+    {
+      "id": "guards:guard-assert-parenthesized-error/main.ts",
+      "matrix": "guards",
+      "entry": "guard-assert-parenthesized-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/guard-assert-parenthesized-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'unknown' is not assignable to type 'string'.",
+        "file": "typescript_oracle/guard-assert-parenthesized-error/main.ts",
+        "start": 421,
+        "length": 6,
+        "line": 5,
+        "column": 218
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'unknown' is not assignable to type 'string'.",
+          "file": "typescript_oracle/guard-assert-parenthesized-error/main.ts",
+          "start": 421,
+          "length": 6,
+          "line": 5,
+          "column": 218
         }
       ]
     },
@@ -24019,6 +24246,47 @@
       "diagnostics": []
     },
     {
+      "id": "guards:guard-never-argument-error/main.ts",
+      "matrix": "guards",
+      "entry": "guard-never-argument-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/guard-never-argument-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'string | null' is not assignable to type 'string'.\n  Type 'null' is not assignable to type 'string'.",
+        "file": "typescript_oracle/guard-never-argument-error/main.ts",
+        "start": 363,
+        "length": 6,
+        "line": 5,
+        "column": 160
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'string | null' is not assignable to type 'string'.\n  Type 'null' is not assignable to type 'string'.",
+          "file": "typescript_oracle/guard-never-argument-error/main.ts",
+          "start": 363,
+          "length": 6,
+          "line": 5,
+          "column": 160
+        }
+      ]
+    },
+    {
       "id": "guards:guard-never-assert-impossible/main.ts",
       "matrix": "guards",
       "entry": "guard-never-assert-impossible/main.ts",
@@ -24059,6 +24327,110 @@
       "accepts": true,
       "first": null,
       "diagnostics": []
+    },
+    {
+      "id": "guards:guard-never-comma/main.ts",
+      "matrix": "guards",
+      "entry": "guard-never-comma/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/guard-never-comma/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "guards:guard-never-comma-argument/main.ts",
+      "matrix": "guards",
+      "entry": "guard-never-comma-argument/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/guard-never-comma-argument/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "guards:guard-never-comma-initializer/main.ts",
+      "matrix": "guards",
+      "entry": "guard-never-comma-initializer/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/guard-never-comma-initializer/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "guards:guard-never-comma-parenthesized-error/main.ts",
+      "matrix": "guards",
+      "entry": "guard-never-comma-parenthesized-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/guard-never-comma-parenthesized-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'string | null' is not assignable to type 'string'.\n  Type 'null' is not assignable to type 'string'.",
+        "file": "typescript_oracle/guard-never-comma-parenthesized-error/main.ts",
+        "start": 364,
+        "length": 6,
+        "line": 5,
+        "column": 161
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'string | null' is not assignable to type 'string'.\n  Type 'null' is not assignable to type 'string'.",
+          "file": "typescript_oracle/guard-never-comma-parenthesized-error/main.ts",
+          "start": 364,
+          "length": 6,
+          "line": 5,
+          "column": 161
+        }
+      ]
     },
     {
       "id": "guards:guard-never-declared-call/main.ts",
@@ -24267,6 +24639,47 @@
       ]
     },
     {
+      "id": "guards:guard-never-initializer-error/main.ts",
+      "matrix": "guards",
+      "entry": "guard-never-initializer-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/guard-never-initializer-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'string | null' is not assignable to type 'string'.\n  Type 'null' is not assignable to type 'string'.",
+        "file": "typescript_oracle/guard-never-initializer-error/main.ts",
+        "start": 372,
+        "length": 6,
+        "line": 5,
+        "column": 169
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'string | null' is not assignable to type 'string'.\n  Type 'null' is not assignable to type 'string'.",
+          "file": "typescript_oracle/guard-never-initializer-error/main.ts",
+          "start": 372,
+          "length": 6,
+          "line": 5,
+          "column": 169
+        }
+      ]
+    },
+    {
       "id": "guards:guard-never-parameter/main.ts",
       "matrix": "guards",
       "entry": "guard-never-parameter/main.ts",
@@ -24286,6 +24699,47 @@
       "accepts": true,
       "first": null,
       "diagnostics": []
+    },
+    {
+      "id": "guards:guard-never-parenthesized-error/main.ts",
+      "matrix": "guards",
+      "entry": "guard-never-parenthesized-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/guard-never-parenthesized-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'string | null' is not assignable to type 'string'.\n  Type 'null' is not assignable to type 'string'.",
+        "file": "typescript_oracle/guard-never-parenthesized-error/main.ts",
+        "start": 359,
+        "length": 6,
+        "line": 5,
+        "column": 156
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'string | null' is not assignable to type 'string'.\n  Type 'null' is not assignable to type 'string'.",
+          "file": "typescript_oracle/guard-never-parenthesized-error/main.ts",
+          "start": 359,
+          "length": 6,
+          "line": 5,
+          "column": 156
+        }
+      ]
     },
     {
       "id": "guards:guard-never-void-error/main.ts",

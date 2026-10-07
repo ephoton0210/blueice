@@ -53,7 +53,7 @@ fn position(position: &Option<blueice_bluets::TypeScriptPosition>) -> Value {
 #[test]
 fn matrix_covers_every_guards_fixture() {
     let cases = cases();
-    assert_eq!(cases.len(), 61);
+    assert_eq!(cases.len(), 75);
     assert_eq!(
         cases.iter().filter(|case| case["runtime"] == true).count(),
         5

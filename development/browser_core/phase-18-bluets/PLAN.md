@@ -4897,3 +4897,27 @@ only the closed sibling module set. Runtime replay compares every emitted
 contains 1,582 programs (711 accept, 871 reject) and 145 message templates.
 This baseline changes no production source; its failures are intentional K.0
 evidence committed before implementation. K.4.2 remains unchecked.
+
+### K.4.2 Call-position failing replay
+
+The 61-program implementation snapshot passes the complete frozen-source K.0
+run: format, format check, both-crate all-target Clippy, and all 1,105 tests in
+69 groups, including all 130 ignored oracles. Evidence remains at
+`/logs/blueice-k42-final-status.json` and `/logs/blueice-k42-final-gate.log`.
+The leaf stays open because a further pinned call-position replay exposes a
+required flow boundary before the implementation is committed.
+
+Fourteen added controls distinguish statement/comma operands from initializers,
+call arguments and parenthesized call nodes for assertions and known `never`
+calls. TypeScript 5.9.3 records 75 programs (36 accept, 39 reject), with the same
+five runtime/declaration witnesses. The implementation draft's Linux replay
+reports ten mismatches: eight invalid call-effect acceptances and two valid
+`undefined` arguments to `void` parameters rejected by the existing relation.
+Fixture completeness, all five runtime/declaration comparisons and the pinned
+recorder pass; the four-test replay completes in 12.14 seconds at
+`/logs/blueice-k42-effects-red.log`.
+
+The shared diagnostic corpus is regenerated to 1,596 programs (717 accept,
+879 reject), retaining 145 templates. This supplemental baseline commits only
+fixtures, replay metadata and plans before correcting call-effect eligibility
+or the measured `undefined`/`void` prerequisite. K.4.2 remains unchecked.

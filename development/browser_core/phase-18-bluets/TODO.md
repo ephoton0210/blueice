@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: K.4.2 (test-first replay).** Sections A to J are complete (summarized below); J.6 closed in its
+**Current leaf: K.4.2 (call-position replay).** Sections A to J are complete (summarized below); J.6 closed in its
 measured form (`COMPATIBILITY_INVENTORY.md`). Section K closes the gaps that inventory lists.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
@@ -354,6 +354,7 @@ narrowing needs a flow graph or can stay structural, recorded in PLAN.md before 
 - [ ] **K.4.2 Guards and assertions (M).** `x is T`, `this is T`, `asserts x`, `asserts x is T`, `never`
   exhaustiveness (TS2366, TS2678).
   - *Failing baseline (2026-10-07):* 61 pinned programs (30 accept, 31 reject), five runtime/declaration witnesses, including imported signatures and callable aliases. Linux replay records 55 checker mismatches and four runtime/declaration failures; fixture completeness and pinned recorder pass. The shared diagnostic corpus is regenerated to 1,582 programs and 145 templates. Production remains unchanged in this baseline.
+  - *Call-position replay (2026-10-07):* the 61-program draft passes the full frozen K.0 gate (1,105 tests, all 130 ignored oracles). Fourteen further pinned controls expand the guard corpus to 75 programs (36 accept, 39 reject); eight invalid call effects and two `undefined`/`void` argument rejections fail before their correction. All five runtime/declaration witnesses and the pinned recorder pass. The shared corpus now contains 1,596 programs and 145 templates; the leaf remains open.
 - [ ] **K.4.3 Generic inference (XL).** Inference from arguments (candidates, unification, widening),
   from return position and contextual types, constraints (`extends`, `keyof`), defaults, explicit
   arguments, generic function types, generic classes and interfaces; the `instantiate_named` budget

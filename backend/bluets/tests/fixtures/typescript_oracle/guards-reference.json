@@ -2,6 +2,22 @@
   "version": "5.9.3",
   "cases": [
     {
+      "entry": "guard-assert-argument-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type 'unknown' is not assignable to type 'string'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 222,
+          "length": 6
+        },
+        "related": []
+      }
+    },
+    {
       "entry": "guard-assert-assignment-error/main.ts",
       "accepts": false,
       "runtime": false,
@@ -110,6 +126,40 @@
       }
     },
     {
+      "entry": "guard-assert-comma/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "guard-assert-comma-argument/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "guard-assert-comma-initializer/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "guard-assert-comma-parenthesized-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type 'unknown' is not assignable to type 'string'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 223,
+          "length": 6
+        },
+        "related": []
+      }
+    },
+    {
       "entry": "guard-assert-equality/main.ts",
       "accepts": true,
       "runtime": false,
@@ -132,6 +182,38 @@
         "position": {
           "line": 5,
           "column": 113,
+          "length": 6
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "guard-assert-initializer-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type 'unknown' is not assignable to type 'string'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 231,
+          "length": 6
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "guard-assert-parenthesized-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type 'unknown' is not assignable to type 'string'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 218,
           "length": 6
         },
         "related": []
@@ -518,6 +600,22 @@
       "first": null
     },
     {
+      "entry": "guard-never-argument-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type 'string | null' is not assignable to type 'string'.\n  Type 'null' is not assignable to type 'string'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 160,
+          "length": 6
+        },
+        "related": []
+      }
+    },
+    {
       "entry": "guard-never-assert-impossible/main.ts",
       "accepts": true,
       "runtime": false,
@@ -528,6 +626,40 @@
       "accepts": true,
       "runtime": false,
       "first": null
+    },
+    {
+      "entry": "guard-never-comma/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "guard-never-comma-argument/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "guard-never-comma-initializer/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "guard-never-comma-parenthesized-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type 'string | null' is not assignable to type 'string'.\n  Type 'null' is not assignable to type 'string'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 161,
+          "length": 6
+        },
+        "related": []
+      }
     },
     {
       "entry": "guard-never-declared-call/main.ts",
@@ -606,10 +738,42 @@
       }
     },
     {
+      "entry": "guard-never-initializer-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type 'string | null' is not assignable to type 'string'.\n  Type 'null' is not assignable to type 'string'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 169,
+          "length": 6
+        },
+        "related": []
+      }
+    },
+    {
       "entry": "guard-never-parameter/main.ts",
       "accepts": true,
       "runtime": false,
       "first": null
+    },
+    {
+      "entry": "guard-never-parenthesized-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type 'string | null' is not assignable to type 'string'.\n  Type 'null' is not assignable to type 'string'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 156,
+          "length": 6
+        },
+        "related": []
+      }
     },
     {
       "entry": "guard-never-void-error/main.ts",
