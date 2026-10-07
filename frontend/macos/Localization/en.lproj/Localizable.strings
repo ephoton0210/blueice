@@ -351,3 +351,33 @@
 "No confirmed session is available. Restart opens a new page." = "No confirmed session is available. Restart opens a new page.";
 "Windows to restore: %llu; tabs: %llu. Unsaved page changes will be lost." = "Windows to restore: %llu; tabs: %llu. Unsaved page changes will be lost.";
 "Recovery keeps your current windows and tabs available while BlueIce remains open. Remembering also retains them for future launches." = "Recovery keeps your current windows and tabs available while BlueIce remains open. Remembering also retains them for future launches.";
+
+"Custom" = "Custom";
+
+"Choose a search engine" = "Choose a search engine";
+
+"Search engine" = "Search engine";
+
+"Search URL" = "Search URL";
+
+"Query field" = "Query field";
+
+"Save custom search" = "Save custom search";
+
+"Typing stays in BlueIce. Enter or Go sends the search to your chosen engine." = "Typing stays in BlueIce. Enter or Go sends the search to your chosen engine.";
+
+"The search settings are invalid." = "The search settings are invalid.";
+
+"Enter an address or search text." = "Enter an address or search text.";
+
+"Enter a single-line address or search text within the length limit." = "Enter a single-line address or search text within the length limit.";
+
+"Enter search text within the 2048-byte limit." = "Enter search text within the 2048-byte limit.";
+
+"Choose a search engine in Settings before searching." = "Choose a search engine in Settings before searching.";
+
+"Use a valid HTTP(S) search URL without credentials or a fragment, and a query field." = "Use a valid HTTP(S) search URL without credentials or a fragment, and a query field.";
+
+"The search URL exceeds the navigation length limit." = "The search URL exceeds the navigation length limit.";
+
+"Use a complete file: URL for a local file address." = "Use a complete file: URL for a local file address.";

@@ -11,6 +11,7 @@ final class BrowserWorkspace: ObservableObject {
     let session = BrowserSession()
     let downloads: BrowserDownloadsModel
     let appearance: BrowserAppearance
+    let search: BrowserSearchPreferences
     @Published private(set) var windows: [BrowserWindowSummary] = []
     @Published private(set) var contexts: [BrowserContextSummary] = []
     @Published private(set) var canManageContexts = false
@@ -70,6 +71,7 @@ final class BrowserWorkspace: ObservableObject {
 
     init(appearance: BrowserAppearance? = nil, contextDefaults: UserDefaults? = nil, downloadConfiguration: DownloadConfiguration? = nil, recovery: SavedBrowserSession? = nil) {
         self.appearance = appearance ?? BrowserAppearance()
+        self.search = BrowserSearchPreferences(defaults: contextDefaults ?? BrowserAppearance.preferenceStore())
         self.contextDefaults = contextDefaults
         let configuration = downloadConfiguration ?? .configured()
         self.downloadConfiguration = configuration

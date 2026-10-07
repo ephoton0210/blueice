@@ -25,6 +25,8 @@ struct BrowserApplicationSettings: View {
     var body: some View {
         VStack(spacing: 0) {
             BrowserLanguageSettingsView()
+            BrowserSearchSettingsView(settings: delegate.workspace.search)
+                .padding([.horizontal, .bottom], 24).frame(width: 460)
             BrowserAppearanceSettingsView(settings: delegate.workspace.appearance)
             BrowserSessionSettingsView(workspace: delegate.workspace, preferences: delegate.workspace.sessionPreferences)
                 .padding([.horizontal, .bottom], 24).frame(width: 460)

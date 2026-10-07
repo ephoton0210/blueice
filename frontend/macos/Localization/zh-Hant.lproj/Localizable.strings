@@ -351,3 +351,33 @@
 "No confirmed session is available. Restart opens a new page." = "沒有可復原的已確認工作階段。重新啟動後會開啟新頁面。";
 "Windows to restore: %llu; tabs: %llu. Unsaved page changes will be lost." = "復原 %llu 個視窗與 %llu 個分頁。未儲存的頁面變更將會遺失。";
 "Recovery keeps your current windows and tabs available while BlueIce remains open. Remembering also retains them for future launches." = "BlueIce 開啟期間可復原目前的視窗與分頁。啟用記住功能後，下次啟動也能還原。";
+
+"Custom" = "自訂";
+
+"Choose a search engine" = "選擇搜尋引擎";
+
+"Search engine" = "搜尋引擎";
+
+"Search URL" = "搜尋網址";
+
+"Query field" = "查詢參數";
+
+"Save custom search" = "儲存自訂搜尋";
+
+"Typing stays in BlueIce. Enter or Go sends the search to your chosen engine." = "輸入的文字會留在 BlueIce；按下 Enter 或前往後才會送往選定的搜尋引擎。";
+
+"The search settings are invalid." = "搜尋設定無效。";
+
+"Enter an address or search text." = "請輸入網址或搜尋文字。";
+
+"Enter a single-line address or search text within the length limit." = "請輸入長度限制內的單行網址或搜尋文字。";
+
+"Enter search text within the 2048-byte limit." = "請輸入 2048 位元組限制內的搜尋文字。";
+
+"Choose a search engine in Settings before searching." = "搜尋前請先在設定中選擇搜尋引擎。";
+
+"Use a valid HTTP(S) search URL without credentials or a fragment, and a query field." = "請提供有效的 HTTP(S) 搜尋網址與查詢參數；網址不可包含帳密或 fragment。";
+
+"The search URL exceeds the navigation length limit." = "搜尋網址超過導覽的長度限制。";
+
+"Use a complete file: URL for a local file address." = "開啟本機檔案時請使用完整的 file: 網址。";

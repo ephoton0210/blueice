@@ -70,6 +70,10 @@ final class HTTPFixture: @unchecked Sendable {
                 }
                 let body: String
                 switch route {
+                case "/search":
+                    let query = URLComponents(string: self.origin + path)?.queryItems?.last?.value ?? ""
+                    let text = query.replacingOccurrences(of: "&", with: "&amp;").replacingOccurrences(of: "<", with: "&lt;").replacingOccurrences(of: ">", with: "&gt;")
+                    body = "<html><body><h1>Search results</h1><p>\(text)</p></body></html>"
                 case "/document-selection": body = """
                     <html><body><h1>Document selection</h1><p id="first">Alpha <b>bold</b> 😀 é</p>
                     <p id="second">Beta 中文 <a href="/selection-follow">selectable link</a></p>

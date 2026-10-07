@@ -66,6 +66,7 @@ final class BrowserModel: ObservableObject {
         }
     }
     let appearance: BrowserAppearance
+    let search: BrowserSearchPreferences
     let windowID: UInt64
     private(set) var contextID: UInt64 = 1
     @Published private(set) var profileName = "Default"
@@ -175,8 +176,9 @@ final class BrowserModel: ObservableObject {
     private var preferenceObservation: AnyCancellable?
     private var preferenceTask: Task<Void, Never>?
     private var lastSentPreferences: DisplayPreferences?
-    init(appearance: BrowserAppearance? = nil, workspace: BrowserWorkspace? = nil, windowID: UInt64 = 1) {
+    init(appearance: BrowserAppearance? = nil, search: BrowserSearchPreferences? = nil, workspace: BrowserWorkspace? = nil, windowID: UInt64 = 1) {
         self.appearance = appearance ?? BrowserAppearance()
+        self.search = search ?? workspace?.search ?? BrowserSearchPreferences()
         self.workspace = workspace; self.windowID = windowID
         self.interactionSuspended = workspace?.interactionSuspended ?? false
         self.session = workspace?.session ?? BrowserSession()
@@ -1253,12 +1255,17 @@ final class BrowserModel: ObservableObject {
 
     func navigateAddress() {
         guard canInteract else { return }
-        var url = address.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !url.isEmpty, let selected else { return }
-        if !url.contains(":") { url = "https://" + url }
+        guard !address.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, let selected else { return }
+        let target: BrowserAddressTarget
+        do { target = try search.resolve(address) }
+        catch let error as BrowserAddressFailure { status = error.message; return }
+        catch { status = "The search settings are invalid."; return }
         pageFocusSerial &+= 1
         status = "Loading…"
-        Task { await navigate(url, tab: selected) }
+        Task {
+            guard canInteract, tabs.contains(where: { $0.id == selected }) else { return }
+            await navigate(target.url, tab: selected)
+        }
     }
 
     func reload() {

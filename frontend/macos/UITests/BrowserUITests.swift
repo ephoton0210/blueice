@@ -1960,6 +1960,138 @@ final class BrowserUITests: XCTestCase {
         XCTAssertTrue(window.waitForExistence(timeout: 10), app.debugDescription)
         return window
     }
+    private func configureSearch(_ endpoint: String, parameter: String = "q") {
+        let window = preferenceWindow()
+        choosePreference(window,"search-provider","Custom")
+        paste(endpoint,into: window.textFields["search-endpoint"])
+        paste(parameter,into: window.textFields["search-parameter"])
+        window.buttons["search-save"].click()
+        XCTAssertFalse(window.staticTexts["search-settings-error"].exists,window.debugDescription)
+        window.buttons[XCUIIdentifierCloseWindow].click()
+        app.windows["browser-window"].click()
+    }
+    func testAddressSearchUsesExactUnicodeQueryOnlyOnHumanSubmitAndRetainsHistory() throws {
+        let fixture = try HTTPFixture(); defer { fixture.stop() }
+        let saved = saveClipboard(); defer { NSPasteboard.general.clearContents(); NSPasteboard.general.writeObjects(saved) }
+        launch(); configureSearch(fixture.origin + "/search?lang=zh&q=old&q=older")
+        let query = "C++ & 東京 👨‍👩‍👧 #100%"
+        paste(query,into: app.textFields["address"])
+        XCTAssertEqual(fixture.requests,[],"Typing must not contact the provider")
+        app.textFields["address"].typeKey(.return,modifierFlags: [])
+        waitPageContent("Search results"); waitPageContent(query)
+        let path = try XCTUnwrap(fixture.requests.first)
+        XCTAssertEqual(fixture.requests.count,1)
+        XCTAssertTrue(path.hasPrefix("/search?lang=zh&q=C%2B%2B%20%26%20"))
+        XCTAssertEqual(URLComponents(string: fixture.origin + path)?.queryItems,[URLQueryItem(name: "lang",value: "zh"),URLQueryItem(name: "q",value: query)])
+        waitValue(app.textFields["address"],fixture.origin + path)
+        let image = XCTAttachment(screenshot: app.windows["browser-window"].screenshot())
+        image.name = "macos-native-address-search"; image.lifetime = .keepAlways; add(image)
+        configureSearch(fixture.origin + "/changed-provider")
+        XCTAssertEqual(fixture.requests,[path],"Changing the provider must not navigate the current page")
+        app.buttons["back"].click(); waitValue(app.textFields["address"],"about:credits")
+        app.buttons["forward"].click(); waitValue(app.textFields["address"],fixture.origin + path)
+        waitPageContent(query)
+        let requests = fixture.requests
+        XCTAssertTrue(requests == [path] || requests == [path,path],"History retains the confirmed URL after a provider change, whether the response is cached or fetched again")
+    }
+    func testSearchSettingsPersistAndNewWindowsUseTheChosenProvider() throws {
+        let fixture = try HTTPFixture(); defer { fixture.stop() }
+        let saved = saveClipboard(); defer { NSPasteboard.general.clearContents(); NSPasteboard.general.writeObjects(saved) }
+        launch(); configureSearch(fixture.origin + "/search",parameter: "term")
+        app.typeKey("n",modifierFlags: .command)
+        let second = app.windows["browser-window-2"]
+        XCTAssertTrue(second.waitForExistence(timeout: 10))
+        paste("?example.test",into: second.textFields["address"])
+        XCTAssertEqual(fixture.requests,[])
+        second.buttons["go"].click(); waitValue(second.textFields["address"],fixture.origin + "/search?term=example.test")
+        XCTAssertEqual(fixture.requests,["/search?term=example.test"])
+        app.typeKey("q",modifierFlags: .command); XCTAssertTrue(app.wait(for: .notRunning,timeout: 15))
+        launch()
+        let settings = preferenceWindow()
+        XCTAssertEqual(settings.popUpButtons["search-provider"].value as? String,"Custom")
+        waitValue(settings.textFields["search-endpoint"],fixture.origin + "/search")
+        waitValue(settings.textFields["search-parameter"],"term")
+        settings.buttons[XCUIIdentifierCloseWindow].click()
+        paste("blueice browser",into: app.textFields["address"])
+        app.buttons["go"].click(); waitPageContent("blueice browser")
+        XCTAssertEqual(fixture.requests,["/search?term=example.test","/search?term=blueice%20browser"])
+    }
+    func testUnknownSearchSettingsRefuseSearchUntilAnExplicitHumanConfiguration() throws {
+        let fixture = try HTTPFixture(); defer { fixture.stop() }
+        let saved = saveClipboard(); defer { NSPasteboard.general.clearContents(); NSPasteboard.general.writeObjects(saved) }
+        // Seed the application's argument preference domain; the generated
+        // sandboxed runner has a separate UserDefaults suite of the same name.
+        app.launchArguments += ["-browser.search.configuration","future-provider"]
+        launch()
+        let unknown = preferenceWindow()
+        XCTAssertEqual(unknown.popUpButtons["search-provider"].value as? String,"Choose a search engine")
+        unknown.buttons[XCUIIdentifierCloseWindow].click()
+        enter(fixture.origin + "/second"); waitPageContent("BlueIce external page")
+        let back = app.buttons["back"].isEnabled, forward = app.buttons["forward"].isEnabled
+        paste("private query",into: app.textFields["address"])
+        app.buttons["go"].click()
+        waitValue(app.staticTexts["status"],"Choose a search engine in Settings before searching.")
+        XCTAssertEqual(app.buttons["back"].isEnabled,back); XCTAssertEqual(app.buttons["forward"].isEnabled,forward)
+        waitPageContent("BlueIce external page"); XCTAssertEqual(fixture.requests,["/second"])
+        configureSearch(fixture.origin + "/search")
+        paste("private query",into: app.textFields["address"]); app.buttons["go"].click()
+        waitPageContent("private query"); XCTAssertEqual(fixture.requests,["/second","/search?q=private%20query"])
+    }
+    func testSearchNavigationStillUsesTheRealGatekeeperDenial() throws {
+        let fixture = try HTTPFixture(); defer { fixture.stop() }
+        let saved = saveClipboard(); defer { NSPasteboard.general.clearContents(); NSPasteboard.general.writeObjects(saved) }
+        launch(); enter(fixture.origin + "/second"); waitPageContent("BlueIce external page")
+        configureSearch("http://malware.test/search")
+        paste("blocked query",into: app.textFields["address"]); app.buttons["go"].click()
+        let denied = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value CONTAINS[c] 'Navigation blocked' OR label CONTAINS[c] 'Navigation blocked'"),object: app.staticTexts["status"])
+        XCTAssertEqual(XCTWaiter.wait(for: [denied],timeout: 15),.completed)
+        waitPageContent("BlueIce external page")
+        // Exercise the confirmed history rather than inferring it from one
+        // enabled control. A denied query must not add a history entry.
+        app.buttons["back"].click(); waitValue(app.textFields["address"],"about:credits")
+        app.buttons["forward"].click(); waitValue(app.textFields["address"],fixture.origin + "/second")
+        waitPageContent("BlueIce external page")
+        XCTAssertTrue(fixture.requests == ["/second"] || fixture.requests == ["/second","/second"])
+    }
+    func testSearchSettingsLocalizeAndKeyboardSaveRejectsInvalidDrafts() throws {
+        let fixture = try HTTPFixture(); defer { fixture.stop() }
+        let saved = saveClipboard(); defer { NSPasteboard.general.clearContents(); NSPasteboard.general.writeObjects(saved) }
+        let languageIndex = try XCTUnwrap(app.launchArguments.firstIndex(of: "--interface-language"))
+        app.launchArguments[languageIndex + 1] = "zh-Hant"
+        launch()
+        let settings = preferenceWindow()
+        XCTAssertEqual(settings.popUpButtons["search-provider"].label,"搜尋引擎")
+        for provider in ["Google","Bing","DuckDuckGo"] {
+            choosePreference(settings,"search-provider",provider)
+            XCTAssertEqual(settings.popUpButtons["search-provider"].value as? String,provider)
+        }
+        choosePreference(settings,"search-provider","自訂")
+        paste("https://alice:secret@example.test/search",into: settings.textFields["search-endpoint"])
+        paste("q",into: settings.textFields["search-parameter"])
+        settings.textFields["search-parameter"].typeKey(.return,modifierFlags: [])
+        XCTAssertTrue(settings.staticTexts["search-settings-error"].waitForExistence(timeout: 10))
+        // Inspect durable user-visible state in a fresh process. A runner's
+        // cross-process UserDefaults cache is not an acceptance boundary.
+        settings.buttons[XCUIIdentifierCloseWindow].click()
+        app.typeKey("q",modifierFlags: .command); XCTAssertTrue(app.wait(for: .notRunning,timeout: 15))
+        launch()
+        let restored = preferenceWindow()
+        XCTAssertEqual(restored.popUpButtons["search-provider"].value as? String,"自訂")
+        waitValue(restored.textFields["search-endpoint"],"")
+        paste(fixture.origin + "/search",into: restored.textFields["search-endpoint"])
+        restored.buttons["search-save"].click()
+        XCTAssertFalse(restored.staticTexts["search-settings-error"].exists)
+        XCTAssertEqual(restored.buttons["search-save"].label,"儲存自訂搜尋")
+        XCTAssertTrue(restored.buttons["search-save"].isHittable)
+        XCTAssertTrue(restored.checkBoxes["session-remember"].isHittable,"Search must keep the native settings window usable")
+        let image = XCTAttachment(screenshot: restored.screenshot())
+        image.name = "macos-native-search-settings-zh"; image.lifetime = .keepAlways; add(image)
+        restored.buttons[XCUIIdentifierCloseWindow].click()
+        app.typeKey("l",modifierFlags: .command)
+        app.typeText("blueice browser"); app.typeKey(.return,modifierFlags: [])
+        waitPageContent("Search results")
+        XCTAssertEqual(fixture.requests,["/search?q=blueice%20browser"])
+    }
     private func choosePreference(_ window: XCUIElement, _ identifier: String, _ title: String) {
         window.popUpButtons[identifier].click(); app.menuItems[title].click()
     }

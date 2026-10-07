@@ -341,3 +341,16 @@ build, source/product/signature/process audit and screenshot review passed.
 Historical failures, fixture corrections and the accepted evidence are recorded in
 [MACOS_DOWNLOAD_QUARANTINE_RESULTS.md](MACOS_DOWNLOAD_QUARANTINE_RESULTS.md).
 The complete macOS browser delivery goal remains active.
+
+The macOS address-bar search increment resolves human Return/Go through one
+persisted shared provider without requests while typing. Exact Unicode query
+encoding, native custom Settings, URL/history preservation and ordinary
+Gatekeeper refusal are covered. Complete native acceptance passed 230
+methods with 1 existing physical Zhuyin skip; the 7,311-pass Rust workspace
+baseline is carried only for 1,701 unchanged backend/Cargo/toolchain inputs.
+Rust 1.96 formatting, strict Clippy and all-target build passed, as did final
+source/product/signature/process audit and screenshot review. Failed attempts
+and preference-fixture corrections are retained in
+[MACOS_ADDRESS_SEARCH_RESULTS.md](MACOS_ADDRESS_SEARCH_RESULTS.md).
+Current core family-emoji glyph rendering and other browser delivery milestones
+remain open; the complete macOS browser delivery goal remains active.

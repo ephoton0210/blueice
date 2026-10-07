@@ -11,6 +11,7 @@ pushed to the current tracked branch as authorized by the owner.
 | --- | --- | --- |
 | Native window and chrome | SwiftUI/AppKit address/tabs/history/settings, visible real-core pixels, startup/close/resize XCUITest | Committed `c762b53a9` |
 | Browser chrome keyboard focus | Enabled rendered control loop, native field/button/menu activation, page boundary handoff, scrolling and window/modal/service lifecycle fences | Implemented and accepted, see [focus results](MACOS_CHROME_FOCUS_RESULTS.md) |
+| Address-bar search | Human Return/Go, exact Unicode queries, persistent shared provider Settings, URL/history preservation, native localization/keyboard and Gatekeeper refusal | Implemented and accepted; complete native suite passed 230 methods with 1 existing physical Zhuyin skip, see [search contract](MACOS_ADDRESS_SEARCH_CONTRACT.md) |
 | Browser service recovery | Visible owned restart, volatile confirmed session recovery, fresh workspace/window ownership, POST/privacy and stale-input refusal | Implemented and accepted, see [recovery contract](MACOS_RECOVERY_CONTRACT.md) and [recovery results](MACOS_RECOVERY_RESULTS.md); complete native suite passed 217 methods with one existing physical Zhuyin skip |
 | Owned service stack | Bundled launcher/core/gatekeeper, reviewed external navigation, fail-closed review, normal/forced cleanup | Committed `32fa07f6b` |
 | Page accessibility | Core semantic tree mapped into NSAccessibility, native actions, privacy, stale-element and tab isolation tests | Committed and pushed `41952a803` |
