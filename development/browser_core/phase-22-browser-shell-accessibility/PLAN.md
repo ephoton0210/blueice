@@ -329,3 +329,15 @@ only for 1,697 unchanged backend inputs. The source/product/signature/process
 audits and all unsuccessful iterations are recorded in
 [MACOS_RECOVERY_RESULTS.md](MACOS_RECOVERY_RESULTS.md). The complete macOS browser
 delivery plan remains active.
+
+The macOS download quarantine increment installs system-generated quarantine and
+sanitized Finder origin on the retained file descriptor before atomic publication,
+including empty responses. Metadata failure preserves existing destinations and
+partial bytes; native status checks actual current-file metadata, and ordinary
+Open/Finder/history actions retain it. Complete native acceptance passed 219
+methods with one existing physical Zhuyin skip; complete Rust workspace acceptance
+passed 7,311 cases with 69 existing ignores. Formatting, strict Clippy, all-target
+build, source/product/signature/process audit and screenshot review passed.
+Historical failures, fixture corrections and the accepted evidence are recorded in
+[MACOS_DOWNLOAD_QUARANTINE_RESULTS.md](MACOS_DOWNLOAD_QUARANTINE_RESULTS.md).
+The complete macOS browser delivery goal remains active.

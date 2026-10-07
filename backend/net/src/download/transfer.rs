@@ -375,12 +375,10 @@ impl Transfer {
         let mut phase = Phase::Running;
 
         if probe.is_empty() {
-            // Nothing to fetch: an empty destination is the whole download.
-            file = if options.overwrite {
-                secure_fs::open_replace_creating_parent(&dest)?
-            } else {
-                secure_fs::open_new(&dest)?
-            };
+            // Empty responses use the same transaction as nonempty files:
+            // metadata must be installed before the destination is visible.
+            file = secure_fs::open_replace_creating_parent(&part_path(&dest))?;
+            publish_file(&file, &dest, options.overwrite, &probe.final_url)?;
             remove_partials(&dest);
             phase = Phase::Finished(TransferState::Completed);
             events.push("completed: 0 bytes".to_string());
@@ -1142,25 +1140,42 @@ impl Shared {
     /// a file length check here would be vacuous because segmented files are
     /// pre-sized with `set_len`.
     fn finalize_file(&self) -> Result<u64, DownloadError> {
-        self.file.sync_all()?;
         let length = self.file.metadata()?.len();
-        let part = part_path(&self.dest);
-        if self.options.overwrite {
-            secure_fs::replace(&part, &self.dest)?;
-        } else {
-            match secure_fs::link_no_replace(&part, &self.dest) {
-                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
-                    return Err(DownloadError::DestinationExists(self.dest.clone()));
-                }
-                Err(error) => return Err(error.into()),
-                Ok(()) => {}
-            }
-        }
+        publish_file(
+            &self.file,
+            &self.dest,
+            self.options.overwrite,
+            &self.probe.final_url,
+        )?;
         let sidecar = sidecar_path(&self.dest);
         let _ = std::fs::remove_file(&sidecar);
         remove_partials(&self.dest);
         Ok(length)
     }
+}
+
+fn publish_file(
+    file: &File,
+    dest: &std::path::Path,
+    overwrite: bool,
+    _source: &str,
+) -> Result<(), DownloadError> {
+    #[cfg(target_os = "macos")]
+    crate::download::quarantine::apply(file, _source)?;
+    file.sync_all()?;
+    let part = part_path(dest);
+    if overwrite {
+        secure_fs::replace(&part, dest)?;
+    } else {
+        match secure_fs::link_no_replace(&part, dest) {
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+                return Err(DownloadError::DestinationExists(dest.to_owned()));
+            }
+            Err(error) => return Err(error.into()),
+            Ok(()) => {}
+        }
+    }
+    Ok(())
 }
 
 fn worker(shared: Arc<Shared>, claim: Claim) {
@@ -1231,6 +1246,29 @@ fn coordinate(shared: Arc<Shared>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn failed_quarantine_preserves_both_the_existing_destination_and_partial_data() {
+        let root = crate::download::testutil::TempDir::new("quarantine-publish");
+        let dest = root.path().join("notes.txt");
+        std::fs::write(&dest, b"existing").unwrap();
+        std::fs::write(part_path(&dest), b"downloaded").unwrap();
+        // A descriptor on a filesystem without extended attributes must fail
+        // before either the overwrite or no-overwrite publication operation.
+        let unsupported = File::open("/dev/null").unwrap();
+        for overwrite in [false, true] {
+            assert!(publish_file(
+                &unsupported,
+                &dest,
+                overwrite,
+                "https://example.test/notes.txt"
+            )
+            .is_err());
+            assert_eq!(std::fs::read(&dest).unwrap(), b"existing");
+            assert_eq!(std::fs::read(part_path(&dest)).unwrap(), b"downloaded");
+        }
+    }
 
     #[test]
     fn capacity_checks_reject_oversized_resources_and_preserve_the_free_space_floor() {

@@ -92,6 +92,10 @@ private struct DownloadRow: View {
             if info.state == .paused && !info.resumeSafe { Text(BrowserStrings.text("Resuming starts again from the beginning.")).font(.caption) }
             if let block = info.blocked { Text(block.reason).font(.caption).foregroundStyle(.red).accessibilityIdentifier("download-blocked-\(info.id)") }
             if let error = info.lastError, info.state == .failed { Text(error).font(.caption).foregroundStyle(.red) }
+            if downloads.hasQuarantine(info) {
+                Text(BrowserStrings.text("Origin recorded for macOS")).font(.caption).foregroundStyle(.secondary)
+                    .accessibilityIdentifier("download-quarantine-\(info.id)")
+            }
             HStack {
                 if [.queued,.awaitingClearance,.active].contains(info.state) { operation("Pause","Pause","pause"); operation("Cancel","Cancel","cancel") }
                 if [.paused,.failed,.blocked].contains(info.state) { operation("Resume","Resume","resume") }

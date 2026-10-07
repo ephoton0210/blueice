@@ -3,6 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 import AppKit
+import CoreServices
 import Carbon
 import ApplicationServices
 import XCTest
@@ -847,6 +848,44 @@ final class BrowserUITests: XCTestCase {
         // Cancelling releases the captured job; a second invocation must work.
         app.typeKey("p",modifierFlags: .command)
         XCTAssertTrue(cancel.waitForExistence(timeout: 15)); cancel.click()
+    }
+
+    func testNativeDownloadQuarantineAndFinderOriginSurviveRelaunchWithoutExposingTokens() throws {
+        let fixture = try DownloadFixture(); defer { fixture.stop() }
+        let root = URL(fileURLWithPath: "/private/tmp/bi-quarantine-ui-" + UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let files = root.appendingPathComponent("files")
+        app.launchArguments += ["--downloads-directory",files.path,"--downloads-data-directory",root.appendingPathComponent("data").path]
+        let saved = saveClipboard(); defer { NSPasteboard.general.clearContents(); NSPasteboard.general.writeObjects(saved) }
+        launch(); positionWindowForUnobstructedSheet(app.windows["browser-window"])
+        app.buttons["downloads"].click()
+        XCTAssertTrue(app.staticTexts["downloads-empty"].waitForExistence(timeout: 10))
+        startDownload(fixture.origin + "/notes.txt?token=private#private",name: "notes.txt")
+        waitDownload(1,"Completed")
+        XCTAssertTrue(app.staticTexts["download-quarantine-1"].waitForExistence(timeout: 10))
+        let file = files.appendingPathComponent("notes.txt")
+        XCTAssertEqual(try Data(contentsOf: file),fixture.bytes)
+        let quarantine = try XCTUnwrap(file.resourceValues(forKeys: [.quarantinePropertiesKey]).quarantineProperties)
+        XCTAssertEqual(quarantine[kLSQuarantineAgentNameKey as String] as? String,"BlueIce")
+        XCTAssertEqual(quarantine[kLSQuarantineAgentBundleIdentifierKey as String] as? String,"cc.blueice.BlueIce")
+        let handle = try FileHandle(forReadingFrom: file); defer { try? handle.close() }
+        var origins = Data(count: 4096)
+        let length = origins.withUnsafeMutableBytes { buffer in
+            fgetxattr(handle.fileDescriptor,"com.apple.metadata:kMDItemWhereFroms",buffer.baseAddress,buffer.count,0,0)
+        }
+        XCTAssertGreaterThan(length,0); guard length > 0 else { return }
+        origins.count = length
+        XCTAssertEqual(try PropertyListSerialization.propertyList(from: origins,format: nil) as? [String],[fixture.origin + "/notes.txt"])
+        let attachment = XCTAttachment(screenshot: app.windows["browser-window"].screenshot())
+        attachment.name = "macos-native-download-quarantine"; attachment.lifetime = .keepAlways; add(attachment)
+        app.buttons["downloads-close"].click(); app.typeKey("q",modifierFlags: .command)
+        XCTAssertTrue(app.wait(for: .notRunning,timeout: 15))
+        launch(); app.buttons["downloads"].click(); waitDownload(1,"Completed")
+        XCTAssertTrue(app.staticTexts["download-quarantine-1"].waitForExistence(timeout: 10))
+        app.buttons["download-remove-1"].click()
+        XCTAssertFalse(app.buttons["download-open-1"].exists)
+        XCTAssertEqual(try Data(contentsOf: file),fixture.bytes)
+        XCTAssertNotNil(try file.resourceValues(forKeys: [.quarantinePropertiesKey]).quarantineProperties)
     }
 
     func testNativeDownloadsTransferControlsPersistenceAndFinderActions() throws {

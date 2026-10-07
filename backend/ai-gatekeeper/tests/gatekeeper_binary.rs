@@ -16,6 +16,8 @@ use blueice_ipc::gatekeeper::{
 };
 use std::io::{Read, Write};
 use std::net::TcpListener;
+#[cfg(target_os = "macos")]
+use std::os::unix::fs::DirBuilderExt;
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 use std::process::{Child, Command};
@@ -63,6 +65,8 @@ struct GatekeeperProcess {
     child: Child,
     socket: PathBuf,
     settings_path: PathBuf,
+    #[cfg(target_os = "macos")]
+    executable_directory: PathBuf,
 }
 
 impl GatekeeperProcess {
@@ -70,7 +74,29 @@ impl GatekeeperProcess {
         let socket = unique_socket_path();
         let settings_path = socket.with_extension("json");
         let _ = std::fs::remove_file(&socket);
-        let child = Command::new(env!("CARGO_BIN_EXE_blueice-ai-gatekeeper"))
+        let executable = PathBuf::from(env!("CARGO_BIN_EXE_blueice-ai-gatekeeper"));
+        #[cfg(target_os = "macos")]
+        let executable_directory = socket.with_extension("bin");
+        #[cfg(target_os = "macos")]
+        let executable = {
+            // Match the native bundle and launcher fixture: explicitly sign a
+            // fresh private copy, preserving any Cargo executable in use.
+            blueice_ipc::local_socket::ensure_private_socket_dir(socket.parent().unwrap()).unwrap();
+            std::fs::DirBuilder::new()
+                .mode(0o700)
+                .create(&executable_directory)
+                .unwrap();
+            let copy = executable_directory.join("blueice-ai-gatekeeper");
+            std::fs::copy(&executable, &copy).unwrap();
+            assert!(Command::new("/usr/bin/codesign")
+                .args(["--force", "--sign", "-"])
+                .arg(&copy)
+                .status()
+                .unwrap()
+                .success());
+            copy
+        };
+        let child = Command::new(executable)
             .args([
                 "--socket",
                 socket.to_str().unwrap(),
@@ -79,15 +105,21 @@ impl GatekeeperProcess {
             ])
             .spawn()
             .expect("failed to spawn blueice-ai-gatekeeper");
-        assert!(
-            wait_for(&socket, Duration::from_secs(5)),
-            "blueice-ai-gatekeeper never created its private socket"
-        );
-        Self {
+        // Own the child before readiness can panic, so failure also kills and
+        // waits for this process and removes its private files.
+        let mut process = Self {
             child,
             socket,
             settings_path,
-        }
+            #[cfg(target_os = "macos")]
+            executable_directory,
+        };
+        assert!(
+            wait_for(&process.socket, Duration::from_secs(5)),
+            "blueice-ai-gatekeeper never created its private socket; child status: {:?}",
+            process.child.try_wait().unwrap()
+        );
+        process
     }
 
     fn check(&self, detail: &str) -> GatekeeperReply {
@@ -134,6 +166,8 @@ impl Drop for GatekeeperProcess {
         let _ = self.child.wait();
         let _ = std::fs::remove_file(&self.socket);
         let _ = std::fs::remove_file(&self.settings_path);
+        #[cfg(target_os = "macos")]
+        let _ = std::fs::remove_dir_all(&self.executable_directory);
     }
 }
 

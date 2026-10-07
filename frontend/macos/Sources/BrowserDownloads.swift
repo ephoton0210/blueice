@@ -262,6 +262,12 @@ final class BrowserDownloadsModel: ObservableObject {
         if case .ok = result, action == "Remove" { removed.insert(id); transfers.removeAll { $0.id == id }; return true }
         return false
     }
+    func hasQuarantine(_ info: DownloadInfo) -> Bool {
+        guard info.state == .completed, transfers.contains(where: { $0.id == info.id && $0.generation == info.generation }),
+              let file = try? DownloadConfiguration.checkedFile(info.destPath,root: configuration.directory),
+              let values = try? file.resourceValues(forKeys: [.quarantinePropertiesKey]) else { return false }
+        return values.quarantineProperties?.isEmpty == false
+    }
     func open(_ info: DownloadInfo, reveal: Bool) {
         guard info.state == .completed, transfers.contains(where: { $0.id == info.id && $0.generation == info.generation }) else { return }
         do {

@@ -1585,11 +1585,14 @@ fn a_new_process_sees_history_and_finds_interrupted_transfers_paused_never_auto_
         .start(&server.url("/done.bin"), None, false)
         .unwrap()
         .id;
+    // Establish completed history before starting the transfer to interrupt.
+    // OS download metadata can delay completion after all bytes were fetched;
+    // waiting for a different transfer must not race the intended interruption.
+    wait_until(|| first.get(done).unwrap().state == TransferState::Completed);
     let big = first
         .start(&server.url("/big.bin"), None, false)
         .unwrap()
         .id;
-    wait_until(|| first.get(done).unwrap().state == TransferState::Completed);
     wait_until(|| {
         first
             .get(big)

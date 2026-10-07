@@ -68,6 +68,8 @@ pub mod plan;
 #[cfg(unix)]
 pub mod probe;
 pub mod progress;
+#[cfg(target_os = "macos")]
+mod quarantine;
 #[cfg(unix)]
 pub(crate) mod secure_fs;
 #[cfg(unix)]

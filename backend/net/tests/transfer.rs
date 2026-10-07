@@ -106,10 +106,89 @@ fn finish(transfer: &Transfer) -> Snapshot {
         .expect("the transfer did not settle in time")
 }
 
+#[cfg(target_os = "macos")]
+#[test]
+fn macos_downloads_publish_quarantine_before_completion_including_empty_files() {
+    use std::fs::File;
+    use std::os::fd::AsRawFd;
+
+    fn quarantined(path: &Path) -> bool {
+        let file = File::open(path).unwrap();
+        // Read the actual system attribute, including from the completion
+        // callback, rather than inferring quarantine from a transfer flag.
+        unsafe {
+            libc::fgetxattr(
+                file.as_raw_fd(),
+                c"com.apple.quarantine".as_ptr(),
+                std::ptr::null_mut(),
+                0,
+                0,
+                0,
+            ) > 0
+        }
+    }
+
+    for length in [0, MIB] {
+        let rig = Rig::new();
+        rig.server.serve("/notes.txt", Resource::new(body(length)));
+        rig.server.serve(
+            "/redirect",
+            Resource {
+                redirect_to: Some("/notes.txt".into()),
+                ..Resource::new(Vec::new())
+            },
+        );
+        let dest = rig.dest("notes.txt");
+        let options = Rig::options();
+        let (probed, clearance) = rig.review("/redirect", &dest, &options);
+        let observed = Arc::new(Mutex::new(Vec::new()));
+        let results = observed.clone();
+        let published = dest.clone();
+        let transfer = Transfer::begin(
+            DownloadSpec {
+                dest: dest.clone(),
+                options,
+                on_update: Some(Arc::new(move |snapshot| {
+                    if snapshot.state == TransferState::Completed {
+                        results.lock().unwrap().push(quarantined(&published));
+                    }
+                })),
+            },
+            probed,
+            clearance,
+        )
+        .unwrap();
+        assert_eq!(finish(&transfer).state, TransferState::Completed);
+        assert!(quarantined(&dest), "completed file lacks macOS quarantine");
+        if length > 0 {
+            wait_until("the actual quarantined completion callback", || {
+                !observed.lock().unwrap().is_empty()
+            });
+        }
+        assert!(observed.lock().unwrap().iter().all(|value| *value));
+        assert_eq!(std::fs::read(&dest).unwrap(), body(length));
+    }
+}
+
 fn wait_until(what: &str, mut condition: impl FnMut() -> bool) {
     let deadline = Instant::now() + Duration::from_secs(20);
     while !condition() {
         assert!(Instant::now() < deadline, "timed out waiting for {what}");
+        std::thread::sleep(Duration::from_millis(5));
+    }
+}
+
+fn wait_for_fetched_bytes(transfer: &Transfer, bytes: u64, timeout: Duration) {
+    let deadline = Instant::now() + timeout;
+    loop {
+        let snapshot = transfer.snapshot();
+        if snapshot.completed_bytes == bytes {
+            return;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "replacement workers must fetch all bytes before the stalled reads return: {snapshot:?}"
+        );
         std::thread::sleep(Duration::from_millis(5));
     }
 }
@@ -684,14 +763,20 @@ fn a_stalled_connection_is_revoked_and_its_segment_retried() {
         clearance,
     )
     .unwrap();
-    let done = finish(&transfer);
-
-    assert_eq!(done.state, TransferState::Completed, "{done:?}");
+    // Bound the replacement's network progress independently of final
+    // filesystem sync and macOS quarantine publication.
+    wait_for_fetched_bytes(
+        &transfer,
+        MIB as u64,
+        Duration::from_secs(6).saturating_sub(started.elapsed()),
+    );
     assert!(
         started.elapsed() < Duration::from_secs(6),
         "the watchdog must not wait out the server's 8 s stall, took {:?}",
         started.elapsed()
     );
+    let done = finish(&transfer);
+    assert_eq!(done.state, TransferState::Completed, "{done:?}");
     assert_eq!(std::fs::read(&dest).unwrap(), body(MIB));
     assert!(has_event(&done, "stalled"), "{:?}", done.events);
     assert!(done.retries >= 1);
@@ -733,9 +818,11 @@ fn every_stalled_connection_is_replaced_without_waiting_for_its_read_to_return()
         clearance,
     )
     .unwrap();
-    let done = transfer
-        .wait_timeout(Duration::from_secs(4))
-        .expect("all revoked connections must leave capacity for replacement workers");
+    // Every byte must arrive within the original four-second network budget.
+    // System metadata and filesystem publication may then finish separately;
+    // they must still complete successfully before the file is accepted.
+    wait_for_fetched_bytes(&transfer, (4 * MIB) as u64, Duration::from_secs(4));
+    let done = finish(&transfer);
 
     assert_eq!(done.state, TransferState::Completed, "{done:?}");
     assert_eq!(std::fs::read(&dest).unwrap(), body(4 * MIB));

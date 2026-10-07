@@ -347,6 +347,7 @@
 "BlueIce stopped." = "BlueIce stopped.";
 "Restarting BlueIce…" = "Restarting BlueIce…";
 "Restart BlueIce" = "Restart BlueIce";
+"Origin recorded for macOS" = "Origin recorded for macOS";
 "No confirmed session is available. Restart opens a new page." = "No confirmed session is available. Restart opens a new page.";
 "Windows to restore: %llu; tabs: %llu. Unsaved page changes will be lost." = "Windows to restore: %llu; tabs: %llu. Unsaved page changes will be lost.";
 "Recovery keeps your current windows and tabs available while BlueIce remains open. Remembering also retains them for future launches." = "Recovery keeps your current windows and tabs available while BlueIce remains open. Remembering also retains them for future launches.";

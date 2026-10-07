@@ -486,6 +486,7 @@ name = "blueice-net"
 version = "0.1.0"
 dependencies = [
  "blueice-ipc",
+ "core-foundation 0.10.1",
  "httpdate",
  "keyring",
  "libc",

@@ -3,6 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 import AppKit
+import CoreServices
 import XCTest
 
 @MainActor
@@ -34,6 +35,13 @@ final class DownloadTests: XCTestCase {
         await wait { workspace.downloads.transfers.first { $0.id == doneID }?.state == .completed }
         let done = try XCTUnwrap(workspace.downloads.transfers.first { $0.id == doneID })
         XCTAssertEqual(try Data(contentsOf: URL(fileURLWithPath: done.destPath)),fixture.bytes)
+        let quarantine = try XCTUnwrap(URL(fileURLWithPath: done.destPath)
+            .resourceValues(forKeys: [.quarantinePropertiesKey]).quarantineProperties)
+        XCTAssertEqual(quarantine[kLSQuarantineAgentNameKey as String] as? String,"BlueIce")
+        XCTAssertEqual(quarantine[kLSQuarantineAgentBundleIdentifierKey as String] as? String,"cc.blueice.BlueIce")
+        XCTAssertEqual(quarantine[kLSQuarantineTypeKey as String] as? String,kLSQuarantineTypeWebDownload as String)
+        XCTAssertNotNil(quarantine[kLSQuarantineTimeStampKey as String] as? Date)
+        XCTAssertTrue(workspace.downloads.hasQuarantine(done))
         let model = try XCTUnwrap(workspace.models[1]); model.address = "about:downloads"; model.navigateAddress()
         await wait { model.representation?.url == "about:downloads" && model.representation?.nodes.contains { $0.name?.contains("notes.txt") == true } == true }
         XCTAssertEqual(workspace.processID,core); XCTAssertEqual(workspace.downloads.processID,process)
@@ -64,9 +72,37 @@ final class DownloadTests: XCTestCase {
         XCTAssertEqual(reopened.downloads.transfers.first { $0.id == activeID }?.state,.cancelled)
         XCTAssertGreaterThan(try XCTUnwrap(reopened.downloads.transfers.first { $0.id == activeID }?.generation),restoredGeneration)
         XCTAssertEqual(reopened.downloads.transfers.first { $0.id == doneID }?.state,.completed)
+        XCTAssertTrue(reopened.downloads.hasQuarantine(try XCTUnwrap(reopened.downloads.transfers.first { $0.id == doneID })))
         await perform(reopened.downloads, "Remove",id: doneID)
         XCTAssertTrue(FileManager.default.fileExists(atPath: done.destPath),"Removing history preserves the completed file")
         await reopened.stop()
+    }
+
+    func testQuarantineStatusRequiresTheCurrentCompletedAndConfinedFile() throws {
+        let root = URL(fileURLWithPath: "/private/tmp/bi-quarantine-test-" + UUID().uuidString)
+        try FileManager.default.createDirectory(at: root,withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let file = root.appendingPathComponent("notes.txt"); try Data("hello".utf8).write(to: file)
+        let model = BrowserDownloadsModel(browser: BrowserSession(),configuration: DownloadConfiguration(directory: root,dataDirectory: root))
+        func record(_ path: String, state: String = "completed", generation: Int = 1) throws -> DownloadInfo {
+            let data = try JSONSerialization.data(withJSONObject: ["message": ["Updated": ["id": 1,"generation": generation,
+                "url": "https://example.test/notes.txt","dest_path": path,"state": state,"completed_bytes": 5,"total_bytes": 5]]])
+            let envelope = try JSONDecoder().decode(DownloadEnvelope.self,from: data)
+            model.receive(envelope)
+            if case .updated(let info) = envelope.message { return info }
+            throw BrowserFailure.invalid("Expected a download record")
+        }
+        let completed = try record(file.path)
+        XCTAssertFalse(model.hasQuarantine(completed),"Existing local files must not claim system quarantine")
+        var values = URLResourceValues()
+        values.quarantineProperties = [kLSQuarantineAgentNameKey as String: "BlueIce",kLSQuarantineTypeKey as String: kLSQuarantineTypeWebDownload]
+        var target = file; try target.setResourceValues(values)
+        XCTAssertTrue(model.hasQuarantine(completed))
+        XCTAssertFalse(model.hasQuarantine(try record(file.path,state: "active",generation: 2)))
+        XCTAssertFalse(model.hasQuarantine(completed),"Old completed metadata must not authorize status for the current record")
+        let link = root.appendingPathComponent("link.txt"); try FileManager.default.createSymbolicLink(at: link,withDestinationURL: file)
+        XCTAssertFalse(model.hasQuarantine(try record(link.path,generation: 3)))
+        XCTAssertFalse(model.hasQuarantine(try record("/etc/hosts",generation: 4)))
     }
 
     func testDownloadMetadataRejectsMalformedAndDoesNotOpenOutsideOrSymlinkedFiles() throws {
