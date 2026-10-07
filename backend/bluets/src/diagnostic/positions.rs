@@ -28,11 +28,19 @@ pub(crate) fn attach(project: &Project, diagnostics: &mut [Diagnostic]) {
             .entry(counterpart.span.module.clone())
             .or_insert_with(|| crate::syntax::lex(&counterpart.span.module, source).ok());
         let span = if counterpart.position.is_none() && counterpart.span == diagnostic.span {
-            jsx::refine(diagnostic, source).or_else(|| {
-                tokens
-                    .as_deref()
-                    .map(|tokens| refine::refine(diagnostic, tokens))
-            })
+            if counterpart.code == 1002 {
+                Some(SourceSpan::new(
+                    &counterpart.span.module,
+                    counterpart.span.end,
+                    counterpart.span.end,
+                ))
+            } else {
+                jsx::refine(diagnostic, source).or_else(|| {
+                    tokens
+                        .as_deref()
+                        .map(|tokens| refine::refine(diagnostic, tokens))
+                })
+            }
         } else {
             None
         };

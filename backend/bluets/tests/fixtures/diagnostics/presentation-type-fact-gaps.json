@@ -1,0 +1,33 @@
+{
+  "version": "5.9.3",
+  "reason": "Existing iterator-result flow projection does not model assignment, lexical shadowing or post-loop narrowing. Preserve the actual checked type and track these exact G-T1 witnesses until K.4.1.",
+  "cases": [
+    {
+      "id": "lib:lib-loop-return-assigned-error/main.ts",
+      "gap": "G-T1",
+      "nextLeaf": "K.4.1",
+      "sourceSha256": "4da438a9cabc9bafd9ecf40b884a5cf0be63a6edc91e325ea6d7617c1356979e",
+      "code": 2345,
+      "typescriptMessage": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+      "blueMessage": "Argument of type 'string | number' is not assignable to parameter of type 'number'.\n  Type 'string' is not assignable to type 'number'."
+    },
+    {
+      "id": "lib:lib-loop-shadowed-error/main.ts",
+      "gap": "G-T1",
+      "nextLeaf": "K.4.1",
+      "sourceSha256": "c47fb165aa0b95d950361b86aab28c7ed5c677df148dcaaae0c8a4aa28b51d39",
+      "code": 2345,
+      "typescriptMessage": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+      "blueMessage": "Argument of type 'string | number' is not assignable to parameter of type 'number'.\n  Type 'string' is not assignable to type 'number'."
+    },
+    {
+      "id": "lib:lib-loop-following-error/main.ts",
+      "gap": "G-T1",
+      "nextLeaf": "K.4.1",
+      "sourceSha256": "a186167e532abe182f8ec66868e8d4d1757711c894fd8010c43a8f892f70b975",
+      "code": 2345,
+      "typescriptMessage": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+      "blueMessage": "Argument of type 'string | number' is not assignable to parameter of type 'number'.\n  Type 'string' is not assignable to type 'number'."
+    }
+  ]
+}

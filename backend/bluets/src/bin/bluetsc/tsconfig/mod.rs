@@ -46,6 +46,7 @@ pub(super) fn resolve(
     path: &Path,
     owner_path: Option<&Path>,
     report: &mut Option<blueice_bluets::Diagnostic>,
+    sources: &mut BTreeMap<String, String>,
 ) -> Result<Invocation, String> {
     let directory = path
         .parent()
@@ -107,6 +108,14 @@ pub(super) fn resolve(
         Ok(document) => document,
         Err(error) => {
             *report = reader.diagnostic.take();
+            for (path, bytes) in &reader.inputs {
+                if let (Some(name), Ok(source)) = (
+                    path.file_name().and_then(|name| name.to_str()),
+                    std::str::from_utf8(bytes),
+                ) {
+                    sources.insert(name.into(), source.into());
+                }
+            }
             return Err(error);
         }
     };

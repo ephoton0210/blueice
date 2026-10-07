@@ -19,6 +19,7 @@
 
 use super::*;
 use crate::jsx::{self, JsxAttribute, JsxChild, JsxElement, JsxName, JsxValue};
+mod presentation;
 
 /// What an element's attributes are checked against.
 enum Props {
@@ -30,6 +31,7 @@ enum Props {
     Known {
         fields: Vec<TypeField>,
         value_based: bool,
+        value: Type,
     },
 }
 
@@ -323,6 +325,7 @@ impl<'a> ModuleChecker<'a> {
             None => Props::Known {
                 fields: Vec::new(),
                 value_based: true,
+                value: Type::Record(Vec::new()),
             },
             Some(parameter) => match &parameter.annotation {
                 Some(annotation) => self.props_of(annotation, true),
@@ -338,6 +341,7 @@ impl<'a> ModuleChecker<'a> {
                 Some(fields) => Props::Known {
                     fields,
                     value_based,
+                    value: value.clone(),
                 },
                 None => Props::Open,
             },
@@ -380,6 +384,7 @@ impl<'a> ModuleChecker<'a> {
                         Type::Any | Type::Unknown => open_spread = true,
                         other => match self.expanded_record_fields(other.clone()).0 {
                             Some(fields) => {
+                                let before = self.diagnostics.len();
                                 for field in fields {
                                     if let Props::Known {
                                         fields: expected, ..
@@ -395,6 +400,9 @@ impl<'a> ModuleChecker<'a> {
                                     if !field.optional {
                                         provided.insert(field.name);
                                     }
+                                }
+                                if self.diagnostics.len() > before {
+                                    self.jsx_present_spread(&spread, props);
                                 }
                             }
                             None => {
@@ -463,6 +471,19 @@ impl<'a> ModuleChecker<'a> {
                                         ),
                                         DiagnosticCode::TypeMismatch,
                                     );
+                                    let expected =
+                                        if field.optional && matches!(expected, Type::Union(_)) {
+                                            Type::Union(match expected {
+                                                Type::Union(mut values) => {
+                                                    values.push(Type::Undefined);
+                                                    values
+                                                }
+                                                _ => unreachable!(),
+                                            })
+                                        } else {
+                                            expected
+                                        };
+                                    self.jsx_present_pair(&actual, &expected);
                                 }
                             }
                             None if name.text.contains('-')
@@ -481,6 +502,13 @@ impl<'a> ModuleChecker<'a> {
                                         name.text
                                     ),
                                     DiagnosticCode::TypeMismatch,
+                                );
+                                self.jsx_present_props(
+                                    element,
+                                    props,
+                                    scope,
+                                    Some(&name.text),
+                                    None,
                                 );
                             }
                         }
@@ -508,6 +536,7 @@ impl<'a> ModuleChecker<'a> {
                     format!("missing required props: {}", missing.join(", ")),
                     DiagnosticCode::TypeMismatch,
                 );
+                self.jsx_present_props(element, props, scope, None, missing.first().copied());
             }
         }
     }
@@ -605,6 +634,7 @@ impl<'a> ModuleChecker<'a> {
                 format!("this element has children but its props declare no `{children_name}`"),
                 DiagnosticCode::TypeMismatch,
             );
+            self.jsx_present_props(element, props, scope, Some(&children_name), None);
             return;
         };
         let expected = field.value.clone();
@@ -625,6 +655,11 @@ impl<'a> ModuleChecker<'a> {
                 ),
                 DiagnosticCode::TypeMismatch,
             );
+            if Self::semantic_children(element).len() > 1 {
+                self.jsx_present_children(element, props, scope, &actual, &expected);
+            } else {
+                self.jsx_present_pair(&actual, &expected);
+            }
         }
     }
 }

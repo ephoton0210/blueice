@@ -6,11 +6,13 @@
 
 use super::*;
 
+mod call_presentation;
 mod diagnostics;
 mod function_methods;
 mod indexing;
 mod inference;
 mod iterator_guards;
+mod library_presentation;
 mod method_overloads;
 mod optional_property;
 mod property_diagnostics;
@@ -195,13 +197,15 @@ impl<'a> ModuleChecker<'a> {
             }
         };
         if signatures.len() > 1 && selected.is_none() {
-            self.type_error(
+            self.rejected_call_error(
                 span,
                 format!(
                     "no overload of function {} accepts the supplied argument types",
                     call.callee.text
                 ),
-                DiagnosticCode::TypeMismatch,
+                &signatures,
+                &actuals,
+                false,
             );
             return;
         }
@@ -253,6 +257,8 @@ impl<'a> ModuleChecker<'a> {
                 .expect("an accepted function call has a parameter for every argument");
             let expected = call_parameter_expected_type(parameter, &substitutions);
             if !self.is_assignable_bounded(actual, &expected, span) {
+                let displayed_expected =
+                    crate::diagnostic::type_text::default_parameter(&expected, parameter);
                 let overloaded =
                     call.callee
                         .text
@@ -274,10 +280,19 @@ impl<'a> ModuleChecker<'a> {
                         type_label(&expected)
                     ),
                     actual,
-                    &expected,
+                    &displayed_expected,
                     arguments.get(index).copied().unwrap_or(&[]),
                     overloaded,
                 );
+                if overloaded {
+                    if let Some((receiver, member)) = call.callee.text.split_once('.') {
+                        self.present_library_overloads(
+                            &format!("{receiver}Constructor.{member}"),
+                            &actuals,
+                            &substitutions,
+                        );
+                    }
+                }
             }
         }
     }

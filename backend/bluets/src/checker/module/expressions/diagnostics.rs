@@ -34,7 +34,10 @@ impl ModuleChecker<'_> {
                     message,
                     DiagnosticCode::TypeMismatch,
                     2345,
-                    vec![type_label(actual), type_label(expected)],
+                    vec![
+                        crate::diagnostic::type_text::argument(actual, expected),
+                        crate::diagnostic::type_text::render_in(expected, self.project),
+                    ],
                 );
                 self.point_last_typescript(argument);
                 return;
@@ -62,7 +65,13 @@ impl ModuleChecker<'_> {
                             message,
                             DiagnosticCode::TypeMismatch,
                             2322,
-                            vec![type_label(&field.value), type_label(&expected.value)],
+                            vec![
+                                crate::diagnostic::type_text::render_in(&field.value, self.project),
+                                crate::diagnostic::type_text::render_in(
+                                    &expected.value,
+                                    self.project,
+                                ),
+                            ],
                         );
                         if let Some(token) = argument.iter().find(|token| token.is(&field.name)) {
                             self.point_last_typescript(std::slice::from_ref(token));
@@ -77,9 +86,69 @@ impl ModuleChecker<'_> {
             message,
             DiagnosticCode::TypeMismatch,
             2345,
-            vec![type_label(actual), type_label(expected)],
+            vec![
+                crate::diagnostic::type_text::argument(actual, expected),
+                crate::diagnostic::type_text::render_in(expected, self.project),
+            ],
         );
         self.point_last_typescript(argument);
+        self.explain_last_type_pair(actual, expected);
+        if let Type::Function { result, .. } = actual {
+            if let Some(body) = argument
+                .windows(2)
+                .find(|pair| pair[0].is("=>") && pair[1].is("{"))
+            {
+                if let Some(end) = argument.last().map(|token| token.end) {
+                    if let Some(newline) = self
+                        .module
+                        .source
+                        .get(body[1].start..end)
+                        .and_then(|text| text.find(['\n', '\r', '\u{2028}', '\u{2029}']))
+                    {
+                        if let Some(counterpart) = self
+                            .diagnostics
+                            .last_mut()
+                            .and_then(|diagnostic| diagnostic.typescript.as_mut())
+                        {
+                            counterpart.span.end = body[1].start + newline;
+                        }
+                    }
+                }
+            }
+            let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
+            budget.checking = self.checking;
+            if is_assignable(
+                result,
+                expected,
+                &self.types,
+                &mut HashSet::new(),
+                &mut budget,
+            ) && !budget.exhausted
+            {
+                if let Some(counterpart) = self
+                    .diagnostics
+                    .last_mut()
+                    .and_then(|diagnostic| diagnostic.typescript.as_mut())
+                {
+                    let hint = Diagnostic::error(
+                        DiagnosticCode::TypeMismatch,
+                        counterpart.span.clone(),
+                        "",
+                    )
+                    .with_typescript(6212, Vec::new())
+                    .typescript
+                    .unwrap();
+                    counterpart
+                        .related_information
+                        .push(crate::TypeScriptRelatedInformation {
+                            code: hint.code,
+                            message: hint.message,
+                            span: hint.span,
+                            position: None,
+                        });
+                }
+            }
+        }
     }
 
     pub(in crate::checker::module) fn point_last_typescript(&mut self, tokens: &[Token]) {
@@ -104,6 +173,15 @@ impl ModuleChecker<'_> {
         expected: &Type,
     ) {
         let (actual_fields, actual_exhausted) = self.expanded_record_fields(actual.clone());
+        let literal_initializer =
+            self.module
+                .source
+                .get(span.start..span.end)
+                .is_some_and(|source| {
+                    source
+                        .split_once('=')
+                        .is_some_and(|(_, value)| value.trim_start().starts_with('{'))
+                });
         let (expected_fields, expected_exhausted) = self.expanded_record_fields(expected.clone());
         if !actual_exhausted && !expected_exhausted {
             if let (Some(actual_fields), Some(expected_fields)) = (actual_fields, expected_fields) {
@@ -128,7 +206,11 @@ impl ModuleChecker<'_> {
                             message,
                             bts_code,
                             2741,
-                            vec![name.into(), type_label(actual), type_label(expected)],
+                            vec![
+                                name.into(),
+                                crate::diagnostic::type_text::render_in(actual, self.project),
+                                crate::diagnostic::type_text::render_in(expected, self.project),
+                            ],
                         );
                         return;
                     }
@@ -148,11 +230,21 @@ impl ModuleChecker<'_> {
                         message,
                         bts_code,
                         2375,
-                        vec![type_label(actual), type_label(expected)],
+                        vec![
+                            crate::diagnostic::type_text::render_in(actual, self.project),
+                            crate::diagnostic::type_text::render_in(expected, self.project),
+                        ],
+                    );
+                    self.explain_last_type_pair(
+                        &Type::Record(actual_fields.clone()),
+                        &Type::Record(expected_fields.clone()),
                     );
                     return;
                 }
                 for field in &actual_fields {
+                    if !literal_initializer {
+                        break;
+                    }
                     let Some(expected_field) = expected_fields
                         .iter()
                         .find(|expected| expected.name == field.name)
@@ -174,7 +266,13 @@ impl ModuleChecker<'_> {
                             message,
                             bts_code,
                             2322,
-                            vec![type_label(&field.value), type_label(&expected_field.value)],
+                            vec![
+                                crate::diagnostic::type_text::render_in(&field.value, self.project),
+                                crate::diagnostic::type_text::render_in(
+                                    &expected_field.value,
+                                    self.project,
+                                ),
+                            ],
                         );
                         if let Ok(tokens) = crate::syntax::lex(&self.module.id, &self.module.source)
                         {
@@ -208,8 +306,27 @@ impl ModuleChecker<'_> {
             message,
             bts_code,
             2322,
-            vec![type_label(actual), type_label(expected)],
+            vec![
+                crate::diagnostic::type_text::render_in(actual, self.project),
+                crate::diagnostic::type_text::render_in(expected, self.project),
+            ],
         );
+        self.explain_last_type_pair(actual, expected);
+    }
+
+    fn explain_last_type_pair(&mut self, actual: &Type, expected: &Type) {
+        if self.enforce_types {
+            let detail = crate::diagnostic::type_text::detail(actual, expected, self.project);
+            if let Some(counterpart) = self
+                .diagnostics
+                .last_mut()
+                .and_then(|diagnostic| diagnostic.typescript.as_mut())
+            {
+                if matches!(counterpart.code, 2322 | 2345 | 2375) {
+                    counterpart.message.push_str(&detail);
+                }
+            }
+        }
     }
 
     pub(in crate::checker::module) fn rejected_call_error(
@@ -220,6 +337,7 @@ impl ModuleChecker<'_> {
         actuals: &[Type],
         typescript_overloads: bool,
     ) {
+        let mut detail = String::new();
         let matching_arity = signatures
             .iter()
             .filter(|signature| function_signature_accepts_argument_count(signature, actuals.len()))
@@ -242,12 +360,32 @@ impl ModuleChecker<'_> {
             };
             (2554, vec![expected, actuals.len().to_string()])
         } else if signatures.len() > 1 || typescript_overloads {
+            detail = self.overload_details(signatures, actuals);
             (2769, Vec::new())
         } else if let Some(signature) = matching_arity.first() {
             let substitutions = infer_call_substitutions(signature, actuals);
             let mismatch = actuals.iter().enumerate().find_map(|(index, actual)| {
                 let parameter = function_parameter_for_argument(signature, index)?;
                 let expected = call_parameter_expected_type(parameter, &substitutions);
+                let displayed_expected = if parameter.default.is_some() {
+                    match &expected {
+                        Type::Union(values) => {
+                            let mut values = values
+                                .iter()
+                                .filter(|value| **value != Type::Undefined)
+                                .cloned()
+                                .collect::<Vec<_>>();
+                            if values.len() == 1 {
+                                values.pop().unwrap()
+                            } else {
+                                Type::Union(values)
+                            }
+                        }
+                        _ => expected.clone(),
+                    }
+                } else {
+                    expected.clone()
+                };
                 let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
                 budget.checking = self.checking;
                 (!is_assignable(
@@ -257,12 +395,31 @@ impl ModuleChecker<'_> {
                     &mut HashSet::new(),
                     &mut budget,
                 ))
-                .then(|| vec![type_label(actual), type_label(&expected)])
+                .then(|| {
+                    detail = crate::diagnostic::type_text::detail(
+                        actual,
+                        &displayed_expected,
+                        self.project,
+                    );
+                    vec![
+                        crate::diagnostic::type_text::argument(actual, &displayed_expected),
+                        crate::diagnostic::type_text::render_in(&displayed_expected, self.project),
+                    ]
+                })
             });
             (2345, mismatch.unwrap_or_default())
         } else {
             (2345, Vec::new())
         };
         self.typescript_type_error(span, message, DiagnosticCode::TypeMismatch, code, arguments);
+        if self.enforce_types {
+            if let Some(counterpart) = self
+                .diagnostics
+                .last_mut()
+                .and_then(|diagnostic| diagnostic.typescript.as_mut())
+            {
+                counterpart.message.push_str(&detail);
+            }
+        }
     }
 }

@@ -4,3 +4,8 @@
 lib.blueice.d.ts text eol=lf
 lib.blueice.manifest.json text eol=lf
 backend/core/engine/tests/fixtures/host_typings/** text eol=lf
+
+# Byte-pinned K.3.3 type-fact witnesses retain identical digests on Windows.
+backend/bluets/tests/fixtures/typescript_oracle/lib-loop-return-assigned-error/main.ts text eol=lf
+backend/bluets/tests/fixtures/typescript_oracle/lib-loop-shadowed-error/main.ts text eol=lf
+backend/bluets/tests/fixtures/typescript_oracle/lib-loop-following-error/main.ts text eol=lf

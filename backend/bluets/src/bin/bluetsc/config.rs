@@ -341,6 +341,14 @@ pub(super) fn resolve_config_with_diagnostic(
     path: PathBuf,
     report: &mut Option<blueice_bluets::Diagnostic>,
 ) -> Result<Invocation, String> {
+    resolve_config_with_sources(path, report, &mut BTreeMap::new())
+}
+
+pub(super) fn resolve_config_with_sources(
+    path: PathBuf,
+    report: &mut Option<blueice_bluets::Diagnostic>,
+    sources: &mut BTreeMap<String, String>,
+) -> Result<Invocation, String> {
     let config_path = absolute_existing_path(&path).map_err(|error| {
         let message = format!("cannot read config {}: {error}", path.display());
         if error.kind() == io::ErrorKind::NotFound {
@@ -350,6 +358,12 @@ pub(super) fn resolve_config_with_diagnostic(
     })?;
     let config_text = fs::read_to_string(&config_path)
         .map_err(|error| format!("cannot read config {}: {error}", config_path.display()))?;
+    if config_text.len() > 1024 * 1024 {
+        return Err("configuration resource limit exceeded".into());
+    }
+    if let Some(name) = config_path.file_name().and_then(|name| name.to_str()) {
+        sources.insert(name.into(), config_text.clone());
+    }
     let value = tsconfig::parse_jsonc(&config_text).map_err(|error| {
         let message = format!("invalid config {}: {error}", config_path.display());
         *report = tsconfig::diagnostics::invalid_json(&message, &config_path, &config_text);
@@ -378,6 +392,7 @@ pub(super) fn resolve_config_with_diagnostic(
             &config_path,
             owner_path.is_file().then_some(owner_path.as_path()),
             report,
+            sources,
         );
     }
     let selected = value
@@ -392,7 +407,7 @@ pub(super) fn resolve_config_with_diagnostic(
         return Err("owner tsconfig requires a string path".to_string());
     }
     if value.get("tsconfig").is_some() || selected.is_file() {
-        return tsconfig::resolve(&selected, Some(&config_path), report);
+        return tsconfig::resolve(&selected, Some(&config_path), report, sources);
     }
     if value.get("entries").is_none() {
         return Err(format!(

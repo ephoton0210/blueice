@@ -42,6 +42,7 @@ pub(super) fn build(
         message: rendered,
         span: span.clone(),
         position: None,
+        related_information: Vec::new(),
     })
 }
 
@@ -96,10 +97,15 @@ fn render(template: &str, arguments: &[String]) -> Option<String> {
     while let Some(start) = rest.find('{') {
         result.push_str(&rest[..start]);
         let after = &rest[start + 1..];
-        let end = after.find('}')?;
-        let index: usize = after[..end].parse().ok()?;
-        result.push_str(arguments.get(index)?);
-        rest = &after[end + 1..];
+        let digits = after.bytes().take_while(u8::is_ascii_digit).count();
+        if digits > 0 && after.as_bytes().get(digits) == Some(&b'}') {
+            let index: usize = after[..digits].parse().ok()?;
+            result.push_str(arguments.get(index)?);
+            rest = &after[digits + 1..];
+        } else {
+            result.push('{');
+            rest = after;
+        }
     }
     result.push_str(rest);
     Some(result)

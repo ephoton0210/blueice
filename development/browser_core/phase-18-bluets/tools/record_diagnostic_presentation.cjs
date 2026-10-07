@@ -57,7 +57,14 @@ try {
         const result = spawnSync(executable,args,{cwd,encoding:'utf8',env:{...process.env,FORCE_COLOR:'0'}});
         if (result.error) throw result.error;
         const library=path.dirname(ts.getDefaultLibFilePath(config.compilerOptions));
-        const output = result.stdout.replaceAll('\\','/').replaceAll(path.relative(cwd,library).split(path.sep).join('/'),'<typescript-lib>').replaceAll(library.split(path.sep).join('/'),'<typescript-lib>').replaceAll(cwd,'<project>').replace(/\x1b\[96m([^\x1b]+lib\.[^/\x1b]+\.d\.ts)\x1b\[0m/g,(whole,file)=>fs.realpathSync(path.resolve(cwd,file))===fs.realpathSync(path.join(library,path.basename(file)))?`\x1b[96m<typescript-lib>/${path.basename(file)}\x1b[0m`:whole);
+        const output = result.stdout.replaceAll('\\','/').replace(
+            /\x1b\[96m([^\x1b]+lib\.[^/\x1b]+\.d\.ts)\x1b\[0m/g,
+            (whole,file) => fs.realpathSync(path.resolve(cwd,file))
+                === fs.realpathSync(path.join(library,path.basename(file)))
+                ? `\x1b[96m<typescript-lib>/${path.basename(file)}\x1b[0m` : whole,
+        ).replaceAll(path.relative(cwd,library).split(path.sep).join('/'),'<typescript-lib>')
+            .replaceAll(library.split(path.sep).join('/'),'<typescript-lib>')
+            .replaceAll(cwd,'<project>');
         const summaryFields = [];
         const stdout = options.diagnostics ? output.split('\n').filter(line => {
             const match = line.match(/^([A-Za-z /]+):\s+([0-9.]+)(K|s)?$/);

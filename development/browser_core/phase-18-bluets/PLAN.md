@@ -4577,3 +4577,71 @@ fixing these additional presentation failures. Library installation prefixes
 are normalized to the existing `<typescript-lib>` diagnostic identity by
 verified canonical file identity in the oracle, without granting the compiler
 any library installation reads.
+
+### K.3.3 Presentation implementation and measured type-fact gaps
+
+Diagnostic compatibility advances to `typescript-5.9.3-diagnostics-v3`.
+The public API and source-free JSON add related codes, rendered messages,
+virtual module identities and UTF-16 coordinates. Related declarations come
+from retained authorized AST/source bytes; pinned standard-library signatures,
+declaration spans and source lines are reproducible offline catalog data.
+The full TypeScript notice and license remain with that data. Contextual type
+text, overload causes, class members, decorators, tuples and JSX use bounded
+presentation helpers after the existing checker verdict. BTS aliases and raw
+messages remain unchanged, and source names never dispatch compiler behavior.
+
+Native project commands now match the 22 pinned plain/pretty CLI observations,
+including tabs, supplementary Unicode, CRLF, multiline and elided long spans,
+related source context and multi-file error counts. Unterminated-string
+coordinates use the retained lexical failure endpoint; multiline arrow
+function arguments select the measured first-line span. Summary fields report
+BlueTSC's own counts and measured stage durations. `Memory used` is explicitly
+the retained parsed-source UTF-8 footprint in KiB, not whole-process RSS or
+TypeScript's memory cost; no process-memory or additional file-read grant is
+introduced. Counters remain local to each invocation, including nested
+compilation, and measurements are checked for finite nonnegative values and
+units rather than fabricated TypeScript resource parity.
+
+Native CLI emission with semantic errors has a separate pure, bounded route:
+the checked runtime policy, options/source fingerprint and enumerated mapped
+semantic diagnostic categories must match. It reuses the authorized checked
+graph and existing emitter; parser, owner/subset, budget and strict-runtime
+failures still prevent publication. It never changes the library compilation's
+fail-closed `output`. Native `noEmitOnError` controls whether mapped semantic
+errors block this route, with measured exit statuses 0/1/2. The exact existing
+unknown-configuration reader refusal remains recorded separately; its human
+message/position still match the TypeScript observation.
+
+The 800-primary replay has zero related-information differences and 797 exact
+rendered messages. Three pre-existing iterator-result type-fact differences
+remain visible in `presentation-status.json` and
+`presentation-type-fact-gaps.json`: assignment in a loop, lexical shadowing
+inside that loop, and a use after loop termination. TypeScript narrows the
+argument to `string`; the current checker retains `string | number`. Both
+reject with TS2345 at the same primary position, with no related information.
+These are G-T1/K.4.1 work, consistent with K.1.4's explicitly bounded yield
+projection. Presentation preserves the actual checked type rather than
+inventing flow facts. Regression replay asserts each witness's source SHA-256,
+exact pinned and BlueTSC messages, code and related metadata, and requires the
+exact three-row set; every other message still must equal TypeScript.
+No general skip or production fixture dispatch is introduced.
+
+K.0 format, format-check and both-crate all-target Clippy with warnings denied
+pass. The frozen Linux `blueice-k33-final-*` gate runs all 1,097 tests in 67
+target/doctest groups, including all 126 ignored TypeScript oracles. It exposes
+one recorder-only Linux path-normalization error: an already normalized
+`<typescript-lib>` location is sent to `realpath`. Canonical identity is now
+checked before textual normalization. The unchanged 49 backend inputs retain
+identical hashes, and both affected presentation tests pass in
+`blueice-k33-corrected-presentation.log`; the original failure remains in the
+full log rather than being discarded. Host and Linux actual CLI recording
+both verify the same 22 observations. The three byte-pinned type-fact fixtures
+use explicit LF Git attributes so Windows checkout preserves their digests.
+
+All 1,097 unique tests now have passing evidence, with no ignored tests left
+unrun. Production sources remain at most 1,185 lines; no production file
+reaches the 1,200-line review threshold. Section 4 of the compatibility
+inventory is regenerated (164 refusal sites in ten areas). K.3.3 is complete
+for its measured presentation scope. Final M7 still requires fresh complete
+workspace/platform/coverage CI on the pushed implementation SHA; the earlier
+K.2 CI does not close it.

@@ -40,6 +40,20 @@ impl Args {
                     };
                     flags.insert(arg[2..].to_string(), Value::Bool(value));
                 }
+                "--noEmitOnError" | "--diagnostics" => {
+                    let value = match args.peek().map(String::as_str) {
+                        Some("true") => {
+                            args.next();
+                            true
+                        }
+                        Some("false") => {
+                            args.next();
+                            false
+                        }
+                        _ => true,
+                    };
+                    flags.insert(arg[2..].to_string(), Value::Bool(value));
+                }
                 _ if arg.starts_with('-') => {
                     return Err(format!("unknown compiler option `{arg}`"))
                 }
@@ -81,7 +95,7 @@ pub(super) fn diagnostic(message: &str) -> Option<Diagnostic> {
         if blueice_bluets::TypeScriptDiagnostic::is_known_compiler_option(name) {
             return None;
         }
-        (5023, vec![name.to_string()])
+        (5023, vec![format!("--{name}")])
     } else if message.ends_with("requires a path") {
         (
             6044,

@@ -5,6 +5,7 @@
 
 """Track rendered primary messages and related information from pinned evidence."""
 import argparse
+import hashlib
 import json
 import subprocess
 from pathlib import Path
@@ -18,6 +19,8 @@ def main():
     args = parser.parse_args()
     fixtures = Path(__file__).resolve().parents[4] / 'backend/bluets/tests/fixtures'
     reference = json.loads((fixtures / 'diagnostics/reference.json').read_text())
+    gaps = json.loads((fixtures / 'diagnostics/presentation-type-fact-gaps.json').read_text())
+    type_gaps = {row['id']: row for row in gaps['cases']}
     rows = []
     for case in reference['cases']:
         expected = case['first']
@@ -47,13 +50,23 @@ def main():
                            'module': item['span']['module'], 'position': item['position']}
                           for item in primary.get('relatedInformation', [])]
         differences = {}
-        if primary['message'] != expected['message']:
-            differences['message'] = {'expected': expected['message'], 'actual': primary['message']}
+        expected_message = expected['message'].replace(
+            f"<fixtures>/{source_root.relative_to(fixtures).as_posix()}/", '')
+        if primary['message'] != expected_message:
+            differences['message'] = {'expected': expected_message, 'actual': primary['message']}
         if actual_related != related:
             differences['relatedInformation'] = {'expected': related, 'actual': actual_related}
         if differences:
-            rows.append({'id': case['id'], 'code': expected['code'], **differences})
-    record = {'version': reference['version'], 'comparedPrimaries': 800,
+            row = {'id': case['id'], 'code': expected['code'], **differences}
+            gap = type_gaps.get(case['id'])
+            if gap and differences == {'message': {'expected': gap['typescriptMessage'],
+                                                  'actual': gap['blueMessage']}}:
+                source = fixtures / 'typescript_oracle' / case['entry']
+                if hashlib.sha256(source.read_bytes()).hexdigest() == gap['sourceSha256']:
+                    row.update(gap=gap['gap'], nextLeaf=gap['nextLeaf'],
+                               sourceSha256=gap['sourceSha256'])
+            rows.append(row)
+    record = {'version': reference['version'], 'comparedPrimaries': sum(bool(case['first']) for case in reference['cases']),
               'mismatches': rows}
     args.output.write_text(json.dumps(record, indent=2) + '\n')
     print(json.dumps({'mismatches': len(rows), 'messages': sum('message' in r for r in rows),

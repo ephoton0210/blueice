@@ -109,7 +109,7 @@ impl ModuleChecker<'_> {
                     if receiver_name == Some("Object") {
                         "ObjectConstructor".into()
                     } else {
-                        type_label(receiver)
+                        crate::diagnostic::type_text::render_in(receiver, self.project)
                     },
                     year.into(),
                 ],
@@ -162,7 +162,7 @@ impl ModuleChecker<'_> {
                         vec![
                             member.into(),
                             if label == "array" {
-                                type_label(receiver)
+                                crate::diagnostic::type_text::render_in(receiver, self.project)
                             } else {
                                 label.into()
                             },
@@ -178,7 +178,10 @@ impl ModuleChecker<'_> {
             message,
             DiagnosticCode::TypeMismatch,
             2339,
-            vec![member.into(), type_label(receiver)],
+            vec![
+                member.into(),
+                crate::diagnostic::type_text::render_in(receiver, self.project),
+            ],
         );
     }
 }

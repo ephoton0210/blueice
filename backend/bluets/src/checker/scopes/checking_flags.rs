@@ -171,7 +171,7 @@ impl ScopeModel<'_> {
                         DiagnosticCode::TypeMismatch,
                         SourceSpan::new(&self.module.id, token.start, token.end),
                         "catch variable of type `unknown` is not assignable to the declared type",
-                    ));
+                    ).with_typescript(2322,vec!["unknown".into(),crate::diagnostic::type_text::render(&binding.declared_type)]));
                 }
             }
         }

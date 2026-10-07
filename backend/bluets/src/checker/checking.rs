@@ -41,7 +41,10 @@ pub(crate) fn check_incremental(
                 policy.clone(),
                 max_type_expansions,
             );
-            checker.bind();
+            {
+                let _timer = crate::performance::timer(crate::performance::Stage::Bind);
+                checker.bind();
+            }
             (id.clone(), checker.exported_values(true))
         })
         .collect();
@@ -72,7 +75,10 @@ pub(crate) fn check_incremental(
             policy.clone(),
             max_type_expansions,
         );
-        checker.bind();
+        {
+            let _timer = crate::performance::timer(crate::performance::Stage::Bind);
+            checker.bind();
+        }
         if policy.enforce_types {
             checker.check_names();
             checker.check_types();

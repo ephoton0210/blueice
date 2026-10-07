@@ -82,11 +82,55 @@ use std::sync::LazyLock;
 
 #[derive(Deserialize)]
 struct Catalog {
+    #[serde(rename = "librarySignatures")]
+    library_signatures: BTreeMap<String, Vec<LibrarySignature>>,
+    #[serde(rename = "libraryDeclarations")]
+    library_declarations: BTreeMap<String, LibraryDeclaration>,
     #[serde(rename = "compilerOptionNames")]
     compiler_option_names: Vec<String>,
     templates: BTreeMap<u32, String>,
     constructors: BTreeMap<String, usize>,
     members: BTreeMap<String, BTreeMap<String, usize>>,
+}
+
+#[derive(Deserialize)]
+pub(crate) struct LibrarySignature {
+    pub(crate) parameters: Vec<LibraryParameter>,
+    pub(crate) result: String,
+    pub(crate) minimum: usize,
+}
+#[derive(Deserialize)]
+pub(crate) struct LibraryParameter {
+    pub(crate) name: String,
+    #[serde(rename = "type")]
+    pub(crate) value: String,
+    pub(crate) optional: bool,
+    pub(crate) rest: bool,
+}
+pub(crate) fn library_signatures(name: &str) -> Option<&'static [LibrarySignature]> {
+    CATALOG.library_signatures.get(name).map(Vec::as_slice)
+}
+
+#[derive(Deserialize)]
+pub(super) struct LibraryDeclaration {
+    pub(super) file: String,
+    pub(super) start: usize,
+    pub(super) end: usize,
+    pub(super) line: usize,
+    pub(super) column: usize,
+    pub(super) length: usize,
+    #[serde(rename = "sourceLine")]
+    pub(super) source_line: String,
+}
+pub(super) fn library_declaration(name: &str) -> Option<&'static LibraryDeclaration> {
+    CATALOG.library_declarations.get(name)
+}
+pub(super) fn library_source_line(module: &str, line: usize) -> Option<&'static str> {
+    CATALOG
+        .library_declarations
+        .values()
+        .find(|item| item.file == module && item.line == line)
+        .map(|item| item.source_line.as_str())
 }
 
 pub(super) fn is_known_compiler_option(name: &str) -> bool {

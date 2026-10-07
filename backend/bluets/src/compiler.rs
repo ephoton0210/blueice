@@ -12,6 +12,7 @@ use crate::parser::{parse_module, parse_module_with_limits, Module, ParserLimits
 use crate::strict_boundaries;
 use crate::{Compilation, LANGUAGE_VERSION};
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
+mod native_emit;
 
 /// Closed-project work limits. They are part of [`CompilerOptions`] so a
 /// cached result or artifact cannot be reused under a looser resource policy.
@@ -465,6 +466,8 @@ fn compile_with_cache(
     options: CompilerOptions,
     cached: Option<&CachedCompilation>,
 ) -> IncrementalResult {
+    let performance = crate::performance::Session::new();
+    let graph_started = std::time::Instant::now();
     let previous_project = cached.map(|cached| &cached.compilation.project);
     let mut builder = ProjectBuilder::new(loader, previous_project, options.limits.clone());
     builder.visit(entry, 0);
@@ -479,6 +482,7 @@ fn compile_with_cache(
         ..
     } = builder;
     let project_fingerprint = fingerprint(&project, &options);
+    let graph_time = graph_started.elapsed();
 
     let changed_modules = previous_project
         .map(|previous| changed_modules(previous, &project))
@@ -486,8 +490,16 @@ fn compile_with_cache(
     let all_modules = project.modules.keys().cloned().collect::<BTreeSet<_>>();
 
     if let Some(cached) = cached.filter(|_| changed_modules.is_empty()) {
+        let mut compilation = cached.compilation.clone();
+        compilation.performance = performance.finish(
+            &project,
+            compilation.checked.as_ref(),
+            graph_time,
+            std::time::Duration::ZERO,
+            std::time::Duration::ZERO,
+        );
         return IncrementalResult {
-            compilation: cached.compilation.clone(),
+            compilation,
             cache_hit: true,
             parsed_modules,
             reused_parsed_modules,
@@ -501,6 +513,7 @@ fn compile_with_cache(
         .unwrap_or_else(|| all_modules.clone());
     let previous_checked = cached.and_then(|cached| cached.compilation.checked.as_ref());
 
+    let check_started = std::time::Instant::now();
     let (checked, checker_diagnostics) = checker::check_incremental(
         &project,
         checker::CheckerPolicy {
@@ -522,6 +535,7 @@ fn compile_with_cache(
         options.limits.max_type_expansions,
     );
     diagnostics.extend(checker_diagnostics);
+    let check_time = check_started.elapsed();
     diagnostics.extend(strict_boundaries::validate_descriptors(&project, &options));
     if options.source_map {
         diagnostics.extend(emitter::validate_source_map_limits(&checked, &options));
@@ -536,6 +550,7 @@ fn compile_with_cache(
     let has_errors = diagnostics
         .iter()
         .any(|diagnostic| diagnostic.severity == crate::diagnostic::Severity::Error);
+    let emit_started = std::time::Instant::now();
     let output = if has_errors {
         None
     } else {
@@ -547,10 +562,15 @@ fn compile_with_cache(
             }
         }
     };
+    let emit_time = emit_started.elapsed();
     crate::diagnostic::positions::attach(&project, &mut diagnostics);
+    crate::diagnostic::rendered::attach(&project, &mut diagnostics);
+    crate::diagnostic::related::attach(&project, &mut diagnostics);
     let debug_info = output
         .as_ref()
         .map(|_| debug_info::build(&checked, &options));
+    let performance =
+        performance.finish(&project, Some(&checked), graph_time, check_time, emit_time);
     IncrementalResult {
         compilation: Compilation {
             project,
@@ -559,6 +579,7 @@ fn compile_with_cache(
             debug_info,
             diagnostics,
             output,
+            performance,
         },
         cache_hit: false,
         parsed_modules,
@@ -703,7 +724,11 @@ impl<'a> ProjectBuilder<'a> {
         }
         self.state
             .insert(module_id.to_string(), VisitState::Visiting);
-        let source = match self.loader.load(module_id) {
+        let loaded = {
+            let _timer = crate::performance::timer(crate::performance::Stage::Load);
+            self.loader.load(module_id)
+        };
+        let source = match loaded {
             Ok(source) => source,
             Err(message) => {
                 self.diagnostics.push(Diagnostic::error(

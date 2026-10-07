@@ -216,13 +216,15 @@ impl<'a> ModuleChecker<'a> {
                 };
                 match self.select_function_signature(&signatures, &actuals, None) {
                     Ok(Some(_)) => {}
-                    Ok(None) => self.type_error(
+                    Ok(None) => self.rejected_call_error(
                         &call_span,
                         format!(
                             "no overload of static method {} matches the supplied argument types",
                             call.member.text
                         ),
-                        DiagnosticCode::TypeMismatch,
+                        &signatures,
+                        &actuals,
+                        true,
                     ),
                     Err(()) => self.type_error(
                         &call_span,
@@ -241,13 +243,15 @@ impl<'a> ModuleChecker<'a> {
                 };
                 match self.select_function_signature(&signatures, &actuals, None) {
                     Ok(Some(_)) => {}
-                    Ok(None) => self.type_error(
+                    Ok(None) => self.rejected_call_error(
                         &call_span,
                         format!(
                             "no overload of instance method {} matches the supplied argument types",
                             call.member.text
                         ),
-                        DiagnosticCode::TypeMismatch,
+                        &signatures,
+                        &actuals,
+                        true,
                     ),
                     Err(()) => self.type_error(
                         &call_span,
@@ -365,14 +369,17 @@ impl<'a> ModuleChecker<'a> {
                 .as_ref()
                 .expect("method signature parameters have annotations");
             if !self.is_assignable_bounded(actual, expected, argument_span) {
+                let displayed_expected =
+                    crate::diagnostic::type_text::default_parameter(expected, &parameters[index]);
                 let library_receiver = match &base {
                     Type::Array(_) => Some("Array".to_string()),
                     Type::String => Some("String".to_string()),
+                    Type::Named{name,..} if matches!(name.as_str(),"Promise"|"Generator"|"Iterator"|"IterableIterator")=>Some(name.clone()),
                     _ => matches!(call.receiver, [receiver] if self.library_values.contains(&receiver.text))
                         .then(|| format!("{}Constructor", call.receiver[0].text)),
                 };
-                let overloaded = library_receiver.is_some_and(|receiver| {
-                    crate::diagnostic::templates::member_overloads(&receiver, &call.member.text) > 1
+                let overloaded = library_receiver.as_ref().is_some_and(|receiver| {
+                    crate::diagnostic::templates::member_overloads(receiver, &call.member.text) > 1
                 });
                 self.call_argument_error(
                     argument_span,
@@ -384,10 +391,31 @@ impl<'a> ModuleChecker<'a> {
                         type_label(expected)
                     ),
                     actual,
-                    expected,
+                    &displayed_expected,
                     arguments.get(index).copied().unwrap_or(&[]),
                     overloaded,
                 );
+                if overloaded {
+                    let mut substitutions = BTreeMap::new();
+                    if let Type::Array(element) = &base {
+                        substitutions.insert("T".into(), *element.clone());
+                        substitutions.insert("S".into(), *element.clone());
+                    }
+                    self.present_library_overloads(
+                        &format!("{}.{}", library_receiver.unwrap(), call.member.text),
+                        &actuals.iter().zip(&arguments).map(|(actual,argument)|if matches!(*argument,[token] if token.is("true")||token.is("false")){Type::Literal(argument[0].text.clone())}else{actual.clone()}).collect::<Vec<_>>(),
+                        &substitutions,
+                    );
+                } else if let Some(receiver) = library_receiver {
+                    self.present_library_argument(
+                        &format!("{receiver}.{}", call.member.text),
+                        actual,
+                        expected,
+                        arguments.get(index).copied().unwrap_or(&[]),
+                        &base,
+                        index,
+                    );
+                }
                 if overloaded && index + 1 == parameters.len() && matches!(expected, Type::Union(_))
                 {
                     self.point_last_typescript(std::slice::from_ref(call.member));

@@ -281,7 +281,7 @@ impl ModuleChecker<'_> {
                             if !self.is_assignable_bounded(&actual, &primitive, span)
                                 && !self.is_assignable_bounded(&actual, instance_type, span)
                             {
-                                self.type_error(
+                                self.assignment_error(
                                     span,
                                     format!(
                                         "constructor return type `{}` is not assignable to class `{}`",
@@ -289,6 +289,8 @@ impl ModuleChecker<'_> {
                                         class_name
                                     ),
                                     DiagnosticCode::ReturnTypeMismatch,
+                                    &actual,
+                                    &Type::Named {name:class_name.to_string(),arguments:Vec::new()},
                                 );
                             }
                         }

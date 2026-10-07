@@ -41,6 +41,8 @@ const BOOLEAN: &[&str] = &[
     "allowJs",
     "checkJs",
     "noEmit",
+    "noEmitOnError",
+    "diagnostics",
     "pretty",
     "listFiles",
     "listEmittedFiles",

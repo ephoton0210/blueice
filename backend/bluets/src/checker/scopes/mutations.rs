@@ -318,8 +318,13 @@ impl ScopeModel<'_> {
             });
             if let (Some(owner), Some(index)) = (owner, index) {
                 if matches!(index, Type::String | Type::Number) && !budget.exhausted {
-                    diagnostic = diagnostic
-                        .with_typescript(7053, vec![type_label(&index), type_label(&owner)]);
+                    let index = crate::diagnostic::type_text::render(&index);
+                    let owner = crate::diagnostic::type_text::render(&owner);
+                    diagnostic =
+                        diagnostic.with_typescript(7053, vec![index.clone(), owner.clone()]);
+                    if let Some(counterpart) = &mut diagnostic.typescript {
+                        counterpart.message.push_str(&format!("\n  No index signature with a parameter of type '{index}' was found on type '{owner}'."));
+                    }
                 }
             }
         }

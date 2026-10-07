@@ -275,10 +275,12 @@ impl ModuleChecker<'_> {
             }
             Some(Type::Any | Type::Unknown) => {}
             Some(_) if self.functions.contains_key(base_name) => {}
-            Some(_) => self.type_error(
+            Some(value) => self.typescript_type_error(
                 span,
                 format!("class heritage {base_name} is not a constructor"),
                 DiagnosticCode::TypeMismatch,
+                2507,
+                vec![crate::diagnostic::type_text::render_in(value, self.project)],
             ),
         }
     }
@@ -811,6 +813,24 @@ impl ModuleChecker<'_> {
                     if callable { 7009 } else { 2351 },
                     Vec::new(),
                 );
+                if !callable {
+                    if let (Some(value), Some(counterpart)) = (
+                        scope.get(&call.callee.text),
+                        self.diagnostics
+                            .last_mut()
+                            .and_then(|diagnostic| diagnostic.typescript.as_mut()),
+                    ) {
+                        let value = match value {
+                            Type::Number => "Number".into(),
+                            Type::String => "String".into(),
+                            Type::Boolean => "Boolean".into(),
+                            _ => crate::diagnostic::type_text::render(value),
+                        };
+                        counterpart
+                            .message
+                            .push_str(&format!("\n  Type '{value}' has no construct signatures."));
+                    }
+                }
             }
             return;
         }
@@ -901,6 +921,13 @@ impl ModuleChecker<'_> {
                 ),
                 DiagnosticCode::ResourceLimit,
             ),
+        }
+        if self.library_values.contains(&call.callee.text) {
+            self.present_library_overloads(
+                &format!("new {}", call.callee.text),
+                &actuals,
+                &BTreeMap::new(),
+            );
         }
     }
 

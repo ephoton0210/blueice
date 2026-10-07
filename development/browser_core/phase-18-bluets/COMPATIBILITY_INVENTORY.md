@@ -90,7 +90,7 @@ suite entry, then removing the row.
 
 | ID | Gap |
 | --- | --- |
-| G-T1 | Control-flow narrowing (`typeof`/`instanceof`/`in`/discriminant/truthiness guards, assertion functions, user-defined type guards) beyond the few shapes the checker models. |
+| G-T1 | Control-flow narrowing (`typeof`/`instanceof`/`in`/discriminant/truthiness guards, assertion functions, user-defined type guards) beyond the few shapes the checker models. K.3.3 records three exact iterator-result assignment, lexical-shadowing and post-loop type-fact witnesses in `presentation-type-fact-gaps.json`: both compilers reject with TS2345 at identical positions and no related information, but BlueTSC retains `string &#124; number` where TypeScript narrows to `string`. K.4.1 owns these gaps. |
 | G-T2 | Generic inference in general: inference from arguments for arbitrary generic functions and classes, constraints with `keyof`/indexed access, higher-kinded patterns, variance annotations. |
 | G-T3 | Conditional types, `infer`, mapped types, template-literal types, indexed access and `keyof`/`typeof` type operators in full, recursive types beyond the type budget. |
 | G-T4 | Overload resolution in full (call and construct signatures, contextual signature selection), optional chaining and non-null assertion typing in all positions. |
@@ -130,7 +130,7 @@ suite entry, then removing the row.
 
 | ID | Gap |
 | --- | --- |
-| G-C1 | K.3.1 provides pinned TypeScript codes and message templates through `--diagnostics-json` and the public diagnostic API, preserving BTS aliases and enumerated owner/subset reasons. All 1,398 existing checker entries agree on primary code/template; 97 additional source witnesses cover further diagnostic families. K.3.2 matches primary UTF-16 positions and source module identity across 1,398 language/strictness and 867 project/CLI/option cases. Related information, rendered wording, complete pretty formatting and `--diagnostics` remain in K.3.3; `--explainFiles` and the full `tsc` command line remain outside this measured subset. |
+| G-C1 | K.3.1 provides pinned TypeScript codes and message templates through `--diagnostics-json` and the public diagnostic API, preserving BTS aliases and enumerated owner/subset reasons. All 1,398 existing checker entries agree on primary code/template; 97 additional source witnesses cover further diagnostic families. K.3.2 matches primary UTF-16 positions and source module identity across 1,398 language/strictness and 867 project/CLI/option cases. K.3.3 adds related codes/messages/module identity/UTF-16 coordinates, contextual rendered wording, plain/pretty formatting, source and related context, per-file error tables, diagnostics summary fields and measured native exit/emission semantics. Its corpus retains exactly three measured type-fact wording gaps in G-T1; `--explainFiles` and the full `tsc` command line remain outside this measured subset. |
 | G-C2 | Closed for the compared subset by K.2.2: parent `strict`, its nine family flags, unused locals/parameters, implicit returns, switch fallthrough, exact optional properties and unchecked indexed reads are independently selectable through projects and `CheckingOptions`. Thirty-two on/off configurations and 39 boundary controls agree with pinned TypeScript; valid JavaScript stays identical and legacy API defaults remain unchanged. Broader type-system behavior remains in G-T1/G-T2 and the other open rows; full `tsc` parity is not claimed. |
 | G-C3 | JSX: `jsx` type options `jsxImportSource` runtime typing (the automatic runtime's `JSX` namespace is not read from the package), `JSX.ElementType`, `LibraryManagedAttributes`, `defaultProps`, generic components and type arguments on tags (section 4 and `PLAN.md` J.5.1). |
 
@@ -151,7 +151,7 @@ excluded). A refusal is never silent: the program is rejected with this text.
 
 ### bin (1)
 
-- `backend/bluets/src/bin/bluetsc/native_cli/mod.rs:138` — BlueTSC configuration or an explicit owner policy refused this input.
+- `backend/bluets/src/bin/bluetsc/native_cli/mod.rs:187` — BlueTSC configuration or an explicit owner policy refused this input.
 
 ### checker (22)
 
@@ -160,15 +160,15 @@ excluded). A refusal is never silent: the program is rejected with this text.
 - `backend/bluets/src/checker/module/binding.rs:233` — a class member other than a constructor, method, field or accessor \ (a computed, generator or `accessor` member) is not supported yet
 - `backend/bluets/src/checker/module/binding/enums.rs:214` — a computed initializer that refers to the member `{}` must write it \ as `{}.{}`
 - `backend/bluets/src/checker/module/decorators.rs:116` — a decorator can only decorate a method implementation, not an overload
-- `backend/bluets/src/checker/module/binding/classes/fields.rs:321` — a field initializer that refers to a later field inside a nested \ function is not supported yet
-- `backend/bluets/src/checker/module/binding/classes/fields.rs:252` — a static block that refers to a later static field inside a nested \ function is not supported yet
+- `backend/bluets/src/checker/module/binding/classes/fields.rs:327` — a field initializer that refers to a later field inside a nested \ function is not supported yet
+- `backend/bluets/src/checker/module/binding/classes/fields.rs:258` — a static block that refers to a later static field inside a nested \ function is not supported yet
 - `backend/bluets/src/checker/module/binding/classes/visibility.rs:499` — cannot prove that access to `{}` is permitted for this receiver
 - `backend/bluets/src/checker/module/binding/classes/visibility.rs:580` — cannot prove that access to `{}` is permitted for this receiver
-- `backend/bluets/src/checker/module/binding/classes/fields.rs:107` — class field `{}` needs a type annotation unless its initializer \ or default is a number, string or boolean literal
-- `backend/bluets/src/checker/module/binding/classes.rs:643` — class tuple rest annotation cannot be specialized within the type budget
+- `backend/bluets/src/checker/module/binding/classes/fields.rs:113` — class field `{}` needs a type annotation unless its initializer \ or default is a number, string or boolean literal
+- `backend/bluets/src/checker/module/binding/classes.rs:645` — class tuple rest annotation cannot be specialized within the type budget
 - `backend/bluets/src/checker/module/binding/names.rs:150` — cyclic tuple spread cannot be resolved
-- `backend/bluets/src/checker/module/binding/classes/fields.rs:377` — definite assignment of `{}` through a branch is not supported yet
-- `backend/bluets/src/checker/module/binding/classes/fields.rs:432` — field `{}` redeclares a member of an imported base class, which is not supported yet
+- `backend/bluets/src/checker/module/binding/classes/fields.rs:383` — definite assignment of `{}` through a branch is not supported yet
+- `backend/bluets/src/checker/module/binding/classes/fields.rs:438` — field `{}` redeclares a member of an imported base class, which is not supported yet
 - `backend/bluets/src/checker/module/binding/classes/accessors.rs:143` — getter `{}` needs a return type annotation; inferring it from the \ body is not supported yet
 - `backend/bluets/src/checker/module/binding.rs:535` — interface heritage {name} must name an interface declaration
 - `backend/bluets/src/checker/module/binding/namespaces.rs:1095` — namespace `{source}` has no run-time members; import it with `import type`
@@ -180,7 +180,7 @@ excluded). A refusal is never silent: the program is rejected with this text.
 
 ### diagnostic (1)
 
-- `backend/bluets/src/diagnostic/mapping.rs:117` — BlueTSC deliberately refuses a documented subset boundary.
+- `backend/bluets/src/diagnostic/mapping.rs:123` — BlueTSC deliberately refuses a documented subset boundary.
 
 ### emitter (37)
 

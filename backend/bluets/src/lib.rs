@@ -30,6 +30,7 @@ pub mod jsx;
 mod namespace_analysis;
 pub mod package_resolution;
 mod parser;
+mod performance;
 pub mod remote_declarations;
 pub mod standard_library;
 mod strict_boundaries;
@@ -56,7 +57,7 @@ pub use debug_info::{
 };
 pub use diagnostic::{
     Diagnostic, DiagnosticCode, Severity, SourceSpan, TypeScriptDiagnostic, TypeScriptPosition,
-    DIAGNOSTICS_VERSION,
+    TypeScriptRelatedInformation, DIAGNOSTICS_VERSION,
 };
 pub use emitter::{
     BuildArtifact, BuildOutput, EmittedRuntimeBoundary, EmittedRuntimeSite, EmittedStrictModule,
@@ -78,6 +79,7 @@ pub use parser::{
     TypeAliasDeclaration, TypeExportDeclaration, TypeParameter, ValueExportBinding,
     ValueExportDeclaration, VariableDeclaration, VariableKind, Visibility,
 };
+pub use performance::CompilerPerformance;
 pub use syntax::parse_jsx;
 pub use syntax::{lex, Token, TokenKind};
 
@@ -96,6 +98,7 @@ pub struct Compilation {
     pub debug_info: Option<BlueTsDebugInfo>,
     pub diagnostics: Vec<Diagnostic>,
     pub output: Option<BuildOutput>,
+    pub performance: CompilerPerformance,
 }
 
 impl Compilation {

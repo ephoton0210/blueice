@@ -233,6 +233,12 @@ fn recorded_codes_messages_and_spans_match_pinned_typescript() {
 #[test]
 fn primary_messages_and_related_information_match_pinned_typescript() {
     let mut failures = Vec::new();
+    let gaps: Value = serde_json::from_str(include_str!(
+        "fixtures/diagnostics/presentation-type-fact-gaps.json"
+    ))
+    .unwrap();
+    assert_eq!(gaps["version"], "5.9.3");
+    let mut observed_gaps = BTreeSet::new();
     for case in reference()["cases"].as_array().unwrap() {
         let expected = &case["first"];
         if expected.is_null() {
@@ -285,13 +291,61 @@ fn primary_messages_and_related_information_match_pinned_typescript() {
                 "module":item["span"]["module"],"position":item["position"]})
             })
             .collect::<Vec<_>>();
-        if actual["message"] != expected["message"] || actual_related != related {
+        // The library API exposes virtual module identities, not the oracle's
+        // absolute corpus root. Normalize only that root in embedded type names.
+        let expected_message = expected["message"].as_str().unwrap().replace(
+            &format!(
+                "<fixtures>/{}/",
+                source_root.to_string_lossy().replace('\\', "/")
+            ),
+            "",
+        );
+        let compared_message = if let Some(gap) = gaps["cases"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|gap| gap["id"] == case["id"])
+        {
+            let source = fs::read(
+                fixtures()
+                    .join("typescript_oracle")
+                    .join(case["entry"].as_str().unwrap()),
+            )
+            .unwrap();
+            let digest = ring::digest::digest(&ring::digest::SHA256, &source);
+            let hash = digest
+                .as_ref()
+                .iter()
+                .map(|byte| format!("{byte:02x}"))
+                .collect::<String>();
+            assert_eq!(hash, gap["sourceSha256"]);
+            assert_eq!(gap["gap"], "G-T1");
+            assert_eq!(gap["nextLeaf"], "K.4.1");
+            assert_eq!(expected_message, gap["typescriptMessage"]);
+            assert_eq!(actual["code"], gap["code"]);
+            assert_ne!(gap["blueMessage"], gap["typescriptMessage"]);
+            observed_gaps.insert(gap["id"].as_str().unwrap().to_string());
+            gap["blueMessage"].as_str().unwrap()
+        } else {
+            &expected_message
+        };
+        if actual["message"] != compared_message || actual_related != related {
             failures.push(format!(
                 "{}: expected message {} and related {:?}; received {} and {:?}",
                 case["id"], expected["message"], related, actual["message"], actual_related
             ));
         }
     }
+    assert_eq!(
+        observed_gaps,
+        gaps["cases"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|gap| gap["id"].as_str().unwrap().to_string())
+            .collect()
+    );
+    assert_eq!(observed_gaps.len(), 3);
     let count = failures.len();
     failures.truncate(12);
     assert!(

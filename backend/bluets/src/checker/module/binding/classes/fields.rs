@@ -61,13 +61,19 @@ impl ModuleChecker<'_> {
                     && declared != Type::Unknown
                     && merged.value != Type::Unknown
                 {
-                    self.type_error(
+                    self.typescript_type_error(
                         &merged.span,
                         format!(
                             "subsequent declarations of property `{}` must have the same type",
                             merged.name
                         ),
                         DiagnosticCode::TypeMismatch,
+                        2717,
+                        vec![
+                            merged.name.clone(),
+                            crate::diagnostic::type_text::render_in(&merged.value, self.project),
+                            crate::diagnostic::type_text::render_in(&declared, self.project),
+                        ],
                     );
                 }
             }

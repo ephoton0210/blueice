@@ -2168,7 +2168,7 @@
       "values": 2
     },
     "ArrayConstructor": {
-      "__@species@50": 3,
+      "__@species@137": 3,
       "from": 4,
       "isArray": 1,
       "of": 1,
@@ -2207,7 +2207,7 @@
       "UTC": 2
     },
     "RegExpConstructor": {
-      "__@species@50": 3,
+      "__@species@137": 3,
       "$_": 0,
       "$'": 0,
       "$&": 0,
@@ -2251,12 +2251,12 @@
       "prototype": 0
     },
     "JSONConstructor": {
-      "__@toStringTag@180": 0,
+      "__@toStringTag@366": 0,
       "parse": 1,
       "stringify": 2
     },
     "PromiseConstructor": {
-      "__@species@50": 0,
+      "__@species@137": 0,
       "all": 2,
       "allSettled": 2,
       "any": 2,
@@ -2266,8 +2266,8 @@
       "resolve": 3
     },
     "Array": {
-      "__@iterator@58": 1,
-      "__@unscopables@60": 0,
+      "__@iterator@149": 1,
+      "__@unscopables@151": 0,
       "at": 1,
       "concat": 2,
       "copyWithin": 1,
@@ -2303,7 +2303,7 @@
       "values": 1
     },
     "String": {
-      "__@iterator@58": 1,
+      "__@iterator@149": 1,
       "anchor": 1,
       "at": 1,
       "big": 1,
@@ -2494,5 +2494,7915 @@
     "verbatimModuleSyntax",
     "version",
     "watch"
-  ]
+  ],
+  "libraryDeclarations": {
+    "Object": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 9862,
+      "end": 9868,
+      "line": 270,
+      "column": 13,
+      "length": 6,
+      "sourceLine": "declare var Object: ObjectConstructor;"
+    },
+    "Array": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 70873,
+      "end": 70878,
+      "line": 1524,
+      "column": 13,
+      "length": 5,
+      "sourceLine": "declare var Array: ArrayConstructor;"
+    },
+    "String": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 22075,
+      "end": 22081,
+      "line": 544,
+      "column": 13,
+      "length": 6,
+      "sourceLine": "declare var String: StringConstructor;"
+    },
+    "Number": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 24706,
+      "end": 24712,
+      "line": 619,
+      "column": 13,
+      "length": 6,
+      "sourceLine": "declare var Number: NumberConstructor;"
+    },
+    "Boolean": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 22354,
+      "end": 22361,
+      "line": 557,
+      "column": 13,
+      "length": 7,
+      "sourceLine": "declare var Boolean: BooleanConstructor;"
+    },
+    "Date": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 40005,
+      "end": 40009,
+      "line": 961,
+      "column": 13,
+      "length": 4,
+      "sourceLine": "declare var Date: DateConstructor;"
+    },
+    "RegExp": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 44108,
+      "end": 44114,
+      "line": 1073,
+      "column": 13,
+      "length": 6,
+      "sourceLine": "declare var RegExp: RegExpConstructor;"
+    },
+    "Error": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 44357,
+      "end": 44362,
+      "line": 1087,
+      "column": 13,
+      "length": 5,
+      "sourceLine": "declare var Error: ErrorConstructor;"
+    },
+    "EvalError": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 44604,
+      "end": 44613,
+      "line": 1098,
+      "column": 13,
+      "length": 9,
+      "sourceLine": "declare var EvalError: EvalErrorConstructor;"
+    },
+    "RangeError": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 44864,
+      "end": 44874,
+      "line": 1109,
+      "column": 13,
+      "length": 10,
+      "sourceLine": "declare var RangeError: RangeErrorConstructor;"
+    },
+    "ReferenceError": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 45146,
+      "end": 45160,
+      "line": 1120,
+      "column": 13,
+      "length": 14,
+      "sourceLine": "declare var ReferenceError: ReferenceErrorConstructor;"
+    },
+    "SyntaxError": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 45421,
+      "end": 45432,
+      "line": 1131,
+      "column": 13,
+      "length": 11,
+      "sourceLine": "declare var SyntaxError: SyntaxErrorConstructor;"
+    },
+    "TypeError": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 45680,
+      "end": 45689,
+      "line": 1142,
+      "column": 13,
+      "length": 9,
+      "sourceLine": "declare var TypeError: TypeErrorConstructor;"
+    },
+    "URIError": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 45930,
+      "end": 45938,
+      "line": 1153,
+      "column": 13,
+      "length": 8,
+      "sourceLine": "declare var URIError: URIErrorConstructor;"
+    },
+    "JSON": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 47852,
+      "end": 47856,
+      "line": 1185,
+      "column": 13,
+      "length": 4,
+      "sourceLine": "declare var JSON: JSON;"
+    },
+    "Promise": {
+      "file": "<typescript-lib>/lib.es2015.promise.d.ts",
+      "start": 3171,
+      "end": 3178,
+      "line": 81,
+      "column": 13,
+      "length": 7,
+      "sourceLine": "declare var Promise: PromiseConstructor;"
+    },
+    "Array.length": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 57779,
+      "end": 57794,
+      "line": 1329,
+      "column": 5,
+      "length": 15,
+      "sourceLine": "    length: number;"
+    },
+    "Array.toString": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 57867,
+      "end": 57886,
+      "line": 1333,
+      "column": 5,
+      "length": 19,
+      "sourceLine": "    toString(): string;"
+    },
+    "Array.toLocaleString": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 58032,
+      "end": 58057,
+      "line": 1337,
+      "column": 5,
+      "length": 25,
+      "sourceLine": "    toLocaleString(): string;"
+    },
+    "Array.pop": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 58223,
+      "end": 58244,
+      "line": 1342,
+      "column": 5,
+      "length": 21,
+      "sourceLine": "    pop(): T | undefined;"
+    },
+    "Array.push": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 58412,
+      "end": 58440,
+      "line": 1347,
+      "column": 5,
+      "length": 28,
+      "sourceLine": "    push(...items: T[]): number;"
+    },
+    "Array.concat": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 58658,
+      "end": 58698,
+      "line": 1353,
+      "column": 5,
+      "length": 40,
+      "sourceLine": "    concat(...items: ConcatArray<T>[]): T[];"
+    },
+    "Array.join": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 59257,
+      "end": 59290,
+      "line": 1364,
+      "column": 5,
+      "length": 33,
+      "sourceLine": "    join(separator?: string): string;"
+    },
+    "Array.reverse": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 59442,
+      "end": 59457,
+      "line": 1369,
+      "column": 5,
+      "length": 15,
+      "sourceLine": "    reverse(): T[];"
+    },
+    "Array.shift": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 59624,
+      "end": 59647,
+      "line": 1374,
+      "column": 5,
+      "length": 23,
+      "sourceLine": "    shift(): T | undefined;"
+    },
+    "Array.slice": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 60242,
+      "end": 60283,
+      "line": 1384,
+      "column": 5,
+      "length": 41,
+      "sourceLine": "    slice(start?: number, end?: number): T[];"
+    },
+    "Array.sort": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 60800,
+      "end": 60847,
+      "line": 1395,
+      "column": 5,
+      "length": 47,
+      "sourceLine": "    sort(compareFn?: (a: T, b: T) => number): this;"
+    },
+    "Array.splice": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 61534,
+      "end": 61583,
+      "line": 1404,
+      "column": 5,
+      "length": 49,
+      "sourceLine": "    splice(start: number, deleteCount?: number): T[];"
+    },
+    "Array.unshift": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 62500,
+      "end": 62531,
+      "line": 1419,
+      "column": 5,
+      "length": 31,
+      "sourceLine": "    unshift(...items: T[]): number;"
+    },
+    "Array.indexOf": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 62840,
+      "end": 62894,
+      "line": 1425,
+      "column": 5,
+      "length": 54,
+      "sourceLine": "    indexOf(searchElement: T, fromIndex?: number): number;"
+    },
+    "Array.lastIndexOf": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 63240,
+      "end": 63298,
+      "line": 1431,
+      "column": 5,
+      "length": 58,
+      "sourceLine": "    lastIndexOf(searchElement: T, fromIndex?: number): number;"
+    },
+    "Array.every": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 63838,
+      "end": 63949,
+      "line": 1440,
+      "column": 5,
+      "length": 111,
+      "sourceLine": "    every<S extends T>(predicate: (value: T, index: number, array: T[]) => value is S, thisArg?: any): this is S[];"
+    },
+    "Array.some": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 65136,
+      "end": 65226,
+      "line": 1458,
+      "column": 5,
+      "length": 90,
+      "sourceLine": "    some(predicate: (value: T, index: number, array: T[]) => unknown, thisArg?: any): boolean;"
+    },
+    "Array.forEach": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 65620,
+      "end": 65708,
+      "line": 1464,
+      "column": 5,
+      "length": 88,
+      "sourceLine": "    forEach(callbackfn: (value: T, index: number, array: T[]) => void, thisArg?: any): void;"
+    },
+    "Array.map": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 66160,
+      "end": 66243,
+      "line": 1470,
+      "column": 5,
+      "length": 83,
+      "sourceLine": "    map<U>(callbackfn: (value: T, index: number, array: T[]) => U, thisArg?: any): U[];"
+    },
+    "Array.filter": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 66675,
+      "end": 66779,
+      "line": 1476,
+      "column": 5,
+      "length": 104,
+      "sourceLine": "    filter<S extends T>(predicate: (value: T, index: number, array: T[]) => value is S, thisArg?: any): S[];"
+    },
+    "Array.reduce": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 67921,
+      "end": 68019,
+      "line": 1488,
+      "column": 5,
+      "length": 98,
+      "sourceLine": "    reduce(callbackfn: (previousValue: T, currentValue: T, currentIndex: number, array: T[]) => T): T;"
+    },
+    "Array.reduceRight": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 69527,
+      "end": 69630,
+      "line": 1501,
+      "column": 5,
+      "length": 103,
+      "sourceLine": "    reduceRight(callbackfn: (previousValue: T, currentValue: T, currentIndex: number, array: T[]) => T): T;"
+    },
+    "Array.find": {
+      "file": "<typescript-lib>/lib.es2015.core.d.ts",
+      "start": 1443,
+      "end": 1553,
+      "line": 29,
+      "column": 5,
+      "length": 110,
+      "sourceLine": "    find<S extends T>(predicate: (value: T, index: number, obj: T[]) => value is S, thisArg?: any): S | undefined;"
+    },
+    "Array.findIndex": {
+      "file": "<typescript-lib>/lib.es2015.core.d.ts",
+      "start": 2219,
+      "end": 2311,
+      "line": 41,
+      "column": 5,
+      "length": 92,
+      "sourceLine": "    findIndex(predicate: (value: T, index: number, obj: T[]) => unknown, thisArg?: any): number;"
+    },
+    "Array.fill": {
+      "file": "<typescript-lib>/lib.es2015.core.d.ts",
+      "start": 2766,
+      "end": 2817,
+      "line": 51,
+      "column": 5,
+      "length": 51,
+      "sourceLine": "    fill(value: T, start?: number, end?: number): this;"
+    },
+    "Array.copyWithin": {
+      "file": "<typescript-lib>/lib.es2015.core.d.ts",
+      "start": 3332,
+      "end": 3394,
+      "line": 62,
+      "column": 5,
+      "length": 62,
+      "sourceLine": "    copyWithin(target: number, start: number, end?: number): this;"
+    },
+    "Array.entries": {
+      "file": "<typescript-lib>/lib.es2015.iterable.d.ts",
+      "start": 2891,
+      "end": 2929,
+      "line": 83,
+      "column": 5,
+      "length": 38,
+      "sourceLine": "    entries(): ArrayIterator<[number, T]>;"
+    },
+    "Array.keys": {
+      "file": "<typescript-lib>/lib.es2015.iterable.d.ts",
+      "start": 2999,
+      "end": 3029,
+      "line": 88,
+      "column": 5,
+      "length": 30,
+      "sourceLine": "    keys(): ArrayIterator<number>;"
+    },
+    "Array.values": {
+      "file": "<typescript-lib>/lib.es2015.iterable.d.ts",
+      "start": 3101,
+      "end": 3128,
+      "line": 93,
+      "column": 5,
+      "length": 27,
+      "sourceLine": "    values(): ArrayIterator<T>;"
+    },
+    "Array.includes": {
+      "file": "<typescript-lib>/lib.es2016.array.include.d.ts",
+      "start": 1150,
+      "end": 1206,
+      "line": 25,
+      "column": 5,
+      "length": 56,
+      "sourceLine": "    includes(searchElement: T, fromIndex?: number): boolean;"
+    },
+    "Array.flatMap": {
+      "file": "<typescript-lib>/lib.es2019.array.d.ts",
+      "start": 2711,
+      "end": 2869,
+      "line": 64,
+      "column": 5,
+      "length": 158,
+      "sourceLine": "    flatMap<U, This = undefined>("
+    },
+    "Array.flat": {
+      "file": "<typescript-lib>/lib.es2019.array.d.ts",
+      "start": 3068,
+      "end": 3160,
+      "line": 75,
+      "column": 5,
+      "length": 92,
+      "sourceLine": "    flat<A, D extends number = 1>("
+    },
+    "Array.at": {
+      "file": "<typescript-lib>/lib.es2022.array.d.ts",
+      "start": 1070,
+      "end": 1103,
+      "line": 24,
+      "column": 5,
+      "length": 33,
+      "sourceLine": "    at(index: number): T | undefined;"
+    },
+    "Array.__@iterator@149": {
+      "file": "<typescript-lib>/lib.es2015.iterable.d.ts",
+      "start": 2755,
+      "end": 2793,
+      "line": 78,
+      "column": 5,
+      "length": 38,
+      "sourceLine": "    [Symbol.iterator](): ArrayIterator<T>;"
+    },
+    "Array.__@unscopables@151": {
+      "file": "<typescript-lib>/lib.es2015.symbol.wellknown.d.ts",
+      "start": 3284,
+      "end": 3361,
+      "line": 97,
+      "column": 5,
+      "length": 77,
+      "sourceLine": "    readonly [Symbol.unscopables]: {"
+    },
+    "String.toString": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 16058,
+      "end": 16077,
+      "line": 412,
+      "column": 5,
+      "length": 19,
+      "sourceLine": "    toString(): string;"
+    },
+    "String.charAt": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 16217,
+      "end": 16245,
+      "line": 418,
+      "column": 5,
+      "length": 28,
+      "sourceLine": "    charAt(pos: number): string;"
+    },
+    "String.charCodeAt": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 16477,
+      "end": 16511,
+      "line": 424,
+      "column": 5,
+      "length": 34,
+      "sourceLine": "    charCodeAt(index: number): number;"
+    },
+    "String.concat": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 16683,
+      "end": 16720,
+      "line": 430,
+      "column": 5,
+      "length": 37,
+      "sourceLine": "    concat(...strings: string[]): string;"
+    },
+    "String.indexOf": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 17017,
+      "end": 17074,
+      "line": 437,
+      "column": 5,
+      "length": 57,
+      "sourceLine": "    indexOf(searchString: string, position?: number): number;"
+    },
+    "String.lastIndexOf": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 17335,
+      "end": 17396,
+      "line": 444,
+      "column": 5,
+      "length": 61,
+      "sourceLine": "    lastIndexOf(searchString: string, position?: number): number;"
+    },
+    "String.localeCompare": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 17548,
+      "end": 17584,
+      "line": 450,
+      "column": 5,
+      "length": 36,
+      "sourceLine": "    localeCompare(that: string): number;"
+    },
+    "String.match": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 17825,
+      "end": 17881,
+      "line": 456,
+      "column": 5,
+      "length": 56,
+      "sourceLine": "    match(regexp: string | RegExp): RegExpMatchArray | null;"
+    },
+    "String.replace": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 18365,
+      "end": 18433,
+      "line": 463,
+      "column": 5,
+      "length": 68,
+      "sourceLine": "    replace(searchValue: string | RegExp, replaceValue: string): string;"
+    },
+    "String.search": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 18923,
+      "end": 18963,
+      "line": 476,
+      "column": 5,
+      "length": 40,
+      "sourceLine": "    search(regexp: string | RegExp): number;"
+    },
+    "String.slice": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 19371,
+      "end": 19415,
+      "line": 484,
+      "column": 5,
+      "length": 44,
+      "sourceLine": "    slice(start?: number, end?: number): string;"
+    },
+    "String.split": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 19805,
+      "end": 19865,
+      "line": 491,
+      "column": 5,
+      "length": 60,
+      "sourceLine": "    split(separator: string | RegExp, limit?: number): string[];"
+    },
+    "String.substring": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 20337,
+      "end": 20384,
+      "line": 499,
+      "column": 5,
+      "length": 47,
+      "sourceLine": "    substring(start: number, end?: number): string;"
+    },
+    "String.toLowerCase": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 20466,
+      "end": 20488,
+      "line": 502,
+      "column": 5,
+      "length": 22,
+      "sourceLine": "    toLowerCase(): string;"
+    },
+    "String.toLocaleLowerCase": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 20613,
+      "end": 20668,
+      "line": 505,
+      "column": 5,
+      "length": 55,
+      "sourceLine": "    toLocaleLowerCase(locales?: string | string[]): string;"
+    },
+    "String.toUpperCase": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 20750,
+      "end": 20772,
+      "line": 508,
+      "column": 5,
+      "length": 22,
+      "sourceLine": "    toUpperCase(): string;"
+    },
+    "String.toLocaleUpperCase": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 20931,
+      "end": 20986,
+      "line": 511,
+      "column": 5,
+      "length": 55,
+      "sourceLine": "    toLocaleUpperCase(locales?: string | string[]): string;"
+    },
+    "String.trim": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 21094,
+      "end": 21109,
+      "line": 514,
+      "column": 5,
+      "length": 15,
+      "sourceLine": "    trim(): string;"
+    },
+    "String.length": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 21165,
+      "end": 21189,
+      "line": 517,
+      "column": 5,
+      "length": 24,
+      "sourceLine": "    readonly length: number;"
+    },
+    "String.substr": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 21594,
+      "end": 21640,
+      "line": 526,
+      "column": 5,
+      "length": 46,
+      "sourceLine": "    substr(from: number, length?: number): string;"
+    },
+    "String.valueOf": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 21710,
+      "end": 21728,
+      "line": 529,
+      "column": 5,
+      "length": 18,
+      "sourceLine": "    valueOf(): string;"
+    },
+    "String.codePointAt": {
+      "file": "<typescript-lib>/lib.es2015.core.d.ts",
+      "start": 16189,
+      "end": 16234,
+      "line": 410,
+      "column": 5,
+      "length": 45,
+      "sourceLine": "    codePointAt(pos: number): number | undefined;"
+    },
+    "String.includes": {
+      "file": "<typescript-lib>/lib.es2015.core.d.ts",
+      "start": 16616,
+      "end": 16675,
+      "line": 419,
+      "column": 5,
+      "length": 59,
+      "sourceLine": "    includes(searchString: string, position?: number): boolean;"
+    },
+    "String.endsWith": {
+      "file": "<typescript-lib>/lib.es2015.core.d.ts",
+      "start": 16945,
+      "end": 17007,
+      "line": 426,
+      "column": 5,
+      "length": 62,
+      "sourceLine": "    endsWith(searchString: string, endPosition?: number): boolean;"
+    },
+    "String.normalize": {
+      "file": "<typescript-lib>/lib.es2015.core.d.ts",
+      "start": 17328,
+      "end": 17385,
+      "line": 434,
+      "column": 5,
+      "length": 57,
+      "sourceLine": "    normalize(form: \"NFC\" | \"NFD\" | \"NFKC\" | \"NFKD\"): string;"
+    },
+    "String.repeat": {
+      "file": "<typescript-lib>/lib.es2015.core.d.ts",
+      "start": 17940,
+      "end": 17970,
+      "line": 449,
+      "column": 5,
+      "length": 30,
+      "sourceLine": "    repeat(count: number): string;"
+    },
+    "String.startsWith": {
+      "file": "<typescript-lib>/lib.es2015.core.d.ts",
+      "start": 18220,
+      "end": 18281,
+      "line": 456,
+      "column": 5,
+      "length": 61,
+      "sourceLine": "    startsWith(searchString: string, position?: number): boolean;"
+    },
+    "String.anchor": {
+      "file": "<typescript-lib>/lib.es2015.core.d.ts",
+      "start": 18474,
+      "end": 18503,
+      "line": 463,
+      "column": 5,
+      "length": 29,
+      "sourceLine": "    anchor(name: string): string;"
+    },
+    "String.big": {
+      "file": "<typescript-lib>/lib.es2015.core.d.ts",
+      "start": 18625,
+      "end": 18639,
+      "line": 469,
+      "column": 5,
+      "length": 14,
+      "sourceLine": "    big(): string;"
+    },
+    "String.blink": {
+      "file": "<typescript-lib>/lib.es2015.core.d.ts",
+      "start": 18763,
+      "end": 18779,
+      "line": 475,
+      "column": 5,
+      "length": 16,
+      "sourceLine": "    blink(): string;"
+    },
+    "String.bold": {
+      "file": "<typescript-lib>/lib.es2015.core.d.ts",
+      "start": 18899,
+      "end": 18914,
+      "line": 481,
+      "column": 5,
+      "length": 15,
+      "sourceLine": "    bold(): string;"
+    },
+    "String.fixed": {
+      "file": "<typescript-lib>/lib.es2015.core.d.ts",
+      "start": 19035,
+      "end": 19051,
+      "line": 487,
+      "column": 5,
+      "length": 16,
+      "sourceLine": "    fixed(): string;"
+    },
+    "String.fontcolor": {
+      "file": "<typescript-lib>/lib.es2015.core.d.ts",
+      "start": 19209,
+      "end": 19242,
+      "line": 493,
+      "column": 5,
+      "length": 33,
+      "sourceLine": "    fontcolor(color: string): string;"
+    },
+    "String.fontsize": {
+      "file": "<typescript-lib>/lib.es2015.core.d.ts",
+      "start": 19399,
+      "end": 19430,
+      "line": 499,
+      "column": 5,
+      "length": 31,
+      "sourceLine": "    fontsize(size: number): string;"
+    },
+    "String.italics": {
+      "file": "<typescript-lib>/lib.es2015.core.d.ts",
+      "start": 19739,
+      "end": 19757,
+      "line": 511,
+      "column": 5,
+      "length": 18,
+      "sourceLine": "    italics(): string;"
+    },
+    "String.link": {
+      "file": "<typescript-lib>/lib.es2015.core.d.ts",
+      "start": 19912,
+      "end": 19938,
+      "line": 517,
+      "column": 5,
+      "length": 26,
+      "sourceLine": "    link(url: string): string;"
+    },
+    "String.small": {
+      "file": "<typescript-lib>/lib.es2015.core.d.ts",
+      "start": 20062,
+      "end": 20078,
+      "line": 523,
+      "column": 5,
+      "length": 16,
+      "sourceLine": "    small(): string;"
+    },
+    "String.strike": {
+      "file": "<typescript-lib>/lib.es2015.core.d.ts",
+      "start": 20203,
+      "end": 20220,
+      "line": 529,
+      "column": 5,
+      "length": 17,
+      "sourceLine": "    strike(): string;"
+    },
+    "String.sub": {
+      "file": "<typescript-lib>/lib.es2015.core.d.ts",
+      "start": 20342,
+      "end": 20356,
+      "line": 535,
+      "column": 5,
+      "length": 14,
+      "sourceLine": "    sub(): string;"
+    },
+    "String.sup": {
+      "file": "<typescript-lib>/lib.es2015.core.d.ts",
+      "start": 20478,
+      "end": 20492,
+      "line": 541,
+      "column": 5,
+      "length": 14,
+      "sourceLine": "    sup(): string;"
+    },
+    "String.padStart": {
+      "file": "<typescript-lib>/lib.es2017.string.d.ts",
+      "start": 1567,
+      "end": 1624,
+      "line": 31,
+      "column": 5,
+      "length": 57,
+      "sourceLine": "    padStart(maxLength: number, fillString?: string): string;"
+    },
+    "String.padEnd": {
+      "file": "<typescript-lib>/lib.es2017.string.d.ts",
+      "start": 2320,
+      "end": 2375,
+      "line": 44,
+      "column": 5,
+      "length": 55,
+      "sourceLine": "    padEnd(maxLength: number, fillString?: string): string;"
+    },
+    "String.trimEnd": {
+      "file": "<typescript-lib>/lib.es2019.string.d.ts",
+      "start": 966,
+      "end": 984,
+      "line": 21,
+      "column": 5,
+      "length": 18,
+      "sourceLine": "    trimEnd(): string;"
+    },
+    "String.trimStart": {
+      "file": "<typescript-lib>/lib.es2019.string.d.ts",
+      "start": 1079,
+      "end": 1099,
+      "line": 24,
+      "column": 5,
+      "length": 20,
+      "sourceLine": "    trimStart(): string;"
+    },
+    "String.trimLeft": {
+      "file": "<typescript-lib>/lib.es2019.string.d.ts",
+      "start": 1293,
+      "end": 1312,
+      "line": 30,
+      "column": 5,
+      "length": 19,
+      "sourceLine": "    trimLeft(): string;"
+    },
+    "String.trimRight": {
+      "file": "<typescript-lib>/lib.es2019.string.d.ts",
+      "start": 1505,
+      "end": 1525,
+      "line": 36,
+      "column": 5,
+      "length": 20,
+      "sourceLine": "    trimRight(): string;"
+    },
+    "String.matchAll": {
+      "file": "<typescript-lib>/lib.es2020.string.d.ts",
+      "start": 1257,
+      "end": 1321,
+      "line": 29,
+      "column": 5,
+      "length": 64,
+      "sourceLine": "    matchAll(regexp: RegExp): RegExpStringIterator<RegExpExecArray>;"
+    },
+    "String.replaceAll": {
+      "file": "<typescript-lib>/lib.es2021.string.d.ts",
+      "start": 1169,
+      "end": 1240,
+      "line": 25,
+      "column": 5,
+      "length": 71,
+      "sourceLine": "    replaceAll(searchValue: string | RegExp, replaceValue: string): string;"
+    },
+    "String.at": {
+      "file": "<typescript-lib>/lib.es2022.string.d.ts",
+      "start": 1114,
+      "end": 1152,
+      "line": 24,
+      "column": 5,
+      "length": 38,
+      "sourceLine": "    at(index: number): string | undefined;"
+    },
+    "String.__@iterator@149": {
+      "file": "<typescript-lib>/lib.es2015.iterable.d.ts",
+      "start": 7690,
+      "end": 7734,
+      "line": 272,
+      "column": 5,
+      "length": 44,
+      "sourceLine": "    [Symbol.iterator](): StringIterator<string>;"
+    },
+    "Number.toString": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 22593,
+      "end": 22626,
+      "line": 564,
+      "column": 5,
+      "length": 33,
+      "sourceLine": "    toString(radix?: number): string;"
+    },
+    "Number.toFixed": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 22830,
+      "end": 22871,
+      "line": 570,
+      "column": 5,
+      "length": 41,
+      "sourceLine": "    toFixed(fractionDigits?: number): string;"
+    },
+    "Number.toExponential": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 23085,
+      "end": 23132,
+      "line": 576,
+      "column": 5,
+      "length": 47,
+      "sourceLine": "    toExponential(fractionDigits?: number): string;"
+    },
+    "Number.toPrecision": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 23385,
+      "end": 23425,
+      "line": 582,
+      "column": 5,
+      "length": 40,
+      "sourceLine": "    toPrecision(precision?: number): string;"
+    },
+    "Number.valueOf": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 23495,
+      "end": 23513,
+      "line": 585,
+      "column": 5,
+      "length": 18,
+      "sourceLine": "    valueOf(): number;"
+    },
+    "Number.toLocaleString": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 216444,
+      "end": 216532,
+      "line": 4578,
+      "column": 5,
+      "length": 88,
+      "sourceLine": "    toLocaleString(locales?: string | string[], options?: Intl.NumberFormatOptions): string;"
+    },
+    "Boolean.valueOf": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 22191,
+      "end": 22210,
+      "line": 548,
+      "column": 5,
+      "length": 19,
+      "sourceLine": "    valueOf(): boolean;"
+    }
+  },
+  "librarySignatures": {
+    "es2022/new Object": [
+      {
+        "parameters": [
+          {
+            "name": "value",
+            "type": "any",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "Object",
+        "minimum": 0
+      }
+    ],
+    "es2022/ObjectConstructor.prototype": [],
+    "es2022/ObjectConstructor.getPrototypeOf": [
+      {
+        "parameters": [
+          {
+            "name": "o",
+            "type": "any",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "any",
+        "minimum": 1
+      }
+    ],
+    "es2022/ObjectConstructor.getOwnPropertyDescriptor": [
+      {
+        "parameters": [
+          {
+            "name": "o",
+            "type": "any",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "p",
+            "type": "PropertyKey",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "PropertyDescriptor | undefined",
+        "minimum": 2
+      }
+    ],
+    "es2022/ObjectConstructor.getOwnPropertyNames": [
+      {
+        "parameters": [
+          {
+            "name": "o",
+            "type": "any",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "string[]",
+        "minimum": 1
+      }
+    ],
+    "es2022/ObjectConstructor.create": [
+      {
+        "parameters": [
+          {
+            "name": "o",
+            "type": "object | null",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "any",
+        "minimum": 1
+      },
+      {
+        "parameters": [
+          {
+            "name": "o",
+            "type": "object | null",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "properties",
+            "type": "PropertyDescriptorMap & ThisType<any>",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "any",
+        "minimum": 2
+      }
+    ],
+    "es2022/ObjectConstructor.defineProperty": [
+      {
+        "parameters": [
+          {
+            "name": "o",
+            "type": "T",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "p",
+            "type": "PropertyKey",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "attributes",
+            "type": "PropertyDescriptor & ThisType<any>",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "T",
+        "minimum": 3
+      }
+    ],
+    "es2022/ObjectConstructor.defineProperties": [
+      {
+        "parameters": [
+          {
+            "name": "o",
+            "type": "T",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "properties",
+            "type": "PropertyDescriptorMap & ThisType<any>",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "T",
+        "minimum": 2
+      }
+    ],
+    "es2022/ObjectConstructor.seal": [
+      {
+        "parameters": [
+          {
+            "name": "o",
+            "type": "T",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "T",
+        "minimum": 1
+      }
+    ],
+    "es2022/ObjectConstructor.freeze": [
+      {
+        "parameters": [
+          {
+            "name": "f",
+            "type": "T",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "T",
+        "minimum": 1
+      },
+      {
+        "parameters": [
+          {
+            "name": "o",
+            "type": "T",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "Readonly<T>",
+        "minimum": 1
+      },
+      {
+        "parameters": [
+          {
+            "name": "o",
+            "type": "T",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "Readonly<T>",
+        "minimum": 1
+      }
+    ],
+    "es2022/ObjectConstructor.preventExtensions": [
+      {
+        "parameters": [
+          {
+            "name": "o",
+            "type": "T",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "T",
+        "minimum": 1
+      }
+    ],
+    "es2022/ObjectConstructor.isSealed": [
+      {
+        "parameters": [
+          {
+            "name": "o",
+            "type": "any",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "boolean",
+        "minimum": 1
+      }
+    ],
+    "es2022/ObjectConstructor.isFrozen": [
+      {
+        "parameters": [
+          {
+            "name": "o",
+            "type": "any",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "boolean",
+        "minimum": 1
+      }
+    ],
+    "es2022/ObjectConstructor.isExtensible": [
+      {
+        "parameters": [
+          {
+            "name": "o",
+            "type": "any",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "boolean",
+        "minimum": 1
+      }
+    ],
+    "es2022/ObjectConstructor.keys": [
+      {
+        "parameters": [
+          {
+            "name": "o",
+            "type": "{}",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "string[]",
+        "minimum": 1
+      },
+      {
+        "parameters": [
+          {
+            "name": "o",
+            "type": "object",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "string[]",
+        "minimum": 1
+      }
+    ],
+    "es2022/ObjectConstructor.assign": [
+      {
+        "parameters": [
+          {
+            "name": "target",
+            "type": "T",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "source",
+            "type": "U",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "T & U",
+        "minimum": 2
+      },
+      {
+        "parameters": [
+          {
+            "name": "target",
+            "type": "T",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "source1",
+            "type": "U",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "source2",
+            "type": "V",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "T & U & V",
+        "minimum": 3
+      },
+      {
+        "parameters": [
+          {
+            "name": "target",
+            "type": "T",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "source1",
+            "type": "U",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "source2",
+            "type": "V",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "source3",
+            "type": "W",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "T & U & V & W",
+        "minimum": 4
+      },
+      {
+        "parameters": [
+          {
+            "name": "target",
+            "type": "object",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "sources",
+            "type": "any[]",
+            "optional": false,
+            "rest": true
+          }
+        ],
+        "result": "any",
+        "minimum": 1
+      }
+    ],
+    "es2022/ObjectConstructor.getOwnPropertySymbols": [
+      {
+        "parameters": [
+          {
+            "name": "o",
+            "type": "any",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "symbol[]",
+        "minimum": 1
+      }
+    ],
+    "es2022/ObjectConstructor.is": [
+      {
+        "parameters": [
+          {
+            "name": "value1",
+            "type": "any",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "value2",
+            "type": "any",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "boolean",
+        "minimum": 2
+      }
+    ],
+    "es2022/ObjectConstructor.setPrototypeOf": [
+      {
+        "parameters": [
+          {
+            "name": "o",
+            "type": "any",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "proto",
+            "type": "object | null",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "any",
+        "minimum": 2
+      }
+    ],
+    "es2022/ObjectConstructor.values": [
+      {
+        "parameters": [
+          {
+            "name": "o",
+            "type": "{ [s: string]: T; } | ArrayLike<T>",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "T[]",
+        "minimum": 1
+      },
+      {
+        "parameters": [
+          {
+            "name": "o",
+            "type": "{}",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "any[]",
+        "minimum": 1
+      }
+    ],
+    "es2022/ObjectConstructor.entries": [
+      {
+        "parameters": [
+          {
+            "name": "o",
+            "type": "{ [s: string]: T; } | ArrayLike<T>",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "[string, T][]",
+        "minimum": 1
+      },
+      {
+        "parameters": [
+          {
+            "name": "o",
+            "type": "{}",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "[string, any][]",
+        "minimum": 1
+      }
+    ],
+    "es2022/ObjectConstructor.getOwnPropertyDescriptors": [
+      {
+        "parameters": [
+          {
+            "name": "o",
+            "type": "T",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "{ [P in keyof T]: TypedPropertyDescriptor<T[P]>; } & { [x: string]: PropertyDescriptor; }",
+        "minimum": 1
+      }
+    ],
+    "es2022/ObjectConstructor.fromEntries": [
+      {
+        "parameters": [
+          {
+            "name": "entries",
+            "type": "Iterable<readonly [PropertyKey, T]>",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "{ [k: string]: T; }",
+        "minimum": 1
+      },
+      {
+        "parameters": [
+          {
+            "name": "entries",
+            "type": "Iterable<readonly any[]>",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "any",
+        "minimum": 1
+      }
+    ],
+    "es2022/ObjectConstructor.hasOwn": [
+      {
+        "parameters": [
+          {
+            "name": "o",
+            "type": "object",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "v",
+            "type": "PropertyKey",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "boolean",
+        "minimum": 2
+      }
+    ],
+    "es2022/new Array": [
+      {
+        "parameters": [
+          {
+            "name": "arrayLength",
+            "type": "number | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "any[]",
+        "minimum": 0
+      },
+      {
+        "parameters": [
+          {
+            "name": "arrayLength",
+            "type": "number",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "T[]",
+        "minimum": 1
+      },
+      {
+        "parameters": [
+          {
+            "name": "items",
+            "type": "T[]",
+            "optional": false,
+            "rest": true
+          }
+        ],
+        "result": "T[]",
+        "minimum": 0
+      }
+    ],
+    "es2022/ArrayConstructor.isArray": [
+      {
+        "parameters": [
+          {
+            "name": "arg",
+            "type": "any",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "boolean",
+        "minimum": 1
+      }
+    ],
+    "es2022/ArrayConstructor.prototype": [],
+    "es2022/ArrayConstructor.from": [
+      {
+        "parameters": [
+          {
+            "name": "iterable",
+            "type": "Iterable<T> | ArrayLike<T>",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "T[]",
+        "minimum": 1
+      },
+      {
+        "parameters": [
+          {
+            "name": "iterable",
+            "type": "Iterable<T> | ArrayLike<T>",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "mapfn",
+            "type": "(v: T, k: number) => U",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "thisArg",
+            "type": "any",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "U[]",
+        "minimum": 2
+      },
+      {
+        "parameters": [
+          {
+            "name": "arrayLike",
+            "type": "ArrayLike<T>",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "T[]",
+        "minimum": 1
+      },
+      {
+        "parameters": [
+          {
+            "name": "arrayLike",
+            "type": "ArrayLike<T>",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "mapfn",
+            "type": "(v: T, k: number) => U",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "thisArg",
+            "type": "any",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "U[]",
+        "minimum": 2
+      }
+    ],
+    "es2022/ArrayConstructor.of": [
+      {
+        "parameters": [
+          {
+            "name": "items",
+            "type": "T[]",
+            "optional": false,
+            "rest": true
+          }
+        ],
+        "result": "T[]",
+        "minimum": 0
+      }
+    ],
+    "es2022/ArrayConstructor.__@species@137": [
+      {
+        "parameters": [
+          {
+            "name": "arrayLength",
+            "type": "number | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "any[]",
+        "minimum": 0
+      },
+      {
+        "parameters": [
+          {
+            "name": "arrayLength",
+            "type": "number",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "T[]",
+        "minimum": 1
+      },
+      {
+        "parameters": [
+          {
+            "name": "items",
+            "type": "T[]",
+            "optional": false,
+            "rest": true
+          }
+        ],
+        "result": "T[]",
+        "minimum": 0
+      }
+    ],
+    "es2022/new String": [
+      {
+        "parameters": [
+          {
+            "name": "value",
+            "type": "any",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "String",
+        "minimum": 0
+      }
+    ],
+    "es2022/StringConstructor.prototype": [],
+    "es2022/StringConstructor.fromCharCode": [
+      {
+        "parameters": [
+          {
+            "name": "codes",
+            "type": "number[]",
+            "optional": false,
+            "rest": true
+          }
+        ],
+        "result": "string",
+        "minimum": 0
+      }
+    ],
+    "es2022/StringConstructor.fromCodePoint": [
+      {
+        "parameters": [
+          {
+            "name": "codePoints",
+            "type": "number[]",
+            "optional": false,
+            "rest": true
+          }
+        ],
+        "result": "string",
+        "minimum": 0
+      }
+    ],
+    "es2022/StringConstructor.raw": [
+      {
+        "parameters": [
+          {
+            "name": "template",
+            "type": "{ raw: readonly string[] | ArrayLike<string>; }",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "substitutions",
+            "type": "any[]",
+            "optional": false,
+            "rest": true
+          }
+        ],
+        "result": "string",
+        "minimum": 1
+      }
+    ],
+    "es2022/new Number": [
+      {
+        "parameters": [
+          {
+            "name": "value",
+            "type": "any",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "Number",
+        "minimum": 0
+      }
+    ],
+    "es2022/NumberConstructor.prototype": [],
+    "es2022/NumberConstructor.MAX_VALUE": [],
+    "es2022/NumberConstructor.MIN_VALUE": [],
+    "es2022/NumberConstructor.NaN": [],
+    "es2022/NumberConstructor.NEGATIVE_INFINITY": [],
+    "es2022/NumberConstructor.POSITIVE_INFINITY": [],
+    "es2022/NumberConstructor.EPSILON": [],
+    "es2022/NumberConstructor.isFinite": [
+      {
+        "parameters": [
+          {
+            "name": "number",
+            "type": "unknown",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "boolean",
+        "minimum": 1
+      }
+    ],
+    "es2022/NumberConstructor.isInteger": [
+      {
+        "parameters": [
+          {
+            "name": "number",
+            "type": "unknown",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "boolean",
+        "minimum": 1
+      }
+    ],
+    "es2022/NumberConstructor.isNaN": [
+      {
+        "parameters": [
+          {
+            "name": "number",
+            "type": "unknown",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "boolean",
+        "minimum": 1
+      }
+    ],
+    "es2022/NumberConstructor.isSafeInteger": [
+      {
+        "parameters": [
+          {
+            "name": "number",
+            "type": "unknown",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "boolean",
+        "minimum": 1
+      }
+    ],
+    "es2022/NumberConstructor.MAX_SAFE_INTEGER": [],
+    "es2022/NumberConstructor.MIN_SAFE_INTEGER": [],
+    "es2022/NumberConstructor.parseFloat": [
+      {
+        "parameters": [
+          {
+            "name": "string",
+            "type": "string",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "number",
+        "minimum": 1
+      }
+    ],
+    "es2022/NumberConstructor.parseInt": [
+      {
+        "parameters": [
+          {
+            "name": "string",
+            "type": "string",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "radix",
+            "type": "number | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "number",
+        "minimum": 1
+      }
+    ],
+    "es2022/new Boolean": [
+      {
+        "parameters": [
+          {
+            "name": "value",
+            "type": "any",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "Boolean",
+        "minimum": 0
+      }
+    ],
+    "es2022/BooleanConstructor.prototype": [],
+    "es2022/new Date": [
+      {
+        "parameters": [
+          {
+            "name": "value",
+            "type": "string | number | Date",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "Date",
+        "minimum": 1
+      },
+      {
+        "parameters": [],
+        "result": "Date",
+        "minimum": 0
+      },
+      {
+        "parameters": [
+          {
+            "name": "value",
+            "type": "string | number",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "Date",
+        "minimum": 1
+      },
+      {
+        "parameters": [
+          {
+            "name": "year",
+            "type": "number",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "monthIndex",
+            "type": "number",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "date",
+            "type": "number | undefined",
+            "optional": true,
+            "rest": false
+          },
+          {
+            "name": "hours",
+            "type": "number | undefined",
+            "optional": true,
+            "rest": false
+          },
+          {
+            "name": "minutes",
+            "type": "number | undefined",
+            "optional": true,
+            "rest": false
+          },
+          {
+            "name": "seconds",
+            "type": "number | undefined",
+            "optional": true,
+            "rest": false
+          },
+          {
+            "name": "ms",
+            "type": "number | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "Date",
+        "minimum": 2
+      }
+    ],
+    "es2022/DateConstructor.prototype": [],
+    "es2022/DateConstructor.parse": [
+      {
+        "parameters": [
+          {
+            "name": "s",
+            "type": "string",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "number",
+        "minimum": 1
+      }
+    ],
+    "es2022/DateConstructor.UTC": [
+      {
+        "parameters": [
+          {
+            "name": "year",
+            "type": "number",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "monthIndex",
+            "type": "number | undefined",
+            "optional": true,
+            "rest": false
+          },
+          {
+            "name": "date",
+            "type": "number | undefined",
+            "optional": true,
+            "rest": false
+          },
+          {
+            "name": "hours",
+            "type": "number | undefined",
+            "optional": true,
+            "rest": false
+          },
+          {
+            "name": "minutes",
+            "type": "number | undefined",
+            "optional": true,
+            "rest": false
+          },
+          {
+            "name": "seconds",
+            "type": "number | undefined",
+            "optional": true,
+            "rest": false
+          },
+          {
+            "name": "ms",
+            "type": "number | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "number",
+        "minimum": 1
+      },
+      {
+        "parameters": [
+          {
+            "name": "year",
+            "type": "number",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "monthIndex",
+            "type": "number",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "date",
+            "type": "number | undefined",
+            "optional": true,
+            "rest": false
+          },
+          {
+            "name": "hours",
+            "type": "number | undefined",
+            "optional": true,
+            "rest": false
+          },
+          {
+            "name": "minutes",
+            "type": "number | undefined",
+            "optional": true,
+            "rest": false
+          },
+          {
+            "name": "seconds",
+            "type": "number | undefined",
+            "optional": true,
+            "rest": false
+          },
+          {
+            "name": "ms",
+            "type": "number | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "number",
+        "minimum": 2
+      }
+    ],
+    "es2022/DateConstructor.now": [
+      {
+        "parameters": [],
+        "result": "number",
+        "minimum": 0
+      }
+    ],
+    "es2022/new RegExp": [
+      {
+        "parameters": [
+          {
+            "name": "pattern",
+            "type": "string | RegExp",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "flags",
+            "type": "string | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "RegExp",
+        "minimum": 1
+      },
+      {
+        "parameters": [
+          {
+            "name": "pattern",
+            "type": "string | RegExp",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "RegExp",
+        "minimum": 1
+      },
+      {
+        "parameters": [
+          {
+            "name": "pattern",
+            "type": "string",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "flags",
+            "type": "string | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "RegExp",
+        "minimum": 1
+      }
+    ],
+    "es2022/RegExpConstructor.prototype": [],
+    "es2022/RegExpConstructor.$1": [],
+    "es2022/RegExpConstructor.$2": [],
+    "es2022/RegExpConstructor.$3": [],
+    "es2022/RegExpConstructor.$4": [],
+    "es2022/RegExpConstructor.$5": [],
+    "es2022/RegExpConstructor.$6": [],
+    "es2022/RegExpConstructor.$7": [],
+    "es2022/RegExpConstructor.$8": [],
+    "es2022/RegExpConstructor.$9": [],
+    "es2022/RegExpConstructor.input": [],
+    "es2022/RegExpConstructor.$_": [],
+    "es2022/RegExpConstructor.lastMatch": [],
+    "es2022/RegExpConstructor.$&": [],
+    "es2022/RegExpConstructor.lastParen": [],
+    "es2022/RegExpConstructor.$+": [],
+    "es2022/RegExpConstructor.leftContext": [],
+    "es2022/RegExpConstructor.$`": [],
+    "es2022/RegExpConstructor.rightContext": [],
+    "es2022/RegExpConstructor.$'": [],
+    "es2022/RegExpConstructor.__@species@137": [
+      {
+        "parameters": [
+          {
+            "name": "pattern",
+            "type": "string | RegExp",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "flags",
+            "type": "string | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "RegExp",
+        "minimum": 1
+      },
+      {
+        "parameters": [
+          {
+            "name": "pattern",
+            "type": "string | RegExp",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "RegExp",
+        "minimum": 1
+      },
+      {
+        "parameters": [
+          {
+            "name": "pattern",
+            "type": "string",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "flags",
+            "type": "string | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "RegExp",
+        "minimum": 1
+      }
+    ],
+    "es2022/new Error": [
+      {
+        "parameters": [
+          {
+            "name": "message",
+            "type": "string | undefined",
+            "optional": true,
+            "rest": false
+          },
+          {
+            "name": "options",
+            "type": "ErrorOptions | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "Error",
+        "minimum": 0
+      },
+      {
+        "parameters": [
+          {
+            "name": "message",
+            "type": "string | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "Error",
+        "minimum": 0
+      }
+    ],
+    "es2022/ErrorConstructor.prototype": [],
+    "es2022/new EvalError": [
+      {
+        "parameters": [
+          {
+            "name": "message",
+            "type": "string | undefined",
+            "optional": true,
+            "rest": false
+          },
+          {
+            "name": "options",
+            "type": "ErrorOptions | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "EvalError",
+        "minimum": 0
+      },
+      {
+        "parameters": [
+          {
+            "name": "message",
+            "type": "string | undefined",
+            "optional": true,
+            "rest": false
+          },
+          {
+            "name": "options",
+            "type": "ErrorOptions | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "Error",
+        "minimum": 0
+      },
+      {
+        "parameters": [
+          {
+            "name": "message",
+            "type": "string | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "EvalError",
+        "minimum": 0
+      },
+      {
+        "parameters": [
+          {
+            "name": "message",
+            "type": "string | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "Error",
+        "minimum": 0
+      }
+    ],
+    "es2022/EvalErrorConstructor.prototype": [],
+    "es2022/new RangeError": [
+      {
+        "parameters": [
+          {
+            "name": "message",
+            "type": "string | undefined",
+            "optional": true,
+            "rest": false
+          },
+          {
+            "name": "options",
+            "type": "ErrorOptions | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "RangeError",
+        "minimum": 0
+      },
+      {
+        "parameters": [
+          {
+            "name": "message",
+            "type": "string | undefined",
+            "optional": true,
+            "rest": false
+          },
+          {
+            "name": "options",
+            "type": "ErrorOptions | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "Error",
+        "minimum": 0
+      },
+      {
+        "parameters": [
+          {
+            "name": "message",
+            "type": "string | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "RangeError",
+        "minimum": 0
+      },
+      {
+        "parameters": [
+          {
+            "name": "message",
+            "type": "string | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "Error",
+        "minimum": 0
+      }
+    ],
+    "es2022/RangeErrorConstructor.prototype": [],
+    "es2022/new ReferenceError": [
+      {
+        "parameters": [
+          {
+            "name": "message",
+            "type": "string | undefined",
+            "optional": true,
+            "rest": false
+          },
+          {
+            "name": "options",
+            "type": "ErrorOptions | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "ReferenceError",
+        "minimum": 0
+      },
+      {
+        "parameters": [
+          {
+            "name": "message",
+            "type": "string | undefined",
+            "optional": true,
+            "rest": false
+          },
+          {
+            "name": "options",
+            "type": "ErrorOptions | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "Error",
+        "minimum": 0
+      },
+      {
+        "parameters": [
+          {
+            "name": "message",
+            "type": "string | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "ReferenceError",
+        "minimum": 0
+      },
+      {
+        "parameters": [
+          {
+            "name": "message",
+            "type": "string | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "Error",
+        "minimum": 0
+      }
+    ],
+    "es2022/ReferenceErrorConstructor.prototype": [],
+    "es2022/new SyntaxError": [
+      {
+        "parameters": [
+          {
+            "name": "message",
+            "type": "string | undefined",
+            "optional": true,
+            "rest": false
+          },
+          {
+            "name": "options",
+            "type": "ErrorOptions | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "SyntaxError",
+        "minimum": 0
+      },
+      {
+        "parameters": [
+          {
+            "name": "message",
+            "type": "string | undefined",
+            "optional": true,
+            "rest": false
+          },
+          {
+            "name": "options",
+            "type": "ErrorOptions | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "Error",
+        "minimum": 0
+      },
+      {
+        "parameters": [
+          {
+            "name": "message",
+            "type": "string | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "SyntaxError",
+        "minimum": 0
+      },
+      {
+        "parameters": [
+          {
+            "name": "message",
+            "type": "string | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "Error",
+        "minimum": 0
+      }
+    ],
+    "es2022/SyntaxErrorConstructor.prototype": [],
+    "es2022/new TypeError": [
+      {
+        "parameters": [
+          {
+            "name": "message",
+            "type": "string | undefined",
+            "optional": true,
+            "rest": false
+          },
+          {
+            "name": "options",
+            "type": "ErrorOptions | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "TypeError",
+        "minimum": 0
+      },
+      {
+        "parameters": [
+          {
+            "name": "message",
+            "type": "string | undefined",
+            "optional": true,
+            "rest": false
+          },
+          {
+            "name": "options",
+            "type": "ErrorOptions | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "Error",
+        "minimum": 0
+      },
+      {
+        "parameters": [
+          {
+            "name": "message",
+            "type": "string | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "TypeError",
+        "minimum": 0
+      },
+      {
+        "parameters": [
+          {
+            "name": "message",
+            "type": "string | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "Error",
+        "minimum": 0
+      }
+    ],
+    "es2022/TypeErrorConstructor.prototype": [],
+    "es2022/new URIError": [
+      {
+        "parameters": [
+          {
+            "name": "message",
+            "type": "string | undefined",
+            "optional": true,
+            "rest": false
+          },
+          {
+            "name": "options",
+            "type": "ErrorOptions | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "URIError",
+        "minimum": 0
+      },
+      {
+        "parameters": [
+          {
+            "name": "message",
+            "type": "string | undefined",
+            "optional": true,
+            "rest": false
+          },
+          {
+            "name": "options",
+            "type": "ErrorOptions | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "Error",
+        "minimum": 0
+      },
+      {
+        "parameters": [
+          {
+            "name": "message",
+            "type": "string | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "URIError",
+        "minimum": 0
+      },
+      {
+        "parameters": [
+          {
+            "name": "message",
+            "type": "string | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "Error",
+        "minimum": 0
+      }
+    ],
+    "es2022/URIErrorConstructor.prototype": [],
+    "es2022/new JSON": [],
+    "es2022/JSONConstructor.parse": [
+      {
+        "parameters": [
+          {
+            "name": "text",
+            "type": "string",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "reviver",
+            "type": "((this: any, key: string, value: any) => any) | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "any",
+        "minimum": 1
+      }
+    ],
+    "es2022/JSONConstructor.stringify": [
+      {
+        "parameters": [
+          {
+            "name": "value",
+            "type": "any",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "replacer",
+            "type": "((this: any, key: string, value: any) => any) | undefined",
+            "optional": true,
+            "rest": false
+          },
+          {
+            "name": "space",
+            "type": "string | number | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "string",
+        "minimum": 1
+      },
+      {
+        "parameters": [
+          {
+            "name": "value",
+            "type": "any",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "replacer",
+            "type": "(string | number)[] | null | undefined",
+            "optional": true,
+            "rest": false
+          },
+          {
+            "name": "space",
+            "type": "string | number | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "string",
+        "minimum": 1
+      }
+    ],
+    "es2022/JSONConstructor.__@toStringTag@366": [],
+    "es2022/new Promise": [
+      {
+        "parameters": [
+          {
+            "name": "executor",
+            "type": "(resolve: (value: T | PromiseLike<T>) => void, reject: (reason?: any) => void) => void",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "Promise<T>",
+        "minimum": 1
+      }
+    ],
+    "es2022/PromiseConstructor.all": [
+      {
+        "parameters": [
+          {
+            "name": "values",
+            "type": "T",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "Promise<{ -readonly [P in keyof T]: Awaited<T[P]>; }>",
+        "minimum": 1
+      },
+      {
+        "parameters": [
+          {
+            "name": "values",
+            "type": "Iterable<T | PromiseLike<T>>",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "Promise<Awaited<T>[]>",
+        "minimum": 1
+      }
+    ],
+    "es2022/PromiseConstructor.race": [
+      {
+        "parameters": [
+          {
+            "name": "values",
+            "type": "T",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "Promise<Awaited<T[number]>>",
+        "minimum": 1
+      },
+      {
+        "parameters": [
+          {
+            "name": "values",
+            "type": "Iterable<T | PromiseLike<T>>",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "Promise<Awaited<T>>",
+        "minimum": 1
+      }
+    ],
+    "es2022/PromiseConstructor.prototype": [],
+    "es2022/PromiseConstructor.reject": [
+      {
+        "parameters": [
+          {
+            "name": "reason",
+            "type": "any",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "Promise<T>",
+        "minimum": 0
+      }
+    ],
+    "es2022/PromiseConstructor.resolve": [
+      {
+        "parameters": [],
+        "result": "Promise<void>",
+        "minimum": 0
+      },
+      {
+        "parameters": [
+          {
+            "name": "value",
+            "type": "T",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "Promise<Awaited<T>>",
+        "minimum": 1
+      },
+      {
+        "parameters": [
+          {
+            "name": "value",
+            "type": "T | PromiseLike<T>",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "Promise<Awaited<T>>",
+        "minimum": 1
+      }
+    ],
+    "es2022/PromiseConstructor.allSettled": [
+      {
+        "parameters": [
+          {
+            "name": "values",
+            "type": "T",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "Promise<{ -readonly [P in keyof T]: PromiseSettledResult<Awaited<T[P]>>; }>",
+        "minimum": 1
+      },
+      {
+        "parameters": [
+          {
+            "name": "values",
+            "type": "Iterable<T | PromiseLike<T>>",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "Promise<PromiseSettledResult<Awaited<T>>[]>",
+        "minimum": 1
+      }
+    ],
+    "es2022/PromiseConstructor.any": [
+      {
+        "parameters": [
+          {
+            "name": "values",
+            "type": "T",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "Promise<Awaited<T[number]>>",
+        "minimum": 1
+      },
+      {
+        "parameters": [
+          {
+            "name": "values",
+            "type": "Iterable<T | PromiseLike<T>>",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "Promise<Awaited<T>>",
+        "minimum": 1
+      }
+    ],
+    "es2022/PromiseConstructor.__@species@137": [],
+    "es2022/Array.length": [],
+    "es2022/Array.toString": [
+      {
+        "parameters": [],
+        "result": "string",
+        "minimum": 0
+      }
+    ],
+    "es2022/Array.toLocaleString": [
+      {
+        "parameters": [
+          {
+            "name": "locales",
+            "type": "string | string[]",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "options",
+            "type": "(Intl.NumberFormatOptions & Intl.DateTimeFormatOptions) | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "string",
+        "minimum": 1
+      },
+      {
+        "parameters": [],
+        "result": "string",
+        "minimum": 0
+      }
+    ],
+    "es2022/Array.pop": [
+      {
+        "parameters": [],
+        "result": "T | undefined",
+        "minimum": 0
+      }
+    ],
+    "es2022/Array.push": [
+      {
+        "parameters": [
+          {
+            "name": "items",
+            "type": "T[]",
+            "optional": false,
+            "rest": true
+          }
+        ],
+        "result": "number",
+        "minimum": 0
+      }
+    ],
+    "es2022/Array.concat": [
+      {
+        "parameters": [
+          {
+            "name": "items",
+            "type": "ConcatArray<T>[]",
+            "optional": false,
+            "rest": true
+          }
+        ],
+        "result": "T[]",
+        "minimum": 0
+      },
+      {
+        "parameters": [
+          {
+            "name": "items",
+            "type": "(T | ConcatArray<T>)[]",
+            "optional": false,
+            "rest": true
+          }
+        ],
+        "result": "T[]",
+        "minimum": 0
+      }
+    ],
+    "es2022/Array.join": [
+      {
+        "parameters": [
+          {
+            "name": "separator",
+            "type": "string | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "string",
+        "minimum": 0
+      }
+    ],
+    "es2022/Array.reverse": [
+      {
+        "parameters": [],
+        "result": "T[]",
+        "minimum": 0
+      }
+    ],
+    "es2022/Array.shift": [
+      {
+        "parameters": [],
+        "result": "T | undefined",
+        "minimum": 0
+      }
+    ],
+    "es2022/Array.slice": [
+      {
+        "parameters": [
+          {
+            "name": "start",
+            "type": "number | undefined",
+            "optional": true,
+            "rest": false
+          },
+          {
+            "name": "end",
+            "type": "number | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "T[]",
+        "minimum": 0
+      }
+    ],
+    "es2022/Array.sort": [
+      {
+        "parameters": [
+          {
+            "name": "compareFn",
+            "type": "((a: T, b: T) => number) | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "T[]",
+        "minimum": 0
+      }
+    ],
+    "es2022/Array.splice": [
+      {
+        "parameters": [
+          {
+            "name": "start",
+            "type": "number",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "deleteCount",
+            "type": "number | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "T[]",
+        "minimum": 1
+      },
+      {
+        "parameters": [
+          {
+            "name": "start",
+            "type": "number",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "deleteCount",
+            "type": "number",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "items",
+            "type": "T[]",
+            "optional": false,
+            "rest": true
+          }
+        ],
+        "result": "T[]",
+        "minimum": 2
+      }
+    ],
+    "es2022/Array.unshift": [
+      {
+        "parameters": [
+          {
+            "name": "items",
+            "type": "T[]",
+            "optional": false,
+            "rest": true
+          }
+        ],
+        "result": "number",
+        "minimum": 0
+      }
+    ],
+    "es2022/Array.indexOf": [
+      {
+        "parameters": [
+          {
+            "name": "searchElement",
+            "type": "T",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "fromIndex",
+            "type": "number | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "number",
+        "minimum": 1
+      }
+    ],
+    "es2022/Array.lastIndexOf": [
+      {
+        "parameters": [
+          {
+            "name": "searchElement",
+            "type": "T",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "fromIndex",
+            "type": "number | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "number",
+        "minimum": 1
+      }
+    ],
+    "es2022/Array.every": [
+      {
+        "parameters": [
+          {
+            "name": "predicate",
+            "type": "(value: T, index: number, array: T[]) => value is S",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "thisArg",
+            "type": "any",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "boolean",
+        "minimum": 1
+      },
+      {
+        "parameters": [
+          {
+            "name": "predicate",
+            "type": "(value: T, index: number, array: T[]) => unknown",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "thisArg",
+            "type": "any",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "boolean",
+        "minimum": 1
+      }
+    ],
+    "es2022/Array.some": [
+      {
+        "parameters": [
+          {
+            "name": "predicate",
+            "type": "(value: T, index: number, array: T[]) => unknown",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "thisArg",
+            "type": "any",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "boolean",
+        "minimum": 1
+      }
+    ],
+    "es2022/Array.forEach": [
+      {
+        "parameters": [
+          {
+            "name": "callbackfn",
+            "type": "(value: T, index: number, array: T[]) => void",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "thisArg",
+            "type": "any",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "void",
+        "minimum": 1
+      }
+    ],
+    "es2022/Array.map": [
+      {
+        "parameters": [
+          {
+            "name": "callbackfn",
+            "type": "(value: T, index: number, array: T[]) => U",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "thisArg",
+            "type": "any",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "U[]",
+        "minimum": 1
+      }
+    ],
+    "es2022/Array.filter": [
+      {
+        "parameters": [
+          {
+            "name": "predicate",
+            "type": "(value: T, index: number, array: T[]) => value is S",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "thisArg",
+            "type": "any",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "S[]",
+        "minimum": 1
+      },
+      {
+        "parameters": [
+          {
+            "name": "predicate",
+            "type": "(value: T, index: number, array: T[]) => unknown",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "thisArg",
+            "type": "any",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "T[]",
+        "minimum": 1
+      }
+    ],
+    "es2022/Array.reduce": [
+      {
+        "parameters": [
+          {
+            "name": "callbackfn",
+            "type": "(previousValue: T, currentValue: T, currentIndex: number, array: T[]) => T",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "T",
+        "minimum": 1
+      },
+      {
+        "parameters": [
+          {
+            "name": "callbackfn",
+            "type": "(previousValue: T, currentValue: T, currentIndex: number, array: T[]) => T",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "initialValue",
+            "type": "T",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "T",
+        "minimum": 2
+      },
+      {
+        "parameters": [
+          {
+            "name": "callbackfn",
+            "type": "(previousValue: U, currentValue: T, currentIndex: number, array: T[]) => U",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "initialValue",
+            "type": "U",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "U",
+        "minimum": 2
+      }
+    ],
+    "es2022/Array.reduceRight": [
+      {
+        "parameters": [
+          {
+            "name": "callbackfn",
+            "type": "(previousValue: T, currentValue: T, currentIndex: number, array: T[]) => T",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "T",
+        "minimum": 1
+      },
+      {
+        "parameters": [
+          {
+            "name": "callbackfn",
+            "type": "(previousValue: T, currentValue: T, currentIndex: number, array: T[]) => T",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "initialValue",
+            "type": "T",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "T",
+        "minimum": 2
+      },
+      {
+        "parameters": [
+          {
+            "name": "callbackfn",
+            "type": "(previousValue: U, currentValue: T, currentIndex: number, array: T[]) => U",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "initialValue",
+            "type": "U",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "U",
+        "minimum": 2
+      }
+    ],
+    "es2022/Array.find": [
+      {
+        "parameters": [
+          {
+            "name": "predicate",
+            "type": "(value: T, index: number, obj: T[]) => value is S",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "thisArg",
+            "type": "any",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "S | undefined",
+        "minimum": 1
+      },
+      {
+        "parameters": [
+          {
+            "name": "predicate",
+            "type": "(value: T, index: number, obj: T[]) => unknown",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "thisArg",
+            "type": "any",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "T | undefined",
+        "minimum": 1
+      }
+    ],
+    "es2022/Array.findIndex": [
+      {
+        "parameters": [
+          {
+            "name": "predicate",
+            "type": "(value: T, index: number, obj: T[]) => unknown",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "thisArg",
+            "type": "any",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "number",
+        "minimum": 1
+      }
+    ],
+    "es2022/Array.fill": [
+      {
+        "parameters": [
+          {
+            "name": "value",
+            "type": "T",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "start",
+            "type": "number | undefined",
+            "optional": true,
+            "rest": false
+          },
+          {
+            "name": "end",
+            "type": "number | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "T[]",
+        "minimum": 1
+      }
+    ],
+    "es2022/Array.copyWithin": [
+      {
+        "parameters": [
+          {
+            "name": "target",
+            "type": "number",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "start",
+            "type": "number",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "end",
+            "type": "number | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "T[]",
+        "minimum": 2
+      }
+    ],
+    "es2022/Array.entries": [
+      {
+        "parameters": [],
+        "result": "ArrayIterator<[number, T]>",
+        "minimum": 0
+      }
+    ],
+    "es2022/Array.keys": [
+      {
+        "parameters": [],
+        "result": "ArrayIterator<number>",
+        "minimum": 0
+      }
+    ],
+    "es2022/Array.values": [
+      {
+        "parameters": [],
+        "result": "ArrayIterator<T>",
+        "minimum": 0
+      }
+    ],
+    "es2022/Array.includes": [
+      {
+        "parameters": [
+          {
+            "name": "searchElement",
+            "type": "T",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "fromIndex",
+            "type": "number | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "boolean",
+        "minimum": 1
+      }
+    ],
+    "es2022/Array.flatMap": [
+      {
+        "parameters": [
+          {
+            "name": "callback",
+            "type": "(this: This, value: T, index: number, array: T[]) => U | readonly U[]",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "thisArg",
+            "type": "This | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "U[]",
+        "minimum": 1
+      }
+    ],
+    "es2022/Array.flat": [
+      {
+        "parameters": [
+          {
+            "name": "depth",
+            "type": "D | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "FlatArray<A, D>[]",
+        "minimum": 0
+      }
+    ],
+    "es2022/Array.at": [
+      {
+        "parameters": [
+          {
+            "name": "index",
+            "type": "number",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "T | undefined",
+        "minimum": 1
+      }
+    ],
+    "es2022/Array.__@iterator@149": [
+      {
+        "parameters": [],
+        "result": "ArrayIterator<T>",
+        "minimum": 0
+      }
+    ],
+    "es2022/Array.__@unscopables@151": [],
+    "es2022/String.toString": [
+      {
+        "parameters": [],
+        "result": "string",
+        "minimum": 0
+      }
+    ],
+    "es2022/String.charAt": [
+      {
+        "parameters": [
+          {
+            "name": "pos",
+            "type": "number",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "string",
+        "minimum": 1
+      }
+    ],
+    "es2022/String.charCodeAt": [
+      {
+        "parameters": [
+          {
+            "name": "index",
+            "type": "number",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "number",
+        "minimum": 1
+      }
+    ],
+    "es2022/String.concat": [
+      {
+        "parameters": [
+          {
+            "name": "strings",
+            "type": "string[]",
+            "optional": false,
+            "rest": true
+          }
+        ],
+        "result": "string",
+        "minimum": 0
+      }
+    ],
+    "es2022/String.indexOf": [
+      {
+        "parameters": [
+          {
+            "name": "searchString",
+            "type": "string",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "position",
+            "type": "number | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "number",
+        "minimum": 1
+      }
+    ],
+    "es2022/String.lastIndexOf": [
+      {
+        "parameters": [
+          {
+            "name": "searchString",
+            "type": "string",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "position",
+            "type": "number | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "number",
+        "minimum": 1
+      }
+    ],
+    "es2022/String.localeCompare": [
+      {
+        "parameters": [
+          {
+            "name": "that",
+            "type": "string",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "locales",
+            "type": "Intl.LocalesArgument",
+            "optional": true,
+            "rest": false
+          },
+          {
+            "name": "options",
+            "type": "Intl.CollatorOptions | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "number",
+        "minimum": 1
+      },
+      {
+        "parameters": [
+          {
+            "name": "that",
+            "type": "string",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "number",
+        "minimum": 1
+      },
+      {
+        "parameters": [
+          {
+            "name": "that",
+            "type": "string",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "locales",
+            "type": "string | string[] | undefined",
+            "optional": true,
+            "rest": false
+          },
+          {
+            "name": "options",
+            "type": "Intl.CollatorOptions | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "number",
+        "minimum": 1
+      }
+    ],
+    "es2022/String.match": [
+      {
+        "parameters": [
+          {
+            "name": "matcher",
+            "type": "{ [Symbol.match](string: string): RegExpMatchArray | null; }",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "RegExpMatchArray | null",
+        "minimum": 1
+      },
+      {
+        "parameters": [
+          {
+            "name": "regexp",
+            "type": "string | RegExp",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "RegExpMatchArray | null",
+        "minimum": 1
+      }
+    ],
+    "es2022/String.replace": [
+      {
+        "parameters": [
+          {
+            "name": "searchValue",
+            "type": "{ [Symbol.replace](string: string, replaceValue: string): string; }",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "replaceValue",
+            "type": "string",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "string",
+        "minimum": 2
+      },
+      {
+        "parameters": [
+          {
+            "name": "searchValue",
+            "type": "{ [Symbol.replace](string: string, replacer: (substring: string, ...args: any[]) => string): string; }",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "replacer",
+            "type": "(substring: string, ...args: any[]) => string",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "string",
+        "minimum": 2
+      },
+      {
+        "parameters": [
+          {
+            "name": "searchValue",
+            "type": "string | RegExp",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "replaceValue",
+            "type": "string",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "string",
+        "minimum": 2
+      },
+      {
+        "parameters": [
+          {
+            "name": "searchValue",
+            "type": "string | RegExp",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "replacer",
+            "type": "(substring: string, ...args: any[]) => string",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "string",
+        "minimum": 2
+      }
+    ],
+    "es2022/String.search": [
+      {
+        "parameters": [
+          {
+            "name": "searcher",
+            "type": "{ [Symbol.search](string: string): number; }",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "number",
+        "minimum": 1
+      },
+      {
+        "parameters": [
+          {
+            "name": "regexp",
+            "type": "string | RegExp",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "number",
+        "minimum": 1
+      }
+    ],
+    "es2022/String.slice": [
+      {
+        "parameters": [
+          {
+            "name": "start",
+            "type": "number | undefined",
+            "optional": true,
+            "rest": false
+          },
+          {
+            "name": "end",
+            "type": "number | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "string",
+        "minimum": 0
+      }
+    ],
+    "es2022/String.split": [
+      {
+        "parameters": [
+          {
+            "name": "splitter",
+            "type": "{ [Symbol.split](string: string, limit?: number): string[]; }",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "limit",
+            "type": "number | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "string[]",
+        "minimum": 1
+      },
+      {
+        "parameters": [
+          {
+            "name": "separator",
+            "type": "string | RegExp",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "limit",
+            "type": "number | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "string[]",
+        "minimum": 1
+      }
+    ],
+    "es2022/String.substring": [
+      {
+        "parameters": [
+          {
+            "name": "start",
+            "type": "number",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "end",
+            "type": "number | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "string",
+        "minimum": 1
+      }
+    ],
+    "es2022/String.toLowerCase": [
+      {
+        "parameters": [],
+        "result": "string",
+        "minimum": 0
+      }
+    ],
+    "es2022/String.toLocaleLowerCase": [
+      {
+        "parameters": [
+          {
+            "name": "locales",
+            "type": "Intl.LocalesArgument",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "string",
+        "minimum": 0
+      },
+      {
+        "parameters": [
+          {
+            "name": "locales",
+            "type": "string | string[] | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "string",
+        "minimum": 0
+      }
+    ],
+    "es2022/String.toUpperCase": [
+      {
+        "parameters": [],
+        "result": "string",
+        "minimum": 0
+      }
+    ],
+    "es2022/String.toLocaleUpperCase": [
+      {
+        "parameters": [
+          {
+            "name": "locales",
+            "type": "Intl.LocalesArgument",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "string",
+        "minimum": 0
+      },
+      {
+        "parameters": [
+          {
+            "name": "locales",
+            "type": "string | string[] | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "string",
+        "minimum": 0
+      }
+    ],
+    "es2022/String.trim": [
+      {
+        "parameters": [],
+        "result": "string",
+        "minimum": 0
+      }
+    ],
+    "es2022/String.length": [],
+    "es2022/String.substr": [
+      {
+        "parameters": [
+          {
+            "name": "from",
+            "type": "number",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "length",
+            "type": "number | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "string",
+        "minimum": 1
+      }
+    ],
+    "es2022/String.valueOf": [
+      {
+        "parameters": [],
+        "result": "string",
+        "minimum": 0
+      }
+    ],
+    "es2022/String.codePointAt": [
+      {
+        "parameters": [
+          {
+            "name": "pos",
+            "type": "number",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "number | undefined",
+        "minimum": 1
+      }
+    ],
+    "es2022/String.includes": [
+      {
+        "parameters": [
+          {
+            "name": "searchString",
+            "type": "string",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "position",
+            "type": "number | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "boolean",
+        "minimum": 1
+      }
+    ],
+    "es2022/String.endsWith": [
+      {
+        "parameters": [
+          {
+            "name": "searchString",
+            "type": "string",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "endPosition",
+            "type": "number | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "boolean",
+        "minimum": 1
+      }
+    ],
+    "es2022/String.normalize": [
+      {
+        "parameters": [
+          {
+            "name": "form",
+            "type": "\"NFC\" | \"NFD\" | \"NFKC\" | \"NFKD\"",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "string",
+        "minimum": 1
+      },
+      {
+        "parameters": [
+          {
+            "name": "form",
+            "type": "string | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "string",
+        "minimum": 0
+      }
+    ],
+    "es2022/String.repeat": [
+      {
+        "parameters": [
+          {
+            "name": "count",
+            "type": "number",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "string",
+        "minimum": 1
+      }
+    ],
+    "es2022/String.startsWith": [
+      {
+        "parameters": [
+          {
+            "name": "searchString",
+            "type": "string",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "position",
+            "type": "number | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "boolean",
+        "minimum": 1
+      }
+    ],
+    "es2022/String.anchor": [
+      {
+        "parameters": [
+          {
+            "name": "name",
+            "type": "string",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "string",
+        "minimum": 1
+      }
+    ],
+    "es2022/String.big": [
+      {
+        "parameters": [],
+        "result": "string",
+        "minimum": 0
+      }
+    ],
+    "es2022/String.blink": [
+      {
+        "parameters": [],
+        "result": "string",
+        "minimum": 0
+      }
+    ],
+    "es2022/String.bold": [
+      {
+        "parameters": [],
+        "result": "string",
+        "minimum": 0
+      }
+    ],
+    "es2022/String.fixed": [
+      {
+        "parameters": [],
+        "result": "string",
+        "minimum": 0
+      }
+    ],
+    "es2022/String.fontcolor": [
+      {
+        "parameters": [
+          {
+            "name": "color",
+            "type": "string",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "string",
+        "minimum": 1
+      }
+    ],
+    "es2022/String.fontsize": [
+      {
+        "parameters": [
+          {
+            "name": "size",
+            "type": "number",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "string",
+        "minimum": 1
+      },
+      {
+        "parameters": [
+          {
+            "name": "size",
+            "type": "string",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "string",
+        "minimum": 1
+      }
+    ],
+    "es2022/String.italics": [
+      {
+        "parameters": [],
+        "result": "string",
+        "minimum": 0
+      }
+    ],
+    "es2022/String.link": [
+      {
+        "parameters": [
+          {
+            "name": "url",
+            "type": "string",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "string",
+        "minimum": 1
+      }
+    ],
+    "es2022/String.small": [
+      {
+        "parameters": [],
+        "result": "string",
+        "minimum": 0
+      }
+    ],
+    "es2022/String.strike": [
+      {
+        "parameters": [],
+        "result": "string",
+        "minimum": 0
+      }
+    ],
+    "es2022/String.sub": [
+      {
+        "parameters": [],
+        "result": "string",
+        "minimum": 0
+      }
+    ],
+    "es2022/String.sup": [
+      {
+        "parameters": [],
+        "result": "string",
+        "minimum": 0
+      }
+    ],
+    "es2022/String.padStart": [
+      {
+        "parameters": [
+          {
+            "name": "maxLength",
+            "type": "number",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "fillString",
+            "type": "string | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "string",
+        "minimum": 1
+      }
+    ],
+    "es2022/String.padEnd": [
+      {
+        "parameters": [
+          {
+            "name": "maxLength",
+            "type": "number",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "fillString",
+            "type": "string | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "string",
+        "minimum": 1
+      }
+    ],
+    "es2022/String.trimEnd": [
+      {
+        "parameters": [],
+        "result": "string",
+        "minimum": 0
+      }
+    ],
+    "es2022/String.trimStart": [
+      {
+        "parameters": [],
+        "result": "string",
+        "minimum": 0
+      }
+    ],
+    "es2022/String.trimLeft": [
+      {
+        "parameters": [],
+        "result": "string",
+        "minimum": 0
+      }
+    ],
+    "es2022/String.trimRight": [
+      {
+        "parameters": [],
+        "result": "string",
+        "minimum": 0
+      }
+    ],
+    "es2022/String.matchAll": [
+      {
+        "parameters": [
+          {
+            "name": "regexp",
+            "type": "RegExp",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "RegExpStringIterator<RegExpExecArray>",
+        "minimum": 1
+      }
+    ],
+    "es2022/String.replaceAll": [
+      {
+        "parameters": [
+          {
+            "name": "searchValue",
+            "type": "string | RegExp",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "replaceValue",
+            "type": "string",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "string",
+        "minimum": 2
+      },
+      {
+        "parameters": [
+          {
+            "name": "searchValue",
+            "type": "string | RegExp",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "replacer",
+            "type": "(substring: string, ...args: any[]) => string",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "string",
+        "minimum": 2
+      }
+    ],
+    "es2022/String.at": [
+      {
+        "parameters": [
+          {
+            "name": "index",
+            "type": "number",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "string | undefined",
+        "minimum": 1
+      }
+    ],
+    "es2022/String.__@iterator@149": [
+      {
+        "parameters": [],
+        "result": "StringIterator<string>",
+        "minimum": 0
+      }
+    ],
+    "es2022/Number.toString": [
+      {
+        "parameters": [
+          {
+            "name": "radix",
+            "type": "number | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "string",
+        "minimum": 0
+      }
+    ],
+    "es2022/Number.toFixed": [
+      {
+        "parameters": [
+          {
+            "name": "fractionDigits",
+            "type": "number | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "string",
+        "minimum": 0
+      }
+    ],
+    "es2022/Number.toExponential": [
+      {
+        "parameters": [
+          {
+            "name": "fractionDigits",
+            "type": "number | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "string",
+        "minimum": 0
+      }
+    ],
+    "es2022/Number.toPrecision": [
+      {
+        "parameters": [
+          {
+            "name": "precision",
+            "type": "number | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "string",
+        "minimum": 0
+      }
+    ],
+    "es2022/Number.valueOf": [
+      {
+        "parameters": [],
+        "result": "number",
+        "minimum": 0
+      }
+    ],
+    "es2022/Number.toLocaleString": [
+      {
+        "parameters": [
+          {
+            "name": "locales",
+            "type": "Intl.LocalesArgument",
+            "optional": true,
+            "rest": false
+          },
+          {
+            "name": "options",
+            "type": "Intl.NumberFormatOptions | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "string",
+        "minimum": 0
+      },
+      {
+        "parameters": [
+          {
+            "name": "locales",
+            "type": "string | string[] | undefined",
+            "optional": true,
+            "rest": false
+          },
+          {
+            "name": "options",
+            "type": "Intl.NumberFormatOptions | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "string",
+        "minimum": 0
+      }
+    ],
+    "es2022/Boolean.valueOf": [
+      {
+        "parameters": [],
+        "result": "boolean",
+        "minimum": 0
+      }
+    ],
+    "es2020/new Object": [
+      {
+        "parameters": [
+          {
+            "name": "value",
+            "type": "any",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "Object",
+        "minimum": 0
+      }
+    ],
+    "es2020/ObjectConstructor.prototype": [],
+    "es2020/ObjectConstructor.getPrototypeOf": [
+      {
+        "parameters": [
+          {
+            "name": "o",
+            "type": "any",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "any",
+        "minimum": 1
+      }
+    ],
+    "es2020/ObjectConstructor.getOwnPropertyDescriptor": [
+      {
+        "parameters": [
+          {
+            "name": "o",
+            "type": "any",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "p",
+            "type": "PropertyKey",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "PropertyDescriptor | undefined",
+        "minimum": 2
+      }
+    ],
+    "es2020/ObjectConstructor.getOwnPropertyNames": [
+      {
+        "parameters": [
+          {
+            "name": "o",
+            "type": "any",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "string[]",
+        "minimum": 1
+      }
+    ],
+    "es2020/ObjectConstructor.create": [
+      {
+        "parameters": [
+          {
+            "name": "o",
+            "type": "object | null",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "any",
+        "minimum": 1
+      },
+      {
+        "parameters": [
+          {
+            "name": "o",
+            "type": "object | null",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "properties",
+            "type": "PropertyDescriptorMap & ThisType<any>",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "any",
+        "minimum": 2
+      }
+    ],
+    "es2020/ObjectConstructor.defineProperty": [
+      {
+        "parameters": [
+          {
+            "name": "o",
+            "type": "T",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "p",
+            "type": "PropertyKey",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "attributes",
+            "type": "PropertyDescriptor & ThisType<any>",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "T",
+        "minimum": 3
+      }
+    ],
+    "es2020/ObjectConstructor.defineProperties": [
+      {
+        "parameters": [
+          {
+            "name": "o",
+            "type": "T",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "properties",
+            "type": "PropertyDescriptorMap & ThisType<any>",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "T",
+        "minimum": 2
+      }
+    ],
+    "es2020/ObjectConstructor.seal": [
+      {
+        "parameters": [
+          {
+            "name": "o",
+            "type": "T",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "T",
+        "minimum": 1
+      }
+    ],
+    "es2020/ObjectConstructor.freeze": [
+      {
+        "parameters": [
+          {
+            "name": "f",
+            "type": "T",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "T",
+        "minimum": 1
+      },
+      {
+        "parameters": [
+          {
+            "name": "o",
+            "type": "T",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "Readonly<T>",
+        "minimum": 1
+      },
+      {
+        "parameters": [
+          {
+            "name": "o",
+            "type": "T",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "Readonly<T>",
+        "minimum": 1
+      }
+    ],
+    "es2020/ObjectConstructor.preventExtensions": [
+      {
+        "parameters": [
+          {
+            "name": "o",
+            "type": "T",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "T",
+        "minimum": 1
+      }
+    ],
+    "es2020/ObjectConstructor.isSealed": [
+      {
+        "parameters": [
+          {
+            "name": "o",
+            "type": "any",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "boolean",
+        "minimum": 1
+      }
+    ],
+    "es2020/ObjectConstructor.isFrozen": [
+      {
+        "parameters": [
+          {
+            "name": "o",
+            "type": "any",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "boolean",
+        "minimum": 1
+      }
+    ],
+    "es2020/ObjectConstructor.isExtensible": [
+      {
+        "parameters": [
+          {
+            "name": "o",
+            "type": "any",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "boolean",
+        "minimum": 1
+      }
+    ],
+    "es2020/ObjectConstructor.keys": [
+      {
+        "parameters": [
+          {
+            "name": "o",
+            "type": "{}",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "string[]",
+        "minimum": 1
+      },
+      {
+        "parameters": [
+          {
+            "name": "o",
+            "type": "object",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "string[]",
+        "minimum": 1
+      }
+    ],
+    "es2020/ObjectConstructor.assign": [
+      {
+        "parameters": [
+          {
+            "name": "target",
+            "type": "T",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "source",
+            "type": "U",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "T & U",
+        "minimum": 2
+      },
+      {
+        "parameters": [
+          {
+            "name": "target",
+            "type": "T",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "source1",
+            "type": "U",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "source2",
+            "type": "V",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "T & U & V",
+        "minimum": 3
+      },
+      {
+        "parameters": [
+          {
+            "name": "target",
+            "type": "T",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "source1",
+            "type": "U",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "source2",
+            "type": "V",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "source3",
+            "type": "W",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "T & U & V & W",
+        "minimum": 4
+      },
+      {
+        "parameters": [
+          {
+            "name": "target",
+            "type": "object",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "sources",
+            "type": "any[]",
+            "optional": false,
+            "rest": true
+          }
+        ],
+        "result": "any",
+        "minimum": 1
+      }
+    ],
+    "es2020/ObjectConstructor.getOwnPropertySymbols": [
+      {
+        "parameters": [
+          {
+            "name": "o",
+            "type": "any",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "symbol[]",
+        "minimum": 1
+      }
+    ],
+    "es2020/ObjectConstructor.is": [
+      {
+        "parameters": [
+          {
+            "name": "value1",
+            "type": "any",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "value2",
+            "type": "any",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "boolean",
+        "minimum": 2
+      }
+    ],
+    "es2020/ObjectConstructor.setPrototypeOf": [
+      {
+        "parameters": [
+          {
+            "name": "o",
+            "type": "any",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "proto",
+            "type": "object | null",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "any",
+        "minimum": 2
+      }
+    ],
+    "es2020/ObjectConstructor.values": [
+      {
+        "parameters": [
+          {
+            "name": "o",
+            "type": "{ [s: string]: T; } | ArrayLike<T>",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "T[]",
+        "minimum": 1
+      },
+      {
+        "parameters": [
+          {
+            "name": "o",
+            "type": "{}",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "any[]",
+        "minimum": 1
+      }
+    ],
+    "es2020/ObjectConstructor.entries": [
+      {
+        "parameters": [
+          {
+            "name": "o",
+            "type": "{ [s: string]: T; } | ArrayLike<T>",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "[string, T][]",
+        "minimum": 1
+      },
+      {
+        "parameters": [
+          {
+            "name": "o",
+            "type": "{}",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "[string, any][]",
+        "minimum": 1
+      }
+    ],
+    "es2020/ObjectConstructor.getOwnPropertyDescriptors": [
+      {
+        "parameters": [
+          {
+            "name": "o",
+            "type": "T",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "{ [P in keyof T]: TypedPropertyDescriptor<T[P]>; } & { [x: string]: PropertyDescriptor; }",
+        "minimum": 1
+      }
+    ],
+    "es2020/ObjectConstructor.fromEntries": [
+      {
+        "parameters": [
+          {
+            "name": "entries",
+            "type": "Iterable<readonly [PropertyKey, T]>",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "{ [k: string]: T; }",
+        "minimum": 1
+      },
+      {
+        "parameters": [
+          {
+            "name": "entries",
+            "type": "Iterable<readonly any[]>",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "any",
+        "minimum": 1
+      }
+    ],
+    "es2020/new Array": [
+      {
+        "parameters": [
+          {
+            "name": "arrayLength",
+            "type": "number | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "any[]",
+        "minimum": 0
+      },
+      {
+        "parameters": [
+          {
+            "name": "arrayLength",
+            "type": "number",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "T[]",
+        "minimum": 1
+      },
+      {
+        "parameters": [
+          {
+            "name": "items",
+            "type": "T[]",
+            "optional": false,
+            "rest": true
+          }
+        ],
+        "result": "T[]",
+        "minimum": 0
+      }
+    ],
+    "es2020/ArrayConstructor.isArray": [
+      {
+        "parameters": [
+          {
+            "name": "arg",
+            "type": "any",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "boolean",
+        "minimum": 1
+      }
+    ],
+    "es2020/ArrayConstructor.prototype": [],
+    "es2020/ArrayConstructor.from": [
+      {
+        "parameters": [
+          {
+            "name": "iterable",
+            "type": "Iterable<T> | ArrayLike<T>",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "T[]",
+        "minimum": 1
+      },
+      {
+        "parameters": [
+          {
+            "name": "iterable",
+            "type": "Iterable<T> | ArrayLike<T>",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "mapfn",
+            "type": "(v: T, k: number) => U",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "thisArg",
+            "type": "any",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "U[]",
+        "minimum": 2
+      },
+      {
+        "parameters": [
+          {
+            "name": "arrayLike",
+            "type": "ArrayLike<T>",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "T[]",
+        "minimum": 1
+      },
+      {
+        "parameters": [
+          {
+            "name": "arrayLike",
+            "type": "ArrayLike<T>",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "mapfn",
+            "type": "(v: T, k: number) => U",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "thisArg",
+            "type": "any",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "U[]",
+        "minimum": 2
+      }
+    ],
+    "es2020/ArrayConstructor.of": [
+      {
+        "parameters": [
+          {
+            "name": "items",
+            "type": "T[]",
+            "optional": false,
+            "rest": true
+          }
+        ],
+        "result": "T[]",
+        "minimum": 0
+      }
+    ],
+    "es2020/ArrayConstructor.__@species@981": [
+      {
+        "parameters": [
+          {
+            "name": "arrayLength",
+            "type": "number | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "any[]",
+        "minimum": 0
+      },
+      {
+        "parameters": [
+          {
+            "name": "arrayLength",
+            "type": "number",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "T[]",
+        "minimum": 1
+      },
+      {
+        "parameters": [
+          {
+            "name": "items",
+            "type": "T[]",
+            "optional": false,
+            "rest": true
+          }
+        ],
+        "result": "T[]",
+        "minimum": 0
+      }
+    ],
+    "es2020/new String": [
+      {
+        "parameters": [
+          {
+            "name": "value",
+            "type": "any",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "String",
+        "minimum": 0
+      }
+    ],
+    "es2020/StringConstructor.prototype": [],
+    "es2020/StringConstructor.fromCharCode": [
+      {
+        "parameters": [
+          {
+            "name": "codes",
+            "type": "number[]",
+            "optional": false,
+            "rest": true
+          }
+        ],
+        "result": "string",
+        "minimum": 0
+      }
+    ],
+    "es2020/StringConstructor.fromCodePoint": [
+      {
+        "parameters": [
+          {
+            "name": "codePoints",
+            "type": "number[]",
+            "optional": false,
+            "rest": true
+          }
+        ],
+        "result": "string",
+        "minimum": 0
+      }
+    ],
+    "es2020/StringConstructor.raw": [
+      {
+        "parameters": [
+          {
+            "name": "template",
+            "type": "{ raw: readonly string[] | ArrayLike<string>; }",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "substitutions",
+            "type": "any[]",
+            "optional": false,
+            "rest": true
+          }
+        ],
+        "result": "string",
+        "minimum": 1
+      }
+    ],
+    "es2020/new Number": [
+      {
+        "parameters": [
+          {
+            "name": "value",
+            "type": "any",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "Number",
+        "minimum": 0
+      }
+    ],
+    "es2020/NumberConstructor.prototype": [],
+    "es2020/NumberConstructor.MAX_VALUE": [],
+    "es2020/NumberConstructor.MIN_VALUE": [],
+    "es2020/NumberConstructor.NaN": [],
+    "es2020/NumberConstructor.NEGATIVE_INFINITY": [],
+    "es2020/NumberConstructor.POSITIVE_INFINITY": [],
+    "es2020/NumberConstructor.EPSILON": [],
+    "es2020/NumberConstructor.isFinite": [
+      {
+        "parameters": [
+          {
+            "name": "number",
+            "type": "unknown",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "boolean",
+        "minimum": 1
+      }
+    ],
+    "es2020/NumberConstructor.isInteger": [
+      {
+        "parameters": [
+          {
+            "name": "number",
+            "type": "unknown",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "boolean",
+        "minimum": 1
+      }
+    ],
+    "es2020/NumberConstructor.isNaN": [
+      {
+        "parameters": [
+          {
+            "name": "number",
+            "type": "unknown",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "boolean",
+        "minimum": 1
+      }
+    ],
+    "es2020/NumberConstructor.isSafeInteger": [
+      {
+        "parameters": [
+          {
+            "name": "number",
+            "type": "unknown",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "boolean",
+        "minimum": 1
+      }
+    ],
+    "es2020/NumberConstructor.MAX_SAFE_INTEGER": [],
+    "es2020/NumberConstructor.MIN_SAFE_INTEGER": [],
+    "es2020/NumberConstructor.parseFloat": [
+      {
+        "parameters": [
+          {
+            "name": "string",
+            "type": "string",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "number",
+        "minimum": 1
+      }
+    ],
+    "es2020/NumberConstructor.parseInt": [
+      {
+        "parameters": [
+          {
+            "name": "string",
+            "type": "string",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "radix",
+            "type": "number | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "number",
+        "minimum": 1
+      }
+    ],
+    "es2020/new Boolean": [
+      {
+        "parameters": [
+          {
+            "name": "value",
+            "type": "any",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "Boolean",
+        "minimum": 0
+      }
+    ],
+    "es2020/BooleanConstructor.prototype": [],
+    "es2020/new Date": [
+      {
+        "parameters": [
+          {
+            "name": "value",
+            "type": "string | number | Date",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "Date",
+        "minimum": 1
+      },
+      {
+        "parameters": [],
+        "result": "Date",
+        "minimum": 0
+      },
+      {
+        "parameters": [
+          {
+            "name": "value",
+            "type": "string | number",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "Date",
+        "minimum": 1
+      },
+      {
+        "parameters": [
+          {
+            "name": "year",
+            "type": "number",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "monthIndex",
+            "type": "number",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "date",
+            "type": "number | undefined",
+            "optional": true,
+            "rest": false
+          },
+          {
+            "name": "hours",
+            "type": "number | undefined",
+            "optional": true,
+            "rest": false
+          },
+          {
+            "name": "minutes",
+            "type": "number | undefined",
+            "optional": true,
+            "rest": false
+          },
+          {
+            "name": "seconds",
+            "type": "number | undefined",
+            "optional": true,
+            "rest": false
+          },
+          {
+            "name": "ms",
+            "type": "number | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "Date",
+        "minimum": 2
+      }
+    ],
+    "es2020/DateConstructor.prototype": [],
+    "es2020/DateConstructor.parse": [
+      {
+        "parameters": [
+          {
+            "name": "s",
+            "type": "string",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "number",
+        "minimum": 1
+      }
+    ],
+    "es2020/DateConstructor.UTC": [
+      {
+        "parameters": [
+          {
+            "name": "year",
+            "type": "number",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "monthIndex",
+            "type": "number | undefined",
+            "optional": true,
+            "rest": false
+          },
+          {
+            "name": "date",
+            "type": "number | undefined",
+            "optional": true,
+            "rest": false
+          },
+          {
+            "name": "hours",
+            "type": "number | undefined",
+            "optional": true,
+            "rest": false
+          },
+          {
+            "name": "minutes",
+            "type": "number | undefined",
+            "optional": true,
+            "rest": false
+          },
+          {
+            "name": "seconds",
+            "type": "number | undefined",
+            "optional": true,
+            "rest": false
+          },
+          {
+            "name": "ms",
+            "type": "number | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "number",
+        "minimum": 1
+      },
+      {
+        "parameters": [
+          {
+            "name": "year",
+            "type": "number",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "monthIndex",
+            "type": "number",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "date",
+            "type": "number | undefined",
+            "optional": true,
+            "rest": false
+          },
+          {
+            "name": "hours",
+            "type": "number | undefined",
+            "optional": true,
+            "rest": false
+          },
+          {
+            "name": "minutes",
+            "type": "number | undefined",
+            "optional": true,
+            "rest": false
+          },
+          {
+            "name": "seconds",
+            "type": "number | undefined",
+            "optional": true,
+            "rest": false
+          },
+          {
+            "name": "ms",
+            "type": "number | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "number",
+        "minimum": 2
+      }
+    ],
+    "es2020/DateConstructor.now": [
+      {
+        "parameters": [],
+        "result": "number",
+        "minimum": 0
+      }
+    ],
+    "es2020/new RegExp": [
+      {
+        "parameters": [
+          {
+            "name": "pattern",
+            "type": "string | RegExp",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "flags",
+            "type": "string | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "RegExp",
+        "minimum": 1
+      },
+      {
+        "parameters": [
+          {
+            "name": "pattern",
+            "type": "string | RegExp",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "RegExp",
+        "minimum": 1
+      },
+      {
+        "parameters": [
+          {
+            "name": "pattern",
+            "type": "string",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "flags",
+            "type": "string | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "RegExp",
+        "minimum": 1
+      }
+    ],
+    "es2020/RegExpConstructor.prototype": [],
+    "es2020/RegExpConstructor.$1": [],
+    "es2020/RegExpConstructor.$2": [],
+    "es2020/RegExpConstructor.$3": [],
+    "es2020/RegExpConstructor.$4": [],
+    "es2020/RegExpConstructor.$5": [],
+    "es2020/RegExpConstructor.$6": [],
+    "es2020/RegExpConstructor.$7": [],
+    "es2020/RegExpConstructor.$8": [],
+    "es2020/RegExpConstructor.$9": [],
+    "es2020/RegExpConstructor.input": [],
+    "es2020/RegExpConstructor.$_": [],
+    "es2020/RegExpConstructor.lastMatch": [],
+    "es2020/RegExpConstructor.$&": [],
+    "es2020/RegExpConstructor.lastParen": [],
+    "es2020/RegExpConstructor.$+": [],
+    "es2020/RegExpConstructor.leftContext": [],
+    "es2020/RegExpConstructor.$`": [],
+    "es2020/RegExpConstructor.rightContext": [],
+    "es2020/RegExpConstructor.$'": [],
+    "es2020/RegExpConstructor.__@species@981": [
+      {
+        "parameters": [
+          {
+            "name": "pattern",
+            "type": "string | RegExp",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "flags",
+            "type": "string | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "RegExp",
+        "minimum": 1
+      },
+      {
+        "parameters": [
+          {
+            "name": "pattern",
+            "type": "string | RegExp",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "RegExp",
+        "minimum": 1
+      },
+      {
+        "parameters": [
+          {
+            "name": "pattern",
+            "type": "string",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "flags",
+            "type": "string | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "RegExp",
+        "minimum": 1
+      }
+    ],
+    "es2020/new Error": [
+      {
+        "parameters": [
+          {
+            "name": "message",
+            "type": "string | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "Error",
+        "minimum": 0
+      }
+    ],
+    "es2020/ErrorConstructor.prototype": [],
+    "es2020/new EvalError": [
+      {
+        "parameters": [
+          {
+            "name": "message",
+            "type": "string | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "EvalError",
+        "minimum": 0
+      },
+      {
+        "parameters": [
+          {
+            "name": "message",
+            "type": "string | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "Error",
+        "minimum": 0
+      }
+    ],
+    "es2020/EvalErrorConstructor.prototype": [],
+    "es2020/new RangeError": [
+      {
+        "parameters": [
+          {
+            "name": "message",
+            "type": "string | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "RangeError",
+        "minimum": 0
+      },
+      {
+        "parameters": [
+          {
+            "name": "message",
+            "type": "string | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "Error",
+        "minimum": 0
+      }
+    ],
+    "es2020/RangeErrorConstructor.prototype": [],
+    "es2020/new ReferenceError": [
+      {
+        "parameters": [
+          {
+            "name": "message",
+            "type": "string | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "ReferenceError",
+        "minimum": 0
+      },
+      {
+        "parameters": [
+          {
+            "name": "message",
+            "type": "string | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "Error",
+        "minimum": 0
+      }
+    ],
+    "es2020/ReferenceErrorConstructor.prototype": [],
+    "es2020/new SyntaxError": [
+      {
+        "parameters": [
+          {
+            "name": "message",
+            "type": "string | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "SyntaxError",
+        "minimum": 0
+      },
+      {
+        "parameters": [
+          {
+            "name": "message",
+            "type": "string | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "Error",
+        "minimum": 0
+      }
+    ],
+    "es2020/SyntaxErrorConstructor.prototype": [],
+    "es2020/new TypeError": [
+      {
+        "parameters": [
+          {
+            "name": "message",
+            "type": "string | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "TypeError",
+        "minimum": 0
+      },
+      {
+        "parameters": [
+          {
+            "name": "message",
+            "type": "string | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "Error",
+        "minimum": 0
+      }
+    ],
+    "es2020/TypeErrorConstructor.prototype": [],
+    "es2020/new URIError": [
+      {
+        "parameters": [
+          {
+            "name": "message",
+            "type": "string | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "URIError",
+        "minimum": 0
+      },
+      {
+        "parameters": [
+          {
+            "name": "message",
+            "type": "string | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "Error",
+        "minimum": 0
+      }
+    ],
+    "es2020/URIErrorConstructor.prototype": [],
+    "es2020/new JSON": [],
+    "es2020/JSONConstructor.parse": [
+      {
+        "parameters": [
+          {
+            "name": "text",
+            "type": "string",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "reviver",
+            "type": "((this: any, key: string, value: any) => any) | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "any",
+        "minimum": 1
+      }
+    ],
+    "es2020/JSONConstructor.stringify": [
+      {
+        "parameters": [
+          {
+            "name": "value",
+            "type": "any",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "replacer",
+            "type": "((this: any, key: string, value: any) => any) | undefined",
+            "optional": true,
+            "rest": false
+          },
+          {
+            "name": "space",
+            "type": "string | number | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "string",
+        "minimum": 1
+      },
+      {
+        "parameters": [
+          {
+            "name": "value",
+            "type": "any",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "replacer",
+            "type": "(string | number)[] | null | undefined",
+            "optional": true,
+            "rest": false
+          },
+          {
+            "name": "space",
+            "type": "string | number | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "string",
+        "minimum": 1
+      }
+    ],
+    "es2020/JSONConstructor.__@toStringTag@1201": [],
+    "es2020/new Promise": [
+      {
+        "parameters": [
+          {
+            "name": "executor",
+            "type": "(resolve: (value: T | PromiseLike<T>) => void, reject: (reason?: any) => void) => void",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "Promise<T>",
+        "minimum": 1
+      }
+    ],
+    "es2020/PromiseConstructor.all": [
+      {
+        "parameters": [
+          {
+            "name": "values",
+            "type": "T",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "Promise<{ -readonly [P in keyof T]: Awaited<T[P]>; }>",
+        "minimum": 1
+      },
+      {
+        "parameters": [
+          {
+            "name": "values",
+            "type": "Iterable<T | PromiseLike<T>>",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "Promise<Awaited<T>[]>",
+        "minimum": 1
+      }
+    ],
+    "es2020/PromiseConstructor.race": [
+      {
+        "parameters": [
+          {
+            "name": "values",
+            "type": "T",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "Promise<Awaited<T[number]>>",
+        "minimum": 1
+      },
+      {
+        "parameters": [
+          {
+            "name": "values",
+            "type": "Iterable<T | PromiseLike<T>>",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "Promise<Awaited<T>>",
+        "minimum": 1
+      }
+    ],
+    "es2020/PromiseConstructor.prototype": [],
+    "es2020/PromiseConstructor.reject": [
+      {
+        "parameters": [
+          {
+            "name": "reason",
+            "type": "any",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "Promise<T>",
+        "minimum": 0
+      }
+    ],
+    "es2020/PromiseConstructor.resolve": [
+      {
+        "parameters": [],
+        "result": "Promise<void>",
+        "minimum": 0
+      },
+      {
+        "parameters": [
+          {
+            "name": "value",
+            "type": "T",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "Promise<Awaited<T>>",
+        "minimum": 1
+      },
+      {
+        "parameters": [
+          {
+            "name": "value",
+            "type": "T | PromiseLike<T>",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "Promise<Awaited<T>>",
+        "minimum": 1
+      }
+    ],
+    "es2020/PromiseConstructor.allSettled": [
+      {
+        "parameters": [
+          {
+            "name": "values",
+            "type": "T",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "Promise<{ -readonly [P in keyof T]: PromiseSettledResult<Awaited<T[P]>>; }>",
+        "minimum": 1
+      },
+      {
+        "parameters": [
+          {
+            "name": "values",
+            "type": "Iterable<T | PromiseLike<T>>",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "Promise<PromiseSettledResult<Awaited<T>>[]>",
+        "minimum": 1
+      }
+    ],
+    "es2020/PromiseConstructor.__@species@981": [],
+    "es2020/Array.length": [],
+    "es2020/Array.toString": [
+      {
+        "parameters": [],
+        "result": "string",
+        "minimum": 0
+      }
+    ],
+    "es2020/Array.toLocaleString": [
+      {
+        "parameters": [
+          {
+            "name": "locales",
+            "type": "string | string[]",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "options",
+            "type": "(Intl.NumberFormatOptions & Intl.DateTimeFormatOptions) | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "string",
+        "minimum": 1
+      },
+      {
+        "parameters": [],
+        "result": "string",
+        "minimum": 0
+      }
+    ],
+    "es2020/Array.pop": [
+      {
+        "parameters": [],
+        "result": "T | undefined",
+        "minimum": 0
+      }
+    ],
+    "es2020/Array.push": [
+      {
+        "parameters": [
+          {
+            "name": "items",
+            "type": "T[]",
+            "optional": false,
+            "rest": true
+          }
+        ],
+        "result": "number",
+        "minimum": 0
+      }
+    ],
+    "es2020/Array.concat": [
+      {
+        "parameters": [
+          {
+            "name": "items",
+            "type": "ConcatArray<T>[]",
+            "optional": false,
+            "rest": true
+          }
+        ],
+        "result": "T[]",
+        "minimum": 0
+      },
+      {
+        "parameters": [
+          {
+            "name": "items",
+            "type": "(T | ConcatArray<T>)[]",
+            "optional": false,
+            "rest": true
+          }
+        ],
+        "result": "T[]",
+        "minimum": 0
+      }
+    ],
+    "es2020/Array.join": [
+      {
+        "parameters": [
+          {
+            "name": "separator",
+            "type": "string | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "string",
+        "minimum": 0
+      }
+    ],
+    "es2020/Array.reverse": [
+      {
+        "parameters": [],
+        "result": "T[]",
+        "minimum": 0
+      }
+    ],
+    "es2020/Array.shift": [
+      {
+        "parameters": [],
+        "result": "T | undefined",
+        "minimum": 0
+      }
+    ],
+    "es2020/Array.slice": [
+      {
+        "parameters": [
+          {
+            "name": "start",
+            "type": "number | undefined",
+            "optional": true,
+            "rest": false
+          },
+          {
+            "name": "end",
+            "type": "number | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "T[]",
+        "minimum": 0
+      }
+    ],
+    "es2020/Array.sort": [
+      {
+        "parameters": [
+          {
+            "name": "compareFn",
+            "type": "((a: T, b: T) => number) | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "T[]",
+        "minimum": 0
+      }
+    ],
+    "es2020/Array.splice": [
+      {
+        "parameters": [
+          {
+            "name": "start",
+            "type": "number",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "deleteCount",
+            "type": "number | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "T[]",
+        "minimum": 1
+      },
+      {
+        "parameters": [
+          {
+            "name": "start",
+            "type": "number",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "deleteCount",
+            "type": "number",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "items",
+            "type": "T[]",
+            "optional": false,
+            "rest": true
+          }
+        ],
+        "result": "T[]",
+        "minimum": 2
+      }
+    ],
+    "es2020/Array.unshift": [
+      {
+        "parameters": [
+          {
+            "name": "items",
+            "type": "T[]",
+            "optional": false,
+            "rest": true
+          }
+        ],
+        "result": "number",
+        "minimum": 0
+      }
+    ],
+    "es2020/Array.indexOf": [
+      {
+        "parameters": [
+          {
+            "name": "searchElement",
+            "type": "T",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "fromIndex",
+            "type": "number | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "number",
+        "minimum": 1
+      }
+    ],
+    "es2020/Array.lastIndexOf": [
+      {
+        "parameters": [
+          {
+            "name": "searchElement",
+            "type": "T",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "fromIndex",
+            "type": "number | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "number",
+        "minimum": 1
+      }
+    ],
+    "es2020/Array.every": [
+      {
+        "parameters": [
+          {
+            "name": "predicate",
+            "type": "(value: T, index: number, array: T[]) => value is S",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "thisArg",
+            "type": "any",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "boolean",
+        "minimum": 1
+      },
+      {
+        "parameters": [
+          {
+            "name": "predicate",
+            "type": "(value: T, index: number, array: T[]) => unknown",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "thisArg",
+            "type": "any",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "boolean",
+        "minimum": 1
+      }
+    ],
+    "es2020/Array.some": [
+      {
+        "parameters": [
+          {
+            "name": "predicate",
+            "type": "(value: T, index: number, array: T[]) => unknown",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "thisArg",
+            "type": "any",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "boolean",
+        "minimum": 1
+      }
+    ],
+    "es2020/Array.forEach": [
+      {
+        "parameters": [
+          {
+            "name": "callbackfn",
+            "type": "(value: T, index: number, array: T[]) => void",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "thisArg",
+            "type": "any",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "void",
+        "minimum": 1
+      }
+    ],
+    "es2020/Array.map": [
+      {
+        "parameters": [
+          {
+            "name": "callbackfn",
+            "type": "(value: T, index: number, array: T[]) => U",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "thisArg",
+            "type": "any",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "U[]",
+        "minimum": 1
+      }
+    ],
+    "es2020/Array.filter": [
+      {
+        "parameters": [
+          {
+            "name": "predicate",
+            "type": "(value: T, index: number, array: T[]) => value is S",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "thisArg",
+            "type": "any",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "S[]",
+        "minimum": 1
+      },
+      {
+        "parameters": [
+          {
+            "name": "predicate",
+            "type": "(value: T, index: number, array: T[]) => unknown",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "thisArg",
+            "type": "any",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "T[]",
+        "minimum": 1
+      }
+    ],
+    "es2020/Array.reduce": [
+      {
+        "parameters": [
+          {
+            "name": "callbackfn",
+            "type": "(previousValue: T, currentValue: T, currentIndex: number, array: T[]) => T",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "T",
+        "minimum": 1
+      },
+      {
+        "parameters": [
+          {
+            "name": "callbackfn",
+            "type": "(previousValue: T, currentValue: T, currentIndex: number, array: T[]) => T",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "initialValue",
+            "type": "T",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "T",
+        "minimum": 2
+      },
+      {
+        "parameters": [
+          {
+            "name": "callbackfn",
+            "type": "(previousValue: U, currentValue: T, currentIndex: number, array: T[]) => U",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "initialValue",
+            "type": "U",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "U",
+        "minimum": 2
+      }
+    ],
+    "es2020/Array.reduceRight": [
+      {
+        "parameters": [
+          {
+            "name": "callbackfn",
+            "type": "(previousValue: T, currentValue: T, currentIndex: number, array: T[]) => T",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "T",
+        "minimum": 1
+      },
+      {
+        "parameters": [
+          {
+            "name": "callbackfn",
+            "type": "(previousValue: T, currentValue: T, currentIndex: number, array: T[]) => T",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "initialValue",
+            "type": "T",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "T",
+        "minimum": 2
+      },
+      {
+        "parameters": [
+          {
+            "name": "callbackfn",
+            "type": "(previousValue: U, currentValue: T, currentIndex: number, array: T[]) => U",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "initialValue",
+            "type": "U",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "U",
+        "minimum": 2
+      }
+    ],
+    "es2020/Array.find": [
+      {
+        "parameters": [
+          {
+            "name": "predicate",
+            "type": "(value: T, index: number, obj: T[]) => value is S",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "thisArg",
+            "type": "any",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "S | undefined",
+        "minimum": 1
+      },
+      {
+        "parameters": [
+          {
+            "name": "predicate",
+            "type": "(value: T, index: number, obj: T[]) => unknown",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "thisArg",
+            "type": "any",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "T | undefined",
+        "minimum": 1
+      }
+    ],
+    "es2020/Array.findIndex": [
+      {
+        "parameters": [
+          {
+            "name": "predicate",
+            "type": "(value: T, index: number, obj: T[]) => unknown",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "thisArg",
+            "type": "any",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "number",
+        "minimum": 1
+      }
+    ],
+    "es2020/Array.fill": [
+      {
+        "parameters": [
+          {
+            "name": "value",
+            "type": "T",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "start",
+            "type": "number | undefined",
+            "optional": true,
+            "rest": false
+          },
+          {
+            "name": "end",
+            "type": "number | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "T[]",
+        "minimum": 1
+      }
+    ],
+    "es2020/Array.copyWithin": [
+      {
+        "parameters": [
+          {
+            "name": "target",
+            "type": "number",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "start",
+            "type": "number",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "end",
+            "type": "number | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "T[]",
+        "minimum": 2
+      }
+    ],
+    "es2020/Array.entries": [
+      {
+        "parameters": [],
+        "result": "ArrayIterator<[number, T]>",
+        "minimum": 0
+      }
+    ],
+    "es2020/Array.keys": [
+      {
+        "parameters": [],
+        "result": "ArrayIterator<number>",
+        "minimum": 0
+      }
+    ],
+    "es2020/Array.values": [
+      {
+        "parameters": [],
+        "result": "ArrayIterator<T>",
+        "minimum": 0
+      }
+    ],
+    "es2020/Array.includes": [
+      {
+        "parameters": [
+          {
+            "name": "searchElement",
+            "type": "T",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "fromIndex",
+            "type": "number | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "boolean",
+        "minimum": 1
+      }
+    ],
+    "es2020/Array.flatMap": [
+      {
+        "parameters": [
+          {
+            "name": "callback",
+            "type": "(this: This, value: T, index: number, array: T[]) => U | readonly U[]",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "thisArg",
+            "type": "This | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "U[]",
+        "minimum": 1
+      }
+    ],
+    "es2020/Array.flat": [
+      {
+        "parameters": [
+          {
+            "name": "depth",
+            "type": "D | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "FlatArray<A, D>[]",
+        "minimum": 0
+      }
+    ],
+    "es2020/Array.__@iterator@993": [
+      {
+        "parameters": [],
+        "result": "ArrayIterator<T>",
+        "minimum": 0
+      }
+    ],
+    "es2020/Array.__@unscopables@995": [],
+    "es2020/String.toString": [
+      {
+        "parameters": [],
+        "result": "string",
+        "minimum": 0
+      }
+    ],
+    "es2020/String.charAt": [
+      {
+        "parameters": [
+          {
+            "name": "pos",
+            "type": "number",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "string",
+        "minimum": 1
+      }
+    ],
+    "es2020/String.charCodeAt": [
+      {
+        "parameters": [
+          {
+            "name": "index",
+            "type": "number",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "number",
+        "minimum": 1
+      }
+    ],
+    "es2020/String.concat": [
+      {
+        "parameters": [
+          {
+            "name": "strings",
+            "type": "string[]",
+            "optional": false,
+            "rest": true
+          }
+        ],
+        "result": "string",
+        "minimum": 0
+      }
+    ],
+    "es2020/String.indexOf": [
+      {
+        "parameters": [
+          {
+            "name": "searchString",
+            "type": "string",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "position",
+            "type": "number | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "number",
+        "minimum": 1
+      }
+    ],
+    "es2020/String.lastIndexOf": [
+      {
+        "parameters": [
+          {
+            "name": "searchString",
+            "type": "string",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "position",
+            "type": "number | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "number",
+        "minimum": 1
+      }
+    ],
+    "es2020/String.localeCompare": [
+      {
+        "parameters": [
+          {
+            "name": "that",
+            "type": "string",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "locales",
+            "type": "Intl.LocalesArgument",
+            "optional": true,
+            "rest": false
+          },
+          {
+            "name": "options",
+            "type": "Intl.CollatorOptions | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "number",
+        "minimum": 1
+      },
+      {
+        "parameters": [
+          {
+            "name": "that",
+            "type": "string",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "number",
+        "minimum": 1
+      },
+      {
+        "parameters": [
+          {
+            "name": "that",
+            "type": "string",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "locales",
+            "type": "string | string[] | undefined",
+            "optional": true,
+            "rest": false
+          },
+          {
+            "name": "options",
+            "type": "Intl.CollatorOptions | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "number",
+        "minimum": 1
+      }
+    ],
+    "es2020/String.match": [
+      {
+        "parameters": [
+          {
+            "name": "matcher",
+            "type": "{ [Symbol.match](string: string): RegExpMatchArray | null; }",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "RegExpMatchArray | null",
+        "minimum": 1
+      },
+      {
+        "parameters": [
+          {
+            "name": "regexp",
+            "type": "string | RegExp",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "RegExpMatchArray | null",
+        "minimum": 1
+      }
+    ],
+    "es2020/String.replace": [
+      {
+        "parameters": [
+          {
+            "name": "searchValue",
+            "type": "{ [Symbol.replace](string: string, replaceValue: string): string; }",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "replaceValue",
+            "type": "string",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "string",
+        "minimum": 2
+      },
+      {
+        "parameters": [
+          {
+            "name": "searchValue",
+            "type": "{ [Symbol.replace](string: string, replacer: (substring: string, ...args: any[]) => string): string; }",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "replacer",
+            "type": "(substring: string, ...args: any[]) => string",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "string",
+        "minimum": 2
+      },
+      {
+        "parameters": [
+          {
+            "name": "searchValue",
+            "type": "string | RegExp",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "replaceValue",
+            "type": "string",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "string",
+        "minimum": 2
+      },
+      {
+        "parameters": [
+          {
+            "name": "searchValue",
+            "type": "string | RegExp",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "replacer",
+            "type": "(substring: string, ...args: any[]) => string",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "string",
+        "minimum": 2
+      }
+    ],
+    "es2020/String.search": [
+      {
+        "parameters": [
+          {
+            "name": "searcher",
+            "type": "{ [Symbol.search](string: string): number; }",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "number",
+        "minimum": 1
+      },
+      {
+        "parameters": [
+          {
+            "name": "regexp",
+            "type": "string | RegExp",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "number",
+        "minimum": 1
+      }
+    ],
+    "es2020/String.slice": [
+      {
+        "parameters": [
+          {
+            "name": "start",
+            "type": "number | undefined",
+            "optional": true,
+            "rest": false
+          },
+          {
+            "name": "end",
+            "type": "number | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "string",
+        "minimum": 0
+      }
+    ],
+    "es2020/String.split": [
+      {
+        "parameters": [
+          {
+            "name": "splitter",
+            "type": "{ [Symbol.split](string: string, limit?: number): string[]; }",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "limit",
+            "type": "number | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "string[]",
+        "minimum": 1
+      },
+      {
+        "parameters": [
+          {
+            "name": "separator",
+            "type": "string | RegExp",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "limit",
+            "type": "number | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "string[]",
+        "minimum": 1
+      }
+    ],
+    "es2020/String.substring": [
+      {
+        "parameters": [
+          {
+            "name": "start",
+            "type": "number",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "end",
+            "type": "number | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "string",
+        "minimum": 1
+      }
+    ],
+    "es2020/String.toLowerCase": [
+      {
+        "parameters": [],
+        "result": "string",
+        "minimum": 0
+      }
+    ],
+    "es2020/String.toLocaleLowerCase": [
+      {
+        "parameters": [
+          {
+            "name": "locales",
+            "type": "Intl.LocalesArgument",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "string",
+        "minimum": 0
+      },
+      {
+        "parameters": [
+          {
+            "name": "locales",
+            "type": "string | string[] | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "string",
+        "minimum": 0
+      }
+    ],
+    "es2020/String.toUpperCase": [
+      {
+        "parameters": [],
+        "result": "string",
+        "minimum": 0
+      }
+    ],
+    "es2020/String.toLocaleUpperCase": [
+      {
+        "parameters": [
+          {
+            "name": "locales",
+            "type": "Intl.LocalesArgument",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "string",
+        "minimum": 0
+      },
+      {
+        "parameters": [
+          {
+            "name": "locales",
+            "type": "string | string[] | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "string",
+        "minimum": 0
+      }
+    ],
+    "es2020/String.trim": [
+      {
+        "parameters": [],
+        "result": "string",
+        "minimum": 0
+      }
+    ],
+    "es2020/String.length": [],
+    "es2020/String.substr": [
+      {
+        "parameters": [
+          {
+            "name": "from",
+            "type": "number",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "length",
+            "type": "number | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "string",
+        "minimum": 1
+      }
+    ],
+    "es2020/String.valueOf": [
+      {
+        "parameters": [],
+        "result": "string",
+        "minimum": 0
+      }
+    ],
+    "es2020/String.codePointAt": [
+      {
+        "parameters": [
+          {
+            "name": "pos",
+            "type": "number",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "number | undefined",
+        "minimum": 1
+      }
+    ],
+    "es2020/String.includes": [
+      {
+        "parameters": [
+          {
+            "name": "searchString",
+            "type": "string",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "position",
+            "type": "number | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "boolean",
+        "minimum": 1
+      }
+    ],
+    "es2020/String.endsWith": [
+      {
+        "parameters": [
+          {
+            "name": "searchString",
+            "type": "string",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "endPosition",
+            "type": "number | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "boolean",
+        "minimum": 1
+      }
+    ],
+    "es2020/String.normalize": [
+      {
+        "parameters": [
+          {
+            "name": "form",
+            "type": "\"NFC\" | \"NFD\" | \"NFKC\" | \"NFKD\"",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "string",
+        "minimum": 1
+      },
+      {
+        "parameters": [
+          {
+            "name": "form",
+            "type": "string | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "string",
+        "minimum": 0
+      }
+    ],
+    "es2020/String.repeat": [
+      {
+        "parameters": [
+          {
+            "name": "count",
+            "type": "number",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "string",
+        "minimum": 1
+      }
+    ],
+    "es2020/String.startsWith": [
+      {
+        "parameters": [
+          {
+            "name": "searchString",
+            "type": "string",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "position",
+            "type": "number | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "boolean",
+        "minimum": 1
+      }
+    ],
+    "es2020/String.anchor": [
+      {
+        "parameters": [
+          {
+            "name": "name",
+            "type": "string",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "string",
+        "minimum": 1
+      }
+    ],
+    "es2020/String.big": [
+      {
+        "parameters": [],
+        "result": "string",
+        "minimum": 0
+      }
+    ],
+    "es2020/String.blink": [
+      {
+        "parameters": [],
+        "result": "string",
+        "minimum": 0
+      }
+    ],
+    "es2020/String.bold": [
+      {
+        "parameters": [],
+        "result": "string",
+        "minimum": 0
+      }
+    ],
+    "es2020/String.fixed": [
+      {
+        "parameters": [],
+        "result": "string",
+        "minimum": 0
+      }
+    ],
+    "es2020/String.fontcolor": [
+      {
+        "parameters": [
+          {
+            "name": "color",
+            "type": "string",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "string",
+        "minimum": 1
+      }
+    ],
+    "es2020/String.fontsize": [
+      {
+        "parameters": [
+          {
+            "name": "size",
+            "type": "number",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "string",
+        "minimum": 1
+      },
+      {
+        "parameters": [
+          {
+            "name": "size",
+            "type": "string",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "string",
+        "minimum": 1
+      }
+    ],
+    "es2020/String.italics": [
+      {
+        "parameters": [],
+        "result": "string",
+        "minimum": 0
+      }
+    ],
+    "es2020/String.link": [
+      {
+        "parameters": [
+          {
+            "name": "url",
+            "type": "string",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "string",
+        "minimum": 1
+      }
+    ],
+    "es2020/String.small": [
+      {
+        "parameters": [],
+        "result": "string",
+        "minimum": 0
+      }
+    ],
+    "es2020/String.strike": [
+      {
+        "parameters": [],
+        "result": "string",
+        "minimum": 0
+      }
+    ],
+    "es2020/String.sub": [
+      {
+        "parameters": [],
+        "result": "string",
+        "minimum": 0
+      }
+    ],
+    "es2020/String.sup": [
+      {
+        "parameters": [],
+        "result": "string",
+        "minimum": 0
+      }
+    ],
+    "es2020/String.padStart": [
+      {
+        "parameters": [
+          {
+            "name": "maxLength",
+            "type": "number",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "fillString",
+            "type": "string | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "string",
+        "minimum": 1
+      }
+    ],
+    "es2020/String.padEnd": [
+      {
+        "parameters": [
+          {
+            "name": "maxLength",
+            "type": "number",
+            "optional": false,
+            "rest": false
+          },
+          {
+            "name": "fillString",
+            "type": "string | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "string",
+        "minimum": 1
+      }
+    ],
+    "es2020/String.trimEnd": [
+      {
+        "parameters": [],
+        "result": "string",
+        "minimum": 0
+      }
+    ],
+    "es2020/String.trimStart": [
+      {
+        "parameters": [],
+        "result": "string",
+        "minimum": 0
+      }
+    ],
+    "es2020/String.trimLeft": [
+      {
+        "parameters": [],
+        "result": "string",
+        "minimum": 0
+      }
+    ],
+    "es2020/String.trimRight": [
+      {
+        "parameters": [],
+        "result": "string",
+        "minimum": 0
+      }
+    ],
+    "es2020/String.matchAll": [
+      {
+        "parameters": [
+          {
+            "name": "regexp",
+            "type": "RegExp",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "RegExpStringIterator<RegExpExecArray>",
+        "minimum": 1
+      }
+    ],
+    "es2020/String.__@iterator@993": [
+      {
+        "parameters": [],
+        "result": "StringIterator<string>",
+        "minimum": 0
+      }
+    ],
+    "es2020/Number.toString": [
+      {
+        "parameters": [
+          {
+            "name": "radix",
+            "type": "number | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "string",
+        "minimum": 0
+      }
+    ],
+    "es2020/Number.toFixed": [
+      {
+        "parameters": [
+          {
+            "name": "fractionDigits",
+            "type": "number | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "string",
+        "minimum": 0
+      }
+    ],
+    "es2020/Number.toExponential": [
+      {
+        "parameters": [
+          {
+            "name": "fractionDigits",
+            "type": "number | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "string",
+        "minimum": 0
+      }
+    ],
+    "es2020/Number.toPrecision": [
+      {
+        "parameters": [
+          {
+            "name": "precision",
+            "type": "number | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "string",
+        "minimum": 0
+      }
+    ],
+    "es2020/Number.valueOf": [
+      {
+        "parameters": [],
+        "result": "number",
+        "minimum": 0
+      }
+    ],
+    "es2020/Number.toLocaleString": [
+      {
+        "parameters": [
+          {
+            "name": "locales",
+            "type": "Intl.LocalesArgument",
+            "optional": true,
+            "rest": false
+          },
+          {
+            "name": "options",
+            "type": "Intl.NumberFormatOptions | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "string",
+        "minimum": 0
+      },
+      {
+        "parameters": [
+          {
+            "name": "locales",
+            "type": "string | string[] | undefined",
+            "optional": true,
+            "rest": false
+          },
+          {
+            "name": "options",
+            "type": "Intl.NumberFormatOptions | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "string",
+        "minimum": 0
+      }
+    ],
+    "es2020/Boolean.valueOf": [
+      {
+        "parameters": [],
+        "result": "boolean",
+        "minimum": 0
+      }
+    ],
+    "es2020/Promise.then": [
+      {
+        "parameters": [
+          {
+            "name": "onfulfilled",
+            "type": "((value: T) => TResult1 | PromiseLike<TResult1>) | null | undefined",
+            "optional": true,
+            "rest": false
+          },
+          {
+            "name": "onrejected",
+            "type": "((reason: any) => TResult2 | PromiseLike<TResult2>) | null | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "Promise<TResult1 | TResult2>",
+        "minimum": 0
+      }
+    ],
+    "es2020/Promise.catch": [
+      {
+        "parameters": [
+          {
+            "name": "onrejected",
+            "type": "((reason: any) => TResult | PromiseLike<TResult>) | null | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "Promise<T | TResult>",
+        "minimum": 0
+      }
+    ],
+    "es2020/Promise.finally": [
+      {
+        "parameters": [
+          {
+            "name": "onfinally",
+            "type": "(() => void) | null | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "Promise<T>",
+        "minimum": 0
+      }
+    ],
+    "es2020/Promise.__@toStringTag@1201": [],
+    "es2022/Promise.then": [
+      {
+        "parameters": [
+          {
+            "name": "onfulfilled",
+            "type": "((value: T) => TResult1 | PromiseLike<TResult1>) | null | undefined",
+            "optional": true,
+            "rest": false
+          },
+          {
+            "name": "onrejected",
+            "type": "((reason: any) => TResult2 | PromiseLike<TResult2>) | null | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "Promise<TResult1 | TResult2>",
+        "minimum": 0
+      }
+    ],
+    "es2022/Promise.catch": [
+      {
+        "parameters": [
+          {
+            "name": "onrejected",
+            "type": "((reason: any) => TResult | PromiseLike<TResult>) | null | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "Promise<T | TResult>",
+        "minimum": 0
+      }
+    ],
+    "es2022/Promise.finally": [
+      {
+        "parameters": [
+          {
+            "name": "onfinally",
+            "type": "(() => void) | null | undefined",
+            "optional": true,
+            "rest": false
+          }
+        ],
+        "result": "Promise<T>",
+        "minimum": 0
+      }
+    ],
+    "es2022/Promise.__@toStringTag@366": [],
+    "es2020/Iterator.next": [
+      {
+        "parameters": [
+          {
+            "name": "__0",
+            "type": "[] | [TNext]",
+            "optional": false,
+            "rest": true
+          }
+        ],
+        "result": "IteratorResult<T, TReturn>",
+        "minimum": 0
+      }
+    ],
+    "es2020/Iterator.return": [],
+    "es2020/Iterator.throw": [],
+    "es2022/Iterator.next": [
+      {
+        "parameters": [
+          {
+            "name": "__0",
+            "type": "[] | [TNext]",
+            "optional": false,
+            "rest": true
+          }
+        ],
+        "result": "IteratorResult<T, TReturn>",
+        "minimum": 0
+      }
+    ],
+    "es2022/Iterator.return": [],
+    "es2022/Iterator.throw": [],
+    "es2020/Generator.next": [
+      {
+        "parameters": [
+          {
+            "name": "__0",
+            "type": "[] | [TNext]",
+            "optional": false,
+            "rest": true
+          }
+        ],
+        "result": "IteratorResult<T, TReturn>",
+        "minimum": 0
+      }
+    ],
+    "es2020/Generator.return": [
+      {
+        "parameters": [
+          {
+            "name": "value",
+            "type": "TReturn",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "IteratorResult<T, TReturn>",
+        "minimum": 1
+      }
+    ],
+    "es2020/Generator.throw": [
+      {
+        "parameters": [
+          {
+            "name": "e",
+            "type": "any",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "IteratorResult<T, TReturn>",
+        "minimum": 1
+      }
+    ],
+    "es2020/Generator.__@iterator@993": [
+      {
+        "parameters": [],
+        "result": "Generator<T, TReturn, TNext>",
+        "minimum": 0
+      }
+    ],
+    "es2022/Generator.next": [
+      {
+        "parameters": [
+          {
+            "name": "__0",
+            "type": "[] | [TNext]",
+            "optional": false,
+            "rest": true
+          }
+        ],
+        "result": "IteratorResult<T, TReturn>",
+        "minimum": 0
+      }
+    ],
+    "es2022/Generator.return": [
+      {
+        "parameters": [
+          {
+            "name": "value",
+            "type": "TReturn",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "IteratorResult<T, TReturn>",
+        "minimum": 1
+      }
+    ],
+    "es2022/Generator.throw": [
+      {
+        "parameters": [
+          {
+            "name": "e",
+            "type": "any",
+            "optional": false,
+            "rest": false
+          }
+        ],
+        "result": "IteratorResult<T, TReturn>",
+        "minimum": 1
+      }
+    ],
+    "es2022/Generator.__@iterator@149": [
+      {
+        "parameters": [],
+        "result": "Generator<T, TReturn, TNext>",
+        "minimum": 0
+      }
+    ],
+    "es2020/IterableIterator.__@iterator@993": [
+      {
+        "parameters": [],
+        "result": "IterableIterator<T, TReturn, TNext>",
+        "minimum": 0
+      }
+    ],
+    "es2020/IterableIterator.next": [
+      {
+        "parameters": [
+          {
+            "name": "__0",
+            "type": "[] | [TNext]",
+            "optional": false,
+            "rest": true
+          }
+        ],
+        "result": "IteratorResult<T, TReturn>",
+        "minimum": 0
+      }
+    ],
+    "es2020/IterableIterator.return": [],
+    "es2020/IterableIterator.throw": [],
+    "es2022/IterableIterator.__@iterator@149": [
+      {
+        "parameters": [],
+        "result": "IterableIterator<T, TReturn, TNext>",
+        "minimum": 0
+      }
+    ],
+    "es2022/IterableIterator.next": [
+      {
+        "parameters": [
+          {
+            "name": "__0",
+            "type": "[] | [TNext]",
+            "optional": false,
+            "rest": true
+          }
+        ],
+        "result": "IteratorResult<T, TReturn>",
+        "minimum": 0
+      }
+    ],
+    "es2022/IterableIterator.return": [],
+    "es2022/IterableIterator.throw": []
+  }
 }

@@ -661,6 +661,7 @@ pub(super) fn instantiate_named(
         .map(|parameter| parameter.name.clone())
         .zip(arguments)
         .collect();
+    crate::performance::instantiated();
     Some(substitute_type(&definition.value, &substitutions))
 }
 

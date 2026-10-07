@@ -9,9 +9,12 @@ use blueice_bluets::{Diagnostic, Project};
 use serde_json::Value;
 mod args;
 mod output;
+mod presentation;
+mod statistics;
 use args::Args;
 
 pub(super) fn run(arguments: Vec<String>) -> ExitCode {
+    let started = std::time::Instant::now();
     let empty_command = arguments.is_empty();
     let diagnostics_json = arguments
         .iter()
@@ -35,10 +38,35 @@ pub(super) fn run(arguments: Vec<String>) -> ExitCode {
         Err(error) => return failure(&error, pretty, diagnostics_json, args::diagnostic(&error)),
     };
     let mut config_diagnostic = None;
-    let mut invocation = match resolve_config_with_diagnostic(args.project, &mut config_diagnostic)
-    {
+    let mut config_sources = BTreeMap::new();
+    let mut invocation = match resolve_config_with_sources(
+        args.project,
+        &mut config_diagnostic,
+        &mut config_sources,
+    ) {
         Ok(invocation) => invocation,
-        Err(error) => return failure(&error, pretty, diagnostics_json, config_diagnostic),
+        Err(error) => {
+            let pretty = args
+                .flags
+                .get("pretty")
+                .and_then(Value::as_bool)
+                .unwrap_or_else(|| {
+                    config_sources
+                        .values()
+                        .filter_map(|source| tsconfig::parse_jsonc(source).ok())
+                        .any(|config| config["compilerOptions"]["pretty"] == true)
+                });
+            if !diagnostics_json {
+                if let Some(diagnostic) = config_diagnostic {
+                    print!(
+                        "{}",
+                        presentation::format(&[diagnostic], &config_sources, pretty)
+                    );
+                    return ExitCode::FAILURE;
+                }
+            }
+            return failure(&error, pretty, diagnostics_json, config_diagnostic);
+        }
     };
     let Some(project) = &mut invocation.project_config else {
         return fail("--project requires a TypeScript configuration", pretty);
@@ -59,6 +87,8 @@ pub(super) fn run(arguments: Vec<String>) -> ExitCode {
     };
     let pretty = enabled("pretty");
     let no_emit = enabled("noEmit");
+    let no_emit_on_error = enabled("noEmitOnError");
+    let show_diagnostics = enabled("diagnostics") && !diagnostics_json;
     let list_files = enabled("listFiles");
     let list_emitted = enabled("listEmittedFiles");
     if show_config {
@@ -90,27 +120,41 @@ pub(super) fn run(arguments: Vec<String>) -> ExitCode {
         Ok(loader) => loader,
         Err(error) => return fail(&error, pretty),
     };
-    let (mut summary, files, diagnostics) = compile_project(&invocation, &loader);
+    let CompiledProject {
+        mut summary,
+        files,
+        diagnostics,
+        sources,
+        emit_blocked,
+        mut statistics,
+    } = compile_project(&invocation, &loader, !no_emit && !no_emit_on_error);
     for diagnostic in &diagnostics {
         if diagnostics_json {
             eprintln!("{}", diagnostic.to_json());
-        } else {
-            report(diagnostic, pretty);
         }
+    }
+    if !diagnostics_json {
+        print!("{}", presentation::format(&diagnostics, &sources, pretty));
     }
     if list_files {
         for file in &files {
             println!("{}", file.display());
         }
     }
-    if summary.has_errors {
-        return ExitCode::from(2);
+    if summary.has_errors && ((!no_emit && no_emit_on_error) || emit_blocked) {
+        if show_diagnostics {
+            print!("{}", statistics.display(started.elapsed()));
+        }
+        return ExitCode::from(1);
     }
     if let Err(error) = tsconfig::prepare_output(&mut invocation, &mut summary) {
         return fail(&error, pretty);
     }
     if no_emit {
-        return ExitCode::SUCCESS;
+        if show_diagnostics {
+            print!("{}", statistics.display(started.elapsed()));
+        }
+        return ExitCode::from(if summary.has_errors { 2 } else { 0 });
     }
     if invocation.options.runtime_policy == RuntimePolicy::StrictRuntime
         && invocation.options.strict_runtime_boundaries.is_empty()
@@ -120,16 +164,21 @@ pub(super) fn run(arguments: Vec<String>) -> ExitCode {
             pretty,
         );
     }
+    let write_started = std::time::Instant::now();
     let emitted = match output::publish(&invocation, &summary, &loader, &files) {
         Ok(emitted) => emitted,
         Err(error) => return fail(&error.to_string(), pretty),
     };
+    statistics.written(write_started.elapsed());
     if list_emitted {
         for file in emitted {
             println!("TSFILE: {}", file.display());
         }
     }
-    ExitCode::SUCCESS
+    if show_diagnostics {
+        print!("{}", statistics.display(started.elapsed()));
+    }
+    ExitCode::from(if summary.has_errors { 2 } else { 0 })
 }
 fn failure(message: &str, pretty: bool, json: bool, diagnostic: Option<Diagnostic>) -> ExitCode {
     if json {
@@ -145,27 +194,17 @@ fn failure(message: &str, pretty: bool, json: bool, diagnostic: Option<Diagnosti
             diagnostic
         });
         eprintln!("{}", diagnostic.to_json());
+    } else if let Some(diagnostic) = diagnostic {
+        print!(
+            "{}",
+            presentation::format(&[diagnostic], &BTreeMap::new(), pretty)
+        );
     } else if pretty {
         eprintln!("\x1b[91mbluetsc: {message}\x1b[0m");
     } else {
         eprintln!("bluetsc: {message}");
     }
     ExitCode::FAILURE
-}
-fn report(diagnostic: &Diagnostic, pretty: bool) {
-    let text = format!(
-        "{}:{}:{}: {}: {}",
-        diagnostic.span.module,
-        diagnostic.span.start,
-        diagnostic.span.end,
-        diagnostic.code,
-        diagnostic.message
-    );
-    if pretty {
-        eprintln!("\x1b[91m{text}\x1b[0m");
-    } else {
-        eprintln!("{text}");
-    }
 }
 fn loader(invocation: &Invocation) -> Result<FileLoader, String> {
     Ok(FileLoader {
@@ -200,10 +239,19 @@ fn loader(invocation: &Invocation) -> Result<FileLoader, String> {
         },
     })
 }
+struct CompiledProject {
+    summary: CompileSummary,
+    files: Vec<PathBuf>,
+    diagnostics: Vec<Diagnostic>,
+    sources: BTreeMap<String, String>,
+    emit_blocked: bool,
+    statistics: statistics::Statistics,
+}
 fn compile_project(
     invocation: &Invocation,
     loader: &FileLoader,
-) -> (CompileSummary, Vec<PathBuf>, Vec<Diagnostic>) {
+    emit_errors: bool,
+) -> CompiledProject {
     let mut artifacts = BTreeMap::new();
     let mut declaration_modules = BTreeMap::new();
     let mut seen = BTreeSet::new();
@@ -211,6 +259,9 @@ fn compile_project(
     let mut fingerprints = Vec::new();
     let mut diagnostics = Vec::new();
     let mut has_errors = false;
+    let mut sources = BTreeMap::new();
+    let mut emit_blocked = false;
+    let mut statistics = statistics::Statistics::default();
     let has_runtime_entries = invocation
         .entries
         .iter()
@@ -227,7 +278,32 @@ fn compile_project(
             }
             options.strict_runtime_boundaries.clear();
         }
-        let result = compile(&module, loader, options);
+        let mut result = compile(&module, loader, options.clone());
+        statistics.add(&result);
+        if emit_errors && result.has_errors() && result.output.is_none() {
+            let emit_started = std::time::Instant::now();
+            match result.emit_for_native_cli(&options) {
+                Ok(Some(output)) => result.output = Some(output),
+                Ok(None) => emit_blocked = true,
+                Err(diagnostic) => {
+                    result.diagnostics.push(diagnostic);
+                    emit_blocked = true;
+                }
+            }
+            statistics.extra_emit(emit_started.elapsed());
+        }
+        for (id, module) in &result.project.modules {
+            sources
+                .entry(id.clone())
+                .or_insert_with(|| module.source.clone());
+        }
+        for diagnostic in &result.diagnostics {
+            if let Some(source) = result.project.source(&diagnostic.span.module) {
+                sources
+                    .entry(diagnostic.span.module.clone())
+                    .or_insert_with(|| source.into());
+            }
+        }
         has_errors |= result.has_errors();
         diagnostics.extend(result.diagnostics);
         ordered_sources(
@@ -260,8 +336,8 @@ fn compile_project(
         .iter()
         .filter_map(|module| loader.source_path(module).ok())
         .collect::<Vec<_>>();
-    (
-        CompileSummary {
+    CompiledProject {
+        summary: CompileSummary {
             artifacts,
             declaration_modules,
             fingerprint: fingerprint_entries(&fingerprints),
@@ -270,7 +346,10 @@ fn compile_project(
         },
         files,
         diagnostics,
-    )
+        sources,
+        emit_blocked,
+        statistics,
+    }
 }
 fn ordered_sources(
     module_id: &str,
