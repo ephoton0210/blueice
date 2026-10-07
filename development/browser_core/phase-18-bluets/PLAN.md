@@ -5204,3 +5204,33 @@ directories, 1,744 diagnostic programs (797 accept, 947 reject), 147 templates
 and 163 refusal sites in 10 areas. G-T4 retains unmeasured candidate/operator/
 variance interactions and broader optional-chain/non-null typing; K.4.5 to
 K.4.7 and the final workspace/coverage gate remain open.
+
+### K.4.5 Type operators and bounded recursive expansion
+
+Retain keyof, value-type queries, indexed access, conditional types, infer bindings,
+mapped modifiers/key remapping and template literal types as explicit type forms.
+Resolve named instantiations through one bounded expansion path, preserving naked
+parameter distribution and non-distributive tuple wrappers. Recursive aliases,
+conditional instantiations and template products share precise work/depth refusals.
+Declaration emission retains the operator syntax and imports; runtime code gains
+no type-only behavior or authority. Positive and negative controls cover each
+operator, generic combinations and recursion; three runtime/declaration witnesses
+compare Node output and every emitted declaration against TypeScript 5.9.3.
+Commit the public failing replay before changing production, then run K.0 and
+regenerate G-T3 and refusal evidence before completing the leaf.
+
+### K.4.5 type-operator failing replay — 2026-10-08
+
+The pinned TypeScript 5.9.3 corpus contains 78 programs (37 accept, 41 reject)
+and three runtime/declaration witnesses. The public Linux replay reports 68
+checker/primary-diagnostic differences and two runtime/declaration compilation
+failures on mapped and template-literal syntax. The indexed-access witness,
+fixture completeness and pinned recorder pass. The four-test replay finishes
+with two passing and two failing tests in 13.22 seconds. Evidence:
+`/private/tmp/blueice-k14-linux/blueice-k45-red.log`.
+
+The shared diagnostic corpus is regenerated to 1,822 programs (834 accept,
+988 reject) and 152 templates. This baseline retains exact codes, UTF-16 spans,
+messages and related records without changing production source. K.4.5 remains
+unchecked; operator parsing, bounded expansion, assignment and declaration
+preservation will be implemented against this committed replay.

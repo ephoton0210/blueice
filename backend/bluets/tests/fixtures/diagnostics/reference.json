@@ -115,6 +115,10 @@
       "message": "'{0}' accepts too few arguments to be used as a decorator here. Did you mean to call it first and write '@{0}()'?"
     },
     {
+      "code": 1338,
+      "message": "'infer' declarations are only permitted in the 'extends' clause of a conditional type."
+    },
+    {
       "code": 1361,
       "message": "'{0}' cannot be used as a value because it was imported using 'import type'."
     },
@@ -169,6 +173,10 @@
     {
       "code": 2351,
       "message": "This expression is not constructable."
+    },
+    {
+      "code": 2353,
+      "message": "Object literal may only specify known properties, and '{0}' does not exist in type '{1}'."
     },
     {
       "code": 2355,
@@ -287,6 +295,10 @@
       "message": "Variable '{0}' is used before being assigned."
     },
     {
+      "code": 2456,
+      "message": "Type alias '{0}' circularly references itself."
+    },
+    {
       "code": 2459,
       "message": "Module '{0}' declares '{1}' locally, but it is not exported."
     },
@@ -301,6 +313,10 @@
     {
       "code": 2476,
       "message": "A const enum member can only be accessed using a string literal."
+    },
+    {
+      "code": 2493,
+      "message": "Tuple type '{0}' of length '{1}' has no element at index '{2}'."
     },
     {
       "code": 2506,
@@ -477,6 +493,10 @@
     {
       "code": 2808,
       "message": "A get accessor must be at least as accessible as the setter"
+    },
+    {
+      "code": 2820,
+      "message": "Type '{0}' is not assignable to type '{1}'. Did you mean '{2}'?"
     },
     {
       "code": 2874,
@@ -51690,6 +51710,2580 @@
           "length": 5,
           "line": 7,
           "column": 89
+        }
+      ]
+    },
+    {
+      "id": "operators:toper-conditional-distribution/main.ts",
+      "matrix": "operators",
+      "entry": "toper-conditional-distribution/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/toper-conditional-distribution/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "operators:toper-conditional-distribution-error/main.ts",
+      "matrix": "operators",
+      "entry": "toper-conditional-distribution-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/toper-conditional-distribution-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type '1' is not assignable to type '\"a\"'.",
+        "file": "typescript_oracle/toper-conditional-distribution-error/main.ts",
+        "start": 264,
+        "length": 5,
+        "line": 5,
+        "column": 61
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type '1' is not assignable to type '\"a\"'.",
+          "file": "typescript_oracle/toper-conditional-distribution-error/main.ts",
+          "start": 264,
+          "length": 5,
+          "line": 5,
+          "column": 61
+        }
+      ]
+    },
+    {
+      "id": "operators:toper-conditional-false/main.ts",
+      "matrix": "operators",
+      "entry": "toper-conditional-false/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/toper-conditional-false/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "operators:toper-conditional-false-error/main.ts",
+      "matrix": "operators",
+      "entry": "toper-conditional-false-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/toper-conditional-false-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'number' is not assignable to type 'boolean'.",
+        "file": "typescript_oracle/toper-conditional-false-error/main.ts",
+        "start": 271,
+        "length": 5,
+        "line": 5,
+        "column": 68
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'number' is not assignable to type 'boolean'.",
+          "file": "typescript_oracle/toper-conditional-false-error/main.ts",
+          "start": 271,
+          "length": 5,
+          "line": 5,
+          "column": 68
+        }
+      ]
+    },
+    {
+      "id": "operators:toper-conditional-never-error/main.ts",
+      "matrix": "operators",
+      "entry": "toper-conditional-never-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/toper-conditional-never-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type '1' is not assignable to type 'never'.",
+        "file": "typescript_oracle/toper-conditional-never-error/main.ts",
+        "start": 271,
+        "length": 5,
+        "line": 5,
+        "column": 68
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type '1' is not assignable to type 'never'.",
+          "file": "typescript_oracle/toper-conditional-never-error/main.ts",
+          "start": 271,
+          "length": 5,
+          "line": 5,
+          "column": 68
+        }
+      ]
+    },
+    {
+      "id": "operators:toper-conditional-nondistribution/main.ts",
+      "matrix": "operators",
+      "entry": "toper-conditional-nondistribution/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/toper-conditional-nondistribution/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "operators:toper-conditional-nondistribution-error/main.ts",
+      "matrix": "operators",
+      "entry": "toper-conditional-nondistribution-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/toper-conditional-nondistribution-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'number' is not assignable to type 'boolean'.",
+        "file": "typescript_oracle/toper-conditional-nondistribution-error/main.ts",
+        "start": 275,
+        "length": 5,
+        "line": 5,
+        "column": 72
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'number' is not assignable to type 'boolean'.",
+          "file": "typescript_oracle/toper-conditional-nondistribution-error/main.ts",
+          "start": 275,
+          "length": 5,
+          "line": 5,
+          "column": 72
+        }
+      ]
+    },
+    {
+      "id": "operators:toper-conditional-true/main.ts",
+      "matrix": "operators",
+      "entry": "toper-conditional-true/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/toper-conditional-true/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "operators:toper-conditional-true-error/main.ts",
+      "matrix": "operators",
+      "entry": "toper-conditional-true-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/toper-conditional-true-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'boolean' is not assignable to type 'number'.",
+        "file": "typescript_oracle/toper-conditional-true-error/main.ts",
+        "start": 271,
+        "length": 5,
+        "line": 5,
+        "column": 68
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'boolean' is not assignable to type 'number'.",
+          "file": "typescript_oracle/toper-conditional-true-error/main.ts",
+          "start": 271,
+          "length": 5,
+          "line": 5,
+          "column": 68
+        }
+      ]
+    },
+    {
+      "id": "operators:toper-indexed-array/main.ts",
+      "matrix": "operators",
+      "entry": "toper-indexed-array/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/toper-indexed-array/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "operators:toper-indexed-array-error/main.ts",
+      "matrix": "operators",
+      "entry": "toper-indexed-array-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/toper-indexed-array-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'number' is not assignable to type 'string'.",
+        "file": "typescript_oracle/toper-indexed-array-error/main.ts",
+        "start": 248,
+        "length": 5,
+        "line": 5,
+        "column": 45
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "file": "typescript_oracle/toper-indexed-array-error/main.ts",
+          "start": 248,
+          "length": 5,
+          "line": 5,
+          "column": 45
+        }
+      ]
+    },
+    {
+      "id": "operators:toper-indexed-missing-error/main.ts",
+      "matrix": "operators",
+      "entry": "toper-indexed-missing-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/toper-indexed-missing-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2339,
+        "category": "error",
+        "message": "Property 'missing' does not exist on type '{ name: string; }'.",
+        "file": "typescript_oracle/toper-indexed-missing-error/main.ts",
+        "start": 232,
+        "length": 9,
+        "line": 5,
+        "column": 29
+      },
+      "diagnostics": [
+        {
+          "code": 2339,
+          "category": "error",
+          "message": "Property 'missing' does not exist on type '{ name: string; }'.",
+          "file": "typescript_oracle/toper-indexed-missing-error/main.ts",
+          "start": 232,
+          "length": 9,
+          "line": 5,
+          "column": 29
+        }
+      ]
+    },
+    {
+      "id": "operators:toper-indexed-record/main.ts",
+      "matrix": "operators",
+      "entry": "toper-indexed-record/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/toper-indexed-record/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "operators:toper-indexed-record-error/main.ts",
+      "matrix": "operators",
+      "entry": "toper-indexed-record-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/toper-indexed-record-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'number' is not assignable to type 'string'.",
+        "file": "typescript_oracle/toper-indexed-record-error/main.ts",
+        "start": 269,
+        "length": 5,
+        "line": 5,
+        "column": 66
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "file": "typescript_oracle/toper-indexed-record-error/main.ts",
+          "start": 269,
+          "length": 5,
+          "line": 5,
+          "column": 66
+        }
+      ]
+    },
+    {
+      "id": "operators:toper-indexed-tuple/main.ts",
+      "matrix": "operators",
+      "entry": "toper-indexed-tuple/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/toper-indexed-tuple/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "operators:toper-indexed-tuple-bounds-error/main.ts",
+      "matrix": "operators",
+      "entry": "toper-indexed-tuple-bounds-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/toper-indexed-tuple-bounds-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2493,
+        "category": "error",
+        "message": "Tuple type '[string, number]' of length '2' has no element at index '2'.",
+        "file": "typescript_oracle/toper-indexed-tuple-bounds-error/main.ts",
+        "start": 234,
+        "length": 1,
+        "line": 5,
+        "column": 31
+      },
+      "diagnostics": [
+        {
+          "code": 2493,
+          "category": "error",
+          "message": "Tuple type '[string, number]' of length '2' has no element at index '2'.",
+          "file": "typescript_oracle/toper-indexed-tuple-bounds-error/main.ts",
+          "start": 234,
+          "length": 1,
+          "line": 5,
+          "column": 31
+        },
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type '1' is not assignable to type 'undefined'.",
+          "file": "typescript_oracle/toper-indexed-tuple-bounds-error/main.ts",
+          "start": 251,
+          "length": 5,
+          "line": 5,
+          "column": 48
+        }
+      ]
+    },
+    {
+      "id": "operators:toper-indexed-tuple-error/main.ts",
+      "matrix": "operators",
+      "entry": "toper-indexed-tuple-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/toper-indexed-tuple-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'string' is not assignable to type 'number'.",
+        "file": "typescript_oracle/toper-indexed-tuple-error/main.ts",
+        "start": 251,
+        "length": 5,
+        "line": 5,
+        "column": 48
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "file": "typescript_oracle/toper-indexed-tuple-error/main.ts",
+          "start": 251,
+          "length": 5,
+          "line": 5,
+          "column": 48
+        }
+      ]
+    },
+    {
+      "id": "operators:toper-indexed-union-key/main.ts",
+      "matrix": "operators",
+      "entry": "toper-indexed-union-key/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/toper-indexed-union-key/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "operators:toper-indexed-union-key-error/main.ts",
+      "matrix": "operators",
+      "entry": "toper-indexed-union-key-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/toper-indexed-union-key-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'boolean' is not assignable to type 'Value'.",
+        "file": "typescript_oracle/toper-indexed-union-key-error/main.ts",
+        "start": 279,
+        "length": 5,
+        "line": 5,
+        "column": 76
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'boolean' is not assignable to type 'Value'.",
+          "file": "typescript_oracle/toper-indexed-union-key-error/main.ts",
+          "start": 279,
+          "length": 5,
+          "line": 5,
+          "column": 76
+        }
+      ]
+    },
+    {
+      "id": "operators:toper-infer-array/main.ts",
+      "matrix": "operators",
+      "entry": "toper-infer-array/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/toper-infer-array/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "operators:toper-infer-array-error/main.ts",
+      "matrix": "operators",
+      "entry": "toper-infer-array-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/toper-infer-array-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'number' is not assignable to type 'string'.",
+        "file": "typescript_oracle/toper-infer-array-error/main.ts",
+        "start": 270,
+        "length": 5,
+        "line": 5,
+        "column": 67
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "file": "typescript_oracle/toper-infer-array-error/main.ts",
+          "start": 270,
+          "length": 5,
+          "line": 5,
+          "column": 67
+        }
+      ]
+    },
+    {
+      "id": "operators:toper-infer-position-error/main.ts",
+      "matrix": "operators",
+      "entry": "toper-infer-position-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/toper-infer-position-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 1338,
+        "category": "error",
+        "message": "'infer' declarations are only permitted in the 'extends' clause of a conditional type.",
+        "file": "typescript_oracle/toper-infer-position-error/main.ts",
+        "start": 219,
+        "length": 7,
+        "line": 5,
+        "column": 16
+      },
+      "diagnostics": [
+        {
+          "code": 1338,
+          "category": "error",
+          "message": "'infer' declarations are only permitted in the 'extends' clause of a conditional type.",
+          "file": "typescript_oracle/toper-infer-position-error/main.ts",
+          "start": 219,
+          "length": 7,
+          "line": 5,
+          "column": 16
+        },
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'number' is not assignable to type 'T'.\n  'T' could be instantiated with an arbitrary type which could be unrelated to 'number'.",
+          "file": "typescript_oracle/toper-infer-position-error/main.ts",
+          "start": 241,
+          "length": 5,
+          "line": 5,
+          "column": 38
+        }
+      ]
+    },
+    {
+      "id": "operators:toper-infer-record/main.ts",
+      "matrix": "operators",
+      "entry": "toper-infer-record/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/toper-infer-record/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "operators:toper-infer-record-error/main.ts",
+      "matrix": "operators",
+      "entry": "toper-infer-record-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/toper-infer-record-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'string' is not assignable to type 'number'.",
+        "file": "typescript_oracle/toper-infer-record-error/main.ts",
+        "start": 271,
+        "length": 5,
+        "line": 5,
+        "column": 68
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "file": "typescript_oracle/toper-infer-record-error/main.ts",
+          "start": 271,
+          "length": 5,
+          "line": 5,
+          "column": 68
+        }
+      ]
+    },
+    {
+      "id": "operators:toper-infer-return/main.ts",
+      "matrix": "operators",
+      "entry": "toper-infer-return/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/toper-infer-return/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "operators:toper-infer-return-error/main.ts",
+      "matrix": "operators",
+      "entry": "toper-infer-return-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/toper-infer-return-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'number' is not assignable to type 'string'.",
+        "file": "typescript_oracle/toper-infer-return-error/main.ts",
+        "start": 285,
+        "length": 5,
+        "line": 5,
+        "column": 82
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "file": "typescript_oracle/toper-infer-return-error/main.ts",
+          "start": 285,
+          "length": 5,
+          "line": 5,
+          "column": 82
+        }
+      ]
+    },
+    {
+      "id": "operators:toper-infer-tuple/main.ts",
+      "matrix": "operators",
+      "entry": "toper-infer-tuple/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/toper-infer-tuple/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "operators:toper-infer-tuple-error/main.ts",
+      "matrix": "operators",
+      "entry": "toper-infer-tuple-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/toper-infer-tuple-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'number' is not assignable to type 'string'.",
+        "file": "typescript_oracle/toper-infer-tuple-error/main.ts",
+        "start": 279,
+        "length": 5,
+        "line": 5,
+        "column": 76
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "file": "typescript_oracle/toper-infer-tuple-error/main.ts",
+          "start": 279,
+          "length": 5,
+          "line": 5,
+          "column": 76
+        }
+      ]
+    },
+    {
+      "id": "operators:toper-keyof-any/main.ts",
+      "matrix": "operators",
+      "entry": "toper-keyof-any/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/toper-keyof-any/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "operators:toper-keyof-array/main.ts",
+      "matrix": "operators",
+      "entry": "toper-keyof-array/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/toper-keyof-array/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "operators:toper-keyof-array-error/main.ts",
+      "matrix": "operators",
+      "entry": "toper-keyof-array-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/toper-keyof-array-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type '\"missing\"' is not assignable to type 'keyof number[]'.",
+        "file": "typescript_oracle/toper-keyof-array-error/main.ts",
+        "start": 245,
+        "length": 5,
+        "line": 5,
+        "column": 42
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type '\"missing\"' is not assignable to type 'keyof number[]'.",
+          "file": "typescript_oracle/toper-keyof-array-error/main.ts",
+          "start": 245,
+          "length": 5,
+          "line": 5,
+          "column": 42
+        }
+      ]
+    },
+    {
+      "id": "operators:toper-keyof-intersection/main.ts",
+      "matrix": "operators",
+      "entry": "toper-keyof-intersection/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/toper-keyof-intersection/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "operators:toper-keyof-intersection-error/main.ts",
+      "matrix": "operators",
+      "entry": "toper-keyof-intersection-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/toper-keyof-intersection-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type '\"missing\"' is not assignable to type '\"a\" | \"b\"'.",
+        "file": "typescript_oracle/toper-keyof-intersection-error/main.ts",
+        "start": 264,
+        "length": 5,
+        "line": 5,
+        "column": 61
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type '\"missing\"' is not assignable to type '\"a\" | \"b\"'.",
+          "file": "typescript_oracle/toper-keyof-intersection-error/main.ts",
+          "start": 264,
+          "length": 5,
+          "line": 5,
+          "column": 61
+        }
+      ]
+    },
+    {
+      "id": "operators:toper-keyof-number-key/main.ts",
+      "matrix": "operators",
+      "entry": "toper-keyof-number-key/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/toper-keyof-number-key/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "operators:toper-keyof-number-key-error/main.ts",
+      "matrix": "operators",
+      "entry": "toper-keyof-number-key-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/toper-keyof-number-key-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type '\"0\"' is not assignable to type '0 | \"name\"'.",
+        "file": "typescript_oracle/toper-keyof-number-key-error/main.ts",
+        "start": 262,
+        "length": 5,
+        "line": 5,
+        "column": 59
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type '\"0\"' is not assignable to type '0 | \"name\"'.",
+          "file": "typescript_oracle/toper-keyof-number-key-error/main.ts",
+          "start": 262,
+          "length": 5,
+          "line": 5,
+          "column": 59
+        }
+      ]
+    },
+    {
+      "id": "operators:toper-keyof-record/main.ts",
+      "matrix": "operators",
+      "entry": "toper-keyof-record/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/toper-keyof-record/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "operators:toper-keyof-record-error/main.ts",
+      "matrix": "operators",
+      "entry": "toper-keyof-record-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/toper-keyof-record-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type '\"missing\"' is not assignable to type '\"name\" | \"count\"'.",
+        "file": "typescript_oracle/toper-keyof-record-error/main.ts",
+        "start": 266,
+        "length": 5,
+        "line": 5,
+        "column": 63
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type '\"missing\"' is not assignable to type '\"name\" | \"count\"'.",
+          "file": "typescript_oracle/toper-keyof-record-error/main.ts",
+          "start": 266,
+          "length": 5,
+          "line": 5,
+          "column": 63
+        }
+      ]
+    },
+    {
+      "id": "operators:toper-keyof-union/main.ts",
+      "matrix": "operators",
+      "entry": "toper-keyof-union/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/toper-keyof-union/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "operators:toper-keyof-union-error/main.ts",
+      "matrix": "operators",
+      "entry": "toper-keyof-union-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/toper-keyof-union-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type '\"a\"' is not assignable to type '\"shared\"'.",
+        "file": "typescript_oracle/toper-keyof-union-error/main.ts",
+        "start": 297,
+        "length": 5,
+        "line": 5,
+        "column": 94
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type '\"a\"' is not assignable to type '\"shared\"'.",
+          "file": "typescript_oracle/toper-keyof-union-error/main.ts",
+          "start": 297,
+          "length": 5,
+          "line": 5,
+          "column": 94
+        }
+      ]
+    },
+    {
+      "id": "operators:toper-keyof-unknown-error/main.ts",
+      "matrix": "operators",
+      "entry": "toper-keyof-unknown-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/toper-keyof-unknown-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type '\"anything\"' is not assignable to type 'never'.",
+        "file": "typescript_oracle/toper-keyof-unknown-error/main.ts",
+        "start": 244,
+        "length": 5,
+        "line": 5,
+        "column": 41
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type '\"anything\"' is not assignable to type 'never'.",
+          "file": "typescript_oracle/toper-keyof-unknown-error/main.ts",
+          "start": 244,
+          "length": 5,
+          "line": 5,
+          "column": 41
+        }
+      ]
+    },
+    {
+      "id": "operators:toper-mapped-copy/main.ts",
+      "matrix": "operators",
+      "entry": "toper-mapped-copy/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/toper-mapped-copy/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "operators:toper-mapped-copy-error/main.ts",
+      "matrix": "operators",
+      "entry": "toper-mapped-copy-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/toper-mapped-copy-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'number' is not assignable to type 'string'.",
+        "file": "typescript_oracle/toper-mapped-copy-error/main.ts",
+        "start": 287,
+        "length": 4,
+        "line": 5,
+        "column": 84,
+        "related": [
+          {
+            "code": 6500,
+            "category": "message",
+            "message": "The expected type comes from property 'name' which is declared here on type 'Copy<{ name: string; }>'",
+            "file": "typescript_oracle/toper-mapped-copy-error/main.ts",
+            "start": 269,
+            "length": 4,
+            "line": 5,
+            "column": 66
+          }
+        ]
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "file": "typescript_oracle/toper-mapped-copy-error/main.ts",
+          "start": 287,
+          "length": 4,
+          "line": 5,
+          "column": 84,
+          "related": [
+            {
+              "code": 6500,
+              "category": "message",
+              "message": "The expected type comes from property 'name' which is declared here on type 'Copy<{ name: string; }>'",
+              "file": "typescript_oracle/toper-mapped-copy-error/main.ts",
+              "start": 269,
+              "length": 4,
+              "line": 5,
+              "column": 66
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "operators:toper-mapped-filter/main.ts",
+      "matrix": "operators",
+      "entry": "toper-mapped-filter/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/toper-mapped-filter/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "operators:toper-mapped-filter-error/main.ts",
+      "matrix": "operators",
+      "entry": "toper-mapped-filter-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/toper-mapped-filter-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2353,
+        "category": "error",
+        "message": "Object literal may only specify known properties, and 'count' does not exist in type 'OnlyName<{ name: string; count: number; }>'.",
+        "file": "typescript_oracle/toper-mapped-filter-error/main.ts",
+        "start": 342,
+        "length": 5,
+        "line": 5,
+        "column": 139
+      },
+      "diagnostics": [
+        {
+          "code": 2353,
+          "category": "error",
+          "message": "Object literal may only specify known properties, and 'count' does not exist in type 'OnlyName<{ name: string; count: number; }>'.",
+          "file": "typescript_oracle/toper-mapped-filter-error/main.ts",
+          "start": 342,
+          "length": 5,
+          "line": 5,
+          "column": 139
+        }
+      ]
+    },
+    {
+      "id": "operators:toper-mapped-invalid-key-error/main.ts",
+      "matrix": "operators",
+      "entry": "toper-mapped-invalid-key-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/toper-mapped-invalid-key-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'boolean' is not assignable to type 'string | number | symbol'.",
+        "file": "typescript_oracle/toper-mapped-invalid-key-error/main.ts",
+        "start": 223,
+        "length": 7,
+        "line": 5,
+        "column": 20
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'boolean' is not assignable to type 'string | number | symbol'.",
+          "file": "typescript_oracle/toper-mapped-invalid-key-error/main.ts",
+          "start": 223,
+          "length": 7,
+          "line": 5,
+          "column": 20
+        }
+      ]
+    },
+    {
+      "id": "operators:toper-mapped-literal-keys/main.ts",
+      "matrix": "operators",
+      "entry": "toper-mapped-literal-keys/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/toper-mapped-literal-keys/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "operators:toper-mapped-literal-keys-error/main.ts",
+      "matrix": "operators",
+      "entry": "toper-mapped-literal-keys-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/toper-mapped-literal-keys-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2741,
+        "category": "error",
+        "message": "Property 'b' is missing in type '{ a: number; }' but required in type 'Copy'.",
+        "file": "typescript_oracle/toper-mapped-literal-keys-error/main.ts",
+        "start": 257,
+        "length": 5,
+        "line": 5,
+        "column": 54
+      },
+      "diagnostics": [
+        {
+          "code": 2741,
+          "category": "error",
+          "message": "Property 'b' is missing in type '{ a: number; }' but required in type 'Copy'.",
+          "file": "typescript_oracle/toper-mapped-literal-keys-error/main.ts",
+          "start": 257,
+          "length": 5,
+          "line": 5,
+          "column": 54
+        }
+      ]
+    },
+    {
+      "id": "operators:toper-mapped-mutable/main.ts",
+      "matrix": "operators",
+      "entry": "toper-mapped-mutable/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/toper-mapped-mutable/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "operators:toper-mapped-optional/main.ts",
+      "matrix": "operators",
+      "entry": "toper-mapped-optional/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/toper-mapped-optional/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "operators:toper-mapped-optional-error/main.ts",
+      "matrix": "operators",
+      "entry": "toper-mapped-optional-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/toper-mapped-optional-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'number' is not assignable to type 'string'.",
+        "file": "typescript_oracle/toper-mapped-optional-error/main.ts",
+        "start": 290,
+        "length": 4,
+        "line": 5,
+        "column": 87,
+        "related": [
+          {
+            "code": 6500,
+            "category": "message",
+            "message": "The expected type comes from property 'name' which is declared here on type 'Maybe<{ name: string; }>'",
+            "file": "typescript_oracle/toper-mapped-optional-error/main.ts",
+            "start": 272,
+            "length": 4,
+            "line": 5,
+            "column": 69
+          }
+        ]
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "file": "typescript_oracle/toper-mapped-optional-error/main.ts",
+          "start": 290,
+          "length": 4,
+          "line": 5,
+          "column": 87,
+          "related": [
+            {
+              "code": 6500,
+              "category": "message",
+              "message": "The expected type comes from property 'name' which is declared here on type 'Maybe<{ name: string; }>'",
+              "file": "typescript_oracle/toper-mapped-optional-error/main.ts",
+              "start": 272,
+              "length": 4,
+              "line": 5,
+              "column": 69
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "operators:toper-mapped-readonly-error/main.ts",
+      "matrix": "operators",
+      "entry": "toper-mapped-readonly-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/toper-mapped-readonly-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2540,
+        "category": "error",
+        "message": "Cannot assign to 'name' because it is a read-only property.",
+        "file": "typescript_oracle/toper-mapped-readonly-error/main.ts",
+        "start": 319,
+        "length": 4,
+        "line": 5,
+        "column": 116
+      },
+      "diagnostics": [
+        {
+          "code": 2540,
+          "category": "error",
+          "message": "Cannot assign to 'name' because it is a read-only property.",
+          "file": "typescript_oracle/toper-mapped-readonly-error/main.ts",
+          "start": 319,
+          "length": 4,
+          "line": 5,
+          "column": 116
+        }
+      ]
+    },
+    {
+      "id": "operators:toper-mapped-remap/main.ts",
+      "matrix": "operators",
+      "entry": "toper-mapped-remap/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/toper-mapped-remap/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "operators:toper-mapped-remap-error/main.ts",
+      "matrix": "operators",
+      "entry": "toper-mapped-remap-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/toper-mapped-remap-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2353,
+        "category": "error",
+        "message": "Object literal may only specify known properties, and 'name' does not exist in type 'Renamed<{ name: string; }>'.",
+        "file": "typescript_oracle/toper-mapped-remap-error/main.ts",
+        "start": 316,
+        "length": 4,
+        "line": 5,
+        "column": 113
+      },
+      "diagnostics": [
+        {
+          "code": 2353,
+          "category": "error",
+          "message": "Object literal may only specify known properties, and 'name' does not exist in type 'Renamed<{ name: string; }>'.",
+          "file": "typescript_oracle/toper-mapped-remap-error/main.ts",
+          "start": 316,
+          "length": 4,
+          "line": 5,
+          "column": 113
+        }
+      ]
+    },
+    {
+      "id": "operators:toper-mapped-required/main.ts",
+      "matrix": "operators",
+      "entry": "toper-mapped-required/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/toper-mapped-required/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "operators:toper-mapped-required-error/main.ts",
+      "matrix": "operators",
+      "entry": "toper-mapped-required-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/toper-mapped-required-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2741,
+        "category": "error",
+        "message": "Property 'name' is missing in type '{}' but required in type 'Required<{ name?: string | undefined; }>'.",
+        "file": "typescript_oracle/toper-mapped-required-error/main.ts",
+        "start": 262,
+        "length": 5,
+        "line": 5,
+        "column": 59,
+        "related": [
+          {
+            "code": 2728,
+            "category": "message",
+            "message": "'name' is declared here.",
+            "file": "typescript_oracle/toper-mapped-required-error/main.ts",
+            "start": 279,
+            "length": 4,
+            "line": 5,
+            "column": 76
+          }
+        ]
+      },
+      "diagnostics": [
+        {
+          "code": 2741,
+          "category": "error",
+          "message": "Property 'name' is missing in type '{}' but required in type 'Required<{ name?: string | undefined; }>'.",
+          "file": "typescript_oracle/toper-mapped-required-error/main.ts",
+          "start": 262,
+          "length": 5,
+          "line": 5,
+          "column": 59,
+          "related": [
+            {
+              "code": 2728,
+              "category": "message",
+              "message": "'name' is declared here.",
+              "file": "typescript_oracle/toper-mapped-required-error/main.ts",
+              "start": 279,
+              "length": 4,
+              "line": 5,
+              "column": 76
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "operators:toper-query-function/main.ts",
+      "matrix": "operators",
+      "entry": "toper-query-function/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/toper-query-function/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "operators:toper-query-function-error/main.ts",
+      "matrix": "operators",
+      "entry": "toper-query-function-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/toper-query-function-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type '(value: number) => number' is not assignable to type '(value: number) => string'.\n  Type 'number' is not assignable to type 'string'.",
+        "file": "typescript_oracle/toper-query-function-error/main.ts",
+        "start": 296,
+        "length": 5,
+        "line": 5,
+        "column": 93
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type '(value: number) => number' is not assignable to type '(value: number) => string'.\n  Type 'number' is not assignable to type 'string'.",
+          "file": "typescript_oracle/toper-query-function-error/main.ts",
+          "start": 296,
+          "length": 5,
+          "line": 5,
+          "column": 93
+        }
+      ]
+    },
+    {
+      "id": "operators:toper-query-identifier/main.ts",
+      "matrix": "operators",
+      "entry": "toper-query-identifier/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/toper-query-identifier/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "operators:toper-query-identifier-error/main.ts",
+      "matrix": "operators",
+      "entry": "toper-query-identifier-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/toper-query-identifier-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'number' is not assignable to type 'string'.",
+        "file": "typescript_oracle/toper-query-identifier-error/main.ts",
+        "start": 303,
+        "length": 4,
+        "line": 5,
+        "column": 100,
+        "related": [
+          {
+            "code": 6500,
+            "category": "message",
+            "message": "The expected type comes from property 'name' which is declared here on type '{ name: string; }'",
+            "file": "typescript_oracle/toper-query-identifier-error/main.ts",
+            "start": 219,
+            "length": 4,
+            "line": 5,
+            "column": 16
+          }
+        ]
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "file": "typescript_oracle/toper-query-identifier-error/main.ts",
+          "start": 303,
+          "length": 4,
+          "line": 5,
+          "column": 100,
+          "related": [
+            {
+              "code": 6500,
+              "category": "message",
+              "message": "The expected type comes from property 'name' which is declared here on type '{ name: string; }'",
+              "file": "typescript_oracle/toper-query-identifier-error/main.ts",
+              "start": 219,
+              "length": 4,
+              "line": 5,
+              "column": 16
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "operators:toper-query-missing-error/main.ts",
+      "matrix": "operators",
+      "entry": "toper-query-missing-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/toper-query-missing-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2304,
+        "category": "error",
+        "message": "Cannot find name 'missing'.",
+        "file": "typescript_oracle/toper-query-missing-error/main.ts",
+        "start": 223,
+        "length": 7,
+        "line": 5,
+        "column": 20
+      },
+      "diagnostics": [
+        {
+          "code": 2304,
+          "category": "error",
+          "message": "Cannot find name 'missing'.",
+          "file": "typescript_oracle/toper-query-missing-error/main.ts",
+          "start": 223,
+          "length": 7,
+          "line": 5,
+          "column": 20
+        }
+      ]
+    },
+    {
+      "id": "operators:toper-query-property/main.ts",
+      "matrix": "operators",
+      "entry": "toper-query-property/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/toper-query-property/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "operators:toper-query-property-error/main.ts",
+      "matrix": "operators",
+      "entry": "toper-query-property-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/toper-query-property-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'number' is not assignable to type 'string'.",
+        "file": "typescript_oracle/toper-query-property-error/main.ts",
+        "start": 293,
+        "length": 5,
+        "line": 5,
+        "column": 90
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "file": "typescript_oracle/toper-query-property-error/main.ts",
+          "start": 293,
+          "length": 5,
+          "line": 5,
+          "column": 90
+        }
+      ]
+    },
+    {
+      "id": "operators:toper-recursive-alias/main.ts",
+      "matrix": "operators",
+      "entry": "toper-recursive-alias/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/toper-recursive-alias/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "operators:toper-recursive-alias-error/main.ts",
+      "matrix": "operators",
+      "entry": "toper-recursive-alias-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/toper-recursive-alias-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'boolean' is not assignable to type 'Json'.",
+        "file": "typescript_oracle/toper-recursive-alias-error/main.ts",
+        "start": 276,
+        "length": 4,
+        "line": 5,
+        "column": 73
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'boolean' is not assignable to type 'Json'.",
+          "file": "typescript_oracle/toper-recursive-alias-error/main.ts",
+          "start": 276,
+          "length": 4,
+          "line": 5,
+          "column": 73
+        }
+      ]
+    },
+    {
+      "id": "operators:toper-recursive-conditional/main.ts",
+      "matrix": "operators",
+      "entry": "toper-recursive-conditional/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/toper-recursive-conditional/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "operators:toper-recursive-conditional-error/main.ts",
+      "matrix": "operators",
+      "entry": "toper-recursive-conditional-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/toper-recursive-conditional-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'number' is not assignable to type 'string'.",
+        "file": "typescript_oracle/toper-recursive-conditional-error/main.ts",
+        "start": 275,
+        "length": 5,
+        "line": 5,
+        "column": 72
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "file": "typescript_oracle/toper-recursive-conditional-error/main.ts",
+          "start": 275,
+          "length": 5,
+          "line": 5,
+          "column": 72
+        }
+      ]
+    },
+    {
+      "id": "operators:toper-recursive-cycle-error/main.ts",
+      "matrix": "operators",
+      "entry": "toper-recursive-cycle-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/toper-recursive-cycle-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2456,
+        "category": "error",
+        "message": "Type alias 'Loop' circularly references itself.",
+        "file": "typescript_oracle/toper-recursive-cycle-error/main.ts",
+        "start": 209,
+        "length": 4,
+        "line": 5,
+        "column": 6
+      },
+      "diagnostics": [
+        {
+          "code": 2456,
+          "category": "error",
+          "message": "Type alias 'Loop' circularly references itself.",
+          "file": "typescript_oracle/toper-recursive-cycle-error/main.ts",
+          "start": 209,
+          "length": 4,
+          "line": 5,
+          "column": 6
+        }
+      ]
+    },
+    {
+      "id": "operators:toper-runtime-indexed/main.ts",
+      "matrix": "operators",
+      "entry": "toper-runtime-indexed/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/toper-runtime-indexed/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "operators:toper-runtime-mapped/main.ts",
+      "matrix": "operators",
+      "entry": "toper-runtime-mapped/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/toper-runtime-mapped/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "operators:toper-runtime-template/main.ts",
+      "matrix": "operators",
+      "entry": "toper-runtime-template/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/toper-runtime-template/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "operators:toper-template-cross-product/main.ts",
+      "matrix": "operators",
+      "entry": "toper-template-cross-product/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/toper-template-cross-product/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "operators:toper-template-cross-product-error/main.ts",
+      "matrix": "operators",
+      "entry": "toper-template-cross-product-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/toper-template-cross-product-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type '\"b-3\"' is not assignable to type '\"a-2\" | \"a-1\" | \"b-2\" | \"b-1\"'.",
+        "file": "typescript_oracle/toper-template-cross-product-error/main.ts",
+        "start": 254,
+        "length": 5,
+        "line": 5,
+        "column": 51
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type '\"b-3\"' is not assignable to type '\"a-2\" | \"a-1\" | \"b-2\" | \"b-1\"'.",
+          "file": "typescript_oracle/toper-template-cross-product-error/main.ts",
+          "start": 254,
+          "length": 5,
+          "line": 5,
+          "column": 51
+        }
+      ]
+    },
+    {
+      "id": "operators:toper-template-infer/main.ts",
+      "matrix": "operators",
+      "entry": "toper-template-infer/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/toper-template-infer/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "operators:toper-template-infer-error/main.ts",
+      "matrix": "operators",
+      "entry": "toper-template-infer-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/toper-template-infer-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type '\"wrong\"' is not assignable to type '\"answer\"'.",
+        "file": "typescript_oracle/toper-template-infer-error/main.ts",
+        "start": 272,
+        "length": 5,
+        "line": 5,
+        "column": 69
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type '\"wrong\"' is not assignable to type '\"answer\"'.",
+          "file": "typescript_oracle/toper-template-infer-error/main.ts",
+          "start": 272,
+          "length": 5,
+          "line": 5,
+          "column": 69
+        }
+      ]
+    },
+    {
+      "id": "operators:toper-template-literal/main.ts",
+      "matrix": "operators",
+      "entry": "toper-template-literal/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/toper-template-literal/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "operators:toper-template-literal-error/main.ts",
+      "matrix": "operators",
+      "entry": "toper-template-literal-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/toper-template-literal-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2820,
+        "category": "error",
+        "message": "Type '\"tag-c\"' is not assignable to type '\"tag-a\" | \"tag-b\"'. Did you mean '\"tag-a\"'?",
+        "file": "typescript_oracle/toper-template-literal-error/main.ts",
+        "start": 251,
+        "length": 5,
+        "line": 5,
+        "column": 48
+      },
+      "diagnostics": [
+        {
+          "code": 2820,
+          "category": "error",
+          "message": "Type '\"tag-c\"' is not assignable to type '\"tag-a\" | \"tag-b\"'. Did you mean '\"tag-a\"'?",
+          "file": "typescript_oracle/toper-template-literal-error/main.ts",
+          "start": 251,
+          "length": 5,
+          "line": 5,
+          "column": 48
+        }
+      ]
+    },
+    {
+      "id": "operators:toper-template-number/main.ts",
+      "matrix": "operators",
+      "entry": "toper-template-number/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/toper-template-number/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "operators:toper-template-number-error/main.ts",
+      "matrix": "operators",
+      "entry": "toper-template-number-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/toper-template-number-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type '\"id-no\"' is not assignable to type '`id-${number}`'.",
+        "file": "typescript_oracle/toper-template-number-error/main.ts",
+        "start": 248,
+        "length": 5,
+        "line": 5,
+        "column": 45
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type '\"id-no\"' is not assignable to type '`id-${number}`'.",
+          "file": "typescript_oracle/toper-template-number-error/main.ts",
+          "start": 248,
+          "length": 5,
+          "line": 5,
+          "column": 45
         }
       ]
     },

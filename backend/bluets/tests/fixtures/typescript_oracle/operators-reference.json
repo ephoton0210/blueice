@@ -1,0 +1,931 @@
+{
+  "version": "5.9.3",
+  "cases": [
+    {
+      "entry": "toper-conditional-distribution/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "toper-conditional-distribution-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type '1' is not assignable to type '\"a\"'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 61,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "toper-conditional-false/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "toper-conditional-false-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type 'number' is not assignable to type 'boolean'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 68,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "toper-conditional-never-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type '1' is not assignable to type 'never'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 68,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "toper-conditional-nondistribution/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "toper-conditional-nondistribution-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type 'number' is not assignable to type 'boolean'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 72,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "toper-conditional-true/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "toper-conditional-true-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type 'boolean' is not assignable to type 'number'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 68,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "toper-indexed-array/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "toper-indexed-array-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type 'number' is not assignable to type 'string'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 45,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "toper-indexed-missing-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2339,
+        "message": "Property 'missing' does not exist on type '{ name: string; }'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 29,
+          "length": 9
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "toper-indexed-record/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "toper-indexed-record-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type 'number' is not assignable to type 'string'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 66,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "toper-indexed-tuple/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "toper-indexed-tuple-bounds-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2493,
+        "message": "Tuple type '[string, number]' of length '2' has no element at index '2'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 31,
+          "length": 1
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "toper-indexed-tuple-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type 'string' is not assignable to type 'number'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 48,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "toper-indexed-union-key/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "toper-indexed-union-key-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type 'boolean' is not assignable to type 'Value'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 76,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "toper-infer-array/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "toper-infer-array-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type 'number' is not assignable to type 'string'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 67,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "toper-infer-position-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 1338,
+        "message": "'infer' declarations are only permitted in the 'extends' clause of a conditional type.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 16,
+          "length": 7
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "toper-infer-record/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "toper-infer-record-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type 'string' is not assignable to type 'number'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 68,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "toper-infer-return/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "toper-infer-return-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type 'number' is not assignable to type 'string'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 82,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "toper-infer-tuple/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "toper-infer-tuple-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type 'number' is not assignable to type 'string'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 76,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "toper-keyof-any/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "toper-keyof-array/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "toper-keyof-array-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type '\"missing\"' is not assignable to type 'keyof number[]'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 42,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "toper-keyof-intersection/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "toper-keyof-intersection-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type '\"missing\"' is not assignable to type '\"a\" | \"b\"'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 61,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "toper-keyof-number-key/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "toper-keyof-number-key-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type '\"0\"' is not assignable to type '0 | \"name\"'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 59,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "toper-keyof-record/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "toper-keyof-record-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type '\"missing\"' is not assignable to type '\"name\" | \"count\"'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 63,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "toper-keyof-union/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "toper-keyof-union-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type '\"a\"' is not assignable to type '\"shared\"'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 94,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "toper-keyof-unknown-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type '\"anything\"' is not assignable to type 'never'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 41,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "toper-mapped-copy/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "toper-mapped-copy-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type 'number' is not assignable to type 'string'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 84,
+          "length": 4
+        },
+        "related": [
+          {
+            "code": 6500,
+            "message": "The expected type comes from property 'name' which is declared here on type 'Copy<{ name: string; }>'",
+            "module": "main.ts",
+            "position": {
+              "line": 5,
+              "column": 66,
+              "length": 4
+            },
+            "related": []
+          }
+        ]
+      }
+    },
+    {
+      "entry": "toper-mapped-filter/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "toper-mapped-filter-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2353,
+        "message": "Object literal may only specify known properties, and 'count' does not exist in type 'OnlyName<{ name: string; count: number; }>'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 139,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "toper-mapped-invalid-key-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type 'boolean' is not assignable to type 'string | number | symbol'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 20,
+          "length": 7
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "toper-mapped-literal-keys/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "toper-mapped-literal-keys-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2741,
+        "message": "Property 'b' is missing in type '{ a: number; }' but required in type 'Copy'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 54,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "toper-mapped-mutable/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "toper-mapped-optional/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "toper-mapped-optional-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type 'number' is not assignable to type 'string'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 87,
+          "length": 4
+        },
+        "related": [
+          {
+            "code": 6500,
+            "message": "The expected type comes from property 'name' which is declared here on type 'Maybe<{ name: string; }>'",
+            "module": "main.ts",
+            "position": {
+              "line": 5,
+              "column": 69,
+              "length": 4
+            },
+            "related": []
+          }
+        ]
+      }
+    },
+    {
+      "entry": "toper-mapped-readonly-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2540,
+        "message": "Cannot assign to 'name' because it is a read-only property.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 116,
+          "length": 4
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "toper-mapped-remap/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "toper-mapped-remap-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2353,
+        "message": "Object literal may only specify known properties, and 'name' does not exist in type 'Renamed<{ name: string; }>'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 113,
+          "length": 4
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "toper-mapped-required/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "toper-mapped-required-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2741,
+        "message": "Property 'name' is missing in type '{}' but required in type 'Required<{ name?: string | undefined; }>'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 59,
+          "length": 5
+        },
+        "related": [
+          {
+            "code": 2728,
+            "message": "'name' is declared here.",
+            "module": "main.ts",
+            "position": {
+              "line": 5,
+              "column": 76,
+              "length": 4
+            },
+            "related": []
+          }
+        ]
+      }
+    },
+    {
+      "entry": "toper-query-function/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "toper-query-function-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type '(value: number) => number' is not assignable to type '(value: number) => string'.\n  Type 'number' is not assignable to type 'string'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 93,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "toper-query-identifier/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "toper-query-identifier-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type 'number' is not assignable to type 'string'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 100,
+          "length": 4
+        },
+        "related": [
+          {
+            "code": 6500,
+            "message": "The expected type comes from property 'name' which is declared here on type '{ name: string; }'",
+            "module": "main.ts",
+            "position": {
+              "line": 5,
+              "column": 16,
+              "length": 4
+            },
+            "related": []
+          }
+        ]
+      }
+    },
+    {
+      "entry": "toper-query-missing-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2304,
+        "message": "Cannot find name 'missing'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 20,
+          "length": 7
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "toper-query-property/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "toper-query-property-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type 'number' is not assignable to type 'string'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 90,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "toper-recursive-alias/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "toper-recursive-alias-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type 'boolean' is not assignable to type 'Json'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 73,
+          "length": 4
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "toper-recursive-conditional/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "toper-recursive-conditional-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type 'number' is not assignable to type 'string'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 72,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "toper-recursive-cycle-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2456,
+        "message": "Type alias 'Loop' circularly references itself.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 6,
+          "length": 4
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "toper-runtime-indexed/main.ts",
+      "accepts": true,
+      "runtime": true,
+      "first": null
+    },
+    {
+      "entry": "toper-runtime-mapped/main.ts",
+      "accepts": true,
+      "runtime": true,
+      "first": null
+    },
+    {
+      "entry": "toper-runtime-template/main.ts",
+      "accepts": true,
+      "runtime": true,
+      "first": null
+    },
+    {
+      "entry": "toper-template-cross-product/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "toper-template-cross-product-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type '\"b-3\"' is not assignable to type '\"a-2\" | \"a-1\" | \"b-2\" | \"b-1\"'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 51,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "toper-template-infer/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "toper-template-infer-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type '\"wrong\"' is not assignable to type '\"answer\"'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 69,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "toper-template-literal/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "toper-template-literal-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2820,
+        "message": "Type '\"tag-c\"' is not assignable to type '\"tag-a\" | \"tag-b\"'. Did you mean '\"tag-a\"'?",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 48,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "toper-template-number/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "toper-template-number-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type '\"id-no\"' is not assignable to type '`id-${number}`'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 45,
+          "length": 5
+        },
+        "related": []
+      }
+    }
+  ]
+}
