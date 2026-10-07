@@ -1,0 +1,11 @@
+[
+  {
+    "name": "config-unknown",
+    "reason": "The existing configuration reader refuses unknown options before source compilation or publication. K.0.3 requires preserving this precise refusal; TypeScript continues and emits despite the configuration diagnostic.",
+    "btsCode": "BTS1000",
+    "rawMessage": "unknown or unsupported compiler option `unknownPresentationOption`",
+    "exit": 1,
+    "assets": [],
+    "runtime": null
+  }
+]

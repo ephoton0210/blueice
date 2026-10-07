@@ -4552,8 +4552,10 @@ source/related context, multiple diagnostics, CRLF, diagnostics summary fields,
 actual artifacts, Node execution and exit statuses. Numeric resource costs
 vary across implementations and runs, so their finite nonnegative values and
 units are checked instead of asserting TypeScript's counts or timings.
-The config-error formatting case uses `noEmitOnError` to preserve the existing
-fail-closed configuration boundary. The first public replay fails for both
+The config-error observation shows that TypeScript emits despite its unknown-option
+diagnostic even with `noEmitOnError`. BlueTSC preserves its existing configuration
+reader refusal under K.0.3; `presentation-policy-refusals.json` records this exact
+exit/artifact/runtime difference and the unchanged BTS reason. The first public replay fails for both
 rendered/related metadata and CLI presentation before implementation.
 
 The TODO's previous exit-code description was reversed. TypeScript 5.9.3's
@@ -4564,3 +4566,14 @@ statuses replace the mistaken description. The library compiler, registered
 project builds and strict-runtime publication retain their fail-closed rules;
 any native CLI error emission requires a separate bounded, explicit route.
 K.3.3 and the final M7 gate remain open.
+
+### K.3.3 Additional CLI presentation witnesses
+
+Seven further pinned CLI observations exercise tabs, supplementary Unicode,
+multiline expressions, pinned library related source context, multiple files
+and a retained failed-parser source. The catalog totals 22 cases; the public
+replay and reproducible actual TypeScript CLI recording are committed before
+fixing these additional presentation failures. Library installation prefixes
+are normalized to the existing `<typescript-lib>` diagnostic identity by
+verified canonical file identity in the oracle, without granting the compiler
+any library installation reads.

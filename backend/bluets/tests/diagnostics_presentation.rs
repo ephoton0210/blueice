@@ -36,6 +36,10 @@ fn artifacts(root: &Path, current: &Path, result: &mut Vec<String>) {
 
 #[test]
 fn cli_presentation_and_emission_match_pinned_observations() {
+    let refusals: Vec<Value> = serde_json::from_str(include_str!(
+        "fixtures/diagnostics/presentation-policy-refusals.json"
+    ))
+    .unwrap();
     let mut failures = Vec::new();
     for (index, row) in reference()["cases"].as_array().unwrap().iter().enumerate() {
         let root = std::env::temp_dir().join(format!(
@@ -45,12 +49,12 @@ fn cli_presentation_and_emission_match_pinned_observations() {
         let _ = fs::remove_dir_all(&root);
         fs::create_dir_all(&root).unwrap();
         fs::write(root.join("main.ts"), row["source"].as_str().unwrap()).unwrap();
+        for (name, source) in row["extraSources"].as_object().unwrap() {
+            fs::write(root.join(name), source.as_str().unwrap()).unwrap();
+        }
         fs::write(
             root.join("tsconfig.json"),
-            format!(
-                "{}\n",
-                serde_json::to_string_pretty(&row["config"]).unwrap()
-            ),
+            row["configText"].as_str().unwrap(),
         )
         .unwrap();
         let output = Command::new(env!("CARGO_BIN_EXE_bluetsc"))
@@ -117,7 +121,24 @@ fn cli_presentation_and_emission_match_pinned_observations() {
             Value::Null
         };
         let actual = json!({"exit":output.status.code(),"stdout":stdout,"stderr":String::from_utf8_lossy(&output.stderr),"summaryFields":fields,"assets":assets,"runtime":runtime});
-        let expected = json!({"exit":row["exit"],"stdout":row["stdout"],"stderr":row["stderr"],"summaryFields":row["summaryFields"],"assets":row["assets"],"runtime":row["runtime"]});
+        let mut expected = json!({"exit":row["exit"],"stdout":row["stdout"],"stderr":row["stderr"],"summaryFields":row["summaryFields"],"assets":row["assets"],"runtime":row["runtime"]});
+        if let Some(refusal) = refusals
+            .iter()
+            .find(|refusal| refusal["name"] == row["name"])
+        {
+            let report = Command::new(env!("CARGO_BIN_EXE_bluetsc"))
+                .current_dir(&root)
+                .args(["--project", ".", "--diagnostics-json"])
+                .output()
+                .unwrap();
+            let diagnostic: Value = serde_json::from_slice(&report.stderr).unwrap();
+            assert_eq!(diagnostic["btsCode"], refusal["btsCode"]);
+            assert_eq!(diagnostic["rawMessage"], refusal["rawMessage"]);
+            assert_eq!(diagnostic["typescript"]["code"], 5023);
+            for field in ["exit", "assets", "runtime"] {
+                expected[field] = refusal[field].clone();
+            }
+        }
         if actual != expected {
             failures.push(format!(
                 "{}: expected {expected}; observed {actual}",
@@ -128,6 +149,12 @@ fn cli_presentation_and_emission_match_pinned_observations() {
             fs::read_to_string(root.join("main.ts")).unwrap(),
             row["source"]
         );
+        for (name, source) in row["extraSources"].as_object().unwrap() {
+            assert_eq!(
+                fs::read_to_string(root.join(name)).unwrap(),
+                source.as_str().unwrap()
+            );
+        }
         fs::remove_dir_all(root).unwrap();
     }
     assert!(

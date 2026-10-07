@@ -9,6 +9,7 @@
     {
       "name": "valid-emit",
       "source": "export const value: number = 1;\nconsole.log(value);\n",
+      "extraSources": {},
       "config": {
         "compilerOptions": {
           "target": "es2022",
@@ -21,6 +22,7 @@
           "main.ts"
         ]
       },
+      "configText": "{\n  \"compilerOptions\": {\n    \"target\": \"es2022\",\n    \"module\": \"es2022\",\n    \"strict\": true,\n    \"outDir\": \"out\",\n    \"pretty\": false\n  },\n  \"files\": [\n    \"main.ts\"\n  ]\n}\n",
       "args": [
         "--project",
         "."
@@ -37,6 +39,7 @@
     {
       "name": "valid-noemit",
       "source": "export const value: number = 1;\nconsole.log(value);\n",
+      "extraSources": {},
       "config": {
         "compilerOptions": {
           "target": "es2022",
@@ -50,6 +53,7 @@
           "main.ts"
         ]
       },
+      "configText": "{\n  \"compilerOptions\": {\n    \"target\": \"es2022\",\n    \"module\": \"es2022\",\n    \"strict\": true,\n    \"outDir\": \"out\",\n    \"pretty\": false,\n    \"noEmit\": true\n  },\n  \"files\": [\n    \"main.ts\"\n  ]\n}\n",
       "args": [
         "--project",
         "."
@@ -64,6 +68,7 @@
     {
       "name": "error-emit",
       "source": "export const value: number = \"wrong\";\nconsole.log(value);\n",
+      "extraSources": {},
       "config": {
         "compilerOptions": {
           "target": "es2022",
@@ -76,6 +81,7 @@
           "main.ts"
         ]
       },
+      "configText": "{\n  \"compilerOptions\": {\n    \"target\": \"es2022\",\n    \"module\": \"es2022\",\n    \"strict\": true,\n    \"outDir\": \"out\",\n    \"pretty\": false\n  },\n  \"files\": [\n    \"main.ts\"\n  ]\n}\n",
       "args": [
         "--project",
         "."
@@ -92,6 +98,7 @@
     {
       "name": "error-noemit",
       "source": "export const value: number = \"wrong\";\nconsole.log(value);\n",
+      "extraSources": {},
       "config": {
         "compilerOptions": {
           "target": "es2022",
@@ -105,6 +112,7 @@
           "main.ts"
         ]
       },
+      "configText": "{\n  \"compilerOptions\": {\n    \"target\": \"es2022\",\n    \"module\": \"es2022\",\n    \"strict\": true,\n    \"outDir\": \"out\",\n    \"pretty\": false,\n    \"noEmit\": true\n  },\n  \"files\": [\n    \"main.ts\"\n  ]\n}\n",
       "args": [
         "--project",
         "."
@@ -119,6 +127,7 @@
     {
       "name": "error-blocked",
       "source": "export const value: number = \"wrong\";\nconsole.log(value);\n",
+      "extraSources": {},
       "config": {
         "compilerOptions": {
           "target": "es2022",
@@ -132,6 +141,7 @@
           "main.ts"
         ]
       },
+      "configText": "{\n  \"compilerOptions\": {\n    \"target\": \"es2022\",\n    \"module\": \"es2022\",\n    \"strict\": true,\n    \"outDir\": \"out\",\n    \"pretty\": false,\n    \"noEmitOnError\": true\n  },\n  \"files\": [\n    \"main.ts\"\n  ]\n}\n",
       "args": [
         "--project",
         "."
@@ -146,6 +156,7 @@
     {
       "name": "error-noemit-blocked",
       "source": "export const value: number = \"wrong\";\nconsole.log(value);\n",
+      "extraSources": {},
       "config": {
         "compilerOptions": {
           "target": "es2022",
@@ -160,6 +171,7 @@
           "main.ts"
         ]
       },
+      "configText": "{\n  \"compilerOptions\": {\n    \"target\": \"es2022\",\n    \"module\": \"es2022\",\n    \"strict\": true,\n    \"outDir\": \"out\",\n    \"pretty\": false,\n    \"noEmit\": true,\n    \"noEmitOnError\": true\n  },\n  \"files\": [\n    \"main.ts\"\n  ]\n}\n",
       "args": [
         "--project",
         "."
@@ -174,6 +186,7 @@
     {
       "name": "pretty-error",
       "source": "export const value: number = \"wrong\";\nconsole.log(value);\n",
+      "extraSources": {},
       "config": {
         "compilerOptions": {
           "target": "es2022",
@@ -187,6 +200,7 @@
           "main.ts"
         ]
       },
+      "configText": "{\n  \"compilerOptions\": {\n    \"target\": \"es2022\",\n    \"module\": \"es2022\",\n    \"strict\": true,\n    \"outDir\": \"out\",\n    \"pretty\": true,\n    \"noEmit\": true\n  },\n  \"files\": [\n    \"main.ts\"\n  ]\n}\n",
       "args": [
         "--project",
         "."
@@ -201,6 +215,7 @@
     {
       "name": "pretty-related",
       "source": "class Child extends Base {}\nclass Base {}\nexport {};\n",
+      "extraSources": {},
       "config": {
         "compilerOptions": {
           "target": "es2022",
@@ -214,6 +229,7 @@
           "main.ts"
         ]
       },
+      "configText": "{\n  \"compilerOptions\": {\n    \"target\": \"es2022\",\n    \"module\": \"es2022\",\n    \"strict\": true,\n    \"outDir\": \"out\",\n    \"pretty\": true,\n    \"noEmit\": true\n  },\n  \"files\": [\n    \"main.ts\"\n  ]\n}\n",
       "args": [
         "--project",
         "."
@@ -228,6 +244,7 @@
     {
       "name": "plain-related",
       "source": "class Child extends Base {}\nclass Base {}\nexport {};\n",
+      "extraSources": {},
       "config": {
         "compilerOptions": {
           "target": "es2022",
@@ -241,6 +258,7 @@
           "main.ts"
         ]
       },
+      "configText": "{\n  \"compilerOptions\": {\n    \"target\": \"es2022\",\n    \"module\": \"es2022\",\n    \"strict\": true,\n    \"outDir\": \"out\",\n    \"pretty\": false,\n    \"noEmit\": true\n  },\n  \"files\": [\n    \"main.ts\"\n  ]\n}\n",
       "args": [
         "--project",
         "."
@@ -255,6 +273,7 @@
     {
       "name": "pretty-multiple",
       "source": "export const first: number = \"x\";\nexport const second: boolean = 1;\n",
+      "extraSources": {},
       "config": {
         "compilerOptions": {
           "target": "es2022",
@@ -268,6 +287,7 @@
           "main.ts"
         ]
       },
+      "configText": "{\n  \"compilerOptions\": {\n    \"target\": \"es2022\",\n    \"module\": \"es2022\",\n    \"strict\": true,\n    \"outDir\": \"out\",\n    \"pretty\": true,\n    \"noEmit\": true\n  },\n  \"files\": [\n    \"main.ts\"\n  ]\n}\n",
       "args": [
         "--project",
         "."
@@ -282,6 +302,7 @@
     {
       "name": "pretty-crlf",
       "source": "export const value: number = \"wrong\";\r\nconsole.log(value);\r\n",
+      "extraSources": {},
       "config": {
         "compilerOptions": {
           "target": "es2022",
@@ -295,6 +316,7 @@
           "main.ts"
         ]
       },
+      "configText": "{\n  \"compilerOptions\": {\n    \"target\": \"es2022\",\n    \"module\": \"es2022\",\n    \"strict\": true,\n    \"outDir\": \"out\",\n    \"pretty\": true,\n    \"noEmit\": true\n  },\n  \"files\": [\n    \"main.ts\"\n  ]\n}\n",
       "args": [
         "--project",
         "."
@@ -309,6 +331,7 @@
     {
       "name": "summary-valid",
       "source": "export const value: number = 1;\nconsole.log(value);\n",
+      "extraSources": {},
       "config": {
         "compilerOptions": {
           "target": "es2022",
@@ -323,6 +346,7 @@
           "main.ts"
         ]
       },
+      "configText": "{\n  \"compilerOptions\": {\n    \"target\": \"es2022\",\n    \"module\": \"es2022\",\n    \"strict\": true,\n    \"outDir\": \"out\",\n    \"pretty\": false,\n    \"noEmit\": true,\n    \"diagnostics\": true\n  },\n  \"files\": [\n    \"main.ts\"\n  ]\n}\n",
       "args": [
         "--project",
         "."
@@ -394,6 +418,7 @@
     {
       "name": "summary-error",
       "source": "export const value: number = \"wrong\";\nconsole.log(value);\n",
+      "extraSources": {},
       "config": {
         "compilerOptions": {
           "target": "es2022",
@@ -408,6 +433,7 @@
           "main.ts"
         ]
       },
+      "configText": "{\n  \"compilerOptions\": {\n    \"target\": \"es2022\",\n    \"module\": \"es2022\",\n    \"strict\": true,\n    \"outDir\": \"out\",\n    \"pretty\": false,\n    \"noEmit\": true,\n    \"diagnostics\": true\n  },\n  \"files\": [\n    \"main.ts\"\n  ]\n}\n",
       "args": [
         "--project",
         "."
@@ -479,6 +505,7 @@
     {
       "name": "cli-unknown",
       "source": "export const value: number = 1;\nconsole.log(value);\n",
+      "extraSources": {},
       "config": {
         "compilerOptions": {
           "target": "es2022",
@@ -491,6 +518,7 @@
           "main.ts"
         ]
       },
+      "configText": "{\n  \"compilerOptions\": {\n    \"target\": \"es2022\",\n    \"module\": \"es2022\",\n    \"strict\": true,\n    \"outDir\": \"out\",\n    \"pretty\": false\n  },\n  \"files\": [\n    \"main.ts\"\n  ]\n}\n",
       "args": [
         "--project",
         ".",
@@ -506,6 +534,7 @@
     {
       "name": "config-unknown",
       "source": "export const value: number = 1;\nconsole.log(value);\n",
+      "extraSources": {},
       "config": {
         "compilerOptions": {
           "target": "es2022",
@@ -520,6 +549,7 @@
           "main.ts"
         ]
       },
+      "configText": "{\n  \"compilerOptions\": {\n    \"target\": \"es2022\",\n    \"module\": \"es2022\",\n    \"strict\": true,\n    \"outDir\": \"out\",\n    \"pretty\": true,\n    \"unknownPresentationOption\": true,\n    \"noEmitOnError\": true\n  },\n  \"files\": [\n    \"main.ts\"\n  ]\n}\n",
       "args": [
         "--project",
         "."
@@ -532,6 +562,212 @@
         "main.js"
       ],
       "runtime": "1\n"
+    },
+    {
+      "name": "pretty-tabs",
+      "source": "\texport const value: number = \"wrong\";\n",
+      "extraSources": {},
+      "config": {
+        "compilerOptions": {
+          "target": "es2022",
+          "module": "es2022",
+          "strict": true,
+          "outDir": "out",
+          "pretty": true,
+          "noEmit": true
+        },
+        "files": [
+          "main.ts"
+        ]
+      },
+      "configText": "{\n  \"compilerOptions\": {\n    \"target\": \"es2022\",\n    \"module\": \"es2022\",\n    \"strict\": true,\n    \"outDir\": \"out\",\n    \"pretty\": true,\n    \"noEmit\": true\n  },\n  \"files\": [\n    \"main.ts\"\n  ]\n}\n",
+      "args": [
+        "--project",
+        "."
+      ],
+      "exit": 2,
+      "stdout": "\u001b[96mmain.ts\u001b[0m:\u001b[93m1\u001b[0m:\u001b[93m15\u001b[0m - \u001b[91merror\u001b[0m\u001b[90m TS2322: \u001b[0mType 'string' is not assignable to type 'number'.\n\n\u001b[7m1\u001b[0m  export const value: number = \"wrong\";\n\u001b[7m \u001b[0m \u001b[91m              ~~~~~\u001b[0m\n\n\nFound 1 error in main.ts\u001b[90m:1\u001b[0m\n\n",
+      "stderr": "",
+      "summaryFields": [],
+      "assets": [],
+      "runtime": null
+    },
+    {
+      "name": "pretty-unicode",
+      "source": "/* 😀 */ export const value: number = \"wrong\";\n",
+      "extraSources": {},
+      "config": {
+        "compilerOptions": {
+          "target": "es2022",
+          "module": "es2022",
+          "strict": true,
+          "outDir": "out",
+          "pretty": true,
+          "noEmit": true
+        },
+        "files": [
+          "main.ts"
+        ]
+      },
+      "configText": "{\n  \"compilerOptions\": {\n    \"target\": \"es2022\",\n    \"module\": \"es2022\",\n    \"strict\": true,\n    \"outDir\": \"out\",\n    \"pretty\": true,\n    \"noEmit\": true\n  },\n  \"files\": [\n    \"main.ts\"\n  ]\n}\n",
+      "args": [
+        "--project",
+        "."
+      ],
+      "exit": 2,
+      "stdout": "\u001b[96mmain.ts\u001b[0m:\u001b[93m1\u001b[0m:\u001b[93m23\u001b[0m - \u001b[91merror\u001b[0m\u001b[90m TS2322: \u001b[0mType 'string' is not assignable to type 'number'.\n\n\u001b[7m1\u001b[0m /* 😀 */ export const value: number = \"wrong\";\n\u001b[7m \u001b[0m \u001b[91m                      ~~~~~\u001b[0m\n\n\nFound 1 error in main.ts\u001b[90m:1\u001b[0m\n\n",
+      "stderr": "",
+      "summaryFields": [],
+      "assets": [],
+      "runtime": null
+    },
+    {
+      "name": "pretty-multiline",
+      "source": "declare function take(value: number): void;\ntake(\n    () => {\n        return 1;\n    }\n);\n",
+      "extraSources": {},
+      "config": {
+        "compilerOptions": {
+          "target": "es2022",
+          "module": "es2022",
+          "strict": true,
+          "outDir": "out",
+          "pretty": true,
+          "noEmit": true
+        },
+        "files": [
+          "main.ts"
+        ]
+      },
+      "configText": "{\n  \"compilerOptions\": {\n    \"target\": \"es2022\",\n    \"module\": \"es2022\",\n    \"strict\": true,\n    \"outDir\": \"out\",\n    \"pretty\": true,\n    \"noEmit\": true\n  },\n  \"files\": [\n    \"main.ts\"\n  ]\n}\n",
+      "args": [
+        "--project",
+        "."
+      ],
+      "exit": 2,
+      "stdout": "\u001b[96mmain.ts\u001b[0m:\u001b[93m3\u001b[0m:\u001b[93m5\u001b[0m - \u001b[91merror\u001b[0m\u001b[90m TS2345: \u001b[0mArgument of type '() => number' is not assignable to parameter of type 'number'.\n\n\u001b[7m3\u001b[0m     () => {\n\u001b[7m \u001b[0m \u001b[91m    ~~~~~~~\u001b[0m\n\n  \u001b[96mmain.ts\u001b[0m:\u001b[93m3\u001b[0m:\u001b[93m5\u001b[0m\n    \u001b[7m3\u001b[0m     () => {\n    \u001b[7m \u001b[0m \u001b[96m    ~~~~~~~\u001b[0m\n    Did you mean to call this expression?\n\n\nFound 1 error in main.ts\u001b[90m:3\u001b[0m\n\n",
+      "stderr": "",
+      "summaryFields": [],
+      "assets": [],
+      "runtime": null
+    },
+    {
+      "name": "pretty-library-related",
+      "source": "const label: string = \"hi\"; label.toUppercase();\n",
+      "extraSources": {},
+      "config": {
+        "compilerOptions": {
+          "target": "es2022",
+          "module": "es2022",
+          "strict": true,
+          "outDir": "out",
+          "pretty": true,
+          "noEmit": true
+        },
+        "files": [
+          "main.ts"
+        ]
+      },
+      "configText": "{\n  \"compilerOptions\": {\n    \"target\": \"es2022\",\n    \"module\": \"es2022\",\n    \"strict\": true,\n    \"outDir\": \"out\",\n    \"pretty\": true,\n    \"noEmit\": true\n  },\n  \"files\": [\n    \"main.ts\"\n  ]\n}\n",
+      "args": [
+        "--project",
+        "."
+      ],
+      "exit": 2,
+      "stdout": "\u001b[96mmain.ts\u001b[0m:\u001b[93m1\u001b[0m:\u001b[93m35\u001b[0m - \u001b[91merror\u001b[0m\u001b[90m TS2551: \u001b[0mProperty 'toUppercase' does not exist on type 'string'. Did you mean 'toUpperCase'?\n\n\u001b[7m1\u001b[0m const label: string = \"hi\"; label.toUppercase();\n\u001b[7m \u001b[0m \u001b[91m                                  ~~~~~~~~~~~\u001b[0m\n\n  \u001b[96m<typescript-lib>/lib.es5.d.ts\u001b[0m:\u001b[93m508\u001b[0m:\u001b[93m5\u001b[0m\n    \u001b[7m508\u001b[0m     toUpperCase(): string;\n    \u001b[7m   \u001b[0m \u001b[96m    ~~~~~~~~~~~~~~~~~~~~~~\u001b[0m\n    'toUpperCase' is declared here.\n\n\nFound 1 error in main.ts\u001b[90m:1\u001b[0m\n\n",
+      "stderr": "",
+      "summaryFields": [],
+      "assets": [],
+      "runtime": null
+    },
+    {
+      "name": "pretty-multi-file",
+      "source": "import { value } from \"./dep.ts\";\nconst other: number = \"wrong\";\nconsole.log(value, other);\n",
+      "extraSources": {
+        "dep.ts": "export const value: number = \"wrong\";\nexport const second: boolean = 1;\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "target": "es2022",
+          "module": "es2022",
+          "strict": true,
+          "outDir": "out",
+          "pretty": true,
+          "noEmit": true,
+          "allowImportingTsExtensions": true
+        },
+        "files": [
+          "main.ts"
+        ]
+      },
+      "configText": "{\n  \"compilerOptions\": {\n    \"target\": \"es2022\",\n    \"module\": \"es2022\",\n    \"strict\": true,\n    \"outDir\": \"out\",\n    \"pretty\": true,\n    \"noEmit\": true,\n    \"allowImportingTsExtensions\": true\n  },\n  \"files\": [\n    \"main.ts\"\n  ]\n}\n",
+      "args": [
+        "--project",
+        "."
+      ],
+      "exit": 2,
+      "stdout": "\u001b[96mdep.ts\u001b[0m:\u001b[93m1\u001b[0m:\u001b[93m14\u001b[0m - \u001b[91merror\u001b[0m\u001b[90m TS2322: \u001b[0mType 'string' is not assignable to type 'number'.\n\n\u001b[7m1\u001b[0m export const value: number = \"wrong\";\n\u001b[7m \u001b[0m \u001b[91m             ~~~~~\u001b[0m\n\n\u001b[96mdep.ts\u001b[0m:\u001b[93m2\u001b[0m:\u001b[93m14\u001b[0m - \u001b[91merror\u001b[0m\u001b[90m TS2322: \u001b[0mType 'number' is not assignable to type 'boolean'.\n\n\u001b[7m2\u001b[0m export const second: boolean = 1;\n\u001b[7m \u001b[0m \u001b[91m             ~~~~~~\u001b[0m\n\n\u001b[96mmain.ts\u001b[0m:\u001b[93m2\u001b[0m:\u001b[93m7\u001b[0m - \u001b[91merror\u001b[0m\u001b[90m TS2322: \u001b[0mType 'string' is not assignable to type 'number'.\n\n\u001b[7m2\u001b[0m const other: number = \"wrong\";\n\u001b[7m \u001b[0m \u001b[91m      ~~~~~\u001b[0m\n\n\nFound 3 errors in 2 files.\n\nErrors  Files\n     2  dep.ts\u001b[90m:1\u001b[0m\n     1  main.ts\u001b[90m:2\u001b[0m\n",
+      "stderr": "",
+      "summaryFields": [],
+      "assets": [],
+      "runtime": null
+    },
+    {
+      "name": "pretty-long-span",
+      "source": "declare function take(value: string): void;\ntake({\n    value: 1,\n    other: 2,\n    last: 3,\n    extra: 4,\n    final: 5\n});\n",
+      "extraSources": {},
+      "config": {
+        "compilerOptions": {
+          "target": "es2022",
+          "module": "es2022",
+          "strict": true,
+          "outDir": "out",
+          "pretty": true,
+          "noEmit": true
+        },
+        "files": [
+          "main.ts"
+        ]
+      },
+      "configText": "{\n  \"compilerOptions\": {\n    \"target\": \"es2022\",\n    \"module\": \"es2022\",\n    \"strict\": true,\n    \"outDir\": \"out\",\n    \"pretty\": true,\n    \"noEmit\": true\n  },\n  \"files\": [\n    \"main.ts\"\n  ]\n}\n",
+      "args": [
+        "--project",
+        "."
+      ],
+      "exit": 2,
+      "stdout": "\u001b[96mmain.ts\u001b[0m:\u001b[93m2\u001b[0m:\u001b[93m6\u001b[0m - \u001b[91merror\u001b[0m\u001b[90m TS2345: \u001b[0mArgument of type '{ value: number; other: number; last: number; extra: number; final: number; }' is not assignable to parameter of type 'string'.\n\n\u001b[7m  2\u001b[0m take({\n\u001b[7m   \u001b[0m \u001b[91m     ~\u001b[0m\n\u001b[7m  3\u001b[0m     value: 1,\n\u001b[7m   \u001b[0m \u001b[91m~~~~~~~~~~~~~\u001b[0m\n\u001b[7m...\u001b[0m \n\u001b[7m  7\u001b[0m     final: 5\n\u001b[7m   \u001b[0m \u001b[91m~~~~~~~~~~~~\u001b[0m\n\u001b[7m  8\u001b[0m });\n\u001b[7m   \u001b[0m \u001b[91m~\u001b[0m\n\n\nFound 1 error in main.ts\u001b[90m:2\u001b[0m\n\n",
+      "stderr": "",
+      "summaryFields": [],
+      "assets": [],
+      "runtime": null
+    },
+    {
+      "name": "pretty-parser-error",
+      "source": "export const value = \"unterminated;\n",
+      "extraSources": {},
+      "config": {
+        "compilerOptions": {
+          "target": "es2022",
+          "module": "es2022",
+          "strict": true,
+          "outDir": "out",
+          "pretty": true,
+          "noEmit": true
+        },
+        "files": [
+          "main.ts"
+        ]
+      },
+      "configText": "{\n  \"compilerOptions\": {\n    \"target\": \"es2022\",\n    \"module\": \"es2022\",\n    \"strict\": true,\n    \"outDir\": \"out\",\n    \"pretty\": true,\n    \"noEmit\": true\n  },\n  \"files\": [\n    \"main.ts\"\n  ]\n}\n",
+      "args": [
+        "--project",
+        "."
+      ],
+      "exit": 2,
+      "stdout": "\u001b[96mmain.ts\u001b[0m:\u001b[93m1\u001b[0m:\u001b[93m36\u001b[0m - \u001b[91merror\u001b[0m\u001b[90m TS1002: \u001b[0mUnterminated string literal.\n\n\u001b[7m1\u001b[0m export const value = \"unterminated;\n\u001b[7m \u001b[0m \u001b[91m                                   \u001b[0m\n\n\nFound 1 error in main.ts\u001b[90m:1\u001b[0m\n\n",
+      "stderr": "",
+      "summaryFields": [],
+      "assets": [],
+      "runtime": null
     }
   ]
 }

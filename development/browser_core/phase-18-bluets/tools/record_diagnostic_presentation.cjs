@@ -31,6 +31,13 @@ const observations = [
     ['summary-error', bad, {noEmit:true,diagnostics:true}],
     ['cli-unknown', good, {}, ['--unknownPresentationOption']],
     ['config-unknown', good, {unknownPresentationOption:true,pretty:true,noEmitOnError:true}],
+    ['pretty-tabs', '\texport const value: number = "wrong";\n', {noEmit:true,pretty:true}],
+    ['pretty-unicode', '/* 😀 */ export const value: number = "wrong";\n', {noEmit:true,pretty:true}],
+    ['pretty-multiline', 'declare function take(value: number): void;\ntake(\n    () => {\n        return 1;\n    }\n);\n', {noEmit:true,pretty:true}],
+    ['pretty-library-related', 'const label: string = "hi"; label.toUppercase();\n', {noEmit:true,pretty:true}],
+    ['pretty-multi-file', 'import { value } from "./dep.ts";\nconst other: number = "wrong";\nconsole.log(value, other);\n', {noEmit:true,pretty:true,allowImportingTsExtensions:true}, [], {'dep.ts':'export const value: number = "wrong";\nexport const second: boolean = 1;\n'}],
+    ['pretty-long-span', 'declare function take(value: string): void;\ntake({\n    value: 1,\n    other: 2,\n    last: 3,\n    extra: 4,\n    final: 5\n});\n', {noEmit:true,pretty:true}],
+    ['pretty-parser-error', 'export const value = "unterminated;\n', {noEmit:true,pretty:true}],
 ];
 function files(root, current = root) {
     if (!fs.existsSync(current)) return [];
@@ -39,15 +46,18 @@ function files(root, current = root) {
         : [path.relative(root,path.join(current,item.name)).split(path.sep).join('/')]);
 }
 try {
-    const cases = observations.map(([name, source, options, extra = []], index) => {
+    const cases = observations.map(([name, source, options, extra = [],extraSources={}], index) => {
         const cwd = path.join(directory,String(index)); fs.mkdirSync(cwd);
         const config = {compilerOptions:{target:'es2022',module:'es2022',strict:true,outDir:'out',pretty:false,...options},files:['main.ts']};
         fs.writeFileSync(path.join(cwd,'main.ts'),source);
-        fs.writeFileSync(path.join(cwd,'tsconfig.json'),JSON.stringify(config,null,2)+'\n');
+        for (const [name,text] of Object.entries(extraSources)) fs.writeFileSync(path.join(cwd,name),text);
+        const configText=JSON.stringify(config,null,2)+'\n';
+        fs.writeFileSync(path.join(cwd,'tsconfig.json'),configText);
         const args = ['--project','.',...extra];
         const result = spawnSync(executable,args,{cwd,encoding:'utf8',env:{...process.env,FORCE_COLOR:'0'}});
         if (result.error) throw result.error;
-        const output = result.stdout.replaceAll(cwd,'<project>').replaceAll('\\','/');
+        const library=path.dirname(ts.getDefaultLibFilePath(config.compilerOptions));
+        const output = result.stdout.replaceAll('\\','/').replaceAll(path.relative(cwd,library).split(path.sep).join('/'),'<typescript-lib>').replaceAll(library.split(path.sep).join('/'),'<typescript-lib>').replaceAll(cwd,'<project>').replace(/\x1b\[96m([^\x1b]+lib\.[^/\x1b]+\.d\.ts)\x1b\[0m/g,(whole,file)=>fs.realpathSync(path.resolve(cwd,file))===fs.realpathSync(path.join(library,path.basename(file)))?`\x1b[96m<typescript-lib>/${path.basename(file)}\x1b[0m`:whole);
         const summaryFields = [];
         const stdout = options.diagnostics ? output.split('\n').filter(line => {
             const match = line.match(/^([A-Za-z /]+):\s+([0-9.]+)(K|s)?$/);
@@ -60,7 +70,7 @@ try {
             const run = spawnSync('node',['--input-type=module','--eval',fs.readFileSync(path.join(cwd,'out/main.js'),'utf8')],{encoding:'utf8'});
             if (run.status !== 0) throw new Error(run.stderr); runtime = run.stdout;
         }
-        return {name,source,config,args,exit:result.status,stdout,stderr:result.stderr,summaryFields,assets,runtime};
+        return {name,source,extraSources,config,configText,args,exit:result.status,stdout,stderr:result.stderr,summaryFields,assets,runtime};
     });
     const record = {version:ts.version,exitCodes:{success:ts.ExitStatus.Success,outputsSkipped:ts.ExitStatus.DiagnosticsPresent_OutputsSkipped,outputsGenerated:ts.ExitStatus.DiagnosticsPresent_OutputsGenerated},cases};
     const text = JSON.stringify(record,null,2)+'\n';

@@ -13,3 +13,10 @@ summary-valid	accept
 summary-error	reject
 cli-unknown	reject
 config-unknown	reject
+pretty-tabs	reject
+pretty-unicode	reject
+pretty-multiline	reject
+pretty-library-related	reject
+pretty-multi-file	reject
+pretty-long-span	reject
+pretty-parser-error	reject
