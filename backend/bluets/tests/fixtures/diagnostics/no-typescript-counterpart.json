@@ -1,0 +1,32 @@
+[
+  {
+    "id": "class:class-accessor-unrelated-types/main.ts",
+    "btsCode": "BTS1001",
+    "message": "the getter and setter of `v` have different types, \\\n                                     which is not supported yet",
+    "reason": "The pinned compiler accepts this program; BlueTSC deliberately refuses this documented subset boundary."
+  },
+  {
+    "id": "class:class-interface-merge-heritage/main.ts",
+    "btsCode": "BTS1001",
+    "message": "an interface with type parameters or an `extends` clause merged with a class is not supported yet",
+    "reason": "The pinned compiler accepts this program; BlueTSC deliberately refuses this documented subset boundary."
+  },
+  {
+    "id": "class:class-param-property-base-super-in-branch/main.ts",
+    "btsCode": "BTS1001",
+    "message": "a derived constructor whose class needs statements at its start must have a top-level `super(...)` statement to place them after",
+    "reason": "The pinned compiler accepts this program; BlueTSC deliberately refuses this documented subset boundary."
+  },
+  {
+    "id": "class:class-visibility-imported/redeclare-protected-valid.ts",
+    "btsCode": "BTS1001",
+    "message": "redeclaring the protected member `peek` of an imported base class is not supported yet",
+    "reason": "The pinned compiler accepts this program; BlueTSC deliberately refuses this documented subset boundary."
+  },
+  {
+    "id": "namespace:namespace-imported/value-import-of-types-only-valid.ts",
+    "btsCode": "BTS1001",
+    "message": "namespace `Only` has no run-time members; import it with `import type`",
+    "reason": "The pinned compiler accepts this program; BlueTSC deliberately refuses this documented subset boundary."
+  }
+]

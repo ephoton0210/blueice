@@ -4345,3 +4345,37 @@ changes documentation only and preserves the tested implementation source.
 The next ordered leaf is K.3.1. K.3 remains required for M7; project references,
 build/watch/incremental operation and broader compatibility inventory rows remain
 open. Full TypeScript parity is not claimed.
+
+### K.3.1 Diagnostic oracle baseline
+
+`tools/record_diagnostics.cjs` records every entry in the eleven existing
+language checker matrices and the strictness matrix from pinned TypeScript
+5.9.3. It uses each suite's target/library selection, CommonJS/interop flags,
+standard or experimental decorators and JSX options. The compiler API records
+all diagnostics, the first diagnostic per entry, exact message templates,
+related information and original UTF-16 positions without emitting or modifying
+fixture sources. Recorded verdicts are checked against the existing matrices;
+there are 1,398 programs (598 accepted, 800 rejected) and 135 observed templates.
+
+The before-change BlueTSC replay produces 861 diagnostics. Its five accepted
+TypeScript entries which BlueTSC refuses are the existing deferred entries.
+Five primary subset refusals without a TypeScript counterpart are listed in
+`no-typescript-counterpart.json`, including their exact original messages;
+the replay has no blanket unsupported-syntax exemption. Four other BTS1001
+reports occur on TypeScript errors and require semantic mapping instead of an
+exemption. The baseline mapping
+records 169 primary message families and their observed TypeScript codes.
+These observations are evidence for implementation, not a production mapping:
+a broad BTS category often has several TypeScript counterparts, and primary
+ordering and semantic cause must be considered before choosing a code.
+
+The public CLI regression requires structured diagnostic output with the stable
+BTS alias and the TypeScript code/message template. Its baseline run
+(`blueice-k31-red.log`) has one passing inventory test and one expected failing
+replay (1,398 mismatches); the pinned regeneration test remains opt-in.
+The complete pinned record also regenerates byte-for-byte on Linux after
+normalizing fixture and oracle-library identities (`blueice-k31-reference-linux.log`);
+all code/message/span data agree with the macOS recording. Production source
+remains unchanged, with a maximum of 1,172 lines.
+This failing replay is committed before implementation under K.0.1. K.3.1,
+K.3.2, K.3.3 and the M7 workspace/coverage gate remain open.

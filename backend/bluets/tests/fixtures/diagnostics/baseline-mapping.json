@@ -1,0 +1,1399 @@
+[
+  {
+    "btsCode": "BTS1000",
+    "messagePattern": "`{}` is not a valid private name",
+    "observedTypeScriptCodes": [
+      18012
+    ],
+    "example": "class:class-private-name-constructor/main.ts"
+  },
+  {
+    "btsCode": "BTS1000",
+    "messagePattern": "a getter cannot have parameters",
+    "observedTypeScriptCodes": [
+      1054
+    ],
+    "example": "class:class-accessor-getter-parameter/main.ts"
+  },
+  {
+    "btsCode": "BTS1000",
+    "messagePattern": "a parameter property cannot be a rest parameter or a binding pattern",
+    "observedTypeScriptCodes": [
+      1187,
+      1317
+    ],
+    "example": "class:class-param-property-rest/main.ts"
+  },
+  {
+    "btsCode": "BTS1000",
+    "messagePattern": "a setter cannot have a return type annotation",
+    "observedTypeScriptCodes": [
+      1095
+    ],
+    "example": "class:class-accessor-setter-return-annotation/main.ts"
+  },
+  {
+    "btsCode": "BTS1000",
+    "messagePattern": "a setter must have exactly one parameter",
+    "observedTypeScriptCodes": [
+      1049
+    ],
+    "example": "class:class-accessor-setter-two-parameters/main.ts"
+  },
+  {
+    "btsCode": "BTS1000",
+    "messagePattern": "a setter parameter cannot be a rest, optional, defaulted or destructured parameter",
+    "observedTypeScriptCodes": [
+      1051
+    ],
+    "example": "class:class-accessor-setter-optional-parameter/main.ts"
+  },
+  {
+    "btsCode": "BTS1000",
+    "messagePattern": "an accessibility modifier cannot be used with a private identifier",
+    "observedTypeScriptCodes": [
+      18010
+    ],
+    "example": "class:class-private-name-accessibility-modifier/main.ts"
+  },
+  {
+    "btsCode": "BTS1000",
+    "messagePattern": "decorators are not valid here; they decorate a class or a class member",
+    "observedTypeScriptCodes": [
+      1206
+    ],
+    "example": "decorators:decorators-error-variable/main.ts"
+  },
+  {
+    "btsCode": "BTS1000",
+    "messagePattern": "expected a parameter name",
+    "observedTypeScriptCodes": [
+      2304,
+      2369
+    ],
+    "example": "unknown-name:unknown-name-loop-nested-escape-error/main.ts"
+  },
+  {
+    "btsCode": "BTS1000",
+    "messagePattern": "expected an interface field name",
+    "observedTypeScriptCodes": [
+      1131
+    ],
+    "example": "decorators:decorators-error-interface-member/main.ts"
+  },
+  {
+    "btsCode": "BTS1000",
+    "messagePattern": "initializers are not allowed in ambient contexts",
+    "observedTypeScriptCodes": [
+      1039
+    ],
+    "example": "namespace:namespace-error-ambient-initializer/main.ts"
+  },
+  {
+    "btsCode": "BTS1000",
+    "messagePattern": "parameter modifiers must be an accessibility modifier, then `{}`, each at most once",
+    "observedTypeScriptCodes": [
+      1029
+    ],
+    "example": "class:class-param-property-modifier-order/main.ts"
+  },
+  {
+    "btsCode": "BTS1000",
+    "messagePattern": "the closing JSX tag does not match the opening tag",
+    "observedTypeScriptCodes": [
+      17002
+    ],
+    "example": "jsx:jsx-error-mismatched-closing/main.tsx"
+  },
+  {
+    "btsCode": "BTS1000",
+    "messagePattern": "unexpected `{}` in JSX text; use `{}`",
+    "observedTypeScriptCodes": [
+      1382
+    ],
+    "example": "jsx:jsx-error-greater-than-in-text/main.tsx"
+  },
+  {
+    "btsCode": "BTS1000",
+    "messagePattern": "unterminated JSX element",
+    "observedTypeScriptCodes": [
+      17008
+    ],
+    "example": "jsx:jsx-error-unterminated/main.tsx"
+  },
+  {
+    "btsCode": "BTS1001",
+    "messagePattern": "a class member other than a constructor, method, field or accessor (a computed, generator or `{}` member) is not supported yet",
+    "observedTypeScriptCodes": [
+      1029
+    ],
+    "example": "class:class-visibility-modifier-order/main.ts"
+  },
+  {
+    "btsCode": "BTS1001",
+    "messagePattern": "a computed initializer that refers to the member `{}` must write it as `{}`",
+    "observedTypeScriptCodes": [
+      2651
+    ],
+    "example": "enum:enum-forward-reference/main.ts"
+  },
+  {
+    "btsCode": "BTS1001",
+    "messagePattern": "a derived constructor whose class needs statements at its start must have a top-level `{}` statement to place them after",
+    "observedTypeScriptCodes": [
+      null
+    ],
+    "example": "class:class-param-property-base-super-in-branch/main.ts"
+  },
+  {
+    "btsCode": "BTS1001",
+    "messagePattern": "an interface with type parameters or an `{}` clause merged with a class is not supported yet",
+    "observedTypeScriptCodes": [
+      null
+    ],
+    "example": "class:class-interface-merge-heritage/main.ts"
+  },
+  {
+    "btsCode": "BTS1001",
+    "messagePattern": "auto-accessors are not combined with experimentalDecorators",
+    "observedTypeScriptCodes": [
+      1240
+    ],
+    "example": "legacy-decorators:legacy-error-auto-accessor/main.ts"
+  },
+  {
+    "btsCode": "BTS1001",
+    "messagePattern": "decorators cannot be applied to both the getter and the setter of the same name",
+    "observedTypeScriptCodes": [
+      1207
+    ],
+    "example": "legacy-decorators:legacy-error-getter-and-setter/main.ts"
+  },
+  {
+    "btsCode": "BTS1001",
+    "messagePattern": "namespace `{}` has no run-time members; import it with `{}`",
+    "observedTypeScriptCodes": [
+      null
+    ],
+    "example": "namespace:namespace-imported/value-import-of-types-only-valid.ts"
+  },
+  {
+    "btsCode": "BTS1001",
+    "messagePattern": "redeclaring the protected member `{}` of an imported base class is not supported yet",
+    "observedTypeScriptCodes": [
+      null
+    ],
+    "example": "class:class-visibility-imported/redeclare-protected-valid.ts"
+  },
+  {
+    "btsCode": "BTS1001",
+    "messagePattern": "the getter and setter of `{}` have different types, \\\n                                     which is not supported yet",
+    "observedTypeScriptCodes": [
+      null
+    ],
+    "example": "class:class-accessor-unrelated-types/main.ts"
+  },
+  {
+    "btsCode": "BTS2000",
+    "messagePattern": "cannot resolve `{}` from `{}`: No such file or directory (os error {n})",
+    "observedTypeScriptCodes": [
+      2792
+    ],
+    "example": "class:class-value-import-wrong-instance-side/main.ts"
+  },
+  {
+    "btsCode": "BTS2002",
+    "messagePattern": "a decorator can only decorate a method implementation, not an overload",
+    "observedTypeScriptCodes": [
+      1249
+    ],
+    "example": "decorators:decorators-error-overload-signature/main.ts"
+  },
+  {
+    "btsCode": "BTS2002",
+    "messagePattern": "decorators are not valid here: they decorate a class or a class member",
+    "observedTypeScriptCodes": [
+      1206
+    ],
+    "example": "legacy-decorators:legacy-error-constructor/main.ts"
+  },
+  {
+    "btsCode": "BTS2002",
+    "messagePattern": "decorators are not valid on parameters unless `{}` is enabled",
+    "observedTypeScriptCodes": [
+      1206
+    ],
+    "example": "decorators:decorators-error-parameter/main.ts"
+  },
+  {
+    "btsCode": "BTS3000",
+    "messagePattern": "duplicate declaration of `{}`",
+    "observedTypeScriptCodes": [
+      2300,
+      2434,
+      2451,
+      2567
+    ],
+    "example": "namespace:namespace-error-variable-conflict/main.ts"
+  },
+  {
+    "btsCode": "BTS3000",
+    "messagePattern": "duplicate identifier `{}`",
+    "observedTypeScriptCodes": [
+      2300
+    ],
+    "example": "enum:enum-duplicate-member/main.ts"
+  },
+  {
+    "btsCode": "BTS3000",
+    "messagePattern": "duplicate implementation of class method `{}`",
+    "observedTypeScriptCodes": [
+      2393
+    ],
+    "example": "class:class-method-duplicate-implementations/main.ts"
+  },
+  {
+    "btsCode": "BTS3000",
+    "messagePattern": "multiple constructor implementations are not allowed",
+    "observedTypeScriptCodes": [
+      2392
+    ],
+    "example": "class:class-constructor-duplicate-implementation/main.ts"
+  },
+  {
+    "btsCode": "BTS3001",
+    "messagePattern": "`{}` has no value binding (type-only declaration or import)",
+    "observedTypeScriptCodes": [
+      2693,
+      2708
+    ],
+    "example": "unknown-name:unknown-name-import-type-value-error/main.ts"
+  },
+  {
+    "btsCode": "BTS3001",
+    "messagePattern": "`{}` was imported with `{}` and cannot be used as a value",
+    "observedTypeScriptCodes": [
+      1361
+    ],
+    "example": "enum:enum-const-imported/type-only-value-error.ts"
+  },
+  {
+    "btsCode": "BTS3001",
+    "messagePattern": "cannot find name `{}`",
+    "observedTypeScriptCodes": [
+      2304,
+      2552,
+      2584,
+      2663,
+      2693,
+      18004
+    ],
+    "example": "unknown-name:unknown-name-word-of-error/main.ts"
+  },
+  {
+    "btsCode": "BTS3001",
+    "messagePattern": "cannot find the JSX tag name `{}`",
+    "observedTypeScriptCodes": [
+      2304
+    ],
+    "example": "jsx:jsx-error-unknown-component/main.tsx"
+  },
+  {
+    "btsCode": "BTS3001",
+    "messagePattern": "cannot find the name `{}` that the JSX `{}` `{}` needs in scope",
+    "observedTypeScriptCodes": [
+      2874
+    ],
+    "example": "jsx:jsx-error-fragment-factory-not-in-scope/main.tsx"
+  },
+  {
+    "btsCode": "BTS3001",
+    "messagePattern": "module `{}` has no exported member `{}`",
+    "observedTypeScriptCodes": [
+      2305,
+      2613,
+      2724
+    ],
+    "example": "namespace:namespace-imported/unexported-error.ts"
+  },
+  {
+    "btsCode": "BTS3001",
+    "messagePattern": "private identifier `{}` is not declared by the enclosing class",
+    "observedTypeScriptCodes": [
+      2339,
+      18016
+    ],
+    "example": "class:class-private-name-brand-undeclared/main.ts"
+  },
+  {
+    "btsCode": "BTS3001",
+    "messagePattern": "property `{}` does not exist on type `{}`",
+    "observedTypeScriptCodes": [
+      2339
+    ],
+    "example": "jsx:jsx-error-unknown-intrinsic/main.tsx"
+  },
+  {
+    "btsCode": "BTS3001",
+    "messagePattern": "unknown class heritage name Missing",
+    "observedTypeScriptCodes": [
+      2304
+    ],
+    "example": "class:class-heritage-unknown-base/main.ts"
+  },
+  {
+    "btsCode": "BTS3001",
+    "messagePattern": "unknown class heritage name N.H",
+    "observedTypeScriptCodes": [
+      2339
+    ],
+    "example": "namespace:namespace-error-extends-hidden/main.ts"
+  },
+  {
+    "btsCode": "BTS3002",
+    "messagePattern": "cannot find type `{}`",
+    "observedTypeScriptCodes": [
+      2304,
+      2694,
+      2709,
+      2749
+    ],
+    "example": "unknown-name:unknown-name-unknown-type-error/main.ts"
+  },
+  {
+    "btsCode": "BTS3002",
+    "messagePattern": "module `{}` has no exported type `{}`",
+    "observedTypeScriptCodes": [
+      2459
+    ],
+    "example": "class:class-type-import-private/main.ts"
+  },
+  {
+    "btsCode": "BTS3002",
+    "messagePattern": "namespace `{}` has no exported member `{}`",
+    "observedTypeScriptCodes": [
+      2694,
+      2724
+    ],
+    "example": "namespace:namespace-imported/hidden-type-error.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "JSX element implicitly has type `{}` because no interface `{}` exists",
+    "observedTypeScriptCodes": [
+      7026
+    ],
+    "example": "jsx:jsx-error-no-jsx-namespace/main.tsx"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "TS2540: cannot mutate readonly property `{}`",
+    "observedTypeScriptCodes": [
+      2540,
+      7053
+    ],
+    "example": "immutable:immutable-readonly-pattern-tuple/main.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "TS7022: `{}` needs a type annotation because its initializer depends on a circular import",
+    "observedTypeScriptCodes": [
+      7022
+    ],
+    "example": "imported-type:imported-type-cycle-inferred-error/main.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "`{}` can only be called in the constructor of a derived class, and `{}` has no base",
+    "observedTypeScriptCodes": [
+      2335
+    ],
+    "example": "class:class-super-call-base-error/main.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "`{}` can only be referenced in a derived class, and `{}` has no base",
+    "observedTypeScriptCodes": [
+      2335
+    ],
+    "example": "class:class-super-member-nobase-error/main.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "`{}` implicitly has an `{}` type",
+    "observedTypeScriptCodes": [
+      2683
+    ],
+    "example": "strictness:strictness-noimplicitthis-1"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "`{}` is declared but never read",
+    "observedTypeScriptCodes": [
+      6133
+    ],
+    "example": "strictness:strictness-nounusedlocals-1"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "`{}` is not a member of enum `{}`",
+    "observedTypeScriptCodes": [
+      7015
+    ],
+    "example": "enum:enum-unknown-string-key/main.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "`{}` is only valid inside an async function",
+    "observedTypeScriptCodes": [
+      18037
+    ],
+    "example": "class:class-static-block-await/main.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "`{}` must be called before `{}` is accessed in a derived constructor",
+    "observedTypeScriptCodes": [
+      17009
+    ],
+    "example": "class:class-super-call-this-error/main.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "`{}` only refers to a type, but is being used as a value",
+    "observedTypeScriptCodes": [
+      2708
+    ],
+    "example": "namespace:namespace-error-type-as-value/main.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "a `{}` call is only permitted in a constructor",
+    "observedTypeScriptCodes": [
+      2337
+    ],
+    "example": "class:class-super-member-method-call-error/main.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "a computed enum member must be a number, not `{}`",
+    "observedTypeScriptCodes": [
+      18033
+    ],
+    "example": "enum:enum-computed-not-number/main.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "a const enum member initializer must be a constant expression",
+    "observedTypeScriptCodes": [
+      2474
+    ],
+    "example": "enum:enum-const-computed-member/main.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "a constructor overload signature cannot have a default initializer",
+    "observedTypeScriptCodes": [
+      2371
+    ],
+    "example": "class:class-constructor-overload-default/main.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "a decorator is called with {n} arguments (the value and its context) but this one requires {n}",
+    "observedTypeScriptCodes": [
+      1238
+    ],
+    "example": "decorators:decorators-error-too-many-required-parameters/main.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "a getter must return a value",
+    "observedTypeScriptCodes": [
+      2378
+    ],
+    "example": "infer-return:infer-return-getter-empty-error/main.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "a member of the const enum `{}` can only be accessed with a string literal",
+    "observedTypeScriptCodes": [
+      2476
+    ],
+    "example": "enum:enum-const-reverse-index/main.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "a method overload signature cannot have a default initializer",
+    "observedTypeScriptCodes": [
+      2371
+    ],
+    "example": "class:class-method-body-overload-default/main.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "a rest parameter requires an array or tuple annotation",
+    "observedTypeScriptCodes": [
+      2370
+    ],
+    "example": "class:class-tuple-rest-primitive-error/main.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "accessor `{}` of type `{}` is not assignable to the base property type `{}`",
+    "observedTypeScriptCodes": [
+      2416
+    ],
+    "example": "class:class-accessor-override-type-mismatch/main.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "an index of type `{}` cannot be used on enum `{}`",
+    "observedTypeScriptCodes": [
+      7053
+    ],
+    "example": "enum:enum-reverse-on-string-enum/main.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "argument {n} has type `{}`, which is not assignable to method parameter `{}` of type `{}`",
+    "observedTypeScriptCodes": [
+      2345,
+      2769
+    ],
+    "example": "lib:lib-loop-following-error/main.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "argument {n} has type `{}`, which is not assignable to parameter `{}` of type `{}`",
+    "observedTypeScriptCodes": [
+      2322,
+      2345,
+      2769
+    ],
+    "example": "namespace:namespace-imported/bad-argument-error.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "assignment has type `{}`, which is not assignable to property `{}` of type `{}`",
+    "observedTypeScriptCodes": [
+      2322
+    ],
+    "example": "infer-return:infer-return-getter-setter-inferred-error/main.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "attribute `{}` does not exist on the element's props (`{}`)",
+    "observedTypeScriptCodes": [
+      2322
+    ],
+    "example": "jsx:jsx-error-key-on-intrinsic/main.tsx"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "attribute `{}` has type `{}`, which is not assignable to `{}`",
+    "observedTypeScriptCodes": [
+      2322
+    ],
+    "example": "jsx:jsx-error-literal-union-attribute/main.tsx"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "call argument {n} has an incompatible type",
+    "observedTypeScriptCodes": [
+      2345
+    ],
+    "example": "strictness:strictness-strictbindcallapply-1"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "cannot extend class `{}`: its constructor is private",
+    "observedTypeScriptCodes": [
+      2675
+    ],
+    "example": "class:class-visibility-private-constructor-extends/main.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "cannot mutate readonly property `{}`",
+    "observedTypeScriptCodes": [
+      2540
+    ],
+    "example": "lib:lib-set-size-error/main.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "catch variable of type `{}` is not assignable to the declared type",
+    "observedTypeScriptCodes": [
+      2322
+    ],
+    "example": "strictness:strictness-useunknownincatchvariables-1"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "class A has a cyclic base expression",
+    "observedTypeScriptCodes": [
+      2506
+    ],
+    "example": "class:class-heritage-mutual-cycle/main.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "class Box cannot be called without `{}`",
+    "observedTypeScriptCodes": [
+      2348
+    ],
+    "example": "class:class-local-nested-call-without-new/main.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "class Self has a cyclic base expression",
+    "observedTypeScriptCodes": [
+      2506
+    ],
+    "example": "class:class-heritage-self-cycle/main.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "class `{}` cannot be used as a JSX component: its instance type is not a `{}`",
+    "observedTypeScriptCodes": [
+      2786
+    ],
+    "example": "jsx:jsx-error-class-not-element-class/main.tsx"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "class `{}` incorrectly extends `{}`: types have separate declarations of the private property `{}`",
+    "observedTypeScriptCodes": [
+      2415
+    ],
+    "example": "class:class-visibility-redeclare-private/main.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "class defines `{}` as a property but the base class defines it as an accessor",
+    "observedTypeScriptCodes": [
+      2610
+    ],
+    "example": "class:class-accessor-overridden-by-field/main.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "class defines `{}` as an accessor but the base class defines it as a method",
+    "observedTypeScriptCodes": [
+      2416
+    ],
+    "example": "class:class-accessor-overrides-method/main.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "class defines `{}` as an accessor but the base class defines it as a property",
+    "observedTypeScriptCodes": [
+      2611
+    ],
+    "example": "class:class-accessor-overrides-field/main.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "class field `{}` implicitly has an `{}` type",
+    "observedTypeScriptCodes": [
+      7006
+    ],
+    "example": "class:class-param-property-unannotated/main.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "class heritage NotClass is not a constructor",
+    "observedTypeScriptCodes": [
+      2507
+    ],
+    "example": "class:class-heritage-nonconstructor-base/main.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "class method `{}` is incompatible with inherited method from `{}`",
+    "observedTypeScriptCodes": [
+      2416,
+      2417
+    ],
+    "example": "class:paren-type-class-override-error/main.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "class method `{}` is not assignable to the inherited overload set of `{}`",
+    "observedTypeScriptCodes": [
+      2416,
+      2417
+    ],
+    "example": "class:class-override-overload-static-error/main.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "constructor implementation is missing",
+    "observedTypeScriptCodes": [
+      2390
+    ],
+    "example": "class:class-constructor-missing-implementation/main.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "constructor of class Box is private and is not accessible here",
+    "observedTypeScriptCodes": [
+      2673
+    ],
+    "example": "class:class-visibility-private-constructor-new/main.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "constructor of class Box is protected and is not accessible here",
+    "observedTypeScriptCodes": [
+      2674
+    ],
+    "example": "class:class-visibility-protected-constructor-new/main.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "constructor of derived class `{}` must contain a `{}` call",
+    "observedTypeScriptCodes": [
+      2377
+    ],
+    "example": "class:class-super-call-missing-error/main.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "constructor overload is incompatible with its implementation",
+    "observedTypeScriptCodes": [
+      2394
+    ],
+    "example": "class:class-constructor-incompatible-overload/main.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "constructor overload requires an immediately following implementation",
+    "observedTypeScriptCodes": [
+      2390
+    ],
+    "example": "class:class-constructor-interrupted-overload/main.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "default initializer has type `{}`, which is not assignable to parameter `{}` of type `{}`",
+    "observedTypeScriptCodes": [
+      2322
+    ],
+    "example": "class:class-method-body-invalid-default/main.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "enum member `{}` must have an initializer",
+    "observedTypeScriptCodes": [
+      1061
+    ],
+    "example": "enum:enum-missing-initializer-after-string/main.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "fallthrough case in switch",
+    "observedTypeScriptCodes": [
+      7029
+    ],
+    "example": "strictness:strictness-nofallthroughcasesinswitch-1"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "imported value `{}` has no construct signature",
+    "observedTypeScriptCodes": [
+      2351,
+      7009
+    ],
+    "example": "imported-type:imported-type-star-new-number-error/main.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "in an enum with several declarations, only one may omit the initializer of its first member",
+    "observedTypeScriptCodes": [
+      2432
+    ],
+    "example": "enum:enum-merged-no-initializer/main.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "initializer has type `{}`, which is not assignable to `{}`",
+    "observedTypeScriptCodes": [
+      2322,
+      2375,
+      2741
+    ],
+    "example": "strictness:strictness-strictnullchecks-1"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "invalid strict-mode binding `{}`",
+    "observedTypeScriptCodes": [
+      1100
+    ],
+    "example": "strictness:strictness-alwaysstrict-1"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "method m expects {n} to {n} argument(s), got {n}",
+    "observedTypeScriptCodes": [
+      2554
+    ],
+    "example": "class:class-super-member-argcount-error/main.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "missing required props: label",
+    "observedTypeScriptCodes": [
+      2322
+    ],
+    "example": "jsx:jsx-error-class-component-missing/main.tsx"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "missing required props: title",
+    "observedTypeScriptCodes": [
+      2322
+    ],
+    "example": "jsx:jsx-error-nested-attribute/main.tsx"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "namespace `{}` has no run-time members and cannot be used as a value",
+    "observedTypeScriptCodes": [
+      2708
+    ],
+    "example": "namespace:namespace-error-namespace-as-value/main.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "namespace `{}` was imported with `{}` and cannot be used as a value",
+    "observedTypeScriptCodes": [
+      1361
+    ],
+    "example": "namespace:namespace-imported/type-only-value-error.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "no constructor of class A accepts the `{}` call arguments",
+    "observedTypeScriptCodes": [
+      2345,
+      2554
+    ],
+    "example": "class:class-super-call-type-error/main.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "no constructor of class Box accepts the supplied argument types",
+    "observedTypeScriptCodes": [
+      2345,
+      2554
+    ],
+    "example": "imported-type:imported-type-named-constructor-error/main.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "no constructor of class Child accepts the supplied argument types",
+    "observedTypeScriptCodes": [
+      2345,
+      2554,
+      2769
+    ],
+    "example": "class:class-inherited-constructor-arity-error/main.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "no constructor of class Date accepts the supplied argument types",
+    "observedTypeScriptCodes": [
+      2769
+    ],
+    "example": "lib:lib-date-constructor-error/main.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "no constructor of class Empty accepts the supplied argument types",
+    "observedTypeScriptCodes": [
+      2554
+    ],
+    "example": "class:class-construction-default-arity-error/main.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "no constructor of class O accepts the `{}` call arguments",
+    "observedTypeScriptCodes": [
+      2769
+    ],
+    "example": "class:class-super-call-overload-error/main.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "no constructor of class RegExp accepts the supplied argument types",
+    "observedTypeScriptCodes": [
+      2769
+    ],
+    "example": "lib:lib-regexp-constructor-error/main.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "no constructor of class TypeError accepts the supplied argument types",
+    "observedTypeScriptCodes": [
+      2769
+    ],
+    "example": "lib:lib-error-constructor-error/main.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "no constructor of class dep.Box accepts the supplied argument types",
+    "observedTypeScriptCodes": [
+      2345
+    ],
+    "example": "imported-type:imported-type-star-constructor-error/main.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "no overload of function value accepts the supplied argument types",
+    "observedTypeScriptCodes": [
+      2769
+    ],
+    "example": "imported-type:imported-type-named-overload-error/main.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "no overload of instance method read matches the supplied argument types",
+    "observedTypeScriptCodes": [
+      2769
+    ],
+    "example": "class:class-instance-overload-this-argument-error/main.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "no overload of static method parse matches the supplied argument types",
+    "observedTypeScriptCodes": [
+      2769
+    ],
+    "example": "class:class-static-overload-this-argument-error/main.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "overload signature for class method `{}` is incompatible with its implementation",
+    "observedTypeScriptCodes": [
+      2394
+    ],
+    "example": "class:class-method-incompatible-overload/main.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "overload signature for class method `{}` requires an immediately following implementation",
+    "observedTypeScriptCodes": [
+      2391
+    ],
+    "example": "class:class-method-orphan-signature/main.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "overload signatures of `{}` must all be public, private or protected",
+    "observedTypeScriptCodes": [
+      2385
+    ],
+    "example": "class:class-visibility-overload-mixed/main.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "parameter `{}` implicitly has an `{}` type",
+    "observedTypeScriptCodes": [
+      7006
+    ],
+    "example": "strictness:strictness-strict-1"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "parameter `{}` is declared but never read",
+    "observedTypeScriptCodes": [
+      6133
+    ],
+    "example": "strictness:strictness-nounusedparameters-1"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "private identifier `{}` does not exist on type `{}`",
+    "observedTypeScriptCodes": [
+      2339
+    ],
+    "example": "class:class-private-name-unknown-compound/main.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "property `{}` does not exist on type `{}`",
+    "observedTypeScriptCodes": [
+      2339,
+      2550,
+      2551,
+      2554,
+      2576
+    ],
+    "example": "namespace:namespace-imported/missing-member-error.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "property `{}` has no initializer and is not definitely assigned in the constructor",
+    "observedTypeScriptCodes": [
+      2564
+    ],
+    "example": "strictness:strictness-strictpropertyinitialization-1"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "property `{}` is private and only accessible within class `{}`",
+    "observedTypeScriptCodes": [
+      2341,
+      18013
+    ],
+    "example": "namespace:namespace-error-klass-private-access/main.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "property `{}` is private in class `{}` but protected in the base class `{}`",
+    "observedTypeScriptCodes": [
+      2415
+    ],
+    "example": "class:class-visibility-protected-to-private/main.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "property `{}` is private in class `{}` but public in the base class `{}`",
+    "observedTypeScriptCodes": [
+      2415
+    ],
+    "example": "class:class-param-property-inherited-visibility-conflict/main.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "property `{}` is protected and only accessible within class `{}`",
+    "observedTypeScriptCodes": [
+      2445,
+      2446
+    ],
+    "example": "class:class-visibility-protected-through-base-instance/main.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "property `{}` is protected in class `{}` but public in the base class `{}`",
+    "observedTypeScriptCodes": [
+      2415
+    ],
+    "example": "class:class-visibility-narrow-public-to-protected/main.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "property `{}` is used before its initialization",
+    "observedTypeScriptCodes": [
+      2729
+    ],
+    "example": "class:class-static-forward-this/main.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "property `{}` of type `{}` is not assignable to the base property type `{}`",
+    "observedTypeScriptCodes": [
+      2416
+    ],
+    "example": "class:class-field-override-type-error/main.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "property `{}` will overwrite the base property; add an initializer or remove the redundant declaration",
+    "observedTypeScriptCodes": [
+      2612
+    ],
+    "example": "class:class-field-redeclare-uninitialized/main.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "recursive return type inference requires a return annotation",
+    "observedTypeScriptCodes": [
+      7023
+    ],
+    "example": "infer-return:infer-return-recursive-arrow-error/main.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "setter `{}` has an implicitly `{}` parameter",
+    "observedTypeScriptCodes": [
+      7032
+    ],
+    "example": "class:class-accessor-setter-unannotated/main.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "spread attribute `{}` has type `{}`, which is not assignable to `{}`",
+    "observedTypeScriptCodes": [
+      2322
+    ],
+    "example": "jsx:jsx-error-spread-type/main.tsx"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "subsequent declarations of property `{}` must have the same type",
+    "observedTypeScriptCodes": [
+      2717
+    ],
+    "example": "class:class-interface-merge-error-type/main.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "the const enum `{}` can only be used in a property or index access",
+    "observedTypeScriptCodes": [
+      2475
+    ],
+    "example": "enum:enum-const-imported/as-value-error.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "the element's children have type `{}`, which is not assignable to `{}`",
+    "observedTypeScriptCodes": [
+      2322
+    ],
+    "example": "jsx:jsx-error-multiple-children-type/main.tsx"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "the getter and setter of `{}` must have the same accessibility",
+    "observedTypeScriptCodes": [
+      2808
+    ],
+    "example": "class:class-accessor-different-visibility/main.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "this component's return type `{}` is not a valid JSX element",
+    "observedTypeScriptCodes": [
+      2786
+    ],
+    "example": "jsx:jsx-error-component-return/main.tsx"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "this decorator accepts too few arguments to be used as a decorator; did you mean to call it first and write `{}`?",
+    "observedTypeScriptCodes": [
+      1329
+    ],
+    "example": "decorators:decorators-error-zero-parameters/main.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "this decorator expression has type `{}`, which is not callable",
+    "observedTypeScriptCodes": [
+      1238
+    ],
+    "example": "legacy-decorators:legacy-error-not-callable/main.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "this decorator returns `{}`, which a auto-accessor decorator cannot return",
+    "observedTypeScriptCodes": [
+      1270
+    ],
+    "example": "decorators:decorators-error-accessor-returns-function/main.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "this decorator returns `{}`, which a class decorator cannot return",
+    "observedTypeScriptCodes": [
+      1270
+    ],
+    "example": "decorators:decorators-error-returns-string-on-type/main.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "this decorator returns `{}`, which a field decorator cannot return",
+    "observedTypeScriptCodes": [
+      1270,
+      1271
+    ],
+    "example": "legacy-decorators:legacy-error-field-returns-value/main.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "this decorator returns `{}`, which a method decorator cannot return",
+    "observedTypeScriptCodes": [
+      1270
+    ],
+    "example": "decorators:decorators-error-method-returns-number/main.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "this decorator returns `{}`, which a parameter decorator cannot return",
+    "observedTypeScriptCodes": [
+      1271
+    ],
+    "example": "legacy-decorators:legacy-error-param-returns-value/main.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "this element has children but its props declare no `{}`",
+    "observedTypeScriptCodes": [
+      2322
+    ],
+    "example": "jsx:jsx-error-children-without-prop/main.tsx"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "unable to resolve the signature of this class decorator when called as an expression (it must accept {n} argument(s))",
+    "observedTypeScriptCodes": [
+      1238,
+      1329
+    ],
+    "example": "legacy-decorators:legacy-error-two-parameters-on-type/main.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "unable to resolve the signature of this field decorator when called as an expression (it must accept {n} argument(s))",
+    "observedTypeScriptCodes": [
+      1240
+    ],
+    "example": "legacy-decorators:legacy-error-field-three-parameters/main.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "unable to resolve the signature of this parameter decorator when called as an expression (it must accept {n} argument(s))",
+    "observedTypeScriptCodes": [
+      1239
+    ],
+    "example": "legacy-decorators:legacy-error-param-two-parameters/main.ts"
+  },
+  {
+    "btsCode": "BTS3003",
+    "messagePattern": "unsupported optional property read",
+    "observedTypeScriptCodes": [
+      2341,
+      18030
+    ],
+    "example": "class:class-visibility-optional-receiver/main.ts"
+  },
+  {
+    "btsCode": "BTS3004",
+    "messagePattern": "a return statement cannot be used inside a class static block",
+    "observedTypeScriptCodes": [
+      18041
+    ],
+    "example": "class:class-static-block-return/main.ts"
+  },
+  {
+    "btsCode": "BTS3004",
+    "messagePattern": "class method return type `{}` is not assignable to `{}`",
+    "observedTypeScriptCodes": [
+      2322,
+      2408,
+      2741
+    ],
+    "example": "class:tuple-literal-return-class-error/main.ts"
+  },
+  {
+    "btsCode": "BTS3004",
+    "messagePattern": "class method with return type `{}` can complete without returning a value",
+    "observedTypeScriptCodes": [
+      2366,
+      2378
+    ],
+    "example": "class:class-method-returns-fallthrough/main.ts"
+  },
+  {
+    "btsCode": "BTS3004",
+    "messagePattern": "constructor return type `{}` is not assignable to class `{}`",
+    "observedTypeScriptCodes": [
+      2741
+    ],
+    "example": "class:class-constructor-body-nested-return/main.ts"
+  },
+  {
+    "btsCode": "BTS3004",
+    "messagePattern": "not all code paths return a value",
+    "observedTypeScriptCodes": [
+      7030
+    ],
+    "example": "strictness:strictness-noimplicitreturns-1"
+  },
+  {
+    "btsCode": "BTS3004",
+    "messagePattern": "return expression has type `{}`, which is not assignable to `{}`",
+    "observedTypeScriptCodes": [
+      2322
+    ],
+    "example": "namespace:namespace-error-return-mismatch/main.ts"
+  },
+  {
+    "btsCode": "BTS3005",
+    "messagePattern": "TS2448: `{}` is used before its declaration",
+    "observedTypeScriptCodes": [
+      2373,
+      2448,
+      7022
+    ],
+    "example": "unknown-name:unknown-name-shadow-before-error/main.ts"
+  },
+  {
+    "btsCode": "BTS3005",
+    "messagePattern": "TS2449: `{}` is used before its declaration",
+    "observedTypeScriptCodes": [
+      2449
+    ],
+    "example": "unknown-name:unknown-name-new-before-error/main.ts"
+  },
+  {
+    "btsCode": "BTS3005",
+    "messagePattern": "TS2449: class Base is used before its declaration",
+    "observedTypeScriptCodes": [
+      2449
+    ],
+    "example": "unknown-name:unknown-name-extends-before-error/main.ts"
+  },
+  {
+    "btsCode": "BTS3006",
+    "messagePattern": "TS2588: cannot assign to `{}` because it is a constant",
+    "observedTypeScriptCodes": [
+      2588
+    ],
+    "example": "immutable:immutable-template-error/main.ts"
+  },
+  {
+    "btsCode": "BTS3006",
+    "messagePattern": "TS2628: cannot assign to `{}` because it is an enum",
+    "observedTypeScriptCodes": [
+      2628
+    ],
+    "example": "immutable:immutable-named-tag-write/main.ts"
+  },
+  {
+    "btsCode": "BTS3006",
+    "messagePattern": "TS2629: cannot assign to `{}` because it is a class",
+    "observedTypeScriptCodes": [
+      2629
+    ],
+    "example": "immutable:immutable-named-body-write/main.ts"
+  },
+  {
+    "btsCode": "BTS3006",
+    "messagePattern": "TS2630: cannot assign to `{}` because it is a function",
+    "observedTypeScriptCodes": [
+      2630
+    ],
+    "example": "immutable:immutable-named-function-write/main.ts"
+  },
+  {
+    "btsCode": "BTS3006",
+    "messagePattern": "TS2631: cannot assign to `{}` because it is a namespace",
+    "observedTypeScriptCodes": [
+      2631
+    ],
+    "example": "immutable:immutable-named-area-write/main.ts"
+  },
+  {
+    "btsCode": "BTS3006",
+    "messagePattern": "TS2632: cannot assign to `{}` because it is an import",
+    "observedTypeScriptCodes": [
+      2632
+    ],
+    "example": "immutable:immutable-require-error/main.ts"
+  }
+]
