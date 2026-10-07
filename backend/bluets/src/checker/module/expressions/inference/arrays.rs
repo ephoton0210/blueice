@@ -35,6 +35,14 @@ impl<'a> ModuleChecker<'a> {
         ) {
             contextual = expanded;
         }
+        if let Type::Readonly(value) = contextual {
+            contextual = *value;
+        }
+        if let Type::UniqueSymbol(_) = expected {
+            if self.fresh_symbol_call(tokens, scope) {
+                return expected.clone();
+            }
+        }
         let literal_display =
             crate::checker::type_operators::diagnostic_type(&contextual, &self.types, &mut budget);
         let literal_context = crate::checker::type_operators::is_operator_context(
@@ -80,6 +88,11 @@ impl<'a> ModuleChecker<'a> {
                 }
             }
             Type::Literal(expected) => {
+                if let [sign, literal] = strip_outer_parentheses(tokens) {
+                    if sign.is("-") && literal.kind == TokenKind::Number {
+                        return Type::Literal(format!("-{}", literal.text));
+                    }
+                }
                 if let [literal] = strip_outer_parentheses(tokens) {
                     if literal.kind == TokenKind::String {
                         let expected_token = Token {
@@ -144,7 +157,7 @@ impl<'a> ModuleChecker<'a> {
 
     /// The comma-separated pieces of a bracketed literal, or `None` when the
     /// tokens are not one.
-    fn literal_elements(tokens: &[Token]) -> Option<Vec<&[Token]>> {
+    pub(in crate::checker::module) fn literal_elements(tokens: &[Token]) -> Option<Vec<&[Token]>> {
         if tokens.first().is_none_or(|token| !token.is("["))
             || tokens.last().is_none_or(|token| !token.is("]"))
         {

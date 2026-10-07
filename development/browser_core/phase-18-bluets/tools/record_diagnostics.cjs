@@ -98,13 +98,20 @@ function recordCorpus() {
     }
     for (const filename of fs.readdirSync(corpus).filter(name => name.endsWith('-checker-matrix.tsv')).sort()) {
         const matrix = filename.replace('-checker-matrix.tsv', '');
+        const settingsPath = path.join(corpus, `${matrix}-checker-settings.json`);
+        const settings = fs.existsSync(settingsPath)
+            ? JSON.parse(fs.readFileSync(settingsPath, 'utf8')) : {};
+        if (settings.replayChecking !== undefined && settings.replayChecking !== 'strict') {
+            throw new Error(`Unsupported replay checking mode for ${matrix}`);
+        }
         for (const line of fs.readFileSync(path.join(corpus, filename), 'utf8').trim().split(/\r?\n/)) {
             const fields = line.split('\t');
             const entry = fields[0];
             const target = fields.length === 3 ? fields[1] : undefined;
             const verdict = fields[fields.length - 1];
             const { flags, options } = commandOptions(matrix, entry, target);
-            record(`${matrix}:${entry}`, [path.join(corpus, entry)], options, { matrix, entry, flags, verdict });
+            record(`${matrix}:${entry}`, [path.join(corpus, entry)], options,
+                { matrix, entry, flags, verdict, ...settings });
         }
     }
     const strictness = path.join(fixtures, 'strictness');

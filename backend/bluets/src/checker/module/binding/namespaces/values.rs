@@ -256,7 +256,20 @@ impl ModuleChecker<'_> {
                 DiagnosticCode::TypeMismatch,
             );
         }
+        if let Some(literal) = crate::parser::widen_literal_tokens(
+            &variable.initializer,
+            variable.kind == crate::parser::VariableKind::Const,
+        ) {
+            return literal;
+        }
         if variable.kind == crate::parser::VariableKind::Const {
+            if matches!(inferred, Type::Symbol | Type::UniqueSymbol(_)) {
+                return if self.fresh_symbol_call(&variable.initializer, scope) {
+                    Type::UniqueSymbol(variable.span.clone())
+                } else {
+                    Type::Symbol
+                };
+            }
             if let [literal] = variable.initializer.as_slice() {
                 if matches!(literal.kind, TokenKind::Number | TokenKind::String)
                     || literal.is("true")
@@ -268,6 +281,7 @@ impl ModuleChecker<'_> {
             inferred
         } else {
             match inferred {
+                Type::UniqueSymbol(_) => Type::Symbol,
                 Type::Literal(text) if text.starts_with(['\'', '"', '`']) => Type::String,
                 Type::Literal(text) if matches!(text.as_str(), "true" | "false") => Type::Boolean,
                 Type::Literal(text) if text.parse::<f64>().is_ok() => Type::Number,

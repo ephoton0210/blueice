@@ -660,6 +660,7 @@ impl<'a> ModuleChecker<'a> {
         let binding_type = match handler.annotation {
             Some(Type::Any) => Type::Any,
             Some(Type::Unknown) => Type::Unknown,
+            Some(Type::StrictUnknown) => Type::StrictUnknown,
             _ if self.checking.use_unknown_in_catch_variables => Type::Unknown,
             _ => Type::Any,
         };

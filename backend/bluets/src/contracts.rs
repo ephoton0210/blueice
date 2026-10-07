@@ -430,10 +430,16 @@ fn lower(
             definitions.insert(name.clone(), definition);
             Ok(Contract::Reference(name.clone()))
         }
-        Type::Any | Type::Unknown | Type::Never => Err(ContractError {
+        Type::Any | Type::Unknown | Type::StrictUnknown | Type::Never => Err(ContractError {
             message: "any, unknown, and never are not automatic runtime contracts".to_string(),
         }),
-        Type::Conditional(_)
+        Type::BigInt
+        | Type::Symbol
+        | Type::UniqueSymbol(_)
+        | Type::ConstAssertion
+        | Type::Readonly(_)
+        | Type::IndexedRecord { .. }
+        | Type::Conditional(_)
         | Type::Infer(_)
         | Type::Mapped(_)
         | Type::TemplateLiteral(_)

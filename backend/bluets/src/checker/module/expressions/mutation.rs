@@ -407,11 +407,11 @@ impl<'a> ModuleChecker<'a> {
     }
 }
 
-struct MemberMutation<'a> {
-    receiver: &'a [Token],
-    property: Option<&'a str>,
-    operator: &'a Token,
-    value: &'a [Token],
+pub(super) struct MemberMutation<'a> {
+    pub(super) receiver: &'a [Token],
+    pub(super) property: Option<&'a str>,
+    pub(super) operator: &'a Token,
+    pub(super) value: &'a [Token],
 }
 
 const MEMBER_ASSIGNMENT_OPERATORS: &[&str] = &[
@@ -459,7 +459,7 @@ pub(in crate::checker::module) fn member_access_target(
     None
 }
 
-fn member_mutation(tokens: &[Token]) -> Option<MemberMutation<'_>> {
+pub(super) fn member_mutation(tokens: &[Token]) -> Option<MemberMutation<'_>> {
     let (target, operator, value) = match tokens {
         [operator, target @ ..]
             if operator.is("++") || operator.is("--") || operator.is("delete") =>

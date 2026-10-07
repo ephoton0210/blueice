@@ -327,6 +327,12 @@ impl<'a> ModuleChecker<'a> {
                 .get(value.len())
                 .and_then(|token| self.module.type_assertions.get(&token.start))
             {
+                if tokens[value.len()].is("satisfies") {
+                    return self.infer_in_context(value, scope, annotation);
+                }
+                if *annotation == Type::ConstAssertion {
+                    return self.infer_const_assertion(value, scope);
+                }
                 let target = match annotation {
                     Type::Named { name, .. } => self
                         .types
@@ -411,7 +417,11 @@ impl<'a> ModuleChecker<'a> {
             return Type::Boolean;
         }
         if matches!(first.text.as_str(), "+" | "-" | "~") {
-            return Type::Number;
+            return if !first.is("+") && self.infer_expression(&tokens[1..], scope) == Type::BigInt {
+                Type::BigInt
+            } else {
+                Type::Number
+            };
         }
         // A literal only stands for the whole expression when nothing follows
         // it: `"x".length` is a member read, not a string.
@@ -421,7 +431,11 @@ impl<'a> ModuleChecker<'a> {
             return Type::String;
         }
         if first.kind == TokenKind::Number && tokens.len() == 1 {
-            return Type::Number;
+            return if first.text.ends_with('n') {
+                Type::BigInt
+            } else {
+                Type::Number
+            };
         }
         if let Some(value) = self.infer_optional_chain(tokens, scope) {
             return value;

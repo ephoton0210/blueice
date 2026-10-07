@@ -74,7 +74,7 @@ pub use parser::{
     ClassMemberShell, ClassMethod, ClassMethodGroup, ConditionalType, Declaration, Decorator,
     EnumDeclaration, EnumMember, FunctionBodyItem, FunctionCatchClause, FunctionDeclaration,
     FunctionElseBranch, FunctionIfStatement, FunctionTryStatement, FunctionWhileStatement,
-    ImportDeclaration, InterfaceDeclaration, MappedModifier, MappedType, Module,
+    ImportDeclaration, IndexSignature, InterfaceDeclaration, MappedModifier, MappedType, Module,
     NamespaceDeclaration, Parameter, ParameterProperty, ParameterPropertyInsertion, ParserLimits,
     RawDeclaration, TemplateLiteralType, TupleTypeElement, TypeAliasDeclaration,
     TypeExportDeclaration, TypeParameter, TypePredicate, TypeSignature, ValueExportBinding,

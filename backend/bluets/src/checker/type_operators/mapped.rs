@@ -25,6 +25,58 @@ pub(super) fn resolve(
     } else {
         None
     };
+    if value.name_type.is_none() {
+        if let Some(origin) = &origin {
+            let (source, readonly) = match origin {
+                Type::Readonly(source) => (source.as_ref(), true),
+                source => (source, false),
+            };
+            let sequence = match source {
+                Type::Array(_) => {
+                    let substitutions =
+                        BTreeMap::from([(value.parameter.name.clone(), Type::Number)]);
+                    let item = expanded(
+                        &substitute_type(&value.value, &substitutions),
+                        aliases,
+                        &mut visited.clone(),
+                        budget,
+                    );
+                    Some(Type::Array(Box::new(item)))
+                }
+                Type::Tuple(items) => {
+                    let mut result = Vec::new();
+                    for (index, item) in items.iter().enumerate() {
+                        if !budget.consume() {
+                            return None;
+                        }
+                        let substitutions = BTreeMap::from([(
+                            value.parameter.name.clone(),
+                            Type::Literal(format!("\"{index}\"")),
+                        )]);
+                        result.push(TupleTypeElement {
+                            annotation: expanded(
+                                &substitute_type(&value.value, &substitutions),
+                                aliases,
+                                &mut visited.clone(),
+                                budget,
+                            ),
+                            optional: modifier(value.optional, item.optional),
+                            ..item.clone()
+                        });
+                    }
+                    Some(Type::Tuple(result))
+                }
+                _ => None,
+            };
+            if let Some(sequence) = sequence {
+                return Some(if modifier(value.readonly, readonly) {
+                    Type::Readonly(Box::new(sequence))
+                } else {
+                    sequence
+                });
+            }
+        }
+    }
     let keys = expanded(constraint, aliases, &mut visited.clone(), budget);
     let keys = match keys {
         Type::Never => vec![],

@@ -497,6 +497,13 @@ impl Lowerer<'_, '_> {
             Type::Void | Type::Undefined | Type::Null | Type::Never => "void 0".to_string(),
             Type::Any
             | Type::Unknown
+            | Type::StrictUnknown
+            | Type::BigInt
+            | Type::Symbol
+            | Type::UniqueSymbol(_)
+            | Type::ConstAssertion
+            | Type::Readonly(_)
+            | Type::IndexedRecord { .. }
             | Type::Record(_)
             | Type::CallableRecord { .. }
             | Type::Intersection(_)

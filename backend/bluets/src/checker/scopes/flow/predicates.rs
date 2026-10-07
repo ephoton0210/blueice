@@ -276,13 +276,19 @@ pub(super) fn filter(
 }
 
 fn typeof_filter(value: &Type, kind: &str, positive: bool) -> Option<Type> {
-    if matches!(value, Type::Any | Type::Unknown) {
+    if matches!(value, Type::Any | Type::Unknown | Type::StrictUnknown) {
         return if !positive {
             Some(value.clone())
         } else {
             Some(match kind {
                 "string" => Type::String,
                 "number" => Type::Number,
+                "bigint" => Type::BigInt,
+                "symbol" => Type::Symbol,
+                "function" => Type::Named {
+                    name: "Function".into(),
+                    arguments: vec![],
+                },
                 "boolean" => Type::Boolean,
                 "undefined" => Type::Undefined,
                 "object" => Type::Union(vec![Type::Record(Vec::new()), Type::Null]),

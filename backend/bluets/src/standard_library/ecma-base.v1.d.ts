@@ -141,3 +141,9 @@ declare const Float64Array: any;
 declare const BigInt64Array: any;
 declare const BigUint64Array: any;
 declare const Atomics: any;
+
+interface BigInt {
+    toString(radix?: number): string;
+    valueOf(): bigint;
+    toLocaleString(): string;
+}

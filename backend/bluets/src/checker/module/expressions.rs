@@ -15,6 +15,7 @@ mod implementation_origin;
 mod indexing;
 mod inference;
 mod library_presentation;
+mod more_types;
 mod optional_property;
 mod property_diagnostics;
 mod readonly;

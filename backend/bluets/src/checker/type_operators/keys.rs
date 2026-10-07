@@ -28,6 +28,17 @@ pub(super) fn keyof(
 ) -> Option<Type> {
     let value = expanded(value, aliases, visited, budget);
     match value {
+        Type::Readonly(value) => keyof(&value, aliases, visited, budget),
+        Type::IndexedRecord { object, indices } => {
+            let mut keys = vec![keyof(&object, aliases, visited, budget)?];
+            for index in indices {
+                keys.push(index.key.clone());
+                if index.key == Type::String {
+                    keys.push(Type::Number);
+                }
+            }
+            Some(union(keys))
+        }
         Type::Any => Some(Type::Union(vec![
             Type::String,
             Type::Number,
@@ -36,7 +47,8 @@ pub(super) fn keyof(
                 arguments: vec![],
             },
         ])),
-        Type::Unknown | Type::Never => Some(Type::Never),
+        Type::Unknown | Type::StrictUnknown => Some(Type::Never),
+        Type::Never => Some(Type::Union(vec![Type::String, Type::Number, Type::Symbol])),
         Type::Record(fields) | Type::CallableRecord { fields, .. } => {
             Some(union(fields.iter().map(|field| literal_key(&field.name))))
         }
@@ -162,6 +174,18 @@ pub(super) fn indexed(
         return Some(union(values));
     }
     match &object {
+        Type::Readonly(value) => indexed(value, &index, aliases, visited, budget),
+        Type::IndexedRecord { object, indices } => {
+            if let Some(value) = indexed(object, &index, aliases, &mut visited.clone(), budget) {
+                return Some(value);
+            }
+            indices
+                .iter()
+                .find(|entry| {
+                    is_assignable(&index, &entry.key, aliases, &mut visited.clone(), budget)
+                })
+                .map(|entry| entry.value.clone())
+        }
         Type::Array(item)
             if index == Type::Number
                 || key_name(&index).is_some_and(|key| key.parse::<usize>().is_ok()) =>

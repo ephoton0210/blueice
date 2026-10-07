@@ -5,6 +5,7 @@
 //! Lexical lookup, named types and generic declaration validation.
 
 use super::*;
+mod more_types;
 mod operators;
 
 impl ModuleChecker<'_> {
@@ -103,6 +104,7 @@ impl ModuleChecker<'_> {
     }
 
     pub(in crate::checker::module) fn check_type(&mut self, value: &Type, span: &SourceSpan) {
+        self.check_additional_type(value, span);
         self.check_operator(value);
         if let Some(children) = value.operator_children() {
             let previous = self.type_parameters.clone();

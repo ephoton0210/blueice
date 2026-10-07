@@ -64,8 +64,12 @@ impl Parser {
             }
         }
         self.expect("{");
-        let (fields, signatures) = match self.parse_record_type("expected an interface field name")
-        {
+        let body = self.parse_record_type("expected an interface field name");
+        let (body, indices) = match body {
+            Type::IndexedRecord { object, indices } => (*object, indices),
+            value => (value, Vec::new()),
+        };
+        let (fields, signatures) = match body {
             Type::Record(fields) => (fields, Vec::new()),
             Type::CallableRecord { fields, signatures } => (fields, signatures),
             _ => unreachable!(),
@@ -83,6 +87,7 @@ impl Parser {
                 heritage,
                 fields,
                 signatures,
+                indices,
                 exported,
                 span: SourceSpan::new(&self.id, start, end),
             }));

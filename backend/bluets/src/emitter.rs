@@ -536,9 +536,10 @@ fn emit_declaration(
                     );
                 }
                 output.push(' ');
-                output.push_str(&callable_objects::render(
+                output.push_str(&callable_objects::render_with_indices(
                     &interface.fields,
                     &interface.signatures,
+                    &interface.indices,
                 ));
                 output.push('\n');
             }
@@ -774,16 +775,23 @@ fn emit_type_parameters(output: &mut String, parameters: &[TypeParameter]) {
 
 fn type_to_ts(value: &Type) -> String {
     match value {
-        Type::Conditional(_) | Type::Infer(_) | Type::Mapped(_) | Type::TemplateLiteral(_) => {
-            value.operator_text(type_to_ts).expect("operator type")
-        }
+        Type::Conditional(_)
+        | Type::Infer(_)
+        | Type::Mapped(_)
+        | Type::TemplateLiteral(_)
+        | Type::Readonly(_)
+        | Type::IndexedRecord { .. } => value.operator_text(type_to_ts).expect("operator type"),
         Type::KeyOf(value) => format!("keyof {}", type_to_ts(value)),
         Type::IndexedAccess { object, index, .. } => {
             format!("{}[{}]", type_to_ts(object), type_to_ts(index))
         }
         Type::Predicate(predicate) => predicate.text(type_to_ts),
         Type::Any => "any".to_string(),
-        Type::Unknown => "unknown".to_string(),
+        Type::Unknown | Type::StrictUnknown => "unknown".to_string(),
+        Type::BigInt => "bigint".to_string(),
+        Type::Symbol => "symbol".to_string(),
+        Type::UniqueSymbol(_) => "unique symbol".to_string(),
+        Type::ConstAssertion => "const".to_string(),
         Type::Never => "never".to_string(),
         Type::Void => "void".to_string(),
         Type::Null => "null".to_string(),

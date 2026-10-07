@@ -79,6 +79,11 @@ programs, three exact runtime/declaration witnesses, both pinned recorders and
 six budget controls pass. The shared diagnostic corpus contains 1,826 programs
 and 152 templates.
 
+The K.4.6 frozen-source Linux gate passes all 1,124 tests in 73 groups,
+including all 139 ignored oracles in 38 differential suite files. All 100 more-type
+programs and six exact runtime/declaration witnesses pass. The shared diagnostic
+corpus contains 1,926 programs and 164 templates.
+
 ### Measured pass rate (2026-10-06, Linux aarch64 in Colima on Apple silicon, pinned `typescript@5.9.3`, Node 26)
 
 Every differential suite of section 1 was run against the pinned compiler with none skipped:
@@ -124,9 +129,9 @@ suite entry, then removing the row.
 | --- | --- |
 | G-T1 | K.4.1 supplies lexical control-flow facts for the 123 pinned `typeof`/`instanceof`/`in`/literal/nullish/discriminant/truthiness, optional-chain, switch, loop, assignment and closure witnesses. Property facts retain their owning lexical binding and path. The three K.3.3 iterator-flow wording gaps are resolved and their message allowances removed. K.4.2 adds 75 pinned user-defined guard/assertion and exhaustive-completion witnesses, including imported and function-valued signatures, receiver predicates, explicit-call-target diagnostics and known `never` calls. Broader inferred predicate synthesis, exceptional-flow and dotted capture precision remain unmeasured. |
 | G-T2 | K.4.3 adds 74 pinned argument/contextual candidate, widening, constraint/default, explicit argument and generic callable/class/interface witnesses, including imported signatures and dependent defaults. Concrete record `keyof`/indexed projections supply the measured prerequisites, and contextual budget exhaustion remains a precise refusal. Remaining: inference across arbitrary recursive/operator forms, higher-kinded patterns and broader variance; K.4.5 provides the measured operators; compatibility remains K.4.7 and generic heritage/methods K.5.2. |
-| G-T3 | K.4.5 supplies 82 pinned record/array key-set, value-query, indexed, distributive/non-distributive conditional, infer, mapped modifier/remap/filter, template product/pattern and recursive-alias witnesses, with three exact runtime/declaration comparisons and six budget controls. Default ES2022 numeric products retain the measured 652-entry native cache order. Remaining: unmeasured nested patterns, overloaded queries, escape normalization and broader primitive/library keys; index/readonly/symbol and homomorphic array/tuple composition K.4.6, broader relations K.4.7. Expansion beyond the configured budget remains a precise refusal. |
+| G-T3 | K.4.5 supplies 82 pinned record/array key-set, value-query, indexed, distributive/non-distributive conditional, infer, mapped modifier/remap/filter, template product/pattern and recursive-alias witnesses, with three exact runtime/declaration comparisons and six budget controls. Default ES2022 numeric products retain the measured 652-entry native cache order. Remaining: unmeasured nested patterns, overloaded queries, escape normalization and broader primitive/library keys; K.4.6 supplies measured index/readonly/symbol and homomorphic array/tuple composition; broader relations remain K.4.7. Expansion beyond the configured budget remains a precise refusal. |
 | G-T4 | K.4.4 supplies 74 pinned ordered call/construct/method overload, callback-context, direct literal-priority, merged-interface-group and implementation-compatibility witnesses, with six exact runtime/declaration comparisons. Anonymous signatures retain data members and generic binders, and obsolete two-tag/named-callback restrictions are retired. Remaining: unmeasured candidate/operator/variance interactions and optional chaining/non-null assertion typing in every position. |
-| G-T5 | Index signatures, `readonly` arrays/tuples, `unique symbol`, `bigint`, `symbol`, `never`/`unknown` flow rules, `satisfies`, `as const`, enum-like literal inference. |
+| G-T5 | K.4.6 supplies 100 pinned index-signature, readonly array/tuple, bigint, symbol/unique-symbol, satisfies/const-assertion, tuple metadata, unknown/never, enum and void/undefined witnesses, with six exact runtime/declaration comparisons. Explicit strict unknown preserves legacy opaque compatibility; original Array/ReadonlyArray and homomorphic mapped container forms compose. Remaining: unmeasured computed symbol/index combinations, broader tuple and const/satisfies contexts, unknown/never flow combinations and structural relations in K.4.7. |
 | G-T6 | Structural-compatibility details: excess-property checks in every position, weak types, optional/exactOptional rules, `strictFunctionTypes` and method bivariance, `exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`. K.1.2 enforces lexical binding immutability and readonly write targets in the supported expression forms. |
 | G-T7 | K.1.4 adds an original, versioned minimum ECMAScript library selected by target, with owner replacement and no runtime grant. The tested Array/ReadonlyArray, boxed/primitive methods, Object/Function, Promise, collections, Math/JSON/Symbol, errors, iteration and Date/RegExp forms match the same pinned target/lib. Remaining catalogs, constructors, computed iteration, callback result precision and opaque compatibility names are enumerated in `STANDARD_LIBRARY.md`; DOM remains owner supplied. |
 | G-T8 | K.1.5 infers the tested unannotated function/getter/method signatures, unions, void/never completion, async Promise and generator types, with literal widening and a bounded recursion guard. Imports and declaration emit retain those signatures. Remaining: literal freshness and widening in all positions, broader contextual and flow-sensitive inference, unproven unknown getter bodies and declaration precision; K.4/K.8 retain these gaps. |
@@ -198,17 +203,17 @@ excluded). A refusal is never silent: the program is rejected with this text.
 - `backend/bluets/src/checker/module/binding/classes/visibility.rs:580` — cannot prove that access to `{}` is permitted for this receiver
 - `backend/bluets/src/checker/module/binding/classes/fields.rs:113` — class field `{}` needs a type annotation unless its initializer \ or default is a number, string or boolean literal
 - `backend/bluets/src/checker/module/binding/classes.rs:645` — class tuple rest annotation cannot be specialized within the type budget
-- `backend/bluets/src/checker/module/binding/names.rs:190` — cyclic tuple spread cannot be resolved
+- `backend/bluets/src/checker/module/binding/names.rs:192` — cyclic tuple spread cannot be resolved
 - `backend/bluets/src/checker/module/binding/classes/fields.rs:383` — definite assignment of `{}` through a branch is not supported yet
 - `backend/bluets/src/checker/module/binding/classes/fields.rs:438` — field `{}` redeclares a member of an imported base class, which is not supported yet
 - `backend/bluets/src/checker/module/binding/classes/accessors.rs:143` — getter `{}` needs a return type annotation; inferring it from the \ body is not supported yet
-- `backend/bluets/src/checker/module/binding.rs:606` — interface heritage {name} must name an interface declaration
+- `backend/bluets/src/checker/module/binding.rs:613` — interface heritage {name} must name an interface declaration
 - `backend/bluets/src/checker/module/binding/namespaces.rs:964` — namespace `{source}` has no run-time members; import it with `import type`
 - `backend/bluets/src/checker/module/binding/classes/accessors.rs:364` — redeclaring `{name}` as an accessor over a member of an \ imported base class is not supported yet
 - `backend/bluets/src/checker/module/binding/classes/visibility.rs:302` — redeclaring the protected member `{name}` of an imported base \ class is not supported yet
 - `backend/bluets/src/checker/module/binding/classes/accessors.rs:195` — the getter and setter of `{name}` have different types, \ which is not supported yet
-- `backend/bluets/src/checker/module/binding/names.rs:194` — tuple spread names an unresolved type
-- `backend/bluets/src/checker/module/binding/names.rs:198` — tuple spread requires one concrete tuple or array type
+- `backend/bluets/src/checker/module/binding/names.rs:196` — tuple spread names an unresolved type
+- `backend/bluets/src/checker/module/binding/names.rs:200` — tuple spread requires one concrete tuple or array type
 
 ### diagnostic (1)
 
@@ -237,7 +242,7 @@ excluded). A refusal is never silent: the program is rejected with this text.
 - `backend/bluets/src/emitter/classes.rs:204` — declaration output requires a parameter property type
 - `backend/bluets/src/emitter/classes.rs:384` — declaration output requires an explicit class method return type
 - `backend/bluets/src/emitter/classes.rs:338` — declaration output requires an explicit getter return type
-- `backend/bluets/src/emitter/legacy_decorators.rs:574` — decorator metadata cannot serialize `{name}`: only types declared in this module are supported
+- `backend/bluets/src/emitter/legacy_decorators.rs:581` — decorator metadata cannot serialize `{name}`: only types declared in this module are supported
 - `backend/bluets/src/emitter/legacy_decorators.rs:430` — decorator metadata needs this accessor's type annotation
 - `backend/bluets/src/emitter/legacy_decorators.rs:378` — decorator metadata needs this field's type
 - `backend/bluets/src/emitter/legacy_decorators.rs:391` — decorator metadata needs this method's return type annotation
@@ -352,7 +357,7 @@ excluded). A refusal is never silent: the program is rejected with this text.
 - `backend/bluets/src/parser/declarations.rs:313` — `{}` is not in the initial BlueTS matrix
 - `backend/bluets/src/parser/declarations.rs:260` — an async enum is not valid
 - `backend/bluets/src/parser/declarations.rs:272` — an async enum is not valid
-- `backend/bluets/src/parser/declarations/typed_declarations.rs:187` — an async generator is not supported yet
+- `backend/bluets/src/parser/declarations/typed_declarations.rs:192` — an async generator is not supported yet
 - `backend/bluets/src/parser/declarations.rs:297` — an async namespace is not valid
 - `backend/bluets/src/parser/declarations/enums.rs:53` — an enum member name with an escape sequence is not supported yet
 - `backend/bluets/src/parser/declarations.rs:153` — an import, `export default`, `export =`, `export *` or export list inside a namespace body is not supported
@@ -366,9 +371,9 @@ excluded). A refusal is never silent: the program is rejected with this text.
 - `backend/bluets/src/parser/declarations/imports_exports.rs:147` — mixed value/type imports are not in the initial BlueTS matrix; use a separate `import type` declaration
 - `backend/bluets/src/parser/declarations/imports_exports.rs:183` — only `export = name;` of a local declaration is supported
 - `backend/bluets/src/parser/declarations/imports_exports.rs:27` — only `import name = require("module")` is supported as an `import =` form
-- `backend/bluets/src/parser/declarations/typed_declarations.rs:111` — optional variables are not valid TypeScript declarations
-- `backend/bluets/src/parser/declarations/typed_declarations.rs:356` — this destructuring pattern is not supported yet
-- `backend/bluets/src/parser/type_syntax.rs:290` — tuple rest element must have an array or named tuple annotation
+- `backend/bluets/src/parser/declarations/typed_declarations.rs:116` — optional variables are not valid TypeScript declarations
+- `backend/bluets/src/parser/declarations/typed_declarations.rs:361` — this destructuring pattern is not supported yet
+- `backend/bluets/src/parser/type_syntax.rs:294` — tuple rest element must have an array or named tuple annotation
 - `backend/bluets/src/parser/declarations/imports_exports.rs:278` — type-only bindings in a value export are not in the initial BlueTS matrix; use `export type`
 - `backend/bluets/src/parser/declarations/source_edits.rs:85` — typed arrow parameters are not in the initial BlueTS matrix
 - `backend/bluets/src/parser/declarations.rs:199` — value re-exports from another module are not in the initial BlueTS matrix

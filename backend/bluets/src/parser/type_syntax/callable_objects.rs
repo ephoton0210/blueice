@@ -10,6 +10,7 @@ impl Parser {
     pub(in crate::parser) fn parse_record_type(&mut self, field_expectation: &str) -> Type {
         let mut fields = Vec::new();
         let mut signatures = Vec::new();
+        let mut indices = Vec::new();
         let mut closed = false;
         while !self.at_eof() {
             if self.consume("}") {
@@ -41,6 +42,27 @@ impl Parser {
                 });
             } else {
                 let readonly = self.consume("readonly");
+                if self.consume("[") {
+                    let name = self.require_identifier("expected an index parameter name");
+                    self.expect(":");
+                    let key_start = self.current().start;
+                    let key = self.parse_type_until(&["]"]);
+                    let key_span = SourceSpan::new(&self.id, key_start, self.previous().end);
+                    self.expect("]");
+                    self.expect(":");
+                    let value = self.parse_type_until(&[";", ",", "}"]);
+                    indices.push(IndexSignature {
+                        name,
+                        key,
+                        value,
+                        readonly,
+                        key_span,
+                        span: SourceSpan::new(&self.id, start, self.previous().end),
+                    });
+                    self.consume(";");
+                    self.consume(",");
+                    continue;
+                }
                 let name = self.require_property_name(field_expectation);
                 let optional = self.consume("?");
                 let value = if self.peek("(") || self.peek("<") {
@@ -77,10 +99,18 @@ impl Parser {
         if !closed {
             self.expect("}");
         }
-        if signatures.is_empty() {
+        let object = if signatures.is_empty() {
             Type::Record(fields)
         } else {
             Type::CallableRecord { fields, signatures }
+        };
+        if indices.is_empty() {
+            object
+        } else {
+            Type::IndexedRecord {
+                object: Box::new(object),
+                indices,
+            }
         }
     }
 }

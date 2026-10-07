@@ -3,6 +3,8 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use super::*;
+mod more_types;
+pub(super) use more_types::normalized as normalize_more_type;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum TupleSpreadError {
@@ -205,6 +207,9 @@ pub(super) fn is_assignable(
                 return actual == expected;
             }
         }
+    }
+    if let Some(result) = more_types::assignable(actual, expected, aliases, visited, budget) {
+        return result;
     }
     if matches!(actual, Type::Any | Type::Unknown) || matches!(expected, Type::Any | Type::Unknown)
     {
@@ -733,7 +738,7 @@ pub(super) fn accepts_strict_unknown(
     budget: &mut TypeExpansionBudget,
 ) -> bool {
     match expected {
-        Type::Any | Type::Unknown => true,
+        Type::Any | Type::Unknown | Type::StrictUnknown => true,
         Type::Union(options) => options
             .iter()
             .any(|option| accepts_strict_unknown(option, aliases, &mut visited.clone(), budget)),
@@ -992,9 +997,16 @@ pub(super) fn substitute_type(value: &Type, substitutions: &BTreeMap<String, Typ
 
 pub(super) fn type_identity(value: &Type) -> String {
     match value {
-        Type::Conditional(_) | Type::Infer(_) | Type::Mapped(_) | Type::TemplateLiteral(_) => {
-            value.operator_text(type_identity).expect("operator type")
-        }
+        Type::UniqueSymbol(origin) => format!(
+            "unique symbol {}:{}:{}",
+            origin.module, origin.start, origin.end
+        ),
+        Type::Conditional(_)
+        | Type::Infer(_)
+        | Type::Mapped(_)
+        | Type::TemplateLiteral(_)
+        | Type::Readonly(_)
+        | Type::IndexedRecord { .. } => value.operator_text(type_identity).expect("operator type"),
         Type::KeyOf(value) => format!("keyof {}", type_identity(value)),
         Type::IndexedAccess { object, index, .. } => {
             format!("{}[{}]", type_identity(object), type_identity(index))
@@ -1044,16 +1056,23 @@ pub(super) fn type_identity(value: &Type) -> String {
 
 pub(crate) fn type_label(value: &Type) -> String {
     match value {
-        Type::Conditional(_) | Type::Infer(_) | Type::Mapped(_) | Type::TemplateLiteral(_) => {
-            value.operator_text(type_label).expect("operator type")
-        }
+        Type::Conditional(_)
+        | Type::Infer(_)
+        | Type::Mapped(_)
+        | Type::TemplateLiteral(_)
+        | Type::Readonly(_)
+        | Type::IndexedRecord { .. } => value.operator_text(type_label).expect("operator type"),
         Type::KeyOf(value) => format!("keyof {}", type_label(value)),
         Type::IndexedAccess { object, index, .. } => {
             format!("{}[{}]", type_label(object), type_label(index))
         }
         Type::Predicate(predicate) => predicate.text(type_label),
         Type::Any => "any".to_string(),
-        Type::Unknown => "unknown".to_string(),
+        Type::Unknown | Type::StrictUnknown => "unknown".to_string(),
+        Type::BigInt => "bigint".to_string(),
+        Type::Symbol => "symbol".to_string(),
+        Type::UniqueSymbol(_) => "unique symbol".to_string(),
+        Type::ConstAssertion => "const".to_string(),
         Type::Never => "never".to_string(),
         Type::Void => "void".to_string(),
         Type::Null => "null".to_string(),

@@ -25,9 +25,12 @@ fn text(value: &Type, depth: usize, project: Option<&crate::Project>) -> String 
     }
     let render = |value: &Type| text(value, depth + 1, project);
     match value {
-        Type::Conditional(_) | Type::Infer(_) | Type::Mapped(_) | Type::TemplateLiteral(_) => {
-            value.operator_text(render).expect("operator type")
-        }
+        Type::Conditional(_)
+        | Type::Infer(_)
+        | Type::Mapped(_)
+        | Type::TemplateLiteral(_)
+        | Type::Readonly(_)
+        | Type::IndexedRecord { .. } => value.operator_text(render).expect("operator type"),
         Type::KeyOf(value) => format!("keyof {}", render(value)),
         Type::IndexedAccess { object, index, .. } => {
             format!("{}[{}]", render(object), render(index))
@@ -223,7 +226,28 @@ fn text(value: &Type, depth: usize, project: Option<&crate::Project>) -> String 
         }
         Type::Intersection(values) => values.iter().map(render).collect::<Vec<_>>().join(" & "),
         Type::Any => "any".into(),
-        Type::Unknown => "unknown".into(),
+        Type::Unknown | Type::StrictUnknown => "unknown".into(),
+        Type::BigInt => "bigint".into(),
+        Type::Symbol => "symbol".into(),
+        Type::UniqueSymbol(origin) => project
+            .and_then(|project| {
+                project.modules.values().find_map(|module| {
+                    module
+                        .declarations
+                        .iter()
+                        .find_map(|declaration| match declaration {
+                            crate::Declaration::Variable(variable)
+                                if variable.annotation.as_ref() == Some(value)
+                                    || variable.span == *origin =>
+                            {
+                                Some(format!("typeof {}", variable.name))
+                            }
+                            _ => None,
+                        })
+                })
+            })
+            .unwrap_or_else(|| "unique symbol".into()),
+        Type::ConstAssertion => "const".into(),
         Type::Never => "never".into(),
         Type::Void => "void".into(),
         Type::Null => "null".into(),

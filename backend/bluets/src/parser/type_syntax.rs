@@ -233,7 +233,11 @@ impl Parser {
                 }
             }
         } else if self.consume("readonly") {
-            self.parse_type_primary(&[])
+            Type::Readonly(Box::new(self.parse_type_primary(&[])))
+        } else if self.consume("unique") {
+            let start = self.previous().start;
+            self.expect("symbol");
+            Type::UniqueSymbol(SourceSpan::new(&self.id, start, self.previous().end))
         } else if self.consume("[") {
             let mut values = Vec::new();
             let mut saw_optional = false;
@@ -355,6 +359,18 @@ impl Parser {
                 parameters,
                 result: Box::new(self.parse_return_type_until(_stop)),
             }
+        } else if self.consume("-") {
+            if self.current().kind == TokenKind::Number {
+                let literal = Type::Literal(format!("-{}", self.current().text));
+                self.bump();
+                literal
+            } else {
+                self.error_here(
+                    DiagnosticCode::ParseError,
+                    "expected a numeric literal type",
+                );
+                Type::Unknown
+            }
         } else if self.current().kind == TokenKind::String
             || self.current().kind == TokenKind::Number
             || self.peek("true")
@@ -399,7 +415,15 @@ impl Parser {
             let name_end = self.previous().end;
             if !matches!(
                 name.as_str(),
-                "any" | "unknown" | "never" | "void" | "boolean" | "number" | "string"
+                "any"
+                    | "unknown"
+                    | "never"
+                    | "void"
+                    | "boolean"
+                    | "number"
+                    | "string"
+                    | "bigint"
+                    | "symbol"
             ) {
                 self.type_references.push(TypeReference {
                     name: name.clone(),
@@ -419,11 +443,13 @@ impl Parser {
             }
             match name.as_str() {
                 "any" => Type::Any,
-                "unknown" => Type::Unknown,
+                "unknown" => Type::StrictUnknown,
                 "never" => Type::Never,
                 "void" => Type::Void,
                 "boolean" => Type::Boolean,
                 "number" => Type::Number,
+                "bigint" => Type::BigInt,
+                "symbol" => Type::Symbol,
                 "string" => Type::String,
                 _ => Type::Named { name, arguments },
             }

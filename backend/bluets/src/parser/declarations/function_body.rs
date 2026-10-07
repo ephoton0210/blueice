@@ -277,7 +277,7 @@ impl Parser {
                     end: span_end,
                     replacement: String::new(),
                 });
-                if !matches!(value, Type::Any | Type::Unknown) {
+                if !matches!(value, Type::Any | Type::Unknown | Type::StrictUnknown) {
                     self.error_at(
                         SourceSpan::new(&self.id, span_start, span_end),
                         DiagnosticCode::ParseError,

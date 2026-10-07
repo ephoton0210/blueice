@@ -46114,6 +46114,7 @@
         "--noEmit"
       ],
       "verdict": "accept",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-bigint-arithmetic/main.ts"
       ],
@@ -46135,6 +46136,7 @@
         "--noEmit"
       ],
       "verdict": "accept",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-bigint-literal/main.ts"
       ],
@@ -46156,6 +46158,7 @@
         "--noEmit"
       ],
       "verdict": "accept",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-bigint-literal-type/main.ts"
       ],
@@ -46177,6 +46180,7 @@
         "--noEmit"
       ],
       "verdict": "reject",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-bigint-literal-type-error/main.ts"
       ],
@@ -46218,6 +46222,7 @@
         "--noEmit"
       ],
       "verdict": "reject",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-bigint-mixed-error/main.ts"
       ],
@@ -46259,6 +46264,7 @@
         "--noEmit"
       ],
       "verdict": "accept",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-bigint-negative/main.ts"
       ],
@@ -46280,6 +46286,7 @@
         "--noEmit"
       ],
       "verdict": "reject",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-bigint-negative-error/main.ts"
       ],
@@ -46321,6 +46328,7 @@
         "--noEmit"
       ],
       "verdict": "reject",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-bigint-number-error/main.ts"
       ],
@@ -46362,6 +46370,7 @@
         "--noEmit"
       ],
       "verdict": "reject",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-bigint-unary-plus-error/main.ts"
       ],
@@ -46413,6 +46422,7 @@
         "--noEmit"
       ],
       "verdict": "reject",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-const-assertion-expression-error/main.ts"
       ],
@@ -46454,6 +46464,7 @@
         "--noEmit"
       ],
       "verdict": "accept",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-const-record/main.ts"
       ],
@@ -46475,6 +46486,7 @@
         "--noEmit"
       ],
       "verdict": "reject",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-const-record-write-error/main.ts"
       ],
@@ -46516,6 +46528,7 @@
         "--noEmit"
       ],
       "verdict": "accept",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-const-tuple/main.ts"
       ],
@@ -46537,6 +46550,7 @@
         "--noEmit"
       ],
       "verdict": "reject",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-const-tuple-write-error/main.ts"
       ],
@@ -46578,6 +46592,7 @@
         "--noEmit"
       ],
       "verdict": "accept",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-enum-literal/main.ts"
       ],
@@ -46599,6 +46614,7 @@
         "--noEmit"
       ],
       "verdict": "reject",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-enum-literal-error/main.ts"
       ],
@@ -46640,6 +46656,7 @@
         "--noEmit"
       ],
       "verdict": "reject",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-enum-numeric-literal-error/main.ts"
       ],
@@ -46681,6 +46698,7 @@
         "--noEmit"
       ],
       "verdict": "reject",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-index-boolean-key-error/main.ts"
       ],
@@ -46722,6 +46740,7 @@
         "--noEmit"
       ],
       "verdict": "reject",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-index-declared-property-error/main.ts"
       ],
@@ -46763,6 +46782,7 @@
         "--noEmit"
       ],
       "verdict": "accept",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-index-interface/main.ts"
       ],
@@ -46784,6 +46804,7 @@
         "--noEmit"
       ],
       "verdict": "reject",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-index-interface-error/main.ts"
       ],
@@ -46849,6 +46870,7 @@
         "--noEmit"
       ],
       "verdict": "reject",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-index-interface-readonly-error/main.ts"
       ],
@@ -46890,6 +46912,7 @@
         "--noEmit"
       ],
       "verdict": "accept",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-index-number/main.ts"
       ],
@@ -46911,6 +46934,7 @@
         "--noEmit"
       ],
       "verdict": "reject",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-index-number-error/main.ts"
       ],
@@ -46976,6 +47000,7 @@
         "--noEmit"
       ],
       "verdict": "reject",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-index-number-string-error/main.ts"
       ],
@@ -47017,6 +47042,7 @@
         "--noEmit"
       ],
       "verdict": "accept",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-index-read/main.ts"
       ],
@@ -47038,6 +47064,7 @@
         "--noEmit"
       ],
       "verdict": "reject",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-index-read-error/main.ts"
       ],
@@ -47079,6 +47106,7 @@
         "--noEmit"
       ],
       "verdict": "reject",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-index-readonly-error/main.ts"
       ],
@@ -47120,6 +47148,7 @@
         "--noEmit"
       ],
       "verdict": "accept",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-index-string/main.ts"
       ],
@@ -47141,6 +47170,7 @@
         "--noEmit"
       ],
       "verdict": "reject",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-index-string-error/main.ts"
       ],
@@ -47206,6 +47236,7 @@
         "--noEmit"
       ],
       "verdict": "accept",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-mapped-array/main.ts"
       ],
@@ -47227,6 +47258,7 @@
         "--noEmit"
       ],
       "verdict": "reject",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-mapped-array-error/main.ts"
       ],
@@ -47268,6 +47300,7 @@
         "--noEmit"
       ],
       "verdict": "accept",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-mapped-mutable-array/main.ts"
       ],
@@ -47289,6 +47322,7 @@
         "--noEmit"
       ],
       "verdict": "reject",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-mapped-readonly-array-error/main.ts"
       ],
@@ -47330,6 +47364,7 @@
         "--noEmit"
       ],
       "verdict": "reject",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-mapped-readonly-to-mutable-error/main.ts"
       ],
@@ -47371,6 +47406,7 @@
         "--noEmit"
       ],
       "verdict": "reject",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-mapped-readonly-tuple-error/main.ts"
       ],
@@ -47412,6 +47448,7 @@
         "--noEmit"
       ],
       "verdict": "accept",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-mapped-tuple/main.ts"
       ],
@@ -47433,6 +47470,7 @@
         "--noEmit"
       ],
       "verdict": "reject",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-mapped-tuple-error/main.ts"
       ],
@@ -47474,6 +47512,7 @@
         "--noEmit"
       ],
       "verdict": "accept",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-mutable-array-to-readonly/main.ts"
       ],
@@ -47495,6 +47534,7 @@
         "--noEmit"
       ],
       "verdict": "reject",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-never-intersection-error/main.ts"
       ],
@@ -47536,6 +47576,7 @@
         "--noEmit"
       ],
       "verdict": "accept",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-never-source/main.ts"
       ],
@@ -47557,6 +47598,7 @@
         "--noEmit"
       ],
       "verdict": "reject",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-never-target-error/main.ts"
       ],
@@ -47598,6 +47640,7 @@
         "--noEmit"
       ],
       "verdict": "accept",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-never-union/main.ts"
       ],
@@ -47619,6 +47662,7 @@
         "--noEmit"
       ],
       "verdict": "reject",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-number-bigint-error/main.ts"
       ],
@@ -47660,6 +47704,7 @@
         "--noEmit"
       ],
       "verdict": "accept",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-optional-tuple/main.ts"
       ],
@@ -47681,6 +47726,7 @@
         "--noEmit"
       ],
       "verdict": "reject",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-optional-tuple-error/main.ts"
       ],
@@ -47722,6 +47768,7 @@
         "--noEmit"
       ],
       "verdict": "reject",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-optional-tuple-read-error/main.ts"
       ],
@@ -47763,6 +47810,7 @@
         "--noEmit"
       ],
       "verdict": "accept",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-optional-tuple-undefined/main.ts"
       ],
@@ -47784,6 +47832,7 @@
         "--noEmit"
       ],
       "verdict": "accept",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-readonly-array/main.ts"
       ],
@@ -47805,6 +47854,7 @@
         "--noEmit"
       ],
       "verdict": "reject",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-readonly-array-element-error/main.ts"
       ],
@@ -47846,6 +47896,7 @@
         "--noEmit"
       ],
       "verdict": "reject",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-readonly-array-push-error/main.ts"
       ],
@@ -47887,6 +47938,7 @@
         "--noEmit"
       ],
       "verdict": "reject",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-readonly-array-to-mutable-error/main.ts"
       ],
@@ -47928,6 +47980,7 @@
         "--noEmit"
       ],
       "verdict": "reject",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-readonly-array-write-error/main.ts"
       ],
@@ -47969,6 +48022,7 @@
         "--noEmit"
       ],
       "verdict": "accept",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-readonly-library-array/main.ts"
       ],
@@ -47990,6 +48044,7 @@
         "--noEmit"
       ],
       "verdict": "reject",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-readonly-library-to-mutable-error/main.ts"
       ],
@@ -48031,6 +48086,7 @@
         "--noEmit"
       ],
       "verdict": "accept",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-readonly-library-to-syntax/main.ts"
       ],
@@ -48052,6 +48108,7 @@
         "--noEmit"
       ],
       "verdict": "reject",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-readonly-primitive-error/main.ts"
       ],
@@ -48093,6 +48150,7 @@
         "--noEmit"
       ],
       "verdict": "accept",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-readonly-syntax-to-library/main.ts"
       ],
@@ -48114,6 +48172,7 @@
         "--noEmit"
       ],
       "verdict": "accept",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-readonly-tuple/main.ts"
       ],
@@ -48135,6 +48194,7 @@
         "--noEmit"
       ],
       "verdict": "reject",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-readonly-tuple-element-error/main.ts"
       ],
@@ -48176,6 +48236,7 @@
         "--noEmit"
       ],
       "verdict": "reject",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-readonly-tuple-to-mutable-error/main.ts"
       ],
@@ -48217,6 +48278,7 @@
         "--noEmit"
       ],
       "verdict": "reject",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-readonly-tuple-write-error/main.ts"
       ],
@@ -48258,6 +48320,7 @@
         "--noEmit"
       ],
       "verdict": "accept",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-rest-tuple/main.ts"
       ],
@@ -48279,6 +48342,7 @@
         "--noEmit"
       ],
       "verdict": "reject",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-rest-tuple-error/main.ts"
       ],
@@ -48320,6 +48384,7 @@
         "--noEmit"
       ],
       "verdict": "accept",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-rest-tuple-read/main.ts"
       ],
@@ -48341,6 +48406,7 @@
         "--noEmit"
       ],
       "verdict": "accept",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-rest-tuple-required-suffix/main.ts"
       ],
@@ -48362,6 +48428,7 @@
         "--noEmit"
       ],
       "verdict": "reject",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-rest-tuple-required-suffix-error/main.ts"
       ],
@@ -48403,6 +48470,7 @@
         "--noEmit"
       ],
       "verdict": "accept",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-runtime-bigint/main.ts"
       ],
@@ -48424,6 +48492,7 @@
         "--noEmit"
       ],
       "verdict": "accept",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-runtime-const-record/main.ts"
       ],
@@ -48445,6 +48514,7 @@
         "--noEmit"
       ],
       "verdict": "accept",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-runtime-const-tuple/main.ts"
       ],
@@ -48466,6 +48536,7 @@
         "--noEmit"
       ],
       "verdict": "accept",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-runtime-index-interface/main.ts"
       ],
@@ -48487,6 +48558,7 @@
         "--noEmit"
       ],
       "verdict": "accept",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-runtime-satisfies/main.ts"
       ],
@@ -48508,6 +48580,7 @@
         "--noEmit"
       ],
       "verdict": "accept",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-runtime-unique-symbol/main.ts"
       ],
@@ -48529,6 +48602,7 @@
         "--noEmit"
       ],
       "verdict": "reject",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-satisfies-excess-error/main.ts"
       ],
@@ -48570,6 +48644,7 @@
         "--noEmit"
       ],
       "verdict": "accept",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-satisfies-record/main.ts"
       ],
@@ -48591,6 +48666,7 @@
         "--noEmit"
       ],
       "verdict": "reject",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-satisfies-record-error/main.ts"
       ],
@@ -48656,6 +48732,7 @@
         "--noEmit"
       ],
       "verdict": "accept",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-satisfies-retains-type/main.ts"
       ],
@@ -48677,6 +48754,7 @@
         "--noEmit"
       ],
       "verdict": "reject",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-satisfies-retains-type-error/main.ts"
       ],
@@ -48718,6 +48796,7 @@
         "--noEmit"
       ],
       "verdict": "accept",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-symbol/main.ts"
       ],
@@ -48739,6 +48818,7 @@
         "--noEmit"
       ],
       "verdict": "reject",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-symbol-number-error/main.ts"
       ],
@@ -48780,6 +48860,7 @@
         "--noEmit"
       ],
       "verdict": "accept",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-undefined-return/main.ts"
       ],
@@ -48801,6 +48882,7 @@
         "--noEmit"
       ],
       "verdict": "reject",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-undefined-void-error/main.ts"
       ],
@@ -48842,6 +48924,7 @@
         "--noEmit"
       ],
       "verdict": "reject",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-unique-inferred-identity-error/main.ts"
       ],
@@ -48883,6 +48966,7 @@
         "--noEmit"
       ],
       "verdict": "accept",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-unique-symbol/main.ts"
       ],
@@ -48904,6 +48988,7 @@
         "--noEmit"
       ],
       "verdict": "reject",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-unique-symbol-identity-error/main.ts"
       ],
@@ -48945,6 +49030,7 @@
         "--noEmit"
       ],
       "verdict": "accept",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-unique-symbol-inferred/main.ts"
       ],
@@ -48966,6 +49052,7 @@
         "--noEmit"
       ],
       "verdict": "reject",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-unique-symbol-let-error/main.ts"
       ],
@@ -49007,6 +49094,7 @@
         "--noEmit"
       ],
       "verdict": "reject",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-unique-symbol-parameter-error/main.ts"
       ],
@@ -49048,6 +49136,7 @@
         "--noEmit"
       ],
       "verdict": "reject",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-unknown-alias-property-error/main.ts"
       ],
@@ -49089,6 +49178,7 @@
         "--noEmit"
       ],
       "verdict": "accept",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-unknown-any-target/main.ts"
       ],
@@ -49110,6 +49200,7 @@
         "--noEmit"
       ],
       "verdict": "accept",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-unknown-intersection/main.ts"
       ],
@@ -49131,6 +49222,7 @@
         "--noEmit"
       ],
       "verdict": "reject",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-unknown-property-error/main.ts"
       ],
@@ -49172,6 +49264,7 @@
         "--noEmit"
       ],
       "verdict": "reject",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-unknown-source-error/main.ts"
       ],
@@ -49213,6 +49306,7 @@
         "--noEmit"
       ],
       "verdict": "accept",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-unknown-target/main.ts"
       ],
@@ -49234,6 +49328,7 @@
         "--noEmit"
       ],
       "verdict": "accept",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-unknown-typeof-function/main.ts"
       ],
@@ -49255,6 +49350,7 @@
         "--noEmit"
       ],
       "verdict": "accept",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-unknown-union/main.ts"
       ],
@@ -49276,6 +49372,7 @@
         "--noEmit"
       ],
       "verdict": "reject",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-unknown-union-source-error/main.ts"
       ],
@@ -49317,6 +49414,7 @@
         "--noEmit"
       ],
       "verdict": "accept",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-void-function-assignment/main.ts"
       ],
@@ -49338,6 +49436,7 @@
         "--noEmit"
       ],
       "verdict": "accept",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-void-undefined-source/main.ts"
       ],
@@ -49359,6 +49458,7 @@
         "--noEmit"
       ],
       "verdict": "reject",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/mtypes-void-value-error/main.ts"
       ],

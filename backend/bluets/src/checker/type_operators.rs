@@ -20,7 +20,18 @@ pub(super) fn expanded(
     budget: &mut TypeExpansionBudget,
 ) -> Type {
     let mut value = value.clone();
-    while let Some(next) = instantiate_named(&value, aliases, visited, budget, "operator operand") {
+    loop {
+        if let Some(next) = super::type_relations::normalize_more_type(&value, aliases) {
+            if !budget.consume() {
+                break;
+            }
+            value = next;
+            continue;
+        }
+        let Some(next) = instantiate_named(&value, aliases, visited, budget, "operator operand")
+        else {
+            break;
+        };
         if next == value {
             break;
         }

@@ -11,7 +11,9 @@ use crate::syntax::{
 use std::collections::BTreeMap;
 
 mod type_forms;
-pub use type_forms::{ConditionalType, MappedModifier, MappedType, TemplateLiteralType};
+pub use type_forms::{
+    ConditionalType, IndexSignature, MappedModifier, MappedType, TemplateLiteralType,
+};
 
 /// Parser work bounds. Hosts may lower these for a constrained compile slot;
 /// the values are included in [`crate::CompilerLimits`] fingerprints.
@@ -614,18 +616,27 @@ pub struct InterfaceDeclaration {
     pub heritage: Vec<Type>,
     pub fields: Vec<TypeField>,
     pub signatures: Vec<TypeSignature>,
+    pub indices: Vec<IndexSignature>,
     pub exported: bool,
     pub span: SourceSpan,
 }
 
 impl InterfaceDeclaration {
     pub(crate) fn body_type(&self) -> Type {
-        if self.signatures.is_empty() {
+        let object = if self.signatures.is_empty() {
             Type::Record(self.fields.clone())
         } else {
             Type::CallableRecord {
                 fields: self.fields.clone(),
                 signatures: self.signatures.clone(),
+            }
+        };
+        if self.indices.is_empty() {
+            object
+        } else {
+            Type::IndexedRecord {
+                object: Box::new(object),
+                indices: self.indices.clone(),
             }
         }
     }
@@ -999,12 +1010,19 @@ impl TypePredicate {
 pub enum Type {
     Any,
     Unknown,
+    /// Explicit source `unknown`; `Unknown` also represents opaque inference.
+    StrictUnknown,
     Never,
     Void,
     Null,
     Undefined,
     Boolean,
     Number,
+    BigInt,
+    Symbol,
+    UniqueSymbol(SourceSpan),
+    /// Static assertion marker, never a value or a runtime contract.
+    ConstAssertion,
     String,
     Literal(String),
     Named {
@@ -1012,8 +1030,13 @@ pub enum Type {
         arguments: Vec<Type>,
     },
     Array(Box<Type>),
+    Readonly(Box<Type>),
     Tuple(Vec<TupleTypeElement>),
     Record(Vec<TypeField>),
+    IndexedRecord {
+        object: Box<Type>,
+        indices: Vec<IndexSignature>,
+    },
     CallableRecord {
         fields: Vec<TypeField>,
         signatures: Vec<TypeSignature>,

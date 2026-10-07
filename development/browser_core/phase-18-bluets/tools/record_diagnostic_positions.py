@@ -9,6 +9,8 @@ import argparse
 import json
 import re
 import subprocess
+import tempfile
+from contextlib import contextmanager
 from pathlib import Path
 
 
@@ -32,6 +34,38 @@ def legacy_flags(values):
         else:
             result.append(spelling.get(flag, flag))
     return result
+
+
+@contextmanager
+def replay_command(case, fixtures):
+    if "config" in case:
+        yield ["--project", str(fixtures / case["config"]), "--noEmit"]
+    elif case.get("replayChecking") == "strict":
+        entry = fixtures / "typescript_oracle" / case["entry"]
+        with tempfile.TemporaryDirectory(prefix="bluets-diagnostic-replay-") as scratch:
+            directory = Path(scratch)
+            for name in case["inputs"]:
+                source = fixtures / name
+                destination = directory / source.relative_to(entry.parent)
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                destination.write_bytes(source.read_bytes())
+            options = {}
+            flags = iter(case["flags"])
+            pending = next(flags, None)
+            while pending:
+                name = pending.removeprefix("--")
+                pending = next(flags, None)
+                if pending and not pending.startswith("--"):
+                    options[name] = pending.split(",") if name == "lib" else pending
+                    pending = next(flags, None)
+                else:
+                    options[name] = True
+            config = directory / "tsconfig.json"
+            config.write_text(json.dumps({"compilerOptions": options, "files": [entry.name]}))
+            yield ["--project", str(config), "--noEmit"]
+    else:
+        entry = fixtures / "typescript_oracle" / case["entry"]
+        yield ["check", str(entry), *legacy_flags(case["flags"])]
 
 
 def coordinates(source, start, end):
@@ -64,18 +98,17 @@ def main():
     for case in reference["cases"]:
         if case["id"] in exceptions:
             continue
-        command = [str(arguments.binary)]
         if "config" in case:
             config = fixtures / case["config"]
             source_root = config.parent
-            command.extend(("--project", str(config), "--noEmit"))
         else:
             entry = fixtures / "typescript_oracle" / case["entry"]
             source_root = entry.parent
-            command.extend(("check", str(entry), *legacy_flags(case["flags"])))
-        result = subprocess.run(
-            [*command, "--diagnostics-json"], capture_output=True, text=True, check=False
-        )
+        with replay_command(case, fixtures) as command:
+            result = subprocess.run(
+                [str(arguments.binary), *command, "--diagnostics-json"],
+                capture_output=True, text=True, check=False
+            )
         diagnostics = [json.loads(line) for line in result.stderr.splitlines()]
         expected = case["first"]
         if expected is None:

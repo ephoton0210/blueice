@@ -10,7 +10,27 @@ pub(super) fn render(
     fields: &[crate::parser::TypeField],
     signatures: &[crate::parser::TypeSignature],
 ) -> String {
+    render_with_indices(fields, signatures, &[])
+}
+
+pub(super) fn render_with_indices(
+    fields: &[crate::parser::TypeField],
+    signatures: &[crate::parser::TypeSignature],
+    indices: &[crate::parser::IndexSignature],
+) -> String {
     let mut members = Vec::new();
+    for index in indices {
+        members.push((
+            index.span.start,
+            format!(
+                "{}[{}: {}]: {}",
+                if index.readonly { "readonly " } else { "" },
+                index.name,
+                type_to_ts(&index.key),
+                type_to_ts(&index.value)
+            ),
+        ));
+    }
     for field in fields {
         let name = format!(
             "{}{}{}",

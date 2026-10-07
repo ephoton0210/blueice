@@ -32,7 +32,9 @@ impl ModuleChecker<'_> {
         receiver: &[Token],
         scope: &BTreeMap<String, Type>,
     ) -> Result<bool, ()> {
-        if self.infer_expression(receiver, scope) != Type::Unknown {
+        let inferred = self.infer_expression(receiver, scope);
+        if inferred != Type::Unknown && (self.explicit_checking || inferred != Type::StrictUnknown)
+        {
             return Ok(false);
         }
         let mut budget = TypeExpansionBudget::new(self.max_type_expansions);

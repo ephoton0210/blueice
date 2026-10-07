@@ -51,6 +51,9 @@ impl<'a> Index<'a> {
         };
         for module in project.modules.values() {
             index.declarations(&module.declarations);
+            for annotation in module.type_assertions.values() {
+                index.type_fields("", annotation);
+            }
         }
         index
     }

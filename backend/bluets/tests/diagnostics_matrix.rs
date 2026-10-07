@@ -43,6 +43,75 @@ fn legacy_flags(flags: &[Value]) -> Vec<String> {
     result
 }
 
+fn replay(case: &Value) -> std::process::Output {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    static NEXT: AtomicUsize = AtomicUsize::new(0);
+    let mut command = Command::new(env!("CARGO_BIN_EXE_bluetsc"));
+    let mut scratch = None;
+    if let Some(config) = case["config"].as_str() {
+        command
+            .arg("--project")
+            .arg(fixtures().join(config))
+            .arg("--noEmit");
+    } else if case["replayChecking"] == "strict" {
+        let directory = env::temp_dir().join(format!(
+            "bluets-diagnostic-replay-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ));
+        fs::create_dir_all(&directory).unwrap();
+        let entry = Path::new("typescript_oracle").join(case["entry"].as_str().unwrap());
+        let source_root = entry.parent().unwrap();
+        for input in case["inputs"].as_array().unwrap() {
+            let input = Path::new(input.as_str().unwrap());
+            let destination = directory.join(input.strip_prefix(source_root).unwrap());
+            fs::create_dir_all(destination.parent().unwrap()).unwrap();
+            fs::copy(fixtures().join(input), destination).unwrap();
+        }
+        let mut options = serde_json::Map::new();
+        let mut flags = case["flags"].as_array().unwrap().iter().peekable();
+        while let Some(flag) = flags.next() {
+            let name = flag.as_str().unwrap().trim_start_matches("--");
+            let value = if flags
+                .peek()
+                .is_some_and(|value| !value.as_str().unwrap().starts_with("--"))
+            {
+                let value = flags.next().unwrap().as_str().unwrap();
+                if name == "lib" {
+                    serde_json::json!(value.split(',').collect::<Vec<_>>())
+                } else {
+                    Value::String(value.to_string())
+                }
+            } else {
+                Value::Bool(true)
+            };
+            options.insert(name.to_string(), value);
+        }
+        let config = directory.join("tsconfig.json");
+        fs::write(
+            &config,
+            serde_json::json!({"compilerOptions": options,
+            "files": [entry.file_name().unwrap().to_str().unwrap()]})
+            .to_string(),
+        )
+        .unwrap();
+        command.arg("--project").arg(config).arg("--noEmit");
+        scratch = Some(directory);
+    } else {
+        command.arg("check").arg(
+            fixtures()
+                .join("typescript_oracle")
+                .join(case["entry"].as_str().unwrap()),
+        );
+        command.args(legacy_flags(case["flags"].as_array().unwrap()));
+    }
+    let output = command.arg("--diagnostics-json").output().unwrap();
+    if let Some(directory) = scratch {
+        fs::remove_dir_all(directory).unwrap();
+    }
+    output
+}
+
 #[test]
 fn record_covers_every_existing_checker_matrix() {
     let reference = reference();
@@ -92,19 +161,7 @@ fn primary_codes_templates_and_positions_match_the_pinned_corpus() {
     let mut failures = Vec::new();
     for case in reference["cases"].as_array().unwrap() {
         let id = case["id"].as_str().unwrap();
-        let mut command = Command::new(env!("CARGO_BIN_EXE_bluetsc"));
-        if let Some(config) = case["config"].as_str() {
-            command.args(["--project"]).arg(fixtures().join(config));
-            command.arg("--noEmit");
-        } else {
-            command.arg("check").arg(
-                fixtures()
-                    .join("typescript_oracle")
-                    .join(case["entry"].as_str().unwrap()),
-            );
-            command.args(legacy_flags(case["flags"].as_array().unwrap()));
-        }
-        let output = command.arg("--diagnostics-json").output().unwrap();
+        let output = replay(case);
         let text = String::from_utf8_lossy(&output.stderr);
         let diagnostics = text
             .lines()
@@ -238,20 +295,16 @@ fn primary_messages_and_related_information_match_pinned_typescript() {
         if expected.is_null() {
             continue;
         }
-        let mut command = Command::new(env!("CARGO_BIN_EXE_bluetsc"));
         let source_root = if let Some(config) = case["config"].as_str() {
-            command
-                .arg("--project")
-                .arg(fixtures().join(config))
-                .arg("--noEmit");
             Path::new(config).parent().unwrap().to_path_buf()
         } else {
-            let entry = Path::new("typescript_oracle").join(case["entry"].as_str().unwrap());
-            command.arg("check").arg(fixtures().join(&entry));
-            command.args(legacy_flags(case["flags"].as_array().unwrap()));
-            entry.parent().unwrap().to_path_buf()
+            Path::new("typescript_oracle")
+                .join(case["entry"].as_str().unwrap())
+                .parent()
+                .unwrap()
+                .to_path_buf()
         };
-        let output = command.arg("--diagnostics-json").output().unwrap();
+        let output = replay(case);
         let diagnostics = String::from_utf8_lossy(&output.stderr)
             .lines()
             .map(|line| serde_json::from_str::<Value>(line).unwrap())

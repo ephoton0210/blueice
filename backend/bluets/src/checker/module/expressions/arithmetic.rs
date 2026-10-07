@@ -102,6 +102,19 @@ impl<'a> ModuleChecker<'a> {
                     self.check_arithmetic_operators(operand, scope, span);
                     let operand_type = self.infer_expression(operand, scope);
                     self.check_known_arithmetic_operands(operator, &result, &operand_type, span);
+                    if result == Type::BigInt || operand_type == Type::BigInt {
+                        if let (Some(first), Some(last), Some(counterpart)) = (
+                            rest.first(),
+                            operand.last(),
+                            self.diagnostics
+                                .last_mut()
+                                .and_then(|item| item.typescript.as_mut())
+                                .filter(|item| item.code == 2365),
+                        ) {
+                            counterpart.span =
+                                SourceSpan::new(&self.module.id, first.start, last.end);
+                        }
+                    }
                     result = if operators.contains(&"+") {
                         infer_additive_expression(operator, result, operand_type)
                     } else {
@@ -135,7 +148,8 @@ impl<'a> ModuleChecker<'a> {
             return;
         }
         let accepted = (operator.is("+") && (left == &Type::String || right == &Type::String))
-            || (left == &Type::Number && right == &Type::Number);
+            || (left == &Type::Number && right == &Type::Number)
+            || (left == &Type::BigInt && right == &Type::BigInt);
         if !accepted {
             self.typescript_type_error(
                 span,
@@ -153,7 +167,30 @@ impl<'a> ModuleChecker<'a> {
                 } else {
                     2363
                 },
-                vec![operator.text.clone(), type_label(left), type_label(right)],
+                {
+                    let mut labels =
+                        vec![operator.text.clone(), type_label(left), type_label(right)];
+                    if left == &Type::BigInt || right == &Type::BigInt {
+                        let tokens = crate::syntax::lex(&self.module.id, &self.module.source)
+                            .unwrap_or_default();
+                        if let Some(index) = tokens
+                            .iter()
+                            .position(|token| token.start == operator.start)
+                        {
+                            for (side, operand) in
+                                [(1, index.checked_sub(1)), (2, index.checked_add(1))]
+                            {
+                                if let Some(token) = operand
+                                    .and_then(|index| tokens.get(index))
+                                    .filter(|token| token.kind == TokenKind::Number)
+                                {
+                                    labels[side] = token.text.clone();
+                                }
+                            }
+                        }
+                    }
+                    labels
+                },
             );
         }
     }

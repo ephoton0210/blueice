@@ -970,6 +970,8 @@ fn infer_additive_expression(operator: &Token, left: Type, right: Type) -> Type 
 fn infer_numeric_binary_expression(left: Type, right: Type) -> Type {
     if left == Type::Number && right == Type::Number {
         Type::Number
+    } else if left == Type::BigInt && right == Type::BigInt {
+        Type::BigInt
     } else {
         Type::Unknown
     }
@@ -978,7 +980,7 @@ fn infer_numeric_binary_expression(left: Type, right: Type) -> Type {
 fn is_known_primitive_type(value: &Type) -> bool {
     matches!(
         value,
-        Type::Boolean | Type::Number | Type::String | Type::Null | Type::Undefined
+        Type::Boolean | Type::Number | Type::BigInt | Type::String | Type::Null | Type::Undefined
     )
 }
 

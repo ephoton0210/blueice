@@ -5,6 +5,7 @@
 //! Diagnostic causes determined from the checked call signatures.
 
 use super::*;
+mod more_types;
 mod operators;
 
 impl ModuleChecker<'_> {
@@ -173,6 +174,9 @@ impl ModuleChecker<'_> {
         actual: &Type,
         expected: &Type,
     ) {
+        if self.additional_assignment_error(span, &message, bts_code, actual, expected) {
+            return;
+        }
         if self.operator_assignment_error(span, &message, bts_code, actual, expected) {
             return;
         }

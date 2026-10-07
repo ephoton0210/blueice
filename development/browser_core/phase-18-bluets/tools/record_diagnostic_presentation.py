@@ -8,7 +8,7 @@ import argparse
 import json
 import subprocess
 from pathlib import Path
-from record_diagnostic_positions import legacy_flags
+from record_diagnostic_positions import replay_command
 
 
 def main():
@@ -25,13 +25,12 @@ def main():
             continue
         if 'config' in case:
             source_root = (fixtures / case['config']).parent
-            command = ['--project', str(fixtures / case['config']), '--noEmit']
         else:
             entry = fixtures / 'typescript_oracle' / case['entry']
             source_root = entry.parent
-            command = ['check', str(entry), *legacy_flags(case['flags'])]
-        output = subprocess.run([str(args.binary), *command, '--diagnostics-json'],
-                                text=True, capture_output=True, check=False)
+        with replay_command(case, fixtures) as command:
+            output = subprocess.run([str(args.binary), *command, '--diagnostics-json'],
+                                    text=True, capture_output=True, check=False)
         primary = json.loads(output.stderr.splitlines()[0])['typescript']
         if not primary:
             raise ValueError(f"Unmapped rejected program: {case['id']}")

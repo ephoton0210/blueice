@@ -384,10 +384,12 @@ impl Parser {
         // resolution. Parse through the same type grammar as annotations.
         let saved_index = self.index;
         self.index = type_start;
-        let annotation = self.parse_type_until(&[";", ",", ")", "]", "}", "&&", "||"]);
-        if self.tokens[index].is("as") {
-            self.type_assertions.insert(edit_start, annotation);
-        }
+        let annotation = if self.tokens[index].is("as") && self.consume("const") {
+            Type::ConstAssertion
+        } else {
+            self.parse_type_until(&[";", ",", ")", "]", "}", "&&", "||"])
+        };
+        self.type_assertions.insert(edit_start, annotation);
         self.index = saved_index;
         self.edits.push(TextEdit {
             start: edit_start,

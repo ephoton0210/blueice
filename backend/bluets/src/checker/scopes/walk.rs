@@ -58,6 +58,10 @@ impl ScopeModel<'_> {
                     self.scopes[scope].types.insert(interface.name.clone());
                     let inner =
                         self.generic_scope(scope, &interface.span, &interface.type_parameters);
+                    for index in &interface.indices {
+                        self.type_scopes(&index.key, &index.key_span, inner);
+                        self.type_scopes(&index.value, &index.span, inner);
+                    }
                     for signature in &interface.signatures {
                         self.type_scopes(&signature.function_type(), &signature.span, inner);
                     }
@@ -539,6 +543,14 @@ impl ScopeModel<'_> {
 
     pub(super) fn type_scopes(&mut self, value: &Type, span: &SourceSpan, scope: ScopeId) {
         match value {
+            Type::Readonly(value) => self.type_scopes(value, span, scope),
+            Type::IndexedRecord { object, indices } => {
+                self.type_scopes(object, span, scope);
+                for index in indices {
+                    self.type_scopes(&index.key, &index.key_span, scope);
+                    self.type_scopes(&index.value, &index.span, scope);
+                }
+            }
             Type::Conditional(value) => {
                 self.type_scopes(&value.check, &value.span, scope);
                 self.type_scopes(&value.extends, &value.span, scope);

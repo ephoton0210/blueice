@@ -5339,3 +5339,41 @@ unchanged in this baseline; K.4.6 stays open.
 ### K.4.6 additional boundary baseline — 2026-10-08
 
 The isolated 16-control supplement expands the corpus to 100 programs (46 accept, 54 reject), with six runtime/declaration witnesses. The 84-program implementation passes all four focused oracle tests and Clippy; its unit replay exposes two legacy opaque-receiver regressions that remain open. Before the supplement fixes, Linux records 13 checker/primary differences, including four compiler panics on interface index signatures, and two runtime/declaration failures. Completeness and the pinned recorder pass. Evidence: `/private/tmp/blueice-k14-linux/blueice-k46-supplement-red-gate.log`. The shared corpus records 1,926 programs (882 accept, 1044 reject) and 164 templates. Production implementation changes remain unstaged; K.4.6 stays open.
+
+### K.4.6 more types verified — 2026-10-08
+
+Explicit index signatures, readonly containers, bigint/symbol/unique-symbol,
+strict unknown and const assertions retain their syntax, identity and source
+origins through parsing, alias substitution, checking and declaration output.
+Interfaces compose indices with declared fields and call/construct signatures.
+Readonly array/tuple relations and homomorphic mapped modifiers preserve tuple
+labels, rest and optional elements. The original library Array/ReadonlyArray
+forms normalize consistently; the original BigInt declaration adds no runtime
+grant. Measured unique symbols retain declaration identity and typeof names.
+
+Const assertions retain recursive literal/readonly shapes; satisfies checks its
+target without replacing expression inference. Measured index-domain conflicts,
+readonly writes, mixed bigint arithmetic, invalid readonly/unique placements,
+unknown members and reduced unknown/never relations keep native primary and
+related source positions. Existing enum inference and void/undefined controls
+continue to pass. The analysis identity advances to lexical-flow-v7, while
+contracts retain explicit refusals for non-data forms.
+
+Legacy opaque-receiver, typed-catch and library symbol declaration regressions
+found during development are fixed. Unique symbol inference is limited to fresh
+original-library Symbol()/Symbol.for() calls; returned, copied, mutable and
+shadowed symbols retain symbol widening. Shared diagnostic replay now records each matrix's checking mode and
+uses the existing tsconfig route for strict cases in isolated temporary copies;
+older matrices retain their recorded legacy path. The initial attempted direct
+--strict replay was rejected by that CLI path and replaced before the final gate.
+
+All 100 pinned programs (46 accept, 54 reject), exact primary/related diagnostics, six Node/runtime and every-declaration witnesses and the pinned recorder pass. The frozen-source Linux K.0 gate passes format, format check and both-crate all-target Clippy with warnings denied; all 1,124 tests in 73 groups pass, including all 139 ignored oracles in 38 differential suite files. All 47 frozen changed backend files match the host snapshot. Largest production source: 1,153 lines.
+Evidence: `/private/tmp/blueice-k14-linux/blueice-k46-full4-status.json`,
+`blueice-k46-full4-gate.log` and `blueice-k46-full4-clippy.log`.
+The shared corpus records 1,926 programs (882 accept, 1,044 reject) and 164
+message templates. Generated refusal evidence: 163 refusal sites in 10 areas.
+
+G-T5 retains unmeasured computed symbol/index combinations, broader tuple and
+const/satisfies contexts and unknown/never flow combinations. G-T3 retains its
+unmeasured operator combinations; broader compatibility belongs to K.4.7.
+M8 and final workspace/coverage verification remain open.

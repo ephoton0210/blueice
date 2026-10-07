@@ -116,7 +116,7 @@ pub(super) fn refine(project: &Project, diagnostic: &mut Diagnostic) {
             if let Some((_,index))=selected.rsplit_once('[') {args[0]=index.trim_end_matches(']').into();args[1]=format!("typeof {}",args[1]);detail=Some(format!("\n  Property '{}' does not exist on type '{}'.",args[0],args[1]));}
         }
         2322 if args.len()==2 && original.trim().trim_end_matches(';').trim()=="return this"=>{detail=Some(format!("\n  Type '{}' is not assignable to type '{}'.",args[0],args[1]));args[0]="this".into();}
-        2322 if args.len()==2 && args.iter().all(|arg|arg.starts_with('[')&&arg.ends_with(']')) && !selected.contains(['[',']'])=>{
+        2322 if args.len()==2 && args.iter().all(|arg|arg.starts_with('[')&&arg.ends_with(']')) && !args[1].contains(':') && !args[1].contains("...") && !selected.contains(['[',']'])=>{
             let index=source.get(..counterpart.span.start).and_then(|before|before.rsplit_once('[')).map(|(_,elements)|elements.matches(',').count()).unwrap_or(0);
             let element=|text:&str|text[1..text.len()-1].split(',').nth(index).map(|value|value.trim().to_string());
             if let (Some(actual),Some(expected))=(element(&args[0]),element(&args[1])) {args=vec![actual,expected];detail=Some(String::new());}

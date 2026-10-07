@@ -496,6 +496,13 @@ impl<'a> ModuleChecker<'a> {
                             &interface.span,
                         );
                     }
+                    if !interface.indices.is_empty() {
+                        self.check_type_with_parameters(
+                            &interface.body_type(),
+                            &interface.span,
+                            &interface.type_parameters,
+                        );
+                    }
                     for signature in &interface.signatures {
                         self.check_type_with_parameters(
                             &signature.function_type(),
@@ -770,6 +777,9 @@ impl<'a> ModuleChecker<'a> {
                 ),
                 DiagnosticCode::ResourceLimit,
             );
+            return;
+        }
+        if self.check_additional_expression(tokens, scope, span) {
             return;
         }
         self.check_type_only_class_value_uses(tokens, scope, span);

@@ -52,6 +52,61 @@ pub(super) fn property_type(
     visited: &mut HashSet<String>,
     budget: &mut TypeExpansionBudget,
 ) -> PropertyType {
+    if *value == Type::StrictUnknown {
+        return PropertyType::Indeterminate;
+    }
+    if let Type::Readonly(value) = value {
+        if property.parse::<usize>().is_ok() {
+            let value = match value.as_ref() {
+                Type::Array(item) => Some((**item).clone()),
+                Type::Tuple(items) => property
+                    .parse::<usize>()
+                    .ok()
+                    .and_then(|index| items.get(index))
+                    .map(|item| item.indexed_type()),
+                _ => None,
+            };
+            if let Some(value) = value {
+                return PropertyType::Found {
+                    value,
+                    readonly: true,
+                };
+            }
+        }
+        let element = match value.as_ref() {
+            Type::Array(item) => (**item).clone(),
+            Type::Tuple(items) => {
+                Type::Union(items.iter().map(|item| item.indexed_type()).collect())
+            }
+            _ => return property_type(value, property, aliases, visited, budget),
+        };
+        return property_type(
+            &Type::Named {
+                name: "ReadonlyArray".into(),
+                arguments: vec![element],
+            },
+            property,
+            aliases,
+            visited,
+            budget,
+        );
+    }
+    if let Type::IndexedRecord { object, indices } = value {
+        let declared = property_type(object, property, aliases, &mut visited.clone(), budget);
+        if !matches!(declared, PropertyType::Missing) {
+            return declared;
+        }
+        if let Some(index) = indices.iter().find(|index| {
+            index.key == Type::String
+                || (index.key == Type::Number && property.parse::<f64>().is_ok())
+        }) {
+            return PropertyType::Found {
+                value: index.value.clone(),
+                readonly: index.readonly,
+            };
+        }
+        return PropertyType::Missing;
+    }
     // Enum literals retain nominal identity for assignment. Property lookup
     // uses their underlying primitive without changing that identity.
     if let Type::Literal(name) = value {
@@ -68,6 +123,8 @@ pub(super) fn property_type(
     let boxed = match value {
         Type::String => Some(("String", Vec::new())),
         Type::Number => Some(("Number", Vec::new())),
+        Type::BigInt => Some(("BigInt", Vec::new())),
+        Type::Symbol | Type::UniqueSymbol(_) => Some(("Symbol", Vec::new())),
         Type::Boolean => Some(("Boolean", Vec::new())),
         Type::Function { .. } => Some(("Function", Vec::new())),
         Type::Literal(text) if text.starts_with(['\'', '"', '`']) => Some(("String", Vec::new())),
@@ -222,6 +279,14 @@ pub(super) fn contains_readonly_member(
     budget: &mut TypeExpansionBudget,
 ) -> Result<bool, ()> {
     match value {
+        Type::Readonly(_) => Ok(true),
+        Type::IndexedRecord { object, indices } => {
+            if indices.iter().any(|index| index.readonly) {
+                Ok(true)
+            } else {
+                contains_readonly_member(object, aliases, visited, budget)
+            }
+        }
         Type::Record(fields) | Type::CallableRecord { fields, .. } => {
             Ok(fields.iter().any(|field| field.readonly))
         }

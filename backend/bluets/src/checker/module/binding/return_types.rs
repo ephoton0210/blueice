@@ -14,13 +14,10 @@ impl ModuleChecker<'_> {
         let mut scope = self.values.clone();
         for declaration in &self.module.declarations {
             if let Declaration::Variable(variable) = declaration {
-                let value = variable.annotation.clone().unwrap_or_else(|| {
-                    crate::parser::widen_literal_tokens(
-                        &variable.initializer,
-                        variable.kind == crate::parser::VariableKind::Const,
-                    )
-                    .unwrap_or_else(|| self.infer_expression(&variable.initializer, &scope))
-                });
+                let value = variable
+                    .annotation
+                    .clone()
+                    .unwrap_or_else(|| self.infer_variable_type(variable, &scope));
                 scope.insert(variable.name.clone(), value);
             }
         }

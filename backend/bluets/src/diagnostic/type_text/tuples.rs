@@ -153,7 +153,15 @@ pub(super) fn reason(
             &expected.annotation
         };
         if !relations::contains(expected_value, element_value) {
-            let positions = if element.optional
+            let positions = if expected.rest
+                && sr.is_none()
+                && tr.is_some_and(|rest| {
+                    source.len().saturating_sub(target.len() - rest - 1) > rest + 1
+                }) {
+                let rest = tr.expect("rest target position");
+                let end = source.len().saturating_sub(target.len() - rest - 1) - 1;
+                format!("Type at positions {rest} through {end} in source is not compatible with type at position {target_index} in target.")
+            } else if element.optional
                 && expected.rest
                 && index + 1 < source.len()
                 && source[index + 1].optional

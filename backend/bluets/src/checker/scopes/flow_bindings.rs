@@ -12,7 +12,10 @@ pub(super) struct BindingId(pub(super) ScopeId, pub(super) String);
 impl ScopeModel<'_> {
     pub(in crate::checker) fn flow_explicit_unknown(&self, token: &Token) -> bool {
         self.flow_binding(&token.text, token.start)
-            .is_some_and(|id| self.flow_annotated(&id) && self.flow_declared(&id) == Type::Unknown)
+            .is_some_and(|id| {
+                self.flow_annotated(&id)
+                    && matches!(self.flow_declared(&id), Type::Unknown | Type::StrictUnknown)
+            })
     }
 
     pub(super) fn flow_annotated(&self, id: &BindingId) -> bool {

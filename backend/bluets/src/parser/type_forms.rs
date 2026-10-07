@@ -7,6 +7,16 @@
 use super::*;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IndexSignature {
+    pub name: String,
+    pub key: Type,
+    pub value: Type,
+    pub readonly: bool,
+    pub span: SourceSpan,
+    pub key_span: SourceSpan,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConditionalType {
     pub check: Type,
     pub extends: Type,
@@ -44,6 +54,10 @@ impl Type {
     /// A shallow visitor, used where operator children have no local binding.
     pub(crate) fn operator_children(&self) -> Option<Vec<&Type>> {
         Some(match self {
+            Self::Readonly(value) => vec![value],
+            Self::IndexedRecord { object, indices } => std::iter::once(object.as_ref())
+                .chain(indices.iter().flat_map(|index| [&index.key, &index.value]))
+                .collect(),
             Self::Conditional(value) => vec![
                 &value.check,
                 &value.extends,
@@ -114,6 +128,18 @@ impl Type {
         mut map: impl FnMut(&Type, &[String]) -> Type,
     ) -> Option<Type> {
         Some(match self {
+            Self::Readonly(value) => Self::Readonly(Box::new(map(value, &[]))),
+            Self::IndexedRecord { object, indices } => Self::IndexedRecord {
+                object: Box::new(map(object, &[])),
+                indices: indices
+                    .iter()
+                    .map(|index| IndexSignature {
+                        key: map(&index.key, &[]),
+                        value: map(&index.value, &[]),
+                        ..index.clone()
+                    })
+                    .collect(),
+            },
             Self::Conditional(value) => {
                 let bound = value
                     .extends
@@ -164,6 +190,28 @@ impl Type {
 
     pub(crate) fn operator_text(&self, render: impl Fn(&Type) -> String) -> Option<String> {
         Some(match self {
+            Self::Readonly(value) => format!("readonly {}", render(value)),
+            Self::IndexedRecord { object, indices } => {
+                let members = indices
+                    .iter()
+                    .map(|index| {
+                        format!(
+                            "{}[{}: {}]: {};",
+                            if index.readonly { "readonly " } else { "" },
+                            index.name,
+                            render(&index.key),
+                            render(&index.value)
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                let object = render(object);
+                format!(
+                    "{{ {}{} }}",
+                    members,
+                    object.trim().trim_start_matches('{').trim_end_matches('}')
+                )
+            }
             Self::Conditional(value) => format!(
                 "{} extends {} ? {} : {}",
                 render(&value.check),
