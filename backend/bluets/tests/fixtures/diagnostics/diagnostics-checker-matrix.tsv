@@ -544,6 +544,16 @@ compatibility:relate-excess-union/main.ts	accept
 compatibility:relate-excess-union-error/main.ts	reject
 compatibility:relate-excess-variable-alias/main.ts	accept
 compatibility:relate-excess-variable-error/main.ts	reject
+compatibility:relate-fresh-member-alias/main.ts	accept
+compatibility:relate-fresh-method-alias/main.ts	accept
+compatibility:relate-fresh-method-argument/main.ts	reject
+compatibility:relate-fresh-property-argument/main.ts	reject
+compatibility:relate-fresh-write-alias/main.ts	accept
+compatibility:relate-fresh-write-bracket/main.ts	reject
+compatibility:relate-fresh-write-element/main.ts	reject
+compatibility:relate-fresh-write-indexed/main.ts	accept
+compatibility:relate-fresh-write-member/main.ts	reject
+compatibility:relate-fresh-write-variable/main.ts	reject
 compatibility:relate-function-callable-record/main.ts	accept
 compatibility:relate-function-callable-record-error/main.ts	reject
 compatibility:relate-function-contravariance/main.ts	accept

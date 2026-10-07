@@ -29,6 +29,7 @@ pub(super) fn class_field_type_fields(class: &ClassDeclaration, is_static: bool)
                 .filter(|field| field.is_static == is_static),
         )
         .map(|field| TypeField {
+            method: false,
             name: visibility::member_field_name(class, field.visibility, &field.name),
             readonly: field.readonly,
             optional: field.optional,

@@ -129,6 +129,7 @@ impl ModuleChecker<'_> {
                 continue;
             }
             fields.push(TypeField {
+                method: false,
                 name: member.name.clone(),
                 readonly: true,
                 optional: false,

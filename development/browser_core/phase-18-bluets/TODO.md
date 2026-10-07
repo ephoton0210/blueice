@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: K.4.7 (compatibility details).** Sections A to J are complete (summarized below); J.6 closed in its
+**Current gate: final K.3/K.4 workspace and coverage verification.** Sections A to J are complete (summarized below); J.6 closed in its
 measured form (`COMPATIBILITY_INVENTORY.md`). Section K closes the gaps that inventory lists.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
@@ -382,13 +382,15 @@ narrowing needs a flow graph or can stay structural, recorded in PLAN.md before 
   - *Failing baseline (2026-10-08):* 84 pinned programs (38 accept, 46 reject), three runtime/declaration witnesses. Linux reports 51 checker/primary-diagnostic differences and two runtime compile failures; completeness and the pinned recorder pass. The shared diagnostic corpus records 1,910 programs and 163 templates. Production remains unchanged in this baseline.
   - *Supplemental baseline (2026-10-08):* The isolated 16-control supplement expands the corpus to 100 programs (46 accept, 54 reject), with six runtime/declaration witnesses. The 84-program implementation passes all four focused oracle tests and Clippy; its unit replay exposes two legacy opaque-receiver regressions that remain open. Before the supplement fixes, Linux records 13 checker/primary differences, including four compiler panics on interface index signatures, and two runtime/declaration failures. Completeness and the pinned recorder pass. Evidence: `/private/tmp/blueice-k14-linux/blueice-k46-supplement-red-gate.log`. The shared corpus records 1,926 programs (882 accept, 1044 reject) and 164 templates. Production implementation changes remain unstaged; K.4.6 stays open.
   - *Verified (2026-10-08):* All 100 pinned programs (46 accept, 54 reject), exact primary/related diagnostics, six Node/runtime and every-declaration witnesses and the pinned recorder pass. The frozen-source Linux K.0 gate passes format, format check and both-crate all-target Clippy with warnings denied; all 1,124 tests in 73 groups pass, including all 139 ignored oracles in 38 differential suite files. All 47 frozen changed backend files match the host snapshot. Largest production source: 1,153 lines. G-T5 retains unmeasured combinations; K.4.7 and final workspace/coverage verification remain open.
-- [ ] **K.4.7 Compatibility details (L).** Excess-property checks in every position, weak types,
+- [x] **K.4.7 Compatibility details (L).** Excess-property checks in every position, weak types,
   `strictFunctionTypes` vs method bivariance, optional vs `undefined`, variance annotations (`in`/`out`),
   `exactOptionalPropertyTypes`.
 
   - *Failing baseline (2026-10-08):* The pinned corpus contains 78 programs (40 accept, 38 reject), with four runtime/declaration witnesses. Linux records 41 checker/primary-diagnostic differences and two runtime/declaration failures: freshness declaration formatting and variance syntax parsing. Completeness and the pinned recorder pass (two tests pass, two fail). The shared diagnostic corpus records 2,004 programs (922 accept, 1082 reject) and 167 templates. Production remains unchanged from the verified K.4.6 commit `9b292ac12`. Evidence: `/private/tmp/blueice-k14-linux/blueice-k47-red-gate.log`. K.4.7 remains open.
 
   - *Position baseline (2026-10-08):* Ten further position controls expand the corpus to 88 programs (44 accept, 44 reject), retaining four runtime/declaration witnesses. The original 78-program draft passes all four focused oracle tests and all-target Clippy. Linux replay of the supplement records six missed excess-property rejections in variable/member/bracket/array-element assignments and method/function-property arguments; completeness, pinned recorder and all four runtime/declaration witnesses pass (three tests pass, one fails). A legacy readonly declaration unit assertion still expects the previous one-line formatting and remains open. Evidence: `/private/tmp/blueice-k14-linux/blueice-k47-supplement-red-gate.log`. Implementation changes remain unstaged; K.4.7 stays open.
+
+  - *Verified (2026-10-08):* All 88 pinned programs (44 accept, 44 reject), exact primary/related diagnostics, four Node/runtime and every-declaration witnesses and the pinned recorder pass. The frozen-source Linux K.0 gate passes format, format check and both-crate all-target Clippy with warnings denied; all 1,128 tests in 74 groups pass, including all 141 ignored oracles in 39 differential suite files. All 41 frozen changed backend files match the host snapshot. Largest production source: 1,153 lines. G-T6 retains unmeasured combinations; final K.3/K.4 workspace/coverage verification remains open. M8 remains open for K.5–K.9.
 
 ### K.5 Remaining class forms — M8 — gap G-T9
 

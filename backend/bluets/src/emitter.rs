@@ -516,7 +516,7 @@ fn emit_declaration(
                     &inferred
                         .and_then(|context| context.private_alias(&alias.name))
                         .map(str::to_string)
-                        .unwrap_or_else(|| type_to_ts(&alias.value)),
+                        .unwrap_or_else(|| declaration_type_to_ts(&alias.value)),
                 );
                 output.push_str(";\n");
             }
@@ -586,7 +586,7 @@ fn emit_declaration(
                 }
                 output.push_str(
                     &value_type
-                        .map(type_to_ts)
+                        .map(declaration_type_to_ts)
                         .unwrap_or_else(|| "unknown".to_string()),
                 );
                 output.push_str(";\n");
@@ -759,6 +759,7 @@ fn emit_type_parameters(output: &mut String, parameters: &[TypeParameter]) {
             if index > 0 {
                 output.push_str(", ");
             }
+            output.push_str(parameter.variance.map_or("", |value| value.prefix()));
             output.push_str(&parameter.name);
             if let Some(constraint) = &parameter.constraint {
                 output.push_str(" extends ");
@@ -770,6 +771,13 @@ fn emit_type_parameters(output: &mut String, parameters: &[TypeParameter]) {
             }
         }
         output.push('>');
+    }
+}
+
+fn declaration_type_to_ts(value: &Type) -> String {
+    match value {
+        Type::Record(fields) if !fields.is_empty() => callable_objects::render(fields, &[]),
+        _ => type_to_ts(value),
     }
 }
 

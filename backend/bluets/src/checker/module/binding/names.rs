@@ -5,6 +5,7 @@
 //! Lexical lookup, named types and generic declaration validation.
 
 use super::*;
+mod compatibility;
 mod more_types;
 mod operators;
 

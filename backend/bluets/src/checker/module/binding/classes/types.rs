@@ -115,6 +115,7 @@ pub(super) fn class_method_fields(class: &ClassDeclaration, is_static: bool) -> 
                 .as_ref()
                 .expect("method group member is parsed");
             fields.push(TypeField {
+                method: true,
                 name: visibility::member_field_name(class, method.visibility, &method.name),
                 readonly: false,
                 optional: false,
@@ -140,6 +141,7 @@ pub(super) fn class_method_fields(class: &ClassDeclaration, is_static: bool) -> 
 
 pub(in crate::checker::module) fn class_constructor_side_type(class: &ClassDeclaration) -> Type {
     let mut fields = vec![TypeField {
+        method: false,
         name: "prototype".to_string(),
         readonly: true,
         optional: false,

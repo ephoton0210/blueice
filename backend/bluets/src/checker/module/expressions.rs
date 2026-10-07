@@ -9,6 +9,7 @@ use super::*;
 mod call_presentation;
 mod diagnostics;
 mod flow_checks;
+mod freshness;
 mod function_methods;
 mod generic_inference;
 mod implementation_origin;
@@ -249,6 +250,15 @@ impl<'a> ModuleChecker<'a> {
             let parameter = function_parameter_for_argument(&signature, index)
                 .expect("an accepted function call has a parameter for every argument");
             let expected = call_parameter_expected_type(parameter, &substitutions);
+            if self.check_fresh_properties(
+                arguments.get(index).copied().unwrap_or(&[]),
+                &expected,
+                scope,
+                span,
+            ) {
+                continue;
+            }
+
             if !self.is_assignable_bounded(actual, &expected, span) {
                 let displayed_expected =
                     crate::diagnostic::type_text::default_parameter(&expected, parameter);

@@ -65,7 +65,8 @@ impl Parser {
                 }
                 let name = self.require_property_name(field_expectation);
                 let optional = self.consume("?");
-                let value = if self.peek("(") || self.peek("<") {
+                let method = self.peek("(") || self.peek("<");
+                let value = if method {
                     let type_parameters = self.parse_type_parameters();
                     let function = self.parse_method_signature(&[";", ",", "}"]);
                     if type_parameters.is_empty() {
@@ -86,6 +87,7 @@ impl Parser {
                     self.parse_type_until(&[";", ",", "}"])
                 };
                 fields.push(TypeField {
+                    method,
                     name,
                     readonly,
                     optional,

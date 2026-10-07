@@ -51,6 +51,7 @@ impl Parser {
             );
         }
         Type::Infer(Box::new(TypeParameter {
+            variance: None,
             name,
             constraint,
             default: None,
@@ -100,6 +101,7 @@ impl Parser {
         self.expect("in");
         let constraint = self.parse_type_until(&["as", "]"]);
         let parameter = TypeParameter {
+            variance: None,
             name,
             constraint: Some(constraint),
             default: None,

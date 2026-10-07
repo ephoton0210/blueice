@@ -96,6 +96,7 @@ impl<'a> ModuleChecker<'a> {
             type_only_classes: BTreeSet::new(),
             function_implementations: BTreeSet::new(),
             type_parameters: BTreeSet::new(),
+            bound_parameters: BTreeMap::new(),
             allowed_tuple_spread_parameters: BTreeMap::new(),
             max_type_expansions,
             strict_catch_unknown: false,
@@ -132,6 +133,7 @@ impl<'a> ModuleChecker<'a> {
                 Declaration::DefaultExport(_) => {}
                 Declaration::ValueExport(_) => {}
                 Declaration::TypeAlias(alias) => {
+                    self.check_variance(&alias.name, &alias.type_parameters, &alias.value, true);
                     self.insert_type(
                         &alias.name,
                         TypeDefinition {
@@ -145,6 +147,12 @@ impl<'a> ModuleChecker<'a> {
                     );
                 }
                 Declaration::Interface(interface) => {
+                    self.check_variance(
+                        &interface.name,
+                        &interface.type_parameters,
+                        &interface.body_type(),
+                        false,
+                    );
                     // An interface named like a class of this scope merges into
                     // the class's type instead of defining one of its own.
                     let merges_into_class = self.module.declarations.iter().any(|other| {
@@ -688,6 +696,9 @@ impl<'a> ModuleChecker<'a> {
         };
         self.check_type(annotation, &variable.span);
         if variable.initializer.is_empty() || variable.declared || !self.type_is_bound(annotation) {
+            return;
+        }
+        if self.check_fresh_properties(&variable.initializer, annotation, scope, &variable.span) {
             return;
         }
         let inferred = self.infer_in_context(&variable.initializer, scope, annotation);

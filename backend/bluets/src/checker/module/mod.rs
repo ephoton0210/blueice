@@ -107,6 +107,7 @@ pub(super) struct ModuleChecker<'a> {
     type_only_classes: BTreeSet<String>,
     function_implementations: BTreeSet<String>,
     type_parameters: BTreeSet<String>,
+    bound_parameters: BTreeMap<String, TypeParameter>,
     allowed_tuple_spread_parameters: BTreeMap<String, Type>,
     max_type_expansions: usize,
     /// Catch bindings are strict `unknown`; the existing inference fallback

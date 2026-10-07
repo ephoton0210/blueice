@@ -78,7 +78,7 @@ pub use parser::{
     NamespaceDeclaration, Parameter, ParameterProperty, ParameterPropertyInsertion, ParserLimits,
     RawDeclaration, TemplateLiteralType, TupleTypeElement, TypeAliasDeclaration,
     TypeExportDeclaration, TypeParameter, TypePredicate, TypeSignature, ValueExportBinding,
-    ValueExportDeclaration, VariableDeclaration, VariableKind, Visibility,
+    ValueExportDeclaration, VariableDeclaration, VariableKind, Variance, Visibility,
 };
 pub use performance::CompilerPerformance;
 pub use syntax::parse_jsx;

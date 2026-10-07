@@ -3,7 +3,11 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use super::*;
+mod compatibility;
 mod more_types;
+mod variance;
+use crate::checker::type_operators::union;
+pub(super) use compatibility::record_fields_assignable;
 pub(super) use more_types::normalized as normalize_more_type;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -85,6 +89,10 @@ pub(super) fn expand_concrete_tuple_spreads(
                     _ => Err(TupleSpreadError::Unsupported),
                 }
             }
+            Some(TypeDefinition {
+                kind: TypeDefinitionKind::Parameter,
+                ..
+            }) => Err(TupleSpreadError::Unresolved),
             Some(_) => Err(TupleSpreadError::Unsupported),
             None => Err(TupleSpreadError::Unresolved),
         };
@@ -112,6 +120,9 @@ pub(super) fn is_assignable(
     visited: &mut HashSet<String>,
     budget: &mut TypeExpansionBudget,
 ) -> bool {
+    if let Some(result) = variance::assignable(actual, expected, aliases, visited, budget) {
+        return result;
+    }
     if matches!(actual, Type::GenericFunction { .. })
         || matches!(expected, Type::GenericFunction { .. })
     {
@@ -207,6 +218,9 @@ pub(super) fn is_assignable(
                 return actual == expected;
             }
         }
+    }
+    if let Some(result) = compatibility::assignable(actual, expected, aliases, visited, budget) {
+        return result;
     }
     if let Some(result) = more_types::assignable(actual, expected, aliases, visited, budget) {
         return result;
@@ -399,29 +413,42 @@ pub(super) fn is_assignable(
                 parameters: expected_parameters,
                 result: expected_result,
             },
-        ) if actual_parameters.len() <= expected_parameters.len() => {
+        ) if actual_parameters
+            .iter()
+            .filter(|parameter| {
+                !parameter.optional && parameter.default.is_none() && !parameter.rest
+            })
+            .count()
+            <= expected_parameters.len() =>
+        {
             // A callback may ignore trailing arguments supplied by its caller.
             // Every parameter it does consume must still be compatible.
             expected_parameters
                 .iter()
                 .zip(actual_parameters)
                 .all(|(expected, actual)| {
-                    (expected.optional == actual.optional
-                        || !budget.checking.strict_function_types)
-                        && (is_assignable(
-                            expected.annotation.as_ref().unwrap_or(&Type::Unknown),
-                            actual.annotation.as_ref().unwrap_or(&Type::Unknown),
+                    let value = |parameter: &Parameter| {
+                        let value = parameter.annotation.clone().unwrap_or(Type::Unknown);
+                        if parameter.optional && budget.checking.strict_null_checks {
+                            union([value, Type::Undefined])
+                        } else { value }
+                    };
+                    let expected_type = value(expected);
+                    let actual_type = value(actual);
+                    is_assignable(
+                            &expected_type,
+                            &actual_type,
                             aliases,
                             &mut visited.clone(),
                             budget,
                         ) || (!budget.checking.strict_function_types
                             && is_assignable(
-                                actual.annotation.as_ref().unwrap_or(&Type::Unknown),
-                                expected.annotation.as_ref().unwrap_or(&Type::Unknown),
+                                &actual_type,
+                                &expected_type,
                                 aliases,
                                 &mut visited.clone(),
                                 budget,
-                            )))
+                            ))
                 })
                 // A function type whose result is `void` accepts a function that
                 // returns anything: its result is simply ignored.
@@ -482,29 +509,9 @@ pub(super) fn is_assignable(
                     )
                 })
         }
-        (Type::Record(actual), Type::Record(expected)) => expected.iter().all(|expected_field| {
-            actual
-                .iter()
-                .find(|actual_field| actual_field.name == expected_field.name)
-                .map(|actual_field| {
-                    let expected_type = if expected_field.optional
-                        && !budget.checking.exact_optional_property_types
-                    {
-                        Type::Union(vec![expected_field.value.clone(), Type::Undefined])
-                    } else {
-                        expected_field.value.clone()
-                    };
-                    (actual_field.optional == expected_field.optional || expected_field.optional)
-                        && is_assignable(
-                            &actual_field.value,
-                            &expected_type,
-                            aliases,
-                            &mut visited.clone(),
-                            budget,
-                        )
-                })
-                .unwrap_or(expected_field.optional)
-        }),
+        (Type::Record(actual), Type::Record(expected)) => {
+            record_fields_assignable(actual, expected, aliases, visited, budget, true)
+        }
         _ => actual == expected,
     }
 }
@@ -535,6 +542,9 @@ fn enum_assignability(
         return None;
     };
     let definition = aliases.get(name)?;
+    if definition.kind == TypeDefinitionKind::Parameter {
+        return None;
+    }
     if definition.kind != TypeDefinitionKind::Enum {
         return None;
     }
@@ -919,6 +929,7 @@ pub(super) fn substitute_type(value: &Type, substitutions: &BTreeMap<String, Typ
             fields
                 .iter()
                 .map(|field| TypeField {
+                    method: field.method,
                     name: field.name.clone(),
                     readonly: field.readonly,
                     optional: field.optional,

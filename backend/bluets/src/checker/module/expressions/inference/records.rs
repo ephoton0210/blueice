@@ -64,6 +64,13 @@ impl<'a> ModuleChecker<'a> {
                     insert_inferred_record_field(
                         &mut fields,
                         TypeField {
+                            method: self
+                                .module
+                                .nested_functions
+                                .get(&tokens[index].start)
+                                .is_some_and(|function| {
+                                    function.kind == NestedFunctionKind::Method
+                                }),
                             name,
                             readonly: false,
                             optional: false,
@@ -110,6 +117,7 @@ impl<'a> ModuleChecker<'a> {
             insert_inferred_record_field(
                 &mut fields,
                 TypeField {
+                    method: false,
                     name,
                     readonly: false,
                     optional: false,
@@ -182,6 +190,9 @@ impl<'a> ModuleChecker<'a> {
     ) -> Option<Vec<TypeField>> {
         match value {
             Type::Record(fields) | Type::CallableRecord { fields, .. } => Some(fields),
+            Type::IndexedRecord { object, .. } => {
+                self.expand_record_fields(*object, visited, budget)
+            }
             Type::Named { .. }
             | Type::Conditional(_)
             | Type::Mapped(_)

@@ -79,7 +79,18 @@ pub(super) fn assignable(
         }
         (Type::Readonly(_), Type::Array(_) | Type::Tuple(_)) => Some(false),
         (_, Type::IndexedRecord { object, indices }) => {
-            if !is_assignable(actual, object, aliases, &mut visited.clone(), budget) {
+            let object_matches = match (actual, object.as_ref()) {
+                (Type::Record(actual), Type::Record(expected)) => record_fields_assignable(
+                    actual,
+                    expected,
+                    aliases,
+                    &mut visited.clone(),
+                    budget,
+                    false,
+                ),
+                _ => is_assignable(actual, object, aliases, &mut visited.clone(), budget),
+            };
+            if !object_matches {
                 return Some(false);
             }
             let fields = match actual {
@@ -104,7 +115,7 @@ pub(super) fn assignable(
                 })
             }))
         }
-        (Type::IndexedRecord { object, .. }, _) => {
+        (Type::IndexedRecord { object, .. }, _) if !matches!(expected, Type::Named { .. }) => {
             Some(is_assignable(object, expected, aliases, visited, budget))
         }
         _ => None,

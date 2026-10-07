@@ -6,6 +6,23 @@
 
 use super::*;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Variance {
+    In,
+    Out,
+    InOut,
+}
+
+impl Variance {
+    pub(crate) fn prefix(self) -> &'static str {
+        match self {
+            Self::In => "in ",
+            Self::Out => "out ",
+            Self::InOut => "in out ",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IndexSignature {
     pub name: String,

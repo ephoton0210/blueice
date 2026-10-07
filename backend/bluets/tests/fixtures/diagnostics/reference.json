@@ -20406,6 +20406,346 @@
       ]
     },
     {
+      "id": "compatibility:relate-fresh-member-alias/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-fresh-member-alias/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-fresh-member-alias/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "compatibility:relate-fresh-method-alias/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-fresh-method-alias/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-fresh-method-alias/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "compatibility:relate-fresh-method-argument/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-fresh-method-argument/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-fresh-method-argument/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2353,
+        "category": "error",
+        "message": "Object literal may only specify known properties, and 'extra' does not exist in type 'Shape'.",
+        "file": "typescript_oracle/relate-fresh-method-argument/main.ts",
+        "start": 160,
+        "length": 5,
+        "line": 5,
+        "column": 24
+      },
+      "diagnostics": [
+        {
+          "code": 2353,
+          "category": "error",
+          "message": "Object literal may only specify known properties, and 'extra' does not exist in type 'Shape'.",
+          "file": "typescript_oracle/relate-fresh-method-argument/main.ts",
+          "start": 160,
+          "length": 5,
+          "line": 5,
+          "column": 24
+        }
+      ]
+    },
+    {
+      "id": "compatibility:relate-fresh-property-argument/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-fresh-property-argument/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-fresh-property-argument/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2353,
+        "category": "error",
+        "message": "Object literal may only specify known properties, and 'extra' does not exist in type 'Shape'.",
+        "file": "typescript_oracle/relate-fresh-property-argument/main.ts",
+        "start": 128,
+        "length": 5,
+        "line": 3,
+        "column": 24
+      },
+      "diagnostics": [
+        {
+          "code": 2353,
+          "category": "error",
+          "message": "Object literal may only specify known properties, and 'extra' does not exist in type 'Shape'.",
+          "file": "typescript_oracle/relate-fresh-property-argument/main.ts",
+          "start": 128,
+          "length": 5,
+          "line": 3,
+          "column": 24
+        }
+      ]
+    },
+    {
+      "id": "compatibility:relate-fresh-write-alias/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-fresh-write-alias/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-fresh-write-alias/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "compatibility:relate-fresh-write-bracket/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-fresh-write-bracket/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-fresh-write-bracket/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2353,
+        "category": "error",
+        "message": "Object literal may only specify known properties, and 'extra' does not exist in type 'Shape'.",
+        "file": "typescript_oracle/relate-fresh-write-bracket/main.ts",
+        "start": 106,
+        "length": 5,
+        "line": 3,
+        "column": 29
+      },
+      "diagnostics": [
+        {
+          "code": 2353,
+          "category": "error",
+          "message": "Object literal may only specify known properties, and 'extra' does not exist in type 'Shape'.",
+          "file": "typescript_oracle/relate-fresh-write-bracket/main.ts",
+          "start": 106,
+          "length": 5,
+          "line": 3,
+          "column": 29
+        }
+      ]
+    },
+    {
+      "id": "compatibility:relate-fresh-write-element/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-fresh-write-element/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-fresh-write-element/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2353,
+        "category": "error",
+        "message": "Object literal may only specify known properties, and 'extra' does not exist in type 'Shape'.",
+        "file": "typescript_oracle/relate-fresh-write-element/main.ts",
+        "start": 91,
+        "length": 5,
+        "line": 3,
+        "column": 25
+      },
+      "diagnostics": [
+        {
+          "code": 2353,
+          "category": "error",
+          "message": "Object literal may only specify known properties, and 'extra' does not exist in type 'Shape'.",
+          "file": "typescript_oracle/relate-fresh-write-element/main.ts",
+          "start": 91,
+          "length": 5,
+          "line": 3,
+          "column": 25
+        }
+      ]
+    },
+    {
+      "id": "compatibility:relate-fresh-write-indexed/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-fresh-write-indexed/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-fresh-write-indexed/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "compatibility:relate-fresh-write-member/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-fresh-write-member/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-fresh-write-member/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2353,
+        "category": "error",
+        "message": "Object literal may only specify known properties, and 'extra' does not exist in type 'Shape'.",
+        "file": "typescript_oracle/relate-fresh-write-member/main.ts",
+        "start": 103,
+        "length": 5,
+        "line": 3,
+        "column": 26
+      },
+      "diagnostics": [
+        {
+          "code": 2353,
+          "category": "error",
+          "message": "Object literal may only specify known properties, and 'extra' does not exist in type 'Shape'.",
+          "file": "typescript_oracle/relate-fresh-write-member/main.ts",
+          "start": 103,
+          "length": 5,
+          "line": 3,
+          "column": 26
+        }
+      ]
+    },
+    {
+      "id": "compatibility:relate-fresh-write-variable/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-fresh-write-variable/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-fresh-write-variable/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2353,
+        "category": "error",
+        "message": "Object literal may only specify known properties, and 'extra' does not exist in type 'Shape'.",
+        "file": "typescript_oracle/relate-fresh-write-variable/main.ts",
+        "start": 82,
+        "length": 5,
+        "line": 3,
+        "column": 21
+      },
+      "diagnostics": [
+        {
+          "code": 2353,
+          "category": "error",
+          "message": "Object literal may only specify known properties, and 'extra' does not exist in type 'Shape'.",
+          "file": "typescript_oracle/relate-fresh-write-variable/main.ts",
+          "start": 82,
+          "length": 5,
+          "line": 3,
+          "column": 21
+        }
+      ]
+    },
+    {
       "id": "compatibility:relate-function-callable-record/main.ts",
       "matrix": "compatibility",
       "entry": "relate-function-callable-record/main.ts",

@@ -40,7 +40,7 @@ pub(super) fn expanded(
     value
 }
 
-fn union(values: impl IntoIterator<Item = Type>) -> Type {
+pub(super) fn union(values: impl IntoIterator<Item = Type>) -> Type {
     fn add(value: Type, into: &mut Vec<Type>) {
         match value {
             Type::Never => {}

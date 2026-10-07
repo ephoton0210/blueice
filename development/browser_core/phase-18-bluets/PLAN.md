@@ -5415,3 +5415,51 @@ The pinned corpus contains 78 programs (40 accept, 38 reject), with four runtime
 ### K.4.7 assignment and member-call baseline — 2026-10-08
 
 Ten further position controls expand the corpus to 88 programs (44 accept, 44 reject), retaining four runtime/declaration witnesses. The original 78-program draft passes all four focused oracle tests and all-target Clippy. Linux replay of the supplement records six missed excess-property rejections in variable/member/bracket/array-element assignments and method/function-property arguments; completeness, pinned recorder and all four runtime/declaration witnesses pass (three tests pass, one fails). A legacy readonly declaration unit assertion still expects the previous one-line formatting and remains open. Evidence: `/private/tmp/blueice-k14-linux/blueice-k47-supplement-red-gate.log`. Implementation changes remain unstaged; K.4.7 stays open.
+
+### K.4.7 compatibility details verified — 2026-10-08
+
+Object literal freshness is checked at variable initializers, assignments to
+variables/members/indexed elements, direct/member-call arguments and explicit
+returns, including nested, array, spread, discriminated union and explicit generic
+contexts. Aliased values lose freshness; indexed contexts retain allowed extra
+properties. Weak record targets require overlapping properties, while empty and
+indexed forms preserve their measured exceptions.
+
+Function properties use strict parameter contravariance, methods retain bivariance,
+and returns retain covariance. Required/optional arity and optional versus
+undefined fields follow the recorded checking settings, including the existing
+exactOptionalPropertyTypes controls. Parsed and inferred method metadata survives
+substitution and declaration output. Predicate parameter identity and assertion
+void promises retain the measured diagnostic chains.
+
+Variance in/out/in out syntax survives parsing and declaration emission. Declared
+directions are checked and same-generic instantiations compare in that direction;
+invariant uses compare both directions. Bound generic parameters remain rigid
+rather than standing in for their upper constraint. Callable records compare
+ordered call/construct signatures and data fields, while indexed aliases retain
+value domains, readonly structural compatibility and required named fields.
+The analysis identity advances to lexical-flow-v8 without adding runtime authority.
+
+The six missed assignment/member-call freshness rejections from the committed
+position supplement are fixed. The initial full gate exposed three older
+class/library witnesses: restricted members now retain their nominal assignment
+diagnostic, and empty structural targets accept extra properties. A later
+legacy symbolic tuple-spread regression preserves rigid bound parameters as
+symbolic tails, including identical-tail equality and existing distinct/narrowed
+rejections. Their shared
+primary/message/related replay passes before the final full gate. The legacy readonly alias declaration assertion
+now matches the native multiline format already covered by exact declaration
+oracles. Diagnostic codes, UTF-16 positions and related origins are compared at
+the public compiler boundary; raw BTS diagnostics remain available.
+
+All 88 pinned programs (44 accept, 44 reject), exact primary/related diagnostics, four Node/runtime and every-declaration witnesses and the pinned recorder pass. The frozen-source Linux K.0 gate passes format, format check and both-crate all-target Clippy with warnings denied; all 1,128 tests in 74 groups pass, including all 141 ignored oracles in 39 differential suite files. All 41 frozen changed backend files match the host snapshot. Largest production source: 1,153 lines.
+Evidence: `/private/tmp/blueice-k14-linux/blueice-k47-full3-status.json`,
+`blueice-k47-full3-gate.log` and `blueice-k47-full3-clippy.log`.
+The shared diagnostic corpus records 2,014 programs (926 accept,
+1,088 reject) and 167 message templates. Generated refusal evidence:
+163 refusal sites in 10 areas.
+
+G-T6 retains unmeasured computed/nested expression contexts, composed variance
+and broader library structural relations. G-T2/G-T3/G-T5 keep their remaining
+inference/operator/type combinations. K.3 and the measured K.4 leaves are complete;
+final workspace/coverage verification remains open. M8 remains open for K.5–K.9.

@@ -53,6 +53,17 @@ impl Parser {
         let mut parameters = Vec::new();
         while !self.at_eof() && !self.consume(">") {
             let start = self.current().start;
+            let variance = if self.consume("in") {
+                Some(if self.consume("out") {
+                    Variance::InOut
+                } else {
+                    Variance::In
+                })
+            } else if self.consume("out") {
+                Some(Variance::Out)
+            } else {
+                None
+            };
             let name = self.require_identifier("expected a type parameter name");
             let constraint = self
                 .consume("extends")
@@ -62,6 +73,7 @@ impl Parser {
                 .then(|| self.parse_type_until(&[",", ">"]));
             let end = self.previous().end;
             parameters.push(TypeParameter {
+                variance,
                 name,
                 constraint,
                 default,

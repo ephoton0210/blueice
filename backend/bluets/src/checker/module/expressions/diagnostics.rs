@@ -5,6 +5,7 @@
 //! Diagnostic causes determined from the checked call signatures.
 
 use super::*;
+mod compatibility;
 mod more_types;
 mod operators;
 
@@ -26,6 +27,16 @@ impl ModuleChecker<'_> {
                 2769,
                 Vec::new(),
             );
+            self.point_last_typescript(argument);
+            return;
+        }
+        if self.weak_compatibility_error(
+            span,
+            &message,
+            DiagnosticCode::TypeMismatch,
+            actual,
+            expected,
+        ) {
             self.point_last_typescript(argument);
             return;
         }
@@ -174,6 +185,9 @@ impl ModuleChecker<'_> {
         actual: &Type,
         expected: &Type,
     ) {
+        if self.compatibility_assignment_error(span, &message, bts_code, actual, expected) {
+            return;
+        }
         if self.additional_assignment_error(span, &message, bts_code, actual, expected) {
             return;
         }
@@ -328,9 +342,17 @@ impl ModuleChecker<'_> {
         self.explain_last_type_pair(actual, &display);
     }
 
-    fn explain_last_type_pair(&mut self, actual: &Type, expected: &Type) {
+    pub(in crate::checker::module) fn explain_last_type_pair(
+        &mut self,
+        actual: &Type,
+        expected: &Type,
+    ) {
         if self.enforce_types {
-            let detail = crate::diagnostic::type_text::detail(actual, expected, self.project);
+            let detail = self
+                .compatibility_detail(actual, expected)
+                .unwrap_or_else(|| {
+                    crate::diagnostic::type_text::detail(actual, expected, self.project)
+                });
             if let Some(counterpart) = self
                 .diagnostics
                 .last_mut()

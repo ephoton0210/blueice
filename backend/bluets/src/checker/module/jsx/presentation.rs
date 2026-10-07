@@ -68,6 +68,7 @@ impl ModuleChecker<'_> {
                 }))
             };
             fields.push(TypeField {
+                method: false,
                 name: self
                     .jsx_children_name()
                     .unwrap_or_else(|| "children".into()),
@@ -94,6 +95,7 @@ impl ModuleChecker<'_> {
                         None => Type::Boolean,
                     };
                     fields.push(TypeField {
+                        method: false,
                         name: name.text.clone(),
                         readonly: false,
                         optional: false,

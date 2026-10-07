@@ -411,7 +411,9 @@ fn retains_readonly_fields_in_declaration_output() {
         "{declaration}"
     );
     assert!(
-        declaration.contains("{ readonly currentTarget: string; mutable: string }"),
+        declaration.contains(
+            "export type Detail = {\n    readonly currentTarget: string;\n    mutable: string;\n};"
+        ),
         "{declaration}"
     );
     assert!(!artifact.javascript.contains("readonly"));

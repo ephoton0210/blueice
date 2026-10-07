@@ -26,6 +26,20 @@ impl<'a> ModuleChecker<'a> {
         let previous_generator = std::mem::replace(&mut self.generator_context, generator_context);
         let previous_annotated = self.annotated_names.clone();
         let previous_parameters = self.type_parameters.clone();
+        let previous_types = self.types.clone();
+        let previous_bound = self.bound_parameters.clone();
+        for parameter in &function.type_parameters {
+            self.bound_parameters
+                .insert(parameter.name.clone(), parameter.clone());
+            self.types.insert(
+                parameter.name.clone(),
+                TypeDefinition {
+                    kind: TypeDefinitionKind::Parameter,
+                    parameters: Vec::new(),
+                    value: parameter.constraint.clone().unwrap_or(Type::StrictUnknown),
+                },
+            );
+        }
         let previous_spreads = self.allowed_tuple_spread_parameters.clone();
         self.allowed_tuple_spread_parameters = function
             .type_parameters
@@ -225,6 +239,8 @@ impl<'a> ModuleChecker<'a> {
             }
         }
         self.type_parameters = previous_parameters;
+        self.types = previous_types;
+        self.bound_parameters = previous_bound;
         self.allowed_tuple_spread_parameters = previous_spreads;
         self.async_context = previous_async;
         self.generator_context = previous_generator;
@@ -617,6 +633,9 @@ impl<'a> ModuleChecker<'a> {
         let Some(return_type) = return_type else {
             return;
         };
+        if self.check_fresh_properties(returned, return_type, scope, function_span) {
+            return;
+        }
         let actual = self.infer_in_context(returned, scope, return_type);
         let explicit_unknown = actual == Type::Unknown
             && returned.len() == 1

@@ -289,6 +289,11 @@ impl<'a> ModuleChecker<'a> {
                 .annotation
                 .as_ref()
                 .expect("method signature parameters have annotations");
+            if let Some(argument) = arguments.get(index) {
+                if self.check_fresh_properties(argument, expected, scope, argument_span) {
+                    continue;
+                }
+            }
             if !self.is_assignable_bounded(actual, expected, argument_span) {
                 let displayed_expected =
                     crate::diagnostic::type_text::default_parameter(expected, &parameters[index]);

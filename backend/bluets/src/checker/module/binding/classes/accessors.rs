@@ -80,6 +80,7 @@ pub(super) fn class_accessor_type_fields(
                 .or(group.setter)
                 .expect("a group has an accessor");
             TypeField {
+                method: false,
                 name: member_field_name(class, first.visibility, &name),
                 readonly: group.setter.is_none(),
                 optional: false,

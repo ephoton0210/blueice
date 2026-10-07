@@ -39,7 +39,7 @@ pub(super) fn render_with_indices(
             if field.optional { "?" } else { "" }
         );
         let text = match &field.value {
-            Type::Function { parameters, result } => {
+            Type::Function { parameters, result } if field.method => {
                 format!("{name}{}", method_signature_to_ts(parameters, result))
             }
             Type::GenericFunction {
@@ -47,7 +47,7 @@ pub(super) fn render_with_indices(
                 parameters,
                 result,
                 ..
-            } => {
+            } if field.method => {
                 let mut text = name;
                 emit_type_parameters(&mut text, type_parameters);
                 text.push_str(&method_signature_to_ts(parameters, result));

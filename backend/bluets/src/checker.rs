@@ -99,6 +99,7 @@ struct TypeDefinition {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum TypeDefinitionKind {
+    Parameter,
     Alias,
     Interface,
     /// An original library interface; owner/source replacements use Interface.

@@ -12,7 +12,7 @@ use std::collections::BTreeMap;
 
 mod type_forms;
 pub use type_forms::{
-    ConditionalType, IndexSignature, MappedModifier, MappedType, TemplateLiteralType,
+    ConditionalType, IndexSignature, MappedModifier, MappedType, TemplateLiteralType, Variance,
 };
 
 /// Parser work bounds. Hosts may lower these for a constrained compile slot;
@@ -654,6 +654,7 @@ pub struct TypeSignature {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TypeField {
+    pub method: bool,
     pub name: String,
     pub readonly: bool,
     pub optional: bool,
@@ -859,6 +860,7 @@ pub enum FunctionElseBranch {
 /// from emitted JavaScript together with the parameter list itself.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TypeParameter {
+    pub variance: Option<Variance>,
     pub name: String,
     pub constraint: Option<Type>,
     pub default: Option<Type>,

@@ -138,6 +138,41 @@ pub(super) fn reason(
         if !detail.is_empty() {
             return detail;
         }
+        if let Type::Predicate(target) = expected_result.as_ref() {
+            if let Type::Predicate(source) = actual_result.as_ref() {
+                let actual_index = actual_params
+                    .iter()
+                    .position(|p| p.name == source.parameter);
+                let expected_index = expected_params
+                    .iter()
+                    .position(|p| p.name == target.parameter);
+                if actual_index != expected_index {
+                    return line(
+                        depth,
+                        format!(
+                            "Type predicate '{}' is not assignable to '{}'.",
+                            render_in(actual_result, project),
+                            render_in(expected_result, project)
+                        ),
+                    ) + &line(
+                        depth + 1,
+                        format!(
+                            "Parameter '{}' is not in the same position as parameter '{}'.",
+                            source.parameter, target.parameter
+                        ),
+                    );
+                }
+            } else if !target.asserts {
+                return line(
+                    depth,
+                    format!(
+                        "Signature '({}): {}' must be a type predicate.",
+                        parameters::list(actual_params, Some(project)),
+                        render_in(actual_result, project)
+                    ),
+                );
+            }
+        }
         if **expected_result != Type::Void
             && **expected_result != Type::Any
             && actual_result != expected_result
@@ -149,6 +184,29 @@ pub(super) fn reason(
         return text;
     }
     if let (Type::Record(actual), Type::Record(expected)) = (actual, expected) {
+        for source in actual.iter().filter(|field| field.optional) {
+            if let Some(target) = expected
+                .iter()
+                .find(|field| field.name == source.name && !field.optional)
+            {
+                let value = Type::Union(vec![source.value.clone(), Type::Undefined]);
+                if contains(&target.value, &Type::Undefined) {
+                    return line(
+                        depth,
+                        format!(
+                            "Property '{}' is optional in type '{}' but required in type '{}'.",
+                            source.name,
+                            render_in(&Type::Record(actual.clone()), project),
+                            render_in(&Type::Record(expected.clone()), project)
+                        ),
+                    );
+                }
+                return line(
+                    depth,
+                    format!("Types of property '{}' are incompatible.", source.name),
+                ) + &mismatch(&value, &target.value, project, depth + 1);
+            }
+        }
         if let Some((actual, expected)) = actual.iter().find_map(|actual| {
             expected
                 .iter()

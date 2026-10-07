@@ -137,6 +137,9 @@ impl<'a> ModuleChecker<'a> {
                 if !mutation.operator.is("=") {
                     return;
                 }
+                if self.check_fresh_properties(mutation.value, &expected, scope, span) {
+                    return;
+                }
                 let actual = self.infer_in_context(mutation.value, scope, &expected);
                 if !self.is_assignable_bounded(&actual, &expected, span) {
                     self.type_error(
@@ -244,6 +247,9 @@ impl<'a> ModuleChecker<'a> {
         if matches!(expected, Type::Unknown | Type::Any) {
             return;
         }
+        if self.check_fresh_properties(value, &expected, scope, span) {
+            return;
+        }
         let actual = self.infer_in_context(value, scope, &expected);
         if !self.is_assignable_bounded(&actual, &expected, span) {
             self.type_error(
@@ -255,6 +261,7 @@ impl<'a> ModuleChecker<'a> {
                 ),
                 DiagnosticCode::TypeMismatch,
             );
+            self.explain_last_type_pair(&actual, &expected);
         }
     }
 
