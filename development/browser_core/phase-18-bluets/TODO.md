@@ -313,6 +313,8 @@ and import rules.
 
 - *Baseline (2026-10-07):* pinned codes, message templates, related information and UTF-16 spans recorded for all 1,398 entries of the eleven language checker matrices and strictness matrix; 135 observed templates. The first failing structured-diagnostic replay and explicit subset-refusal list are committed before implementation.
 
+- *Source audit baseline:* 72 further pinned diagnostic witnesses cover lexical errors and semantic families outside the language matrix; their failing replay is recorded before the remaining mappings. The language corpus alone does not close K.3.1.
+
 - [ ] **K.3.1 Code and message mapping (M).** A table from every BlueTSC diagnostic to the `TSnnnn` code
   and message template recorded from the pinned compiler (`tools/` script that runs `tsc` over the
   fixture corpus and extracts the first code per entry); `BTSnnnn` stays as an alias in machine-readable

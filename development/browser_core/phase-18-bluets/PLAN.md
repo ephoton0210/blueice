@@ -4379,3 +4379,22 @@ all code/message/span data agree with the macOS recording. Production source
 remains unchanged, with a maximum of 1,172 lines.
 This failing replay is committed before implementation under K.0.1. K.3.1,
 K.3.2, K.3.3 and the M7 workspace/coverage gate remain open.
+
+### K.3.1 Additional diagnostic source witnesses
+
+The language corpus replay reaches zero primary code/template differences, and
+all diagnostics it produces have a counterpart or an explicit subset reason.
+This is not yet completion of K.3.1: a source audit also finds lexical and
+semantic diagnostic families outside that corpus. Seventy-two independent
+TypeScript 5.9.3 source witnesses record accepted/rejected observations and all
+codes/messages, including cascaded diagnostics. The two accepted rest/spread
+witnesses demonstrate existing BlueTSC subset restrictions rather than a
+TypeScript error. These records do not claim new language support.
+
+`record_diagnostic_source_families.cjs` reproduces these witnesses, and the
+public diagnostic replay first fails on the unmapped unterminated-comment
+family (TS1010); string and template families require TS1002 and TS1160.
+This additional failing baseline is committed before those mappings. The
+pending implementation's format and all-target two-crate Clippy pass; its
+long oracle run was stopped after this audit found the remaining work, so a
+complete K.0 test pass is still required. K.3.1, K.3.2, K.3.3 and M7 stay open.

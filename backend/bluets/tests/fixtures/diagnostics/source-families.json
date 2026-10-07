@@ -1,0 +1,1127 @@
+{
+  "version": "5.9.3",
+  "cases": [
+    {
+      "id": "diagnostics-other-comment",
+      "source": "/* unfinished",
+      "blueMessage": "unterminated block comment",
+      "flags": [],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 1010,
+          "message": "'*/' expected.",
+          "start": 13,
+          "length": 0
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-string",
+      "source": "const word = 'unfinished",
+      "blueMessage": "unterminated string literal",
+      "flags": [],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 1002,
+          "message": "Unterminated string literal.",
+          "start": 24,
+          "length": 0
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-template",
+      "source": "const word = `unfinished",
+      "blueMessage": "unterminated template literal",
+      "flags": [],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 1160,
+          "message": "Unterminated template literal.",
+          "start": 24,
+          "length": 0
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-spread",
+      "source": "const value = { ...1 };",
+      "blueMessage": "spread types may only be created from object types, not `number`",
+      "flags": [],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2698,
+          "message": "Spread types may only be created from object types.",
+          "start": 16,
+          "length": 4
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-missing-return",
+      "source": "function run(): number {}",
+      "blueMessage": "a function with this declared return type must return a value",
+      "flags": [],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2355,
+          "message": "A function whose declared type is neither 'undefined', 'void', nor 'any' must return a value.",
+          "start": 16,
+          "length": 6
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-nonexhaustive-return",
+      "source": "function run(value: boolean): number { if (value) return 1; }",
+      "blueMessage": "function with return type `number` can complete without returning a value",
+      "flags": [],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2366,
+          "message": "Function lacks ending return statement and return type does not include 'undefined'.",
+          "start": 30,
+          "length": 6
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-rest-last",
+      "source": "function run(...values: number[], next: number): void {}",
+      "blueMessage": "a rest parameter must be last",
+      "flags": [],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 1014,
+          "message": "A rest parameter must be last in a parameter list.",
+          "start": 13,
+          "length": 3
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-rest-optional",
+      "source": "function run(...values?: number[]): void {}",
+      "blueMessage": "a rest parameter cannot be optional or have a default initializer",
+      "flags": [],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2370,
+          "message": "A rest parameter must be of an array type.",
+          "start": 13,
+          "length": 20
+        },
+        {
+          "code": 1047,
+          "message": "A rest parameter cannot be optional.",
+          "start": 22,
+          "length": 1
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-rest-default",
+      "source": "function run(...values: number[] = []): void {}",
+      "blueMessage": "a rest parameter cannot be optional or have a default initializer",
+      "flags": [],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 1048,
+          "message": "A rest parameter cannot have an initializer.",
+          "start": 16,
+          "length": 6
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-rest-type",
+      "source": "function run(...values: number): void {}",
+      "blueMessage": "the bounded rest-parameter rule requires an array annotation",
+      "flags": [],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2370,
+          "message": "A rest parameter must be of an array type.",
+          "start": 13,
+          "length": 17
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-rest-alias",
+      "source": "type Values = number[]; function run(...values: Values): void {}",
+      "blueMessage": "the bounded rest-parameter rule requires an array annotation",
+      "flags": [],
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "diagnostics-other-async-return",
+      "source": "async function run(): number { return 1; }",
+      "blueMessage": "the return type of an async function must be the global `Promise<T>` type",
+      "flags": [],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 1064,
+          "message": "The return type of an async function or method must be the global Promise<T> type. Did you mean to write 'Promise<number>'?",
+          "start": 22,
+          "length": 6
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-tuple-index",
+      "source": "function run(values: [number]): void { values[1]; }",
+      "blueMessage": "tuple type `[number]` has no element at index 1",
+      "flags": [],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2493,
+          "message": "Tuple type '[number]' of length '1' has no element at index '1'.",
+          "start": 46,
+          "length": 1
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-parameter-default",
+      "source": "function run(value: number = 'wrong'): void {}",
+      "blueMessage": "default initializer has type `string`, which is not assignable to `number`",
+      "flags": [],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "start": 13,
+          "length": 23
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-duplicate-parameter",
+      "source": "function run<T, T>(): void {}",
+      "blueMessage": "duplicate type parameter `T`",
+      "flags": [],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2300,
+          "message": "Duplicate identifier 'T'.",
+          "start": 16,
+          "length": 1
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-parameter-order",
+      "source": "function run<T = number, U>(): void {}",
+      "blueMessage": "required type parameter `U` cannot follow a defaulted type parameter",
+      "flags": [],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2706,
+          "message": "Required type parameters may not follow optional type parameters.",
+          "start": 25,
+          "length": 1
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-generic-default",
+      "source": "type Position<T extends number = string> = T;",
+      "blueMessage": "default type `string` does not satisfy constraint `number` for `T`",
+      "flags": [],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2344,
+          "message": "Type 'string' does not satisfy the constraint 'number'.",
+          "start": 33,
+          "length": 6
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-generic-constraint",
+      "source": "type Position<T extends number> = T; const value: Position<string> = \"wrong\";",
+      "blueMessage": "type argument `string` does not satisfy constraint `number` for `T`",
+      "flags": [],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2344,
+          "message": "Type 'string' does not satisfy the constraint 'number'.",
+          "start": 59,
+          "length": 6
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-generic-arity",
+      "source": "type Position<T> = T; const value: Position = 1;",
+      "blueMessage": "type `Position` requires 1 to 1 type argument(s), got 0",
+      "flags": [],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2314,
+          "message": "Generic type 'Position' requires 1 type argument(s).",
+          "start": 35,
+          "length": 8
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-generic-call-constraint",
+      "source": "function run<T extends number>(value: T): T { return value; } run<string>('wrong');",
+      "blueMessage": "type argument `string` does not satisfy constraint `number` for `T`",
+      "flags": [],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2344,
+          "message": "Type 'string' does not satisfy the constraint 'number'.",
+          "start": 66,
+          "length": 6
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-generic-call-arity",
+      "source": "function run<T>(value: T): T { return value; } run<number, string>(1);",
+      "blueMessage": "function type arguments require 1 to 1 argument(s), got 2",
+      "flags": [],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2558,
+          "message": "Expected 1 type arguments, but got 2.",
+          "start": 51,
+          "length": 14
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-argument-count",
+      "source": "function run(value: number): void {} run();",
+      "blueMessage": "function run expects 1 to 1 argument(s), got 0",
+      "flags": [],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2554,
+          "message": "Expected 1 arguments, but got 0.",
+          "start": 37,
+          "length": 3
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-argument-spread",
+      "source": "function run(value: number): void {} const values: number[] = []; run(...values);",
+      "blueMessage": "a spread argument for function run must have a fixed-length tuple type",
+      "flags": [],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2556,
+          "message": "A spread argument must either have a tuple type or be passed to a rest parameter.",
+          "start": 70,
+          "length": 9
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-argument-spread-rest",
+      "source": "function run(...values: number[]): void {} const values: number[] = []; run(...values);",
+      "blueMessage": "a spread argument for function run must have a fixed-length tuple type",
+      "flags": [],
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "diagnostics-other-parameter-overload-order",
+      "source": "function run(value: number): number { return value; } function run(value: number): number;",
+      "blueMessage": "overload signature for run must precede its implementation",
+      "flags": [],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2391,
+          "message": "Function implementation is missing or not immediately following the declaration.",
+          "start": 63,
+          "length": 3
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-parameter-overload-missing",
+      "source": "function run(value: number): number;",
+      "blueMessage": "overload signature for run requires an implementation",
+      "flags": [],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2391,
+          "message": "Function implementation is missing or not immediately following the declaration.",
+          "start": 9,
+          "length": 3
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-parameter-overload-incompatible",
+      "source": "function run(value: number): number; function run(value: string): number { return 1; }",
+      "blueMessage": "overload signature for run is incompatible with its implementation",
+      "flags": [],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2394,
+          "message": "This overload signature is not compatible with its implementation signature.",
+          "start": 9,
+          "length": 3
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-duplicate-default",
+      "source": "const left = 1; const right = 2; export default left; export default right;",
+      "blueMessage": "a module can have only one default export",
+      "flags": [],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2528,
+          "message": "A module cannot have multiple default exports.",
+          "start": 48,
+          "length": 4
+        },
+        {
+          "code": 2528,
+          "message": "A module cannot have multiple default exports.",
+          "start": 69,
+          "length": 5
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-unknown-default",
+      "source": "export default missing;",
+      "blueMessage": "default export `missing` must name a local runtime declaration",
+      "flags": [],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2304,
+          "message": "Cannot find name 'missing'.",
+          "start": 15,
+          "length": 7
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-unknown-export",
+      "source": "export { missing };",
+      "blueMessage": "exported value `missing` must name a local runtime declaration",
+      "flags": [],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2304,
+          "message": "Cannot find name 'missing'.",
+          "start": 9,
+          "length": 7
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-duplicate-export",
+      "source": "const value = 1; export { value, value };",
+      "blueMessage": "duplicate exported value `value`",
+      "flags": [],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2300,
+          "message": "Duplicate identifier 'value'.",
+          "start": 26,
+          "length": 5
+        },
+        {
+          "code": 2300,
+          "message": "Duplicate identifier 'value'.",
+          "start": 33,
+          "length": 5
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-yield-context",
+      "source": "yield 1;",
+      "blueMessage": "`yield` is only valid inside a generator function",
+      "flags": [],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 1163,
+          "message": "A 'yield' expression is only allowed in a generator body.",
+          "start": 0,
+          "length": 5
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-yield-operand",
+      "source": "function* run() { yield*; }",
+      "blueMessage": "expected an operand after `yield*`",
+      "flags": [],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 1109,
+          "message": "Expression expected.",
+          "start": 24,
+          "length": 1
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-yield-iterable",
+      "source": "function* run() { yield* 1; }",
+      "blueMessage": "type `number` is not iterable",
+      "flags": [],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2488,
+          "message": "Type '1' must have a '[Symbol.iterator]()' method that returns an iterator.",
+          "start": 25,
+          "length": 1
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-yield-value",
+      "source": "function* run(): Generator<number, void, unknown> { yield 'wrong'; }",
+      "blueMessage": "yielded value of type `string` is not assignable to the generator's yield type `number`",
+      "flags": [],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "start": 58,
+          "length": 7
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-duplicate-prototype",
+      "source": "class Position { static prototype: number = 1; }",
+      "blueMessage": "static property `prototype` conflicts with the built-in property of the constructor function",
+      "flags": [],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2699,
+          "message": "Static property 'prototype' conflicts with built-in property 'Function.prototype' of constructor function 'Position'.",
+          "start": 24,
+          "length": 9
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-private-context",
+      "source": "const value = #missing;",
+      "blueMessage": "private identifier `#missing` is only allowed after a `.` or before `in`",
+      "flags": [],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 18016,
+          "message": "Private identifiers are not allowed outside class bodies.",
+          "start": 14,
+          "length": 8
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-optional-private",
+      "source": "class Position { #value = 1; read(other: Position): number { return other?.#value; } }",
+      "blueMessage": "an optional chain cannot contain a private identifier",
+      "flags": [],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 18030,
+          "message": "An optional chain cannot contain private identifiers.",
+          "start": 75,
+          "length": 6
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-arithmetic-number",
+      "source": "const value = 1 - 'wrong';",
+      "blueMessage": "operator `-` cannot be applied to types `number` and `string`",
+      "flags": [],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2363,
+          "message": "The right-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.",
+          "start": 18,
+          "length": 7
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-arithmetic-disjoint",
+      "source": "const value = 1 === 'wrong';",
+      "blueMessage": "operator `===` compares disjoint types `number` and `string`",
+      "flags": [],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2367,
+          "message": "This comparison appears to be unintentional because the types 'number' and 'string' have no overlap.",
+          "start": 14,
+          "length": 13
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-arithmetic-add",
+      "source": "const value = true + false;",
+      "blueMessage": "operator `+` cannot be applied to types `boolean` and `boolean`",
+      "flags": [],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2365,
+          "message": "Operator '+' cannot be applied to types 'boolean' and 'boolean'.",
+          "start": 14,
+          "length": 12
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-not-callable",
+      "source": "const value = { item: 1 }; value.item();",
+      "blueMessage": "property `item` is not callable",
+      "flags": [],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2349,
+          "message": "This expression is not callable.\n  Type 'Number' has no call signatures.",
+          "start": 33,
+          "length": 4
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-unused-type",
+      "source": "type Position = number; export {};",
+      "blueMessage": "type `Position` is declared but never used",
+      "flags": [
+        "--noUnusedLocals"
+      ],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 6196,
+          "message": "'Position' is declared but never used.",
+          "start": 5,
+          "length": 8
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-tuple-rest-twice",
+      "source": "type Position = [...number[], ...string[]];",
+      "blueMessage": "a second tuple rest element is not allowed",
+      "flags": [],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 1265,
+          "message": "A rest element cannot follow another rest element.",
+          "start": 30,
+          "length": 11
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-tuple-rest-optional",
+      "source": "type Position = [...number[], value?: number];",
+      "blueMessage": "an optional tuple element cannot follow a rest element",
+      "flags": [],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 1266,
+          "message": "An optional element cannot follow a rest element.",
+          "start": 30,
+          "length": 14
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-tuple-required-after",
+      "source": "type Position = [value?: number, other: number];",
+      "blueMessage": "a required tuple element cannot follow an optional element",
+      "flags": [],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 1257,
+          "message": "A required element cannot follow an optional element.",
+          "start": 33,
+          "length": 13
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-throw-newline",
+      "source": "throw\n1;",
+      "blueMessage": "a line terminator is not permitted after `throw`",
+      "flags": [],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 1142,
+          "message": "Line break not permitted here.",
+          "start": 5,
+          "length": 0
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-throw-empty",
+      "source": "throw;",
+      "blueMessage": "expected an expression after `throw`",
+      "flags": [],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 1109,
+          "message": "Expression expected.",
+          "start": 5,
+          "length": 1
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-catch-type",
+      "source": "try {} catch (error: number) {}",
+      "blueMessage": "a catch clause variable type annotation must be `any` or `unknown`",
+      "flags": [],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 1196,
+          "message": "Catch clause variable type annotation must be 'any' or 'unknown' if specified.",
+          "start": 21,
+          "length": 6
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-coalesce-and",
+      "source": "declare const value: number | undefined; declare const left: number; declare const right: number; const result = value ?? left && right;",
+      "blueMessage": "parentheses are required when mixing `??` with `&&` or `||`",
+      "flags": [],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 5076,
+          "message": "'??' and '&&' operations cannot be mixed without parentheses.",
+          "start": 122,
+          "length": 13
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-coalesce-or",
+      "source": "declare const value: number | undefined; declare const left: number; declare const right: number; const result = value ?? left || right;",
+      "blueMessage": "parentheses are required when mixing `??` with `&&` or `||`",
+      "flags": [],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 5076,
+          "message": "'??' and '||' operations cannot be mixed without parentheses.",
+          "start": 113,
+          "length": 13
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-exponent-unary",
+      "source": "const value = -1 ** 2;",
+      "blueMessage": "a unary expression cannot be the unparenthesized base of exponentiation",
+      "flags": [],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 17006,
+          "message": "An unary expression with the '-' operator is not allowed in the left-hand side of an exponentiation expression. Consider enclosing the expression in parentheses.",
+          "start": 14,
+          "length": 2
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-declaration-ambient",
+      "source": "declare namespace Area { declare const value: number; }",
+      "blueMessage": "a `declare` modifier cannot be used in an already ambient context",
+      "flags": [],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 1038,
+          "message": "A 'declare' modifier cannot be used in an already ambient context.",
+          "start": 25,
+          "length": 7
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-declaration-property",
+      "source": "class Position { constructor(public value: number); }",
+      "blueMessage": "a parameter property is only allowed in a constructor implementation",
+      "flags": [],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2390,
+          "message": "Constructor implementation is missing.",
+          "start": 17,
+          "length": 11
+        },
+        {
+          "code": 2369,
+          "message": "A parameter property is only allowed in a constructor implementation.",
+          "start": 29,
+          "length": 20
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-name-variable",
+      "source": "const : number = 1;",
+      "blueMessage": "expected a variable name",
+      "flags": [],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 1134,
+          "message": "Variable declaration expected.",
+          "start": 6,
+          "length": 1
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-name-parameter",
+      "source": "function run(: number): void {}",
+      "blueMessage": "expected a parameter name",
+      "flags": [],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 1138,
+          "message": "Parameter declaration expected.",
+          "start": 13,
+          "length": 1
+        },
+        {
+          "code": 7006,
+          "message": "Parameter 'number' implicitly has an 'any' type.",
+          "start": 15,
+          "length": 6
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-name-function",
+      "source": "function () {}",
+      "blueMessage": "expected a function name",
+      "flags": [],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 1003,
+          "message": "Identifier expected.",
+          "start": 9,
+          "length": 1
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-name-type",
+      "source": "type = number;",
+      "blueMessage": "expected a type alias name",
+      "flags": [],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2304,
+          "message": "Cannot find name 'type'.",
+          "start": 0,
+          "length": 4
+        },
+        {
+          "code": 2693,
+          "message": "'number' only refers to a type, but is being used as a value here.",
+          "start": 7,
+          "length": 6
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-name-interface",
+      "source": "interface {}",
+      "blueMessage": "expected an interface name",
+      "flags": [],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2304,
+          "message": "Cannot find name 'interface'.",
+          "start": 0,
+          "length": 9
+        },
+        {
+          "code": 1438,
+          "message": "Interface must be given a name.",
+          "start": 10,
+          "length": 1
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-name-query",
+      "source": "type Position = typeof ;",
+      "blueMessage": "expected a value name after `typeof`",
+      "flags": [],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 1003,
+          "message": "Identifier expected.",
+          "start": 23,
+          "length": 1
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-name-import",
+      "source": "import { } from ;",
+      "blueMessage": "expected a string module specifier",
+      "flags": [],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 1109,
+          "message": "Expression expected.",
+          "start": 16,
+          "length": 1
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-name-heritage",
+      "source": "class Position extends {}",
+      "blueMessage": "expected a class heritage name",
+      "flags": [],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 1097,
+          "message": "'extends' list cannot be empty.",
+          "start": 22,
+          "length": 0
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-body-function",
+      "source": "function run(): void",
+      "blueMessage": "expected a function body",
+      "flags": [],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2391,
+          "message": "Function implementation is missing or not immediately following the declaration.",
+          "start": 9,
+          "length": 3
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-body-klass",
+      "source": "class Position",
+      "blueMessage": "expected a class body",
+      "flags": [],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 1005,
+          "message": "'{' expected.",
+          "start": 14,
+          "length": 0
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-body-enumeration",
+      "source": "enum Position",
+      "blueMessage": "expected an enum body",
+      "flags": [],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 1005,
+          "message": "'{' expected.",
+          "start": 13,
+          "length": 0
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-body-area",
+      "source": "namespace Area",
+      "blueMessage": "expected a namespace body",
+      "flags": [],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 1005,
+          "message": "'{' expected.",
+          "start": 14,
+          "length": 0
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-missing-default-value",
+      "source": "function run(value: number = ): void {}",
+      "blueMessage": "expected a default initializer",
+      "flags": [],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 1109,
+          "message": "Expression expected.",
+          "start": 29,
+          "length": 1
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-missing-field-value",
+      "source": "class Position { value: number = ; }",
+      "blueMessage": "expected a class field initializer",
+      "flags": [],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 1109,
+          "message": "Expression expected.",
+          "start": 33,
+          "length": 1
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-missing-enumeration-value",
+      "source": "enum Position { Value = }",
+      "blueMessage": "expected an enum member initializer",
+      "flags": [],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 1109,
+          "message": "Expression expected.",
+          "start": 24,
+          "length": 1
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-modifier-enumeration",
+      "source": "async enum Position { Value }",
+      "blueMessage": "an async enum is not valid",
+      "flags": [],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 1042,
+          "message": "'async' modifier cannot be used here.",
+          "start": 0,
+          "length": 5
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-modifier-area",
+      "source": "async namespace Area { export const value = 1; }",
+      "blueMessage": "an async namespace is not valid",
+      "flags": [],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 1042,
+          "message": "'async' modifier cannot be used here.",
+          "start": 0,
+          "length": 5
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-optional-variable",
+      "source": "const value?: number = 1;",
+      "blueMessage": "optional variables are not valid TypeScript declarations",
+      "flags": [],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 7005,
+          "message": "Variable 'value' implicitly has an 'any' type.",
+          "start": 6,
+          "length": 5
+        },
+        {
+          "code": 1005,
+          "message": "',' expected.",
+          "start": 11,
+          "length": 1
+        },
+        {
+          "code": 1134,
+          "message": "Variable declaration expected.",
+          "start": 12,
+          "length": 1
+        }
+      ]
+    }
+  ]
+}
