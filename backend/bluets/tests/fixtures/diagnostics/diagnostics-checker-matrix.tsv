@@ -1065,8 +1065,13 @@ inference:ginfer-array-candidate-error/main.ts	reject
 inference:ginfer-array-return-error/main.ts	reject
 inference:ginfer-array-widening/main.ts	accept
 inference:ginfer-box-constraint-error/main.ts	reject
+inference:ginfer-box-cross-constraint/main.ts	accept
+inference:ginfer-box-cross-constraint-error/main.ts	reject
 inference:ginfer-box-default/main.ts	accept
+inference:ginfer-box-dependent-default/main.ts	accept
+inference:ginfer-box-dependent-default-error/main.ts	reject
 inference:ginfer-box-explicit/main.ts	accept
+inference:ginfer-box-explicit-constraint-error/main.ts	reject
 inference:ginfer-box-explicit-error/main.ts	reject
 inference:ginfer-box-inference/main.ts	accept
 inference:ginfer-box-inference-error/main.ts	reject
@@ -1098,9 +1103,14 @@ inference:ginfer-identity-error/main.ts	reject
 inference:ginfer-identity-literal/main.ts	accept
 inference:ginfer-identity-number/main.ts	accept
 inference:ginfer-identity-string/main.ts	accept
+inference:ginfer-imported-box/main.ts	accept
+inference:ginfer-imported-box-error/main.ts	reject
+inference:ginfer-imported-function/main.ts	accept
+inference:ginfer-imported-function-error/main.ts	reject
 inference:ginfer-interface-constraint-error/main.ts	reject
 inference:ginfer-interface-default/main.ts	accept
 inference:ginfer-interface-default-error/main.ts	reject
+inference:ginfer-interface-dependent-default/main.ts	accept
 inference:ginfer-interface-inference/main.ts	accept
 inference:ginfer-interface-inference-error/main.ts	reject
 inference:ginfer-nested-record-candidate/main.ts	accept
@@ -1118,6 +1128,7 @@ inference:ginfer-return-context/main.ts	accept
 inference:ginfer-return-context-nullish-error/main.ts	reject
 inference:ginfer-runtime-box/main.ts	accept
 inference:ginfer-runtime-functions/main.ts	accept
+inference:ginfer-runtime-imports/main.ts	accept
 inference:ginfer-runtime-interface/main.ts	accept
 jsx:jsx-error-attribute-expression-type/main.tsx	reject
 jsx:jsx-error-attribute-type/main.tsx	reject

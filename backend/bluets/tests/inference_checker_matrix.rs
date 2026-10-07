@@ -5,7 +5,8 @@
 //! K.4.3 generic inference evidence at the public compiler boundary.
 
 use blueice_bluets::{
-    compile, CheckingOptions, CompilerOptions, MapLoader, ModuleLoader, ModuleSource,
+    compile, CheckingOptions, CompilerLimits, CompilerOptions, DiagnosticCode, MapLoader,
+    ModuleLoader, ModuleSource,
 };
 use serde_json::{json, Value};
 use std::collections::BTreeSet;
@@ -51,12 +52,41 @@ fn position(position: &Option<blueice_bluets::TypeScriptPosition>) -> Value {
 }
 
 #[test]
+fn contextual_inference_budget_exhaustion_prevents_output() {
+    let source = include_str!("fixtures/typescript_oracle/ginfer-default-context/main.ts");
+    let loader = MapLoader::from([ModuleSource::new("main.ts", source)]);
+    let accepted = compile("main.ts", &loader, CompilerOptions::default());
+    assert!(!accepted.has_errors(), "{:?}", accepted.diagnostics);
+    let refused = compile(
+        "main.ts",
+        &loader,
+        CompilerOptions {
+            limits: CompilerLimits {
+                max_type_expansions: 0,
+                ..CompilerLimits::default()
+            },
+            ..CompilerOptions::default()
+        },
+    );
+    assert!(refused.output.is_none());
+    assert!(
+        refused.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == DiagnosticCode::ResourceLimit
+                && diagnostic.message.contains("contextual generic inference")
+                && diagnostic.typescript.is_none()
+        }),
+        "{:?}",
+        refused.diagnostics
+    );
+}
+
+#[test]
 fn matrix_covers_every_inference_fixture() {
     let cases = cases();
-    assert_eq!(cases.len(), 59);
+    assert_eq!(cases.len(), 70);
     assert_eq!(
         cases.iter().filter(|case| case["runtime"] == true).count(),
-        3
+        4
     );
     let recorded = cases
         .iter()
@@ -230,6 +260,8 @@ fn inference_preserves_execution_and_declarations() {
                 "--pretty",
                 "false",
                 "--declaration",
+                "--allowImportingTsExtensions",
+                "--rewriteRelativeImportExtensions",
                 "--outDir",
             ])
             .arg(&reference)

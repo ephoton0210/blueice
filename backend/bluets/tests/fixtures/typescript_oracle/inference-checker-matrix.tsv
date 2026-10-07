@@ -3,8 +3,13 @@ ginfer-array-candidate-error/main.ts	reject
 ginfer-array-return-error/main.ts	reject
 ginfer-array-widening/main.ts	accept
 ginfer-box-constraint-error/main.ts	reject
+ginfer-box-cross-constraint/main.ts	accept
+ginfer-box-cross-constraint-error/main.ts	reject
 ginfer-box-default/main.ts	accept
+ginfer-box-dependent-default/main.ts	accept
+ginfer-box-dependent-default-error/main.ts	reject
 ginfer-box-explicit/main.ts	accept
+ginfer-box-explicit-constraint-error/main.ts	reject
 ginfer-box-explicit-error/main.ts	reject
 ginfer-box-inference/main.ts	accept
 ginfer-box-inference-error/main.ts	reject
@@ -36,9 +41,14 @@ ginfer-identity-error/main.ts	reject
 ginfer-identity-literal/main.ts	accept
 ginfer-identity-number/main.ts	accept
 ginfer-identity-string/main.ts	accept
+ginfer-imported-box/main.ts	accept
+ginfer-imported-box-error/main.ts	reject
+ginfer-imported-function/main.ts	accept
+ginfer-imported-function-error/main.ts	reject
 ginfer-interface-constraint-error/main.ts	reject
 ginfer-interface-default/main.ts	accept
 ginfer-interface-default-error/main.ts	reject
+ginfer-interface-dependent-default/main.ts	accept
 ginfer-interface-inference/main.ts	accept
 ginfer-interface-inference-error/main.ts	reject
 ginfer-nested-record-candidate/main.ts	accept
@@ -56,4 +66,5 @@ ginfer-return-context/main.ts	accept
 ginfer-return-context-nullish-error/main.ts	reject
 ginfer-runtime-box/main.ts	accept
 ginfer-runtime-functions/main.ts	accept
+ginfer-runtime-imports/main.ts	accept
 ginfer-runtime-interface/main.ts	accept

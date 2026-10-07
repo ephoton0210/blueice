@@ -5010,3 +5010,27 @@ The shared diagnostic corpus is regenerated to 1,655 programs (750 accept,
 It commits exact verdicts, messages, UTF-16 coordinates, related records and
 runtime/declaration expectations before generic inference implementation.
 K.4.3 remains unchecked.
+
+### K.4.3 Generic-boundary failing replay
+
+The initial 59-program implementation draft passes all four focused tests,
+including both ignored oracles and all three runtime/declaration witnesses.
+Evidence remains at `/logs/blueice-k43-inference8.log` (11.81 seconds).
+The leaf stays open before the full K.0 run and before committing implementation.
+
+Eleven further pinned controls cover dependent class/interface defaults,
+cross-parameter class constraints, explicit constructor constraints, imported
+generic functions/classes and one linked runtime/declaration program. The
+corpus now records 70 programs (39 accept, 31 reject), with four runtime/
+declaration witnesses. A public owner-budget control reuses the accepted
+contextual-default fixture with `max_type_expansions = 0` and requires an
+explicit contextual-inference resource refusal and no output.
+
+The draft's Linux replay reports six checker/primary-diagnostic mismatches
+and the missing contextual resource diagnostic. All four runtime/declaration
+witnesses, completeness and the pinned recorder pass. The five-test run takes
+14.43 seconds at `/logs/blueice-k43-boundaries-red.log`. The shared diagnostic
+corpus is regenerated to 1,666 programs (756 accept, 910 reject) and 147
+templates. This supplemental commit includes only fixtures, test/recorder
+metadata and plans, measured against the uncommitted implementation draft,
+before correcting those boundaries. K.4.3 remains unchecked.
