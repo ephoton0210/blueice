@@ -366,6 +366,11 @@ pub enum DownloadsRequest {
     Remove {
         id: u64,
     },
+    /// Resolve account identity with the transfer URL parser. No network or
+    /// credential-store access occurs, and the input URL is never echoed.
+    ResolveCredentialTarget {
+        url: String,
+    },
     /// Store an SFTP password in the platform credential store. The password
     /// is sent only over this user-owned Unix socket, is never persisted in
     /// the downloads database, and is never included in a reply.
@@ -428,6 +433,10 @@ pub enum DownloadsRequest {
 impl fmt::Debug for DownloadsRequest {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            DownloadsRequest::ResolveCredentialTarget { .. } => f
+                .debug_struct("ResolveCredentialTarget")
+                .field("url", &"<redacted>")
+                .finish(),
             DownloadsRequest::SetSftpPassword {
                 host,
                 port,
@@ -530,7 +539,8 @@ impl fmt::Debug for DownloadsRequest {
                     DownloadsRequest::Subscribe => f.write_str("Subscribe"),
                     DownloadsRequest::Shutdown => f.write_str("Shutdown"),
                     DownloadsRequest::Unknown => f.write_str("Unknown"),
-                    DownloadsRequest::SetSftpPassword { .. }
+                    DownloadsRequest::ResolveCredentialTarget { .. }
+                    | DownloadsRequest::SetSftpPassword { .. }
                     | DownloadsRequest::SetSftpPrivateKeyPassphrase { .. }
                     | DownloadsRequest::SetFtpsPassword { .. } => unreachable!(),
                 }
@@ -552,6 +562,13 @@ fn default_ftps_port() -> u16 {
 pub enum DownloadsReply {
     Hello {
         protocol_version: u32,
+    },
+    /// Account identity only; never contains the input URL or a secret.
+    CredentialTarget {
+        scheme: String,
+        host: String,
+        port: u16,
+        username: String,
     },
     /// Reply to [`DownloadsRequest::Start`]: the newly queued transfer.
     Started(TransferInfo),

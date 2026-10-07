@@ -12,6 +12,54 @@ use keyring::Entry;
 #[cfg(unix)]
 use zeroize::Zeroizing;
 
+/// Public account identity derived by exactly the parsers used for transfers.
+/// Resolution performs no network request or credential-store access.
+#[cfg(unix)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DownloadCredentialTarget {
+    pub scheme: String,
+    pub host: String,
+    pub port: u16,
+    pub username: String,
+}
+
+/// Resolve a server or file URL without echoing an accidentally supplied secret.
+#[cfg(unix)]
+pub fn resolve_download_credential_target(
+    input: &str,
+) -> Result<DownloadCredentialTarget, CredentialError> {
+    let invalid = || {
+        CredentialError::InvalidReference(
+            "Enter an SFTP or FTPS URL with a username, without a password, query or fragment."
+                .into(),
+        )
+    };
+    if input.len() > 8192 || input.chars().any(char::is_control) {
+        return Err(invalid());
+    }
+    let scheme = input
+        .split(':')
+        .next()
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    let (host, port, username) = match scheme.as_str() {
+        "sftp" => super::sftp::credential_target(input),
+        "ftps" => super::ftp::credential_target(input),
+        _ => return Err(invalid()),
+    }
+    .map_err(|_| invalid())?;
+    if host.len() > 1024 || username.len() > 1024 {
+        return Err(invalid());
+    }
+    SftpCredentialRef::new(&host, port, &username).map_err(|_| invalid())?;
+    Ok(DownloadCredentialTarget {
+        scheme,
+        host,
+        port,
+        username,
+    })
+}
+
 const SFTP_SERVICE_PREFIX: &str = "org.blueice.downloads.sftp";
 const SFTP_KEY_PASSPHRASE_SERVICE_PREFIX: &str = "org.blueice.downloads.sftp-key-passphrase";
 const FTPS_SERVICE_PREFIX: &str = "org.blueice.downloads.ftps";

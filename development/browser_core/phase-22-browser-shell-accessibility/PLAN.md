@@ -354,3 +354,17 @@ and preference-fixture corrections are retained in
 [MACOS_ADDRESS_SEARCH_RESULTS.md](MACOS_ADDRESS_SEARCH_RESULTS.md).
 Current core family-emoji glyph rendering and other browser delivery milestones
 remain open; the complete macOS browser delivery goal remains active.
+
+
+### macOS native download credential store
+
+The native Downloads credential surface and shared-parser account resolver are
+implemented and accepted. Complete native acceptance passed 235
+methods, zero failures and one existing physical Zhuyin skip; complete Rust
+workspace passed 7,314 cases with 69 existing ignored cases.
+Formatting, strict Clippy, all-targets build, eight signatures and the
+source/product/process audit passed. The
+[credential validation record](MACOS_DOWNLOAD_CREDENTIALS_RESULTS.md) retains
+exact test scope, source hashes, actual screenshots and historical failures.
+Native private-key configuration, live-server authentication and the remaining
+macOS/browser requirements remain open; Phase 22 remains in progress.

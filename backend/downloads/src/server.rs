@@ -197,6 +197,18 @@ fn handle_connection_with_hello_timeout(
                 .remove(id)
                 .map(|()| DownloadsReply::Ok)
                 .unwrap_or_else(refusal),
+            DownloadsRequest::ResolveCredentialTarget { url } => {
+                blueice_net::download::credentials::resolve_download_credential_target(&url)
+                    .map(|target| DownloadsReply::CredentialTarget {
+                        scheme: target.scheme,
+                        host: target.host,
+                        port: target.port,
+                        username: target.username,
+                    })
+                    .unwrap_or_else(|error| {
+                        error_reply(ErrorCode::InvalidRequest, error.to_string())
+                    })
+            }
             DownloadsRequest::SetSftpPassword {
                 host,
                 port,

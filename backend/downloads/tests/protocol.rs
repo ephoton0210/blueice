@@ -1803,3 +1803,56 @@ fn wait_until(mut condition: impl FnMut() -> bool) {
         thread::sleep(Duration::from_millis(10));
     }
 }
+
+#[test]
+fn credential_target_resolution_is_owned_metadata_only_and_does_not_start_a_transfer() {
+    let rig = Rig::new();
+    let mut raw = UnixStream::connect(rig.socket()).unwrap();
+    write_downloads_request(
+        &mut raw,
+        Some(1),
+        &DownloadsRequest::Hello {
+            protocol_version: DOWNLOADS_PROTOCOL_VERSION,
+        },
+    )
+    .unwrap();
+    assert!(matches!(
+        read_downloads_reply(&mut raw).unwrap().1,
+        DownloadsReply::Hello { .. }
+    ));
+    write_downloads_request(
+        &mut raw,
+        Some(2),
+        &DownloadsRequest::ResolveCredentialTarget {
+            url: "sftp://a%2Bb%40c@[::1]:2222".into(),
+        },
+    )
+    .unwrap();
+    let (id, reply) = read_downloads_reply(&mut raw).unwrap();
+    assert_eq!(id, Some(2));
+    assert_eq!(
+        reply,
+        DownloadsReply::CredentialTarget {
+            scheme: "sftp".into(),
+            host: "[::1]".into(),
+            port: 2222,
+            username: "a+b@c".into()
+        }
+    );
+    let rejected = DownloadsRequest::ResolveCredentialTarget {
+        url: "ftps://alice:credential-marker@host/file".into(),
+    };
+    assert!(!format!("{rejected:?}").contains("credential-marker"));
+    write_downloads_request(&mut raw, Some(3), &rejected).unwrap();
+    let (id, reply) = read_downloads_reply(&mut raw).unwrap();
+    assert_eq!(id, Some(3));
+    assert!(matches!(
+        reply,
+        DownloadsReply::Error {
+            code: ErrorCode::InvalidRequest,
+            ..
+        }
+    ));
+    assert!(!format!("{reply:?}").contains("credential-marker"));
+    assert!(rig.manager.list(None).is_empty());
+}

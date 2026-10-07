@@ -337,6 +337,15 @@ fn decode(value: &str, part: &str) -> Result<String, DownloadError> {
 }
 
 fn parse_endpoint(input: &str) -> Result<Endpoint, DownloadError> {
+    parse_endpoint_for(input, true)
+}
+
+pub(crate) fn credential_target(input: &str) -> Result<(String, u16, String), DownloadError> {
+    let endpoint = parse_endpoint_for(input, false)?;
+    Ok((endpoint.host, endpoint.port, endpoint.username))
+}
+
+fn parse_endpoint_for(input: &str, require_file: bool) -> Result<Endpoint, DownloadError> {
     let url = Url::parse(input).map_err(|error| {
         DownloadError::InvalidUrl(format!("invalid SFTP URL {input:?}: {error}"))
     })?;
@@ -364,7 +373,7 @@ fn parse_endpoint(input: &str) -> Result<Endpoint, DownloadError> {
         ));
     }
     let path = decode(url.path(), "path")?;
-    if path == "/" || path.is_empty() {
+    if require_file && (path == "/" || path.is_empty()) {
         return Err(DownloadError::InvalidUrl(
             "an SFTP URL must name a file, not the server root".to_string(),
         ));

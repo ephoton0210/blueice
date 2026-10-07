@@ -381,3 +381,29 @@
 "The search URL exceeds the navigation length limit." = "搜尋網址超過導覽的長度限制。";
 
 "Use a complete file: URL for a local file address." = "開啟本機檔案時請使用完整的 file: 網址。";
+
+// Native download account credentials.
+"Credentials…" = "憑證⋯";
+"Download credentials" = "下載憑證";
+"Back to downloads" = "返回下載項目";
+"SFTP password" = "SFTP 密碼";
+"SFTP private-key passphrase" = "SFTP 私鑰密語";
+"FTPS password" = "FTPS 密碼";
+"Use the same SFTP or FTPS URL as your download. Include the username; keep passwords out of URLs." = "請使用與下載相同的 SFTP 或 FTPS 網址，包含使用者名稱，並將密碼留在網址之外。";
+"Account URL" = "帳號網址";
+"Review account" = "檢查帳號";
+"Account: %@ · %@ · port %llu" = "帳號：%@ · %@ · 連接埠 %llu";
+"Credential type" = "憑證類型";
+"Password or passphrase" = "密碼或密語";
+"Save in Keychain" = "儲存至鑰匙圈";
+"Remove from Keychain" = "從鑰匙圈移除";
+"The SFTP private key must already be configured for the download service." = "SFTP 私鑰必須已在下載服務中設定。";
+"Credential removed from macOS Keychain." = "已從 macOS 鑰匙圈移除憑證。";
+"Credential saved in macOS Keychain." = "已將憑證儲存至 macOS 鑰匙圈。";
+"Updating credential…" = "正在更新憑證⋯";
+"Saved credentials remain in macOS Keychain until you remove them. Server host keys and TLS certificates are still verified before use." = "儲存的憑證會保留在 macOS 鑰匙圈中，直到您將其移除。使用前仍會驗證伺服器主機金鑰與 TLS 憑證。";
+"Enter an SFTP or FTPS URL with a username, without a password, query or fragment." = "請輸入包含使用者名稱的 SFTP 或 FTPS 網址，且不含密碼、查詢參數或片段。";
+"Enter a password or passphrase of at most 4096 bytes." = "請輸入最多 4096 位元組的密碼或密語。";
+"Review the account again before changing its credential." = "變更憑證前，請再次檢查帳號。";
+"invalid_request: Enter an SFTP or FTPS URL with a username, without a password, query or fragment." = "請輸入包含使用者名稱的 SFTP 或 FTPS 網址，且不含密碼、查詢參數或片段。";
+"internal: the operating system credential store is unavailable" = "作業系統的憑證儲存空間無法使用。";

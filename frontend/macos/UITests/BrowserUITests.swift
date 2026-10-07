@@ -4,6 +4,8 @@
 
 import AppKit
 import CoreServices
+import Security
+import LocalAuthentication
 import Carbon
 import ApplicationServices
 import XCTest
@@ -888,6 +890,101 @@ final class BrowserUITests: XCTestCase {
         XCTAssertNotNil(try file.resourceValues(forKeys: [.quarantinePropertiesKey]).quarantineProperties)
     }
 
+    private func openDownloadCredentials() {
+        app.buttons["downloads"].click()
+        XCTAssertTrue(app.buttons["download-credentials"].waitForExistence(timeout: 10))
+        app.buttons["download-credentials"].click()
+        XCTAssertTrue(app.staticTexts["download-credentials-title"].waitForExistence(timeout: 10))
+    }
+    private func reviewDownloadAccount(_ url: String) {
+        let field = app.textFields["download-credential-url"]
+        field.click(); field.typeKey("a",modifierFlags: .command); field.typeText(url)
+        app.buttons["download-credential-review"].click()
+        XCTAssertTrue(app.staticTexts["download-credential-account"].waitForExistence(timeout: 10),app.debugDescription)
+    }
+    private func saveDownloadCredential(_ value: String, result: String = "Credential saved in macOS Keychain.") {
+        let field = app.secureTextFields["download-credential-secret"]
+        field.click(); field.typeText(value)
+        XCTAssertFalse(app.debugDescription.contains(value),"Native accessibility must mask the credential")
+        field.typeKey(.return,modifierFlags: [])
+        waitAssistantText(app.staticTexts["download-credential-result"],result)
+        let displayed = field.value as? String ?? ""
+        XCTAssertTrue(displayed.isEmpty || displayed == field.placeholderValue)
+    }
+    func testNativeDownloadCredentialReviewSaveNamespacesAndRemoval() throws {
+        let username = "bi-ui-" + UUID().uuidString
+        credentialFixtureAccounts.append(username)
+        let url = "sftp://" + username + "@credential-fixture.invalid:2222"
+        launch(); openDownloadCredentials(); reviewDownloadAccount(url)
+        waitAssistantText(app.staticTexts["download-credential-account"],"Account: " + username + " · credential-fixture.invalid · port 2222")
+        XCTAssertEqual(app.popUpButtons["download-credential-kind"].label,"Credential type")
+        XCTAssertFalse(app.buttons["download-credential-save"].isEnabled)
+        saveDownloadCredential("fixture-password")
+        app.secureTextFields["download-credential-secret"].click(); app.typeText("discarded-kind-fixture")
+        app.popUpButtons["download-credential-kind"].click(); app.menuItems["SFTP private-key passphrase"].click()
+        XCTAssertFalse(app.buttons["download-credential-save"].isEnabled,"Changing credential kind clears the draft")
+        saveDownloadCredential("fixture-passphrase")
+        let attachment = XCTAttachment(screenshot: app.windows["browser-window"].screenshot())
+        attachment.name = "macos-native-download-credentials"; attachment.lifetime = .keepAlways; add(attachment)
+        app.buttons["download-credential-remove"].click()
+        waitAssistantText(app.staticTexts["download-credential-result"],"Credential removed from macOS Keychain.")
+        app.popUpButtons["download-credential-kind"].click(); app.menuItems["SFTP password"].click()
+        app.buttons["download-credential-remove"].click()
+        waitAssistantText(app.staticTexts["download-credential-result"],"Credential removed from macOS Keychain.")
+        app.secureTextFields["download-credential-secret"].click(); app.typeText("discarded-account-fixture")
+        reviewDownloadAccount(url.replacingOccurrences(of: "sftp:",with: "ftps:"))
+        XCTAssertFalse(app.buttons["download-credential-save"].isEnabled,"Changing account clears the draft")
+        XCTAssertEqual(app.popUpButtons["download-credential-kind"].value as? String,"FTPS password")
+        saveDownloadCredential("fixture-ftps-password")
+        app.buttons["download-credential-remove"].click()
+        waitAssistantText(app.staticTexts["download-credential-result"],"Credential removed from macOS Keychain.")
+        app.buttons["download-credentials-close"].click()
+        XCTAssertTrue(app.staticTexts["downloads-empty"].waitForExistence(timeout: 10),"Managing an account never starts a download")
+        app.buttons["downloads-close"].click()
+        waitValue(app.textFields["address"],"about:credits")
+    }
+    func testNativeDownloadCredentialInvalidURLAndDismissedSecrets() throws {
+        launch(); openDownloadCredentials()
+        for url in ["sftp://alice:credential-marker@host/file","ftp://alice@host/file","ftps://host/file"] {
+            let field = app.textFields["download-credential-url"]
+            field.click(); field.typeKey("a",modifierFlags: .command); field.typeText(url)
+            app.buttons["download-credential-review"].click()
+            XCTAssertTrue(app.staticTexts["download-credential-notice"].waitForExistence(timeout: 10))
+            waitAssistantText(app.staticTexts["download-credential-notice"],"invalid_request: Enter an SFTP or FTPS URL with a username, without a password, query or fragment.")
+            XCTAssertFalse(app.secureTextFields["download-credential-secret"].exists)
+        }
+        reviewDownloadAccount("sftp://bi-ui-" + UUID().uuidString + "@[::1]:2222")
+        app.secureTextFields["download-credential-secret"].click(); app.typeText("unsaved-fixture")
+        app.typeKey(.escape,modifierFlags: [])
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"),object: app.buttons["download-credentials-close"])],timeout: 5),.completed)
+        openDownloadCredentials()
+        XCTAssertFalse(app.secureTextFields["download-credential-secret"].exists)
+        waitValue(app.textFields["download-credential-url"],"")
+        app.buttons["download-credentials-close"].click(); app.buttons["downloads-close"].click()
+    }
+    func testNativeDownloadCredentialsTraditionalChineseAndNormalRelaunch() throws {
+        let index = try XCTUnwrap(app.launchArguments.firstIndex(of: "--interface-language"))
+        app.launchArguments[index + 1] = "zh-Hant"
+        let username = "bi-ui-" + UUID().uuidString
+        credentialFixtureAccounts.append(username)
+        let url = "ftps://" + username + "@credential-fixture.invalid:2222"
+        launch(); openDownloadCredentials(); reviewDownloadAccount(url)
+        waitAssistantText(app.staticTexts["download-credentials-title"],"下載憑證")
+        XCTAssertEqual(app.popUpButtons["download-credential-kind"].label,"憑證類型")
+        XCTAssertEqual(app.buttons["download-credential-save"].label,"儲存至鑰匙圈")
+        saveDownloadCredential("fixture-localized-password",result: "已將憑證儲存至 macOS 鑰匙圈。")
+        app.buttons["download-credentials-close"].click(); app.buttons["downloads-close"].click()
+        app.typeKey("q",modifierFlags: .command); XCTAssertTrue(app.wait(for: .notRunning,timeout: 15))
+        XCTAssertFalse(String(describing: storedPreferences()).contains("fixture-localized-password"))
+        launch(); openDownloadCredentials(); reviewDownloadAccount(url)
+        XCTAssertFalse(app.buttons["download-credential-save"].isEnabled)
+        let attachment = XCTAttachment(screenshot: app.windows["browser-window"].screenshot())
+        attachment.name = "macos-native-download-credentials-zh"; attachment.lifetime = .keepAlways; add(attachment)
+        app.buttons["download-credential-remove"].click()
+        waitAssistantText(app.staticTexts["download-credential-result"],"已從 macOS 鑰匙圈移除憑證。")
+        app.buttons["download-credentials-close"].click(); app.buttons["downloads-close"].click()
+    }
+
     func testNativeDownloadsTransferControlsPersistenceAndFinderActions() throws {
         let fixture = try DownloadFixture(); defer { fixture.stop() }
         let root = URL(fileURLWithPath: "/private/tmp/bi-download-ui-" + UUID().uuidString)
@@ -1310,6 +1407,7 @@ final class BrowserUITests: XCTestCase {
         XCTAssertEqual(fixture.requests, ["/editing", "/editing", "/editing"])
     }
 
+    private var credentialFixtureAccounts: [String] = []
     private var app: XCUIApplication!
     private var originalInputSource: TISInputSource?
     private var preferenceDomain = ""
@@ -1597,6 +1695,7 @@ final class BrowserUITests: XCTestCase {
 
     override func setUpWithError() throws {
         continueAfterFailure = false
+        credentialFixtureAccounts = []
         app = XCUIApplication()
         preferenceDomain = "cc.blueice.uitests." + UUID().uuidString
         app.launchArguments = ["--preferences-domain", preferenceDomain, "--interface-language", "en"]
@@ -1615,6 +1714,17 @@ final class BrowserUITests: XCTestCase {
 
     override func tearDownWithError() throws {
         defer {
+            for username in credentialFixtureAccounts {
+                guard username.hasPrefix("bi-ui-"), UUID(uuidString: String(username.dropFirst(6))) != nil else { XCTFail("Invalid fixture account"); continue }
+                for service in ["sftp","sftp-key-passphrase","ftps"] {
+                    let context = LAContext(); context.interactionNotAllowed = true
+                    let query: [CFString: Any] = [kSecClass: kSecClassGenericPassword,
+                        kSecAttrService: "org.blueice.downloads.\(service).credential-fixture.invalid:2222",
+                        kSecAttrAccount: username,kSecUseAuthenticationContext: context]
+                    let status = SecItemDelete(query as CFDictionary)
+                    XCTAssertTrue(status == errSecSuccess || status == errSecItemNotFound,"Owned credential fixture cleanup failed: \(status)")
+                }
+            }
             try? FileManager.default.removeItem(at: assistantSettingsFile.deletingLastPathComponent())
             try? FileManager.default.removeItem(at: assistantControlSocket)
             UserDefaults(suiteName: preferenceDomain)?.removePersistentDomain(forName: preferenceDomain)
@@ -1628,6 +1738,7 @@ final class BrowserUITests: XCTestCase {
             if app.sheets["alert"].buttons["OK"].exists { app.sheets["alert"].buttons["OK"].click() }
             if printPanel.menus.firstMatch.exists { app.typeKey(.escape,modifierFlags: []) }
             if printPanel.buttons["Cancel"].exists { printPanel.buttons["Cancel"].click() }
+            if app.buttons["download-credentials-close"].exists { app.buttons["download-credentials-close"].click() }
             if app.buttons["downloads-close"].exists { app.buttons["downloads-close"].click() }
             let deadline = Date().addingTimeInterval(15)
             while app.state != .notRunning, Date() < deadline {

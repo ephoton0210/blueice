@@ -20,6 +20,7 @@ struct BrowserDownloadsView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var url = ""
     @State private var name = ""
+    @State private var credentialsPresented = false
     private var valid: Bool {
         guard let address = URL(string: url.trimmingCharacters(in: .whitespacesAndNewlines)),
               ["http","https","ftp","ftps","sftp"].contains(address.scheme?.lowercased() ?? ""),
@@ -28,10 +29,22 @@ struct BrowserDownloadsView: View {
         return text.isEmpty || (text.utf8.count <= 255 && text != "." && text != ".." && !text.contains(where: { "/\\:\0".contains($0) }))
     }
     var body: some View {
+        Group {
+            if credentialsPresented {
+                BrowserDownloadCredentialsView(downloads: downloads) { credentialsPresented = false }
+            } else {
+                downloadList
+            }
+        }.padding(20).frame(width: 640,height: 570).buttonStyle(.bordered)
+            .task { await downloads.connect() }
+    }
+    private var downloadList: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text(BrowserStrings.text("Downloads")).font(.title2).accessibilityIdentifier("downloads-title")
                 Spacer()
+                Button(BrowserStrings.text("Credentials…")) { credentialsPresented = true }
+                    .accessibilityIdentifier("download-credentials")
                 Button(BrowserStrings.text("Refresh")) { Task { await downloads.refresh() } }.disabled(!downloads.available).accessibilityIdentifier("downloads-refresh")
                 Button(BrowserStrings.text("Done")) { dismiss() }.keyboardShortcut(.cancelAction).accessibilityIdentifier("downloads-close")
             }
@@ -63,8 +76,7 @@ struct BrowserDownloadsView: View {
                 }.frame(maxWidth: .infinity,alignment: .leading)
             }
             Text(BrowserStrings.text("Removing a completed item keeps its file.")).font(.caption).foregroundStyle(.secondary)
-        }.padding(20).frame(width: 640,height: 570).buttonStyle(.bordered)
-            .task { await downloads.connect() }
+        }
     }
 }
 private struct DownloadRow: View {
@@ -116,5 +128,90 @@ private struct DownloadRow: View {
                 }.frame(maxWidth: .infinity,alignment: .leading)
             }.font(.caption)
         }
+    }
+}
+
+private struct BrowserDownloadCredentialsView: View {
+    @ObservedObject private var localization = BrowserLocalization.shared
+    @ObservedObject var downloads: BrowserDownloadsModel
+    let close: () -> Void
+    @State private var url = ""
+    @State private var secret = ""
+    @State private var kind = DownloadCredentialKind.sftpPassword
+    @State private var reviewed: ReviewedDownloadCredential?
+    @State private var message: String?
+    @State private var lifetime = UUID()
+    @State private var operation: Task<Void,Never>?
+    private func resetReview() { reviewed = nil; secret = ""; message = nil; lifetime = UUID() }
+    private func review() {
+        let current = lifetime
+        operation = Task {
+            let result = await downloads.resolveCredentialTarget(url)
+            guard current == lifetime, !Task.isCancelled else { return }
+            reviewed = result
+            if let result, !kind.supports(result.identity) {
+                kind = result.identity.scheme == "ftps" ? .ftpsPassword : .sftpPassword
+            }
+        }
+    }
+    private func change(remove: Bool) {
+        guard let reviewed else { return }
+        let current = lifetime, value = secret, selected = kind
+        secret = ""; message = nil
+        operation = Task {
+            let success = remove ? await downloads.removeCredential(reviewed,kind: selected)
+                : await downloads.saveCredential(reviewed,kind: selected,secret: value)
+            guard current == lifetime, !Task.isCancelled else { return }
+            if success { message = remove ? "Credential removed from macOS Keychain." : "Credential saved in macOS Keychain." }
+        }
+    }
+    var body: some View {
+        VStack(alignment: .leading,spacing: 14) {
+            HStack {
+                Text(BrowserStrings.text("Download credentials")).font(.title2).accessibilityIdentifier("download-credentials-title")
+                Spacer()
+                Button(BrowserStrings.text("Back to downloads"),action: close).keyboardShortcut(.cancelAction)
+                    .accessibilityIdentifier("download-credentials-close")
+            }
+            Text(BrowserStrings.text("Use the same SFTP or FTPS URL as your download. Include the username; keep passwords out of URLs."))
+                .font(.callout).fixedSize(horizontal: false,vertical: true)
+            TextField(BrowserStrings.text("Account URL"),text: $url).textFieldStyle(.roundedBorder)
+                .accessibilityIdentifier("download-credential-url").disabled(downloads.credentialBusy)
+            Button(BrowserStrings.text("Review account"),action: review).disabled(url.isEmpty || downloads.credentialBusy)
+                .accessibilityIdentifier("download-credential-review")
+            if let reviewed {
+                let identity = reviewed.identity
+                Text(BrowserStrings.format("Account: %@ · %@ · port %llu",identity.username,identity.host,UInt64(identity.port)))
+                    .textSelection(.enabled).accessibilityIdentifier("download-credential-account")
+                Picker(BrowserStrings.text("Credential type"),selection: $kind) {
+                    ForEach(DownloadCredentialKind.allCases.filter { $0.supports(identity) }) { kind in Text(kind.title).tag(kind) }
+                }.accessibilityLabel(BrowserStrings.text("Credential type"))
+                    .accessibilityIdentifier("download-credential-kind").disabled(downloads.credentialBusy)
+                SecureField(BrowserStrings.text("Password or passphrase"),text: $secret).textFieldStyle(.roundedBorder)
+                    .accessibilityIdentifier("download-credential-secret").disabled(downloads.credentialBusy)
+                if kind == .sftpPrivateKeyPassphrase {
+                    Text(BrowserStrings.text("The SFTP private key must already be configured for the download service."))
+                        .font(.caption).fixedSize(horizontal: false,vertical: true)
+                }
+                HStack {
+                    Button(BrowserStrings.text("Save in Keychain")) { change(remove: false) }
+                        .keyboardShortcut(.defaultAction).disabled(secret.isEmpty || secret.utf8.count > 4096 || downloads.credentialBusy)
+                        .accessibilityIdentifier("download-credential-save")
+                    Button(BrowserStrings.text("Remove from Keychain")) { change(remove: true) }
+                        .disabled(downloads.credentialBusy).accessibilityIdentifier("download-credential-remove")
+                }
+            }
+            if let message { Text(BrowserStrings.text(message)).accessibilityIdentifier("download-credential-result") }
+            if let notice = downloads.notice {
+                Text(BrowserStrings.text(notice)).foregroundStyle(.red).font(.caption)
+                    .accessibilityIdentifier("download-credential-notice")
+            }
+            if downloads.credentialBusy { ProgressView().controlSize(.small).accessibilityLabel(BrowserStrings.text("Updating credential…")) }
+            Spacer(minLength: 0)
+            Text(BrowserStrings.text("Saved credentials remain in macOS Keychain until you remove them. Server host keys and TLS certificates are still verified before use."))
+                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false,vertical: true)
+        }.onChange(of: url) { resetReview() }
+            .onChange(of: kind) { secret = ""; message = nil }
+            .onDisappear { lifetime = UUID(); secret = ""; reviewed = nil; operation?.cancel(); operation = nil }
     }
 }

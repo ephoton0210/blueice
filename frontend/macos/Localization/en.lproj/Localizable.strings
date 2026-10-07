@@ -381,3 +381,29 @@
 "The search URL exceeds the navigation length limit." = "The search URL exceeds the navigation length limit.";
 
 "Use a complete file: URL for a local file address." = "Use a complete file: URL for a local file address.";
+
+// Native download account credentials.
+"Credentials…" = "Credentials…";
+"Download credentials" = "Download credentials";
+"Back to downloads" = "Back to downloads";
+"SFTP password" = "SFTP password";
+"SFTP private-key passphrase" = "SFTP private-key passphrase";
+"FTPS password" = "FTPS password";
+"Use the same SFTP or FTPS URL as your download. Include the username; keep passwords out of URLs." = "Use the same SFTP or FTPS URL as your download. Include the username; keep passwords out of URLs.";
+"Account URL" = "Account URL";
+"Review account" = "Review account";
+"Account: %@ · %@ · port %llu" = "Account: %@ · %@ · port %llu";
+"Credential type" = "Credential type";
+"Password or passphrase" = "Password or passphrase";
+"Save in Keychain" = "Save in Keychain";
+"Remove from Keychain" = "Remove from Keychain";
+"The SFTP private key must already be configured for the download service." = "The SFTP private key must already be configured for the download service.";
+"Credential removed from macOS Keychain." = "Credential removed from macOS Keychain.";
+"Credential saved in macOS Keychain." = "Credential saved in macOS Keychain.";
+"Updating credential…" = "Updating credential…";
+"Saved credentials remain in macOS Keychain until you remove them. Server host keys and TLS certificates are still verified before use." = "Saved credentials remain in macOS Keychain until you remove them. Server host keys and TLS certificates are still verified before use.";
+"Enter an SFTP or FTPS URL with a username, without a password, query or fragment." = "Enter an SFTP or FTPS URL with a username, without a password, query or fragment.";
+"Enter a password or passphrase of at most 4096 bytes." = "Enter a password or passphrase of at most 4096 bytes.";
+"Review the account again before changing its credential." = "Review the account again before changing its credential.";
+"invalid_request: Enter an SFTP or FTPS URL with a username, without a password, query or fragment." = "invalid_request: Enter an SFTP or FTPS URL with a username, without a password, query or fragment.";
+"internal: the operating system credential store is unavailable" = "internal: the operating system credential store is unavailable";

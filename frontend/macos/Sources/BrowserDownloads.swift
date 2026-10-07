@@ -106,8 +106,65 @@ struct DownloadInfo: Decodable, Sendable, Identifiable {
     }
 }
 
+struct DownloadCredentialIdentity: Decodable, Sendable {
+    let scheme: String
+    let host: String
+    let port: UInt16
+    let username: String
+    private enum Keys: String, CodingKey { case scheme, host, port, username }
+    init(from decoder: Decoder) throws {
+        let fields = try decoder.container(keyedBy: Keys.self)
+        scheme = try fields.decode(String.self,forKey: .scheme)
+        host = try fields.decode(String.self,forKey: .host)
+        port = try fields.decode(UInt16.self,forKey: .port)
+        username = try fields.decode(String.self,forKey: .username)
+        guard ["sftp","ftps"].contains(scheme), port > 0,
+              !host.isEmpty, host.utf8.count <= 1024, !username.isEmpty, username.utf8.count <= 1024,
+              !host.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains),
+              !username.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains) else {
+            throw BrowserFailure.invalid("Invalid download account identity")
+        }
+    }
+}
+struct ReviewedDownloadCredential: Sendable {
+    let identity: DownloadCredentialIdentity
+    fileprivate let epoch: UUID
+}
+enum DownloadCredentialKind: String, CaseIterable, Identifiable, Sendable {
+    case sftpPassword, sftpPrivateKeyPassphrase, ftpsPassword
+    var id: Self { self }
+    var title: String {
+        switch self {
+        case .sftpPassword: return BrowserStrings.text("SFTP password")
+        case .sftpPrivateKeyPassphrase: return BrowserStrings.text("SFTP private-key passphrase")
+        case .ftpsPassword: return BrowserStrings.text("FTPS password")
+        }
+    }
+    var service: String {
+        switch self {
+        case .sftpPassword: return "sftp"
+        case .sftpPrivateKeyPassphrase: return "sftp-key-passphrase"
+        case .ftpsPassword: return "ftps"
+        }
+    }
+    func supports(_ identity: DownloadCredentialIdentity) -> Bool {
+        identity.scheme == (self == .ftpsPassword ? "ftps" : "sftp")
+    }
+    func command(identity: DownloadCredentialIdentity, secret: String?) -> BrowserCommand {
+        let suffix: String
+        switch self {
+        case .sftpPassword: suffix = "SftpPassword"
+        case .sftpPrivateKeyPassphrase: suffix = "SftpPrivateKeyPassphrase"
+        case .ftpsPassword: suffix = "FtpsPassword"
+        }
+        var fields: [String: JSONValue] = ["host": .string(identity.host),"port": .unsigned(UInt64(identity.port)),"username": .string(identity.username)]
+        if let secret { fields[self == .sftpPrivateKeyPassphrase ? "passphrase" : "password"] = .string(secret) }
+        return .values((secret == nil ? "Remove" : "Set") + suffix, fields)
+    }
+}
+
 struct DownloadEnvelope: Decodable, Sendable {
-    enum Message: Sendable { case hello(UInt32), list([DownloadInfo]), transfer(DownloadInfo), updated(DownloadInfo), removed(UInt64), ok, error(String), unknown }
+    enum Message: Sendable { case credentialTarget(DownloadCredentialIdentity), hello(UInt32), list([DownloadInfo]), transfer(DownloadInfo), updated(DownloadInfo), removed(UInt64), ok, error(String), unknown }
     let requestID: UInt64?
     let message: Message
     private enum Keys: String, CodingKey { case requestID = "request_id", message }
@@ -128,6 +185,7 @@ struct DownloadEnvelope: Decodable, Sendable {
         let value = try payload.container(keyedBy: MessageKey.self)
         guard value.allKeys.count == 1, let key = value.allKeys.first else { throw BrowserFailure.invalid("Invalid downloads reply") }
         switch key.stringValue {
+        case "CredentialTarget": message = .credentialTarget(try value.decode(DownloadCredentialIdentity.self,forKey: key))
         case "Hello": message = .hello(try value.decode(Hello.self, forKey: key).protocol_version)
         case "Transfers":
             let list = try value.decode([DownloadInfo].self, forKey: key)
@@ -166,6 +224,7 @@ final class BrowserDownloadsModel: ObservableObject {
     @Published private(set) var available = false
     @Published private(set) var connecting = false
     @Published private(set) var busy: Set<UInt64> = []
+    @Published private(set) var credentialBusy = false
     @Published private(set) var starting = false
     @Published private(set) var notice: String?
     private var requests: Set<UInt64> = []
@@ -241,6 +300,37 @@ final class BrowserDownloadsModel: ObservableObject {
             requests.remove(request); notice = "The download action did not complete. Refresh before trying again."
         } catch { if epoch == current { available = false; notice = error.localizedDescription } }
         return nil
+    }
+    func resolveCredentialTarget(_ url: String) async -> ReviewedDownloadCredential? {
+        guard !credentialBusy, !stopping, !Task.isCancelled else { return nil }
+        credentialBusy = true; defer { credentialBusy = false }
+        guard !url.isEmpty, url.utf8.count <= 8192,
+              !url.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains) else {
+            notice = "Enter an SFTP or FTPS URL with a username, without a password, query or fragment."; return nil
+        }
+        await connect()
+        guard available, !stopping, !Task.isCancelled else { return nil }
+        notice = nil; let current = epoch
+        if case .credentialTarget(let identity) = await command(.values("ResolveCredentialTarget",["url": .string(url)])), epoch == current, !stopping {
+            return ReviewedDownloadCredential(identity: identity,epoch: current)
+        }
+        return nil
+    }
+    func saveCredential(_ target: ReviewedDownloadCredential, kind: DownloadCredentialKind, secret: String) async -> Bool {
+        guard !secret.isEmpty, secret.utf8.count <= 4096 else { notice = "Enter a password or passphrase of at most 4096 bytes."; return false }
+        return await changeCredential(target,kind: kind,secret: secret)
+    }
+    func removeCredential(_ target: ReviewedDownloadCredential, kind: DownloadCredentialKind) async -> Bool {
+        await changeCredential(target,kind: kind,secret: nil)
+    }
+    private func changeCredential(_ target: ReviewedDownloadCredential, kind: DownloadCredentialKind, secret: String?) async -> Bool {
+        guard !credentialBusy, !stopping, !Task.isCancelled else { return false }
+        guard available, target.epoch == epoch, kind.supports(target.identity) else {
+            notice = "Review the account again before changing its credential."; return false
+        }
+        credentialBusy = true; defer { credentialBusy = false }; notice = nil
+        if case .ok = await command(kind.command(identity: target.identity,secret: secret)), epoch == target.epoch, !stopping { return true }
+        return false
     }
     func start(_ url: String, name: String?) async -> UInt64? {
         guard !starting, !stopping else { return nil }; starting = true; defer { starting = false }

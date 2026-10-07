@@ -4,10 +4,106 @@
 
 import AppKit
 import CoreServices
+import Security
+import LocalAuthentication
 import XCTest
 
 @MainActor
 final class DownloadTests: XCTestCase {
+    private func credentialExists(_ kind: DownloadCredentialKind, target: ReviewedDownloadCredential) -> Bool {
+        let context = LAContext(); context.interactionNotAllowed = true
+        let query: [CFString: Any] = [kSecClass: kSecClassGenericPassword,
+            kSecAttrService: "org.blueice.downloads.\(kind.service).\(target.identity.host):\(target.identity.port)",
+            kSecAttrAccount: target.identity.username, kSecReturnAttributes: true,
+            kSecUseAuthenticationContext: context]
+        var result: CFTypeRef?
+        return SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess
+    }
+    func testCredentialReplyValidationAndPrivateWireEncoding() throws {
+        func packet(_ host: String, port: Int = 22, scheme: String = "sftp") throws -> Data {
+            try JSONSerialization.data(withJSONObject: ["request_id": 2, "message": ["CredentialTarget":
+                ["scheme": scheme,"host": host,"port": port,"username": "a+b@c"]]])
+        }
+        let reply = try JSONDecoder().decode(DownloadEnvelope.self,from: packet("[::1]"))
+        guard case .credentialTarget(let target) = reply.message else { return XCTFail("Missing account identity") }
+        XCTAssertEqual(target.host,"[::1]"); XCTAssertEqual(target.username,"a+b@c")
+        for data in [try packet("host",port: 0), try packet("host\n"),try packet("host",scheme: "ftp"),try packet(String(repeating: "x",count: 1025))] {
+            XCTAssertThrowsError(try JSONDecoder().decode(DownloadEnvelope.self,from: data))
+        }
+        let command = DownloadCredentialKind.sftpPassword.command(identity: target, secret: "credential-fixture +密碼")
+        let framed = try BrowserWire.encode(command,tab: nil,request: 9)
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: framed.dropFirst(4)) as? [String: Any])
+        let message = try XCTUnwrap(json["message"] as? [String: Any])
+        let fields = try XCTUnwrap(message["SetSftpPassword"] as? [String: Any])
+        XCTAssertEqual(fields["password"] as? String,"credential-fixture +密碼")
+        XCTAssertEqual(fields["host"] as? String,"[::1]")
+        XCTAssertEqual(fields["username"] as? String,"a+b@c")
+    }
+    func testActualCredentialStoreNamespacesPersistenceRemovalAndStaleServiceRefusal() async throws {
+        let root = URL(fileURLWithPath: "/private/tmp/bi-credential-test-" + UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let config = DownloadConfiguration(directory: root.appendingPathComponent("files"),dataDirectory: root.appendingPathComponent("data"))
+        let launcher = Bundle(for: Self.self).bundleURL.deletingLastPathComponent().appendingPathComponent("BlueIce.app/Contents/MacOS/blueice-launcher")
+        let workspace = BrowserWorkspace(downloadConfiguration: config); defer { Task { await workspace.stop() } }
+        await workspace.start(launcher: launcher); await workspace.downloads.connect()
+        let url = "sftp://bi-ui-" + UUID().uuidString + "@credential-fixture.invalid:2222"
+        let reviewedResult = await workspace.downloads.resolveCredentialTarget(url)
+        let reviewed = try XCTUnwrap(reviewedResult)
+        let marker = "credential-fixture-" + UUID().uuidString
+        defer {
+            for kind in DownloadCredentialKind.allCases {
+                let context = LAContext(); context.interactionNotAllowed = true
+                let query: [CFString: Any] = [kSecClass: kSecClassGenericPassword,
+                    kSecAttrService: "org.blueice.downloads.\(kind.service).\(reviewed.identity.host):\(reviewed.identity.port)",
+                    kSecAttrAccount: reviewed.identity.username,kSecUseAuthenticationContext: context]
+                SecItemDelete(query as CFDictionary)
+            }
+        }
+        for kind in [DownloadCredentialKind.sftpPassword,.sftpPrivateKeyPassphrase] {
+            XCTAssertFalse(credentialExists(kind,target: reviewed))
+            let saved = await workspace.downloads.saveCredential(reviewed,kind: kind,secret: marker)
+            XCTAssertTrue(saved); XCTAssertTrue(credentialExists(kind,target: reviewed))
+        }
+        let ftpsResult = await workspace.downloads.resolveCredentialTarget(url.replacingOccurrences(of: "sftp:",with: "ftps:"))
+        let ftps = try XCTUnwrap(ftpsResult)
+        let saved = await workspace.downloads.saveCredential(ftps,kind: .ftpsPassword,secret: marker)
+        XCTAssertTrue(saved); XCTAssertTrue(credentialExists(.ftpsPassword,target: ftps))
+        let rejected = await workspace.downloads.resolveCredentialTarget("sftp://alice:secret-marker@host/file")
+        XCTAssertNil(rejected); XCTAssertFalse(workspace.downloads.notice?.contains("secret-marker") == true)
+        XCTAssertTrue(workspace.downloads.transfers.isEmpty)
+        await workspace.stop()
+        XCTAssertTrue(credentialExists(.sftpPassword,target: reviewed))
+        let stale = await workspace.downloads.removeCredential(reviewed,kind: .sftpPassword)
+        XCTAssertFalse(stale); XCTAssertTrue(credentialExists(.sftpPassword,target: reviewed))
+        let reopened = BrowserWorkspace(downloadConfiguration: config); defer { Task { await reopened.stop() } }
+        await reopened.start(launcher: launcher); await reopened.downloads.connect()
+        let foreign = await reopened.downloads.removeCredential(reviewed,kind: .sftpPassword)
+        XCTAssertFalse(foreign); XCTAssertTrue(credentialExists(.sftpPassword,target: reviewed))
+        let freshResult = await reopened.downloads.resolveCredentialTarget(url)
+        let fresh = try XCTUnwrap(freshResult)
+        let freshFTPSResult = await reopened.downloads.resolveCredentialTarget(url.replacingOccurrences(of: "sftp:",with: "ftps:"))
+        let freshFTPS = try XCTUnwrap(freshFTPSResult)
+        let wrongScheme = await reopened.downloads.saveCredential(fresh,kind: .ftpsPassword,secret: marker)
+        XCTAssertFalse(wrongScheme)
+        let empty = await reopened.downloads.saveCredential(fresh,kind: .sftpPassword,secret: "")
+        XCTAssertFalse(empty)
+        let oversized = await reopened.downloads.saveCredential(fresh,kind: .sftpPassword,secret: String(repeating: "x",count: 4097))
+        XCTAssertFalse(oversized); XCTAssertTrue(credentialExists(.sftpPassword,target: fresh))
+        for (target,kind) in [(fresh,DownloadCredentialKind.sftpPassword),(fresh,.sftpPrivateKeyPassphrase),(freshFTPS,.ftpsPassword)] {
+            let removed = await reopened.downloads.removeCredential(target,kind: kind)
+            XCTAssertTrue(removed); XCTAssertFalse(credentialExists(kind,target: target))
+            let repeated = await reopened.downloads.removeCredential(target,kind: kind)
+            XCTAssertTrue(repeated)
+        }
+        let files = try XCTUnwrap(FileManager.default.enumerator(at: config.dataDirectory,includingPropertiesForKeys: [.isRegularFileKey]))
+        for file in files.allObjects.compactMap({ $0 as? URL }) {
+            if (try? file.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true {
+                XCTAssertFalse((try Data(contentsOf: file)).range(of: Data(marker.utf8)) != nil)
+            }
+        }
+        await reopened.stop()
+    }
+
     private func started(_ model: BrowserDownloadsModel, _ url: String, name: String?) async throws -> UInt64 {
         let result = await model.start(url, name: name); return try XCTUnwrap(result)
     }
