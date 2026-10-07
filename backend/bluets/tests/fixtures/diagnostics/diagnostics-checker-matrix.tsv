@@ -1602,6 +1602,10 @@ operators:toper-template-cross-product/main.ts	accept
 operators:toper-template-cross-product-error/main.ts	reject
 operators:toper-template-infer/main.ts	accept
 operators:toper-template-infer-error/main.ts	reject
+operators:toper-template-library-first/main.ts	accept
+operators:toper-template-library-first-error/main.ts	reject
+operators:toper-template-library-next/main.ts	accept
+operators:toper-template-library-next-error/main.ts	reject
 operators:toper-template-literal/main.ts	accept
 operators:toper-template-literal-error/main.ts	reject
 operators:toper-template-number/main.ts	accept

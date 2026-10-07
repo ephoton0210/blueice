@@ -72,6 +72,10 @@ toper-template-cross-product/main.ts	accept
 toper-template-cross-product-error/main.ts	reject
 toper-template-infer/main.ts	accept
 toper-template-infer-error/main.ts	reject
+toper-template-library-first/main.ts	accept
+toper-template-library-first-error/main.ts	reject
+toper-template-library-next/main.ts	accept
+toper-template-library-next-error/main.ts	reject
 toper-template-literal/main.ts	accept
 toper-template-literal-error/main.ts	reject
 toper-template-number/main.ts	accept

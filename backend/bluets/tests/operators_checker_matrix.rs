@@ -5,7 +5,8 @@
 //! K.4.5 type operator evidence at the public compiler boundary.
 
 use blueice_bluets::{
-    compile, CheckingOptions, CompilerOptions, MapLoader, ModuleLoader, ModuleSource,
+    compile, CheckingOptions, CompilerLimits, CompilerOptions, DiagnosticCode, MapLoader,
+    ModuleLoader, ModuleSource,
 };
 use serde_json::{json, Value};
 use std::collections::BTreeSet;
@@ -51,9 +52,46 @@ fn position(position: &Option<blueice_bluets::TypeScriptPosition>) -> Value {
 }
 
 #[test]
+fn operator_expansion_budget_exhaustion_prevents_output() {
+    for source in [
+        include_str!("fixtures/typescript_oracle/toper-keyof-record/main.ts"),
+        include_str!("fixtures/typescript_oracle/toper-conditional-true/main.ts"),
+        include_str!("fixtures/typescript_oracle/toper-infer-array/main.ts"),
+        include_str!("fixtures/typescript_oracle/toper-mapped-copy/main.ts"),
+        include_str!("fixtures/typescript_oracle/toper-template-cross-product/main.ts"),
+        include_str!("fixtures/typescript_oracle/toper-recursive-conditional/main.ts"),
+    ] {
+        let loader = MapLoader::from([ModuleSource::new("main.ts", source)]);
+        let accepted = compile("main.ts", &loader, CompilerOptions::default());
+        assert!(!accepted.has_errors(), "{:?}", accepted.diagnostics);
+        let refused = compile(
+            "main.ts",
+            &loader,
+            CompilerOptions {
+                limits: CompilerLimits {
+                    max_type_expansions: 0,
+                    ..CompilerLimits::default()
+                },
+                ..CompilerOptions::default()
+            },
+        );
+        assert!(refused.output.is_none());
+        assert!(
+            refused.diagnostics.iter().any(|diagnostic| {
+                diagnostic.code == DiagnosticCode::ResourceLimit
+                    && diagnostic.message.contains("generic-expansion limit")
+                    && diagnostic.typescript.is_none()
+            }),
+            "{:?}",
+            refused.diagnostics
+        );
+    }
+}
+
+#[test]
 fn matrix_covers_every_operators_fixture() {
     let cases = cases();
-    assert_eq!(cases.len(), 78);
+    assert_eq!(cases.len(), 82);
     assert_eq!(
         cases.iter().filter(|case| case["runtime"] == true).count(),
         3
@@ -191,6 +229,17 @@ fn recorded_operators_matches_pinned_typescript() {
     let _ = pinned_tsc();
     let recorder = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../development/browser_core/phase-18-bluets/tools/record_operators.cjs");
+    let output = Command::new("node").arg(recorder).output().unwrap();
+    assert!(output.status.success(), "{}", report(&output));
+}
+
+#[test]
+#[ignore = "requires pinned TypeScript 5.9.3 and Node"]
+fn recorded_operator_literal_initialization_matches_pinned_typescript() {
+    let _ = pinned_tsc();
+    let recorder = Path::new(env!("CARGO_MANIFEST_DIR")).join(
+        "../../development/browser_core/phase-18-bluets/tools/record_operator_literal_order.cjs",
+    );
     let output = Command::new("node").arg(recorder).output().unwrap();
     assert!(output.status.success(), "{}", report(&output));
 }

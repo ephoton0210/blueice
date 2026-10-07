@@ -54164,6 +54164,130 @@
       ]
     },
     {
+      "id": "operators:toper-template-library-first/main.ts",
+      "matrix": "operators",
+      "entry": "toper-template-library-first/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/toper-template-library-first/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "operators:toper-template-library-first-error/main.ts",
+      "matrix": "operators",
+      "entry": "toper-template-library-first-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/toper-template-library-first-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2820,
+        "category": "error",
+        "message": "Type '\"tag-22\"' is not assignable to type '\"tag-0\" | \"tag-2\" | \"tag-1\" | \"tag-3\" | \"tag-4\" | \"tag-8\" | \"tag-16\" | \"tag-5\"'. Did you mean '\"tag-2\"'?",
+        "file": "typescript_oracle/toper-template-library-first-error/main.ts",
+        "start": 272,
+        "length": 5,
+        "line": 5,
+        "column": 69
+      },
+      "diagnostics": [
+        {
+          "code": 2820,
+          "category": "error",
+          "message": "Type '\"tag-22\"' is not assignable to type '\"tag-0\" | \"tag-2\" | \"tag-1\" | \"tag-3\" | \"tag-4\" | \"tag-8\" | \"tag-16\" | \"tag-5\"'. Did you mean '\"tag-2\"'?",
+          "file": "typescript_oracle/toper-template-library-first-error/main.ts",
+          "start": 272,
+          "length": 5,
+          "line": 5,
+          "column": 69
+        }
+      ]
+    },
+    {
+      "id": "operators:toper-template-library-next/main.ts",
+      "matrix": "operators",
+      "entry": "toper-template-library-next/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/toper-template-library-next/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "operators:toper-template-library-next-error/main.ts",
+      "matrix": "operators",
+      "entry": "toper-template-library-next-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/toper-template-library-next-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2820,
+        "category": "error",
+        "message": "Type '\"tag-15\"' is not assignable to type '\"tag-6\" | \"tag-10\" | \"tag-7\" | \"tag-12\" | \"tag-11\" | \"tag-14\" | \"tag-9\"'. Did you mean '\"tag-10\"'?",
+        "file": "typescript_oracle/toper-template-library-next-error/main.ts",
+        "start": 271,
+        "length": 5,
+        "line": 5,
+        "column": 68
+      },
+      "diagnostics": [
+        {
+          "code": 2820,
+          "category": "error",
+          "message": "Type '\"tag-15\"' is not assignable to type '\"tag-6\" | \"tag-10\" | \"tag-7\" | \"tag-12\" | \"tag-11\" | \"tag-14\" | \"tag-9\"'. Did you mean '\"tag-10\"'?",
+          "file": "typescript_oracle/toper-template-library-next-error/main.ts",
+          "start": 271,
+          "length": 5,
+          "line": 5,
+          "column": 68
+        }
+      ]
+    },
+    {
       "id": "operators:toper-template-literal/main.ts",
       "matrix": "operators",
       "entry": "toper-template-literal/main.ts",

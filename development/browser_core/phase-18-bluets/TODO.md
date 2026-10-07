@@ -374,6 +374,7 @@ narrowing needs a flow graph or can stay structural, recorded in PLAN.md before 
   `infer`, mapped types with `readonly`/`?` modifiers and `as` clauses, template-literal types, recursive
   aliases within a depth budget; each operator needs the assignability relation extended.
   - *Failing baseline (2026-10-08):* 78 pinned programs (37 accept, 41 reject), three runtime/declaration witnesses. Linux reports 68 checker/primary-diagnostic differences and two runtime/declaration compile failures; the indexed-access runtime witness, completeness and pinned recorder pass. The shared corpus contains 1,822 programs and 152 templates. Production remains unchanged in this baseline.
+  - *Literal-order replay (2026-10-08):* the 78-program draft and all runtime/declaration witnesses pass. Four further controls extend the corpus to 82 programs (39 accept, 43 reject); Linux records two template-union diagnostic-order differences. Both pinned recorders, 652 default-library numeric-cache observations, completeness and six operator-budget controls pass. The shared corpus contains 1,826 programs and 152 templates. The implementation draft remains uncommitted and the leaf stays open.
 - [ ] **K.4.6 More types (L).** Index signatures, readonly arrays/tuples, `bigint`, `symbol`/`unique
   symbol`, `satisfies`, `as const`, optional/rest/named tuple elements, `unknown`/`never` flow rules,
   `enum`-literal inference, `void` vs `undefined` rules.

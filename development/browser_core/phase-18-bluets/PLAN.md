@@ -5234,3 +5234,28 @@ The shared diagnostic corpus is regenerated to 1,822 programs (834 accept,
 messages and related records without changing production source. K.4.5 remains
 unchecked; operator parsing, bounded expansion, assignment and declaration
 preservation will be implemented against this committed replay.
+
+### K.4.5 default-library literal-order failing replay — 2026-10-08
+
+The implementation draft passes the original 78 operator programs, all three
+runtime/declaration witnesses, six operator-budget controls and the existing
+generic/overload matrices. An ordinary literal-union BTS wording regression is
+corrected by limiting the new literal-context rule to operator aliases; its
+existing public-boundary test passes. Complete K.0 verification remains open.
+
+Four further TypeScript 5.9.3 controls measure template products containing
+numeric literals already interned by the default ES2022 libraries. They extend
+the operator corpus to 82 programs (39 accept, 43 reject). Numeric type IDs are
+created in library-checking order rather than numeric value order. A separate
+read-only recorder observes 652 numeric cache entries without modifying the
+installed compiler, records its source hash, and replays the exact observations.
+The native order includes `0, 2, 1, 3, 4, 8, 16, 5` and
+`6, 10, 7, 12, 11, 14, 9` for the measured products.
+
+The Linux supplemental replay records two rendered-union order differences.
+Completeness, both pinned recorders, the budget controls and all three runtime/
+declaration witnesses pass: five tests pass and one fails in 14.53 seconds.
+Evidence: `/private/tmp/blueice-k14-linux/blueice-k45-order-red.log`.
+The shared diagnostic corpus is regenerated to 1,826 programs (836 accept,
+990 reject) and 152 templates. This supplemental commit records only fixtures,
+test evidence and documentation; production remains an uncommitted draft.
