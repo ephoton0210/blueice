@@ -43,7 +43,6 @@ fn source_witnesses_have_precise_counterparts_or_recorded_subset_reasons() {
     let known_checker_gaps = [
         "nonexhaustive-return",
         "tuple-index",
-        "unused-type",
         "throw-newline",
         "throw-empty",
     ];
@@ -52,19 +51,23 @@ fn source_witnesses_have_precise_counterparts_or_recorded_subset_reasons() {
         "argument-spread-rest",
         "catch-type",
         "name-type",
+        "name-area",
+        "call-this-missing",
+        "call-this-type",
+        "compatible-function-field",
+        "setter-destructure",
     ];
     for case in reference["cases"].as_array().unwrap() {
         let id = case["id"].as_str().unwrap();
         let suffix = id.strip_prefix("diagnostics-other-").unwrap();
         let source = case["source"].as_str().unwrap();
         let mut options = CompilerOptions::default();
-        if case["flags"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|flag| flag == "--strictBindCallApply")
-        {
-            options.checking = Some(blueice_bluets::CheckingOptions::default());
+        let flags = case["flags"].as_array().unwrap();
+        if !flags.is_empty() {
+            options.checking = Some(blueice_bluets::CheckingOptions {
+                no_unused_locals: flags.iter().any(|flag| flag == "--noUnusedLocals"),
+                ..Default::default()
+            });
         }
         let result = compile(
             "memory:///witness.ts",

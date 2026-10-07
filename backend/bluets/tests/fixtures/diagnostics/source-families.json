@@ -1457,6 +1457,59 @@
       "flags": [],
       "accepts": true,
       "diagnostics": []
+    },
+    {
+      "id": "diagnostics-other-setter-initializer",
+      "source": "class Box { set value(input: number = 1) {} }",
+      "blueMessage": "",
+      "flags": [],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 1052,
+          "message": "A 'set' accessor parameter cannot have an initializer.",
+          "start": 16,
+          "length": 5
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-setter-result-nested",
+      "source": "const box = { set value(input: number): number {} };",
+      "blueMessage": "",
+      "flags": [],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 1095,
+          "message": "A 'set' accessor cannot have a return type annotation.",
+          "start": 18,
+          "length": 5
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-setter-rest",
+      "source": "class Box { set value(...input: number[]) {} }",
+      "blueMessage": "",
+      "flags": [],
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 1053,
+          "message": "A 'set' accessor cannot have rest parameter.",
+          "start": 22,
+          "length": 3
+        }
+      ]
+    },
+    {
+      "id": "diagnostics-other-setter-destructure",
+      "source": "class Box { set value({ input }: { input: number }) {} }",
+      "blueMessage": "",
+      "flags": [],
+      "accepts": true,
+      "diagnostics": []
     }
   ]
 }

@@ -4413,3 +4413,12 @@ because the existing subset refusal is assigned TS2416. This accepted witness
 and failing regression are recorded before committing the refinement; the
 implementation must distinguish actual type incompatibility from the bounded
 member-kind restriction without changing the existing rejection.
+
+The audit's grouped setter messages need separate context refinements: pinned
+TypeScript reports TS1052 for an initializer, TS1053 for a rest parameter and
+TS1095 for a nested setter result annotation; a destructured setter parameter
+is accepted by TypeScript but remains a BlueTSC subset refusal. Four further
+witnesses bring the source record to 97. Their pre-refinement CLI replay
+incorrectly assigns TS1051/TS1049 and is recorded before implementation. The
+public replay also now forwards the `noUnusedLocals` witness option, producing
+TS6196 rather than misclassifying a disabled diagnostic as a checker gap.
