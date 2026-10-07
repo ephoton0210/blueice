@@ -4770,13 +4770,13 @@ boundaries replace the earlier single-local `typeof` and iterator-loop helpers.
 Immediate invocations reuse the graph solver, including branches and returns;
 switch default entry excludes every case regardless of textual position.
 
-The pinned matrix now passes all 117 verdicts and exact primary diagnostics
-without exemptions. Thirteen accepted CLI builds match Node output and exact
+The pinned matrix now passes all 123 verdicts and exact primary diagnostics
+without exemptions. Fourteen accepted CLI builds match Node output and exact
 TypeScript declarations. Necessary declaration support retains referenced
 private aliases and renders inline record unions in signatures. The three
 source-hashed K.3.3 iterator wording allowances are removed: the shared message
-replay compares TypeScript directly. Its regenerated corpus contains 1,515
-programs (679 accept, 836 reject) and 137 message templates. BTS codes and raw
+replay compares TypeScript directly. Its regenerated corpus contains 1,521
+programs (681 accept, 840 reject) and 137 message templates. BTS codes and raw
 messages stay separate from TypeScript presentation.
 
 Flow versioning participates in compiler fingerprints. Work, nesting and type
@@ -4785,7 +4785,7 @@ Existing class/static/private and readonly regressions remain enforced; no
 filesystem, network or runtime capability changes. The largest production
 source remains 1,185 lines; graph construction, evaluation, predicates,
 properties, assignments and binding lookup remain individual small modules.
-K.0 final-source gate evidence follows before this leaf is checked complete.
+K.0 final-source gate evidence is recorded below.
 Broader exception-flow and dotted capture precision are unmeasured; user guards,
 assertions and exhaustiveness are the next K.4.2 leaf, while M8 remains open.
 
@@ -4797,6 +4797,14 @@ refusals and avoids that cascade. Failure evidence is preserved as
 `/logs/blueice-k41-gate-attempt1-gate.log`; the complete gate is rerun on the
 corrected frozen backend source rather than changing the oracle's expected
 diagnostic count.
+
+The corrected 117-case frozen snapshot then passes all 1,101 tests in 68
+groups, including all 128 ignored oracles. The optional receiver correction
+passes the four-test 123-case replay, all fourteen runtime/declaration witnesses,
+three legacy optional controls and all 1,521 diagnostic programs. Nullable
+aliases expand within the shared budget; known-null receivers retain TS2339 on
+`never`, with the original property position and unchanged raw BTS wording.
+The final 123-case K.0 gate and its test-source correction are recorded below.
 
 ### K.4.1 Optional receiver boundary replay
 
@@ -4813,3 +4821,26 @@ Linux CLI replay disagrees on all six added programs. The exact evidence is
 the previous 117-case K.0 snapshot remains unchanged. These new fixtures and
 reference observations are committed before the receiver/metadata fix.
 K.4.1 remains unchecked.
+
+### K.4.1 Final-source validation
+
+The frozen 123-case source passes formatting and both-crate all-target Clippy.
+Its complete 68-group run passes 1,099 tests, including every one of the 128
+ignored oracles. The two failures are legacy bridge examples whose known-null
+receiver is rejected by TypeScript 5.9.3 with TS2339. Pinned replay confirms a
+`choose(false)` receiver is accepted while preserving the same runtime null
+short circuit. Only those two inline test sources change; AST/VM/debugger
+assertions remain, and the direct bridge also asserts the original TS2339
+refusal. Production bytes are unchanged from the complete oracle run.
+
+The corrected test-source snapshot passes format/check, all-target Clippy and
+the entire ordinary two-crate suite: 973 tests, with no failures. Combined with
+the complete oracle run, all 1,101 unique tests in 68 groups pass, including all
+128 ignored oracles. Logs remain in `/logs/blueice-k41-gate-attempt3-*` and
+`/logs/blueice-k41-fixup-*`; the initial failures stay visible. The CLI
+presentation tracker compares all 840 rejected primaries with zero message or
+related-information differences (`/logs/blueice-k41-presentation-123.json`).
+No test exemption or diagnostic allowance is introduced. The largest production
+source is 1,185 lines and every new source has its MPL header. K.4.1 is complete;
+K.4.2 starts with its failing public replay. M8 and the remaining K.4 leaves
+remain open.

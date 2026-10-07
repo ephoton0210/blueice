@@ -13,17 +13,13 @@ impl<'a> ModuleChecker<'a> {
         scope: &BTreeMap<String, Type>,
         span: &SourceSpan,
     ) {
-        let guard = self.iterator_loop_guard(tokens, scope);
         for range in member_call_ranges(tokens, |start| {
             self.module.generic_call_type_arguments.contains_key(&start)
         }) {
             // Constructor validation owns `new receiver.Type(...)`.
             let call = &tokens[range];
             if constructor_call_parts(call).is_none() {
-                let narrowed = guard
-                    .as_ref()
-                    .and_then(|guard| guard.scope_for(self, call[0].start, scope));
-                self.check_member_call(call, narrowed.as_ref().unwrap_or(scope), span);
+                self.check_member_call(call, scope, span);
             }
         }
     }

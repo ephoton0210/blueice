@@ -22,7 +22,10 @@ impl<'a> ModuleChecker<'a> {
         {
             return;
         }
-        let value = scope.get(&base.text).cloned().unwrap_or(Type::Unknown);
+        let value = self.infer_expression(std::slice::from_ref(base), scope);
+        if self.flow_nullish_error(base, &value) {
+            return;
+        }
         let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
         match property_type(
             &value,

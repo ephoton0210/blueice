@@ -149,7 +149,7 @@ pub(super) fn strip(mut tokens: &[Token]) -> &[Token] {
     tokens
 }
 
-pub(super) fn close(tokens: &[Token], start: usize) -> Option<usize> {
+pub(in crate::checker) fn close(tokens: &[Token], start: usize) -> Option<usize> {
     let end = match tokens.get(start)?.text.as_str() {
         "(" => ")",
         "[" => "]",

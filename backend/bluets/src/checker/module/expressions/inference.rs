@@ -72,6 +72,17 @@ impl<'a> ModuleChecker<'a> {
         tokens: &[Token],
         scope: &BTreeMap<String, Type>,
     ) -> Type {
+        if let [token] = tokens {
+            if token.kind == TokenKind::Identifier || token.is("this") {
+                if let Some(value) = self
+                    .flow
+                    .as_ref()
+                    .and_then(|flow| flow.query(self.scopes.as_ref()?, token))
+                {
+                    return value;
+                }
+            }
+        }
         if tokens
             .iter()
             .filter(|token| token.is("[") || token.is("{"))
@@ -121,6 +132,13 @@ impl<'a> ModuleChecker<'a> {
             return Type::Unknown;
         }
         let tokens = strip_outer_parentheses(tokens);
+        if let Some(value) = self
+            .flow
+            .as_ref()
+            .and_then(|flow| flow.property(self.scopes.as_ref()?, tokens))
+        {
+            return value;
+        }
         if let Some(call) = constructor_call_parts(tokens) {
             if call
                 .receiver
@@ -387,24 +405,8 @@ impl<'a> ModuleChecker<'a> {
         if first.kind == TokenKind::Number && tokens.len() == 1 {
             return Type::Number;
         }
-        if let [receiver, optional, property] = tokens {
-            if receiver.kind == TokenKind::Identifier
-                && optional.is("?.")
-                && property.kind == TokenKind::Identifier
-            {
-                return scope
-                    .get(&receiver.text)
-                    .and_then(|receiver_type| {
-                        optional_property_type(
-                            receiver_type,
-                            &property.text,
-                            &self.types,
-                            self.max_type_expansions,
-                        )
-                        .ok()
-                    })
-                    .unwrap_or(Type::Unknown);
-            }
+        if let Some(value) = self.infer_optional_chain(tokens, scope) {
+            return value;
         }
         if let Some((receiver, property)) = member_access_target(tokens) {
             if tokens.iter().filter(|token| token.is("[")).count() > self.max_type_expansions {

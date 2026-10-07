@@ -991,6 +991,7 @@ pub(crate) fn fingerprint(project: &Project, options: &CompilerOptions) -> Strin
     };
     add(LANGUAGE_VERSION);
     add(crate::diagnostic::DIAGNOSTICS_VERSION);
+    add(crate::checker::FLOW_VERSION);
     add(crate::standard_library::VERSION);
     add(&crate::standard_library::identity(options.target).source_fingerprint);
     add(options.target.as_str());

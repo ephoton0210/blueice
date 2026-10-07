@@ -519,7 +519,7 @@ fn lowers_checked_optional_dot_read_to_bluejs_optional_member_ast() {
         ENTRY,
         &MapLoader::from([ModuleSource::new(
             ENTRY,
-            "const receiver: { value: number } | null = null; const read: number | undefined = receiver?.value; read;",
+            "function choose(flag: boolean): { value: number } | null { return flag ? { value: 41 } : null; } const receiver: { value: number } | null = choose(false); const read: number | undefined = receiver?.value; read;",
         )]),
         CompilerOptions::default(),
     )
@@ -540,6 +540,23 @@ fn lowers_checked_optional_dot_read_to_bluejs_optional_member_ast() {
     assert_eq!(
         bluejs::Vm::default().execute(&artifact.bytecode).unwrap(),
         bluejs::Value::Undefined
+    );
+    let rejected = compile_direct_script(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(
+            ENTRY,
+            "const receiver: { value: number } | null = null; const read: number | undefined = receiver?.value; read;",
+        )]),
+        CompilerOptions::default(),
+    );
+    let Err(BridgeError::BlueTs(diagnostics)) = rejected else {
+        panic!("a known-null receiver must retain the TypeScript property refusal");
+    };
+    let primary = diagnostics[0].typescript.as_ref().unwrap();
+    assert_eq!(primary.code, 2339);
+    assert_eq!(
+        primary.message,
+        "Property 'value' does not exist on type 'never'."
     );
 }
 

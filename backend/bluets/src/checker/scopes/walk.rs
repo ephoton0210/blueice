@@ -304,6 +304,13 @@ impl ScopeModel<'_> {
                     value,
                 ),
             }
+            if parameter.pattern.is_none() {
+                self.scopes[scope]
+                    .values
+                    .get_mut(&parameter.name)
+                    .unwrap()
+                    .annotated = parameter.annotation.is_some();
+            }
             if let Some(default) = &parameter.default {
                 self.expression(default, scope);
             }

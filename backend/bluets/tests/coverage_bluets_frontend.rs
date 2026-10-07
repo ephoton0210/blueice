@@ -3740,26 +3740,24 @@ fn immutable_typeof_guard_does_not_leak_into_siblings_or_two_live_paths() {
 }
 
 #[test]
-fn first_typeof_guard_does_not_narrow_mutable_or_parameter_bindings() {
+fn lexical_typeof_guard_narrows_mutable_and_parameter_bindings() {
     for source in [
         "function takesString(value: string): void {} function f(input: string | number): void { let value: string | number = input; if (typeof value === 'string') { takesString(value); } }",
         "function takesString(value: string): void {} function f(value: string | number): void { if (typeof value === 'string') { takesString(value); } }",
     ] {
-        assert_rejected(source, "BTS3003", "argument 1 has type `string | number`");
+        assert_accepted(source);
     }
 }
 
 #[test]
-fn first_typeof_guard_does_not_claim_later_or_repeated_guards() {
+fn lexical_typeof_guard_checks_declaration_order_and_repeated_guards() {
     assert_rejected(
         "function takesString(value: string): void {} function f(input: string | number): void { if (typeof value === 'string') { takesString(value); } const value: string | number = input; }",
         "BTS3005",
         "used before its declaration",
     );
-    assert_rejected(
+    assert_accepted(
         "function takesString(value: string): void {} function f(input: string | number): void { const value: string | number = input; if (typeof value === 'string') { 0; } if (typeof value === 'string') { takesString(value); } }",
-        "BTS3003",
-        "argument 1 has type `string | number`",
     );
 }
 
@@ -3898,15 +3896,19 @@ fn optional_dot_read_checks_nullish_result_and_rejects_unproven_shapes() {
     let mutable = diagnostics("let receiver: { value: number } | null = null; const wrong: number = receiver?.value ?? 0;");
     assert!(
         mutable.iter().any(|diagnostic| diagnostic
-            .message
-            .contains("unsupported optional property read")),
+            .typescript
+            .as_ref()
+            .is_some_and(|counterpart| counterpart.code == 2339
+                && counterpart.message == "Property 'value' does not exist on type 'never'.")),
         "{mutable:#?}"
     );
     let optional_field = diagnostics("const receiver: { value?: number } | null = null; const wrong: number = receiver?.value ?? 0;");
     assert!(
         optional_field.iter().any(|diagnostic| diagnostic
-            .message
-            .contains("unsupported optional property read")),
+            .typescript
+            .as_ref()
+            .is_some_and(|counterpart| counterpart.code == 2339
+                && counterpart.message == "Property 'value' does not exist on type 'never'.")),
         "{optional_field:#?}"
     );
 }

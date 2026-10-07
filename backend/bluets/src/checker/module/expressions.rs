@@ -8,10 +8,10 @@ use super::*;
 
 mod call_presentation;
 mod diagnostics;
+mod flow_checks;
 mod function_methods;
 mod indexing;
 mod inference;
-mod iterator_guards;
 mod library_presentation;
 mod method_overloads;
 mod optional_property;
@@ -23,7 +23,6 @@ use indexing::{canonical_index_key, tuple_indexed_candidates};
 use method_overloads::{
     select_callback_method_overload, supports_callback_method_receiver, MethodOverloadError,
 };
-use optional_property::optional_property_type;
 
 fn method_overload_signatures(overloads: &[Type]) -> Option<Vec<FunctionSignature>> {
     overloads

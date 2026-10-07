@@ -183,5 +183,26 @@ impl ModuleChecker<'_> {
                 crate::diagnostic::type_text::render_in(receiver, self.project),
             ],
         );
+        if let Type::Union(parts) = &value {
+            let missing = parts.iter().find(|part| {
+                let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
+                matches!(
+                    property_type(part, member, &self.types, &mut HashSet::new(), &mut budget),
+                    PropertyType::Missing
+                )
+            });
+            if let Some(missing) = missing {
+                if let Some(counterpart) = self
+                    .diagnostics
+                    .last_mut()
+                    .and_then(|diagnostic| diagnostic.typescript.as_mut())
+                {
+                    counterpart.message.push_str(&format!(
+                        "\n  Property '{member}' does not exist on type '{}'.",
+                        crate::diagnostic::type_text::render_in(missing, self.project)
+                    ));
+                }
+            }
+        }
     }
 }

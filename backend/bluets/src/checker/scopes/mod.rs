@@ -12,10 +12,12 @@ use crate::parser::{NestedFunctionBody, VariableDeclaration, VariableKind};
 mod checking_flags;
 mod diagnostics;
 mod expressions;
+pub(super) mod flow;
+mod flow_bindings;
 mod mutations;
 mod private;
 mod switches;
-mod targets;
+pub(super) mod targets;
 mod walk;
 
 type ScopeId = usize;
@@ -38,6 +40,7 @@ struct Binding {
     namespace: Option<String>,
     initializer: Option<(usize, usize)>,
     library: bool,
+    annotated: bool,
 }
 
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
@@ -107,6 +110,7 @@ pub(super) struct ScopeModel<'a> {
     parameters: BTreeMap<(ScopeId, String), SourceSpan>,
     catch_bindings: BTreeMap<(ScopeId, String), bool>,
     type_declarations: BTreeMap<(ScopeId, String), (SourceSpan, bool)>,
+    flow_failure: std::cell::RefCell<Option<Diagnostic>>,
 }
 
 impl<'a> ScopeModel<'a> {
@@ -150,6 +154,7 @@ impl<'a> ScopeModel<'a> {
             parameters: BTreeMap::new(),
             catch_bindings: BTreeMap::new(),
             type_declarations: BTreeMap::new(),
+            flow_failure: std::cell::RefCell::new(None),
         };
         model.child(
             None,
@@ -284,6 +289,7 @@ impl<'a> ScopeModel<'a> {
                 kind: BindingKind::Mutable,
                 namespace: None,
                 initializer: None,
+                annotated: false,
                 library: false,
             },
         );
@@ -517,30 +523,6 @@ impl<'a> ScopeModel<'a> {
                     && self
                         .resolve(reference.scope, name, Meaning::Value)
                         .is_some_and(|(_, binding)| binding.is_some_and(|binding| binding.library))
-            })
-    }
-
-    /// A guard applies to the same lexical value until a write may change it.
-    pub(super) fn value_guard_holds(
-        &self,
-        name: &str,
-        guard: usize,
-        body: usize,
-        usage: usize,
-    ) -> bool {
-        let identity = |scope| {
-            self.resolve(scope, name, Meaning::Value)
-                .and_then(|(scope, binding)| binding.map(|_| scope))
-        };
-        let Some(guard_scope) = identity(self.scope_at(guard)) else {
-            return false;
-        };
-        identity(self.scope_at(usage)) == Some(guard_scope)
-            && !self.mutations.iter().any(|mutation| {
-                body <= mutation.operator.start
-                    && mutation.operator.start < usage
-                    && identity(mutation.scope) == Some(guard_scope)
-                    && mutation.target.iter().any(|token| token.text == name)
             })
     }
 

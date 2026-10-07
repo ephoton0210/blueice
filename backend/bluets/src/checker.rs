@@ -22,6 +22,7 @@ mod member_calls;
 use member_calls::{member_call_parts, member_call_ranges};
 mod properties;
 mod scopes;
+pub(crate) use scopes::flow::VERSION as FLOW_VERSION;
 mod type_relations;
 use properties::{
     contains_readonly_member, mutation_field_type, property_type, readonly_property, PropertyType,

@@ -16,6 +16,7 @@ pub(super) struct Context<'a> {
     variables: BTreeMap<String, (String, bool)>,
     return_types: BTreeMap<usize, String>,
     parameter_types: BTreeMap<usize, String>,
+    private_aliases: BTreeMap<String, String>,
 }
 
 impl<'a> Context<'a> {
@@ -31,6 +32,7 @@ impl<'a> Context<'a> {
             variables: BTreeMap::new(),
             return_types: BTreeMap::new(),
             parameter_types: BTreeMap::new(),
+            private_aliases: BTreeMap::new(),
         };
         for declaration in &module.declarations {
             let Declaration::Variable(variable) = declaration else {
@@ -98,7 +100,7 @@ impl<'a> Context<'a> {
                     for parameter in &function.parameters {
                         if let Some(value) = &parameter.annotation {
                             context.references(value);
-                            if matches!(value, Type::Record(_)) {
+                            if record_annotation(value) {
                                 let rendered = context.render(value, 0, &parameter.span)?;
                                 context
                                     .parameter_types
@@ -154,7 +156,29 @@ impl<'a> Context<'a> {
                 }
             }
         }
+        for _ in 0..module.declarations.len() {
+            let before = context.private_aliases.len();
+            for declaration in &module.declarations {
+                if let Declaration::TypeAlias(alias) = declaration {
+                    if !alias.exported
+                        && context.used_imports.contains(&alias.name)
+                        && !context.private_aliases.contains_key(&alias.name)
+                    {
+                        context.references(&alias.value);
+                        let rendered = context.render(&alias.value, 0, &alias.span)?;
+                        context.private_aliases.insert(alias.name.clone(), rendered);
+                    }
+                }
+            }
+            if context.private_aliases.len() == before {
+                break;
+            }
+        }
         Ok(context)
+    }
+
+    pub(super) fn private_alias(&self, name: &str) -> Option<&str> {
+        self.private_aliases.get(name).map(String::as_str)
     }
 
     pub(super) fn variable(&self, name: &str) -> Option<&(String, bool)> {
@@ -627,4 +651,12 @@ fn declares_symbol_value(module: &Module) -> bool {
                 .any(|binding| binding.local == "Symbol"),
             _ => false,
         })
+}
+
+fn record_annotation(value: &Type) -> bool {
+    match value {
+        Type::Record(_) => true,
+        Type::Union(parts) | Type::Intersection(parts) => parts.iter().any(record_annotation),
+        _ => false,
+    }
 }

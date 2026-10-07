@@ -42,6 +42,7 @@ pub(super) struct ModuleChecker<'a> {
     target: crate::compiler::EcmaTarget,
     project: &'a Project,
     scopes: Option<scopes::ScopeModel<'a>>,
+    flow: Option<scopes::flow::FlowModel>,
     module: &'a Module,
     exports: &'a ProjectExports,
     ambient: Option<&'a AmbientDeclarations>,

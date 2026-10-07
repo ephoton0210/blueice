@@ -6,9 +6,6 @@
 
 use super::*;
 
-mod narrowing;
-use narrowing::{narrowed_guard_scopes, selected_guard_local};
-
 impl<'a> ModuleChecker<'a> {
     pub(super) fn check_function(&mut self, function: &FunctionDeclaration) {
         self.check_function_in_scope(function, self.values.clone());
@@ -146,9 +143,9 @@ impl<'a> ModuleChecker<'a> {
                 .unwrap_or_else(|| self.infer_expression(&local.initializer, &scope));
             scope.insert(local.name.clone(), inferred);
         }
+        self.check_flow_initializers(function, &scope);
         hoist_local_functions(&function.body, &mut scope);
-        let selected_local = selected_guard_local(&function.body);
-        self.check_function_body_expressions(&function.body, &scope, selected_local);
+        self.check_function_body_expressions(&function.body, &scope);
         if let Some(return_type) = &function.return_type {
             self.check_type(return_type, &function.span);
         }
@@ -183,7 +180,6 @@ impl<'a> ModuleChecker<'a> {
             body_return_type.as_ref(),
             allows_implicit_undefined,
             &function.span,
-            selected_local,
         );
         if let Some(return_type) = &body_return_type {
             if !function.declared
@@ -453,29 +449,6 @@ impl<'a> ModuleChecker<'a> {
         }
     }
 
-    fn scope_after_guard(
-        statement: &FunctionIfStatement,
-        scope: &BTreeMap<String, Type>,
-        selected_local: Option<&str>,
-    ) -> BTreeMap<String, Type> {
-        let Some((then_scope, else_scope)) =
-            narrowed_guard_scopes(statement, scope, selected_local)
-        else {
-            return scope.clone();
-        };
-        let then_completion = Self::function_body_termination(&statement.consequent);
-        let else_completion = match &statement.alternate {
-            Some(FunctionElseBranch::Braced(body)) => Self::function_body_termination(body),
-            None => StructuredTermination::FallsThrough,
-            Some(FunctionElseBranch::ElseIf(_)) => return scope.clone(),
-        };
-        match (then_completion, else_completion) {
-            (StructuredTermination::Terminates, StructuredTermination::FallsThrough) => else_scope,
-            (StructuredTermination::FallsThrough, StructuredTermination::Terminates) => then_scope,
-            _ => scope.clone(),
-        }
-    }
-
     /// Check structured returns in the lexical scope where they execute.
     /// The parser's flat `returns` list remains part of its public source
     /// representation, but cannot distinguish a catch-shadowed binding.
@@ -486,11 +459,8 @@ impl<'a> ModuleChecker<'a> {
         return_type: Option<&Type>,
         allows_implicit_undefined: bool,
         function_span: &SourceSpan,
-        selected_local: Option<&str>,
     ) {
-        let mut current_scope = scope.clone();
-        let mut selected_local_is_declared = false;
-        let mut guard_used = false;
+        let current_scope = scope.clone();
         for item in items {
             match item {
                 FunctionBodyItem::Return { tokens, .. } => self.check_function_return_tokens(
@@ -501,20 +471,13 @@ impl<'a> ModuleChecker<'a> {
                     function_span,
                 ),
                 FunctionBodyItem::If(statement) => {
-                    let active_local =
-                        selected_local.filter(|_| selected_local_is_declared && !guard_used);
-                    guard_used |=
-                        narrowed_guard_scopes(statement, &current_scope, active_local).is_some();
                     self.check_function_if_returns(
                         statement,
                         &current_scope,
                         return_type,
                         allows_implicit_undefined,
                         function_span,
-                        active_local,
                     );
-                    current_scope =
-                        Self::scope_after_guard(statement, &current_scope, active_local);
                 }
                 FunctionBodyItem::While(statement) => self.check_function_body_returns(
                     &statement.body,
@@ -522,7 +485,6 @@ impl<'a> ModuleChecker<'a> {
                     return_type,
                     allows_implicit_undefined,
                     function_span,
-                    None,
                 ),
                 FunctionBodyItem::Try(statement) => {
                     self.check_function_body_returns(
@@ -531,7 +493,6 @@ impl<'a> ModuleChecker<'a> {
                         return_type,
                         allows_implicit_undefined,
                         function_span,
-                        None,
                     );
                     if let Some(handler) = &statement.handler {
                         let catch_scope = self.catch_binding_scope(&current_scope, handler);
@@ -543,7 +504,6 @@ impl<'a> ModuleChecker<'a> {
                             return_type,
                             allows_implicit_undefined,
                             function_span,
-                            None,
                         );
                         self.strict_catch_unknown = previous_strictness;
                     }
@@ -554,15 +514,10 @@ impl<'a> ModuleChecker<'a> {
                             return_type,
                             allows_implicit_undefined,
                             function_span,
-                            None,
                         );
                     }
                 }
-                FunctionBodyItem::Variable(variable) => {
-                    if selected_local == Some(variable.name.as_str()) {
-                        selected_local_is_declared = true;
-                    }
-                }
+                FunctionBodyItem::Variable(_) => {}
                 // A nested function's returns belong to that function.
                 FunctionBodyItem::Expression { .. }
                 | FunctionBodyItem::Throw { .. }
@@ -579,34 +534,28 @@ impl<'a> ModuleChecker<'a> {
         return_type: Option<&Type>,
         allows_implicit_undefined: bool,
         function_span: &SourceSpan,
-        selected_local: Option<&str>,
     ) {
-        let (then_scope, else_scope) = narrowed_guard_scopes(statement, scope, selected_local)
-            .unwrap_or_else(|| (scope.clone(), scope.clone()));
         self.check_function_body_returns(
             &statement.consequent,
-            &then_scope,
+            scope,
             return_type,
             allows_implicit_undefined,
             function_span,
-            None,
         );
         match &statement.alternate {
             Some(FunctionElseBranch::Braced(body)) => self.check_function_body_returns(
                 body,
-                &else_scope,
+                scope,
                 return_type,
                 allows_implicit_undefined,
                 function_span,
-                None,
             ),
             Some(FunctionElseBranch::ElseIf(branch)) => self.check_function_if_returns(
                 branch,
-                &else_scope,
+                scope,
                 return_type,
                 allows_implicit_undefined,
                 function_span,
-                None,
             ),
             None => {}
         }
@@ -641,7 +590,7 @@ impl<'a> ModuleChecker<'a> {
         let return_is_assignable = (matches!(actual, Type::Undefined) && allows_implicit_undefined)
             || self.is_assignable_bounded(&actual, return_type, function_span);
         if !return_is_assignable {
-            self.type_error(
+            self.assignment_error(
                 function_span,
                 format!(
                     "return expression has type `{}`, which is not assignable to `{}`",
@@ -649,7 +598,16 @@ impl<'a> ModuleChecker<'a> {
                     type_label(return_type)
                 ),
                 DiagnosticCode::ReturnTypeMismatch,
+                &actual,
+                return_type,
             );
+            if let Some(token) = self
+                .scopes
+                .as_ref()
+                .and_then(|scopes| scopes.flow_return_token(returned[0].start))
+            {
+                self.point_last_typescript(&[token]);
+            }
         }
     }
 
@@ -673,33 +631,19 @@ impl<'a> ModuleChecker<'a> {
         &mut self,
         items: &[FunctionBodyItem],
         scope: &BTreeMap<String, Type>,
-        selected_local: Option<&str>,
     ) {
-        let mut current_scope = scope.clone();
-        let mut selected_local_is_declared = false;
-        let mut guard_used = false;
+        let current_scope = scope.clone();
         for item in items {
             let (tokens, span) = match item {
                 FunctionBodyItem::Expression { tokens, span }
                 | FunctionBodyItem::Throw { tokens, span } => (tokens, span),
-                FunctionBodyItem::Variable(variable) => {
-                    if selected_local == Some(variable.name.as_str()) {
-                        selected_local_is_declared = true;
-                    }
-                    continue;
-                }
+                FunctionBodyItem::Variable(_) => continue,
                 FunctionBodyItem::Function(function) => {
                     self.check_function_in_scope(function, current_scope.clone());
                     continue;
                 }
                 FunctionBodyItem::If(statement) => {
-                    let active_local =
-                        selected_local.filter(|_| selected_local_is_declared && !guard_used);
-                    guard_used |=
-                        narrowed_guard_scopes(statement, &current_scope, active_local).is_some();
-                    self.check_direct_function_if(statement, &current_scope, active_local);
-                    current_scope =
-                        Self::scope_after_guard(statement, &current_scope, active_local);
+                    self.check_direct_function_if(statement, &current_scope);
                     continue;
                 }
                 FunctionBodyItem::While(statement) => {
@@ -707,16 +651,16 @@ impl<'a> ModuleChecker<'a> {
                     continue;
                 }
                 FunctionBodyItem::Try(statement) => {
-                    self.check_function_body_expressions(&statement.block, &current_scope, None);
+                    self.check_function_body_expressions(&statement.block, &current_scope);
                     if let Some(handler) = &statement.handler {
                         let catch_scope = self.catch_binding_scope(&current_scope, handler);
                         let previous_strictness = self.strict_catch_unknown;
                         self.strict_catch_unknown = true;
-                        self.check_function_body_expressions(&handler.body, &catch_scope, None);
+                        self.check_function_body_expressions(&handler.body, &catch_scope);
                         self.strict_catch_unknown = previous_strictness;
                     }
                     if let Some(finalizer) = &statement.finalizer {
-                        self.check_function_body_expressions(finalizer, &current_scope, None);
+                        self.check_function_body_expressions(finalizer, &current_scope);
                     }
                     continue;
                 }
@@ -730,18 +674,16 @@ impl<'a> ModuleChecker<'a> {
         &mut self,
         statement: &FunctionIfStatement,
         scope: &BTreeMap<String, Type>,
-        selected_local: Option<&str>,
     ) {
         self.check_direct_runtime_expression(&statement.test, scope, &statement.span);
-        let (then_scope, else_scope) = narrowed_guard_scopes(statement, scope, selected_local)
-            .unwrap_or_else(|| (scope.clone(), scope.clone()));
-        self.check_function_body_expressions(&statement.consequent, &then_scope, None);
+
+        self.check_function_body_expressions(&statement.consequent, scope);
         match &statement.alternate {
             Some(FunctionElseBranch::Braced(alternate)) => {
-                self.check_function_body_expressions(alternate, &else_scope, None);
+                self.check_function_body_expressions(alternate, scope);
             }
             Some(FunctionElseBranch::ElseIf(alternate)) => {
-                self.check_direct_function_if(alternate, &else_scope, None);
+                self.check_direct_function_if(alternate, scope);
             }
             None => {}
         }
@@ -753,7 +695,7 @@ impl<'a> ModuleChecker<'a> {
         scope: &BTreeMap<String, Type>,
     ) {
         self.check_direct_runtime_expression(&statement.test, scope, &statement.span);
-        self.check_function_body_expressions(&statement.body, scope, None);
+        self.check_function_body_expressions(&statement.body, scope);
     }
 }
 

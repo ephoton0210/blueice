@@ -134,6 +134,7 @@ fn text(value: &Type, depth: usize, project: Option<&crate::Project>) -> String 
             )
         }
         Type::Union(values) => {
+            let literal_union = values.iter().all(|value| matches!(value, Type::Literal(_)));
             let mut values = values
                 .iter()
                 .map(|value| {
@@ -144,20 +145,22 @@ fn text(value: &Type, depth: usize, project: Option<&crate::Project>) -> String 
                     }
                 })
                 .collect::<Vec<_>>();
-            values.sort_by_key(|value| {
-                (
-                    match value.as_str() {
-                        "string" => 0,
-                        "number" => 1,
-                        "bigint" => 2,
-                        "boolean" => 3,
-                        "null" => 10,
-                        "undefined" => 11,
-                        _ => 5,
-                    },
-                    value.clone(),
-                )
-            });
+            if !literal_union {
+                values.sort_by_key(|value| {
+                    (
+                        match value.as_str() {
+                            "string" => 0,
+                            "number" => 1,
+                            "bigint" => 2,
+                            "boolean" => 3,
+                            "null" => 10,
+                            "undefined" => 11,
+                            _ => 5,
+                        },
+                        value.clone(),
+                    )
+                });
+            }
             values.dedup();
             values.join(" | ")
         }

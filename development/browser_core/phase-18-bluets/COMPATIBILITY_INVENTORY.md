@@ -36,16 +36,24 @@ test files (`grep -rl '#\[ignore' backend/bluets*/tests`), section 4 is
 | `cli_surface.rs` | native project CLI flags and overrides, default project discovery, normalized configuration, source/emitted lists, noEmit and pretty/exit observations; input preservation, Node execution and exact declarations | 30 observations (24 accept, 6 reject), 2 emission layouts |
 | `option_combinations_oracle.rs` | one linked multi-feature program over target, module system, default/explicit class-field policy, preservation, isolated modules, sourceMap, declaration, noEmit and strict; project verdicts, artifact inventory, Node output, exact declarations and source-map structure | 768 configurations (384 emitted, 384 noEmit) |
 | `bluets-bluejs/tests/namespace_parity.rs`, `jsx_direct.rs`, `decorators_direct.rs` | the direct runtime (BlueJS) against Node running `tsc`'s output | 7 + 7 + 6 programs |
+| `diagnostic_source_families.rs` | additional lexical/semantic diagnostic source families, exact primary codes and positions | 97 controls |
+| `diagnostics_matrix.rs` | verdicts, TypeScript primary code/template, rendered message, UTF-16 position and related information | 1,521 programs, 137 templates, 840 rejected primaries |
+| `diagnostics_projects.rs` | project/configuration, CLI and option-combination diagnostic positions | 867 observations |
+| `diagnostics_presentation.rs` | actual plain/pretty CLI presentation, summaries, related source context, exit status and artifacts | 22 observations |
+| `narrowing_checker_matrix.rs` | lexical control-flow verdicts and exact primary diagnostics; Node behavior and exact declarations | 123 programs, 14 runtime/declaration witnesses |
 
-The fixture corpus under `tests/fixtures/typescript_oracle/` has 1608 top-level directories; each is an
+The fixture corpus under `tests/fixtures/typescript_oracle/` has 1731 top-level directories; each is an
 entry whose verdict was recorded from the pinned compiler by an ignored test
 (`BLUEICE_WRITE_*_MATRIX=1`), and the ordinary (non-ignored) tests replay the recorded verdicts offline.
 
-What is **not** compared byte for byte, by design: diagnostics are matched by verdict and BlueTS's own
-code (`BTSnnnn`), not by TypeScript's `TSnnnn` number or text; source maps are line-level provenance, not
-`tsc`'s token-level maps (they are validated structurally and by line, not diffed); emitted text is compared
-by running it (and, for declarations, by text where TypeScript's output is deterministic), not by
-whitespace.
+BTS diagnostics retain BlueTS's own codes and raw messages. Their separate TypeScript
+counterparts compare exact primary codes, text, original UTF-16 positions and related information
+in the measured corpus. Source maps retain line-level provenance and are validated structurally;
+emitted JavaScript compares behavior under Node, while declarations compare deterministic text.
+
+The K.4.1 Linux verification covers all 33 differential suite files and all 128 ignored oracles.
+All 123 narrowing cases and fourteen runtime/declaration witnesses pass, and the CLI tracker
+compares 840 rejected primaries with zero message or related-information differences.
 
 ### Measured pass rate (2026-10-06, Linux aarch64 in Colima on Apple silicon, pinned `typescript@5.9.3`, Node 26)
 
@@ -90,7 +98,7 @@ suite entry, then removing the row.
 
 | ID | Gap |
 | --- | --- |
-| G-T1 | Control-flow narrowing (`typeof`/`instanceof`/`in`/discriminant/truthiness guards, assertion functions, user-defined type guards) beyond the few shapes the checker models. K.3.3 records three exact iterator-result assignment, lexical-shadowing and post-loop type-fact witnesses in `presentation-type-fact-gaps.json`: both compilers reject with TS2345 at identical positions and no related information, but BlueTSC retains `string &#124; number` where TypeScript narrows to `string`. K.4.1 owns these gaps. |
+| G-T1 | K.4.1 supplies lexical control-flow facts for the 123 pinned `typeof`/`instanceof`/`in`/literal/nullish/discriminant/truthiness, optional-chain, switch, loop, assignment and closure witnesses. Property facts retain their owning lexical binding and path. The three K.3.3 iterator-flow wording gaps are resolved and their message allowances removed. User-defined guards/assertion functions and exhaustiveness remain in K.4.2; broader exceptional-flow and dotted capture precision remain unmeasured. |
 | G-T2 | Generic inference in general: inference from arguments for arbitrary generic functions and classes, constraints with `keyof`/indexed access, higher-kinded patterns, variance annotations. |
 | G-T3 | Conditional types, `infer`, mapped types, template-literal types, indexed access and `keyof`/`typeof` type operators in full, recursive types beyond the type budget. |
 | G-T4 | Overload resolution in full (call and construct signatures, contextual signature selection), optional chaining and non-null assertion typing in all positions. |
@@ -130,7 +138,7 @@ suite entry, then removing the row.
 
 | ID | Gap |
 | --- | --- |
-| G-C1 | K.3.1 provides pinned TypeScript codes and message templates through `--diagnostics-json` and the public diagnostic API, preserving BTS aliases and enumerated owner/subset reasons. All 1,398 existing checker entries agree on primary code/template; 97 additional source witnesses cover further diagnostic families. K.3.2 matches primary UTF-16 positions and source module identity across 1,398 language/strictness and 867 project/CLI/option cases. K.3.3 adds related codes/messages/module identity/UTF-16 coordinates, contextual rendered wording, plain/pretty formatting, source and related context, per-file error tables, diagnostics summary fields and measured native exit/emission semantics. Its corpus retains exactly three measured type-fact wording gaps in G-T1; `--explainFiles` and the full `tsc` command line remain outside this measured subset. |
+| G-C1 | K.3.1 provides pinned TypeScript codes and message templates through `--diagnostics-json` and the public diagnostic API, preserving BTS aliases and enumerated owner/subset reasons. All 1,398 existing checker entries agree on primary code/template; 97 additional source witnesses cover further diagnostic families. K.3.2 matches primary UTF-16 positions and source module identity across 1,398 language/strictness and 867 project/CLI/option cases. K.3.3 adds related codes/messages/module identity/UTF-16 coordinates, contextual rendered wording, plain/pretty formatting, source and related context, per-file error tables, diagnostics summary fields and measured native exit/emission semantics. K.4.1 resolves the three measured G-T1 wording gaps; `--explainFiles` and the full `tsc` command line remain outside this measured subset. |
 | G-C2 | Closed for the compared subset by K.2.2: parent `strict`, its nine family flags, unused locals/parameters, implicit returns, switch fallthrough, exact optional properties and unchecked indexed reads are independently selectable through projects and `CheckingOptions`. Thirty-two on/off configurations and 39 boundary controls agree with pinned TypeScript; valid JavaScript stays identical and legacy API defaults remain unchanged. Broader type-system behavior remains in G-T1/G-T2 and the other open rows; full `tsc` parity is not claimed. |
 | G-C3 | JSX: `jsx` type options `jsxImportSource` runtime typing (the automatic runtime's `JSX` namespace is not read from the package), `JSX.ElementType`, `LibraryManagedAttributes`, `defaultProps`, generic components and type arguments on tags (section 4 and `PLAN.md` J.5.1). |
 
@@ -157,7 +165,7 @@ excluded). A refusal is never silent: the program is rejected with this text.
 
 - `backend/bluets/src/checker/module/binding/modules.rs:174` — `export =` cannot be used when the module system is ECMAScript; use `--module commonjs`
 - `backend/bluets/src/checker/module/binding/modules.rs:166` — `import x = require()` cannot be used when the module system is ECMAScript; use `--module commonjs`
-- `backend/bluets/src/checker/module/binding.rs:233` — a class member other than a constructor, method, field or accessor \ (a computed, generator or `accessor` member) is not supported yet
+- `backend/bluets/src/checker/module/binding.rs:234` — a class member other than a constructor, method, field or accessor \ (a computed, generator or `accessor` member) is not supported yet
 - `backend/bluets/src/checker/module/binding/enums.rs:214` — a computed initializer that refers to the member `{}` must write it \ as `{}.{}`
 - `backend/bluets/src/checker/module/decorators.rs:116` — a decorator can only decorate a method implementation, not an overload
 - `backend/bluets/src/checker/module/binding/classes/fields.rs:327` — a field initializer that refers to a later field inside a nested \ function is not supported yet
@@ -166,17 +174,17 @@ excluded). A refusal is never silent: the program is rejected with this text.
 - `backend/bluets/src/checker/module/binding/classes/visibility.rs:580` — cannot prove that access to `{}` is permitted for this receiver
 - `backend/bluets/src/checker/module/binding/classes/fields.rs:113` — class field `{}` needs a type annotation unless its initializer \ or default is a number, string or boolean literal
 - `backend/bluets/src/checker/module/binding/classes.rs:645` — class tuple rest annotation cannot be specialized within the type budget
-- `backend/bluets/src/checker/module/binding/names.rs:150` — cyclic tuple spread cannot be resolved
+- `backend/bluets/src/checker/module/binding/names.rs:156` — cyclic tuple spread cannot be resolved
 - `backend/bluets/src/checker/module/binding/classes/fields.rs:383` — definite assignment of `{}` through a branch is not supported yet
 - `backend/bluets/src/checker/module/binding/classes/fields.rs:438` — field `{}` redeclares a member of an imported base class, which is not supported yet
 - `backend/bluets/src/checker/module/binding/classes/accessors.rs:143` — getter `{}` needs a return type annotation; inferring it from the \ body is not supported yet
-- `backend/bluets/src/checker/module/binding.rs:535` — interface heritage {name} must name an interface declaration
+- `backend/bluets/src/checker/module/binding.rs:536` — interface heritage {name} must name an interface declaration
 - `backend/bluets/src/checker/module/binding/namespaces.rs:1095` — namespace `{source}` has no run-time members; import it with `import type`
 - `backend/bluets/src/checker/module/binding/classes/accessors.rs:364` — redeclaring `{name}` as an accessor over a member of an \ imported base class is not supported yet
 - `backend/bluets/src/checker/module/binding/classes/visibility.rs:302` — redeclaring the protected member `{name}` of an imported base \ class is not supported yet
 - `backend/bluets/src/checker/module/binding/classes/accessors.rs:195` — the getter and setter of `{name}` have different types, \ which is not supported yet
-- `backend/bluets/src/checker/module/binding/names.rs:154` — tuple spread names an unresolved type
-- `backend/bluets/src/checker/module/binding/names.rs:158` — tuple spread requires one concrete tuple or array type
+- `backend/bluets/src/checker/module/binding/names.rs:160` — tuple spread names an unresolved type
+- `backend/bluets/src/checker/module/binding/names.rs:164` — tuple spread requires one concrete tuple or array type
 
 ### diagnostic (1)
 

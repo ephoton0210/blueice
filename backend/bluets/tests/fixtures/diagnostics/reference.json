@@ -541,6 +541,14 @@
     {
       "code": 18041,
       "message": "A 'return' statement cannot be used inside a class static block."
+    },
+    {
+      "code": 18047,
+      "message": "'{0}' is possibly 'null'."
+    },
+    {
+      "code": 18048,
+      "message": "'{0}' is possibly 'undefined'."
     }
   ],
   "cases": [
@@ -43448,6 +43456,3389 @@
       "accepts": true,
       "first": null,
       "diagnostics": []
+    },
+    {
+      "id": "narrowing:narrow-and-expression/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-and-expression/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/narrow-and-expression/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "narrowing:narrow-and-typeof/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-and-typeof/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/narrow-and-typeof/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "narrowing:narrow-any-typeof-error/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-any-typeof-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/narrow-any-typeof-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2345,
+        "category": "error",
+        "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+        "file": "typescript_oracle/narrow-any-typeof-error/main.ts",
+        "start": 335,
+        "length": 5,
+        "line": 5,
+        "column": 132
+      },
+      "diagnostics": [
+        {
+          "code": 2345,
+          "category": "error",
+          "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+          "file": "typescript_oracle/narrow-any-typeof-error/main.ts",
+          "start": 335,
+          "length": 5,
+          "line": 5,
+          "column": 132
+        }
+      ]
+    },
+    {
+      "id": "narrowing:narrow-assigned-unreachable-never/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-assigned-unreachable-never/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/narrow-assigned-unreachable-never/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "narrowing:narrow-assignment-invalid/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-assignment-invalid/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/narrow-assignment-invalid/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'boolean' is not assignable to type 'string | number'.",
+        "file": "typescript_oracle/narrow-assignment-invalid/main.ts",
+        "start": 351,
+        "length": 5,
+        "line": 7,
+        "column": 48
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'boolean' is not assignable to type 'string | number'.",
+          "file": "typescript_oracle/narrow-assignment-invalid/main.ts",
+          "start": 351,
+          "length": 5,
+          "line": 7,
+          "column": 48
+        }
+      ]
+    },
+    {
+      "id": "narrowing:narrow-assignment-number/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-assignment-number/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/narrow-assignment-number/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "narrowing:narrow-assignment-number-wrong/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-assignment-number-wrong/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/narrow-assignment-number-wrong/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2345,
+        "category": "error",
+        "message": "Argument of type 'number' is not assignable to parameter of type 'string'.",
+        "file": "typescript_oracle/narrow-assignment-number-wrong/main.ts",
+        "start": 373,
+        "length": 5,
+        "line": 7,
+        "column": 70
+      },
+      "diagnostics": [
+        {
+          "code": 2345,
+          "category": "error",
+          "message": "Argument of type 'number' is not assignable to parameter of type 'string'.",
+          "file": "typescript_oracle/narrow-assignment-number-wrong/main.ts",
+          "start": 373,
+          "length": 5,
+          "line": 7,
+          "column": 70
+        }
+      ]
+    },
+    {
+      "id": "narrowing:narrow-assignment-reset/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-assignment-reset/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/narrow-assignment-reset/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "narrowing:narrow-assignment-reset-wrong/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-assignment-reset-wrong/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/narrow-assignment-reset-wrong/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2345,
+        "category": "error",
+        "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+        "file": "typescript_oracle/narrow-assignment-reset-wrong/main.ts",
+        "start": 414,
+        "length": 5,
+        "line": 7,
+        "column": 111
+      },
+      "diagnostics": [
+        {
+          "code": 2345,
+          "category": "error",
+          "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+          "file": "typescript_oracle/narrow-assignment-reset-wrong/main.ts",
+          "start": 414,
+          "length": 5,
+          "line": 7,
+          "column": 111
+        }
+      ]
+    },
+    {
+      "id": "narrowing:narrow-assignment-shadow/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-assignment-shadow/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/narrow-assignment-shadow/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "narrowing:narrow-assignment-shadow-outer/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-assignment-shadow-outer/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/narrow-assignment-shadow-outer/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "narrowing:narrow-capture-after-assignment/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-capture-after-assignment/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/narrow-capture-after-assignment/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "narrowing:narrow-capture-const/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-capture-const/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/narrow-capture-const/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "narrowing:narrow-capture-delayed/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-capture-delayed/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/narrow-capture-delayed/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2339,
+        "category": "error",
+        "message": "Property 'length' does not exist on type 'string | number'.\n  Property 'length' does not exist on type 'number'.",
+        "file": "typescript_oracle/narrow-capture-delayed/main.ts",
+        "start": 422,
+        "length": 6,
+        "line": 7,
+        "column": 119
+      },
+      "diagnostics": [
+        {
+          "code": 2339,
+          "category": "error",
+          "message": "Property 'length' does not exist on type 'string | number'.\n  Property 'length' does not exist on type 'number'.",
+          "file": "typescript_oracle/narrow-capture-delayed/main.ts",
+          "start": 422,
+          "length": 6,
+          "line": 7,
+          "column": 119
+        }
+      ]
+    },
+    {
+      "id": "narrowing:narrow-capture-iife/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-capture-iife/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/narrow-capture-iife/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "narrowing:narrow-capture-iife-write/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-capture-iife-write/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/narrow-capture-iife-write/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "narrowing:narrow-capture-let-later-write/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-capture-let-later-write/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/narrow-capture-let-later-write/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2339,
+        "category": "error",
+        "message": "Property 'length' does not exist on type 'string | number'.\n  Property 'length' does not exist on type 'number'.",
+        "file": "typescript_oracle/narrow-capture-let-later-write/main.ts",
+        "start": 408,
+        "length": 6,
+        "line": 7,
+        "column": 105
+      },
+      "diagnostics": [
+        {
+          "code": 2339,
+          "category": "error",
+          "message": "Property 'length' does not exist on type 'string | number'.\n  Property 'length' does not exist on type 'number'.",
+          "file": "typescript_oracle/narrow-capture-let-later-write/main.ts",
+          "start": 408,
+          "length": 6,
+          "line": 7,
+          "column": 105
+        }
+      ]
+    },
+    {
+      "id": "narrowing:narrow-capture-let-stable/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-capture-let-stable/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/narrow-capture-let-stable/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "narrowing:narrow-compound-nullish/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-compound-nullish/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/narrow-compound-nullish/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "narrowing:narrow-conditional-expression/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-conditional-expression/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/narrow-conditional-expression/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "narrowing:narrow-discriminant/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-discriminant/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/narrow-discriminant/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "narrowing:narrow-discriminant-alias/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-discriminant-alias/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/narrow-discriminant-alias/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "narrowing:narrow-discriminant-negative/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-discriminant-negative/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/narrow-discriminant-negative/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "narrowing:narrow-discriminant-wrong/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-discriminant-wrong/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/narrow-discriminant-wrong/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2345,
+        "category": "error",
+        "message": "Argument of type 'number' is not assignable to parameter of type 'string'.",
+        "file": "typescript_oracle/narrow-discriminant-wrong/main.ts",
+        "start": 467,
+        "length": 11,
+        "line": 8,
+        "column": 81
+      },
+      "diagnostics": [
+        {
+          "code": 2345,
+          "category": "error",
+          "message": "Argument of type 'number' is not assignable to parameter of type 'string'.",
+          "file": "typescript_oracle/narrow-discriminant-wrong/main.ts",
+          "start": 467,
+          "length": 11,
+          "line": 8,
+          "column": 81
+        }
+      ]
+    },
+    {
+      "id": "narrowing:narrow-immediate-branch-assignment/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-immediate-branch-assignment/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/narrow-immediate-branch-assignment/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "narrowing:narrow-immediate-branch-error/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-immediate-branch-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/narrow-immediate-branch-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'string | number' is not assignable to type 'string'.\n  Type 'number' is not assignable to type 'string'.",
+        "file": "typescript_oracle/narrow-immediate-branch-error/main.ts",
+        "start": 374,
+        "length": 6,
+        "line": 5,
+        "column": 171
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'string | number' is not assignable to type 'string'.\n  Type 'number' is not assignable to type 'string'.",
+          "file": "typescript_oracle/narrow-immediate-branch-error/main.ts",
+          "start": 374,
+          "length": 6,
+          "line": 5,
+          "column": 171
+        }
+      ]
+    },
+    {
+      "id": "narrowing:narrow-in-left/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-in-left/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/narrow-in-left/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "narrowing:narrow-in-left-wrong/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-in-left-wrong/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/narrow-in-left-wrong/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2339,
+        "category": "error",
+        "message": "Property 'right' does not exist on type 'Left'.",
+        "file": "typescript_oracle/narrow-in-left-wrong/main.ts",
+        "start": 450,
+        "length": 5,
+        "line": 8,
+        "column": 85
+      },
+      "diagnostics": [
+        {
+          "code": 2339,
+          "category": "error",
+          "message": "Property 'right' does not exist on type 'Left'.",
+          "file": "typescript_oracle/narrow-in-left-wrong/main.ts",
+          "start": 450,
+          "length": 5,
+          "line": 8,
+          "column": 85
+        }
+      ]
+    },
+    {
+      "id": "narrowing:narrow-in-logical/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-in-logical/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/narrow-in-logical/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "narrowing:narrow-in-nullish/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-in-nullish/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/narrow-in-nullish/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 18047,
+        "category": "error",
+        "message": "'value' is possibly 'null'.",
+        "file": "typescript_oracle/narrow-in-nullish/main.ts",
+        "start": 423,
+        "length": 5,
+        "line": 8,
+        "column": 58
+      },
+      "diagnostics": [
+        {
+          "code": 18047,
+          "category": "error",
+          "message": "'value' is possibly 'null'.",
+          "file": "typescript_oracle/narrow-in-nullish/main.ts",
+          "start": 423,
+          "length": 5,
+          "line": 8,
+          "column": 58
+        }
+      ]
+    },
+    {
+      "id": "narrowing:narrow-in-optional/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-in-optional/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/narrow-in-optional/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "narrowing:narrow-instanceof-inherited/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-instanceof-inherited/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/narrow-instanceof-inherited/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "narrowing:narrow-instanceof-left/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-instanceof-left/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/narrow-instanceof-left/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "narrowing:narrow-instanceof-negative/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-instanceof-negative/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/narrow-instanceof-negative/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "narrowing:narrow-instanceof-null/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-instanceof-null/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/narrow-instanceof-null/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "narrowing:narrow-instanceof-wrong/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-instanceof-wrong/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/narrow-instanceof-wrong/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2339,
+        "category": "error",
+        "message": "Property 'right' does not exist on type 'Left'.",
+        "file": "typescript_oracle/narrow-instanceof-wrong/main.ts",
+        "start": 464,
+        "length": 5,
+        "line": 8,
+        "column": 91
+      },
+      "diagnostics": [
+        {
+          "code": 2339,
+          "category": "error",
+          "message": "Property 'right' does not exist on type 'Left'.",
+          "file": "typescript_oracle/narrow-instanceof-wrong/main.ts",
+          "start": 464,
+          "length": 5,
+          "line": 8,
+          "column": 91
+        }
+      ]
+    },
+    {
+      "id": "narrowing:narrow-iterator-following/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-iterator-following/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/narrow-iterator-following/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2345,
+        "category": "error",
+        "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+        "file": "typescript_oracle/narrow-iterator-following/main.ts",
+        "start": 395,
+        "length": 10,
+        "line": 5,
+        "column": 192
+      },
+      "diagnostics": [
+        {
+          "code": 2345,
+          "category": "error",
+          "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+          "file": "typescript_oracle/narrow-iterator-following/main.ts",
+          "start": 395,
+          "length": 10,
+          "line": 5,
+          "column": 192
+        }
+      ]
+    },
+    {
+      "id": "narrowing:narrow-iterator-return-assigned/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-iterator-return-assigned/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/narrow-iterator-return-assigned/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2345,
+        "category": "error",
+        "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+        "file": "typescript_oracle/narrow-iterator-return-assigned/main.ts",
+        "start": 386,
+        "length": 10,
+        "line": 5,
+        "column": 183
+      },
+      "diagnostics": [
+        {
+          "code": 2345,
+          "category": "error",
+          "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+          "file": "typescript_oracle/narrow-iterator-return-assigned/main.ts",
+          "start": 386,
+          "length": 10,
+          "line": 5,
+          "column": 183
+        }
+      ]
+    },
+    {
+      "id": "narrowing:narrow-iterator-shadowed/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-iterator-shadowed/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/narrow-iterator-shadowed/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2345,
+        "category": "error",
+        "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+        "file": "typescript_oracle/narrow-iterator-shadowed/main.ts",
+        "start": 420,
+        "length": 10,
+        "line": 5,
+        "column": 217
+      },
+      "diagnostics": [
+        {
+          "code": 2345,
+          "category": "error",
+          "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+          "file": "typescript_oracle/narrow-iterator-shadowed/main.ts",
+          "start": 420,
+          "length": 10,
+          "line": 5,
+          "column": 217
+        }
+      ]
+    },
+    {
+      "id": "narrowing:narrow-join-both-number/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-join-both-number/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/narrow-join-both-number/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "narrowing:narrow-join-return/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-join-return/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/narrow-join-return/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "narrowing:narrow-join-some-number/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-join-some-number/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/narrow-join-some-number/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "narrowing:narrow-join-throw/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-join-throw/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/narrow-join-throw/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "narrowing:narrow-join-wide/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-join-wide/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/narrow-join-wide/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2345,
+        "category": "error",
+        "message": "Argument of type 'string | number' is not assignable to parameter of type 'number'.\n  Type 'string' is not assignable to type 'number'.",
+        "file": "typescript_oracle/narrow-join-wide/main.ts",
+        "start": 436,
+        "length": 5,
+        "line": 7,
+        "column": 133
+      },
+      "diagnostics": [
+        {
+          "code": 2345,
+          "category": "error",
+          "message": "Argument of type 'string | number' is not assignable to parameter of type 'number'.\n  Type 'string' is not assignable to type 'number'.",
+          "file": "typescript_oracle/narrow-join-wide/main.ts",
+          "start": 436,
+          "length": 5,
+          "line": 7,
+          "column": 133
+        }
+      ]
+    },
+    {
+      "id": "narrowing:narrow-joined-record-variants/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-joined-record-variants/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/narrow-joined-record-variants/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "narrowing:narrow-literal-boolean/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-literal-boolean/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/narrow-literal-boolean/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "narrowing:narrow-literal-number/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-literal-number/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/narrow-literal-number/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "narrowing:narrow-literal-number-wrong/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-literal-number-wrong/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/narrow-literal-number-wrong/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type '1' is not assignable to type '2'.",
+        "file": "typescript_oracle/narrow-literal-number-wrong/main.ts",
+        "start": 366,
+        "length": 8,
+        "line": 7,
+        "column": 63
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type '1' is not assignable to type '2'.",
+          "file": "typescript_oracle/narrow-literal-number-wrong/main.ts",
+          "start": 366,
+          "length": 8,
+          "line": 7,
+          "column": 63
+        }
+      ]
+    },
+    {
+      "id": "narrowing:narrow-literal-string/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-literal-string/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/narrow-literal-string/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "narrowing:narrow-literal-string-negative/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-literal-string-negative/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/narrow-literal-string-negative/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "narrowing:narrow-literal-string-wrong/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-literal-string-wrong/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/narrow-literal-string-wrong/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type '\"left\"' is not assignable to type '\"right\"'.",
+        "file": "typescript_oracle/narrow-literal-string-wrong/main.ts",
+        "start": 382,
+        "length": 8,
+        "line": 7,
+        "column": 79
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type '\"left\"' is not assignable to type '\"right\"'.",
+          "file": "typescript_oracle/narrow-literal-string-wrong/main.ts",
+          "start": 382,
+          "length": 8,
+          "line": 7,
+          "column": 79
+        }
+      ]
+    },
+    {
+      "id": "narrowing:narrow-loop-body/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-loop-body/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/narrow-loop-body/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "narrowing:narrow-loop-break-number/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-loop-break-number/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/narrow-loop-break-number/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "narrowing:narrow-loop-break-wide/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-loop-break-wide/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/narrow-loop-break-wide/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2345,
+        "category": "error",
+        "message": "Argument of type 'string | number' is not assignable to parameter of type 'number'.\n  Type 'string' is not assignable to type 'number'.",
+        "file": "typescript_oracle/narrow-loop-break-wide/main.ts",
+        "start": 407,
+        "length": 5,
+        "line": 7,
+        "column": 104
+      },
+      "diagnostics": [
+        {
+          "code": 2345,
+          "category": "error",
+          "message": "Argument of type 'string | number' is not assignable to parameter of type 'number'.\n  Type 'string' is not assignable to type 'number'.",
+          "file": "typescript_oracle/narrow-loop-break-wide/main.ts",
+          "start": 407,
+          "length": 5,
+          "line": 7,
+          "column": 104
+        }
+      ]
+    },
+    {
+      "id": "narrowing:narrow-loop-continue/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-loop-continue/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/narrow-loop-continue/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "narrowing:narrow-loop-do/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-loop-do/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/narrow-loop-do/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "narrowing:narrow-loop-for/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-loop-for/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/narrow-loop-for/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "narrowing:narrow-loop-post/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-loop-post/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/narrow-loop-post/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "narrowing:narrow-loop-reset-wrong/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-loop-reset-wrong/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/narrow-loop-reset-wrong/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2345,
+        "category": "error",
+        "message": "Argument of type 'number' is not assignable to parameter of type 'string'.",
+        "file": "typescript_oracle/narrow-loop-reset-wrong/main.ts",
+        "start": 409,
+        "length": 5,
+        "line": 7,
+        "column": 106
+      },
+      "diagnostics": [
+        {
+          "code": 2345,
+          "category": "error",
+          "message": "Argument of type 'number' is not assignable to parameter of type 'string'.",
+          "file": "typescript_oracle/narrow-loop-reset-wrong/main.ts",
+          "start": 409,
+          "length": 5,
+          "line": 7,
+          "column": 106
+        }
+      ]
+    },
+    {
+      "id": "narrowing:narrow-null-loose/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-null-loose/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/narrow-null-loose/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "narrowing:narrow-null-loose-negative/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-null-loose-negative/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/narrow-null-loose-negative/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2345,
+        "category": "error",
+        "message": "Argument of type 'null | undefined' is not assignable to parameter of type 'number'.\n  Type 'undefined' is not assignable to type 'number'.",
+        "file": "typescript_oracle/narrow-null-loose-negative/main.ts",
+        "start": 393,
+        "length": 5,
+        "line": 7,
+        "column": 90
+      },
+      "diagnostics": [
+        {
+          "code": 2345,
+          "category": "error",
+          "message": "Argument of type 'null | undefined' is not assignable to parameter of type 'number'.\n  Type 'undefined' is not assignable to type 'number'.",
+          "file": "typescript_oracle/narrow-null-loose-negative/main.ts",
+          "start": 393,
+          "length": 5,
+          "line": 7,
+          "column": 90
+        }
+      ]
+    },
+    {
+      "id": "narrowing:narrow-null-negative/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-null-negative/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/narrow-null-negative/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2345,
+        "category": "error",
+        "message": "Argument of type 'null' is not assignable to parameter of type 'number'.",
+        "file": "typescript_oracle/narrow-null-negative/main.ts",
+        "start": 382,
+        "length": 5,
+        "line": 7,
+        "column": 79
+      },
+      "diagnostics": [
+        {
+          "code": 2345,
+          "category": "error",
+          "message": "Argument of type 'null' is not assignable to parameter of type 'number'.",
+          "file": "typescript_oracle/narrow-null-negative/main.ts",
+          "start": 382,
+          "length": 5,
+          "line": 7,
+          "column": 79
+        }
+      ]
+    },
+    {
+      "id": "narrowing:narrow-null-return/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-null-return/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/narrow-null-return/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "narrowing:narrow-null-strict/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-null-strict/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/narrow-null-strict/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "narrowing:narrow-null-strict-keeps-undefined/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-null-strict-keeps-undefined/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/narrow-null-strict-keeps-undefined/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2345,
+        "category": "error",
+        "message": "Argument of type 'number | undefined' is not assignable to parameter of type 'number'.\n  Type 'undefined' is not assignable to type 'number'.",
+        "file": "typescript_oracle/narrow-null-strict-keeps-undefined/main.ts",
+        "start": 394,
+        "length": 5,
+        "line": 7,
+        "column": 91
+      },
+      "diagnostics": [
+        {
+          "code": 2345,
+          "category": "error",
+          "message": "Argument of type 'number | undefined' is not assignable to parameter of type 'number'.\n  Type 'undefined' is not assignable to type 'number'.",
+          "file": "typescript_oracle/narrow-null-strict-keeps-undefined/main.ts",
+          "start": 394,
+          "length": 5,
+          "line": 7,
+          "column": 91
+        }
+      ]
+    },
+    {
+      "id": "narrowing:narrow-null-throw/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-null-throw/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/narrow-null-throw/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "narrowing:narrow-null-unbraced-return/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-null-unbraced-return/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/narrow-null-unbraced-return/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "narrowing:narrow-optional-alias/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-optional-alias/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/narrow-optional-alias/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "narrowing:narrow-optional-alias-missing-error/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-optional-alias-missing-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/narrow-optional-alias-missing-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2339,
+        "category": "error",
+        "message": "Property 'missing' does not exist on type '{ value: number; }'.",
+        "file": "typescript_oracle/narrow-optional-alias-missing-error/main.ts",
+        "start": 308,
+        "length": 7,
+        "line": 5,
+        "column": 105
+      },
+      "diagnostics": [
+        {
+          "code": 2339,
+          "category": "error",
+          "message": "Property 'missing' does not exist on type '{ value: number; }'.",
+          "file": "typescript_oracle/narrow-optional-alias-missing-error/main.ts",
+          "start": 308,
+          "length": 7,
+          "line": 5,
+          "column": 105
+        }
+      ]
+    },
+    {
+      "id": "narrowing:narrow-optional-chain/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-optional-chain/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/narrow-optional-chain/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "narrowing:narrow-optional-chain-negative/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-optional-chain-negative/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/narrow-optional-chain-negative/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 18048,
+        "category": "error",
+        "message": "'value' is possibly 'undefined'.",
+        "file": "typescript_oracle/narrow-optional-chain-negative/main.ts",
+        "start": 395,
+        "length": 5,
+        "line": 7,
+        "column": 92
+      },
+      "diagnostics": [
+        {
+          "code": 18048,
+          "category": "error",
+          "message": "'value' is possibly 'undefined'.",
+          "file": "typescript_oracle/narrow-optional-chain-negative/main.ts",
+          "start": 395,
+          "length": 5,
+          "line": 7,
+          "column": 92
+        }
+      ]
+    },
+    {
+      "id": "narrowing:narrow-optional-equal-undefined-owner-error/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-optional-equal-undefined-owner-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/narrow-optional-equal-undefined-owner-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 18047,
+        "category": "error",
+        "message": "'box' is possibly 'null'.",
+        "file": "typescript_oracle/narrow-optional-equal-undefined-owner-error/main.ts",
+        "start": 318,
+        "length": 3,
+        "line": 5,
+        "column": 115
+      },
+      "diagnostics": [
+        {
+          "code": 18047,
+          "category": "error",
+          "message": "'box' is possibly 'null'.",
+          "file": "typescript_oracle/narrow-optional-equal-undefined-owner-error/main.ts",
+          "start": 318,
+          "length": 3,
+          "line": 5,
+          "column": 115
+        }
+      ]
+    },
+    {
+      "id": "narrowing:narrow-optional-known-null-const-error/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-optional-known-null-const-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/narrow-optional-known-null-const-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2339,
+        "category": "error",
+        "message": "Property 'value' does not exist on type 'never'.",
+        "file": "typescript_oracle/narrow-optional-known-null-const-error/main.ts",
+        "start": 293,
+        "length": 5,
+        "line": 5,
+        "column": 90
+      },
+      "diagnostics": [
+        {
+          "code": 2339,
+          "category": "error",
+          "message": "Property 'value' does not exist on type 'never'.",
+          "file": "typescript_oracle/narrow-optional-known-null-const-error/main.ts",
+          "start": 293,
+          "length": 5,
+          "line": 5,
+          "column": 90
+        }
+      ]
+    },
+    {
+      "id": "narrowing:narrow-optional-known-null-mutable-error/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-optional-known-null-mutable-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/narrow-optional-known-null-mutable-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2339,
+        "category": "error",
+        "message": "Property 'value' does not exist on type 'never'.",
+        "file": "typescript_oracle/narrow-optional-known-null-mutable-error/main.ts",
+        "start": 290,
+        "length": 5,
+        "line": 5,
+        "column": 87
+      },
+      "diagnostics": [
+        {
+          "code": 2339,
+          "category": "error",
+          "message": "Property 'value' does not exist on type 'never'.",
+          "file": "typescript_oracle/narrow-optional-known-null-mutable-error/main.ts",
+          "start": 290,
+          "length": 5,
+          "line": 5,
+          "column": 87
+        }
+      ]
+    },
+    {
+      "id": "narrowing:narrow-optional-missing-property-error/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-optional-missing-property-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/narrow-optional-missing-property-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2339,
+        "category": "error",
+        "message": "Property 'missing' does not exist on type '{ value: number; }'.",
+        "file": "typescript_oracle/narrow-optional-missing-property-error/main.ts",
+        "start": 288,
+        "length": 7,
+        "line": 5,
+        "column": 85
+      },
+      "diagnostics": [
+        {
+          "code": 2339,
+          "category": "error",
+          "message": "Property 'missing' does not exist on type '{ value: number; }'.",
+          "file": "typescript_oracle/narrow-optional-missing-property-error/main.ts",
+          "start": 288,
+          "length": 7,
+          "line": 5,
+          "column": 85
+        }
+      ]
+    },
+    {
+      "id": "narrowing:narrow-optional-nested-chain/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-optional-nested-chain/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/narrow-optional-nested-chain/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "narrowing:narrow-optional-not-undefined-owner/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-optional-not-undefined-owner/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/narrow-optional-not-undefined-owner/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "narrowing:narrow-optional-null-projection/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-optional-null-projection/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/narrow-optional-null-projection/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "narrowing:narrow-or-expression/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-or-expression/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/narrow-or-expression/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2345,
+        "category": "error",
+        "message": "Argument of type 'string | null' is not assignable to parameter of type 'string'.\n  Type 'null' is not assignable to type 'string'.",
+        "file": "typescript_oracle/narrow-or-expression/main.ts",
+        "start": 369,
+        "length": 5,
+        "line": 7,
+        "column": 66
+      },
+      "diagnostics": [
+        {
+          "code": 2345,
+          "category": "error",
+          "message": "Argument of type 'string | null' is not assignable to parameter of type 'string'.\n  Type 'null' is not assignable to type 'string'.",
+          "file": "typescript_oracle/narrow-or-expression/main.ts",
+          "start": 369,
+          "length": 5,
+          "line": 7,
+          "column": 66
+        }
+      ]
+    },
+    {
+      "id": "narrowing:narrow-or-typeof/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-or-typeof/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/narrow-or-typeof/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "narrowing:narrow-property-nested-nullish/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-property-nested-nullish/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/narrow-property-nested-nullish/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "narrowing:narrow-property-reset-error/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-property-reset-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/narrow-property-reset-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2345,
+        "category": "error",
+        "message": "Argument of type 'number' is not assignable to parameter of type 'string'.",
+        "file": "typescript_oracle/narrow-property-reset-error/main.ts",
+        "start": 375,
+        "length": 9,
+        "line": 5,
+        "column": 172
+      },
+      "diagnostics": [
+        {
+          "code": 2345,
+          "category": "error",
+          "message": "Argument of type 'number' is not assignable to parameter of type 'string'.",
+          "file": "typescript_oracle/narrow-property-reset-error/main.ts",
+          "start": 375,
+          "length": 9,
+          "line": 5,
+          "column": 172
+        }
+      ]
+    },
+    {
+      "id": "narrowing:narrow-property-typeof/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-property-typeof/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/narrow-property-typeof/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "narrowing:narrow-property-typeof-error/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-property-typeof-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/narrow-property-typeof-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2345,
+        "category": "error",
+        "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+        "file": "typescript_oracle/narrow-property-typeof-error/main.ts",
+        "start": 360,
+        "length": 9,
+        "line": 5,
+        "column": 157
+      },
+      "diagnostics": [
+        {
+          "code": 2345,
+          "category": "error",
+          "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+          "file": "typescript_oracle/narrow-property-typeof-error/main.ts",
+          "start": 360,
+          "length": 9,
+          "line": 5,
+          "column": 157
+        }
+      ]
+    },
+    {
+      "id": "narrowing:narrow-property-undefined/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-property-undefined/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/narrow-property-undefined/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "narrowing:narrow-runtime-assignment/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-runtime-assignment/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/narrow-runtime-assignment/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "narrowing:narrow-runtime-capture/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-runtime-capture/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/narrow-runtime-capture/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "narrowing:narrow-runtime-discriminant/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-runtime-discriminant/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/narrow-runtime-discriminant/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "narrowing:narrow-runtime-immediate-branch/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-runtime-immediate-branch/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/narrow-runtime-immediate-branch/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "narrowing:narrow-runtime-in/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-runtime-in/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/narrow-runtime-in/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "narrowing:narrow-runtime-instanceof/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-runtime-instanceof/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/narrow-runtime-instanceof/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "narrowing:narrow-runtime-loop/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-runtime-loop/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/narrow-runtime-loop/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "narrowing:narrow-runtime-nullish/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-runtime-nullish/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/narrow-runtime-nullish/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "narrowing:narrow-runtime-optional/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-runtime-optional/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/narrow-runtime-optional/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "narrowing:narrow-runtime-optional-alias/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-runtime-optional-alias/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/narrow-runtime-optional-alias/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "narrowing:narrow-runtime-property-path/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-runtime-property-path/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/narrow-runtime-property-path/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "narrowing:narrow-runtime-switch/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-runtime-switch/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/narrow-runtime-switch/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "narrowing:narrow-runtime-truthy/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-runtime-truthy/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/narrow-runtime-truthy/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "narrowing:narrow-runtime-typeof/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-runtime-typeof/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/narrow-runtime-typeof/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "narrowing:narrow-switch-default-fallthrough-error/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-switch-default-fallthrough-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/narrow-switch-default-fallthrough-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type '2 | 3' is not assignable to type '2'.\n  Type '3' is not assignable to type '2'.",
+        "file": "typescript_oracle/narrow-switch-default-fallthrough-error/main.ts",
+        "start": 295,
+        "length": 8,
+        "line": 5,
+        "column": 92
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type '2 | 3' is not assignable to type '2'.\n  Type '3' is not assignable to type '2'.",
+          "file": "typescript_oracle/narrow-switch-default-fallthrough-error/main.ts",
+          "start": 295,
+          "length": 8,
+          "line": 5,
+          "column": 92
+        }
+      ]
+    },
+    {
+      "id": "narrowing:narrow-switch-default-first/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-switch-default-first/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/narrow-switch-default-first/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "narrowing:narrow-switch-discriminant/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-switch-discriminant/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/narrow-switch-discriminant/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "narrowing:narrow-switch-discriminant-wrong/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-switch-discriminant-wrong/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/narrow-switch-discriminant-wrong/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2345,
+        "category": "error",
+        "message": "Argument of type 'number' is not assignable to parameter of type 'string'.",
+        "file": "typescript_oracle/narrow-switch-discriminant-wrong/main.ts",
+        "start": 473,
+        "length": 11,
+        "line": 8,
+        "column": 87
+      },
+      "diagnostics": [
+        {
+          "code": 2345,
+          "category": "error",
+          "message": "Argument of type 'number' is not assignable to parameter of type 'string'.",
+          "file": "typescript_oracle/narrow-switch-discriminant-wrong/main.ts",
+          "start": 473,
+          "length": 11,
+          "line": 8,
+          "column": 87
+        }
+      ]
+    },
+    {
+      "id": "narrowing:narrow-switch-fallthrough/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-switch-fallthrough/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/narrow-switch-fallthrough/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type '2 | 1' is not assignable to type '1'.\n  Type '2' is not assignable to type '1'.",
+        "file": "typescript_oracle/narrow-switch-fallthrough/main.ts",
+        "start": 382,
+        "length": 8,
+        "line": 7,
+        "column": 79
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type '2 | 1' is not assignable to type '1'.\n  Type '2' is not assignable to type '1'.",
+          "file": "typescript_oracle/narrow-switch-fallthrough/main.ts",
+          "start": 382,
+          "length": 8,
+          "line": 7,
+          "column": 79
+        }
+      ]
+    },
+    {
+      "id": "narrowing:narrow-switch-literal/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-switch-literal/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/narrow-switch-literal/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "narrowing:narrow-switch-typeof/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-switch-typeof/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/narrow-switch-typeof/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "narrowing:narrow-truthy-else/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-truthy-else/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/narrow-truthy-else/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "narrowing:narrow-truthy-false-contains-empty/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-truthy-false-contains-empty/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/narrow-truthy-false-contains-empty/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'string | null' is not assignable to type 'null'.\n  Type 'string' is not assignable to type 'null'.",
+        "file": "typescript_oracle/narrow-truthy-false-contains-empty/main.ts",
+        "start": 369,
+        "length": 8,
+        "line": 7,
+        "column": 66
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'string | null' is not assignable to type 'null'.\n  Type 'string' is not assignable to type 'null'.",
+          "file": "typescript_oracle/narrow-truthy-false-contains-empty/main.ts",
+          "start": 369,
+          "length": 8,
+          "line": 7,
+          "column": 66
+        }
+      ]
+    },
+    {
+      "id": "narrowing:narrow-truthy-negative/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-truthy-negative/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/narrow-truthy-negative/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2345,
+        "category": "error",
+        "message": "Argument of type 'number | null' is not assignable to parameter of type 'number'.\n  Type 'null' is not assignable to type 'number'.",
+        "file": "typescript_oracle/narrow-truthy-negative/main.ts",
+        "start": 374,
+        "length": 5,
+        "line": 7,
+        "column": 71
+      },
+      "diagnostics": [
+        {
+          "code": 2345,
+          "category": "error",
+          "message": "Argument of type 'number | null' is not assignable to parameter of type 'number'.\n  Type 'null' is not assignable to type 'number'.",
+          "file": "typescript_oracle/narrow-truthy-negative/main.ts",
+          "start": 374,
+          "length": 5,
+          "line": 7,
+          "column": 71
+        }
+      ]
+    },
+    {
+      "id": "narrowing:narrow-truthy-nullish/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-truthy-nullish/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/narrow-truthy-nullish/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "narrowing:narrow-truthy-zero/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-truthy-zero/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/narrow-truthy-zero/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "narrowing:narrow-typeof-boolean/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-typeof-boolean/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/narrow-typeof-boolean/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "narrowing:narrow-typeof-negative/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-typeof-negative/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/narrow-typeof-negative/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "narrowing:narrow-typeof-number/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-typeof-number/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/narrow-typeof-number/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "narrowing:narrow-typeof-number-wrong/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-typeof-number-wrong/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/narrow-typeof-number-wrong/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2345,
+        "category": "error",
+        "message": "Argument of type 'number' is not assignable to parameter of type 'string'.",
+        "file": "typescript_oracle/narrow-typeof-number-wrong/main.ts",
+        "start": 395,
+        "length": 5,
+        "line": 7,
+        "column": 92
+      },
+      "diagnostics": [
+        {
+          "code": 2345,
+          "category": "error",
+          "message": "Argument of type 'number' is not assignable to parameter of type 'string'.",
+          "file": "typescript_oracle/narrow-typeof-number-wrong/main.ts",
+          "start": 395,
+          "length": 5,
+          "line": 7,
+          "column": 92
+        }
+      ]
+    },
+    {
+      "id": "narrowing:narrow-typeof-object/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-typeof-object/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/narrow-typeof-object/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "narrowing:narrow-typeof-object-null/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-typeof-object-null/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/narrow-typeof-object-null/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 18047,
+        "category": "error",
+        "message": "'value' is possibly 'null'.",
+        "file": "typescript_oracle/narrow-typeof-object-null/main.ts",
+        "start": 400,
+        "length": 5,
+        "line": 7,
+        "column": 97
+      },
+      "diagnostics": [
+        {
+          "code": 18047,
+          "category": "error",
+          "message": "'value' is possibly 'null'.",
+          "file": "typescript_oracle/narrow-typeof-object-null/main.ts",
+          "start": 400,
+          "length": 5,
+          "line": 7,
+          "column": 97
+        }
+      ]
+    },
+    {
+      "id": "narrowing:narrow-typeof-reversed/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-typeof-reversed/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/narrow-typeof-reversed/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "narrowing:narrow-typeof-unbraced/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-typeof-unbraced/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/narrow-typeof-unbraced/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "narrowing:narrow-typeof-unknown/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-typeof-unknown/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/narrow-typeof-unknown/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "narrowing:narrow-typeof-unrelated/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-typeof-unrelated/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/narrow-typeof-unrelated/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2345,
+        "category": "error",
+        "message": "Argument of type 'string | number' is not assignable to parameter of type 'number'.\n  Type 'string' is not assignable to type 'number'.",
+        "file": "typescript_oracle/narrow-typeof-unrelated/main.ts",
+        "start": 422,
+        "length": 5,
+        "line": 7,
+        "column": 119
+      },
+      "diagnostics": [
+        {
+          "code": 2345,
+          "category": "error",
+          "message": "Argument of type 'string | number' is not assignable to parameter of type 'number'.\n  Type 'string' is not assignable to type 'number'.",
+          "file": "typescript_oracle/narrow-typeof-unrelated/main.ts",
+          "start": 422,
+          "length": 5,
+          "line": 7,
+          "column": 119
+        }
+      ]
+    },
+    {
+      "id": "narrowing:narrow-undefined-strict/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-undefined-strict/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/narrow-undefined-strict/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "narrowing:narrow-undefined-wrong/main.ts",
+      "matrix": "narrowing",
+      "entry": "narrow-undefined-wrong/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/narrow-undefined-wrong/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2345,
+        "category": "error",
+        "message": "Argument of type 'undefined' is not assignable to parameter of type 'number'.",
+        "file": "typescript_oracle/narrow-undefined-wrong/main.ts",
+        "start": 392,
+        "length": 5,
+        "line": 7,
+        "column": 89
+      },
+      "diagnostics": [
+        {
+          "code": 2345,
+          "category": "error",
+          "message": "Argument of type 'undefined' is not assignable to parameter of type 'number'.",
+          "file": "typescript_oracle/narrow-undefined-wrong/main.ts",
+          "start": 392,
+          "length": 5,
+          "line": 7,
+          "column": 89
+        }
+      ]
     },
     {
       "id": "unknown-name:unknown-name-alias-value-error/main.ts",

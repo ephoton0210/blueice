@@ -331,6 +331,17 @@ impl ScopeModel<'_> {
                         value,
                     );
                     self.declaration_names.insert(name.start);
+                    self.scopes[target]
+                        .values
+                        .get_mut(&name.text)
+                        .unwrap()
+                        .annotated = variable
+                        .as_ref()
+                        .is_some_and(|variable| variable.annotation.is_some())
+                        || self
+                            .module
+                            .expression_variable_types
+                            .contains_key(&token.start);
                     if token.is("const") {
                         self.binding_kind(target, &name.text, BindingKind::Const);
                     }

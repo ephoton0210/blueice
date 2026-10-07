@@ -478,6 +478,7 @@ fn emit_declaration(
     let mut output = String::new();
     let enum_evaluations = crate::enum_eval::evaluate_enums(module);
     let mut enum_position = 0usize;
+    let mut private_alias = false;
     for declaration in &module.declarations {
         let enum_index = enum_position;
         if matches!(declaration, Declaration::Enum(_)) {
@@ -495,12 +496,27 @@ fn emit_declaration(
                     output.push_str(&text);
                 }
             }
-            Declaration::TypeAlias(alias) if alias.exported => {
-                output.push_str("export type ");
+            Declaration::TypeAlias(alias)
+                if alias.exported
+                    || inferred
+                        .and_then(|context| context.private_alias(&alias.name))
+                        .is_some() =>
+            {
+                private_alias |= !alias.exported;
+                output.push_str(if alias.exported {
+                    "export type "
+                } else {
+                    "type "
+                });
                 output.push_str(&alias.name);
                 emit_type_parameters(&mut output, &alias.type_parameters);
                 output.push_str(" = ");
-                output.push_str(&type_to_ts(&alias.value));
+                output.push_str(
+                    &inferred
+                        .and_then(|context| context.private_alias(&alias.name))
+                        .map(str::to_string)
+                        .unwrap_or_else(|| type_to_ts(&alias.value)),
+                );
                 output.push_str(";\n");
             }
             Declaration::Interface(interface) if interface.exported => {
@@ -718,16 +734,17 @@ fn emit_declaration(
             _ => {}
         }
     }
-    if output.is_empty()
-        && module.declarations.iter().any(|declaration| {
-            matches!(
-                declaration,
-                Declaration::Import(_)
-                    | Declaration::TypeExport(_)
-                    | Declaration::ValueExport(_)
-                    | Declaration::DefaultExport(_)
-            )
-        })
+    if private_alias
+        || (output.is_empty()
+            && module.declarations.iter().any(|declaration| {
+                matches!(
+                    declaration,
+                    Declaration::Import(_)
+                        | Declaration::TypeExport(_)
+                        | Declaration::ValueExport(_)
+                        | Declaration::DefaultExport(_)
+                )
+            }))
     {
         output.push_str("export {};\n");
     }

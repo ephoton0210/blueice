@@ -51,6 +51,7 @@ impl<'a> ModuleChecker<'a> {
             target: policy.target,
             project,
             scopes: None,
+            flow: None,
             module,
             exports,
             ambient,
@@ -709,7 +710,9 @@ impl<'a> ModuleChecker<'a> {
         }
         self.check_class_constructions_in_expression(tokens, scope, span);
         self.check_bound_class_calls_in_expression(tokens, scope, span);
+        self.check_flow_in_subjects(tokens, scope);
         self.check_function_call(tokens, scope, span);
+        self.check_flow_calls(tokens, scope, span);
         self.check_member_calls_in_expression(tokens, scope, span);
         self.check_direct_property_access(tokens, scope, span);
         self.check_member_assignment(tokens, scope, span);

@@ -574,7 +574,7 @@ fn direct_page_optional_dot_read_short_circuits_null_and_undefined_receivers() {
 
 #[test]
 fn direct_page_optional_dot_read_debugger_provenance_expires_on_navigation() {
-    let source = "const receiver: { value: number } | null = null; const read: number | undefined = receiver?.value; read;";
+    let source = "function choose(flag: boolean): { value: number } | null { return flag ? { value: 41 } : null; } const receiver: { value: number } | null = choose(false); const read: number | undefined = receiver?.value; read;";
     let read_start = source.find("const read").unwrap();
     let read_end = read_start + source[read_start..].find(';').unwrap() + 1;
     let artifact = compile_direct_script(
@@ -757,7 +757,7 @@ fn direct_page_immutable_typeof_guard_runs_both_branches_and_early_completion() 
 }
 
 #[test]
-fn direct_page_typeof_guard_preserves_string_throw_and_rejects_unproven_shapes() {
+fn direct_page_typeof_guard_preserves_throw_and_executes_mutable_and_parameters() {
     let source = "function f(input: string | number): number { const value: string | number = input; if (typeof value === 'string') { throw value; } return value; } f('bad');";
     let artifact = compile_direct_script(
         ENTRY,
@@ -781,14 +781,18 @@ fn direct_page_typeof_guard_preserves_string_throw_and_rejects_unproven_shapes()
         "function takesString(value: string): void {} function f(input: string | number): void { let value: string | number = input; if (typeof value === 'string') { takesString(value); } } f('Ada');",
         "function takesString(value: string): void {} function f(value: string | number): void { if (typeof value === 'string') { takesString(value); } } f('Ada');",
     ] {
-        assert!(matches!(
-            compile_direct_script(
-                ENTRY,
-                &MapLoader::from([ModuleSource::new(ENTRY, source)]),
-                CompilerOptions::default(),
-            ),
-            Err(BridgeError::BlueTs(_))
-        ), "unproven narrowing must prevent direct execution: {source}");
+        let artifact = compile_direct_script(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+            CompilerOptions::default(),
+        )
+        .unwrap();
+        let attachment = owner.attach_script(&artifact, 7, &origin()).unwrap();
+        assert_eq!(
+            owner.execute_program(7, &attachment).unwrap(),
+            bluejs::Value::Undefined,
+            "{source}"
+        );
     }
 }
 

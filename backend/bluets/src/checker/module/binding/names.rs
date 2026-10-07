@@ -33,6 +33,12 @@ impl ModuleChecker<'_> {
             );
         }
         self.scopes = Some(scopes);
+        let flow = scopes::flow::FlowModel::build(
+            self.scopes.as_ref().expect("lexical scopes are bound"),
+            |tokens, values, expected| self.infer_in_context(tokens, values, expected),
+        );
+        self.diagnostics.extend(flow.diagnostics.iter().cloned());
+        self.flow = Some(flow);
     }
 
     pub(crate) fn dedupe_name_diagnostics(&mut self) {
