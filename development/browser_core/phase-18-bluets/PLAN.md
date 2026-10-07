@@ -5377,3 +5377,37 @@ G-T5 retains unmeasured computed symbol/index combinations, broader tuple and
 const/satisfies contexts and unknown/never flow combinations. G-T3 retains its
 unmeasured operator combinations; broader compatibility belongs to K.4.7.
 M8 and final workspace/coverage verification remain open.
+
+### K.4.7 compatibility details failing baseline — 2026-10-08
+
+Track object literal freshness through variable, argument, return, array,
+nested, spread, union and explicit generic contexts. Structural aliases lose
+freshness without losing their inferred properties; weak targets require an
+overlap unless empty or indexed. Function-valued properties use strict parameter
+variance, while methods retain TypeScript bivariance; return covariance, void
+promises and optional/required arity stay distinct. Retain in/out/in out type
+parameter metadata, validate the declared direction and enforce invariant uses.
+Default optional-property behavior is compared here alongside the existing
+independently pinned exact-optional option controls. Predicate parameter identity
+and assertion void promises retain their callable compatibility boundaries.
+The isolated corpus uses TypeScript 5.9.3 exact primary/related diagnostics and
+four Node/declaration witnesses. Commit the failing replay first, then run K.0,
+regenerate the relevant gap rows and refusal evidence, and keep full parity
+unclaimed until the remaining roadmap leaves and workspace gates are complete.
+
+Generic body return/local/write controls preserve the distinction between a
+bound type parameter and its upper constraint. A concrete string cannot
+stand in for every possible instantiation of `T`.
+
+The K.4.4 callable-object AST also needs structural compatibility between
+separate aliases, ordinary function values, call/construct overload sets and
+mixed readonly data/callable members. Eight paired controls preserve those
+public boundaries for the K.4.7 replay.
+
+Four index-signature controls compare separate aliases, value domains, readonly
+structural compatibility and required declared fields without fresh literal input.
+
+A fourth runtime/declaration witness retains in/out/in out metadata in public
+interfaces and object aliases while erasing it from executable JavaScript.
+
+The pinned corpus contains 78 programs (40 accept, 38 reject), with four runtime/declaration witnesses. Linux records 41 checker/primary-diagnostic differences and two runtime/declaration failures: freshness declaration formatting and variance syntax parsing. Completeness and the pinned recorder pass (two tests pass, two fail). The shared diagnostic corpus records 2,004 programs (922 accept, 1082 reject) and 167 templates. Production remains unchanged from the verified K.4.6 commit `9b292ac12`. Evidence: `/private/tmp/blueice-k14-linux/blueice-k47-red-gate.log`.

@@ -387,6 +387,10 @@
       "message": "Expected {0} type arguments, but got {1}."
     },
     {
+      "code": 2559,
+      "message": "Type '{0}' has no properties in common with type '{1}'."
+    },
+    {
       "code": 2564,
       "message": "Property '{0}' has no initializer and is not definitely assigned in the constructor."
     },
@@ -441,6 +445,14 @@
     {
       "code": 2632,
       "message": "Cannot assign to '{0}' because it is an import."
+    },
+    {
+      "code": 2636,
+      "message": "Type '{0}' is not assignable to type '{1}' as implied by variance annotation."
+    },
+    {
+      "code": 2637,
+      "message": "Variance annotations are only supported in type aliases for object, function, constructor, and mapped types."
     },
     {
       "code": 2651,
@@ -19638,6 +19650,2554 @@
       "verdict": "accept",
       "inputs": [
         "typescript_oracle/tuple-literal-return-class-valid/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "compatibility:relate-assertion-boolean-promise/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-assertion-boolean-promise/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-assertion-boolean-promise/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "compatibility:relate-assertion-void-promise/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-assertion-void-promise/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-assertion-void-promise/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "compatibility:relate-callable-properties/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-callable-properties/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-callable-properties/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "compatibility:relate-callable-properties-error/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-callable-properties-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-callable-properties-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'Left' is not assignable to type 'Right'.\n  Types of property 'label' are incompatible.\n    Type 'string' is not assignable to type 'number'.",
+        "file": "typescript_oracle/relate-callable-properties-error/main.ts",
+        "start": 363,
+        "length": 5,
+        "line": 5,
+        "column": 160
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'Left' is not assignable to type 'Right'.\n  Types of property 'label' are incompatible.\n    Type 'string' is not assignable to type 'number'.",
+          "file": "typescript_oracle/relate-callable-properties-error/main.ts",
+          "start": 363,
+          "length": 5,
+          "line": 5,
+          "column": 160
+        }
+      ]
+    },
+    {
+      "id": "compatibility:relate-callable-record/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-callable-record/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-callable-record/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "compatibility:relate-callable-record-error/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-callable-record-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-callable-record-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'Left' is not assignable to type 'Right'.\n  Types of parameters 'value' and 'value' are incompatible.\n    Type 'number' is not assignable to type 'string'.",
+        "file": "typescript_oracle/relate-callable-record-error/main.ts",
+        "start": 375,
+        "length": 5,
+        "line": 5,
+        "column": 172
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'Left' is not assignable to type 'Right'.\n  Types of parameters 'value' and 'value' are incompatible.\n    Type 'number' is not assignable to type 'string'.",
+          "file": "typescript_oracle/relate-callable-record-error/main.ts",
+          "start": 375,
+          "length": 5,
+          "line": 5,
+          "column": 172
+        }
+      ]
+    },
+    {
+      "id": "compatibility:relate-constructable-record/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-constructable-record/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-constructable-record/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "compatibility:relate-constructable-record-error/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-constructable-record-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-constructable-record-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'Left' is not assignable to type 'Right'.\n  Types of parameters 'value' and 'value' are incompatible.\n    Type 'string' is not assignable to type 'number'.",
+        "file": "typescript_oracle/relate-constructable-record-error/main.ts",
+        "start": 357,
+        "length": 5,
+        "line": 5,
+        "column": 154
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'Left' is not assignable to type 'Right'.\n  Types of parameters 'value' and 'value' are incompatible.\n    Type 'string' is not assignable to type 'number'.",
+          "file": "typescript_oracle/relate-constructable-record-error/main.ts",
+          "start": 357,
+          "length": 5,
+          "line": 5,
+          "column": 154
+        }
+      ]
+    },
+    {
+      "id": "compatibility:relate-excess-argument-alias/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-excess-argument-alias/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-excess-argument-alias/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "compatibility:relate-excess-argument-error/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-excess-argument-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-excess-argument-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2353,
+        "category": "error",
+        "message": "Object literal may only specify known properties, and 'extra' does not exist in type '{ answer: number; }'.",
+        "file": "typescript_oracle/relate-excess-argument-error/main.ts",
+        "start": 313,
+        "length": 5,
+        "line": 5,
+        "column": 110
+      },
+      "diagnostics": [
+        {
+          "code": 2353,
+          "category": "error",
+          "message": "Object literal may only specify known properties, and 'extra' does not exist in type '{ answer: number; }'.",
+          "file": "typescript_oracle/relate-excess-argument-error/main.ts",
+          "start": 313,
+          "length": 5,
+          "line": 5,
+          "column": 110
+        }
+      ]
+    },
+    {
+      "id": "compatibility:relate-excess-array-alias/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-excess-array-alias/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-excess-array-alias/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "compatibility:relate-excess-array-error/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-excess-array-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-excess-array-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2353,
+        "category": "error",
+        "message": "Object literal may only specify known properties, and 'extra' does not exist in type '{ answer: number; }'.",
+        "file": "typescript_oracle/relate-excess-array-error/main.ts",
+        "start": 259,
+        "length": 5,
+        "line": 5,
+        "column": 56
+      },
+      "diagnostics": [
+        {
+          "code": 2353,
+          "category": "error",
+          "message": "Object literal may only specify known properties, and 'extra' does not exist in type '{ answer: number; }'.",
+          "file": "typescript_oracle/relate-excess-array-error/main.ts",
+          "start": 259,
+          "length": 5,
+          "line": 5,
+          "column": 56
+        }
+      ]
+    },
+    {
+      "id": "compatibility:relate-excess-explicit-generic-error/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-excess-explicit-generic-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-excess-explicit-generic-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2353,
+        "category": "error",
+        "message": "Object literal may only specify known properties, and 'extra' does not exist in type '{ answer: number; }'.",
+        "file": "typescript_oracle/relate-excess-explicit-generic-error/main.ts",
+        "start": 332,
+        "length": 5,
+        "line": 5,
+        "column": 129
+      },
+      "diagnostics": [
+        {
+          "code": 2353,
+          "category": "error",
+          "message": "Object literal may only specify known properties, and 'extra' does not exist in type '{ answer: number; }'.",
+          "file": "typescript_oracle/relate-excess-explicit-generic-error/main.ts",
+          "start": 332,
+          "length": 5,
+          "line": 5,
+          "column": 129
+        }
+      ]
+    },
+    {
+      "id": "compatibility:relate-excess-generic/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-excess-generic/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-excess-generic/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "compatibility:relate-excess-nested-error/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-excess-nested-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-excess-nested-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2353,
+        "category": "error",
+        "message": "Object literal may only specify known properties, and 'extra' does not exist in type '{ answer: number; }'.",
+        "file": "typescript_oracle/relate-excess-nested-error/main.ts",
+        "start": 275,
+        "length": 5,
+        "line": 5,
+        "column": 72,
+        "related": [
+          {
+            "code": 6500,
+            "category": "message",
+            "message": "The expected type comes from property 'nested' which is declared here on type '{ nested: { answer: number; }; }'",
+            "file": "typescript_oracle/relate-excess-nested-error/main.ts",
+            "start": 225,
+            "length": 6,
+            "line": 5,
+            "column": 22
+          }
+        ]
+      },
+      "diagnostics": [
+        {
+          "code": 2353,
+          "category": "error",
+          "message": "Object literal may only specify known properties, and 'extra' does not exist in type '{ answer: number; }'.",
+          "file": "typescript_oracle/relate-excess-nested-error/main.ts",
+          "start": 275,
+          "length": 5,
+          "line": 5,
+          "column": 72,
+          "related": [
+            {
+              "code": 6500,
+              "category": "message",
+              "message": "The expected type comes from property 'nested' which is declared here on type '{ nested: { answer: number; }; }'",
+              "file": "typescript_oracle/relate-excess-nested-error/main.ts",
+              "start": 225,
+              "length": 6,
+              "line": 5,
+              "column": 22
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "compatibility:relate-excess-return-alias/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-excess-return-alias/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-excess-return-alias/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "compatibility:relate-excess-return-error/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-excess-return-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-excess-return-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2353,
+        "category": "error",
+        "message": "Object literal may only specify known properties, and 'extra' does not exist in type '{ answer: number; }'.",
+        "file": "typescript_oracle/relate-excess-return-error/main.ts",
+        "start": 266,
+        "length": 5,
+        "line": 5,
+        "column": 63
+      },
+      "diagnostics": [
+        {
+          "code": 2353,
+          "category": "error",
+          "message": "Object literal may only specify known properties, and 'extra' does not exist in type '{ answer: number; }'.",
+          "file": "typescript_oracle/relate-excess-return-error/main.ts",
+          "start": 266,
+          "length": 5,
+          "line": 5,
+          "column": 63
+        }
+      ]
+    },
+    {
+      "id": "compatibility:relate-excess-spread/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-excess-spread/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-excess-spread/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "compatibility:relate-excess-spread-explicit-error/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-excess-spread-explicit-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-excess-spread-explicit-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2353,
+        "category": "error",
+        "message": "Object literal may only specify known properties, and 'extra' does not exist in type '{ answer: number; }'.",
+        "file": "typescript_oracle/relate-excess-spread-explicit-error/main.ts",
+        "start": 282,
+        "length": 5,
+        "line": 5,
+        "column": 79
+      },
+      "diagnostics": [
+        {
+          "code": 2353,
+          "category": "error",
+          "message": "Object literal may only specify known properties, and 'extra' does not exist in type '{ answer: number; }'.",
+          "file": "typescript_oracle/relate-excess-spread-explicit-error/main.ts",
+          "start": 282,
+          "length": 5,
+          "line": 5,
+          "column": 79
+        }
+      ]
+    },
+    {
+      "id": "compatibility:relate-excess-union/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-excess-union/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-excess-union/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "compatibility:relate-excess-union-error/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-excess-union-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-excess-union-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2353,
+        "category": "error",
+        "message": "Object literal may only specify known properties, and 'b' does not exist in type '{ kind: \"a\"; a: number; }'.",
+        "file": "typescript_oracle/relate-excess-union-error/main.ts",
+        "start": 293,
+        "length": 1,
+        "line": 5,
+        "column": 90
+      },
+      "diagnostics": [
+        {
+          "code": 2353,
+          "category": "error",
+          "message": "Object literal may only specify known properties, and 'b' does not exist in type '{ kind: \"a\"; a: number; }'.",
+          "file": "typescript_oracle/relate-excess-union-error/main.ts",
+          "start": 293,
+          "length": 1,
+          "line": 5,
+          "column": 90
+        }
+      ]
+    },
+    {
+      "id": "compatibility:relate-excess-variable-alias/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-excess-variable-alias/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-excess-variable-alias/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "compatibility:relate-excess-variable-error/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-excess-variable-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-excess-variable-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2353,
+        "category": "error",
+        "message": "Object literal may only specify known properties, and 'extra' does not exist in type '{ answer: number; }'.",
+        "file": "typescript_oracle/relate-excess-variable-error/main.ts",
+        "start": 256,
+        "length": 5,
+        "line": 5,
+        "column": 53
+      },
+      "diagnostics": [
+        {
+          "code": 2353,
+          "category": "error",
+          "message": "Object literal may only specify known properties, and 'extra' does not exist in type '{ answer: number; }'.",
+          "file": "typescript_oracle/relate-excess-variable-error/main.ts",
+          "start": 256,
+          "length": 5,
+          "line": 5,
+          "column": 53
+        }
+      ]
+    },
+    {
+      "id": "compatibility:relate-function-callable-record/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-function-callable-record/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-function-callable-record/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "compatibility:relate-function-callable-record-error/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-function-callable-record-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-function-callable-record-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type '(value: string) => string' is not assignable to type 'Callback'.\n  Types of parameters 'value' and 'value' are incompatible.\n    Type 'number' is not assignable to type 'string'.",
+        "file": "typescript_oracle/relate-function-callable-record-error/main.ts",
+        "start": 307,
+        "length": 5,
+        "line": 5,
+        "column": 104
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type '(value: string) => string' is not assignable to type 'Callback'.\n  Types of parameters 'value' and 'value' are incompatible.\n    Type 'number' is not assignable to type 'string'.",
+          "file": "typescript_oracle/relate-function-callable-record-error/main.ts",
+          "start": 307,
+          "length": 5,
+          "line": 5,
+          "column": 104
+        }
+      ]
+    },
+    {
+      "id": "compatibility:relate-function-contravariance/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-function-contravariance/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-function-contravariance/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "compatibility:relate-function-contravariance-error/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-function-contravariance-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-function-contravariance-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type '(value: string) => void' is not assignable to type '(value: string | number) => void'.\n  Types of parameters 'value' and 'value' are incompatible.\n    Type 'string | number' is not assignable to type 'string'.\n      Type 'number' is not assignable to type 'string'.",
+        "file": "typescript_oracle/relate-function-contravariance-error/main.ts",
+        "start": 264,
+        "length": 4,
+        "line": 5,
+        "column": 61
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type '(value: string) => void' is not assignable to type '(value: string | number) => void'.\n  Types of parameters 'value' and 'value' are incompatible.\n    Type 'string | number' is not assignable to type 'string'.\n      Type 'number' is not assignable to type 'string'.",
+          "file": "typescript_oracle/relate-function-contravariance-error/main.ts",
+          "start": 264,
+          "length": 4,
+          "line": 5,
+          "column": 61
+        }
+      ]
+    },
+    {
+      "id": "compatibility:relate-function-fewer-parameters/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-function-fewer-parameters/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-function-fewer-parameters/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "compatibility:relate-function-more-parameters-error/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-function-more-parameters-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-function-more-parameters-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type '(value: number) => number' is not assignable to type '() => number'.\n  Target signature provides too few arguments. Expected 1 or more, but got 0.",
+        "file": "typescript_oracle/relate-function-more-parameters-error/main.ts",
+        "start": 266,
+        "length": 4,
+        "line": 5,
+        "column": 63
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type '(value: number) => number' is not assignable to type '() => number'.\n  Target signature provides too few arguments. Expected 1 or more, but got 0.",
+          "file": "typescript_oracle/relate-function-more-parameters-error/main.ts",
+          "start": 266,
+          "length": 4,
+          "line": 5,
+          "column": 63
+        }
+      ]
+    },
+    {
+      "id": "compatibility:relate-function-optional-parameter/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-function-optional-parameter/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-function-optional-parameter/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "compatibility:relate-function-property-variance-error/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-function-property-variance-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-function-property-variance-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type '{ read: (value: string) => void; }' is not assignable to type '{ read: (value: string | number) => void; }'.\n  Types of property 'read' are incompatible.\n    Type '(value: string) => void' is not assignable to type '(value: string | number) => void'.\n      Types of parameters 'value' and 'value' are incompatible.\n        Type 'string | number' is not assignable to type 'string'.\n          Type 'number' is not assignable to type 'string'.",
+        "file": "typescript_oracle/relate-function-property-variance-error/main.ts",
+        "start": 272,
+        "length": 5,
+        "line": 5,
+        "column": 69
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type '{ read: (value: string) => void; }' is not assignable to type '{ read: (value: string | number) => void; }'.\n  Types of property 'read' are incompatible.\n    Type '(value: string) => void' is not assignable to type '(value: string | number) => void'.\n      Types of parameters 'value' and 'value' are incompatible.\n        Type 'string | number' is not assignable to type 'string'.\n          Type 'number' is not assignable to type 'string'.",
+          "file": "typescript_oracle/relate-function-property-variance-error/main.ts",
+          "start": 272,
+          "length": 5,
+          "line": 5,
+          "column": 69
+        }
+      ]
+    },
+    {
+      "id": "compatibility:relate-function-required-parameter-error/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-function-required-parameter-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-function-required-parameter-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type '(value: number) => void' is not assignable to type '(value?: number | undefined) => void'.\n  Types of parameters 'value' and 'value' are incompatible.\n    Type 'number | undefined' is not assignable to type 'number'.\n      Type 'undefined' is not assignable to type 'number'.",
+        "file": "typescript_oracle/relate-function-required-parameter-error/main.ts",
+        "start": 264,
+        "length": 4,
+        "line": 5,
+        "column": 61
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type '(value: number) => void' is not assignable to type '(value?: number | undefined) => void'.\n  Types of parameters 'value' and 'value' are incompatible.\n    Type 'number | undefined' is not assignable to type 'number'.\n      Type 'undefined' is not assignable to type 'number'.",
+          "file": "typescript_oracle/relate-function-required-parameter-error/main.ts",
+          "start": 264,
+          "length": 4,
+          "line": 5,
+          "column": 61
+        }
+      ]
+    },
+    {
+      "id": "compatibility:relate-function-return-covariance/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-function-return-covariance/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-function-return-covariance/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "compatibility:relate-function-return-covariance-error/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-function-return-covariance-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-function-return-covariance-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type '() => string | number' is not assignable to type '() => string'.\n  Type 'string | number' is not assignable to type 'string'.\n    Type 'number' is not assignable to type 'string'.",
+        "file": "typescript_oracle/relate-function-return-covariance-error/main.ts",
+        "start": 262,
+        "length": 4,
+        "line": 5,
+        "column": 59
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type '() => string | number' is not assignable to type '() => string'.\n  Type 'string | number' is not assignable to type 'string'.\n    Type 'number' is not assignable to type 'string'.",
+          "file": "typescript_oracle/relate-function-return-covariance-error/main.ts",
+          "start": 262,
+          "length": 4,
+          "line": 5,
+          "column": 59
+        }
+      ]
+    },
+    {
+      "id": "compatibility:relate-function-void-promise/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-function-void-promise/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-function-void-promise/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "compatibility:relate-function-void-source-error/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-function-void-source-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-function-void-source-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type '() => void' is not assignable to type '() => number'.\n  Type 'void' is not assignable to type 'number'.",
+        "file": "typescript_oracle/relate-function-void-source-error/main.ts",
+        "start": 251,
+        "length": 4,
+        "line": 5,
+        "column": 48
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type '() => void' is not assignable to type '() => number'.\n  Type 'void' is not assignable to type 'number'.",
+          "file": "typescript_oracle/relate-function-void-source-error/main.ts",
+          "start": 251,
+          "length": 4,
+          "line": 5,
+          "column": 48
+        }
+      ]
+    },
+    {
+      "id": "compatibility:relate-generic-bound-return/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-generic-bound-return/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-generic-bound-return/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "compatibility:relate-generic-bound-return-error/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-generic-bound-return-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-generic-bound-return-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'string' is not assignable to type 'T'.\n  'string' is assignable to the constraint of type 'T', but 'T' could be instantiated with a different subtype of constraint 'string'.",
+        "file": "typescript_oracle/relate-generic-bound-return-error/main.ts",
+        "start": 251,
+        "length": 6,
+        "line": 5,
+        "column": 48
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'string' is not assignable to type 'T'.\n  'string' is assignable to the constraint of type 'T', but 'T' could be instantiated with a different subtype of constraint 'string'.",
+          "file": "typescript_oracle/relate-generic-bound-return-error/main.ts",
+          "start": 251,
+          "length": 6,
+          "line": 5,
+          "column": 48
+        }
+      ]
+    },
+    {
+      "id": "compatibility:relate-generic-local/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-generic-local/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-generic-local/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "compatibility:relate-generic-return/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-generic-return/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-generic-return/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "compatibility:relate-generic-return-error/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-generic-return-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-generic-return-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'string' is not assignable to type 'T'.\n  'T' could be instantiated with an arbitrary type which could be unrelated to 'string'.",
+        "file": "typescript_oracle/relate-generic-return-error/main.ts",
+        "start": 236,
+        "length": 6,
+        "line": 5,
+        "column": 33
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'string' is not assignable to type 'T'.\n  'T' could be instantiated with an arbitrary type which could be unrelated to 'string'.",
+          "file": "typescript_oracle/relate-generic-return-error/main.ts",
+          "start": 236,
+          "length": 6,
+          "line": 5,
+          "column": 33
+        }
+      ]
+    },
+    {
+      "id": "compatibility:relate-generic-write-error/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-generic-write-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-generic-write-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'string' is not assignable to type 'T'.\n  'T' could be instantiated with an arbitrary type which could be unrelated to 'string'.",
+        "file": "typescript_oracle/relate-generic-write-error/main.ts",
+        "start": 244,
+        "length": 5,
+        "line": 5,
+        "column": 41
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'string' is not assignable to type 'T'.\n  'T' could be instantiated with an arbitrary type which could be unrelated to 'string'.",
+          "file": "typescript_oracle/relate-generic-write-error/main.ts",
+          "start": 244,
+          "length": 5,
+          "line": 5,
+          "column": 41
+        }
+      ]
+    },
+    {
+      "id": "compatibility:relate-index-alias-equivalent/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-index-alias-equivalent/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-index-alias-equivalent/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "compatibility:relate-index-alias-value-error/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-index-alias-value-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-index-alias-value-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'First' is not assignable to type 'Second'.\n  'string' index signatures are incompatible.\n    Type 'number' is not assignable to type 'string'.",
+        "file": "typescript_oracle/relate-index-alias-value-error/main.ts",
+        "start": 325,
+        "length": 6,
+        "line": 7,
+        "column": 45
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'First' is not assignable to type 'Second'.\n  'string' index signatures are incompatible.\n    Type 'number' is not assignable to type 'string'.",
+          "file": "typescript_oracle/relate-index-alias-value-error/main.ts",
+          "start": 325,
+          "length": 6,
+          "line": 7,
+          "column": 45
+        }
+      ]
+    },
+    {
+      "id": "compatibility:relate-index-readonly-structural/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-index-readonly-structural/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-index-readonly-structural/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "compatibility:relate-index-required-field-error/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-index-required-field-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-index-required-field-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2741,
+        "category": "error",
+        "message": "Property 'required' is missing in type 'First' but required in type 'Second'.",
+        "file": "typescript_oracle/relate-index-required-field-error/main.ts",
+        "start": 343,
+        "length": 6,
+        "line": 7,
+        "column": 45,
+        "related": [
+          {
+            "code": 2728,
+            "category": "message",
+            "message": "'required' is declared here.",
+            "file": "typescript_oracle/relate-index-required-field-error/main.ts",
+            "start": 257,
+            "length": 8,
+            "line": 6,
+            "column": 16
+          }
+        ]
+      },
+      "diagnostics": [
+        {
+          "code": 2741,
+          "category": "error",
+          "message": "Property 'required' is missing in type 'First' but required in type 'Second'.",
+          "file": "typescript_oracle/relate-index-required-field-error/main.ts",
+          "start": 343,
+          "length": 6,
+          "line": 7,
+          "column": 45,
+          "related": [
+            {
+              "code": 2728,
+              "category": "message",
+              "message": "'required' is declared here.",
+              "file": "typescript_oracle/relate-index-required-field-error/main.ts",
+              "start": 257,
+              "length": 8,
+              "line": 6,
+              "column": 16
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "compatibility:relate-method-bivariance/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-method-bivariance/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-method-bivariance/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "compatibility:relate-method-unrelated-error/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-method-unrelated-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-method-unrelated-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type '{ read(value: string): void; }' is not assignable to type '{ read(value: number): void; }'.\n  Types of property 'read' are incompatible.\n    Type '(value: string) => void' is not assignable to type '(value: number) => void'.\n      Types of parameters 'value' and 'value' are incompatible.\n        Type 'number' is not assignable to type 'string'.",
+        "file": "typescript_oracle/relate-method-unrelated-error/main.ts",
+        "start": 268,
+        "length": 5,
+        "line": 5,
+        "column": 65
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type '{ read(value: string): void; }' is not assignable to type '{ read(value: number): void; }'.\n  Types of property 'read' are incompatible.\n    Type '(value: string) => void' is not assignable to type '(value: number) => void'.\n      Types of parameters 'value' and 'value' are incompatible.\n        Type 'number' is not assignable to type 'string'.",
+          "file": "typescript_oracle/relate-method-unrelated-error/main.ts",
+          "start": 268,
+          "length": 5,
+          "line": 5,
+          "column": 65
+        }
+      ]
+    },
+    {
+      "id": "compatibility:relate-nullable-return-error/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-nullable-return-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-nullable-return-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'number | null' is not assignable to type 'number'.\n  Type 'null' is not assignable to type 'number'.",
+        "file": "typescript_oracle/relate-nullable-return-error/main.ts",
+        "start": 256,
+        "length": 6,
+        "line": 5,
+        "column": 53
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'number | null' is not assignable to type 'number'.\n  Type 'null' is not assignable to type 'number'.",
+          "file": "typescript_oracle/relate-nullable-return-error/main.ts",
+          "start": 256,
+          "length": 6,
+          "line": 5,
+          "column": 53
+        }
+      ]
+    },
+    {
+      "id": "compatibility:relate-optional-absent/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-optional-absent/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-optional-absent/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "compatibility:relate-optional-property-undefined/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-optional-property-undefined/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-optional-property-undefined/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "compatibility:relate-optional-to-required-error/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-optional-to-required-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-optional-to-required-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type '{ answer?: number | undefined; }' is not assignable to type '{ answer: number | undefined; }'.\n  Property 'answer' is optional in type '{ answer?: number | undefined; }' but required in type '{ answer: number | undefined; }'.",
+        "file": "typescript_oracle/relate-optional-to-required-error/main.ts",
+        "start": 258,
+        "length": 5,
+        "line": 5,
+        "column": 55
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type '{ answer?: number | undefined; }' is not assignable to type '{ answer: number | undefined; }'.\n  Property 'answer' is optional in type '{ answer?: number | undefined; }' but required in type '{ answer: number | undefined; }'.",
+          "file": "typescript_oracle/relate-optional-to-required-error/main.ts",
+          "start": 258,
+          "length": 5,
+          "line": 5,
+          "column": 55
+        }
+      ]
+    },
+    {
+      "id": "compatibility:relate-predicate-boolean-error/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-predicate-boolean-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-predicate-boolean-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type '(value: unknown) => boolean' is not assignable to type '(value: unknown) => value is string'.\n  Signature '(value: unknown): boolean' must be a type predicate.",
+        "file": "typescript_oracle/relate-predicate-boolean-error/main.ts",
+        "start": 268,
+        "length": 5,
+        "line": 5,
+        "column": 65
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type '(value: unknown) => boolean' is not assignable to type '(value: unknown) => value is string'.\n  Signature '(value: unknown): boolean' must be a type predicate.",
+          "file": "typescript_oracle/relate-predicate-boolean-error/main.ts",
+          "start": 268,
+          "length": 5,
+          "line": 5,
+          "column": 65
+        }
+      ]
+    },
+    {
+      "id": "compatibility:relate-predicate-parameter-index-error/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-predicate-parameter-index-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-predicate-parameter-index-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type '(left: unknown, right: unknown) => left is string' is not assignable to type '(left: unknown, right: unknown) => right is string'.\n  Type predicate 'left is string' is not assignable to 'right is string'.\n    Parameter 'left' is not in the same position as parameter 'right'.",
+        "file": "typescript_oracle/relate-predicate-parameter-index-error/main.ts",
+        "start": 290,
+        "length": 5,
+        "line": 5,
+        "column": 87
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type '(left: unknown, right: unknown) => left is string' is not assignable to type '(left: unknown, right: unknown) => right is string'.\n  Type predicate 'left is string' is not assignable to 'right is string'.\n    Parameter 'left' is not in the same position as parameter 'right'.",
+          "file": "typescript_oracle/relate-predicate-parameter-index-error/main.ts",
+          "start": 290,
+          "length": 5,
+          "line": 5,
+          "column": 87
+        }
+      ]
+    },
+    {
+      "id": "compatibility:relate-predicate-parameter-renaming/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-predicate-parameter-renaming/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-predicate-parameter-renaming/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "compatibility:relate-readonly-structural/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-readonly-structural/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-readonly-structural/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "compatibility:relate-record-required-error/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-record-required-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-record-required-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type '{ answer?: number | undefined; }' is not assignable to type '{ answer: number; }'.\n  Types of property 'answer' are incompatible.\n    Type 'number | undefined' is not assignable to type 'number'.\n      Type 'undefined' is not assignable to type 'number'.",
+        "file": "typescript_oracle/relate-record-required-error/main.ts",
+        "start": 258,
+        "length": 5,
+        "line": 5,
+        "column": 55
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type '{ answer?: number | undefined; }' is not assignable to type '{ answer: number; }'.\n  Types of property 'answer' are incompatible.\n    Type 'number | undefined' is not assignable to type 'number'.\n      Type 'undefined' is not assignable to type 'number'.",
+          "file": "typescript_oracle/relate-record-required-error/main.ts",
+          "start": 258,
+          "length": 5,
+          "line": 5,
+          "column": 55
+        }
+      ]
+    },
+    {
+      "id": "compatibility:relate-required-to-optional/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-required-to-optional/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-required-to-optional/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "compatibility:relate-required-undefined-absent-error/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-required-undefined-absent-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-required-undefined-absent-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2741,
+        "category": "error",
+        "message": "Property 'answer' is missing in type '{}' but required in type '{ answer: number | undefined; }'.",
+        "file": "typescript_oracle/relate-required-undefined-absent-error/main.ts",
+        "start": 217,
+        "length": 5,
+        "line": 5,
+        "column": 14,
+        "related": [
+          {
+            "code": 2728,
+            "category": "message",
+            "message": "'answer' is declared here.",
+            "file": "typescript_oracle/relate-required-undefined-absent-error/main.ts",
+            "start": 225,
+            "length": 6,
+            "line": 5,
+            "column": 22
+          }
+        ]
+      },
+      "diagnostics": [
+        {
+          "code": 2741,
+          "category": "error",
+          "message": "Property 'answer' is missing in type '{}' but required in type '{ answer: number | undefined; }'.",
+          "file": "typescript_oracle/relate-required-undefined-absent-error/main.ts",
+          "start": 217,
+          "length": 5,
+          "line": 5,
+          "column": 14,
+          "related": [
+            {
+              "code": 2728,
+              "category": "message",
+              "message": "'answer' is declared here.",
+              "file": "typescript_oracle/relate-required-undefined-absent-error/main.ts",
+              "start": 225,
+              "length": 6,
+              "line": 5,
+              "column": 22
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "compatibility:relate-runtime-freshness/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-runtime-freshness/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-runtime-freshness/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "compatibility:relate-runtime-method/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-runtime-method/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-runtime-method/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "compatibility:relate-runtime-optional/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-runtime-optional/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-runtime-optional/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "compatibility:relate-runtime-variance/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-runtime-variance/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-runtime-variance/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "compatibility:relate-variance-alias/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-variance-alias/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-variance-alias/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "compatibility:relate-variance-alias-position-error/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-variance-alias-position-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-variance-alias-position-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2637,
+        "category": "error",
+        "message": "Variance annotations are only supported in type aliases for object, function, constructor, and mapped types.",
+        "file": "typescript_oracle/relate-variance-alias-position-error/main.ts",
+        "start": 218,
+        "length": 5,
+        "line": 5,
+        "column": 15
+      },
+      "diagnostics": [
+        {
+          "code": 2637,
+          "category": "error",
+          "message": "Variance annotations are only supported in type aliases for object, function, constructor, and mapped types.",
+          "file": "typescript_oracle/relate-variance-alias-position-error/main.ts",
+          "start": 218,
+          "length": 5,
+          "line": 5,
+          "column": 15
+        }
+      ]
+    },
+    {
+      "id": "compatibility:relate-variance-in/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-variance-in/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-variance-in/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "compatibility:relate-variance-in-error/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-variance-in-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-variance-in-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'Consumer<string>' is not assignable to type 'Consumer<unknown>'.\n  Type 'unknown' is not assignable to type 'string'.",
+        "file": "typescript_oracle/relate-variance-in-error/main.ts",
+        "start": 308,
+        "length": 5,
+        "line": 5,
+        "column": 105
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'Consumer<string>' is not assignable to type 'Consumer<unknown>'.\n  Type 'unknown' is not assignable to type 'string'.",
+          "file": "typescript_oracle/relate-variance-in-error/main.ts",
+          "start": 308,
+          "length": 5,
+          "line": 5,
+          "column": 105
+        }
+      ]
+    },
+    {
+      "id": "compatibility:relate-variance-invalid-in-error/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-variance-invalid-in-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-variance-invalid-in-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2636,
+        "category": "error",
+        "message": "Type 'Producer<super-T>' is not assignable to type 'Producer<sub-T>' as implied by variance annotation.\n  The types returned by 'get()' are incompatible between these types.\n    Type 'super-T' is not assignable to type 'sub-T'.",
+        "file": "typescript_oracle/relate-variance-invalid-in-error/main.ts",
+        "start": 223,
+        "length": 4,
+        "line": 5,
+        "column": 20
+      },
+      "diagnostics": [
+        {
+          "code": 2636,
+          "category": "error",
+          "message": "Type 'Producer<super-T>' is not assignable to type 'Producer<sub-T>' as implied by variance annotation.\n  The types returned by 'get()' are incompatible between these types.\n    Type 'super-T' is not assignable to type 'sub-T'.",
+          "file": "typescript_oracle/relate-variance-invalid-in-error/main.ts",
+          "start": 223,
+          "length": 4,
+          "line": 5,
+          "column": 20
+        }
+      ]
+    },
+    {
+      "id": "compatibility:relate-variance-invalid-out-error/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-variance-invalid-out-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-variance-invalid-out-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2636,
+        "category": "error",
+        "message": "Type 'Consumer<sub-T>' is not assignable to type 'Consumer<super-T>' as implied by variance annotation.\n  Types of property 'set' are incompatible.\n    Type '(value: sub-T) => void' is not assignable to type '(value: super-T) => void'.\n      Types of parameters 'value' and 'value' are incompatible.\n        Type 'super-T' is not assignable to type 'sub-T'.",
+        "file": "typescript_oracle/relate-variance-invalid-out-error/main.ts",
+        "start": 223,
+        "length": 5,
+        "line": 5,
+        "column": 20
+      },
+      "diagnostics": [
+        {
+          "code": 2636,
+          "category": "error",
+          "message": "Type 'Consumer<sub-T>' is not assignable to type 'Consumer<super-T>' as implied by variance annotation.\n  Types of property 'set' are incompatible.\n    Type '(value: sub-T) => void' is not assignable to type '(value: super-T) => void'.\n      Types of parameters 'value' and 'value' are incompatible.\n        Type 'super-T' is not assignable to type 'sub-T'.",
+          "file": "typescript_oracle/relate-variance-invalid-out-error/main.ts",
+          "start": 223,
+          "length": 5,
+          "line": 5,
+          "column": 20
+        }
+      ]
+    },
+    {
+      "id": "compatibility:relate-variance-invariant/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-variance-invariant/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-variance-invariant/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "compatibility:relate-variance-invariant-error/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-variance-invariant-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-variance-invariant-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'Box<string>' is not assignable to type 'Box<string | number>'.\n  Type 'string | number' is not assignable to type 'string'.\n    Type 'number' is not assignable to type 'string'.",
+        "file": "typescript_oracle/relate-variance-invariant-error/main.ts",
+        "start": 287,
+        "length": 5,
+        "line": 5,
+        "column": 84
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'Box<string>' is not assignable to type 'Box<string | number>'.\n  Type 'string | number' is not assignable to type 'string'.\n    Type 'number' is not assignable to type 'string'.",
+          "file": "typescript_oracle/relate-variance-invariant-error/main.ts",
+          "start": 287,
+          "length": 5,
+          "line": 5,
+          "column": 84
+        }
+      ]
+    },
+    {
+      "id": "compatibility:relate-variance-out/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-variance-out/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-variance-out/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "compatibility:relate-variance-out-error/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-variance-out-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-variance-out-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'Producer<unknown>' is not assignable to type 'Producer<string>'.\n  Type 'unknown' is not assignable to type 'string'.",
+        "file": "typescript_oracle/relate-variance-out-error/main.ts",
+        "start": 299,
+        "length": 5,
+        "line": 5,
+        "column": 96
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'Producer<unknown>' is not assignable to type 'Producer<string>'.\n  Type 'unknown' is not assignable to type 'string'.",
+          "file": "typescript_oracle/relate-variance-out-error/main.ts",
+          "start": 299,
+          "length": 5,
+          "line": 5,
+          "column": 96
+        }
+      ]
+    },
+    {
+      "id": "compatibility:relate-weak-argument-error/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-weak-argument-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-weak-argument-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2559,
+        "category": "error",
+        "message": "Type '{ extra: number; }' has no properties in common with type 'Options'.",
+        "file": "typescript_oracle/relate-weak-argument-error/main.ts",
+        "start": 308,
+        "length": 5,
+        "line": 5,
+        "column": 105
+      },
+      "diagnostics": [
+        {
+          "code": 2559,
+          "category": "error",
+          "message": "Type '{ extra: number; }' has no properties in common with type 'Options'.",
+          "file": "typescript_oracle/relate-weak-argument-error/main.ts",
+          "start": 308,
+          "length": 5,
+          "line": 5,
+          "column": 105
+        }
+      ]
+    },
+    {
+      "id": "compatibility:relate-weak-empty/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-weak-empty/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-weak-empty/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "compatibility:relate-weak-index-signature/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-weak-index-signature/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-weak-index-signature/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "compatibility:relate-weak-no-overlap-error/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-weak-no-overlap-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-weak-no-overlap-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2559,
+        "category": "error",
+        "message": "Type '{ extra: number; }' has no properties in common with type 'Options'.",
+        "file": "typescript_oracle/relate-weak-no-overlap-error/main.ts",
+        "start": 277,
+        "length": 5,
+        "line": 5,
+        "column": 74
+      },
+      "diagnostics": [
+        {
+          "code": 2559,
+          "category": "error",
+          "message": "Type '{ extra: number; }' has no properties in common with type 'Options'.",
+          "file": "typescript_oracle/relate-weak-no-overlap-error/main.ts",
+          "start": 277,
+          "length": 5,
+          "line": 5,
+          "column": 74
+        }
+      ]
+    },
+    {
+      "id": "compatibility:relate-weak-overlap/main.ts",
+      "matrix": "compatibility",
+      "entry": "relate-weak-overlap/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/relate-weak-overlap/main.ts"
       ],
       "accepts": true,
       "first": null,
