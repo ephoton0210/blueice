@@ -140,6 +140,13 @@ impl<'a> ModuleChecker<'a> {
             return value;
         }
         if let Some(call) = constructor_call_parts(tokens) {
+            if let Some(signatures) = self.function_value_signatures(&call.callee.text, scope, true)
+            {
+                let explicit = call.generic.then(|| {
+                    self.module.generic_call_type_arguments[&call.callee.start].as_slice()
+                });
+                return self.infer_function_call(&signatures, call.arguments, scope, explicit);
+            }
             if call
                 .receiver
                 .is_none_or(|receiver| scope.get(&receiver.text) == self.values.get(&receiver.text))
@@ -237,10 +244,7 @@ impl<'a> ModuleChecker<'a> {
             if let PropertyType::Found { value, .. } = found {
                 match value {
                     Type::Function { result, .. } => return *result,
-                    Type::Intersection(overloads)
-                        if self.is_bound_class_instance_type(&base)
-                            || matches!(call.receiver, [receiver] if self.is_bound_class_constructor_value(&receiver.text, scope) || self.is_bound_class_static_this(receiver, scope)) =>
-                    {
+                    Type::Intersection(overloads) => {
                         if let Some(signatures) = method_overload_signatures(&overloads) {
                             return self.infer_function_call(
                                 &signatures,
@@ -248,25 +252,6 @@ impl<'a> ModuleChecker<'a> {
                                 scope,
                                 None,
                             );
-                        }
-                    }
-                    Type::Intersection(overloads)
-                        if supports_callback_method_receiver(
-                            &base,
-                            &self.types,
-                            self.max_type_expansions,
-                        ) =>
-                    {
-                        if let Some(arguments) = split_call_arguments(call.arguments) {
-                            if let Ok(actuals) =
-                                self.expanded_call_argument_types(&arguments, scope)
-                            {
-                                if let Ok(Type::Function { result, .. }) =
-                                    select_callback_method_overload(&overloads, &actuals)
-                                {
-                                    return *result.clone();
-                                }
-                            }
                         }
                     }
                     _ => {}
@@ -285,8 +270,13 @@ impl<'a> ModuleChecker<'a> {
                 });
                 return self.infer_function_call(&signatures, call.arguments, scope, explicit);
             }
-            if let Some(signature) = self.function_value_signature(&call.callee.text, scope) {
-                return self.infer_function_call(&[signature], call.arguments, scope, None);
+            if let Some(signatures) =
+                self.function_value_signatures(&call.callee.text, scope, false)
+            {
+                let explicit = call.generic.then(|| {
+                    self.module.generic_call_type_arguments[&call.callee.start].as_slice()
+                });
+                return self.infer_function_call(&signatures, call.arguments, scope, explicit);
             }
             if let Some(signatures) = self.functions.get(&call.callee.text) {
                 let explicit = call.generic.then(|| {

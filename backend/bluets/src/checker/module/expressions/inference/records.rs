@@ -181,7 +181,7 @@ impl<'a> ModuleChecker<'a> {
         budget: &mut TypeExpansionBudget,
     ) -> Option<Vec<TypeField>> {
         match value {
-            Type::Record(fields) => Some(fields),
+            Type::Record(fields) | Type::CallableRecord { fields, .. } => Some(fields),
             Type::Named { .. } => {
                 let expanded =
                     instantiate_named(&value, &self.types, visited, budget, "record spread")?;

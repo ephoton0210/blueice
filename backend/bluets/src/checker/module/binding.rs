@@ -344,6 +344,53 @@ impl<'a> ModuleChecker<'a> {
         kind: SymbolKind,
         exported: bool,
     ) {
+        if definition.kind == TypeDefinitionKind::Interface {
+            if let Some(existing) = self
+                .types
+                .get(name)
+                .filter(|existing| existing.kind == TypeDefinitionKind::Interface)
+                .cloned()
+            {
+                let members = |value: &Type| match value {
+                    Type::Record(fields) | Type::CallableRecord { fields, .. } => fields.clone(),
+                    _ => Vec::new(),
+                };
+                let old_fields = members(&existing.value);
+                for field in members(&definition.value) {
+                    if let Some(old) = old_fields.iter().find(|old| old.name == field.name) {
+                        if !matches!(
+                            field.value,
+                            Type::Function { .. } | Type::GenericFunction { .. }
+                        ) && old.value != field.value
+                        {
+                            self.typescript_type_error(
+                                &field.span,
+                                format!(
+                                    "subsequent interface property `{}` has a different type",
+                                    field.name
+                                ),
+                                DiagnosticCode::TypeMismatch,
+                                2717,
+                                vec![
+                                    field.name.clone(),
+                                    crate::diagnostic::type_text::render_in(
+                                        &old.value,
+                                        self.project,
+                                    ),
+                                    crate::diagnostic::type_text::render_in(
+                                        &field.value,
+                                        self.project,
+                                    ),
+                                ],
+                            );
+                        }
+                    }
+                }
+                self.types.get_mut(name).unwrap().value =
+                    merge_interface_values(&existing.value, &definition.value);
+                return;
+            }
+        }
         if self
             .types
             .insert(name.to_string(), definition.clone())
@@ -446,6 +493,13 @@ impl<'a> ModuleChecker<'a> {
                             parent,
                             &interface.fields,
                             &interface.span,
+                        );
+                    }
+                    for signature in &interface.signatures {
+                        self.check_type_with_parameters(
+                            &signature.function_type(),
+                            &signature.span,
+                            &interface.type_parameters,
                         );
                     }
                     for field in &interface.fields {

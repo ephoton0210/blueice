@@ -5166,3 +5166,41 @@ witnesses, completeness and pinned recorder pass. Evidence:
 This commit records only the new test evidence; production remains an
 uncommitted implementation draft. The shared diagnostic corpus regeneration is
 running and will be recorded after completion. The leaf remains open.
+
+### K.4.4 ordered overloads verified — 2026-10-08
+
+Call and construct signatures retain their independent kind, generic binders,
+parameter spans and declaration origins beside ordinary object members. Named
+callable values, anonymous object/interface signatures and interface methods
+feed the same bounded candidate selector as declared functions and class
+constructors. Direct literal parameter annotations take priority in source
+order; later merged interface declaration groups precede earlier groups.
+Callback context follows candidate order and preceding argument compatibility.
+The earlier exact-two-tag/named-callback method restriction and its three
+BlueTS-only diagnostic mappings are retired.
+
+Implementation signatures remain hidden from calls. Compatibility still rejects
+invalid overload declarations; TS2394 cites TS2750, and rejected calls cite
+TS2793 only when their actual argument types fit the hidden implementation.
+Callback return failures preserve the measured overload details and TS6502
+signature origin. Arity failures point at the callee and cite the selected
+exposed signature's missing parameter. Declaration output retains mixed data,
+call/construct members, generic interface methods and rest parameter spelling.
+The shared analysis identity advances to `lexical-flow-v5`; type-only changes
+introduce no runtime helper or authority grant. Callable shapes remain refused
+at data-only contract boundaries.
+
+All 74 pinned programs (39 accept, 35 reject), exact primary and related
+diagnostics, six Node/runtime and every-emitted-declaration witnesses pass.
+The 74-case generic inference matrix and existing front-end regressions pass.
+The complete frozen-source Linux K.0 gate passes format, format check and both
+crate all-target Clippy with warnings denied; all 1,114 tests in 71 groups pass,
+including all 134 ignored oracles in 36 differential suite files. Evidence:
+`/private/tmp/blueice-k14-linux/blueice-k44-final-status.json`,
+`blueice-k44-final-gate.log` and `blueice-k44-final-clippy.log`.
+All 40 frozen changed backend files match the host and Linux snapshots. Largest
+production source: 1,153 lines. The regenerated inventory records 1,954 fixture
+directories, 1,744 diagnostic programs (797 accept, 947 reject), 147 templates
+and 163 refusal sites in 10 areas. G-T4 retains unmeasured candidate/operator/
+variance interactions and broader optional-chain/non-null typing; K.4.5 to
+K.4.7 and the final workspace/coverage gate remain open.

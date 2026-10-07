@@ -186,6 +186,26 @@ pub(super) fn is_assignable(
             }
         }
     }
+    if let (Type::Literal(actual), Type::Literal(expected)) = (actual, expected) {
+        if actual.starts_with(['\'', '"'])
+            && expected.starts_with(['\'', '"'])
+            && !actual.contains('\\')
+            && !expected.contains('\\')
+        {
+            let token = |text: &String| Token {
+                kind: TokenKind::String,
+                text: text.clone(),
+                start: 0,
+                end: text.len(),
+            };
+            if let (Some(actual), Some(expected)) = (
+                crate::syntax::string_contents(&token(actual)),
+                crate::syntax::string_contents(&token(expected)),
+            ) {
+                return actual == expected;
+            }
+        }
+    }
     if matches!(actual, Type::Any | Type::Unknown) || matches!(expected, Type::Any | Type::Unknown)
     {
         return true;
@@ -825,6 +845,22 @@ pub(super) fn substitute_type(value: &Type, substitutions: &BTreeMap<String, Typ
                 })
                 .collect(),
         ),
+        Type::CallableRecord { fields, signatures } => {
+            let Type::Record(fields) =
+                substitute_type(&Type::Record(fields.clone()), substitutions)
+            else {
+                unreachable!()
+            };
+            Type::CallableRecord {
+                fields,
+                signatures: signatures
+                    .iter()
+                    .map(|signature| {
+                        signature.map_types(|value| substitute_type(value, substitutions))
+                    })
+                    .collect(),
+            }
+        }
         Type::Record(fields) => Type::Record(
             fields
                 .iter()
@@ -936,7 +972,7 @@ pub(super) fn type_identity(value: &Type) -> String {
                 .collect::<Vec<_>>()
                 .join(",")
         ),
-        Type::Record(_) => "record".to_string(),
+        Type::Record(_) | Type::CallableRecord { .. } => "record".to_string(),
         Type::Function { .. } | Type::GenericFunction { .. } => "function".to_string(),
         Type::Union(values) => values
             .iter()
@@ -986,7 +1022,7 @@ pub(crate) fn type_label(value: &Type) -> String {
                 .collect::<Vec<_>>()
                 .join(", ")
         ),
-        Type::Record(_) => "record".to_string(),
+        Type::Record(_) | Type::CallableRecord { .. } => "record".to_string(),
         Type::Function { .. } | Type::GenericFunction { .. } => "function".to_string(),
         Type::Union(values) => values
             .iter()

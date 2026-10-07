@@ -3951,6 +3951,8 @@ fn callback_method_overloads_select_by_tag_and_report_distinct_failures() {
     for call in [
         "visitor.visit('text', onText);",
         "visitor.visit(\"count\", onCount);",
+        "visitor.visit('text', opaque);",
+        "visitor.visit('text', value => {});",
     ] {
         let (_, result) = check(call);
         assert!(
@@ -3962,7 +3964,7 @@ fn callback_method_overloads_select_by_tag_and_report_distinct_failures() {
     for (call, message) in [
         (
             "visitor.visit(kind, onText);",
-            "ambiguous overload of method visit",
+            "no overload of method visit matches",
         ),
         (
             "visitor.visit('other', onText);",
@@ -3970,15 +3972,11 @@ fn callback_method_overloads_select_by_tag_and_report_distinct_failures() {
         ),
         (
             "visitor.visit('text', onCount);",
-            "argument 2 has type `function`",
+            "no overload of method visit matches",
         ),
         (
             "visitor.visit('text', 'wrong');",
-            "argument 2 has type `'wrong'`",
-        ),
-        (
-            "visitor.visit('text', opaque);",
-            "requires a named function callback",
+            "no overload of method visit matches",
         ),
     ] {
         let (source, result) = check(call);

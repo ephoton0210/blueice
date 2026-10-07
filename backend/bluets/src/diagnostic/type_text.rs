@@ -81,6 +81,29 @@ fn text(value: &Type, depth: usize, project: Option<&crate::Project>) -> String 
                 .collect::<Vec<_>>()
                 .join(", ")
         ),
+        Type::CallableRecord { fields, signatures } => {
+            let mut members = fields
+                .iter()
+                .map(|field| {
+                    format!(
+                        "{}{}{}: {};",
+                        if field.readonly { "readonly " } else { "" },
+                        field.name,
+                        if field.optional { "?" } else { "" },
+                        render(&field.value)
+                    )
+                })
+                .collect::<Vec<_>>();
+            members.extend(signatures.iter().map(|signature| {
+                format!(
+                    "{}({}): {};",
+                    if signature.construct { "new " } else { "" },
+                    parameter_list_in(&signature.parameters, project),
+                    render(&signature.result)
+                )
+            }));
+            format!("{{ {} }}", members.join(" "))
+        }
         Type::Record(fields) => {
             if let Some(project) = project {
                 if let Some(prototype) = fields

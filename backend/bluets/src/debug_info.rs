@@ -401,7 +401,7 @@ fn local_contract_definitions(module: &Module) -> BTreeMap<String, Type> {
 }
 
 fn interface_contract_type(interface: &InterfaceDeclaration) -> Type {
-    let record = Type::Record(interface.fields.clone());
+    let record = interface.body_type();
     if interface.heritage.is_empty() {
         record
     } else {

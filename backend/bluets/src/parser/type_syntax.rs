@@ -4,6 +4,9 @@
 
 //! Type expressions and common parser cursor operations.
 
+#[path = "type_syntax/callable_objects.rs"]
+mod callable_objects;
+
 use super::runtime_syntax::*;
 use super::*;
 
@@ -13,12 +16,7 @@ impl Parser {
         let mut parameters = Vec::new();
         while !self.at_eof() && !self.consume(")") {
             let start = self.current().start;
-            if self.consume("...") {
-                self.unsupported(
-                    self.previous().span(&self.id),
-                    "rest parameters in method signatures are not supported",
-                );
-            }
+            let rest = self.consume("...");
             let name = self.require_identifier("expected a method parameter name");
             let optional = self.consume("?");
             self.expect(":");
@@ -28,7 +26,7 @@ impl Parser {
                 decorators: Vec::new(),
                 name,
                 pattern: None,
-                rest: false,
+                rest,
                 optional,
                 annotation: Some(annotation),
                 default: None,
@@ -310,30 +308,7 @@ impl Parser {
             }
             Type::Tuple(values)
         } else if self.consume("{") {
-            let mut fields = Vec::new();
-            while !self.at_eof() && !self.consume("}") {
-                let start = self.current().start;
-                let readonly = self.consume("readonly");
-                let name = self.require_property_name("expected a record field name");
-                let optional = self.consume("?");
-                let value = if self.peek("(") {
-                    self.parse_method_signature(&[";", ",", "}"])
-                } else {
-                    self.expect(":");
-                    self.parse_type_until(&[";", ",", "}"])
-                };
-                let end = self.previous().end;
-                fields.push(TypeField {
-                    name,
-                    readonly,
-                    optional,
-                    value,
-                    span: SourceSpan::new(&self.id, start, end),
-                });
-                self.consume(";");
-                self.consume(",");
-            }
-            Type::Record(fields)
+            self.parse_record_type("expected a record field name")
         } else if self.peek("(") && !self.parenthesis_starts_function_type() {
             // A parenthesized type only groups: `(A | B)[]`.
             self.bump();

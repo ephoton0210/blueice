@@ -1529,6 +1529,8 @@ narrowing:narrow-typeof-unrelated/main.ts	reject
 narrowing:narrow-undefined-strict/main.ts	accept
 narrowing:narrow-undefined-wrong/main.ts	reject
 overloads:over-call-arity-error/main.ts	reject
+overloads:over-call-boolean-priority/main.ts	accept
+overloads:over-call-boolean-priority-error/main.ts	reject
 overloads:over-call-contextual-arrow/main.ts	accept
 overloads:over-call-contextual-arrow-error/main.ts	reject
 overloads:over-call-contextual-count/main.ts	accept
@@ -1537,9 +1539,15 @@ overloads:over-call-first-return-error/main.ts	reject
 overloads:over-call-generic/main.ts	accept
 overloads:over-call-generic-error/main.ts	reject
 overloads:over-call-implementation-hidden-error/main.ts	reject
+overloads:over-call-literal-context/main.ts	accept
+overloads:over-call-literal-context-error/main.ts	reject
 overloads:over-call-literal-priority/main.ts	accept
 overloads:over-call-literal-priority-error/main.ts	reject
 overloads:over-call-no-match-error/main.ts	reject
+overloads:over-call-null-priority/main.ts	accept
+overloads:over-call-null-priority-error/main.ts	reject
+overloads:over-call-number-priority/main.ts	accept
+overloads:over-call-number-priority-error/main.ts	reject
 overloads:over-call-optional/main.ts	accept
 overloads:over-call-optional-zero/main.ts	accept
 overloads:over-call-optional-zero-error/main.ts	reject
@@ -1570,6 +1578,14 @@ overloads:over-implementation-result-error/main.ts	reject
 overloads:over-implementation-return-valid/main.ts	accept
 overloads:over-import-function/main.ts	accept
 overloads:over-import-function-error/main.ts	reject
+overloads:over-interface-call/main.ts	accept
+overloads:over-interface-call-error/main.ts	reject
+overloads:over-interface-construct/main.ts	accept
+overloads:over-interface-construct-error/main.ts	reject
+overloads:over-interface-merged-method/main.ts	accept
+overloads:over-interface-merged-method-error/main.ts	reject
+overloads:over-interface-merged-order/main.ts	accept
+overloads:over-interface-merged-order-error/main.ts	reject
 overloads:over-interface-method-order/main.ts	accept
 overloads:over-interface-method-order-error/main.ts	reject
 overloads:over-method-contextual/main.ts	accept
@@ -1583,6 +1599,7 @@ overloads:over-method-second/main.ts	accept
 overloads:over-runtime-call/main.ts	accept
 overloads:over-runtime-constructor/main.ts	accept
 overloads:over-runtime-imports/main.ts	accept
+overloads:over-runtime-interface/main.ts	accept
 overloads:over-runtime-method/main.ts	accept
 overloads:over-runtime-types/main.ts	accept
 unknown-name:unknown-name-alias-value-error/main.ts	reject

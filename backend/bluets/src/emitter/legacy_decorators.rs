@@ -498,6 +498,7 @@ impl Lowerer<'_, '_> {
             Type::Any
             | Type::Unknown
             | Type::Record(_)
+            | Type::CallableRecord { .. }
             | Type::Intersection(_)
             | Type::KeyOf(_)
             | Type::IndexedAccess { .. } => "Object".to_string(),

@@ -17,6 +17,7 @@ pub use decorators::DECORATOR_HELPER_V1_VERSION;
 pub use legacy_decorators::LEGACY_DECORATOR_HELPER_V1_VERSION;
 pub use private_lowering::CLASS_HELPER_V1_VERSION;
 
+mod callable_objects;
 mod class_lowering;
 mod classes;
 mod commonjs;
@@ -534,25 +535,12 @@ fn emit_declaration(
                             .join(", "),
                     );
                 }
-                output.push_str(" {\n");
-                for field in &interface.fields {
-                    output.push_str("    ");
-                    if field.readonly {
-                        output.push_str("readonly ");
-                    }
-                    output.push_str(&field.name);
-                    if field.optional {
-                        output.push('?');
-                    }
-                    if let Type::Function { parameters, result } = &field.value {
-                        output.push_str(&method_signature_to_ts(parameters, result));
-                    } else {
-                        output.push_str(": ");
-                        output.push_str(&type_to_ts(&field.value));
-                    }
-                    output.push_str(";\n");
-                }
-                output.push_str("}\n");
+                output.push(' ');
+                output.push_str(&callable_objects::render(
+                    &interface.fields,
+                    &interface.signatures,
+                ));
+                output.push('\n');
             }
             Declaration::Variable(variable)
                 if !variable.declared
@@ -837,6 +825,7 @@ fn type_to_ts(value: &Type) -> String {
                 .collect::<Vec<_>>()
                 .join(", ")
         ),
+        Type::CallableRecord { fields, signatures } => callable_objects::render(fields, signatures),
         Type::Record(fields) => format!(
             "{{ {} }}",
             fields
@@ -896,7 +885,8 @@ fn method_parameters_to_ts(parameters: &[crate::parser::Parameter]) -> String {
         .iter()
         .map(|parameter| {
             format!(
-                "{}{}: {}",
+                "{}{}{}: {}",
+                if parameter.rest { "..." } else { "" },
                 parameter.name,
                 if parameter.optional { "?" } else { "" },
                 parameter

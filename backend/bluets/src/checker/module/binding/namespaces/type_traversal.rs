@@ -9,6 +9,12 @@ use super::*;
 /// Every named type a type mentions.
 pub(super) fn named_types(value: &Type, into: &mut BTreeSet<String>) {
     match value {
+        Type::CallableRecord { fields, signatures } => {
+            named_types(&Type::Record(fields.clone()), into);
+            for signature in signatures {
+                named_types(&signature.function_type(), into);
+            }
+        }
         Type::Named { name, arguments } => {
             into.insert(name.clone());
             for argument in arguments {
@@ -98,6 +104,18 @@ impl Qualifier<'_> {
 
     pub(super) fn ty(&self, value: &Type) -> Type {
         match value {
+            Type::CallableRecord { fields, signatures } => {
+                let Type::Record(fields) = self.ty(&Type::Record(fields.clone())) else {
+                    unreachable!()
+                };
+                Type::CallableRecord {
+                    fields,
+                    signatures: signatures
+                        .iter()
+                        .map(|signature| signature.map_types(|value| self.ty(value)))
+                        .collect(),
+                }
+            }
             Type::Predicate(predicate) => {
                 let mut predicate = predicate.clone();
                 predicate.target = predicate

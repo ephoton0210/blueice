@@ -11,84 +11,22 @@ mod diagnostics;
 mod flow_checks;
 mod function_methods;
 mod generic_inference;
+mod implementation_origin;
 mod indexing;
 mod inference;
 mod library_presentation;
-mod method_overloads;
 mod optional_property;
 mod property_diagnostics;
 mod readonly;
+pub(super) mod signatures;
 
 pub(super) use indexing::indexed_value_type;
 use indexing::{canonical_index_key, tuple_indexed_candidates};
-use method_overloads::{
-    select_callback_method_overload, supports_callback_method_receiver, MethodOverloadError,
-};
-
 fn method_overload_signatures(overloads: &[Type]) -> Option<Vec<FunctionSignature>> {
-    overloads
-        .iter()
-        .map(|overload| {
-            let Type::Function { parameters, result } = overload else {
-                return None;
-            };
-            Some(FunctionSignature {
-                parameters: parameters.clone(),
-                type_parameters: Vec::new(),
-                return_type: *result.clone(),
-            })
-        })
-        .collect()
+    signatures::callable_signatures(&Type::Intersection(overloads.to_vec()), false)
 }
 
 impl<'a> ModuleChecker<'a> {
-    /// The single signature of a call through a function-typed value that is in
-    /// scope (a parameter, a local or an arrow), if `callee` names one. A value
-    /// in scope shadows a module function of the same name.
-    pub(in crate::checker::module) fn function_value_signature(
-        &self,
-        callee: &str,
-        scope: &BTreeMap<String, Type>,
-    ) -> Option<FunctionSignature> {
-        let bound = scope.get(callee)?;
-        // A declared function is bound as a value of its return type, which is a
-        // function type when it returns one: that is not a function value in
-        // scope shadowing the declaration.
-        if self.functions.contains_key(callee) && self.values.get(callee) == Some(bound) {
-            return None;
-        }
-        let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
-        let mut bound = bound.clone();
-        let mut visited = HashSet::new();
-        while let Some(expanded) = instantiate_named(
-            &bound,
-            &self.types,
-            &mut visited,
-            &mut budget,
-            "callable value",
-        ) {
-            bound = expanded;
-        }
-        match bound {
-            Type::Function { parameters, result } => Some(FunctionSignature {
-                parameters,
-                type_parameters: Vec::new(),
-                return_type: *result,
-            }),
-            Type::GenericFunction {
-                parameters,
-                type_parameters,
-                result,
-                ..
-            } => Some(FunctionSignature {
-                parameters,
-                type_parameters,
-                return_type: *result,
-            }),
-            _ => None,
-        }
-    }
-
     pub(super) fn infer_function_call(
         &self,
         signatures: &[FunctionSignature],
@@ -141,10 +79,9 @@ impl<'a> ModuleChecker<'a> {
         let Some(call) = direct_call_parts(tokens) else {
             return;
         };
-        let value_signature = self.function_value_signature(&call.callee.text, scope);
-        let Some(signatures) = value_signature
-            .map(|signature| vec![signature])
-            .or_else(|| self.functions.get(&call.callee.text).cloned())
+        let value_signature = self.function_value_signatures(&call.callee.text, scope, false);
+        let Some(signatures) =
+            value_signature.or_else(|| self.functions.get(&call.callee.text).cloned())
         else {
             if self.require_declared_global_calls && !scope.contains_key(&call.callee.text) {
                 self.type_error(
@@ -236,6 +173,16 @@ impl<'a> ModuleChecker<'a> {
                 &actuals,
                 false,
             );
+            self.present_callback_return_error(&signatures, &actuals, &arguments, call.callee);
+            self.present_hidden_implementation(&call.callee.text, &actuals, false);
+            if self
+                .diagnostics
+                .last()
+                .and_then(|d| d.typescript.as_ref())
+                .is_some_and(|d| d.code == 2554)
+            {
+                self.point_last_typescript(std::slice::from_ref(call.callee));
+            }
             return;
         }
         let Some(signature) = selected.or_else(|| signatures.first().cloned()) else {
@@ -335,6 +282,7 @@ impl<'a> ModuleChecker<'a> {
                     arguments.get(index).copied().unwrap_or(&[]),
                     overloaded,
                 );
+                self.present_hidden_implementation(&call.callee.text, &actuals, false);
                 if overloaded {
                     if let Some((receiver, member)) = call.callee.text.split_once('.') {
                         self.present_library_overloads(
@@ -435,6 +383,13 @@ impl<'a> ModuleChecker<'a> {
         scope: &BTreeMap<String, Type>,
         signatures: &[FunctionSignature],
     ) -> Result<Vec<Type>, ()> {
+        let mut ordered = signatures.to_vec();
+        ordered.sort_by_key(|signature| {
+            !signature.parameters.iter().any(|parameter| {
+                matches!(parameter.annotation, Some(Type::Literal(_) | Type::Null))
+            })
+        });
+        let signatures = ordered.as_slice();
         let mut actuals = Vec::new();
         let mut positions_known = true;
         for argument in arguments {
@@ -452,8 +407,8 @@ impl<'a> ModuleChecker<'a> {
                         let preserve = signatures.iter().any(|signature| {
                             let Some(parameter) = function_parameter_for_argument(signature, actuals.len()) else { return false };
                             let annotation = if parameter.rest { rest_parameter_element_annotation(parameter) } else { parameter.annotation.as_ref() };
-                            matches!(annotation, Some(Type::Named { name, arguments }) if arguments.is_empty() && signature.type_parameters.iter().any(|p| p.name == *name))
-                                && matches!(&signature.return_type, Type::Named { name, arguments } if arguments.is_empty() && signature.type_parameters.iter().any(|p| p.name == *name))
+                            matches!(annotation, Some(Type::Literal(_))) || (matches!(annotation, Some(Type::Named { name, arguments }) if arguments.is_empty() && signature.type_parameters.iter().any(|p| p.name == *name))
+                                && matches!(&signature.return_type, Type::Named { name, arguments } if arguments.is_empty() && signature.type_parameters.iter().any(|p| p.name == *name)))
                         });
                         if preserve {
                             actuals.push(Type::Literal(token.text.clone()));
@@ -497,16 +452,31 @@ impl<'a> ModuleChecker<'a> {
         actuals: &[Type],
         signatures: &[FunctionSignature],
     ) -> Option<Type> {
+        let mut rejected = None;
         for signature in signatures {
-            let parameter = function_parameter_for_argument(signature, actuals.len())?;
+            let Some(parameter) = function_parameter_for_argument(signature, actuals.len()) else {
+                continue;
+            };
             let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
             budget.checking = self.checking;
             let substitutions =
                 infer_call_substitutions(signature, actuals, &self.types, &mut budget);
+            if actuals.iter().enumerate().any(|(index, actual)| {
+                let Some(parameter) = function_parameter_for_argument(signature, index) else {
+                    return true;
+                };
+                !is_assignable(
+                    actual,
+                    &call_parameter_expected_type(parameter, &substitutions),
+                    &self.types,
+                    &mut HashSet::new(),
+                    &mut budget,
+                )
+            }) {
+                continue;
+            }
             let expected = call_parameter_expected_type(parameter, &substitutions);
             let actual = self.infer_in_context(argument, scope, &expected);
-            let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
-            budget.checking = self.checking;
             if is_assignable(
                 &actual,
                 &expected,
@@ -516,8 +486,11 @@ impl<'a> ModuleChecker<'a> {
             ) {
                 return Some(actual);
             }
+            if rejected.is_none() {
+                rejected = Some(actual);
+            }
         }
-        None
+        rejected
     }
 
     pub(super) fn expanded_call_argument_types(
@@ -553,7 +526,13 @@ impl<'a> ModuleChecker<'a> {
         actuals: &[Type],
         explicit_type_arguments: Option<&[Type]>,
     ) -> Result<Option<&'b FunctionSignature>, ()> {
-        for signature in signatures {
+        let mut candidates = signatures.iter().collect::<Vec<_>>();
+        candidates.sort_by_key(|signature| {
+            !signature.parameters.iter().any(|parameter| {
+                matches!(parameter.annotation, Some(Type::Literal(_) | Type::Null))
+            })
+        });
+        for signature in candidates {
             if function_signature_matches(
                 signature,
                 actuals,

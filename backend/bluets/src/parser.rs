@@ -608,7 +608,31 @@ pub struct InterfaceDeclaration {
     /// entire interface remains erased from JavaScript.
     pub heritage: Vec<Type>,
     pub fields: Vec<TypeField>,
+    pub signatures: Vec<TypeSignature>,
     pub exported: bool,
+    pub span: SourceSpan,
+}
+
+impl InterfaceDeclaration {
+    pub(crate) fn body_type(&self) -> Type {
+        if self.signatures.is_empty() {
+            Type::Record(self.fields.clone())
+        } else {
+            Type::CallableRecord {
+                fields: self.fields.clone(),
+                signatures: self.signatures.clone(),
+            }
+        }
+    }
+}
+
+/// A call or construct signature retains its binders and declaration origin.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TypeSignature {
+    pub construct: bool,
+    pub type_parameters: Vec<TypeParameter>,
+    pub parameters: Vec<Parameter>,
+    pub result: Type,
     pub span: SourceSpan,
 }
 
@@ -984,6 +1008,10 @@ pub enum Type {
     Array(Box<Type>),
     Tuple(Vec<TupleTypeElement>),
     Record(Vec<TypeField>),
+    CallableRecord {
+        fields: Vec<TypeField>,
+        signatures: Vec<TypeSignature>,
+    },
     /// A bounded, non-generic method signature in an interface or record.
     /// It is erased from runtime code but retains exact parameter and result
     /// types for member-call checking and declaration emission.

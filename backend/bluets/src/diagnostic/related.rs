@@ -19,6 +19,11 @@ pub(crate) fn attach(project: &Project, diagnostics: &mut [Diagnostic]) {
         };
         let mut related = counterpart.related_information.clone();
         for item in &mut related {
+            if item.position.is_none() {
+                item.position = project
+                    .source(&item.span.module)
+                    .and_then(|source| super::positions::from_source(source, &item.span));
+            }
             if item.code == 6212 {
                 item.span = counterpart.span.clone();
                 item.position = project
@@ -116,7 +121,7 @@ pub(crate) fn attach(project: &Project, diagnostics: &mut [Diagnostic]) {
                     );
                 }
             }
-            2769 => {
+            2769 if !related.iter().any(|item| item.code == 2793) => {
                 if let Some((parameters, name)) = index.call_implementation(span) {
                     let source = project.source(&span.module).unwrap_or("");
                     let actual = source.get(span.start..span.end).unwrap_or("");

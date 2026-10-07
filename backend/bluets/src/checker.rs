@@ -16,6 +16,8 @@ use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 pub use crate::parser::Type;
 
+mod interfaces;
+use interfaces::merge_interface_values;
 mod inference;
 use inference::infer_call_substitutions;
 
@@ -246,6 +248,16 @@ fn insert_ambient_type(
     definition: TypeDefinition,
     span: &SourceSpan,
 ) {
+    if definition.kind == TypeDefinitionKind::Interface {
+        if let Some(existing) = ambient
+            .types
+            .get_mut(name)
+            .filter(|existing| existing.kind == TypeDefinitionKind::Interface)
+        {
+            existing.value = merge_interface_values(&existing.value, &definition.value);
+            return;
+        }
+    }
     if ambient.types.insert(name.to_string(), definition).is_some() {
         diagnostics.push(Diagnostic::error(
             DiagnosticCode::DuplicateDeclaration,
@@ -311,22 +323,16 @@ type NamespaceExports = BTreeMap<String, BTreeMap<String, NamespaceExport>>;
 mod project;
 
 fn interface_value(interface: &InterfaceDeclaration) -> Type {
-    interface_value_with_heritage(&interface.heritage, &interface.fields)
+    interface_value_with_heritage(&interface.heritage, interface.body_type())
 }
 
-fn interface_value_with_heritage(heritage: &[Type], fields: &[TypeField]) -> Type {
+fn interface_value_with_heritage(heritage: &[Type], body: Type) -> Type {
     if heritage.is_empty() {
-        return Type::Record(fields.to_vec());
+        return body;
     }
     let mut parts = heritage.to_vec();
-    if !fields.is_empty() {
-        parts.push(Type::Record(fields.to_vec()));
-    }
-    if parts.len() == 1 {
-        parts.pop().expect("one inherited interface type")
-    } else {
-        Type::Intersection(parts)
-    }
+    parts.push(body);
+    Type::Intersection(parts)
 }
 
 fn function_call_substitutions(

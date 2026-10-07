@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: K.4.4 (overloads).** Sections A to J are complete (summarized below); J.6 closed in its
+**Current leaf: K.4.5 (type operators).** Sections A to J are complete (summarized below); J.6 closed in its
 measured form (`COMPATIBILITY_INVENTORY.md`). Section K closes the gaps that inventory lists.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
@@ -364,11 +364,12 @@ narrowing needs a flow graph or can stay structural, recorded in PLAN.md before 
   - *Generic-boundary replay (2026-10-07):* the 59-program draft passes all four focused tests. Eleven further controls expand the corpus to 70 programs (39 accept, 31 reject) and four runtime/declaration witnesses. Linux replay records six checker/diagnostic differences and a missing contextual-inference budget refusal; all four runtime/declaration witnesses, completeness and pinned recorder pass. The shared corpus contains 1,666 programs and 147 templates. The leaf remains open.
   - *Annotated-call replay (2026-10-08):* the 70-program draft passes the full frozen K.0 gate (1,110 tests in 70 groups, all 132 ignored oracles). Four further controls bring the corpus to 74 programs (41 accept, 33 reject); the Linux replay records two TS2344/TS2558 primary-position differences when an earlier variable annotation also has type arguments. All four runtime/declaration witnesses, budget refusal, completeness and recorder pass. The leaf remains open.
   - *Verified (2026-10-08):* all 74 pinned verdicts/primary and related diagnostics, four runtime/declaration witnesses and contextual-inference budget refusal pass through the measured API/CLI paths. Format, format check and both-crate all-target Clippy pass; all 1,110 tests in 70 groups, including all 132 ignored oracles in 35 differential suite files. Largest production source: 1,143 lines. Generic binders, dependent defaults and imported class/function signatures are retained; full operators, generic heritage/methods and broader variance remain in their dependent leaves and G-T2.
-- [ ] **K.4.4 Overloads (L).** Call/construct/method overload selection in `tsc` order, contextual
+- [x] **K.4.4 Overloads (L).** Call/construct/method overload selection in `tsc` order, contextual
   signature selection for callbacks, ambiguity and no-match diagnostics with the right code, implementation
   signature compatibility (TS2394).
   - *Failing baseline (2026-10-08):* 57 pinned programs (30 accept, 27 reject), five runtime/declaration witnesses. Linux replay reports 24 checker/primary-diagnostic differences and one anonymous-signature runtime/declaration compile failure; four other runtime/declaration witnesses, completeness and pinned recorder pass. The shared corpus contains 1,727 programs and 147 templates. Production remains unchanged in this baseline.
   - *Interface/order replay (2026-10-08):* the original 57 overload programs and all 74 K.4.3 generic programs pass. Seventeen further controls extend the overload corpus to 74 programs (39 accept, 35 reject) and six runtime/declaration witnesses. Linux reports 12 checker/primary differences and one additional declaration compile failure; completeness, pinned recorder and the five previous runtime/declaration witnesses pass. The leaf remains open.
+  - *Verified (2026-10-08):* all 74 pinned verdicts/primary and related diagnostics and six runtime/declaration witnesses pass. Ordered call/construct/method candidates, direct literal specialization, merged interface groups, callback context and hidden implementation compatibility are retained. Format, format check and both-crate all-target Clippy pass; all 1,114 tests in 71 groups, including all 134 ignored oracles in 36 differential suite files. Largest production source: 1,153 lines. G-T4 retains unmeasured interactions; K.4.5 to K.4.7 and final workspace/coverage verification remain open.
 - [ ] **K.4.5 Type operators (XL).** `keyof`, `typeof`, indexed access, conditional types (distributive),
   `infer`, mapped types with `readonly`/`?` modifiers and `as` clauses, template-literal types, recursive
   aliases within a depth budget; each operator needs the assignability relation extended.

@@ -97,6 +97,34 @@ impl ModuleChecker<'_> {
         tokens: &[Token],
         scope: &BTreeMap<String, Type>,
     ) {
+        for range in member_call_ranges(tokens, |start| {
+            self.module.generic_call_type_arguments.contains_key(&start)
+        }) {
+            let Some(call) = member_call_parts(&tokens[range], |start| {
+                self.module.generic_call_type_arguments.contains_key(&start)
+            }) else {
+                continue;
+            };
+            let base = self.infer_expression(call.receiver, scope);
+            let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
+            let PropertyType::Found { value, .. } = property_type(
+                &base,
+                &call.member.text,
+                &self.types,
+                &mut HashSet::new(),
+                &mut budget,
+            ) else {
+                continue;
+            };
+            let Some(signatures) =
+                super::super::expressions::signatures::callable_signatures(&value, false)
+            else {
+                continue;
+            };
+            if let Some(arguments) = split_call_arguments(call.arguments) {
+                let _ = self.expanded_call_argument_types_for(&arguments, scope, &signatures);
+            }
+        }
         let execution = tokens.first().and_then(|token| {
             self.scopes
                 .as_ref()
@@ -122,8 +150,7 @@ impl ModuleChecker<'_> {
                 continue;
             };
             let signatures = self
-                .function_value_signature(&call.callee.text, scope)
-                .map(|s| vec![s])
+                .function_value_signatures(&call.callee.text, scope, false)
                 .or_else(|| self.functions.get(&call.callee.text).cloned());
             let Some(signatures) = signatures else {
                 continue;

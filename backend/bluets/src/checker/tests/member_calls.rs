@@ -43,13 +43,13 @@ fn property_lookup_keeps_both_callback_method_overloads_without_first_wins() {
 }
 
 #[test]
-fn unsupported_callback_method_overload_sets_do_not_choose_the_first_signature() {
-    for signatures in [
+fn callback_method_overload_sets_select_compatible_signatures() {
+    for (index, signatures) in [
         "visit(kind: 'text', callback: (value: string) => void): void; visit(kind: 'text', callback: (value: number) => void): void;",
         "visit(kind: 'text', callback: (value: string) => void): void; visit(kind: 'count', callback: (value: number) => void): void; visit(kind: 'other', callback: (value: boolean) => void): void;",
         "visit(kind: 'text', callback?: (value: string) => void): void; visit(kind: 'count', callback: (value: number) => void): void;",
         "visit(kind: 'text', callback: (value: string) => string): void; visit(kind: 'count', callback: (value: number) => void): void;",
-    ] {
+    ].into_iter().enumerate() {
         let ambient = ModuleSource::new(
             "memory:///visitor.d.ts",
             format!("interface Visitor {{ {signatures} }} declare const visitor: Visitor;"),
@@ -66,19 +66,17 @@ fn unsupported_callback_method_overload_sets_do_not_choose_the_first_signature()
                 ..CompilerOptions::default()
             },
         );
-        assert!(
-            result.diagnostics.iter().any(|diagnostic| {
-                diagnostic.code == DiagnosticCode::TypeMismatch
-                    && diagnostic.message == "unsupported overload set for method visit"
-            }),
-            "{signatures}: {:#?}",
-            result.diagnostics
-        );
+        // Pinned TypeScript 5.9.3 accepts the first three former restrictions;
+        // the fourth still rejects the callback's incompatible return type.
+        assert_eq!(result.has_errors(), index == 3, "{signatures}: {:#?}", result.diagnostics);
+        if index == 3 {
+            assert_eq!(result.diagnostics[0].typescript.as_ref().unwrap().code, 2769);
+        }
     }
 }
 
 #[test]
-fn inherited_callback_method_overloads_do_not_choose_a_parent_signature() {
+fn incompatible_inherited_callback_methods_remain_rejected() {
     let result = crate::compile(
         "memory:///main.ts",
         &MapLoader::from([ModuleSource::new(
@@ -90,7 +88,10 @@ fn inherited_callback_method_overloads_do_not_choose_a_parent_signature() {
     assert!(
         result.diagnostics.iter().any(|diagnostic| {
             diagnostic.code == DiagnosticCode::TypeMismatch
-                && diagnostic.message == "unsupported overload set for method visit"
+                && diagnostic
+                    .typescript
+                    .as_ref()
+                    .is_some_and(|counterpart| counterpart.code == 2430)
         }),
         "{:#?}",
         result.diagnostics

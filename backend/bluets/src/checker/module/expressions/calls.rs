@@ -205,123 +205,48 @@ impl<'a> ModuleChecker<'a> {
             || matches!(call.receiver, [receiver] if self.is_bound_class_constructor_value(&receiver.text, scope) || self.is_bound_class_static_this(receiver, scope));
         let (parameters, selected_overload) = match member_type {
             Type::Function { parameters, .. } => (parameters, false),
-            Type::Intersection(overloads) if matches!(call.receiver, [receiver] if self.is_bound_class_constructor_value(&receiver.text, scope) || self.is_bound_class_static_this(receiver, scope)) =>
-            {
-                let Some(signatures) = method_overload_signatures(&overloads) else {
-                    return;
-                };
-                match self.select_function_signature(&signatures, &actuals, None) {
-                    Ok(Some(_)) => {}
-                    Ok(None) => self.rejected_call_error(
-                        &call_span,
-                        format!(
-                            "no overload of static method {} matches the supplied argument types",
-                            call.member.text
-                        ),
-                        &signatures,
-                        &actuals,
-                        true,
-                    ),
-                    Err(()) => self.type_error(
-                        &call_span,
-                        format!(
-                            "static method overload selection exceeds the {} generic-expansion limit",
-                            self.max_type_expansions
-                        ),
-                        DiagnosticCode::ResourceLimit,
-                    ),
-                }
-                return;
-            }
-            Type::Intersection(overloads) if self.is_bound_class_instance_type(&base) => {
-                let Some(signatures) = method_overload_signatures(&overloads) else {
-                    return;
-                };
-                match self.select_function_signature(&signatures, &actuals, None) {
-                    Ok(Some(_)) => {}
-                    Ok(None) => self.rejected_call_error(
-                        &call_span,
-                        format!(
-                            "no overload of instance method {} matches the supplied argument types",
-                            call.member.text
-                        ),
-                        &signatures,
-                        &actuals,
-                        true,
-                    ),
-                    Err(()) => self.type_error(
-                        &call_span,
-                        format!(
-                            "instance method overload selection exceeds the {} generic-expansion limit",
-                            self.max_type_expansions
-                        ),
-                        DiagnosticCode::ResourceLimit,
-                    ),
-                }
-                return;
-            }
             Type::Intersection(overloads) => {
-                if !supports_callback_method_receiver(&base, &self.types, self.max_type_expansions)
-                {
-                    self.type_error(
-                        &call_span,
-                        format!("unsupported overload set for method {}", call.member.text),
-                        DiagnosticCode::TypeMismatch,
-                    );
+                let Some(signatures) = method_overload_signatures(&overloads) else {
                     return;
-                }
-                match select_callback_method_overload(&overloads, &actuals) {
-                    Ok(Type::Function { parameters, .. }) => {
-                        let named_callback = matches!(arguments.get(1), Some([callback]) if callback.kind == TokenKind::Identifier);
-                        if matches!(actuals.get(1), Some(Type::Any | Type::Unknown))
-                            || (matches!(actuals.get(1), Some(Type::Function { .. }))
-                                && !named_callback)
-                        {
-                            self.type_error(
-                                &call_span,
-                                format!(
-                                    "method {} requires a named function callback",
-                                    call.member.text
-                                ),
-                                DiagnosticCode::TypeMismatch,
-                            );
-                            return;
-                        }
-                        (parameters.clone(), true)
-                    }
-                    Ok(_) => unreachable!("the selected overload is a function"),
-                    Err(MethodOverloadError::Ambiguous) => {
-                        self.type_error(
+                };
+                match self.select_function_signature(&signatures, &actuals, None) {
+                    Ok(Some(_)) => {}
+                    Ok(None) => {
+                        let kind = if bound_class_member {
+                            "instance method"
+                        } else {
+                            "method"
+                        };
+                        self.rejected_call_error(
                             &call_span,
                             format!(
-                                "ambiguous overload of method {} for first argument type `{}`",
-                                call.member.text,
-                                type_label(&actuals[0])
-                            ),
-                            DiagnosticCode::TypeMismatch,
-                        );
-                        return;
-                    }
-                    Err(MethodOverloadError::NoMatch) => {
-                        self.type_error(
-                            &call_span,
-                            format!(
-                                "no overload of method {} matches the supplied argument types",
+                                "no overload of {kind} {} matches the supplied argument types",
                                 call.member.text
                             ),
-                            DiagnosticCode::TypeMismatch,
+                            &signatures,
+                            &actuals,
+                            true,
                         );
-                        return;
-                    }
-                    Err(MethodOverloadError::Unsupported) => {
-                        self.type_error(
-                            &call_span,
-                            format!("unsupported overload set for method {}", call.member.text),
-                            DiagnosticCode::TypeMismatch,
+                        if let Some(argument) = arguments.first() {
+                            self.point_last_typescript(argument);
+                        }
+                        self.present_callback_return_error(
+                            &signatures,
+                            &actuals,
+                            &arguments,
+                            call.member,
                         );
-                        return;
                     }
+                    Err(()) => self.type_error(
+                        &call_span,
+                        format!(
+                            "method overload selection exceeds the {} generic-expansion limit",
+                            self.max_type_expansions
+                        ),
+                        DiagnosticCode::ResourceLimit,
+                    ),
                 }
+                return;
             }
             _ => {
                 self.type_error(

@@ -431,7 +431,20 @@ pub(super) fn local_type_definitions(module: &Module) -> BTreeMap<String, TypeDe
             )),
             _ => None,
         })
-        .collect()
+        .fold(
+            BTreeMap::<String, TypeDefinition>::new(),
+            |mut definitions, (name, definition)| {
+                if let Some(existing) = definitions.get_mut(&name).filter(|existing| {
+                    existing.kind == TypeDefinitionKind::Interface
+                        && definition.kind == TypeDefinitionKind::Interface
+                }) {
+                    existing.value = merge_interface_values(&existing.value, &definition.value);
+                } else {
+                    definitions.insert(name, definition);
+                }
+                definitions
+            },
+        )
 }
 
 pub(super) fn exported_interface_value(
@@ -444,7 +457,7 @@ pub(super) fn exported_interface_value(
         .iter()
         .map(|parent| expand_exported_heritage(parent, declared, &mut active))
         .collect::<Vec<_>>();
-    interface_value_with_heritage(&heritage, &interface.fields)
+    interface_value_with_heritage(&heritage, interface.body_type())
 }
 
 pub(super) fn expand_exported_heritage(

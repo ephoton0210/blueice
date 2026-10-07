@@ -82,6 +82,12 @@ impl ModuleChecker<'_> {
             Type::Union(options) | Type::Intersection(options) => {
                 options.iter().all(|option| self.type_is_bound(option))
             }
+            Type::CallableRecord { fields, signatures } => {
+                fields.iter().all(|field| self.type_is_bound(&field.value))
+                    && signatures
+                        .iter()
+                        .all(|signature| self.type_is_bound(&signature.function_type()))
+            }
             Type::Record(fields) => fields.iter().all(|field| self.type_is_bound(&field.value)),
             Type::Function { parameters, result } => {
                 parameters.iter().all(|parameter| {
@@ -183,6 +189,12 @@ impl ModuleChecker<'_> {
             Type::Union(values) | Type::Intersection(values) => {
                 for value in values {
                     self.check_type(value, span);
+                }
+            }
+            Type::CallableRecord { fields, signatures } => {
+                self.check_type(&Type::Record(fields.clone()), span);
+                for signature in signatures {
+                    self.check_type(&signature.function_type(), &signature.span);
                 }
             }
             Type::Record(fields) => {

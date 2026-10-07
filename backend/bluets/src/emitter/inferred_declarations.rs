@@ -228,6 +228,12 @@ impl<'a> Context<'a> {
 
     fn references(&mut self, value: &Type) {
         match value {
+            Type::CallableRecord { fields, signatures } => {
+                self.references(&Type::Record(fields.clone()));
+                for signature in signatures {
+                    self.references(&signature.function_type());
+                }
+            }
             Type::KeyOf(value) => self.references(value),
             Type::IndexedAccess { object, index } => {
                 self.references(object);

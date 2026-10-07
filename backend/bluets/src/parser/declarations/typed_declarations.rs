@@ -64,37 +64,12 @@ impl Parser {
             }
         }
         self.expect("{");
-        let mut fields = Vec::new();
-        let mut closed = false;
-        while !self.at_eof() {
-            if self.consume("}") {
-                closed = true;
-                break;
-            }
-            let readonly = self.consume("readonly");
-            let field_start = self.current().start;
-            let name = self.require_property_name("expected an interface field name");
-            let optional = self.consume("?");
-            let value = if self.peek("(") {
-                self.parse_method_signature(&[";", ",", "}"])
-            } else {
-                self.expect(":");
-                self.parse_type_until(&[";", ",", "}"])
-            };
-            let end = self.previous().end;
-            fields.push(TypeField {
-                name,
-                readonly,
-                optional,
-                value,
-                span: SourceSpan::new(&self.id, field_start, end),
-            });
-            self.consume(";");
-            self.consume(",");
-        }
-        if !closed {
-            self.expect("}");
-        }
+        let (fields, signatures) = match self.parse_record_type("expected an interface field name")
+        {
+            Type::Record(fields) => (fields, Vec::new()),
+            Type::CallableRecord { fields, signatures } => (fields, signatures),
+            _ => unreachable!(),
+        };
         let end = self.previous().end;
         self.edits.push(TextEdit {
             start,
@@ -107,6 +82,7 @@ impl Parser {
                 type_parameters,
                 heritage,
                 fields,
+                signatures,
                 exported,
                 span: SourceSpan::new(&self.id, start, end),
             }));

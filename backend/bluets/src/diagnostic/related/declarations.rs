@@ -119,7 +119,7 @@ impl<'a> Index<'a> {
                     }
                 }
                 Declaration::Interface(interface) => {
-                    self.type_fields(&interface.name, &Type::Record(interface.fields.clone()))
+                    self.type_fields(&interface.name, &interface.body_type())
                 }
                 Declaration::TypeAlias(alias) => self.type_fields(&alias.name, &alias.value),
                 Declaration::Variable(variable) => {
@@ -133,7 +133,7 @@ impl<'a> Index<'a> {
     }
     fn type_fields(&mut self, owner: &str, ty: &Type) {
         match ty {
-            Type::Record(fields) => {
+            Type::Record(fields) | Type::CallableRecord { fields, .. } => {
                 for field in fields {
                     let span = self.name_in(&field.name, &field.span);
                     self.fields.push(Field {
@@ -298,6 +298,24 @@ impl<'a> Index<'a> {
         &self,
         span: &SourceSpan,
     ) -> Option<(&'a [Parameter], SourceSpan)> {
+        if let Some(overload) = self.functions.iter().find(|function| {
+            function.overload
+                && function.span.module == span.module
+                && function.span.start <= span.start
+                && function.span.end >= span.end
+        }) {
+            if let Some(implementation) = self.functions.iter().find(|function| {
+                function.name == overload.name
+                    && function.span.module == span.module
+                    && !function.overload
+                    && !function.declared
+            }) {
+                return Some((
+                    &implementation.parameters,
+                    self.name_in(&implementation.name, &implementation.span),
+                ));
+            }
+        }
         let class = self.classes.iter().find(|class| {
             class.span.module == span.module
                 && class.span.start <= span.start
@@ -403,7 +421,19 @@ impl<'a> Index<'a> {
     pub(super) fn missing_parameter(&self, diagnostic: &Diagnostic) -> Option<&'a Parameter> {
         let counterpart = diagnostic.typescript.as_ref()?;
         let parameters = if counterpart.code == 2554 {
-            self.call_implementation(&counterpart.span)?.0
+            let name = self.call_name(&counterpart.span)?;
+            self.functions
+                .iter()
+                .find(|function| {
+                    function.name == name
+                        && function.overload
+                        && function.span.module == counterpart.span.module
+                })
+                .map(|function| function.parameters.as_slice())
+                .or_else(|| {
+                    self.call_implementation(&counterpart.span)
+                        .map(|(parameters, _)| parameters)
+                })?
         } else {
             let source = self.project.source(&counterpart.span.module)?;
             let selected = source

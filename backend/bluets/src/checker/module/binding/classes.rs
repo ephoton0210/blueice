@@ -792,6 +792,42 @@ impl ModuleChecker<'_> {
         {
             return;
         }
+        if let Some(signatures) = self.function_value_signatures(&call.callee.text, scope, true) {
+            let Some(arguments) = split_call_arguments(call.arguments) else {
+                return;
+            };
+            let Ok(actuals) = self.expanded_call_argument_types_for(&arguments, scope, &signatures)
+            else {
+                return;
+            };
+            let explicit = call
+                .generic
+                .then(|| self.module.generic_call_type_arguments[&call.callee.start].as_slice());
+            match self.select_function_signature(&signatures, &actuals, explicit) {
+                Ok(Some(_)) => {}
+                Ok(None) => {
+                    self.rejected_call_error(
+                        span,
+                        format!(
+                            "no constructor of value {} accepts the supplied argument types",
+                            call.callee.text
+                        ),
+                        &signatures,
+                        &actuals,
+                        false,
+                    );
+                    if let Some(argument) = arguments.first() {
+                        self.point_last_typescript(argument);
+                    }
+                }
+                Err(()) => self.type_error(
+                    span,
+                    "construct signature selection exceeds its expansion limit".into(),
+                    DiagnosticCode::ResourceLimit,
+                ),
+            }
+            return;
+        }
         if !self.is_bound_class_constructor_value(&call.callee.text, scope) {
             if self
                 .symbols
@@ -971,6 +1007,7 @@ impl ModuleChecker<'_> {
                 DiagnosticCode::ResourceLimit,
             ),
         }
+        self.present_hidden_implementation(&call.callee.text, &actuals, true);
         if self.library_values.contains(&call.callee.text) {
             self.present_library_overloads(
                 &format!("new {}", call.callee.text),

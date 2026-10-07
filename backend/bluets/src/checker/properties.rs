@@ -100,7 +100,7 @@ pub(super) fn property_type(
         );
     }
     match value {
-        Type::Record(fields) => {
+        Type::Record(fields) | Type::CallableRecord { fields, .. } => {
             let mut values = Vec::new();
             let mut readonly = false;
             for field in fields.iter().filter(|field| field.name == property) {
@@ -217,7 +217,9 @@ pub(super) fn contains_readonly_member(
     budget: &mut TypeExpansionBudget,
 ) -> Result<bool, ()> {
     match value {
-        Type::Record(fields) => Ok(fields.iter().any(|field| field.readonly)),
+        Type::Record(fields) | Type::CallableRecord { fields, .. } => {
+            Ok(fields.iter().any(|field| field.readonly))
+        }
         Type::Named { .. } => {
             match instantiate_named(value, aliases, visited, budget, "readonly property") {
                 Some(value) => contains_readonly_member(&value, aliases, visited, budget),
@@ -256,7 +258,7 @@ pub(super) fn readonly_property(
         return false;
     }
     match owner {
-        Type::Record(fields) => {
+        Type::Record(fields) | Type::CallableRecord { fields, .. } => {
             if fields.iter().any(|field| field.name == property) {
                 fields
                     .iter()
@@ -330,7 +332,7 @@ pub(super) fn mutation_field_type(
         return None;
     }
     match owner {
-        Type::Record(fields) => fields
+        Type::Record(fields) | Type::CallableRecord { fields, .. } => fields
             .iter()
             .find(|field| mutation_name_matches(&field.name, property, private_owner))
             .map(|field| {

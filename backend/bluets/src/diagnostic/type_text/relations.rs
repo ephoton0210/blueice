@@ -114,6 +114,13 @@ pub(super) fn reason(
                     true,
                 );
             }
+            if let Some((actual, expected)) = actual_args
+                .iter()
+                .zip(expected_args)
+                .find(|(actual, expected)| actual != expected)
+            {
+                return mismatch(actual, expected, project, depth);
+            }
         }
     }
     if let (

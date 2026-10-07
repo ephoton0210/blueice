@@ -51759,6 +51759,68 @@
       ]
     },
     {
+      "id": "overloads:over-call-boolean-priority/main.ts",
+      "matrix": "overloads",
+      "entry": "over-call-boolean-priority/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/over-call-boolean-priority/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "overloads:over-call-boolean-priority-error/main.ts",
+      "matrix": "overloads",
+      "entry": "over-call-boolean-priority-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/over-call-boolean-priority-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type '\"narrow\"' is not assignable to type '\"wide\"'.",
+        "file": "typescript_oracle/over-call-boolean-priority-error/main.ts",
+        "start": 314,
+        "length": 6,
+        "line": 5,
+        "column": 111
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type '\"narrow\"' is not assignable to type '\"wide\"'.",
+          "file": "typescript_oracle/over-call-boolean-priority-error/main.ts",
+          "start": 314,
+          "length": 6,
+          "line": 5,
+          "column": 111
+        }
+      ]
+    },
+    {
       "id": "overloads:over-call-contextual-arrow/main.ts",
       "matrix": "overloads",
       "entry": "over-call-contextual-arrow/main.ts",
@@ -52055,6 +52117,68 @@
       ]
     },
     {
+      "id": "overloads:over-call-literal-context/main.ts",
+      "matrix": "overloads",
+      "entry": "over-call-literal-context/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/over-call-literal-context/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "overloads:over-call-literal-context-error/main.ts",
+      "matrix": "overloads",
+      "entry": "over-call-literal-context-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/over-call-literal-context-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type '\"narrow\"' is not assignable to type '\"wide\"'.",
+        "file": "typescript_oracle/over-call-literal-context-error/main.ts",
+        "start": 386,
+        "length": 6,
+        "line": 5,
+        "column": 183
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type '\"narrow\"' is not assignable to type '\"wide\"'.",
+          "file": "typescript_oracle/over-call-literal-context-error/main.ts",
+          "start": 386,
+          "length": 6,
+          "line": 5,
+          "column": 183
+        }
+      ]
+    },
+    {
       "id": "overloads:over-call-literal-priority/main.ts",
       "matrix": "overloads",
       "entry": "over-call-literal-priority/main.ts",
@@ -52156,6 +52280,130 @@
           "line": 5,
           "column": 189,
           "related": []
+        }
+      ]
+    },
+    {
+      "id": "overloads:over-call-null-priority/main.ts",
+      "matrix": "overloads",
+      "entry": "over-call-null-priority/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/over-call-null-priority/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "overloads:over-call-null-priority-error/main.ts",
+      "matrix": "overloads",
+      "entry": "over-call-null-priority-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/over-call-null-priority-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type '\"narrow\"' is not assignable to type '\"wide\"'.",
+        "file": "typescript_oracle/over-call-null-priority-error/main.ts",
+        "start": 314,
+        "length": 6,
+        "line": 5,
+        "column": 111
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type '\"narrow\"' is not assignable to type '\"wide\"'.",
+          "file": "typescript_oracle/over-call-null-priority-error/main.ts",
+          "start": 314,
+          "length": 6,
+          "line": 5,
+          "column": 111
+        }
+      ]
+    },
+    {
+      "id": "overloads:over-call-number-priority/main.ts",
+      "matrix": "overloads",
+      "entry": "over-call-number-priority/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/over-call-number-priority/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "overloads:over-call-number-priority-error/main.ts",
+      "matrix": "overloads",
+      "entry": "over-call-number-priority-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/over-call-number-priority-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type '\"narrow\"' is not assignable to type '\"wide\"'.",
+        "file": "typescript_oracle/over-call-number-priority-error/main.ts",
+        "start": 311,
+        "length": 6,
+        "line": 5,
+        "column": 108
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type '\"narrow\"' is not assignable to type '\"wide\"'.",
+          "file": "typescript_oracle/over-call-number-priority-error/main.ts",
+          "start": 311,
+          "length": 6,
+          "line": 5,
+          "column": 108
         }
       ]
     },
@@ -53244,6 +53492,258 @@
       ]
     },
     {
+      "id": "overloads:over-interface-call/main.ts",
+      "matrix": "overloads",
+      "entry": "over-interface-call/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/over-interface-call/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "overloads:over-interface-call-error/main.ts",
+      "matrix": "overloads",
+      "entry": "over-interface-call-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/over-interface-call-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2769,
+        "category": "error",
+        "message": "No overload matches this call.\n  Overload 1 of 2, '(value: string): string', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'string'.\n  Overload 2 of 2, '(value: number): number', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'number'.",
+        "file": "typescript_oracle/over-interface-call-error/main.ts",
+        "start": 338,
+        "length": 4,
+        "line": 5,
+        "column": 135,
+        "related": []
+      },
+      "diagnostics": [
+        {
+          "code": 2769,
+          "category": "error",
+          "message": "No overload matches this call.\n  Overload 1 of 2, '(value: string): string', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'string'.\n  Overload 2 of 2, '(value: number): number', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'number'.",
+          "file": "typescript_oracle/over-interface-call-error/main.ts",
+          "start": 338,
+          "length": 4,
+          "line": 5,
+          "column": 135,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "overloads:over-interface-construct/main.ts",
+      "matrix": "overloads",
+      "entry": "over-interface-construct/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/over-interface-construct/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "overloads:over-interface-construct-error/main.ts",
+      "matrix": "overloads",
+      "entry": "over-interface-construct-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/over-interface-construct-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2769,
+        "category": "error",
+        "message": "No overload matches this call.\n  Overload 1 of 2, '(value: string): Box', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'string'.\n  Overload 2 of 2, '(value: number): Box', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'number'.",
+        "file": "typescript_oracle/over-interface-construct-error/main.ts",
+        "start": 386,
+        "length": 4,
+        "line": 5,
+        "column": 183,
+        "related": []
+      },
+      "diagnostics": [
+        {
+          "code": 2769,
+          "category": "error",
+          "message": "No overload matches this call.\n  Overload 1 of 2, '(value: string): Box', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'string'.\n  Overload 2 of 2, '(value: number): Box', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'number'.",
+          "file": "typescript_oracle/over-interface-construct-error/main.ts",
+          "start": 386,
+          "length": 4,
+          "line": 5,
+          "column": 183,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "overloads:over-interface-merged-method/main.ts",
+      "matrix": "overloads",
+      "entry": "over-interface-merged-method/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/over-interface-merged-method/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "overloads:over-interface-merged-method-error/main.ts",
+      "matrix": "overloads",
+      "entry": "over-interface-merged-method-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/over-interface-merged-method-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type '\"second\"' is not assignable to type '\"first\"'.",
+        "file": "typescript_oracle/over-interface-merged-method-error/main.ts",
+        "start": 355,
+        "length": 6,
+        "line": 5,
+        "column": 152
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type '\"second\"' is not assignable to type '\"first\"'.",
+          "file": "typescript_oracle/over-interface-merged-method-error/main.ts",
+          "start": 355,
+          "length": 6,
+          "line": 5,
+          "column": 152
+        }
+      ]
+    },
+    {
+      "id": "overloads:over-interface-merged-order/main.ts",
+      "matrix": "overloads",
+      "entry": "over-interface-merged-order/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/over-interface-merged-order/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "overloads:over-interface-merged-order-error/main.ts",
+      "matrix": "overloads",
+      "entry": "over-interface-merged-order-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/over-interface-merged-order-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type '\"second\"' is not assignable to type '\"first\"'.",
+        "file": "typescript_oracle/over-interface-merged-order-error/main.ts",
+        "start": 347,
+        "length": 6,
+        "line": 5,
+        "column": 144
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type '\"second\"' is not assignable to type '\"first\"'.",
+          "file": "typescript_oracle/over-interface-merged-order-error/main.ts",
+          "start": 347,
+          "length": 6,
+          "line": 5,
+          "column": 144
+        }
+      ]
+    },
+    {
       "id": "overloads:over-interface-method-order/main.ts",
       "matrix": "overloads",
       "entry": "over-interface-method-order/main.ts",
@@ -53663,6 +54163,27 @@
       "verdict": "accept",
       "inputs": [
         "typescript_oracle/over-runtime-imports/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "overloads:over-runtime-interface/main.ts",
+      "matrix": "overloads",
+      "entry": "over-runtime-interface/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/over-runtime-interface/main.ts"
       ],
       "accepts": true,
       "first": null,

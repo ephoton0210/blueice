@@ -58,6 +58,9 @@ impl ScopeModel<'_> {
                     self.scopes[scope].types.insert(interface.name.clone());
                     let inner =
                         self.generic_scope(scope, &interface.span, &interface.type_parameters);
+                    for signature in &interface.signatures {
+                        self.type_scopes(&signature.function_type(), &signature.span, inner);
+                    }
                     for field in &interface.fields {
                         self.type_scopes(&field.value, &field.span, inner);
                     }
@@ -600,6 +603,12 @@ impl ScopeModel<'_> {
                     }
                 }
                 self.type_scopes(result, span, inner);
+            }
+            Type::CallableRecord { fields, signatures } => {
+                self.type_scopes(&Type::Record(fields.clone()), span, scope);
+                for signature in signatures {
+                    self.type_scopes(&signature.function_type(), &signature.span, scope);
+                }
             }
             Type::Record(fields) => {
                 for field in fields {

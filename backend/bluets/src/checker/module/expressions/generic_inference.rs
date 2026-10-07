@@ -81,8 +81,7 @@ impl ModuleChecker<'_> {
             return None;
         }
         let signatures = self
-            .function_value_signature(&call.callee.text, scope)
-            .map(|signature| vec![signature])
+            .function_value_signatures(&call.callee.text, scope, false)
             .or_else(|| self.functions.get(&call.callee.text).cloned())?;
         if signatures
             .iter()
