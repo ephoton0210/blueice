@@ -1,0 +1,717 @@
+{
+  "version": "5.9.3",
+  "cases": [
+    {
+      "entry": "guard-assert-assignment-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type 'number' is not assignable to type 'string'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 241,
+          "length": 6
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "guard-assert-bad-parameter/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 1225,
+        "message": "Cannot find parameter 'missing'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 55,
+          "length": 7
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "guard-assert-bad-position-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 1228,
+        "message": "A type predicate is only allowed in return type position for functions and methods.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 21,
+          "length": 23
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "guard-assert-bad-return/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type 'boolean' is not assignable to type 'void'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 73,
+          "length": 6
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "guard-assert-bad-type/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2677,
+        "message": "A type predicate's type must be assignable to its parameter's type.\n  Type 'string' is not assignable to type 'number'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 63,
+          "length": 6
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "guard-assert-callable-alias-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2775,
+        "message": "Assertions require every name in the call target to be declared with an explicit type annotation.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 193,
+          "length": 5
+        },
+        "related": [
+          {
+            "code": 2782,
+            "message": "'check' needs an explicit type annotation.",
+            "module": "main.ts",
+            "position": {
+              "line": 5,
+              "column": 124,
+              "length": 5
+            },
+            "related": []
+          }
+        ]
+      }
+    },
+    {
+      "entry": "guard-assert-equality/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "guard-assert-import/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "guard-assert-import-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type 'string' is not assignable to type 'number'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 113,
+          "length": 6
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "guard-assert-property/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "guard-assert-second-parameter/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "guard-assert-type/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "guard-assert-type-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type 'string' is not assignable to type 'number'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 186,
+          "length": 6
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "guard-assert-unannotated-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2775,
+        "message": "Assertions require every name in the call target to be declared with an explicit type annotation.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 169,
+          "length": 12
+        },
+        "related": [
+          {
+            "code": 2782,
+            "message": "'assertString' needs an explicit type annotation.",
+            "module": "main.ts",
+            "position": {
+              "line": 5,
+              "column": 7,
+              "length": 12
+            },
+            "related": []
+          }
+        ]
+      }
+    },
+    {
+      "entry": "guard-assert-value/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "guard-assert-value-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type 'string | number' is not assignable to type 'string'.\n  Type 'number' is not assignable to type 'string'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 162,
+          "length": 6
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "guard-assert-variable/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "guard-asserts-alias-control/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "guard-bad-destructure/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 1230,
+        "message": "A type predicate cannot reference element 'value' in a binding pattern.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 58,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "guard-bad-parameter/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 1225,
+        "message": "Cannot find parameter 'missing'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 43,
+          "length": 7
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "guard-bad-parameter-position-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2749,
+        "message": "'value' refers to a value, but is being used as a type here. Did you mean 'typeof value'?",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 29,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "guard-bad-position-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2749,
+        "message": "'value' refers to a value, but is being used as a type here. Did you mean 'typeof value'?",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 21,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "guard-bad-predicate-return/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type 'number' is not assignable to type 'boolean'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 61,
+          "length": 6
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "guard-bad-predicate-type/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2677,
+        "message": "A type predicate's type must be assignable to its parameter's type.\n  Type 'string' is not assignable to type 'number'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 51,
+          "length": 6
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "guard-bad-rest/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 1229,
+        "message": "A type predicate cannot reference a rest parameter.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 48,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "guard-is-assignment-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type 'number' is not assignable to type 'string'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 223,
+          "length": 6
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "guard-is-callable-alias/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "guard-is-function-value/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "guard-is-import/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "guard-is-import-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type 'string' is not assignable to type 'number'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 111,
+          "length": 6
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "guard-is-logical/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "guard-is-logical-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2345,
+        "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 227,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "guard-is-negative/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "guard-is-negative-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2345,
+        "message": "Argument of type 'number' is not assignable to parameter of type 'string'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 232,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "guard-is-property/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "guard-is-property-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2345,
+        "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 244,
+          "length": 9
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "guard-is-return/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "guard-is-second-parameter/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "guard-is-shadowed-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type 'unknown' is not assignable to type 'string'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 199,
+          "length": 6
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "guard-is-string/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "guard-is-string-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2345,
+        "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 231,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "guard-is-unknown/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "guard-never-assert-impossible/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "guard-never-call/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "guard-never-declared-call/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "guard-never-exhaustive-switch/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "guard-never-impossible-case-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2678,
+        "message": "Type '\"three\"' is not comparable to type '\"one\" | \"two\"'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 98,
+          "length": 7
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "guard-never-incompatible-case-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2678,
+        "message": "Type 'string' is not comparable to type 'number'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 69,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "guard-never-incomplete-guard-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2366,
+        "message": "Function lacks ending return statement and return type does not include 'undefined'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 47,
+          "length": 6
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "guard-never-incomplete-switch-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2366,
+        "message": "Function lacks ending return statement and return type does not include 'undefined'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 45,
+          "length": 6
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "guard-never-parameter/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "guard-never-void-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type 'string | null' is not assignable to type 'string'.\n  Type 'null' is not assignable to type 'string'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 127,
+          "length": 6
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "guard-runtime-assertion/main.ts",
+      "accepts": true,
+      "runtime": true,
+      "first": null
+    },
+    {
+      "entry": "guard-runtime-exhaustiveness/main.ts",
+      "accepts": true,
+      "runtime": true,
+      "first": null
+    },
+    {
+      "entry": "guard-runtime-import/main.ts",
+      "accepts": true,
+      "runtime": true,
+      "first": null
+    },
+    {
+      "entry": "guard-runtime-predicate/main.ts",
+      "accepts": true,
+      "runtime": true,
+      "first": null
+    },
+    {
+      "entry": "guard-runtime-self/main.ts",
+      "accepts": true,
+      "runtime": true,
+      "first": null
+    },
+    {
+      "entry": "guard-self-assertion/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "guard-self-assertion-unannotated-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2775,
+        "message": "Assertions require every name in the call target to be declared with an explicit type annotation.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 206,
+          "length": 15
+        },
+        "related": [
+          {
+            "code": 2782,
+            "message": "'box' needs an explicit type annotation.",
+            "module": "main.ts",
+            "position": {
+              "line": 5,
+              "column": 189,
+              "length": 3
+            },
+            "related": []
+          }
+        ]
+      }
+    },
+    {
+      "entry": "guard-self-predicate/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "guard-self-predicate-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type 'string' is not assignable to type 'number'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 184,
+          "length": 6
+        },
+        "related": []
+      }
+    }
+  ]
+}

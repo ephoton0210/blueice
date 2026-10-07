@@ -1,0 +1,5 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+function isString(value: string | number): value is string { return typeof value === 'string'; } export function read(input: string | number): string { let value: string | number = input; if (isString(value)) { value = 1; return value; } return ''; }

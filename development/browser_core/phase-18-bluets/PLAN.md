@@ -4844,3 +4844,56 @@ No test exemption or diagnostic allowance is introduced. The largest production
 source is 1,185 lines and every new source has its MPL header. K.4.1 is complete;
 K.4.2 starts with its failing public replay. M8 and the remaining K.4 leaves
 remain open.
+
+### K.4.2 Guards, assertions and exhaustive completion
+
+Retain predicate signatures as an explicit type form: parameter or `this`,
+assertion flag and optional asserted target, with original source identity.
+Type traversal and declaration rendering preserve the form; function bodies
+check its runtime boolean/void result. Declaration validation checks parameter
+identity, destructuring/rest restrictions and the target's assignability to its
+parameter, using the pinned TypeScript diagnostic and original subject/type
+span. No runtime helper or authority grant is introduced.
+
+The K.4.1 flow solver consumes callable predicate signatures from the lexical
+binding and maps the named formal parameter to its actual reference/property
+path. Guard calls filter both branch successors; assertion calls update the
+following state. Explicit annotation checks preserve TS2775, including every
+name in a method target. Ordinary boolean-returning shadowed functions cannot
+reuse a guard signature. Method predicates project `this` using the receiver
+identity and retain its nominal/readonly boundary.
+
+Calls with a known `never` result terminate the normal successor. The graph
+records normal exits separately from return/throw exits so strict return
+checking can diagnose a missing path (TS2366) and accept an exhaustive switch.
+Incompatible switch cases use the selector's type and original case expression
+for TS2678. Existing work/type/nesting bounds, source fingerprints and owner
+refusals stay authoritative.
+
+The baseline has 61 TypeScript 5.9.3 programs (30 accept, 31 reject), including
+five runtime/declaration witnesses. Predicate/assertion validation errors,
+positive/negative/logical/path guards, return-only syntax controls, assignment reset, lexical shadows,
+annotated and aliased callable values, imported guards/assertions, `this` guards and assertions, `never` calls and
+switch completion are compared at the public compiler boundary. Record and
+commit the failing replay before changing production; run the complete K.0
+gate and regenerate G-T1/refusal evidence before checking this leaf complete.
+Broader inferred predicate synthesis, generic predicate inference and general
+compatibility operators remain with their ordered type-system leaves.
+
+### K.4.2 Pinned failing replay
+
+TypeScript 5.9.3 records 61 isolated `guard-*` programs: 30 accept and 31 reject,
+including five runtime/declaration witnesses. The public compiler replay
+reports 55 checker mismatches; four runtime/declaration witnesses fail. Fixture
+completeness and the pinned recorder pass. All four tests, including both
+ignored oracles, run on Linux in 9.05 seconds; evidence remains at
+`/logs/blueice-k42-red.log`.
+
+Imported guard/assertion controls use the existing `.ts` import and extension
+rewrite harness convention, so failures reflect predicate parsing/checking
+rather than an unresolved fixture path. The library fixture loader provides
+only the closed sibling module set. Runtime replay compares every emitted
+`.d.ts`, including the imported helper. The shared diagnostic corpus now
+contains 1,582 programs (711 accept, 871 reject) and 145 message templates.
+This baseline changes no production source; its failures are intentional K.0
+evidence committed before implementation. K.4.2 remains unchecked.

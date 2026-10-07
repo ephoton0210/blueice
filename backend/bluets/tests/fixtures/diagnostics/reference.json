@@ -67,6 +67,22 @@
       "message": "Decorators cannot be applied to multiple get/set accessors of the same name."
     },
     {
+      "code": 1225,
+      "message": "Cannot find parameter '{0}'."
+    },
+    {
+      "code": 1228,
+      "message": "A type predicate is only allowed in return type position for functions and methods."
+    },
+    {
+      "code": 1229,
+      "message": "A type predicate cannot reference a rest parameter."
+    },
+    {
+      "code": 1230,
+      "message": "A type predicate cannot reference element '{0}' in a binding pattern."
+    },
+    {
       "code": 1238,
       "message": "Unable to resolve signature of class decorator when called as an expression."
     },
@@ -387,6 +403,14 @@
       "message": "Cannot extend a class '{0}'. Class constructor is marked as private."
     },
     {
+      "code": 2677,
+      "message": "A type predicate's type must be assignable to its parameter's type."
+    },
+    {
+      "code": 2678,
+      "message": "Type '{0}' is not comparable to type '{1}'."
+    },
+    {
       "code": 2683,
       "message": "'this' implicitly has type 'any' because it does not have a type annotation."
     },
@@ -431,6 +455,10 @@
       "message": "No overload matches this call."
     },
     {
+      "code": 2775,
+      "message": "Assertions require every name in the call target to be declared with an explicit type annotation."
+    },
+    {
       "code": 2786,
       "message": "'{0}' cannot be used as a JSX component."
     },
@@ -453,6 +481,10 @@
     {
       "code": 6133,
       "message": "'{0}' is declared but its value is never read."
+    },
+    {
+      "code": 7005,
+      "message": "Variable '{0}' implicitly has an '{1}' type."
     },
     {
       "code": 7006,
@@ -22485,6 +22517,2079 @@
       "accepts": true,
       "first": null,
       "diagnostics": []
+    },
+    {
+      "id": "guards:guard-assert-assignment-error/main.ts",
+      "matrix": "guards",
+      "entry": "guard-assert-assignment-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/guard-assert-assignment-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'number' is not assignable to type 'string'.",
+        "file": "typescript_oracle/guard-assert-assignment-error/main.ts",
+        "start": 444,
+        "length": 6,
+        "line": 5,
+        "column": 241
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "file": "typescript_oracle/guard-assert-assignment-error/main.ts",
+          "start": 444,
+          "length": 6,
+          "line": 5,
+          "column": 241
+        }
+      ]
+    },
+    {
+      "id": "guards:guard-assert-bad-parameter/main.ts",
+      "matrix": "guards",
+      "entry": "guard-assert-bad-parameter/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/guard-assert-bad-parameter/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 1225,
+        "category": "error",
+        "message": "Cannot find parameter 'missing'.",
+        "file": "typescript_oracle/guard-assert-bad-parameter/main.ts",
+        "start": 258,
+        "length": 7,
+        "line": 5,
+        "column": 55
+      },
+      "diagnostics": [
+        {
+          "code": 1225,
+          "category": "error",
+          "message": "Cannot find parameter 'missing'.",
+          "file": "typescript_oracle/guard-assert-bad-parameter/main.ts",
+          "start": 258,
+          "length": 7,
+          "line": 5,
+          "column": 55
+        }
+      ]
+    },
+    {
+      "id": "guards:guard-assert-bad-position-error/main.ts",
+      "matrix": "guards",
+      "entry": "guard-assert-bad-position-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/guard-assert-bad-position-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 1228,
+        "category": "error",
+        "message": "A type predicate is only allowed in return type position for functions and methods.",
+        "file": "typescript_oracle/guard-assert-bad-position-error/main.ts",
+        "start": 224,
+        "length": 23,
+        "line": 5,
+        "column": 21
+      },
+      "diagnostics": [
+        {
+          "code": 1228,
+          "category": "error",
+          "message": "A type predicate is only allowed in return type position for functions and methods.",
+          "file": "typescript_oracle/guard-assert-bad-position-error/main.ts",
+          "start": 224,
+          "length": 23,
+          "line": 5,
+          "column": 21
+        }
+      ]
+    },
+    {
+      "id": "guards:guard-assert-bad-return/main.ts",
+      "matrix": "guards",
+      "entry": "guard-assert-bad-return/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/guard-assert-bad-return/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'boolean' is not assignable to type 'void'.",
+        "file": "typescript_oracle/guard-assert-bad-return/main.ts",
+        "start": 276,
+        "length": 6,
+        "line": 5,
+        "column": 73
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'boolean' is not assignable to type 'void'.",
+          "file": "typescript_oracle/guard-assert-bad-return/main.ts",
+          "start": 276,
+          "length": 6,
+          "line": 5,
+          "column": 73
+        }
+      ]
+    },
+    {
+      "id": "guards:guard-assert-bad-type/main.ts",
+      "matrix": "guards",
+      "entry": "guard-assert-bad-type/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/guard-assert-bad-type/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2677,
+        "category": "error",
+        "message": "A type predicate's type must be assignable to its parameter's type.\n  Type 'string' is not assignable to type 'number'.",
+        "file": "typescript_oracle/guard-assert-bad-type/main.ts",
+        "start": 266,
+        "length": 6,
+        "line": 5,
+        "column": 63
+      },
+      "diagnostics": [
+        {
+          "code": 2677,
+          "category": "error",
+          "message": "A type predicate's type must be assignable to its parameter's type.\n  Type 'string' is not assignable to type 'number'.",
+          "file": "typescript_oracle/guard-assert-bad-type/main.ts",
+          "start": 266,
+          "length": 6,
+          "line": 5,
+          "column": 63
+        }
+      ]
+    },
+    {
+      "id": "guards:guard-assert-callable-alias-error/main.ts",
+      "matrix": "guards",
+      "entry": "guard-assert-callable-alias-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/guard-assert-callable-alias-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2775,
+        "category": "error",
+        "message": "Assertions require every name in the call target to be declared with an explicit type annotation.",
+        "file": "typescript_oracle/guard-assert-callable-alias-error/main.ts",
+        "start": 396,
+        "length": 5,
+        "line": 5,
+        "column": 193,
+        "related": [
+          {
+            "code": 2782,
+            "category": "message",
+            "message": "'check' needs an explicit type annotation.",
+            "file": "typescript_oracle/guard-assert-callable-alias-error/main.ts",
+            "start": 327,
+            "length": 5,
+            "line": 5,
+            "column": 124
+          }
+        ]
+      },
+      "diagnostics": [
+        {
+          "code": 2775,
+          "category": "error",
+          "message": "Assertions require every name in the call target to be declared with an explicit type annotation.",
+          "file": "typescript_oracle/guard-assert-callable-alias-error/main.ts",
+          "start": 396,
+          "length": 5,
+          "line": 5,
+          "column": 193,
+          "related": [
+            {
+              "code": 2782,
+              "category": "message",
+              "message": "'check' needs an explicit type annotation.",
+              "file": "typescript_oracle/guard-assert-callable-alias-error/main.ts",
+              "start": 327,
+              "length": 5,
+              "line": 5,
+              "column": 124
+            }
+          ]
+        },
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'unknown' is not assignable to type 'string'.",
+          "file": "typescript_oracle/guard-assert-callable-alias-error/main.ts",
+          "start": 410,
+          "length": 6,
+          "line": 5,
+          "column": 207
+        }
+      ]
+    },
+    {
+      "id": "guards:guard-assert-equality/main.ts",
+      "matrix": "guards",
+      "entry": "guard-assert-equality/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/guard-assert-equality/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "guards:guard-assert-import/main.ts",
+      "matrix": "guards",
+      "entry": "guard-assert-import/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/guard-assert-import/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "guards:guard-assert-import-error/main.ts",
+      "matrix": "guards",
+      "entry": "guard-assert-import-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/guard-assert-import-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'string' is not assignable to type 'number'.",
+        "file": "typescript_oracle/guard-assert-import-error/main.ts",
+        "start": 316,
+        "length": 6,
+        "line": 5,
+        "column": 113
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "file": "typescript_oracle/guard-assert-import-error/main.ts",
+          "start": 316,
+          "length": 6,
+          "line": 5,
+          "column": 113
+        }
+      ]
+    },
+    {
+      "id": "guards:guard-assert-property/main.ts",
+      "matrix": "guards",
+      "entry": "guard-assert-property/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/guard-assert-property/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "guards:guard-assert-second-parameter/main.ts",
+      "matrix": "guards",
+      "entry": "guard-assert-second-parameter/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/guard-assert-second-parameter/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "guards:guard-assert-type/main.ts",
+      "matrix": "guards",
+      "entry": "guard-assert-type/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/guard-assert-type/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "guards:guard-assert-type-error/main.ts",
+      "matrix": "guards",
+      "entry": "guard-assert-type-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/guard-assert-type-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'string' is not assignable to type 'number'.",
+        "file": "typescript_oracle/guard-assert-type-error/main.ts",
+        "start": 389,
+        "length": 6,
+        "line": 5,
+        "column": 186
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "file": "typescript_oracle/guard-assert-type-error/main.ts",
+          "start": 389,
+          "length": 6,
+          "line": 5,
+          "column": 186
+        }
+      ]
+    },
+    {
+      "id": "guards:guard-assert-unannotated-error/main.ts",
+      "matrix": "guards",
+      "entry": "guard-assert-unannotated-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/guard-assert-unannotated-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2775,
+        "category": "error",
+        "message": "Assertions require every name in the call target to be declared with an explicit type annotation.",
+        "file": "typescript_oracle/guard-assert-unannotated-error/main.ts",
+        "start": 372,
+        "length": 12,
+        "line": 5,
+        "column": 169,
+        "related": [
+          {
+            "code": 2782,
+            "category": "message",
+            "message": "'assertString' needs an explicit type annotation.",
+            "file": "typescript_oracle/guard-assert-unannotated-error/main.ts",
+            "start": 210,
+            "length": 12,
+            "line": 5,
+            "column": 7
+          }
+        ]
+      },
+      "diagnostics": [
+        {
+          "code": 2775,
+          "category": "error",
+          "message": "Assertions require every name in the call target to be declared with an explicit type annotation.",
+          "file": "typescript_oracle/guard-assert-unannotated-error/main.ts",
+          "start": 372,
+          "length": 12,
+          "line": 5,
+          "column": 169,
+          "related": [
+            {
+              "code": 2782,
+              "category": "message",
+              "message": "'assertString' needs an explicit type annotation.",
+              "file": "typescript_oracle/guard-assert-unannotated-error/main.ts",
+              "start": 210,
+              "length": 12,
+              "line": 5,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'unknown' is not assignable to type 'string'.",
+          "file": "typescript_oracle/guard-assert-unannotated-error/main.ts",
+          "start": 393,
+          "length": 6,
+          "line": 5,
+          "column": 190
+        }
+      ]
+    },
+    {
+      "id": "guards:guard-assert-value/main.ts",
+      "matrix": "guards",
+      "entry": "guard-assert-value/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/guard-assert-value/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "guards:guard-assert-value-error/main.ts",
+      "matrix": "guards",
+      "entry": "guard-assert-value-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/guard-assert-value-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'string | number' is not assignable to type 'string'.\n  Type 'number' is not assignable to type 'string'.",
+        "file": "typescript_oracle/guard-assert-value-error/main.ts",
+        "start": 365,
+        "length": 6,
+        "line": 5,
+        "column": 162
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'string | number' is not assignable to type 'string'.\n  Type 'number' is not assignable to type 'string'.",
+          "file": "typescript_oracle/guard-assert-value-error/main.ts",
+          "start": 365,
+          "length": 6,
+          "line": 5,
+          "column": 162
+        }
+      ]
+    },
+    {
+      "id": "guards:guard-assert-variable/main.ts",
+      "matrix": "guards",
+      "entry": "guard-assert-variable/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/guard-assert-variable/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "guards:guard-asserts-alias-control/main.ts",
+      "matrix": "guards",
+      "entry": "guard-asserts-alias-control/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/guard-asserts-alias-control/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "guards:guard-bad-destructure/main.ts",
+      "matrix": "guards",
+      "entry": "guard-bad-destructure/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/guard-bad-destructure/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 1230,
+        "category": "error",
+        "message": "A type predicate cannot reference element 'value' in a binding pattern.",
+        "file": "typescript_oracle/guard-bad-destructure/main.ts",
+        "start": 261,
+        "length": 5,
+        "line": 5,
+        "column": 58
+      },
+      "diagnostics": [
+        {
+          "code": 1230,
+          "category": "error",
+          "message": "A type predicate cannot reference element 'value' in a binding pattern.",
+          "file": "typescript_oracle/guard-bad-destructure/main.ts",
+          "start": 261,
+          "length": 5,
+          "line": 5,
+          "column": 58
+        }
+      ]
+    },
+    {
+      "id": "guards:guard-bad-parameter/main.ts",
+      "matrix": "guards",
+      "entry": "guard-bad-parameter/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/guard-bad-parameter/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 1225,
+        "category": "error",
+        "message": "Cannot find parameter 'missing'.",
+        "file": "typescript_oracle/guard-bad-parameter/main.ts",
+        "start": 246,
+        "length": 7,
+        "line": 5,
+        "column": 43
+      },
+      "diagnostics": [
+        {
+          "code": 1225,
+          "category": "error",
+          "message": "Cannot find parameter 'missing'.",
+          "file": "typescript_oracle/guard-bad-parameter/main.ts",
+          "start": 246,
+          "length": 7,
+          "line": 5,
+          "column": 43
+        }
+      ]
+    },
+    {
+      "id": "guards:guard-bad-parameter-position-error/main.ts",
+      "matrix": "guards",
+      "entry": "guard-bad-parameter-position-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/guard-bad-parameter-position-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2749,
+        "category": "error",
+        "message": "'value' refers to a value, but is being used as a type here. Did you mean 'typeof value'?",
+        "file": "typescript_oracle/guard-bad-parameter-position-error/main.ts",
+        "start": 232,
+        "length": 5,
+        "line": 5,
+        "column": 29
+      },
+      "diagnostics": [
+        {
+          "code": 2749,
+          "category": "error",
+          "message": "'value' refers to a value, but is being used as a type here. Did you mean 'typeof value'?",
+          "file": "typescript_oracle/guard-bad-parameter-position-error/main.ts",
+          "start": 232,
+          "length": 5,
+          "line": 5,
+          "column": 29
+        },
+        {
+          "code": 1005,
+          "category": "error",
+          "message": "',' expected.",
+          "file": "typescript_oracle/guard-bad-parameter-position-error/main.ts",
+          "start": 238,
+          "length": 2,
+          "line": 5,
+          "column": 35
+        },
+        {
+          "code": 7006,
+          "category": "error",
+          "message": "Parameter 'is' implicitly has an 'any' type.",
+          "file": "typescript_oracle/guard-bad-parameter-position-error/main.ts",
+          "start": 238,
+          "length": 2,
+          "line": 5,
+          "column": 35
+        },
+        {
+          "code": 1005,
+          "category": "error",
+          "message": "',' expected.",
+          "file": "typescript_oracle/guard-bad-parameter-position-error/main.ts",
+          "start": 241,
+          "length": 6,
+          "line": 5,
+          "column": 38
+        },
+        {
+          "code": 7006,
+          "category": "error",
+          "message": "Parameter 'string' implicitly has an 'any' type.",
+          "file": "typescript_oracle/guard-bad-parameter-position-error/main.ts",
+          "start": 241,
+          "length": 6,
+          "line": 5,
+          "column": 38
+        }
+      ]
+    },
+    {
+      "id": "guards:guard-bad-position-error/main.ts",
+      "matrix": "guards",
+      "entry": "guard-bad-position-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/guard-bad-position-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2749,
+        "category": "error",
+        "message": "'value' refers to a value, but is being used as a type here. Did you mean 'typeof value'?",
+        "file": "typescript_oracle/guard-bad-position-error/main.ts",
+        "start": 224,
+        "length": 5,
+        "line": 5,
+        "column": 21
+      },
+      "diagnostics": [
+        {
+          "code": 2749,
+          "category": "error",
+          "message": "'value' refers to a value, but is being used as a type here. Did you mean 'typeof value'?",
+          "file": "typescript_oracle/guard-bad-position-error/main.ts",
+          "start": 224,
+          "length": 5,
+          "line": 5,
+          "column": 21
+        },
+        {
+          "code": 1005,
+          "category": "error",
+          "message": "',' expected.",
+          "file": "typescript_oracle/guard-bad-position-error/main.ts",
+          "start": 230,
+          "length": 2,
+          "line": 5,
+          "column": 27
+        },
+        {
+          "code": 7005,
+          "category": "error",
+          "message": "Variable 'is' implicitly has an 'any' type.",
+          "file": "typescript_oracle/guard-bad-position-error/main.ts",
+          "start": 230,
+          "length": 2,
+          "line": 5,
+          "column": 27
+        },
+        {
+          "code": 1005,
+          "category": "error",
+          "message": "',' expected.",
+          "file": "typescript_oracle/guard-bad-position-error/main.ts",
+          "start": 233,
+          "length": 6,
+          "line": 5,
+          "column": 30
+        }
+      ]
+    },
+    {
+      "id": "guards:guard-bad-predicate-return/main.ts",
+      "matrix": "guards",
+      "entry": "guard-bad-predicate-return/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/guard-bad-predicate-return/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'number' is not assignable to type 'boolean'.",
+        "file": "typescript_oracle/guard-bad-predicate-return/main.ts",
+        "start": 264,
+        "length": 6,
+        "line": 5,
+        "column": 61
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'number' is not assignable to type 'boolean'.",
+          "file": "typescript_oracle/guard-bad-predicate-return/main.ts",
+          "start": 264,
+          "length": 6,
+          "line": 5,
+          "column": 61
+        }
+      ]
+    },
+    {
+      "id": "guards:guard-bad-predicate-type/main.ts",
+      "matrix": "guards",
+      "entry": "guard-bad-predicate-type/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/guard-bad-predicate-type/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2677,
+        "category": "error",
+        "message": "A type predicate's type must be assignable to its parameter's type.\n  Type 'string' is not assignable to type 'number'.",
+        "file": "typescript_oracle/guard-bad-predicate-type/main.ts",
+        "start": 254,
+        "length": 6,
+        "line": 5,
+        "column": 51
+      },
+      "diagnostics": [
+        {
+          "code": 2677,
+          "category": "error",
+          "message": "A type predicate's type must be assignable to its parameter's type.\n  Type 'string' is not assignable to type 'number'.",
+          "file": "typescript_oracle/guard-bad-predicate-type/main.ts",
+          "start": 254,
+          "length": 6,
+          "line": 5,
+          "column": 51
+        }
+      ]
+    },
+    {
+      "id": "guards:guard-bad-rest/main.ts",
+      "matrix": "guards",
+      "entry": "guard-bad-rest/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/guard-bad-rest/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 1229,
+        "category": "error",
+        "message": "A type predicate cannot reference a rest parameter.",
+        "file": "typescript_oracle/guard-bad-rest/main.ts",
+        "start": 251,
+        "length": 5,
+        "line": 5,
+        "column": 48
+      },
+      "diagnostics": [
+        {
+          "code": 1229,
+          "category": "error",
+          "message": "A type predicate cannot reference a rest parameter.",
+          "file": "typescript_oracle/guard-bad-rest/main.ts",
+          "start": 251,
+          "length": 5,
+          "line": 5,
+          "column": 48
+        }
+      ]
+    },
+    {
+      "id": "guards:guard-is-assignment-error/main.ts",
+      "matrix": "guards",
+      "entry": "guard-is-assignment-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/guard-is-assignment-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'number' is not assignable to type 'string'.",
+        "file": "typescript_oracle/guard-is-assignment-error/main.ts",
+        "start": 426,
+        "length": 6,
+        "line": 5,
+        "column": 223
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "file": "typescript_oracle/guard-is-assignment-error/main.ts",
+          "start": 426,
+          "length": 6,
+          "line": 5,
+          "column": 223
+        }
+      ]
+    },
+    {
+      "id": "guards:guard-is-callable-alias/main.ts",
+      "matrix": "guards",
+      "entry": "guard-is-callable-alias/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/guard-is-callable-alias/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "guards:guard-is-function-value/main.ts",
+      "matrix": "guards",
+      "entry": "guard-is-function-value/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/guard-is-function-value/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "guards:guard-is-import/main.ts",
+      "matrix": "guards",
+      "entry": "guard-is-import/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/guard-is-import/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "guards:guard-is-import-error/main.ts",
+      "matrix": "guards",
+      "entry": "guard-is-import-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/guard-is-import-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'string' is not assignable to type 'number'.",
+        "file": "typescript_oracle/guard-is-import-error/main.ts",
+        "start": 314,
+        "length": 6,
+        "line": 5,
+        "column": 111
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "file": "typescript_oracle/guard-is-import-error/main.ts",
+          "start": 314,
+          "length": 6,
+          "line": 5,
+          "column": 111
+        }
+      ]
+    },
+    {
+      "id": "guards:guard-is-logical/main.ts",
+      "matrix": "guards",
+      "entry": "guard-is-logical/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/guard-is-logical/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "guards:guard-is-logical-error/main.ts",
+      "matrix": "guards",
+      "entry": "guard-is-logical-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/guard-is-logical-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2345,
+        "category": "error",
+        "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+        "file": "typescript_oracle/guard-is-logical-error/main.ts",
+        "start": 430,
+        "length": 5,
+        "line": 5,
+        "column": 227
+      },
+      "diagnostics": [
+        {
+          "code": 2345,
+          "category": "error",
+          "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+          "file": "typescript_oracle/guard-is-logical-error/main.ts",
+          "start": 430,
+          "length": 5,
+          "line": 5,
+          "column": 227
+        }
+      ]
+    },
+    {
+      "id": "guards:guard-is-negative/main.ts",
+      "matrix": "guards",
+      "entry": "guard-is-negative/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/guard-is-negative/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "guards:guard-is-negative-error/main.ts",
+      "matrix": "guards",
+      "entry": "guard-is-negative-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/guard-is-negative-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2345,
+        "category": "error",
+        "message": "Argument of type 'number' is not assignable to parameter of type 'string'.",
+        "file": "typescript_oracle/guard-is-negative-error/main.ts",
+        "start": 435,
+        "length": 5,
+        "line": 5,
+        "column": 232
+      },
+      "diagnostics": [
+        {
+          "code": 2345,
+          "category": "error",
+          "message": "Argument of type 'number' is not assignable to parameter of type 'string'.",
+          "file": "typescript_oracle/guard-is-negative-error/main.ts",
+          "start": 435,
+          "length": 5,
+          "line": 5,
+          "column": 232
+        }
+      ]
+    },
+    {
+      "id": "guards:guard-is-property/main.ts",
+      "matrix": "guards",
+      "entry": "guard-is-property/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/guard-is-property/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "guards:guard-is-property-error/main.ts",
+      "matrix": "guards",
+      "entry": "guard-is-property-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/guard-is-property-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2345,
+        "category": "error",
+        "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+        "file": "typescript_oracle/guard-is-property-error/main.ts",
+        "start": 447,
+        "length": 9,
+        "line": 5,
+        "column": 244
+      },
+      "diagnostics": [
+        {
+          "code": 2345,
+          "category": "error",
+          "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+          "file": "typescript_oracle/guard-is-property-error/main.ts",
+          "start": 447,
+          "length": 9,
+          "line": 5,
+          "column": 244
+        }
+      ]
+    },
+    {
+      "id": "guards:guard-is-return/main.ts",
+      "matrix": "guards",
+      "entry": "guard-is-return/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/guard-is-return/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "guards:guard-is-second-parameter/main.ts",
+      "matrix": "guards",
+      "entry": "guard-is-second-parameter/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/guard-is-second-parameter/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "guards:guard-is-shadowed-error/main.ts",
+      "matrix": "guards",
+      "entry": "guard-is-shadowed-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/guard-is-shadowed-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'unknown' is not assignable to type 'string'.",
+        "file": "typescript_oracle/guard-is-shadowed-error/main.ts",
+        "start": 402,
+        "length": 6,
+        "line": 5,
+        "column": 199
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'unknown' is not assignable to type 'string'.",
+          "file": "typescript_oracle/guard-is-shadowed-error/main.ts",
+          "start": 402,
+          "length": 6,
+          "line": 5,
+          "column": 199
+        }
+      ]
+    },
+    {
+      "id": "guards:guard-is-string/main.ts",
+      "matrix": "guards",
+      "entry": "guard-is-string/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/guard-is-string/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "guards:guard-is-string-error/main.ts",
+      "matrix": "guards",
+      "entry": "guard-is-string-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/guard-is-string-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2345,
+        "category": "error",
+        "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+        "file": "typescript_oracle/guard-is-string-error/main.ts",
+        "start": 434,
+        "length": 5,
+        "line": 5,
+        "column": 231
+      },
+      "diagnostics": [
+        {
+          "code": 2345,
+          "category": "error",
+          "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+          "file": "typescript_oracle/guard-is-string-error/main.ts",
+          "start": 434,
+          "length": 5,
+          "line": 5,
+          "column": 231
+        }
+      ]
+    },
+    {
+      "id": "guards:guard-is-unknown/main.ts",
+      "matrix": "guards",
+      "entry": "guard-is-unknown/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/guard-is-unknown/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "guards:guard-never-assert-impossible/main.ts",
+      "matrix": "guards",
+      "entry": "guard-never-assert-impossible/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/guard-never-assert-impossible/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "guards:guard-never-call/main.ts",
+      "matrix": "guards",
+      "entry": "guard-never-call/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/guard-never-call/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "guards:guard-never-declared-call/main.ts",
+      "matrix": "guards",
+      "entry": "guard-never-declared-call/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/guard-never-declared-call/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "guards:guard-never-exhaustive-switch/main.ts",
+      "matrix": "guards",
+      "entry": "guard-never-exhaustive-switch/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/guard-never-exhaustive-switch/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "guards:guard-never-impossible-case-error/main.ts",
+      "matrix": "guards",
+      "entry": "guard-never-impossible-case-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/guard-never-impossible-case-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2678,
+        "category": "error",
+        "message": "Type '\"three\"' is not comparable to type '\"one\" | \"two\"'.",
+        "file": "typescript_oracle/guard-never-impossible-case-error/main.ts",
+        "start": 301,
+        "length": 7,
+        "line": 5,
+        "column": 98
+      },
+      "diagnostics": [
+        {
+          "code": 2678,
+          "category": "error",
+          "message": "Type '\"three\"' is not comparable to type '\"one\" | \"two\"'.",
+          "file": "typescript_oracle/guard-never-impossible-case-error/main.ts",
+          "start": 301,
+          "length": 7,
+          "line": 5,
+          "column": 98
+        }
+      ]
+    },
+    {
+      "id": "guards:guard-never-incompatible-case-error/main.ts",
+      "matrix": "guards",
+      "entry": "guard-never-incompatible-case-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/guard-never-incompatible-case-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2678,
+        "category": "error",
+        "message": "Type 'string' is not comparable to type 'number'.",
+        "file": "typescript_oracle/guard-never-incompatible-case-error/main.ts",
+        "start": 272,
+        "length": 5,
+        "line": 5,
+        "column": 69
+      },
+      "diagnostics": [
+        {
+          "code": 2678,
+          "category": "error",
+          "message": "Type 'string' is not comparable to type 'number'.",
+          "file": "typescript_oracle/guard-never-incompatible-case-error/main.ts",
+          "start": 272,
+          "length": 5,
+          "line": 5,
+          "column": 69
+        }
+      ]
+    },
+    {
+      "id": "guards:guard-never-incomplete-guard-error/main.ts",
+      "matrix": "guards",
+      "entry": "guard-never-incomplete-guard-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/guard-never-incomplete-guard-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2366,
+        "category": "error",
+        "message": "Function lacks ending return statement and return type does not include 'undefined'.",
+        "file": "typescript_oracle/guard-never-incomplete-guard-error/main.ts",
+        "start": 250,
+        "length": 6,
+        "line": 5,
+        "column": 47
+      },
+      "diagnostics": [
+        {
+          "code": 2366,
+          "category": "error",
+          "message": "Function lacks ending return statement and return type does not include 'undefined'.",
+          "file": "typescript_oracle/guard-never-incomplete-guard-error/main.ts",
+          "start": 250,
+          "length": 6,
+          "line": 5,
+          "column": 47
+        }
+      ]
+    },
+    {
+      "id": "guards:guard-never-incomplete-switch-error/main.ts",
+      "matrix": "guards",
+      "entry": "guard-never-incomplete-switch-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/guard-never-incomplete-switch-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2366,
+        "category": "error",
+        "message": "Function lacks ending return statement and return type does not include 'undefined'.",
+        "file": "typescript_oracle/guard-never-incomplete-switch-error/main.ts",
+        "start": 248,
+        "length": 6,
+        "line": 5,
+        "column": 45
+      },
+      "diagnostics": [
+        {
+          "code": 2366,
+          "category": "error",
+          "message": "Function lacks ending return statement and return type does not include 'undefined'.",
+          "file": "typescript_oracle/guard-never-incomplete-switch-error/main.ts",
+          "start": 248,
+          "length": 6,
+          "line": 5,
+          "column": 45
+        }
+      ]
+    },
+    {
+      "id": "guards:guard-never-parameter/main.ts",
+      "matrix": "guards",
+      "entry": "guard-never-parameter/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/guard-never-parameter/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "guards:guard-never-void-error/main.ts",
+      "matrix": "guards",
+      "entry": "guard-never-void-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/guard-never-void-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'string | null' is not assignable to type 'string'.\n  Type 'null' is not assignable to type 'string'.",
+        "file": "typescript_oracle/guard-never-void-error/main.ts",
+        "start": 330,
+        "length": 6,
+        "line": 5,
+        "column": 127
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'string | null' is not assignable to type 'string'.\n  Type 'null' is not assignable to type 'string'.",
+          "file": "typescript_oracle/guard-never-void-error/main.ts",
+          "start": 330,
+          "length": 6,
+          "line": 5,
+          "column": 127
+        }
+      ]
+    },
+    {
+      "id": "guards:guard-runtime-assertion/main.ts",
+      "matrix": "guards",
+      "entry": "guard-runtime-assertion/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/guard-runtime-assertion/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "guards:guard-runtime-exhaustiveness/main.ts",
+      "matrix": "guards",
+      "entry": "guard-runtime-exhaustiveness/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/guard-runtime-exhaustiveness/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "guards:guard-runtime-import/main.ts",
+      "matrix": "guards",
+      "entry": "guard-runtime-import/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/guard-runtime-import/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "guards:guard-runtime-predicate/main.ts",
+      "matrix": "guards",
+      "entry": "guard-runtime-predicate/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/guard-runtime-predicate/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "guards:guard-runtime-self/main.ts",
+      "matrix": "guards",
+      "entry": "guard-runtime-self/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/guard-runtime-self/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "guards:guard-self-assertion/main.ts",
+      "matrix": "guards",
+      "entry": "guard-self-assertion/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/guard-self-assertion/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "guards:guard-self-assertion-unannotated-error/main.ts",
+      "matrix": "guards",
+      "entry": "guard-self-assertion-unannotated-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/guard-self-assertion-unannotated-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2775,
+        "category": "error",
+        "message": "Assertions require every name in the call target to be declared with an explicit type annotation.",
+        "file": "typescript_oracle/guard-self-assertion-unannotated-error/main.ts",
+        "start": 409,
+        "length": 15,
+        "line": 5,
+        "column": 206,
+        "related": [
+          {
+            "code": 2782,
+            "category": "message",
+            "message": "'box' needs an explicit type annotation.",
+            "file": "typescript_oracle/guard-self-assertion-unannotated-error/main.ts",
+            "start": 392,
+            "length": 3,
+            "line": 5,
+            "column": 189
+          }
+        ]
+      },
+      "diagnostics": [
+        {
+          "code": 2775,
+          "category": "error",
+          "message": "Assertions require every name in the call target to be declared with an explicit type annotation.",
+          "file": "typescript_oracle/guard-self-assertion-unannotated-error/main.ts",
+          "start": 409,
+          "length": 15,
+          "line": 5,
+          "column": 206,
+          "related": [
+            {
+              "code": 2782,
+              "category": "message",
+              "message": "'box' needs an explicit type annotation.",
+              "file": "typescript_oracle/guard-self-assertion-unannotated-error/main.ts",
+              "start": 392,
+              "length": 3,
+              "line": 5,
+              "column": 189
+            }
+          ]
+        },
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'string | null' is not assignable to type 'string'.\n  Type 'null' is not assignable to type 'string'.",
+          "file": "typescript_oracle/guard-self-assertion-unannotated-error/main.ts",
+          "start": 428,
+          "length": 6,
+          "line": 5,
+          "column": 225
+        }
+      ]
+    },
+    {
+      "id": "guards:guard-self-predicate/main.ts",
+      "matrix": "guards",
+      "entry": "guard-self-predicate/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/guard-self-predicate/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "guards:guard-self-predicate-error/main.ts",
+      "matrix": "guards",
+      "entry": "guard-self-predicate-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/guard-self-predicate-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'string' is not assignable to type 'number'.",
+        "file": "typescript_oracle/guard-self-predicate-error/main.ts",
+        "start": 387,
+        "length": 6,
+        "line": 5,
+        "column": 184
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "file": "typescript_oracle/guard-self-predicate-error/main.ts",
+          "start": 387,
+          "length": 6,
+          "line": 5,
+          "column": 184
+        }
+      ]
     },
     {
       "id": "immutable:immutable-ambient-const-error/main.ts",
