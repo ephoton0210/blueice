@@ -5104,3 +5104,48 @@ refusal pass. The shared corpus contains 1,670 programs (758 accept,
 `/logs/blueice-k43-angles-final-status.json` and `/logs/blueice-k43-angles-final-gate.log`.
 Largest production source is 1,143 lines. Broader generic inference and variance
 remain measured gaps in G-T2; K.4.3 is complete, K.4.4 is next and M8 remains open.
+
+### K.4.4 Ordered overload selection
+
+Preserve declaration order and keep implementation signatures separate from
+public call candidates. Resolve calls, constructors and methods through the
+same bounded candidate process, including literal priority, optional/rest
+arity and per-candidate contextual callback types. Reject unmatched calls with
+the pinned diagnostic, original call/argument positions and related overload
+information. Validate each implementation against its overloads with TS2394.
+
+The unique `over-*` corpus contains 57 pinned TypeScript 5.9.3 programs
+(30 accept, 27 reject), including five runtime/declaration witnesses. It covers
+call order, hidden implementation signatures, rest/optional arity, contextual
+callbacks, generic selection, imported signatures, methods, constructors and
+callable/constructable interface shapes.
+Commit the failing public replay before production changes, compare all emitted
+`.d.ts` and Node execution, run the complete K.0 gate and regenerate G-T4 and
+refusal evidence. Existing type/work bounds and source authority stay in force.
+
+Anonymous call/construct signatures retain data fields and generic binders.
+A fifth runtime witness compares their exported declaration text, together
+with interface method overloads; rest-method controls cover the same arity path.
+
+### K.4.4 Pinned failing replay
+
+The 57-program TypeScript 5.9.3 corpus records 30 accept and 27 reject cases,
+including five runtime/declaration witnesses. The public Linux replay reports
+24 checker/primary-diagnostic differences and one runtime/declaration witness
+that fails compilation on anonymous signatures. The other four runtime/
+declaration witnesses, fixture completeness and pinned recorder pass. The
+four-test replay takes 9.89 seconds at `/logs/blueice-k44-shapes-red.log`.
+The initial 50-case replay is retained at `/logs/blueice-k44-red.log`.
+
+Anonymous callable/constructable object types must preserve both data fields
+and their ordered signatures, including generic binders. Per-candidate callback
+contexts must be evaluated with the candidate's preceding argument types.
+Selection retains declaration order and literal-signature priority; rejected
+calls retain original callee/argument spans and implementation/return-signature
+related information. Declaration output is measured by the exported anonymous
+signature witness rather than inferred from runtime erasure.
+
+The shared diagnostic corpus is regenerated to 1,727 programs (788 accept,
+939 reject) and 147 templates. This baseline changes no production source and
+commits exact codes, UTF-16 positions, rendered messages, related records and
+runtime/declaration controls before implementation. K.4.4 remains unchecked.

@@ -51694,6 +51694,2023 @@
       ]
     },
     {
+      "id": "overloads:over-call-arity-error/main.ts",
+      "matrix": "overloads",
+      "entry": "over-call-arity-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/over-call-arity-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2554,
+        "category": "error",
+        "message": "Expected 1 arguments, but got 0.",
+        "file": "typescript_oracle/over-call-arity-error/main.ts",
+        "start": 384,
+        "length": 7,
+        "line": 5,
+        "column": 181,
+        "related": [
+          {
+            "code": 6210,
+            "category": "message",
+            "message": "An argument for 'value' was not provided.",
+            "file": "typescript_oracle/over-call-arity-error/main.ts",
+            "start": 221,
+            "length": 13,
+            "line": 5,
+            "column": 18
+          }
+        ]
+      },
+      "diagnostics": [
+        {
+          "code": 2554,
+          "category": "error",
+          "message": "Expected 1 arguments, but got 0.",
+          "file": "typescript_oracle/over-call-arity-error/main.ts",
+          "start": 384,
+          "length": 7,
+          "line": 5,
+          "column": 181,
+          "related": [
+            {
+              "code": 6210,
+              "category": "message",
+              "message": "An argument for 'value' was not provided.",
+              "file": "typescript_oracle/over-call-arity-error/main.ts",
+              "start": 221,
+              "length": 13,
+              "line": 5,
+              "column": 18
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "overloads:over-call-contextual-arrow/main.ts",
+      "matrix": "overloads",
+      "entry": "over-call-contextual-arrow/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/over-call-contextual-arrow/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "overloads:over-call-contextual-arrow-error/main.ts",
+      "matrix": "overloads",
+      "entry": "over-call-contextual-arrow-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/over-call-contextual-arrow-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2769,
+        "category": "error",
+        "message": "No overload matches this call.\n  Overload 1 of 2, '(kind: \"text\", callback: (value: string) => number): number', gave the following error.\n    Type 'string' is not assignable to type 'number'.\n  Overload 2 of 2, '(kind: \"count\", callback: (value: number) => number): number', gave the following error.\n    Argument of type '\"text\"' is not assignable to parameter of type '\"count\"'.",
+        "file": "typescript_oracle/over-call-contextual-arrow-error/main.ts",
+        "start": 393,
+        "length": 5,
+        "line": 5,
+        "column": 190,
+        "related": [
+          {
+            "code": 6502,
+            "category": "message",
+            "message": "The expected type comes from the return type of this signature.",
+            "file": "typescript_oracle/over-call-contextual-arrow-error/main.ts",
+            "start": 251,
+            "length": 25,
+            "line": 5,
+            "column": 48
+          }
+        ]
+      },
+      "diagnostics": [
+        {
+          "code": 2769,
+          "category": "error",
+          "message": "No overload matches this call.\n  Overload 1 of 2, '(kind: \"text\", callback: (value: string) => number): number', gave the following error.\n    Type 'string' is not assignable to type 'number'.\n  Overload 2 of 2, '(kind: \"count\", callback: (value: number) => number): number', gave the following error.\n    Argument of type '\"text\"' is not assignable to parameter of type '\"count\"'.",
+          "file": "typescript_oracle/over-call-contextual-arrow-error/main.ts",
+          "start": 393,
+          "length": 5,
+          "line": 5,
+          "column": 190,
+          "related": [
+            {
+              "code": 6502,
+              "category": "message",
+              "message": "The expected type comes from the return type of this signature.",
+              "file": "typescript_oracle/over-call-contextual-arrow-error/main.ts",
+              "start": 251,
+              "length": 25,
+              "line": 5,
+              "column": 48
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "overloads:over-call-contextual-count/main.ts",
+      "matrix": "overloads",
+      "entry": "over-call-contextual-count/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/over-call-contextual-count/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "overloads:over-call-first/main.ts",
+      "matrix": "overloads",
+      "entry": "over-call-first/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/over-call-first/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "overloads:over-call-first-return-error/main.ts",
+      "matrix": "overloads",
+      "entry": "over-call-first-return-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/over-call-first-return-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'string' is not assignable to type 'number'.",
+        "file": "typescript_oracle/over-call-first-return-error/main.ts",
+        "start": 375,
+        "length": 6,
+        "line": 5,
+        "column": 172
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "file": "typescript_oracle/over-call-first-return-error/main.ts",
+          "start": 375,
+          "length": 6,
+          "line": 5,
+          "column": 172
+        }
+      ]
+    },
+    {
+      "id": "overloads:over-call-generic/main.ts",
+      "matrix": "overloads",
+      "entry": "over-call-generic/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/over-call-generic/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "overloads:over-call-generic-error/main.ts",
+      "matrix": "overloads",
+      "entry": "over-call-generic-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/over-call-generic-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'number' is not assignable to type 'string'.",
+        "file": "typescript_oracle/over-call-generic-error/main.ts",
+        "start": 308,
+        "length": 6,
+        "line": 5,
+        "column": 105
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "file": "typescript_oracle/over-call-generic-error/main.ts",
+          "start": 308,
+          "length": 6,
+          "line": 5,
+          "column": 105
+        }
+      ]
+    },
+    {
+      "id": "overloads:over-call-implementation-hidden-error/main.ts",
+      "matrix": "overloads",
+      "entry": "over-call-implementation-hidden-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/over-call-implementation-hidden-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2345,
+        "category": "error",
+        "message": "Argument of type 'number' is not assignable to parameter of type 'string'.",
+        "file": "typescript_oracle/over-call-implementation-hidden-error/main.ts",
+        "start": 348,
+        "length": 2,
+        "line": 5,
+        "column": 145,
+        "related": [
+          {
+            "code": 2793,
+            "category": "error",
+            "message": "The call would have succeeded against this implementation, but implementation signatures of overloads are not externally visible.",
+            "file": "typescript_oracle/over-call-implementation-hidden-error/main.ts",
+            "start": 253,
+            "length": 6,
+            "line": 5,
+            "column": 50
+          }
+        ]
+      },
+      "diagnostics": [
+        {
+          "code": 2345,
+          "category": "error",
+          "message": "Argument of type 'number' is not assignable to parameter of type 'string'.",
+          "file": "typescript_oracle/over-call-implementation-hidden-error/main.ts",
+          "start": 348,
+          "length": 2,
+          "line": 5,
+          "column": 145,
+          "related": [
+            {
+              "code": 2793,
+              "category": "error",
+              "message": "The call would have succeeded against this implementation, but implementation signatures of overloads are not externally visible.",
+              "file": "typescript_oracle/over-call-implementation-hidden-error/main.ts",
+              "start": 253,
+              "length": 6,
+              "line": 5,
+              "column": 50
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "overloads:over-call-literal-priority/main.ts",
+      "matrix": "overloads",
+      "entry": "over-call-literal-priority/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/over-call-literal-priority/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "overloads:over-call-literal-priority-error/main.ts",
+      "matrix": "overloads",
+      "entry": "over-call-literal-priority-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/over-call-literal-priority-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type '\"narrow\"' is not assignable to type '\"wide\"'.",
+        "file": "typescript_oracle/over-call-literal-priority-error/main.ts",
+        "start": 314,
+        "length": 6,
+        "line": 5,
+        "column": 111
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type '\"narrow\"' is not assignable to type '\"wide\"'.",
+          "file": "typescript_oracle/over-call-literal-priority-error/main.ts",
+          "start": 314,
+          "length": 6,
+          "line": 5,
+          "column": 111
+        }
+      ]
+    },
+    {
+      "id": "overloads:over-call-no-match-error/main.ts",
+      "matrix": "overloads",
+      "entry": "over-call-no-match-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/over-call-no-match-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2769,
+        "category": "error",
+        "message": "No overload matches this call.\n  Overload 1 of 2, '(value: string): string', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'string'.\n  Overload 2 of 2, '(value: number): number', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'number'.",
+        "file": "typescript_oracle/over-call-no-match-error/main.ts",
+        "start": 392,
+        "length": 4,
+        "line": 5,
+        "column": 189,
+        "related": []
+      },
+      "diagnostics": [
+        {
+          "code": 2769,
+          "category": "error",
+          "message": "No overload matches this call.\n  Overload 1 of 2, '(value: string): string', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'string'.\n  Overload 2 of 2, '(value: number): number', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'number'.",
+          "file": "typescript_oracle/over-call-no-match-error/main.ts",
+          "start": 392,
+          "length": 4,
+          "line": 5,
+          "column": 189,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "overloads:over-call-optional/main.ts",
+      "matrix": "overloads",
+      "entry": "over-call-optional/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/over-call-optional/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "overloads:over-call-optional-zero/main.ts",
+      "matrix": "overloads",
+      "entry": "over-call-optional-zero/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/over-call-optional-zero/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "overloads:over-call-optional-zero-error/main.ts",
+      "matrix": "overloads",
+      "entry": "over-call-optional-zero-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/over-call-optional-zero-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'string' is not assignable to type 'number'.",
+        "file": "typescript_oracle/over-call-optional-zero-error/main.ts",
+        "start": 314,
+        "length": 6,
+        "line": 5,
+        "column": 111
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "file": "typescript_oracle/over-call-optional-zero-error/main.ts",
+          "start": 314,
+          "length": 6,
+          "line": 5,
+          "column": 111
+        }
+      ]
+    },
+    {
+      "id": "overloads:over-call-order/main.ts",
+      "matrix": "overloads",
+      "entry": "over-call-order/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/over-call-order/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "overloads:over-call-order-error/main.ts",
+      "matrix": "overloads",
+      "entry": "over-call-order-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/over-call-order-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type '\"first\"' is not assignable to type '\"second\"'.",
+        "file": "typescript_oracle/over-call-order-error/main.ts",
+        "start": 316,
+        "length": 6,
+        "line": 5,
+        "column": 113
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type '\"first\"' is not assignable to type '\"second\"'.",
+          "file": "typescript_oracle/over-call-order-error/main.ts",
+          "start": 316,
+          "length": 6,
+          "line": 5,
+          "column": 113
+        }
+      ]
+    },
+    {
+      "id": "overloads:over-call-rest/main.ts",
+      "matrix": "overloads",
+      "entry": "over-call-rest/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/over-call-rest/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "overloads:over-call-rest-error/main.ts",
+      "matrix": "overloads",
+      "entry": "over-call-rest-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/over-call-rest-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2769,
+        "category": "error",
+        "message": "No overload matches this call.\n  Overload 1 of 2, '(...values: number[]): number', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'number'.\n  Overload 2 of 2, '(value: string): string', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'string'.",
+        "file": "typescript_oracle/over-call-rest-error/main.ts",
+        "start": 338,
+        "length": 4,
+        "line": 5,
+        "column": 135,
+        "related": []
+      },
+      "diagnostics": [
+        {
+          "code": 2769,
+          "category": "error",
+          "message": "No overload matches this call.\n  Overload 1 of 2, '(...values: number[]): number', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'number'.\n  Overload 2 of 2, '(value: string): string', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'string'.",
+          "file": "typescript_oracle/over-call-rest-error/main.ts",
+          "start": 338,
+          "length": 4,
+          "line": 5,
+          "column": 135,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "overloads:over-call-second/main.ts",
+      "matrix": "overloads",
+      "entry": "over-call-second/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/over-call-second/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "overloads:over-call-second-return-error/main.ts",
+      "matrix": "overloads",
+      "entry": "over-call-second-return-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/over-call-second-return-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'number' is not assignable to type 'string'.",
+        "file": "typescript_oracle/over-call-second-return-error/main.ts",
+        "start": 375,
+        "length": 6,
+        "line": 5,
+        "column": 172
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "file": "typescript_oracle/over-call-second-return-error/main.ts",
+          "start": 375,
+          "length": 6,
+          "line": 5,
+          "column": 172
+        }
+      ]
+    },
+    {
+      "id": "overloads:over-call-signature/main.ts",
+      "matrix": "overloads",
+      "entry": "over-call-signature/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/over-call-signature/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "overloads:over-call-signature-error/main.ts",
+      "matrix": "overloads",
+      "entry": "over-call-signature-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/over-call-signature-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2769,
+        "category": "error",
+        "message": "No overload matches this call.\n  Overload 1 of 2, '(value: string): string', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'string'.\n  Overload 2 of 2, '(value: number): number', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'number'.",
+        "file": "typescript_oracle/over-call-signature-error/main.ts",
+        "start": 336,
+        "length": 4,
+        "line": 5,
+        "column": 133,
+        "related": []
+      },
+      "diagnostics": [
+        {
+          "code": 2769,
+          "category": "error",
+          "message": "No overload matches this call.\n  Overload 1 of 2, '(value: string): string', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'string'.\n  Overload 2 of 2, '(value: number): number', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'number'.",
+          "file": "typescript_oracle/over-call-signature-error/main.ts",
+          "start": 336,
+          "length": 4,
+          "line": 5,
+          "column": 133,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "overloads:over-call-signature-properties/main.ts",
+      "matrix": "overloads",
+      "entry": "over-call-signature-properties/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/over-call-signature-properties/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "overloads:over-call-union-error/main.ts",
+      "matrix": "overloads",
+      "entry": "over-call-union-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/over-call-union-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2769,
+        "category": "error",
+        "message": "No overload matches this call.\n  Overload 1 of 2, '(value: string): string', gave the following error.\n    Argument of type 'string | number' is not assignable to parameter of type 'string'.\n      Type 'number' is not assignable to type 'string'.\n  Overload 2 of 2, '(value: number): number', gave the following error.\n    Argument of type 'string | number' is not assignable to parameter of type 'number'.\n      Type 'string' is not assignable to type 'number'.",
+        "file": "typescript_oracle/over-call-union-error/main.ts",
+        "start": 423,
+        "length": 5,
+        "line": 5,
+        "column": 220,
+        "related": [
+          {
+            "code": 2793,
+            "category": "error",
+            "message": "The call would have succeeded against this implementation, but implementation signatures of overloads are not externally visible.",
+            "file": "typescript_oracle/over-call-union-error/main.ts",
+            "start": 295,
+            "length": 7,
+            "line": 5,
+            "column": 92
+          }
+        ]
+      },
+      "diagnostics": [
+        {
+          "code": 2769,
+          "category": "error",
+          "message": "No overload matches this call.\n  Overload 1 of 2, '(value: string): string', gave the following error.\n    Argument of type 'string | number' is not assignable to parameter of type 'string'.\n      Type 'number' is not assignable to type 'string'.\n  Overload 2 of 2, '(value: number): number', gave the following error.\n    Argument of type 'string | number' is not assignable to parameter of type 'number'.\n      Type 'string' is not assignable to type 'number'.",
+          "file": "typescript_oracle/over-call-union-error/main.ts",
+          "start": 423,
+          "length": 5,
+          "line": 5,
+          "column": 220,
+          "related": [
+            {
+              "code": 2793,
+              "category": "error",
+              "message": "The call would have succeeded against this implementation, but implementation signatures of overloads are not externally visible.",
+              "file": "typescript_oracle/over-call-union-error/main.ts",
+              "start": 295,
+              "length": 7,
+              "line": 5,
+              "column": 92
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "overloads:over-call-wide-priority/main.ts",
+      "matrix": "overloads",
+      "entry": "over-call-wide-priority/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/over-call-wide-priority/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "overloads:over-construct-generic/main.ts",
+      "matrix": "overloads",
+      "entry": "over-construct-generic/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/over-construct-generic/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "overloads:over-construct-generic-error/main.ts",
+      "matrix": "overloads",
+      "entry": "over-construct-generic-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/over-construct-generic-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'Box<number>' is not assignable to type 'Box<string>'.\n  Type 'number' is not assignable to type 'string'.",
+        "file": "typescript_oracle/over-construct-generic-error/main.ts",
+        "start": 327,
+        "length": 6,
+        "line": 5,
+        "column": 124
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'Box<number>' is not assignable to type 'Box<string>'.\n  Type 'number' is not assignable to type 'string'.",
+          "file": "typescript_oracle/over-construct-generic-error/main.ts",
+          "start": 327,
+          "length": 6,
+          "line": 5,
+          "column": 124
+        }
+      ]
+    },
+    {
+      "id": "overloads:over-construct-signature/main.ts",
+      "matrix": "overloads",
+      "entry": "over-construct-signature/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/over-construct-signature/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "overloads:over-construct-signature-error/main.ts",
+      "matrix": "overloads",
+      "entry": "over-construct-signature-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/over-construct-signature-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2769,
+        "category": "error",
+        "message": "No overload matches this call.\n  Overload 1 of 2, '(value: string): Box', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'string'.\n  Overload 2 of 2, '(value: number): Box', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'number'.",
+        "file": "typescript_oracle/over-construct-signature-error/main.ts",
+        "start": 384,
+        "length": 4,
+        "line": 5,
+        "column": 181,
+        "related": []
+      },
+      "diagnostics": [
+        {
+          "code": 2769,
+          "category": "error",
+          "message": "No overload matches this call.\n  Overload 1 of 2, '(value: string): Box', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'string'.\n  Overload 2 of 2, '(value: number): Box', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'number'.",
+          "file": "typescript_oracle/over-construct-signature-error/main.ts",
+          "start": 384,
+          "length": 4,
+          "line": 5,
+          "column": 181,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "overloads:over-construct-signature-properties/main.ts",
+      "matrix": "overloads",
+      "entry": "over-construct-signature-properties/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/over-construct-signature-properties/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "overloads:over-constructor-implementation-error/main.ts",
+      "matrix": "overloads",
+      "entry": "over-constructor-implementation-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/over-constructor-implementation-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2394,
+        "category": "error",
+        "message": "This overload signature is not compatible with its implementation signature.",
+        "file": "typescript_oracle/over-constructor-implementation-error/main.ts",
+        "start": 216,
+        "length": 11,
+        "line": 5,
+        "column": 13,
+        "related": [
+          {
+            "code": 2750,
+            "category": "error",
+            "message": "The implementation signature is declared here.",
+            "file": "typescript_oracle/over-constructor-implementation-error/main.ts",
+            "start": 244,
+            "length": 11,
+            "line": 5,
+            "column": 41
+          }
+        ]
+      },
+      "diagnostics": [
+        {
+          "code": 2394,
+          "category": "error",
+          "message": "This overload signature is not compatible with its implementation signature.",
+          "file": "typescript_oracle/over-constructor-implementation-error/main.ts",
+          "start": 216,
+          "length": 11,
+          "line": 5,
+          "column": 13,
+          "related": [
+            {
+              "code": 2750,
+              "category": "error",
+              "message": "The implementation signature is declared here.",
+              "file": "typescript_oracle/over-constructor-implementation-error/main.ts",
+              "start": 244,
+              "length": 11,
+              "line": 5,
+              "column": 41
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "overloads:over-constructor-implementation-hidden-error/main.ts",
+      "matrix": "overloads",
+      "entry": "over-constructor-implementation-hidden-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/over-constructor-implementation-hidden-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2345,
+        "category": "error",
+        "message": "Argument of type 'number' is not assignable to parameter of type 'string'.",
+        "file": "typescript_oracle/over-constructor-implementation-hidden-error/main.ts",
+        "start": 315,
+        "length": 2,
+        "line": 5,
+        "column": 112,
+        "related": [
+          {
+            "code": 2793,
+            "category": "error",
+            "message": "The call would have succeeded against this implementation, but implementation signatures of overloads are not externally visible.",
+            "file": "typescript_oracle/over-constructor-implementation-hidden-error/main.ts",
+            "start": 244,
+            "length": 11,
+            "line": 5,
+            "column": 41
+          }
+        ]
+      },
+      "diagnostics": [
+        {
+          "code": 2345,
+          "category": "error",
+          "message": "Argument of type 'number' is not assignable to parameter of type 'string'.",
+          "file": "typescript_oracle/over-constructor-implementation-hidden-error/main.ts",
+          "start": 315,
+          "length": 2,
+          "line": 5,
+          "column": 112,
+          "related": [
+            {
+              "code": 2793,
+              "category": "error",
+              "message": "The call would have succeeded against this implementation, but implementation signatures of overloads are not externally visible.",
+              "file": "typescript_oracle/over-constructor-implementation-hidden-error/main.ts",
+              "start": 244,
+              "length": 11,
+              "line": 5,
+              "column": 41
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "overloads:over-constructor-no-match-error/main.ts",
+      "matrix": "overloads",
+      "entry": "over-constructor-no-match-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/over-constructor-no-match-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2769,
+        "category": "error",
+        "message": "No overload matches this call.\n  Overload 1 of 2, '(value: string): Box', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'string'.\n  Overload 2 of 2, '(value: number): Box', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'number'.",
+        "file": "typescript_oracle/over-constructor-no-match-error/main.ts",
+        "start": 388,
+        "length": 4,
+        "line": 5,
+        "column": 185,
+        "related": []
+      },
+      "diagnostics": [
+        {
+          "code": 2769,
+          "category": "error",
+          "message": "No overload matches this call.\n  Overload 1 of 2, '(value: string): Box', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'string'.\n  Overload 2 of 2, '(value: number): Box', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'number'.",
+          "file": "typescript_oracle/over-constructor-no-match-error/main.ts",
+          "start": 388,
+          "length": 4,
+          "line": 5,
+          "column": 185,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "overloads:over-constructor-number/main.ts",
+      "matrix": "overloads",
+      "entry": "over-constructor-number/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/over-constructor-number/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "overloads:over-constructor-string/main.ts",
+      "matrix": "overloads",
+      "entry": "over-constructor-string/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/over-constructor-string/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "overloads:over-implementation-arity-error/main.ts",
+      "matrix": "overloads",
+      "entry": "over-implementation-arity-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/over-implementation-arity-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2394,
+        "category": "error",
+        "message": "This overload signature is not compatible with its implementation signature.",
+        "file": "typescript_oracle/over-implementation-arity-error/main.ts",
+        "start": 213,
+        "length": 6,
+        "line": 5,
+        "column": 10,
+        "related": [
+          {
+            "code": 2750,
+            "category": "error",
+            "message": "The implementation signature is declared here.",
+            "file": "typescript_oracle/over-implementation-arity-error/main.ts",
+            "start": 240,
+            "length": 6,
+            "line": 5,
+            "column": 37
+          }
+        ]
+      },
+      "diagnostics": [
+        {
+          "code": 2394,
+          "category": "error",
+          "message": "This overload signature is not compatible with its implementation signature.",
+          "file": "typescript_oracle/over-implementation-arity-error/main.ts",
+          "start": 213,
+          "length": 6,
+          "line": 5,
+          "column": 10,
+          "related": [
+            {
+              "code": 2750,
+              "category": "error",
+              "message": "The implementation signature is declared here.",
+              "file": "typescript_oracle/over-implementation-arity-error/main.ts",
+              "start": 240,
+              "length": 6,
+              "line": 5,
+              "column": 37
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "overloads:over-implementation-parameter-error/main.ts",
+      "matrix": "overloads",
+      "entry": "over-implementation-parameter-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/over-implementation-parameter-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2394,
+        "category": "error",
+        "message": "This overload signature is not compatible with its implementation signature.",
+        "file": "typescript_oracle/over-implementation-parameter-error/main.ts",
+        "start": 213,
+        "length": 6,
+        "line": 5,
+        "column": 10,
+        "related": [
+          {
+            "code": 2750,
+            "category": "error",
+            "message": "The implementation signature is declared here.",
+            "file": "typescript_oracle/over-implementation-parameter-error/main.ts",
+            "start": 253,
+            "length": 6,
+            "line": 5,
+            "column": 50
+          }
+        ]
+      },
+      "diagnostics": [
+        {
+          "code": 2394,
+          "category": "error",
+          "message": "This overload signature is not compatible with its implementation signature.",
+          "file": "typescript_oracle/over-implementation-parameter-error/main.ts",
+          "start": 213,
+          "length": 6,
+          "line": 5,
+          "column": 10,
+          "related": [
+            {
+              "code": 2750,
+              "category": "error",
+              "message": "The implementation signature is declared here.",
+              "file": "typescript_oracle/over-implementation-parameter-error/main.ts",
+              "start": 253,
+              "length": 6,
+              "line": 5,
+              "column": 50
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "overloads:over-implementation-result-error/main.ts",
+      "matrix": "overloads",
+      "entry": "over-implementation-result-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/over-implementation-result-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2394,
+        "category": "error",
+        "message": "This overload signature is not compatible with its implementation signature.",
+        "file": "typescript_oracle/over-implementation-result-error/main.ts",
+        "start": 213,
+        "length": 6,
+        "line": 5,
+        "column": 10,
+        "related": [
+          {
+            "code": 2750,
+            "category": "error",
+            "message": "The implementation signature is declared here.",
+            "file": "typescript_oracle/over-implementation-result-error/main.ts",
+            "start": 253,
+            "length": 6,
+            "line": 5,
+            "column": 50
+          }
+        ]
+      },
+      "diagnostics": [
+        {
+          "code": 2394,
+          "category": "error",
+          "message": "This overload signature is not compatible with its implementation signature.",
+          "file": "typescript_oracle/over-implementation-result-error/main.ts",
+          "start": 213,
+          "length": 6,
+          "line": 5,
+          "column": 10,
+          "related": [
+            {
+              "code": 2750,
+              "category": "error",
+              "message": "The implementation signature is declared here.",
+              "file": "typescript_oracle/over-implementation-result-error/main.ts",
+              "start": 253,
+              "length": 6,
+              "line": 5,
+              "column": 50
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "overloads:over-implementation-return-valid/main.ts",
+      "matrix": "overloads",
+      "entry": "over-implementation-return-valid/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/over-implementation-return-valid/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "overloads:over-import-function/main.ts",
+      "matrix": "overloads",
+      "entry": "over-import-function/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/over-import-function/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "overloads:over-import-function-error/main.ts",
+      "matrix": "overloads",
+      "entry": "over-import-function-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/over-import-function-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2769,
+        "category": "error",
+        "message": "No overload matches this call.\n  Overload 1 of 2, '(value: string): string', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'string'.\n  Overload 2 of 2, '(value: number): number', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'number'.",
+        "file": "typescript_oracle/over-import-function-error/main.ts",
+        "start": 273,
+        "length": 4,
+        "line": 5,
+        "column": 70,
+        "related": []
+      },
+      "diagnostics": [
+        {
+          "code": 2769,
+          "category": "error",
+          "message": "No overload matches this call.\n  Overload 1 of 2, '(value: string): string', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'string'.\n  Overload 2 of 2, '(value: number): number', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'number'.",
+          "file": "typescript_oracle/over-import-function-error/main.ts",
+          "start": 273,
+          "length": 4,
+          "line": 5,
+          "column": 70,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "overloads:over-interface-method-order/main.ts",
+      "matrix": "overloads",
+      "entry": "over-interface-method-order/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/over-interface-method-order/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "overloads:over-interface-method-order-error/main.ts",
+      "matrix": "overloads",
+      "entry": "over-interface-method-order-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/over-interface-method-order-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type '\"first\"' is not assignable to type '\"second\"'.",
+        "file": "typescript_oracle/over-interface-method-order-error/main.ts",
+        "start": 329,
+        "length": 6,
+        "line": 5,
+        "column": 126
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type '\"first\"' is not assignable to type '\"second\"'.",
+          "file": "typescript_oracle/over-interface-method-order-error/main.ts",
+          "start": 329,
+          "length": 6,
+          "line": 5,
+          "column": 126
+        }
+      ]
+    },
+    {
+      "id": "overloads:over-method-contextual/main.ts",
+      "matrix": "overloads",
+      "entry": "over-method-contextual/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/over-method-contextual/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "overloads:over-method-contextual-error/main.ts",
+      "matrix": "overloads",
+      "entry": "over-method-contextual-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/over-method-contextual-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2769,
+        "category": "error",
+        "message": "No overload matches this call.\n  Overload 1 of 2, '(kind: \"text\", callback: (value: string) => number): number', gave the following error.\n    Type 'string' is not assignable to type 'number'.\n  Overload 2 of 2, '(kind: \"count\", callback: (value: number) => number): number', gave the following error.\n    Argument of type '\"text\"' is not assignable to parameter of type '\"count\"'.",
+        "file": "typescript_oracle/over-method-contextual-error/main.ts",
+        "start": 423,
+        "length": 5,
+        "line": 5,
+        "column": 220,
+        "related": [
+          {
+            "code": 6502,
+            "category": "message",
+            "message": "The expected type comes from the return type of this signature.",
+            "file": "typescript_oracle/over-method-contextual-error/main.ts",
+            "start": 254,
+            "length": 25,
+            "line": 5,
+            "column": 51
+          }
+        ]
+      },
+      "diagnostics": [
+        {
+          "code": 2769,
+          "category": "error",
+          "message": "No overload matches this call.\n  Overload 1 of 2, '(kind: \"text\", callback: (value: string) => number): number', gave the following error.\n    Type 'string' is not assignable to type 'number'.\n  Overload 2 of 2, '(kind: \"count\", callback: (value: number) => number): number', gave the following error.\n    Argument of type '\"text\"' is not assignable to parameter of type '\"count\"'.",
+          "file": "typescript_oracle/over-method-contextual-error/main.ts",
+          "start": 423,
+          "length": 5,
+          "line": 5,
+          "column": 220,
+          "related": [
+            {
+              "code": 6502,
+              "category": "message",
+              "message": "The expected type comes from the return type of this signature.",
+              "file": "typescript_oracle/over-method-contextual-error/main.ts",
+              "start": 254,
+              "length": 25,
+              "line": 5,
+              "column": 51
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "overloads:over-method-first/main.ts",
+      "matrix": "overloads",
+      "entry": "over-method-first/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/over-method-first/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "overloads:over-method-implementation-error/main.ts",
+      "matrix": "overloads",
+      "entry": "over-method-implementation-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/over-method-implementation-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2394,
+        "category": "error",
+        "message": "This overload signature is not compatible with its implementation signature.",
+        "file": "typescript_oracle/over-method-implementation-error/main.ts",
+        "start": 216,
+        "length": 7,
+        "line": 5,
+        "column": 13,
+        "related": [
+          {
+            "code": 2750,
+            "category": "error",
+            "message": "The implementation signature is declared here.",
+            "file": "typescript_oracle/over-method-implementation-error/main.ts",
+            "start": 248,
+            "length": 7,
+            "line": 5,
+            "column": 45
+          }
+        ]
+      },
+      "diagnostics": [
+        {
+          "code": 2394,
+          "category": "error",
+          "message": "This overload signature is not compatible with its implementation signature.",
+          "file": "typescript_oracle/over-method-implementation-error/main.ts",
+          "start": 216,
+          "length": 7,
+          "line": 5,
+          "column": 13,
+          "related": [
+            {
+              "code": 2750,
+              "category": "error",
+              "message": "The implementation signature is declared here.",
+              "file": "typescript_oracle/over-method-implementation-error/main.ts",
+              "start": 248,
+              "length": 7,
+              "line": 5,
+              "column": 45
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "overloads:over-method-no-match-error/main.ts",
+      "matrix": "overloads",
+      "entry": "over-method-no-match-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/over-method-no-match-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2769,
+        "category": "error",
+        "message": "No overload matches this call.\n  Overload 1 of 2, '(value: string): string', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'string'.\n  Overload 2 of 2, '(value: number): number', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'number'.",
+        "file": "typescript_oracle/over-method-no-match-error/main.ts",
+        "start": 389,
+        "length": 4,
+        "line": 5,
+        "column": 186,
+        "related": []
+      },
+      "diagnostics": [
+        {
+          "code": 2769,
+          "category": "error",
+          "message": "No overload matches this call.\n  Overload 1 of 2, '(value: string): string', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'string'.\n  Overload 2 of 2, '(value: number): number', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'number'.",
+          "file": "typescript_oracle/over-method-no-match-error/main.ts",
+          "start": 389,
+          "length": 4,
+          "line": 5,
+          "column": 186,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "overloads:over-method-rest/main.ts",
+      "matrix": "overloads",
+      "entry": "over-method-rest/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/over-method-rest/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "overloads:over-method-rest-error/main.ts",
+      "matrix": "overloads",
+      "entry": "over-method-rest-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/over-method-rest-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2769,
+        "category": "error",
+        "message": "No overload matches this call.\n  Overload 1 of 2, '(...values: number[]): number', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'number'.\n  Overload 2 of 2, '(value: string): string', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'string'.",
+        "file": "typescript_oracle/over-method-rest-error/main.ts",
+        "start": 374,
+        "length": 4,
+        "line": 5,
+        "column": 171,
+        "related": []
+      },
+      "diagnostics": [
+        {
+          "code": 2769,
+          "category": "error",
+          "message": "No overload matches this call.\n  Overload 1 of 2, '(...values: number[]): number', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'number'.\n  Overload 2 of 2, '(value: string): string', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'string'.",
+          "file": "typescript_oracle/over-method-rest-error/main.ts",
+          "start": 374,
+          "length": 4,
+          "line": 5,
+          "column": 171,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "overloads:over-method-second/main.ts",
+      "matrix": "overloads",
+      "entry": "over-method-second/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/over-method-second/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "overloads:over-runtime-call/main.ts",
+      "matrix": "overloads",
+      "entry": "over-runtime-call/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/over-runtime-call/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "overloads:over-runtime-constructor/main.ts",
+      "matrix": "overloads",
+      "entry": "over-runtime-constructor/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/over-runtime-constructor/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "overloads:over-runtime-imports/main.ts",
+      "matrix": "overloads",
+      "entry": "over-runtime-imports/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/over-runtime-imports/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "overloads:over-runtime-method/main.ts",
+      "matrix": "overloads",
+      "entry": "over-runtime-method/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/over-runtime-method/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "overloads:over-runtime-types/main.ts",
+      "matrix": "overloads",
+      "entry": "over-runtime-types/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/over-runtime-types/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
       "id": "unknown-name:unknown-name-alias-value-error/main.ts",
       "matrix": "unknown-name",
       "entry": "unknown-name-alias-value-error/main.ts",

@@ -1,0 +1,749 @@
+{
+  "version": "5.9.3",
+  "cases": [
+    {
+      "entry": "over-call-arity-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2554,
+        "message": "Expected 1 arguments, but got 0.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 181,
+          "length": 7
+        },
+        "related": [
+          {
+            "code": 6210,
+            "message": "An argument for 'value' was not provided.",
+            "module": "main.ts",
+            "position": {
+              "line": 5,
+              "column": 18,
+              "length": 13
+            },
+            "related": []
+          }
+        ]
+      }
+    },
+    {
+      "entry": "over-call-contextual-arrow/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "over-call-contextual-arrow-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2769,
+        "message": "No overload matches this call.\n  Overload 1 of 2, '(kind: \"text\", callback: (value: string) => number): number', gave the following error.\n    Type 'string' is not assignable to type 'number'.\n  Overload 2 of 2, '(kind: \"count\", callback: (value: number) => number): number', gave the following error.\n    Argument of type '\"text\"' is not assignable to parameter of type '\"count\"'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 190,
+          "length": 5
+        },
+        "related": [
+          {
+            "code": 6502,
+            "message": "The expected type comes from the return type of this signature.",
+            "module": "main.ts",
+            "position": {
+              "line": 5,
+              "column": 48,
+              "length": 25
+            },
+            "related": []
+          }
+        ]
+      }
+    },
+    {
+      "entry": "over-call-contextual-count/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "over-call-first/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "over-call-first-return-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type 'string' is not assignable to type 'number'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 172,
+          "length": 6
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "over-call-generic/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "over-call-generic-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type 'number' is not assignable to type 'string'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 105,
+          "length": 6
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "over-call-implementation-hidden-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2345,
+        "message": "Argument of type 'number' is not assignable to parameter of type 'string'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 145,
+          "length": 2
+        },
+        "related": [
+          {
+            "code": 2793,
+            "message": "The call would have succeeded against this implementation, but implementation signatures of overloads are not externally visible.",
+            "module": "main.ts",
+            "position": {
+              "line": 5,
+              "column": 50,
+              "length": 6
+            },
+            "related": []
+          }
+        ]
+      }
+    },
+    {
+      "entry": "over-call-literal-priority/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "over-call-literal-priority-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type '\"narrow\"' is not assignable to type '\"wide\"'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 111,
+          "length": 6
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "over-call-no-match-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2769,
+        "message": "No overload matches this call.\n  Overload 1 of 2, '(value: string): string', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'string'.\n  Overload 2 of 2, '(value: number): number', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'number'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 189,
+          "length": 4
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "over-call-optional/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "over-call-optional-zero/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "over-call-optional-zero-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type 'string' is not assignable to type 'number'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 111,
+          "length": 6
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "over-call-order/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "over-call-order-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type '\"first\"' is not assignable to type '\"second\"'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 113,
+          "length": 6
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "over-call-rest/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "over-call-rest-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2769,
+        "message": "No overload matches this call.\n  Overload 1 of 2, '(...values: number[]): number', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'number'.\n  Overload 2 of 2, '(value: string): string', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'string'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 135,
+          "length": 4
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "over-call-second/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "over-call-second-return-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type 'number' is not assignable to type 'string'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 172,
+          "length": 6
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "over-call-signature/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "over-call-signature-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2769,
+        "message": "No overload matches this call.\n  Overload 1 of 2, '(value: string): string', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'string'.\n  Overload 2 of 2, '(value: number): number', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'number'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 133,
+          "length": 4
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "over-call-signature-properties/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "over-call-union-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2769,
+        "message": "No overload matches this call.\n  Overload 1 of 2, '(value: string): string', gave the following error.\n    Argument of type 'string | number' is not assignable to parameter of type 'string'.\n      Type 'number' is not assignable to type 'string'.\n  Overload 2 of 2, '(value: number): number', gave the following error.\n    Argument of type 'string | number' is not assignable to parameter of type 'number'.\n      Type 'string' is not assignable to type 'number'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 220,
+          "length": 5
+        },
+        "related": [
+          {
+            "code": 2793,
+            "message": "The call would have succeeded against this implementation, but implementation signatures of overloads are not externally visible.",
+            "module": "main.ts",
+            "position": {
+              "line": 5,
+              "column": 92,
+              "length": 7
+            },
+            "related": []
+          }
+        ]
+      }
+    },
+    {
+      "entry": "over-call-wide-priority/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "over-construct-generic/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "over-construct-generic-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type 'Box<number>' is not assignable to type 'Box<string>'.\n  Type 'number' is not assignable to type 'string'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 124,
+          "length": 6
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "over-construct-signature/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "over-construct-signature-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2769,
+        "message": "No overload matches this call.\n  Overload 1 of 2, '(value: string): Box', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'string'.\n  Overload 2 of 2, '(value: number): Box', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'number'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 181,
+          "length": 4
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "over-construct-signature-properties/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "over-constructor-implementation-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2394,
+        "message": "This overload signature is not compatible with its implementation signature.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 13,
+          "length": 11
+        },
+        "related": [
+          {
+            "code": 2750,
+            "message": "The implementation signature is declared here.",
+            "module": "main.ts",
+            "position": {
+              "line": 5,
+              "column": 41,
+              "length": 11
+            },
+            "related": []
+          }
+        ]
+      }
+    },
+    {
+      "entry": "over-constructor-implementation-hidden-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2345,
+        "message": "Argument of type 'number' is not assignable to parameter of type 'string'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 112,
+          "length": 2
+        },
+        "related": [
+          {
+            "code": 2793,
+            "message": "The call would have succeeded against this implementation, but implementation signatures of overloads are not externally visible.",
+            "module": "main.ts",
+            "position": {
+              "line": 5,
+              "column": 41,
+              "length": 11
+            },
+            "related": []
+          }
+        ]
+      }
+    },
+    {
+      "entry": "over-constructor-no-match-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2769,
+        "message": "No overload matches this call.\n  Overload 1 of 2, '(value: string): Box', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'string'.\n  Overload 2 of 2, '(value: number): Box', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'number'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 185,
+          "length": 4
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "over-constructor-number/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "over-constructor-string/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "over-implementation-arity-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2394,
+        "message": "This overload signature is not compatible with its implementation signature.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 10,
+          "length": 6
+        },
+        "related": [
+          {
+            "code": 2750,
+            "message": "The implementation signature is declared here.",
+            "module": "main.ts",
+            "position": {
+              "line": 5,
+              "column": 37,
+              "length": 6
+            },
+            "related": []
+          }
+        ]
+      }
+    },
+    {
+      "entry": "over-implementation-parameter-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2394,
+        "message": "This overload signature is not compatible with its implementation signature.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 10,
+          "length": 6
+        },
+        "related": [
+          {
+            "code": 2750,
+            "message": "The implementation signature is declared here.",
+            "module": "main.ts",
+            "position": {
+              "line": 5,
+              "column": 50,
+              "length": 6
+            },
+            "related": []
+          }
+        ]
+      }
+    },
+    {
+      "entry": "over-implementation-result-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2394,
+        "message": "This overload signature is not compatible with its implementation signature.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 10,
+          "length": 6
+        },
+        "related": [
+          {
+            "code": 2750,
+            "message": "The implementation signature is declared here.",
+            "module": "main.ts",
+            "position": {
+              "line": 5,
+              "column": 50,
+              "length": 6
+            },
+            "related": []
+          }
+        ]
+      }
+    },
+    {
+      "entry": "over-implementation-return-valid/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "over-import-function/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "over-import-function-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2769,
+        "message": "No overload matches this call.\n  Overload 1 of 2, '(value: string): string', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'string'.\n  Overload 2 of 2, '(value: number): number', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'number'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 70,
+          "length": 4
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "over-interface-method-order/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "over-interface-method-order-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2322,
+        "message": "Type '\"first\"' is not assignable to type '\"second\"'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 126,
+          "length": 6
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "over-method-contextual/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "over-method-contextual-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2769,
+        "message": "No overload matches this call.\n  Overload 1 of 2, '(kind: \"text\", callback: (value: string) => number): number', gave the following error.\n    Type 'string' is not assignable to type 'number'.\n  Overload 2 of 2, '(kind: \"count\", callback: (value: number) => number): number', gave the following error.\n    Argument of type '\"text\"' is not assignable to parameter of type '\"count\"'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 220,
+          "length": 5
+        },
+        "related": [
+          {
+            "code": 6502,
+            "message": "The expected type comes from the return type of this signature.",
+            "module": "main.ts",
+            "position": {
+              "line": 5,
+              "column": 51,
+              "length": 25
+            },
+            "related": []
+          }
+        ]
+      }
+    },
+    {
+      "entry": "over-method-first/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "over-method-implementation-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2394,
+        "message": "This overload signature is not compatible with its implementation signature.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 13,
+          "length": 7
+        },
+        "related": [
+          {
+            "code": 2750,
+            "message": "The implementation signature is declared here.",
+            "module": "main.ts",
+            "position": {
+              "line": 5,
+              "column": 45,
+              "length": 7
+            },
+            "related": []
+          }
+        ]
+      }
+    },
+    {
+      "entry": "over-method-no-match-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2769,
+        "message": "No overload matches this call.\n  Overload 1 of 2, '(value: string): string', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'string'.\n  Overload 2 of 2, '(value: number): number', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'number'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 186,
+          "length": 4
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "over-method-rest/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "over-method-rest-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2769,
+        "message": "No overload matches this call.\n  Overload 1 of 2, '(...values: number[]): number', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'number'.\n  Overload 2 of 2, '(value: string): string', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'string'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 171,
+          "length": 4
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "over-method-second/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "over-runtime-call/main.ts",
+      "accepts": true,
+      "runtime": true,
+      "first": null
+    },
+    {
+      "entry": "over-runtime-constructor/main.ts",
+      "accepts": true,
+      "runtime": true,
+      "first": null
+    },
+    {
+      "entry": "over-runtime-imports/main.ts",
+      "accepts": true,
+      "runtime": true,
+      "first": null
+    },
+    {
+      "entry": "over-runtime-method/main.ts",
+      "accepts": true,
+      "runtime": true,
+      "first": null
+    },
+    {
+      "entry": "over-runtime-types/main.ts",
+      "accepts": true,
+      "runtime": true,
+      "first": null
+    }
+  ]
+}
