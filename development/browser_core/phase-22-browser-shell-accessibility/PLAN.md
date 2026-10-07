@@ -368,3 +368,17 @@ source/product/process audit passed. The
 exact test scope, source hashes, actual screenshots and historical failures.
 Native private-key configuration, live-server authentication and the remaining
 macOS/browser requirements remain open; Phase 22 remains in progress.
+
+
+### macOS native SFTP files and encrypted-key authentication
+
+Native local-file selection and explicit configuration, owned manager restart,
+paused-transfer recovery, native Keychain passphrase authentication and exact
+owned-loopback SFTP bytes are implemented and accepted. Complete native scope
+passed 245 methods with one existing physical Zhuyin skip; all 25 focused methods
+passed. Signature, architecture, source/product and owned-process/fixture cleanup
+audits passed. The unchanged Rust backend retains the accepted 7,314 passed,
+69 ignored evidence from the credential milestone. Historical failures and
+exact scope are retained in [the SFTP results](MACOS_SFTP_FILES_RESULTS.md).
+Remote interoperability and the remaining macOS browser requirements stay open;
+Phase 22 remains in progress.

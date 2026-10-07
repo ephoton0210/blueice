@@ -672,7 +672,7 @@ final class BrowserUITests: XCTestCase {
         ok.click(); waitValue(status, denial)
     }
 
-    private func chooseFileAtPath(_ path: String, selectAll: Bool = false) throws {
+    private func chooseFileAtPath(_ path: String, selectAll: Bool = false, chooseTitle: String = "Choose") throws {
         let panel = app.sheets["open-panel"]
         XCTAssertTrue(panel.waitForExistence(timeout: 10),app.debugDescription)
         panel.typeKey("g",modifierFlags: [.command,.shift])
@@ -683,7 +683,7 @@ final class BrowserUITests: XCTestCase {
         folder.typeKey("v",modifierFlags: .command); folder.typeKey(.return,modifierFlags: [])
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"),object: app.sheets["GoToWindow"])],timeout: 10),.completed)
         if selectAll { panel.typeKey("a",modifierFlags: .command) }
-        let choose = panel.buttons["Choose"]
+        let choose = panel.buttons[chooseTitle]
         XCTAssertTrue(choose.waitForExistence(timeout: 10),app.debugDescription)
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == true"),object: choose)],timeout: 10),.completed,panel.debugDescription)
         let image = XCTAttachment(screenshot: app.windows["browser-window"].screenshot())
@@ -888,6 +888,172 @@ final class BrowserUITests: XCTestCase {
         XCTAssertFalse(app.buttons["download-open-1"].exists)
         XCTAssertEqual(try Data(contentsOf: file),fixture.bytes)
         XCTAssertNotNil(try file.resourceValues(forKeys: [.quarantinePropertiesKey]).quarantineProperties)
+    }
+
+    private func openSFTPFiles() {
+        app.buttons["downloads"].click()
+        XCTAssertTrue(app.buttons["download-sftp-files"].waitForExistence(timeout: 10))
+        app.buttons["download-sftp-files"].click()
+        XCTAssertTrue(app.staticTexts["download-sftp-title"].waitForExistence(timeout: 10))
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == true"),object: app.buttons["download-sftp-key-choose"])],timeout: 10),.completed)
+    }
+    private func waitSFTPPreference(_ name: String, path: String?) {
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            let stored = self.storedPreferences()?["browser.downloads.sftp.configuration"] as? [String: Any]
+            return stored?[name] as? String == path
+        },object: nil)],timeout: 15),.completed)
+    }
+    func testNativeSFTPFilePickerExplicitApplyRelaunchAndRestore() throws {
+        let fixture = try DownloadFixture(); defer { fixture.stop() }
+        fixture.setSlow(true,delay: 1)
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("bi-sftp-ui-" + UUID().uuidString,isDirectory: true)
+        try FileManager.default.createDirectory(at: root,withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let key = root.appendingPathComponent("私鑰 fixture"), hosts = root.appendingPathComponent("known_hosts")
+        try Data("PRIVATE-KEY-CONTENT-FIXTURE".utf8).write(to: key)
+        try Data("# known-hosts fixture\n".utf8).write(to: hosts)
+        app.launchArguments += ["--downloads-directory",root.appendingPathComponent("files").path,"--downloads-data-directory",root.appendingPathComponent("data").path,"-AppleLanguages","(en)","-AppleLocale","en_US"]
+        let saved = saveClipboard(); defer { NSPasteboard.general.clearContents(); NSPasteboard.general.writeObjects(saved) }
+        launch(); positionWindowForUnobstructedSheet(app.windows["browser-window"])
+        app.buttons["downloads"].click()
+        XCTAssertTrue(app.staticTexts["downloads-empty"].waitForExistence(timeout: 10))
+        startDownload(fixture.origin + "/large-sftp-reconfigure.txt",name: "sftp-reconfigure.txt")
+        waitDownload(1,"Downloading")
+        app.buttons["download-sftp-files"].click()
+        XCTAssertTrue(app.staticTexts["download-sftp-title"].waitForExistence(timeout: 10))
+        app.buttons["download-sftp-key-choose"].click(); try chooseFileAtPath(key.path)
+        waitAssistantText(app.staticTexts["download-sftp-key-path"],key.resolvingSymlinksInPath().path)
+        app.buttons["download-sftp-hosts-choose"].click(); try chooseFileAtPath(hosts.path)
+        waitAssistantText(app.staticTexts["download-sftp-hosts-path"],hosts.resolvingSymlinksInPath().path)
+        XCTAssertNil(storedPreferences()?["browser.downloads.sftp.configuration"],"Selecting files only edits the draft")
+        app.buttons["download-sftp-apply"].click()
+        waitAssistantText(app.staticTexts["download-sftp-result"],"SSH file settings applied. Interrupted downloads remain paused.")
+        waitSFTPPreference("private_key",path: key.resolvingSymlinksInPath().path)
+        waitSFTPPreference("known_hosts",path: hosts.resolvingSymlinksInPath().path)
+        XCTAssertFalse(app.debugDescription.contains("PRIVATE-KEY-CONTENT-FIXTURE"))
+        XCTAssertFalse(String(describing: storedPreferences()).contains("PRIVATE-KEY-CONTENT-FIXTURE"))
+        let attachment = XCTAttachment(screenshot: app.windows["browser-window"].screenshot())
+        attachment.name = "macos-native-sftp-files"; attachment.lifetime = .keepAlways; add(attachment)
+        app.buttons["download-sftp-close"].click(); waitDownload(1,"Paused")
+        let requestCount = fixture.requests.count
+        app.buttons["downloads-close"].click(); app.typeKey("q",modifierFlags: .command)
+        XCTAssertTrue(app.wait(for: .notRunning,timeout: 15))
+        launch(); app.buttons["downloads"].click(); waitDownload(1,"Paused")
+        XCTAssertEqual(fixture.requests.count,requestCount,"Opening the stored catalog must not resume a transfer")
+        app.buttons["download-sftp-files"].click()
+        XCTAssertTrue(app.staticTexts["download-sftp-title"].waitForExistence(timeout: 10))
+        waitAssistantText(app.staticTexts["download-sftp-key-path"],key.resolvingSymlinksInPath().path)
+        waitAssistantText(app.staticTexts["download-sftp-hosts-path"],hosts.resolvingSymlinksInPath().path)
+        app.buttons["download-sftp-restore"].click()
+        waitAssistantText(app.staticTexts["download-sftp-result"],"SSH file settings applied. Interrupted downloads remain paused.")
+        waitSFTPPreference("private_key",path: nil); waitSFTPPreference("known_hosts",path: nil)
+        XCTAssertNil(storedPreferences()?["browser.downloads.sftp.configuration"])
+        waitAssistantText(app.staticTexts["download-sftp-key-path"],"No private-key file")
+        app.buttons["download-sftp-close"].click(); waitDownload(1,"Paused")
+        XCTAssertEqual(fixture.requests.count,requestCount,"Restoring SSH defaults must also leave the transfer paused")
+        fixture.setSlow(false); app.buttons["download-resume-1"].click(); waitDownload(1,"Completed")
+        XCTAssertEqual(try Data(contentsOf: root.appendingPathComponent("files/sftp-reconfigure.txt")),fixture.large)
+        app.buttons["downloads-close"].click()
+    }
+    func testNativeSFTPFilePickerCancellationAndDismissedDraftDoNotPersist() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("bi-sftp-draft-ui-" + UUID().uuidString,isDirectory: true)
+        try FileManager.default.createDirectory(at: root,withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let key = root.appendingPathComponent("draft-key"); try Data("fixture".utf8).write(to: key)
+        app.launchArguments += ["--downloads-directory",root.appendingPathComponent("files").path,"--downloads-data-directory",root.appendingPathComponent("data").path,"-AppleLanguages","(en)","-AppleLocale","en_US"]
+        let saved = saveClipboard(); defer { NSPasteboard.general.clearContents(); NSPasteboard.general.writeObjects(saved) }
+        launch(); positionWindowForUnobstructedSheet(app.windows["browser-window"]); openSFTPFiles()
+        app.buttons["download-sftp-key-choose"].click()
+        let panel = app.sheets["open-panel"]; XCTAssertTrue(panel.waitForExistence(timeout: 10))
+        panel.typeKey(.escape,modifierFlags: [])
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"),object: panel)],timeout: 10),.completed)
+        waitAssistantText(app.staticTexts["download-sftp-key-path"],"No private-key file")
+        app.buttons["download-sftp-key-choose"].click(); try chooseFileAtPath(key.path)
+        waitAssistantText(app.staticTexts["download-sftp-key-path"],key.resolvingSymlinksInPath().path)
+        app.buttons["download-sftp-close"].click(); app.buttons["download-sftp-files"].click()
+        waitAssistantText(app.staticTexts["download-sftp-key-path"],"No private-key file")
+        XCTAssertNil(storedPreferences()?["browser.downloads.sftp.configuration"])
+        app.buttons["download-sftp-close"].click(); app.buttons["downloads-close"].click()
+    }
+    func testNativeSFTPEncryptedPrivateKeyAndKeychainPassphraseDownloadActualBytes() throws {
+        let fixture = try SFTPFixture()
+        let context = LAContext(); context.interactionNotAllowed = true
+        let query: [CFString: Any] = [kSecClass: kSecClassGenericPassword,
+            kSecAttrService: "org.blueice.downloads.sftp-key-passphrase.127.0.0.1:" + String(fixture.port),
+            kSecAttrAccount: fixture.username,kSecUseAuthenticationContext: context]
+        var ownedCredential = false
+        defer {
+            if ownedCredential {
+                let status = SecItemDelete(query as CFDictionary)
+                XCTAssertTrue(status == errSecSuccess || status == errSecItemNotFound,"Owned fixture Keychain cleanup status: \(status)")
+            }
+            // The outer test harness verifies daemon reaping and file cleanup.
+        }
+        var metadataQuery = query; metadataQuery[kSecReturnAttributes] = true
+        var metadata: CFTypeRef?
+        let existing = SecItemCopyMatching(metadataQuery as CFDictionary,&metadata)
+        guard existing == errSecItemNotFound else {
+            XCTFail("The fixture must not overwrite an existing Keychain account"); return
+        }
+        let files = fixture.root.appendingPathComponent("downloads")
+        app.launchArguments += ["--downloads-directory",files.path,"--downloads-data-directory",fixture.root.appendingPathComponent("data").path,"-AppleLanguages","(en)","-AppleLocale","en_US"]
+        app.launchEnvironment["SSH_AUTH_SOCK"] = ""
+        let saved = saveClipboard(); defer { NSPasteboard.general.clearContents(); NSPasteboard.general.writeObjects(saved) }
+        launch(); positionWindowForUnobstructedSheet(app.windows["browser-window"]); openSFTPFiles()
+        app.buttons["download-sftp-key-choose"].click(); try chooseFileAtPath(fixture.privateKey.path)
+        app.buttons["download-sftp-hosts-choose"].click(); try chooseFileAtPath(fixture.knownHosts.path)
+        app.buttons["download-sftp-apply"].click()
+        waitAssistantText(app.staticTexts["download-sftp-result"],"SSH file settings applied. Interrupted downloads remain paused.")
+        app.buttons["download-sftp-close"].click(); app.buttons["download-credentials"].click()
+        XCTAssertTrue(app.staticTexts["download-credentials-title"].waitForExistence(timeout: 10))
+        reviewDownloadAccount(fixture.url)
+        app.popUpButtons["download-credential-kind"].click(); app.menuItems["SFTP private-key passphrase"].click()
+        ownedCredential = true
+        saveDownloadCredential(SFTPFixture.passphrase)
+        app.buttons["download-credentials-close"].click()
+        startDownload(fixture.url,name: "authenticated-sftp.txt"); waitDownload(1,"Completed")
+        XCTAssertEqual(try Data(contentsOf: files.appendingPathComponent("authenticated-sftp.txt")),SFTPFixture.payload)
+        let preferences = String(describing: storedPreferences())
+        XCTAssertFalse(preferences.contains(SFTPFixture.passphrase)); XCTAssertFalse(preferences.contains("BEGIN RSA PRIVATE KEY"))
+        XCTAssertFalse(app.debugDescription.contains(SFTPFixture.passphrase))
+        let attachment = XCTAttachment(screenshot: app.windows["browser-window"].screenshot())
+        attachment.name = "macos-native-sftp-authenticated-key"; attachment.lifetime = .keepAlways; add(attachment)
+        app.buttons["download-credentials"].click()
+        XCTAssertTrue(app.staticTexts["download-credentials-title"].waitForExistence(timeout: 10))
+        reviewDownloadAccount(fixture.url)
+        app.popUpButtons["download-credential-kind"].click(); app.menuItems["SFTP private-key passphrase"].click()
+        app.buttons["download-credential-remove"].click()
+        waitAssistantText(app.staticTexts["download-credential-result"],"Credential removed from macOS Keychain.")
+        XCTAssertEqual(SecItemCopyMatching(metadataQuery as CFDictionary,nil),errSecItemNotFound)
+        ownedCredential = false
+        app.buttons["download-credentials-close"].click()
+        app.buttons["downloads-close"].click(); app.typeKey("q",modifierFlags: .command)
+        XCTAssertTrue(app.wait(for: .notRunning,timeout: 15))
+    }
+
+    func testNativeSFTPFilesTraditionalChineseChooserAndDefaults() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("bi-sftp-zh-ui-" + UUID().uuidString,isDirectory: true)
+        try FileManager.default.createDirectory(at: root,withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let key = root.appendingPathComponent("測試私鑰"); try Data("fixture".utf8).write(to: key)
+        let index = try XCTUnwrap(app.launchArguments.firstIndex(of: "--interface-language"))
+        app.launchArguments[index + 1] = "zh-Hant"
+        app.launchArguments += ["--downloads-directory",root.appendingPathComponent("files").path,"--downloads-data-directory",root.appendingPathComponent("data").path,"-AppleLanguages","(en)","-AppleLocale","en_US"]
+        let saved = saveClipboard(); defer { NSPasteboard.general.clearContents(); NSPasteboard.general.writeObjects(saved) }
+        launch(); positionWindowForUnobstructedSheet(app.windows["browser-window"]); openSFTPFiles()
+        waitAssistantText(app.staticTexts["download-sftp-title"],"SFTP 檔案")
+        XCTAssertEqual(app.buttons["download-sftp-apply"].label,"套用並暫停下載")
+        app.buttons["download-sftp-key-choose"].click(); try chooseFileAtPath(key.path,chooseTitle: "選擇")
+        waitAssistantText(app.staticTexts["download-sftp-key-path"],key.resolvingSymlinksInPath().path)
+        app.buttons["download-sftp-apply"].click()
+        waitAssistantText(app.staticTexts["download-sftp-result"],"已套用 SSH 檔案設定，中斷的下載仍維持暫停。")
+        waitSFTPPreference("private_key",path: key.resolvingSymlinksInPath().path)
+        let attachment = XCTAttachment(screenshot: app.windows["browser-window"].screenshot())
+        attachment.name = "macos-native-sftp-files-zh"; attachment.lifetime = .keepAlways; add(attachment)
+        app.buttons["download-sftp-restore"].click()
+        waitSFTPPreference("private_key",path: nil)
+        XCTAssertNil(storedPreferences()?["browser.downloads.sftp.configuration"])
+        app.buttons["download-sftp-close"].click(); app.buttons["downloads-close"].click()
     }
 
     private func openDownloadCredentials() {

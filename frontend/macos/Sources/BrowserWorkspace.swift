@@ -75,7 +75,7 @@ final class BrowserWorkspace: ObservableObject {
         self.contextDefaults = contextDefaults
         let configuration = downloadConfiguration ?? .configured()
         self.downloadConfiguration = configuration
-        self.downloads = BrowserDownloadsModel(browser: session,configuration: configuration)
+        self.downloads = BrowserDownloadsModel(browser: session,configuration: configuration,sftpDefaults: contextDefaults)
         self.recoverySeed = recovery?.valid == true ? recovery : nil
         self.recoverySnapshot = self.recoverySeed
         self.contextPreferences = BrowserContextPreferences(defaults: contextDefaults)

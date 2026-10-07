@@ -407,3 +407,27 @@
 "Review the account again before changing its credential." = "變更憑證前，請再次檢查帳號。";
 "invalid_request: Enter an SFTP or FTPS URL with a username, without a password, query or fragment." = "請輸入包含使用者名稱的 SFTP 或 FTPS 網址，且不含密碼、查詢參數或片段。";
 "internal: the operating system credential store is unavailable" = "作業系統的憑證儲存空間無法使用。";
+
+// Native process-local SFTP file configuration.
+"SFTP files…" = "SFTP 檔案⋯";
+"SFTP files" = "SFTP 檔案";
+"Choose SFTP Private Key" = "選擇 SFTP 私鑰";
+"Choose SSH Known Hosts" = "選擇 SSH 已知主機檔案";
+"Choose local SSH files for SFTP. Private-key contents stay on this Mac; passphrases are managed in Credentials." = "選擇 SFTP 使用的本機 SSH 檔案。私鑰內容會留在此 Mac，密語則由「憑證」管理。";
+"SSH known hosts" = "SSH 已知主機";
+"Use ~/.ssh/known_hosts" = "使用 ~/.ssh/known_hosts";
+"Choose Known Hosts…" = "選擇已知主機檔案⋯";
+"Use default" = "使用預設值";
+"SFTP private key" = "SFTP 私鑰";
+"No private-key file" = "不使用私鑰檔案";
+"Choose Private Key…" = "選擇私鑰⋯";
+"Use no private-key file" = "不使用私鑰檔案";
+"Applying settings restarts the download service and pauses unfinished downloads. Resume them explicitly after checking the settings." = "套用設定會重新啟動下載服務，並暫停未完成的下載。檢查設定後，請手動繼續下載。";
+"Apply and pause downloads" = "套用並暫停下載";
+"Restore SSH defaults" = "還原 SSH 預設值";
+"SSH file settings applied. Interrupted downloads remain paused." = "已套用 SSH 檔案設定，中斷的下載仍維持暫停。";
+"Applying SSH file settings…" = "正在套用 SSH 檔案設定⋯";
+"Host-key verification remains required. Changing files grants no server trust and never resumes a transfer automatically." = "仍須驗證主機金鑰。變更檔案不會授予伺服器信任，也不會自動繼續傳輸。";
+"The SSH file setting must be an absolute local path of at most 4096 bytes." = "SSH 檔案設定必須是最多 4096 位元組的本機絕對路徑。";
+"The saved SSH file settings are unsupported. Choose files or restore the defaults." = "已儲存的 SSH 檔案設定不受支援，請選擇檔案或還原預設值。";
+"Choose a readable regular local SSH file." = "請選擇可讀取的本機一般 SSH 檔案。";

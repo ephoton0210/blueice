@@ -21,6 +21,7 @@ struct BrowserDownloadsView: View {
     @State private var url = ""
     @State private var name = ""
     @State private var credentialsPresented = false
+    @State private var sftpPresented = false
     private var valid: Bool {
         guard let address = URL(string: url.trimmingCharacters(in: .whitespacesAndNewlines)),
               ["http","https","ftp","ftps","sftp"].contains(address.scheme?.lowercased() ?? ""),
@@ -30,7 +31,9 @@ struct BrowserDownloadsView: View {
     }
     var body: some View {
         Group {
-            if credentialsPresented {
+            if sftpPresented {
+                BrowserSFTPConfigurationView(downloads: downloads,preferences: downloads.sftpPreferences) { sftpPresented = false }
+            } else if credentialsPresented {
                 BrowserDownloadCredentialsView(downloads: downloads) { credentialsPresented = false }
             } else {
                 downloadList
@@ -43,6 +46,8 @@ struct BrowserDownloadsView: View {
             HStack {
                 Text(BrowserStrings.text("Downloads")).font(.title2).accessibilityIdentifier("downloads-title")
                 Spacer()
+                Button(BrowserStrings.text("SFTP files…")) { sftpPresented = true }
+                    .accessibilityIdentifier("download-sftp-files")
                 Button(BrowserStrings.text("Credentials…")) { credentialsPresented = true }
                     .accessibilityIdentifier("download-credentials")
                 Button(BrowserStrings.text("Refresh")) { Task { await downloads.refresh() } }.disabled(!downloads.available).accessibilityIdentifier("downloads-refresh")
@@ -56,7 +61,7 @@ struct BrowserDownloadsView: View {
                         let fileName = name.trimmingCharacters(in: .whitespacesAndNewlines)
                         if await downloads.start(url.trimmingCharacters(in: .whitespacesAndNewlines),name: fileName.isEmpty ? nil : fileName) != nil { url = ""; name = "" }
                     }
-                }.disabled(!valid || downloads.starting || downloads.connecting).accessibilityIdentifier("download-start")
+                }.disabled(!valid || downloads.starting || downloads.connecting || downloads.configuringSFTP).accessibilityIdentifier("download-start")
             }
             Text(BrowserStrings.format("Saved in %@", downloads.configuration.directory.path)).font(.caption).textSelection(.enabled)
             if let notice = downloads.notice {

@@ -104,6 +104,80 @@ final class DownloadTests: XCTestCase {
         await reopened.stop()
     }
 
+    func testSFTPFileChangesCheckpointTransfersAndInvalidateReviewedAccounts() async throws {
+        let root = URL(fileURLWithPath: "/private/tmp/bi-sftp-service-" + UUID().uuidString)
+        try FileManager.default.createDirectory(at: root,withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let domain = "cc.blueice.sftp-service-tests." + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: domain))
+        defer { defaults.removePersistentDomain(forName: domain) }
+        let key = root.appendingPathComponent("私鑰 fixture"), hosts = root.appendingPathComponent("known_hosts")
+        try Data("PRIVATE-CONTENT-FIXTURE".utf8).write(to: key)
+        try Data("# empty host-key fixture\n".utf8).write(to: hosts)
+        let config = DownloadConfiguration(directory: root.appendingPathComponent("files"),dataDirectory: root.appendingPathComponent("data"))
+        let fixture = try DownloadFixture(); defer { fixture.stop() }
+        fixture.setSlow(true)
+        let launcher = Bundle(for: Self.self).bundleURL.deletingLastPathComponent().appendingPathComponent("BlueIce.app/Contents/MacOS/blueice-launcher")
+        let workspace = BrowserWorkspace(contextDefaults: defaults,downloadConfiguration: config)
+        defer { Task { await workspace.stop() } }
+        await workspace.start(launcher: launcher); await workspace.downloads.connect()
+        let core = try XCTUnwrap(workspace.processID), old = try XCTUnwrap(workspace.downloads.processID)
+        let resolved = await workspace.downloads.resolveCredentialTarget("sftp://fixture@credential-fixture.invalid:2222")
+        let reviewed = try XCTUnwrap(resolved)
+        let id = try await started(workspace.downloads,fixture.origin + "/large-ssh-change.txt",name: "ssh-change.txt")
+        await wait { workspace.downloads.transfers.first { $0.id == id }?.completedBytes ?? 0 > 0 }
+        let invalid = await workspace.downloads.applySFTPConfiguration(DownloadSFTPConfiguration(privateKey: root.appendingPathComponent("missing")))
+        XCTAssertFalse(invalid); XCTAssertEqual(workspace.downloads.processID,old)
+        XCTAssertNil(defaults.object(forKey: BrowserSFTPPreferences.configurationKey))
+        let applied = await workspace.downloads.applySFTPConfiguration(DownloadSFTPConfiguration(knownHosts: hosts,privateKey: key))
+        XCTAssertTrue(applied); XCTAssertEqual(workspace.processID,core)
+        let next = try XCTUnwrap(workspace.downloads.processID)
+        XCTAssertNotEqual(next,old); XCTAssertNotEqual(kill(old,0),0)
+        XCTAssertEqual(workspace.downloads.transfers.first { $0.id == id }?.state,.paused)
+        let pausedBytes = try XCTUnwrap(workspace.downloads.transfers.first { $0.id == id }?.completedBytes)
+        try await Task.sleep(for: .milliseconds(150))
+        XCTAssertEqual(workspace.downloads.transfers.first { $0.id == id }?.state,.paused)
+        XCTAssertEqual(workspace.downloads.transfers.first { $0.id == id }?.completedBytes,pausedBytes)
+        let stale = await workspace.downloads.removeCredential(reviewed,kind: .sftpPassword)
+        XCTAssertFalse(stale)
+        let stored = try XCTUnwrap(defaults.dictionary(forKey: BrowserSFTPPreferences.configurationKey))
+        XCTAssertEqual(stored["private_key"] as? String,key.resolvingSymlinksInPath().path)
+        XCTAssertEqual(stored["known_hosts"] as? String,hosts.resolvingSymlinksInPath().path)
+        XCTAssertFalse(String(describing: stored).contains("PRIVATE-CONTENT-FIXTURE"))
+        let restored = await workspace.downloads.restoreSFTPDefaults()
+        XCTAssertTrue(restored); XCTAssertNotEqual(kill(next,0),0)
+        XCTAssertNil(defaults.object(forKey: BrowserSFTPPreferences.configurationKey))
+        XCTAssertEqual(workspace.downloads.transfers.first { $0.id == id }?.state,.paused)
+        fixture.setSlow(false); await perform(workspace.downloads,"Resume",id: id)
+        await wait { workspace.downloads.transfers.first { $0.id == id }?.state == .completed }
+        XCTAssertEqual(try Data(contentsOf: config.directory.appendingPathComponent("ssh-change.txt")),fixture.large)
+        await workspace.stop()
+        let afterStop = await workspace.downloads.applySFTPConfiguration(DownloadSFTPConfiguration(privateKey: key))
+        XCTAssertFalse(afterStop); XCTAssertNil(workspace.downloads.processID)
+        XCTAssertNil(defaults.object(forKey: BrowserSFTPPreferences.configurationKey))
+    }
+    func testBrokenSFTPPreferencesRefuseStartupUntilExplicitRepair() async throws {
+        let root = URL(fileURLWithPath: "/private/tmp/bi-sftp-repair-" + UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let domain = "cc.blueice.sftp-repair-tests." + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: domain))
+        defer { defaults.removePersistentDomain(forName: domain) }
+        defaults.set(["version": 1,"private_key": root.appendingPathComponent("missing").path],forKey: BrowserSFTPPreferences.configurationKey)
+        let config = DownloadConfiguration(directory: root.appendingPathComponent("files"),dataDirectory: root.appendingPathComponent("data"))
+        let launcher = Bundle(for: Self.self).bundleURL.deletingLastPathComponent().appendingPathComponent("BlueIce.app/Contents/MacOS/blueice-launcher")
+        let workspace = BrowserWorkspace(contextDefaults: defaults,downloadConfiguration: config)
+        defer { Task { await workspace.stop() } }
+        await workspace.start(launcher: launcher); await workspace.downloads.connect()
+        XCTAssertFalse(workspace.downloads.available); XCTAssertNil(workspace.downloads.processID)
+        XCTAssertNotNil(workspace.downloads.notice)
+        XCTAssertNotNil(defaults.object(forKey: BrowserSFTPPreferences.configurationKey))
+        let repaired = await workspace.downloads.restoreSFTPDefaults()
+        XCTAssertTrue(repaired); XCTAssertTrue(workspace.downloads.available)
+        XCTAssertNotNil(workspace.downloads.processID)
+        XCTAssertNil(defaults.object(forKey: BrowserSFTPPreferences.configurationKey))
+        await workspace.stop()
+    }
+
     private func started(_ model: BrowserDownloadsModel, _ url: String, name: String?) async throws -> UInt64 {
         let result = await model.start(url, name: name); return try XCTUnwrap(result)
     }

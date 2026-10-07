@@ -13,10 +13,11 @@ final class DownloadFixture: @unchecked Sendable {
     private let lock = NSLock()
     private var connections: [NWConnection] = []
     private var slow = true
+    private var slowDelay: TimeInterval = 0.1
     private var recorded: [String] = []
     private(set) var origin = ""
     var requests: [String] { lock.withLock { recorded } }
-    func setSlow(_ value: Bool) { lock.withLock { slow = value } }
+    func setSlow(_ value: Bool, delay: TimeInterval = 0.1) { lock.withLock { slow = value; slowDelay = delay } }
 
     init() throws {
         let parameters = NWParameters.tcp
@@ -69,7 +70,7 @@ final class DownloadFixture: @unchecked Sendable {
         connection.send(content: data.subdata(in: offset..<next), completion: .contentProcessed { [weak self] error in
             guard let self, error == nil else { connection.cancel(); return }
             if next == end { connection.cancel(); return }
-            let delay = delayed && self.lock.withLock({ self.slow }) ? 0.1 : 0
+            let delay = delayed ? self.lock.withLock({ self.slow ? self.slowDelay : 0 }) : 0
             self.queue.asyncAfter(deadline: .now() + delay) { self.send(connection, data: data, offset: next, end: end, delayed: delayed) }
         })
     }

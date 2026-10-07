@@ -217,6 +217,7 @@ struct DownloadEnvelope: Decodable, Sendable {
 @MainActor
 final class BrowserDownloadsModel: ObservableObject {
     let configuration: DownloadConfiguration
+    let sftpPreferences: BrowserSFTPPreferences
     private let browser: BrowserSession
     private var session: BrowserDownloadsSession?
     private var epoch = UUID()
@@ -224,6 +225,7 @@ final class BrowserDownloadsModel: ObservableObject {
     @Published private(set) var available = false
     @Published private(set) var connecting = false
     @Published private(set) var busy: Set<UInt64> = []
+    @Published private(set) var configuringSFTP = false
     @Published private(set) var credentialBusy = false
     @Published private(set) var starting = false
     @Published private(set) var notice: String?
@@ -232,8 +234,16 @@ final class BrowserDownloadsModel: ObservableObject {
     private var removed: Set<UInt64> = []
     private var stopping = false
     var processID: Int32? { session?.processID }
-    init(browser: BrowserSession, configuration: DownloadConfiguration) { self.browser = browser; self.configuration = configuration }
+    init(browser: BrowserSession, configuration: DownloadConfiguration, sftpDefaults: UserDefaults? = nil) {
+        self.browser = browser; self.configuration = configuration
+        self.sftpPreferences = BrowserSFTPPreferences(defaults: sftpDefaults ?? BrowserAppearance.preferenceStore())
+    }
+    var canConfigureSFTP: Bool { !connecting && !starting && !credentialBusy && !configuringSFTP && busy.isEmpty && requests.isEmpty && !stopping }
     func connect() async {
+        guard !configuringSFTP else { return }
+        await establishConnection()
+    }
+    private func establishConnection() async {
         guard !available, !connecting, !stopping else { return }
         connecting = true; defer { connecting = false }
         if let session { await session.stop() }
@@ -241,7 +251,10 @@ final class BrowserDownloadsModel: ObservableObject {
         requests = []; replies = [:]; removed = []; epoch = UUID()
         let current = epoch
         guard let executable = browser.downloadsExecutable else { notice = "Downloads require the supervised browser services."; return }
-        let next = BrowserDownloadsSession(executable: executable, runtime: browser.runtimeDirectory, configuration: configuration)
+        guard let ssh = sftpPreferences.configuration else {
+            notice = sftpPreferences.configurationError; return
+        }
+        let next = BrowserDownloadsSession(executable: executable, runtime: browser.runtimeDirectory, configuration: configuration, sftp: ssh)
         session = next
         next.received = { [weak self] result in
             DispatchQueue.main.async {
@@ -301,8 +314,32 @@ final class BrowserDownloadsModel: ObservableObject {
         } catch { if epoch == current { available = false; notice = error.localizedDescription } }
         return nil
     }
+    func applySFTPConfiguration(_ proposed: DownloadSFTPConfiguration) async -> Bool {
+        guard canConfigureSFTP, !Task.isCancelled else { return false }
+        do {
+            let checked = try proposed.validated()
+            return await reconfigureSFTP(checked)
+        } catch { notice = error.localizedDescription; return false }
+    }
+    func restoreSFTPDefaults() async -> Bool {
+        guard canConfigureSFTP, !Task.isCancelled else { return false }
+        return await reconfigureSFTP(nil)
+    }
+    private func reconfigureSFTP(_ proposed: DownloadSFTPConfiguration?) async -> Bool {
+        configuringSFTP = true; defer { configuringSFTP = false }; notice = nil
+        if available { _ = await command(.unit("Shutdown")) }
+        available = false; await session?.stop(); session = nil
+        epoch = UUID(); requests = []; replies = [:]; removed = []
+        guard !stopping, !Task.isCancelled else { return false }
+        do {
+            if let proposed { try sftpPreferences.save(proposed) }
+            else { sftpPreferences.restoreDefaults() }
+            await establishConnection()
+            return available
+        } catch { notice = error.localizedDescription; return false }
+    }
     func resolveCredentialTarget(_ url: String) async -> ReviewedDownloadCredential? {
-        guard !credentialBusy, !stopping, !Task.isCancelled else { return nil }
+        guard !credentialBusy, !configuringSFTP, !stopping, !Task.isCancelled else { return nil }
         credentialBusy = true; defer { credentialBusy = false }
         guard !url.isEmpty, url.utf8.count <= 8192,
               !url.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains) else {
@@ -324,7 +361,7 @@ final class BrowserDownloadsModel: ObservableObject {
         await changeCredential(target,kind: kind,secret: nil)
     }
     private func changeCredential(_ target: ReviewedDownloadCredential, kind: DownloadCredentialKind, secret: String?) async -> Bool {
-        guard !credentialBusy, !stopping, !Task.isCancelled else { return false }
+        guard !credentialBusy, !configuringSFTP, !stopping, !Task.isCancelled else { return false }
         guard available, target.epoch == epoch, kind.supports(target.identity) else {
             notice = "Review the account again before changing its credential."; return false
         }
@@ -333,7 +370,7 @@ final class BrowserDownloadsModel: ObservableObject {
         return false
     }
     func start(_ url: String, name: String?) async -> UInt64? {
-        guard !starting, !stopping else { return nil }; starting = true; defer { starting = false }
+        guard !starting, !configuringSFTP, !stopping else { return nil }; starting = true; defer { starting = false }
         await connect()
         guard available else { return nil }; notice = nil
         let action = BrowserCommand.values("Start", ["url": .string(url), "dest": name.map(JSONValue.string) ?? .null, "overwrite": .boolean(false)])
@@ -341,11 +378,11 @@ final class BrowserDownloadsModel: ObservableObject {
         return nil
     }
     func refresh() async {
-        guard available, !stopping else { return }
+        guard available, !configuringSFTP, !stopping else { return }
         if case .list = await command(.values("List", ["state": .null])) { notice = nil }
     }
     func perform(_ action: String, id: UInt64) async -> Bool {
-        guard ["Pause", "Resume", "Cancel", "Remove"].contains(action), available, !busy.contains(id), transfers.contains(where: { $0.id == id }) else { return false }
+        guard ["Pause", "Resume", "Cancel", "Remove"].contains(action), available, !configuringSFTP, !busy.contains(id), transfers.contains(where: { $0.id == id }) else { return false }
         busy.insert(id); defer { busy.remove(id) }; notice = nil
         let result = await command(.values(action, ["id": .unsigned(id)]))
         if case .transfer = result { return true }

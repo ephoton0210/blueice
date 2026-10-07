@@ -407,3 +407,27 @@
 "Review the account again before changing its credential." = "Review the account again before changing its credential.";
 "invalid_request: Enter an SFTP or FTPS URL with a username, without a password, query or fragment." = "invalid_request: Enter an SFTP or FTPS URL with a username, without a password, query or fragment.";
 "internal: the operating system credential store is unavailable" = "internal: the operating system credential store is unavailable";
+
+// Native process-local SFTP file configuration.
+"SFTP files…" = "SFTP files…";
+"SFTP files" = "SFTP files";
+"Choose SFTP Private Key" = "Choose SFTP Private Key";
+"Choose SSH Known Hosts" = "Choose SSH Known Hosts";
+"Choose local SSH files for SFTP. Private-key contents stay on this Mac; passphrases are managed in Credentials." = "Choose local SSH files for SFTP. Private-key contents stay on this Mac; passphrases are managed in Credentials.";
+"SSH known hosts" = "SSH known hosts";
+"Use ~/.ssh/known_hosts" = "Use ~/.ssh/known_hosts";
+"Choose Known Hosts…" = "Choose Known Hosts…";
+"Use default" = "Use default";
+"SFTP private key" = "SFTP private key";
+"No private-key file" = "No private-key file";
+"Choose Private Key…" = "Choose Private Key…";
+"Use no private-key file" = "Use no private-key file";
+"Applying settings restarts the download service and pauses unfinished downloads. Resume them explicitly after checking the settings." = "Applying settings restarts the download service and pauses unfinished downloads. Resume them explicitly after checking the settings.";
+"Apply and pause downloads" = "Apply and pause downloads";
+"Restore SSH defaults" = "Restore SSH defaults";
+"SSH file settings applied. Interrupted downloads remain paused." = "SSH file settings applied. Interrupted downloads remain paused.";
+"Applying SSH file settings…" = "Applying SSH file settings…";
+"Host-key verification remains required. Changing files grants no server trust and never resumes a transfer automatically." = "Host-key verification remains required. Changing files grants no server trust and never resumes a transfer automatically.";
+"The SSH file setting must be an absolute local path of at most 4096 bytes." = "The SSH file setting must be an absolute local path of at most 4096 bytes.";
+"The saved SSH file settings are unsupported. Choose files or restore the defaults." = "The saved SSH file settings are unsupported. Choose files or restore the defaults.";
+"Choose a readable regular local SSH file." = "Choose a readable regular local SSH file.";

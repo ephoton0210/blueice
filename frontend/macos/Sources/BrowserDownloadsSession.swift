@@ -8,6 +8,7 @@ final class BrowserDownloadsSession: @unchecked Sendable {
     private let executable: URL
     private let runtime: URL
     private let configuration: DownloadConfiguration
+    private let sftp: DownloadSFTPConfiguration
     private let lock = NSLock()
     private let reader = DispatchQueue(label: "cc.blueice.downloads.read", qos: .userInitiated)
     private let writer = DispatchQueue(label: "cc.blueice.downloads.write", qos: .userInitiated)
@@ -21,8 +22,8 @@ final class BrowserDownloadsSession: @unchecked Sendable {
     private var nextRequest: UInt64 = 1
     var received: (@Sendable (Result<DownloadEnvelope, BrowserFailure>) -> Void)?
     var processID: Int32? { lock.withLock { process?.pid } }
-    init(executable: URL, runtime: URL, configuration: DownloadConfiguration) {
-        self.executable = executable; self.runtime = runtime; self.configuration = configuration
+    init(executable: URL, runtime: URL, configuration: DownloadConfiguration, sftp: DownloadSFTPConfiguration = DownloadSFTPConfiguration()) {
+        self.executable = executable; self.runtime = runtime; self.configuration = configuration; self.sftp = sftp
     }
     func start() async throws {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void,Error>) in
@@ -33,6 +34,7 @@ final class BrowserDownloadsSession: @unchecked Sendable {
                 var timeout: DispatchWorkItem?
                 do {
                     guard FileManager.default.isExecutableFile(atPath: self.executable.path) else { throw BrowserFailure.invalid("BlueIce download service was not found.") }
+                    let sshArguments = try self.sftp.launchArguments()
                     let pipe = Pipe()
                     var environment = ProcessInfo.processInfo.environment
                     environment["TMPDIR"] = self.runtime.path; environment["XDG_RUNTIME_DIR"] = self.runtime.path
@@ -44,7 +46,7 @@ final class BrowserDownloadsSession: @unchecked Sendable {
                             "--data-dir", self.configuration.dataDirectory.path,
                             "--gatekeeper-socket", self.runtime.appendingPathComponent("blueice/gatekeeper.sock").path,
                             "--exit-on-stdin-eof"
-                        ], environment: environment, input: pipe.fileHandleForReading)
+                        ] + sshArguments, environment: environment, input: pipe.fileHandleForReading)
                         self.process = child; self.owner = pipe.fileHandleForWriting; return child
                     }
                     try? pipe.fileHandleForReading.close()
