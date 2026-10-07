@@ -1091,6 +1091,10 @@ inference:ginfer-default-context/main.ts	accept
 inference:ginfer-default-explicit/main.ts	accept
 inference:ginfer-default-inference/main.ts	accept
 inference:ginfer-default-required-error/main.ts	reject
+inference:ginfer-explicit-annotated-constraint/main.ts	accept
+inference:ginfer-explicit-annotated-constraint-error/main.ts	reject
+inference:ginfer-explicit-annotated-count/main.ts	accept
+inference:ginfer-explicit-annotated-count-error/main.ts	reject
 inference:ginfer-explicit-count-error/main.ts	reject
 inference:ginfer-explicit-type-error/main.ts	reject
 inference:ginfer-function-argument/main.ts	accept

@@ -37898,6 +37898,130 @@
       ]
     },
     {
+      "id": "inference:ginfer-explicit-annotated-constraint/main.ts",
+      "matrix": "inference",
+      "entry": "ginfer-explicit-annotated-constraint/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/ginfer-explicit-annotated-constraint/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "inference:ginfer-explicit-annotated-constraint-error/main.ts",
+      "matrix": "inference",
+      "entry": "ginfer-explicit-annotated-constraint-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/ginfer-explicit-annotated-constraint-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2344,
+        "category": "error",
+        "message": "Type 'number' does not satisfy the constraint 'string'.",
+        "file": "typescript_oracle/ginfer-explicit-annotated-constraint-error/main.ts",
+        "start": 328,
+        "length": 6,
+        "line": 5,
+        "column": 125
+      },
+      "diagnostics": [
+        {
+          "code": 2344,
+          "category": "error",
+          "message": "Type 'number' does not satisfy the constraint 'string'.",
+          "file": "typescript_oracle/ginfer-explicit-annotated-constraint-error/main.ts",
+          "start": 328,
+          "length": 6,
+          "line": 5,
+          "column": 125
+        }
+      ]
+    },
+    {
+      "id": "inference:ginfer-explicit-annotated-count/main.ts",
+      "matrix": "inference",
+      "entry": "ginfer-explicit-annotated-count/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/ginfer-explicit-annotated-count/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "inference:ginfer-explicit-annotated-count-error/main.ts",
+      "matrix": "inference",
+      "entry": "ginfer-explicit-annotated-count-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/ginfer-explicit-annotated-count-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2558,
+        "category": "error",
+        "message": "Expected 1 type arguments, but got 2.",
+        "file": "typescript_oracle/ginfer-explicit-annotated-count-error/main.ts",
+        "start": 321,
+        "length": 14,
+        "line": 5,
+        "column": 118
+      },
+      "diagnostics": [
+        {
+          "code": 2558,
+          "category": "error",
+          "message": "Expected 1 type arguments, but got 2.",
+          "file": "typescript_oracle/ginfer-explicit-annotated-count-error/main.ts",
+          "start": 321,
+          "length": 14,
+          "line": 5,
+          "column": 118
+        }
+      ]
+    },
+    {
       "id": "inference:ginfer-explicit-count-error/main.ts",
       "matrix": "inference",
       "entry": "ginfer-explicit-count-error/main.ts",

@@ -5034,3 +5034,26 @@ corpus is regenerated to 1,666 programs (756 accept, 910 reject) and 147
 templates. This supplemental commit includes only fixtures, test/recorder
 metadata and plans, measured against the uncommitted implementation draft,
 before correcting those boundaries. K.4.3 remains unchecked.
+
+### K.4.3 Annotated generic-call position replay
+
+The 70-program implementation snapshot passes the complete frozen-source K.0
+gate: format, format check, both-crate all-target Clippy, and all 1,110 tests in
+70 groups, including all 132 ignored oracles. Evidence remains at
+`/logs/blueice-k43-final2-status.json` and `/logs/blueice-k43-final2-gate.log`.
+The leaf remains open because a further explicit-call position boundary is
+recorded before committing implementation.
+
+Four pinned controls distinguish the type arguments of an annotated variable
+from the later explicit generic call. The corpus now contains 74 programs
+(41 accept, 33 reject), retaining four runtime/declaration witnesses. The
+public Linux replay reports two primary-position differences for TS2344 and
+TS2558; codes, rendered messages and related metadata agree. All runtime/
+declaration witnesses, the owner-budget refusal, completeness and pinned
+recorder pass. The five-test replay takes 12.29 seconds at
+`/logs/blueice-k43-angles-red.log`.
+
+The shared diagnostic corpus is regenerated to 1,670 programs (758 accept,
+912 reject) and 147 templates. This supplemental baseline commits only
+fixtures, test/recorder observations and plans, measured against the uncommitted
+implementation draft. K.4.3 remains unchecked.

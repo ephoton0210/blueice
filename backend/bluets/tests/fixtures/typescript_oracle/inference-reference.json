@@ -372,6 +372,50 @@
       }
     },
     {
+      "entry": "ginfer-explicit-annotated-constraint/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "ginfer-explicit-annotated-constraint-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2344,
+        "message": "Type 'number' does not satisfy the constraint 'string'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 125,
+          "length": 6
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "ginfer-explicit-annotated-count/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "ginfer-explicit-annotated-count-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2558,
+        "message": "Expected 1 type arguments, but got 2.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 118,
+          "length": 14
+        },
+        "related": []
+      }
+    },
+    {
       "entry": "ginfer-explicit-count-error/main.ts",
       "accepts": false,
       "runtime": false,

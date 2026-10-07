@@ -83,7 +83,7 @@ fn contextual_inference_budget_exhaustion_prevents_output() {
 #[test]
 fn matrix_covers_every_inference_fixture() {
     let cases = cases();
-    assert_eq!(cases.len(), 70);
+    assert_eq!(cases.len(), 74);
     assert_eq!(
         cases.iter().filter(|case| case["runtime"] == true).count(),
         4

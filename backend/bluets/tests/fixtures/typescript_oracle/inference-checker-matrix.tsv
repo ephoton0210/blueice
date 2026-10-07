@@ -29,6 +29,10 @@ ginfer-default-context/main.ts	accept
 ginfer-default-explicit/main.ts	accept
 ginfer-default-inference/main.ts	accept
 ginfer-default-required-error/main.ts	reject
+ginfer-explicit-annotated-constraint/main.ts	accept
+ginfer-explicit-annotated-constraint-error/main.ts	reject
+ginfer-explicit-annotated-count/main.ts	accept
+ginfer-explicit-annotated-count-error/main.ts	reject
 ginfer-explicit-count-error/main.ts	reject
 ginfer-explicit-type-error/main.ts	reject
 ginfer-function-argument/main.ts	accept
