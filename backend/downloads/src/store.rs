@@ -26,6 +26,10 @@ pub struct StoredTransfer {
     pub info: TransferInfo,
     #[serde(default)]
     pub overwrite: bool,
+    /// Original canonical folder. Process startup configuration must authorize
+    /// it independently before it can be used. Missing in legacy version 1.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub download_root: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -175,6 +179,7 @@ mod tests {
                 ..TransferInfo::default()
             },
             overwrite: id.is_multiple_of(2),
+            download_root: None,
         }
     }
 
@@ -194,6 +199,22 @@ mod tests {
                 transfers
             }
         );
+    }
+
+    #[test]
+    fn an_original_download_root_survives_persistence_but_legacy_records_have_none() {
+        let dir = Scratch::new("root-provenance");
+        let store = Store::new(&dir.0);
+        let mut transfer = stored(1, TransferState::Paused);
+        transfer.download_root = Some(PathBuf::from("/original/downloads"));
+        store.save(2, std::slice::from_ref(&transfer)).unwrap();
+        assert_eq!(store.load().transfers, vec![transfer]);
+        std::fs::write(
+            dir.0.join(FILE_NAME),
+            br#"{"version":1,"next_id":2,"transfers":[{"info":{"id":1},"overwrite":false}]}"#,
+        )
+        .unwrap();
+        assert_eq!(store.load().transfers[0].download_root, None);
     }
 
     #[test]

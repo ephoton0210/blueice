@@ -46,7 +46,8 @@ final class BrowserDownloadsSession: @unchecked Sendable {
                             "--data-dir", self.configuration.dataDirectory.path,
                             "--gatekeeper-socket", self.runtime.appendingPathComponent("blueice/gatekeeper.sock").path,
                             "--exit-on-stdin-eof"
-                        ] + sshArguments, environment: environment, input: pipe.fileHandleForReading)
+                        ] + self.configuration.previousDirectories.flatMap { ["--previous-download-dir",$0.path] } + sshArguments,
+                        environment: environment, input: pipe.fileHandleForReading)
                         self.process = child; self.owner = pipe.fileHandleForWriting; return child
                     }
                     try? pipe.fileHandleForReading.close()

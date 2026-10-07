@@ -382,3 +382,16 @@ audits passed. The unchanged Rust backend retains the accepted 7,314 passed,
 exact scope are retained in [the SFTP results](MACOS_SFTP_FILES_RESULTS.md).
 Remote interoperability and the remaining macOS browser requirements stay open;
 Phase 22 remains in progress.
+
+
+### macOS native download folder selection
+
+SwiftUI folder drafts, an AppKit directory picker and explicit Apply/default
+selection are implemented and accepted with retained completed/paused history,
+original-folder resume and refusal before catalog changes for unapproved roots.
+Complete native scope: 254 passed, zero failed, 1 existing physical Zhuyin skip across 255
+methods; fresh Rust workspace: 7,321 passed, zero failed, 69
+ignored across 475 groups. See
+[the folder contract](MACOS_DOWNLOAD_FOLDER_CONTRACT.md) and
+[actual results](MACOS_DOWNLOAD_FOLDER_RESULTS.md). The phase and full macOS
+browser delivery remain in progress.

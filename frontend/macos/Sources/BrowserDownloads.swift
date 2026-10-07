@@ -7,6 +7,10 @@ import AppKit
 struct DownloadConfiguration: Sendable {
     let directory: URL
     let dataDirectory: URL
+    let previousDirectories: [URL]
+    init(directory: URL, dataDirectory: URL, previousDirectories: [URL] = []) {
+        self.directory = directory; self.dataDirectory = dataDirectory; self.previousDirectories = previousDirectories
+    }
     static func configured() -> Self {
         let arguments = ProcessInfo.processInfo.arguments
         func option(_ name: String) -> URL? {
@@ -216,8 +220,10 @@ struct DownloadEnvelope: Decodable, Sendable {
 
 @MainActor
 final class BrowserDownloadsModel: ObservableObject {
-    let configuration: DownloadConfiguration
+    @Published private(set) var configuration: DownloadConfiguration
+    private let defaultConfiguration: DownloadConfiguration
     let sftpPreferences: BrowserSFTPPreferences
+    let folderPreferences: BrowserDownloadFolderPreferences
     private let browser: BrowserSession
     private var session: BrowserDownloadsSession?
     private var epoch = UUID()
@@ -226,6 +232,7 @@ final class BrowserDownloadsModel: ObservableObject {
     @Published private(set) var connecting = false
     @Published private(set) var busy: Set<UInt64> = []
     @Published private(set) var configuringSFTP = false
+    @Published private(set) var configuringDestination = false
     @Published private(set) var credentialBusy = false
     @Published private(set) var starting = false
     @Published private(set) var notice: String?
@@ -235,12 +242,16 @@ final class BrowserDownloadsModel: ObservableObject {
     private var stopping = false
     var processID: Int32? { session?.processID }
     init(browser: BrowserSession, configuration: DownloadConfiguration, sftpDefaults: UserDefaults? = nil) {
-        self.browser = browser; self.configuration = configuration
-        self.sftpPreferences = BrowserSFTPPreferences(defaults: sftpDefaults ?? BrowserAppearance.preferenceStore())
+        self.browser = browser; self.configuration = configuration; self.defaultConfiguration = configuration
+        let defaults = sftpDefaults ?? BrowserAppearance.preferenceStore()
+        self.sftpPreferences = BrowserSFTPPreferences(defaults: defaults)
+        self.folderPreferences = BrowserDownloadFolderPreferences(defaults: defaults)
     }
-    var canConfigureSFTP: Bool { !connecting && !starting && !credentialBusy && !configuringSFTP && busy.isEmpty && requests.isEmpty && !stopping }
+    var defaultDirectory: URL { defaultConfiguration.directory }
+    var configuringDownloads: Bool { configuringSFTP || configuringDestination }
+    var canConfigureSFTP: Bool { !connecting && !starting && !credentialBusy && !configuringDownloads && busy.isEmpty && requests.isEmpty && !stopping }
     func connect() async {
-        guard !configuringSFTP else { return }
+        guard !configuringDownloads else { return }
         await establishConnection()
     }
     private func establishConnection() async {
@@ -254,6 +265,9 @@ final class BrowserDownloadsModel: ObservableObject {
         guard let ssh = sftpPreferences.configuration else {
             notice = sftpPreferences.configurationError; return
         }
+        guard let folder = folderPreferences.selection else { notice = folderPreferences.error; return }
+        do { configuration = try folder.resolved(base: defaultConfiguration) }
+        catch { notice = error.localizedDescription; return }
         let next = BrowserDownloadsSession(executable: executable, runtime: browser.runtimeDirectory, configuration: configuration, sftp: ssh)
         session = next
         next.received = { [weak self] result in
@@ -327,9 +341,7 @@ final class BrowserDownloadsModel: ObservableObject {
     }
     private func reconfigureSFTP(_ proposed: DownloadSFTPConfiguration?) async -> Bool {
         configuringSFTP = true; defer { configuringSFTP = false }; notice = nil
-        if available { _ = await command(.unit("Shutdown")) }
-        available = false; await session?.stop(); session = nil
-        epoch = UUID(); requests = []; replies = [:]; removed = []
+        await checkpointDownloadService()
         guard !stopping, !Task.isCancelled else { return false }
         do {
             if let proposed { try sftpPreferences.save(proposed) }
@@ -338,8 +350,26 @@ final class BrowserDownloadsModel: ObservableObject {
             return available
         } catch { notice = error.localizedDescription; return false }
     }
+    private func checkpointDownloadService() async {
+        if available { _ = await command(.unit("Shutdown")) }
+        available = false; await session?.stop(); session = nil
+        epoch = UUID(); requests = []; replies = [:]; removed = []
+    }
+    func applyDownloadFolder(_ directory: URL?) async -> Bool {
+        guard canConfigureSFTP, !Task.isCancelled else { return false }
+        do {
+            let selection = try (folderPreferences.selection ?? DownloadFolderSelection())
+                .changing(to: directory,base: defaultConfiguration)
+            configuringDestination = true; defer { configuringDestination = false }; notice = nil
+            await checkpointDownloadService()
+            guard !stopping, !Task.isCancelled else { return false }
+            try folderPreferences.save(selection,base: defaultConfiguration)
+            await establishConnection()
+            return available
+        } catch { notice = error.localizedDescription; return false }
+    }
     func resolveCredentialTarget(_ url: String) async -> ReviewedDownloadCredential? {
-        guard !credentialBusy, !configuringSFTP, !stopping, !Task.isCancelled else { return nil }
+        guard !credentialBusy, !configuringDownloads, !stopping, !Task.isCancelled else { return nil }
         credentialBusy = true; defer { credentialBusy = false }
         guard !url.isEmpty, url.utf8.count <= 8192,
               !url.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains) else {
@@ -361,7 +391,7 @@ final class BrowserDownloadsModel: ObservableObject {
         await changeCredential(target,kind: kind,secret: nil)
     }
     private func changeCredential(_ target: ReviewedDownloadCredential, kind: DownloadCredentialKind, secret: String?) async -> Bool {
-        guard !credentialBusy, !configuringSFTP, !stopping, !Task.isCancelled else { return false }
+        guard !credentialBusy, !configuringDownloads, !stopping, !Task.isCancelled else { return false }
         guard available, target.epoch == epoch, kind.supports(target.identity) else {
             notice = "Review the account again before changing its credential."; return false
         }
@@ -370,7 +400,7 @@ final class BrowserDownloadsModel: ObservableObject {
         return false
     }
     func start(_ url: String, name: String?) async -> UInt64? {
-        guard !starting, !configuringSFTP, !stopping else { return nil }; starting = true; defer { starting = false }
+        guard !starting, !configuringDownloads, !stopping else { return nil }; starting = true; defer { starting = false }
         await connect()
         guard available else { return nil }; notice = nil
         let action = BrowserCommand.values("Start", ["url": .string(url), "dest": name.map(JSONValue.string) ?? .null, "overwrite": .boolean(false)])
@@ -378,11 +408,11 @@ final class BrowserDownloadsModel: ObservableObject {
         return nil
     }
     func refresh() async {
-        guard available, !configuringSFTP, !stopping else { return }
+        guard available, !configuringDownloads, !stopping else { return }
         if case .list = await command(.values("List", ["state": .null])) { notice = nil }
     }
     func perform(_ action: String, id: UInt64) async -> Bool {
-        guard ["Pause", "Resume", "Cancel", "Remove"].contains(action), available, !configuringSFTP, !busy.contains(id), transfers.contains(where: { $0.id == id }) else { return false }
+        guard ["Pause", "Resume", "Cancel", "Remove"].contains(action), available, !configuringDownloads, !busy.contains(id), transfers.contains(where: { $0.id == id }) else { return false }
         busy.insert(id); defer { busy.remove(id) }; notice = nil
         let result = await command(.values(action, ["id": .unsigned(id)]))
         if case .transfer = result { return true }
@@ -391,14 +421,20 @@ final class BrowserDownloadsModel: ObservableObject {
     }
     func hasQuarantine(_ info: DownloadInfo) -> Bool {
         guard info.state == .completed, transfers.contains(where: { $0.id == info.id && $0.generation == info.generation }),
-              let file = try? DownloadConfiguration.checkedFile(info.destPath,root: configuration.directory),
+              let file = try? checkedCompletedFile(info.destPath),
               let values = try? file.resourceValues(forKeys: [.quarantinePropertiesKey]) else { return false }
         return values.quarantineProperties?.isEmpty == false
+    }
+    func checkedCompletedFile(_ path: String) throws -> URL {
+        for root in [configuration.directory] + configuration.previousDirectories {
+            if let file = try? DownloadConfiguration.checkedFile(path,root: root) { return file }
+        }
+        throw BrowserFailure.invalid("The completed file is missing or outside the downloads folder.")
     }
     func open(_ info: DownloadInfo, reveal: Bool) {
         guard info.state == .completed, transfers.contains(where: { $0.id == info.id && $0.generation == info.generation }) else { return }
         do {
-            let url = try DownloadConfiguration.checkedFile(info.destPath,root: configuration.directory)
+            let url = try checkedCompletedFile(info.destPath)
             if reveal { NSWorkspace.shared.activateFileViewerSelecting([url]) }
             else if !NSWorkspace.shared.open(url) { throw BrowserFailure.invalid("macOS could not open this file.") }
         } catch { notice = error.localizedDescription }

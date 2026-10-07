@@ -18,13 +18,14 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-pub const USAGE: &str = "usage: blueice-downloads [--socket PATH] [--download-dir DIR] [--data-dir DIR] [--gatekeeper-socket PATH] [--max-concurrent N] [--sftp-known-hosts PATH] [--sftp-private-key PATH] [--exit-on-stdin-eof]";
+pub const USAGE: &str = "usage: blueice-downloads [--socket PATH] [--download-dir DIR] [--previous-download-dir DIR] [--data-dir DIR] [--gatekeeper-socket PATH] [--max-concurrent N] [--sftp-known-hosts PATH] [--sftp-private-key PATH] [--exit-on-stdin-eof]";
 pub const CREDENTIAL_USAGE: &str = "usage: blueice-downloads credential set <sftp-password|sftp-key-passphrase|ftps-password> --host HOST --username USER [--port PORT] [--socket PATH] --secret-stdin";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Args {
     pub socket: PathBuf,
     pub download_dir: PathBuf,
+    pub previous_download_dirs: Vec<PathBuf>,
     pub data_dir: PathBuf,
     pub gatekeeper_socket: PathBuf,
     pub max_concurrent: usize,
@@ -57,6 +58,7 @@ impl Default for Args {
         Args {
             socket: default_downloads_socket_path(),
             download_dir: default_download_dir(),
+            previous_download_dirs: Vec::new(),
             data_dir: default_data_dir(),
             gatekeeper_socket: default_gatekeeper_socket_path(),
             max_concurrent: 3,
@@ -82,6 +84,13 @@ pub fn parse_args(args: impl IntoIterator<Item = String>) -> Result<Args, String
             "--exit-on-stdin-eof" => parsed.exit_on_stdin_eof = true,
             "--socket" => parsed.socket = PathBuf::from(value("--socket")?),
             "--download-dir" => parsed.download_dir = PathBuf::from(value("--download-dir")?),
+            "--previous-download-dir" => {
+                let directory = PathBuf::from(value("--previous-download-dir")?);
+                if parsed.previous_download_dirs.len() == 32 {
+                    return Err("at most 32 historical download folders are supported".into());
+                }
+                parsed.previous_download_dirs.push(directory);
+            }
             "--data-dir" => parsed.data_dir = PathBuf::from(value("--data-dir")?),
             "--gatekeeper-socket" => {
                 parsed.gatekeeper_socket = PathBuf::from(value("--gatekeeper-socket")?)
@@ -246,6 +255,7 @@ pub fn run(args: Args) -> io::Result<()> {
     let mut config =
         ManagerConfig::new(&args.download_dir, &args.data_dir, &args.gatekeeper_socket);
     config.max_concurrent = args.max_concurrent;
+    config.previous_download_dirs = args.previous_download_dirs;
     config.options.sftp_known_hosts = args.sftp_known_hosts;
     config.options.sftp_private_key = args.sftp_private_key;
     let manager = TransferManager::open(config)?;
@@ -314,6 +324,7 @@ mod tests {
             Args {
                 socket: "/s".into(),
                 download_dir: "/d".into(),
+                previous_download_dirs: Vec::new(),
                 data_dir: "/data".into(),
                 gatekeeper_socket: "/g".into(),
                 max_concurrent: 5,
@@ -332,6 +343,25 @@ mod tests {
                 .sftp_known_hosts,
             Some(PathBuf::from("/keys/known_hosts"))
         );
+    }
+
+    #[test]
+    fn historical_download_folders_require_explicit_bounded_startup_arguments() {
+        assert_eq!(
+            parse(&[
+                "--previous-download-dir",
+                "/old",
+                "--previous-download-dir",
+                "/older"
+            ])
+            .unwrap()
+            .previous_download_dirs,
+            vec![PathBuf::from("/old"), PathBuf::from("/older")]
+        );
+        assert!(parse(&["--previous-download-dir"]).is_err());
+        let args =
+            (0..33).flat_map(|_| ["--previous-download-dir".to_string(), "/old".to_string()]);
+        assert!(parse_args(args).unwrap_err().contains("at most 32"));
     }
 
     #[test]

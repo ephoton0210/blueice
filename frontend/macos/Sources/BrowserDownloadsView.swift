@@ -22,6 +22,7 @@ struct BrowserDownloadsView: View {
     @State private var name = ""
     @State private var credentialsPresented = false
     @State private var sftpPresented = false
+    @State private var folderPresented = false
     private var valid: Bool {
         guard let address = URL(string: url.trimmingCharacters(in: .whitespacesAndNewlines)),
               ["http","https","ftp","ftps","sftp"].contains(address.scheme?.lowercased() ?? ""),
@@ -31,7 +32,9 @@ struct BrowserDownloadsView: View {
     }
     var body: some View {
         Group {
-            if sftpPresented {
+            if folderPresented {
+                BrowserDownloadFolderView(downloads: downloads,preferences: downloads.folderPreferences) { folderPresented = false }
+            } else if sftpPresented {
                 BrowserSFTPConfigurationView(downloads: downloads,preferences: downloads.sftpPreferences) { sftpPresented = false }
             } else if credentialsPresented {
                 BrowserDownloadCredentialsView(downloads: downloads) { credentialsPresented = false }
@@ -61,9 +64,14 @@ struct BrowserDownloadsView: View {
                         let fileName = name.trimmingCharacters(in: .whitespacesAndNewlines)
                         if await downloads.start(url.trimmingCharacters(in: .whitespacesAndNewlines),name: fileName.isEmpty ? nil : fileName) != nil { url = ""; name = "" }
                     }
-                }.disabled(!valid || downloads.starting || downloads.connecting || downloads.configuringSFTP).accessibilityIdentifier("download-start")
+                }.disabled(!valid || downloads.starting || downloads.connecting || downloads.configuringDownloads).accessibilityIdentifier("download-start")
             }
-            Text(BrowserStrings.format("Saved in %@", downloads.configuration.directory.path)).font(.caption).textSelection(.enabled)
+            HStack {
+                Text(BrowserStrings.format("Saved in %@", downloads.configuration.directory.path)).font(.caption).textSelection(.enabled)
+                    .fixedSize(horizontal: false,vertical: true).accessibilityIdentifier("downloads-folder-path")
+                Spacer()
+                Button(BrowserStrings.text("Folder…")) { folderPresented = true }.accessibilityIdentifier("downloads-folder")
+            }
             if let notice = downloads.notice {
                 Text(BrowserStrings.text(notice)).foregroundStyle(.red).font(.caption).accessibilityIdentifier("download-notice")
             }

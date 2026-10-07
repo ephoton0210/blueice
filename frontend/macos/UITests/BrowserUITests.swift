@@ -890,6 +890,114 @@ final class BrowserUITests: XCTestCase {
         XCTAssertNotNil(try file.resourceValues(forKeys: [.quarantinePropertiesKey]).quarantineProperties)
     }
 
+    private func openDownloadFolder() {
+        app.buttons["downloads"].click()
+        XCTAssertTrue(app.buttons["downloads-folder"].waitForExistence(timeout: 10))
+        app.buttons["downloads-folder"].click()
+        XCTAssertTrue(app.staticTexts["download-folder-title"].waitForExistence(timeout: 10))
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == true"),object: app.buttons["download-folder-choose"])],timeout: 10),.completed)
+    }
+    private func waitDownloadFolderPreference(_ path: String?) {
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            let stored = self.storedPreferences()?["browser.downloads.destination.configuration"] as? [String: Any]
+            return stored?["directory"] as? String == path
+        },object: nil)],timeout: 15),.completed)
+    }
+    func testNativeDownloadFolderExplicitApplyPreservesHistoryAndResumeAcrossRelaunch() throws {
+        let fixture = try DownloadFixture(); defer { fixture.stop() }
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("bi-folder-ui-" + UUID().uuidString)
+        let original = root.appendingPathComponent("original"), next = root.appendingPathComponent("下載 + next")
+        try FileManager.default.createDirectory(at: next,withIntermediateDirectories: true)
+        try FileManager.default.setAttributes([.posixPermissions: 0o750],ofItemAtPath: next.path)
+        defer { try? FileManager.default.removeItem(at: root) }
+        app.launchArguments += ["--downloads-directory",original.path,"--downloads-data-directory",root.appendingPathComponent("data").path,"-AppleLanguages","(en)","-AppleLocale","en_US"]
+        let saved = saveClipboard(); defer { NSPasteboard.general.clearContents(); NSPasteboard.general.writeObjects(saved) }
+        launch(); positionWindowForUnobstructedSheet(app.windows["browser-window"])
+        app.buttons["downloads"].click()
+        XCTAssertTrue(app.staticTexts["downloads-empty"].waitForExistence(timeout: 10))
+        let oldName = "BlueIce-folder-" + UUID().uuidString + ".txt"
+        startDownload(fixture.origin + "/notes.txt",name: oldName); waitDownload(1,"Completed")
+        fixture.setSlow(true,delay: 1)
+        startDownload(fixture.origin + "/large-folder.txt",name: "large-folder.txt"); waitDownload(2,"Downloading")
+        app.buttons["downloads-folder"].click()
+        XCTAssertTrue(app.staticTexts["download-folder-title"].waitForExistence(timeout: 10))
+        app.buttons["download-folder-choose"].click(); try chooseFileAtPath(next.path)
+        waitAssistantText(app.staticTexts["download-folder-path"],next.resolvingSymlinksInPath().path)
+        XCTAssertNil(storedPreferences()?["browser.downloads.destination.configuration"],"selection is only a draft")
+        app.buttons["download-folder-apply"].click()
+        waitAssistantText(app.staticTexts["download-folder-result"],"Download folder applied. Existing downloads keep their original locations.")
+        waitDownloadFolderPreference(next.resolvingSymlinksInPath().path)
+        XCTAssertEqual((try FileManager.default.attributesOfItem(atPath: next.path)[.posixPermissions] as? NSNumber)?.intValue,0o750)
+        let attachment = XCTAttachment(screenshot: app.windows["browser-window"].screenshot())
+        attachment.name = "macos-native-download-folder"; attachment.lifetime = .keepAlways; add(attachment)
+        app.buttons["download-folder-close"].click(); waitDownload(1,"Completed"); waitDownload(2,"Paused")
+        XCTAssertTrue(app.staticTexts["download-quarantine-1"].exists)
+        app.buttons["download-reveal-1"].click()
+        let finder = XCUIApplication(bundleIdentifier: "com.apple.finder")
+        XCTAssertTrue(finder.descendants(matching: .any).matching(NSPredicate(format: "label == %@",oldName)).firstMatch.waitForExistence(timeout: 15),finder.debugDescription)
+        app.activate()
+        let requests = fixture.requests.count
+        app.buttons["downloads-close"].click(); app.typeKey("q",modifierFlags: .command)
+        XCTAssertTrue(app.wait(for: .notRunning,timeout: 15))
+        launch(); app.buttons["downloads"].click(); waitDownload(2,"Paused")
+        XCTAssertEqual(fixture.requests.count,requests)
+        waitDownload(1,"Completed")
+        fixture.setSlow(false); app.buttons["download-resume-2"].click(); waitDownload(2,"Completed")
+        XCTAssertEqual(try Data(contentsOf: original.appendingPathComponent("large-folder.txt")),fixture.large)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: next.appendingPathComponent("large-folder.txt").path))
+        startDownload(fixture.origin + "/notes.txt",name: "new.txt"); waitDownload(3,"Completed")
+        XCTAssertEqual(try Data(contentsOf: next.appendingPathComponent("new.txt")),fixture.bytes)
+        XCTAssertEqual(try Data(contentsOf: original.appendingPathComponent(oldName)),fixture.bytes)
+        app.buttons["downloads-folder"].click(); app.buttons["download-folder-default"].click()
+        waitDownloadFolderPreference(next.resolvingSymlinksInPath().path)
+        app.buttons["download-folder-apply"].click()
+        waitDownloadFolderPreference(nil)
+        waitAssistantText(app.staticTexts["download-folder-result"],"Download folder applied. Existing downloads keep their original locations.")
+        app.buttons["download-folder-close"].click(); waitDownload(3,"Completed")
+        XCTAssertTrue(app.staticTexts["download-quarantine-3"].exists)
+        app.buttons["downloads-close"].click()
+    }
+    func testNativeDownloadFolderCancelAndDismissedDraftNeverChangePreferences() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("bi-folder-draft-ui-" + UUID().uuidString)
+        let folder = root.appendingPathComponent("draft")
+        try FileManager.default.createDirectory(at: folder,withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        app.launchArguments += ["--downloads-directory",root.appendingPathComponent("original").path,"--downloads-data-directory",root.appendingPathComponent("data").path,"-AppleLanguages","(en)","-AppleLocale","en_US"]
+        let saved = saveClipboard(); defer { NSPasteboard.general.clearContents(); NSPasteboard.general.writeObjects(saved) }
+        launch(); positionWindowForUnobstructedSheet(app.windows["browser-window"]); openDownloadFolder()
+        app.buttons["download-folder-choose"].click()
+        let panel = app.sheets["open-panel"]; XCTAssertTrue(panel.waitForExistence(timeout: 10))
+        panel.typeKey(.escape,modifierFlags: [])
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"),object: panel)],timeout: 10),.completed)
+        app.buttons["download-folder-choose"].click(); try chooseFileAtPath(folder.path)
+        waitAssistantText(app.staticTexts["download-folder-path"],folder.resolvingSymlinksInPath().path)
+        app.buttons["download-folder-close"].click(); app.buttons["downloads-folder"].click()
+        waitAssistantText(app.staticTexts["download-folder-path"],root.appendingPathComponent("original").path)
+        XCTAssertNil(storedPreferences()?["browser.downloads.destination.configuration"])
+        app.buttons["download-folder-close"].click(); app.buttons["downloads-close"].click()
+    }
+    func testNativeDownloadFolderTraditionalChineseChooserAndExplicitDefault() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("bi-folder-zh-ui-" + UUID().uuidString)
+        let folder = root.appendingPathComponent("新的下載資料夾")
+        try FileManager.default.createDirectory(at: folder,withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let index = try XCTUnwrap(app.launchArguments.firstIndex(of: "--interface-language")); app.launchArguments[index + 1] = "zh-Hant"
+        app.launchArguments += ["--downloads-directory",root.appendingPathComponent("original").path,"--downloads-data-directory",root.appendingPathComponent("data").path,"-AppleLanguages","(en)","-AppleLocale","en_US"]
+        let saved = saveClipboard(); defer { NSPasteboard.general.clearContents(); NSPasteboard.general.writeObjects(saved) }
+        launch(); positionWindowForUnobstructedSheet(app.windows["browser-window"]); openDownloadFolder()
+        waitAssistantText(app.staticTexts["download-folder-title"],"下載資料夾")
+        app.buttons["download-folder-choose"].click(); try chooseFileAtPath(folder.path,chooseTitle: "選擇")
+        app.buttons["download-folder-apply"].click()
+        waitAssistantText(app.staticTexts["download-folder-result"],"已套用下載資料夾。既有下載會保留原來的位置。")
+        waitDownloadFolderPreference(folder.resolvingSymlinksInPath().path)
+        let attachment = XCTAttachment(screenshot: app.windows["browser-window"].screenshot())
+        attachment.name = "macos-native-download-folder-zh"; attachment.lifetime = .keepAlways; add(attachment)
+        app.buttons["download-folder-default"].click(); app.buttons["download-folder-apply"].click()
+        waitDownloadFolderPreference(nil)
+        waitAssistantText(app.staticTexts["download-folder-result"],"已套用下載資料夾。既有下載會保留原來的位置。")
+        app.buttons["download-folder-close"].click(); app.buttons["downloads-close"].click()
+    }
+
     private func openSFTPFiles() {
         app.buttons["downloads"].click()
         XCTAssertTrue(app.buttons["download-sftp-files"].waitForExistence(timeout: 10))

@@ -65,6 +65,9 @@ pub struct ManagerConfig {
     /// Where finished downloads land, and the only place a requested
     /// destination may point inside.
     pub download_dir: PathBuf,
+    /// Previously selected folders, explicitly authorized by the process owner.
+    /// They are used only by records that already belong to those folders.
+    pub previous_download_dirs: Vec<PathBuf>,
     /// Where `transfers.json` lives.
     pub data_dir: PathBuf,
     pub gatekeeper_socket: PathBuf,
@@ -90,6 +93,7 @@ impl ManagerConfig {
     ) -> Self {
         ManagerConfig {
             download_dir: download_dir.as_ref().to_path_buf(),
+            previous_download_dirs: Vec::new(),
             data_dir: data_dir.as_ref().to_path_buf(),
             gatekeeper_socket: gatekeeper_socket.as_ref().to_path_buf(),
             max_concurrent: 3,
@@ -147,6 +151,7 @@ struct Job {
 struct Entry {
     info: TransferInfo,
     overwrite: bool,
+    download_root: PathBuf,
     /// The event log as it stood when this run began, plus what the manager
     /// itself recorded since; the engine's own events are appended to it.
     events_before_engine: Vec<TransferEvent>,
@@ -482,9 +487,34 @@ impl TransferManager {
     /// back as `Paused` -- never auto-started, so a restart can't quietly
     /// resume downloads the user has forgotten about.
     pub fn open(config: ManagerConfig) -> io::Result<Arc<TransferManager>> {
-        ensure_private_dir(&config.download_dir)?;
+        use std::os::unix::fs::DirBuilderExt;
+        // A user-selected folder belongs to the user. Restrict newly created
+        // directories without chmodding an existing folder or its parents.
+        std::fs::DirBuilder::new()
+            .recursive(true)
+            .mode(0o700)
+            .create(&config.download_dir)?;
         ensure_private_dir(&config.data_dir)?;
         let root = std::fs::canonicalize(&config.download_dir)?;
+        if config.previous_download_dirs.len() > 32 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "at most 32 historical download folders are supported",
+            ));
+        }
+        let mut authorized_roots = vec![root.clone()];
+        for directory in &config.previous_download_dirs {
+            let previous = std::fs::canonicalize(directory)?;
+            if !previous.is_dir() {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "a historical download folder is not a directory",
+                ));
+            }
+            if !authorized_roots.contains(&previous) {
+                authorized_roots.push(previous);
+            }
+        }
         let store = Store::new(&config.data_dir);
         let loaded = store.load();
 
@@ -492,13 +522,26 @@ impl TransferManager {
         let mut generation = 0;
         for stored in loaded.transfers {
             let mut info = stored.info;
+            // A stored root records provenance, never authorization. Only the
+            // startup configuration can permit a former folder. Legacy records
+            // are assigned the current root before the next atomic store write.
+            let download_root = stored.download_root.unwrap_or_else(|| root.clone());
+            if !authorized_roots.contains(&download_root) {
+                // Unsupported owner preferences can omit a legitimate former
+                // root. Preserve the catalog so explicit owner authorization
+                // can recover it; do not turn completed history into failures.
+                return Err(io::Error::new(
+                    io::ErrorKind::PermissionDenied,
+                    "an original download folder is not authorized; select its original location to retain the download history",
+                ));
+            }
             // Clients retain each record's revision from List after reconnect;
             // the next mutation must be newer than every persisted record.
             generation = generation.max(info.generation);
             bound_loaded_info(&mut info);
             let mut events = info.events.clone();
             if !info.dest_path.is_empty() {
-                match reconfine_stored(&root, &info.dest_path) {
+                match reconfine_stored(&download_root, &info.dest_path) {
                     Ok(dest) => info.dest_path = dest.to_string_lossy().into_owned(),
                     Err(reason) => {
                         info.dest_path.clear();
@@ -536,6 +579,7 @@ impl TransferManager {
                 Entry {
                     info,
                     overwrite: stored.overwrite,
+                    download_root,
                     events_before_engine: events,
                     job: None,
                 },
@@ -662,6 +706,7 @@ impl TransferManager {
             Entry {
                 info,
                 overwrite,
+                download_root: self.shared.root.clone(),
                 events_before_engine: Vec::new(),
                 job: None,
             },
@@ -837,6 +882,18 @@ impl TransferManager {
                     "transfer {id} is {} and cannot be resumed",
                     entry.info.state
                 )));
+            }
+            let root = std::fs::canonicalize(&entry.download_root).map_err(|_| {
+                ManagerError::invalid_state("the original download folder is unavailable")
+            })?;
+            if root != entry.download_root {
+                return Err(ManagerError::invalid_state(
+                    "the original download folder has changed",
+                ));
+            }
+            if !entry.info.dest_path.is_empty() {
+                reconfine_stored(&entry.download_root, &entry.info.dest_path)
+                    .map_err(ManagerError::invalid_state)?;
             }
         }
         self.shared.wait_for_job_end(id);
@@ -1155,6 +1212,7 @@ impl Shared {
             .map(|e| StoredTransfer {
                 info: e.info.clone(),
                 overwrite: e.overwrite,
+                download_root: Some(e.download_root.clone()),
             })
             .collect();
         let revision = self.persister.request(PersistSnapshot {
@@ -1338,7 +1396,7 @@ fn run_job(shared: Arc<Shared>, id: u64, control: Arc<Control>) {
 
 fn job_steps(shared: &Arc<Shared>, id: u64, control: &Arc<Control>) -> JobEnd {
     let config = &shared.config;
-    let (url, existing_dest, overwrite) = {
+    let (url, existing_dest, overwrite, download_root) = {
         let mut state = shared.lock();
         let Some(entry) = state.entries.get_mut(&id) else {
             return JobEnd::Failed("the transfer was removed".to_string());
@@ -1356,6 +1414,7 @@ fn job_steps(shared: &Arc<Shared>, id: u64, control: &Arc<Control>) -> JobEnd {
             entry.info.url.clone(),
             entry.info.dest_path.clone(),
             entry.overwrite,
+            entry.download_root.clone(),
         );
         shared.commit(&mut state, id, true);
         fields
@@ -1417,7 +1476,7 @@ fn job_steps(shared: &Arc<Shared>, id: u64, control: &Arc<Control>) -> JobEnd {
             })
             .map(|e| PathBuf::from(&e.info.dest_path))
             .collect();
-        let path = unique_path(&shared.root, &name, &|p| {
+        let path = unique_path(&download_root, &name, &|p| {
             claimed.iter().any(|claim| same_destination(p, claim))
         });
         if let Some(entry) = state.entries.get_mut(&id) {
@@ -1544,6 +1603,7 @@ mod tests {
                     ..TransferInfo::default()
                 },
                 overwrite: false,
+                download_root: None,
             }],
         });
         let last = persister.request(PersistSnapshot {
@@ -1555,6 +1615,7 @@ mod tests {
                     ..TransferInfo::default()
                 },
                 overwrite: true,
+                download_root: None,
             }],
         });
 

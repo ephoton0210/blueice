@@ -431,3 +431,17 @@
 "The SSH file setting must be an absolute local path of at most 4096 bytes." = "The SSH file setting must be an absolute local path of at most 4096 bytes.";
 "The saved SSH file settings are unsupported. Choose files or restore the defaults." = "The saved SSH file settings are unsupported. Choose files or restore the defaults.";
 "Choose a readable regular local SSH file." = "Choose a readable regular local SSH file.";
+"Download folder" = "Download folder";
+"Choose Download Folder" = "Choose Download Folder";
+"Choose where new downloads are saved. Existing downloads keep their original folders and files." = "Choose where new downloads are saved. Existing downloads keep their original folders and files.";
+"Choose Folder…" = "Choose Folder…";
+"Folder…" = "Folder…";
+"Use default folder" = "Use default folder";
+"Applying settings pauses unfinished downloads. Resume them explicitly; they continue in their original folders." = "Applying settings pauses unfinished downloads. Resume them explicitly; they continue in their original folders.";
+"Download folder applied. Existing downloads keep their original locations." = "Download folder applied. Existing downloads keep their original locations.";
+"Applying download folder…" = "Applying download folder…";
+"Original folders retained for download history" = "Original folders retained for download history";
+"The saved download folder settings are unsupported. Choose a folder explicitly." = "The saved download folder settings are unsupported. Choose a folder explicitly.";
+"Choose a readable and writable local folder." = "Choose a readable and writable local folder.";
+"A previous download folder is unavailable. Restore its location to keep the download history." = "A previous download folder is unavailable. Restore its location to keep the download history.";
+"At most 32 previous download folders are supported." = "At most 32 previous download folders are supported.";

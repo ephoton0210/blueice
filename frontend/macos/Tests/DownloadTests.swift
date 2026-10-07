@@ -10,6 +10,172 @@ import XCTest
 
 @MainActor
 final class DownloadTests: XCTestCase {
+    func testDownloadFolderSelectionPreservesHistoryAcrossSaveRelaunchAndDefault() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("bi-folder-prefs-" + UUID().uuidString)
+        let old = root.appendingPathComponent("original"), next = root.appendingPathComponent("下載 + new")
+        for folder in [old,next] { try FileManager.default.createDirectory(at: folder,withIntermediateDirectories: true) }
+        defer { try? FileManager.default.removeItem(at: root) }
+        let base = DownloadConfiguration(directory: old,dataDirectory: root.appendingPathComponent("data"))
+        let domain = "cc.blueice.folder-tests." + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: domain)); defer { defaults.removePersistentDomain(forName: domain) }
+        let preferences = BrowserDownloadFolderPreferences(defaults: defaults)
+        let selected = try XCTUnwrap(preferences.selection).changing(to: next,base: base)
+        XCTAssertNil(defaults.object(forKey: BrowserDownloadFolderPreferences.configurationKey),"choosing is only a draft")
+        try preferences.save(selected,base: base)
+        let reopened = BrowserDownloadFolderPreferences(defaults: defaults)
+        XCTAssertEqual(try reopened.selection?.resolved(base: base).directory,next.resolvingSymlinksInPath())
+        XCTAssertEqual(reopened.selection?.previousDirectories,[old.resolvingSymlinksInPath()])
+        let restored = try XCTUnwrap(reopened.selection).changing(to: nil,base: base)
+        try reopened.save(restored,base: base)
+        XCTAssertEqual(try reopened.selection?.resolved(base: base).directory,old)
+        XCTAssertEqual(reopened.selection?.previousDirectories,[next.resolvingSymlinksInPath()])
+        XCTAssertThrowsError(try restored.changing(to: root.appendingPathComponent("missing"),base: base))
+        XCTAssertEqual(BrowserDownloadFolderPreferences(defaults: defaults).selection,restored)
+    }
+    func testMalformedDownloadFolderPreferencesRefuseImplicitFallback() throws {
+        for value: Any in ["future",["version": true,"previous_directories": []],
+                          ["version": 2,"previous_directories": []],
+                          ["version": 1,"directory": "relative","previous_directories": []],
+                          ["version": 1,"directory": "/tmp/path\n","previous_directories": []],
+                          ["version": 1,"previous_directories": [42]],
+                          ["version": 1,"previous_directories": Array(repeating: "/tmp/a",count: 33)]] {
+            XCTAssertThrowsError(try DownloadFolderSelection.decode(value))
+        }
+        let domain = "cc.blueice.folder-invalid-tests." + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: domain)); defer { defaults.removePersistentDomain(forName: domain) }
+        let future: [String: Any] = ["version": 2,"directory": "/future/folder"]
+        defaults.set(future,forKey: BrowserDownloadFolderPreferences.configurationKey)
+        let preferences = BrowserDownloadFolderPreferences(defaults: defaults)
+        XCTAssertNil(preferences.selection); XCTAssertNotNil(preferences.error)
+        XCTAssertEqual(defaults.dictionary(forKey: BrowserDownloadFolderPreferences.configurationKey)?["version"] as? Int,2)
+    }
+    func testDownloadFolderChooserRejectsFilesSymlinksAndNonlocalURLs() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("bi-folder-types-" + UUID().uuidString)
+        try FileManager.default.createDirectory(at: root,withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let file = root.appendingPathComponent("file"), link = root.appendingPathComponent("link")
+        try Data("fixture".utf8).write(to: file)
+        try FileManager.default.createSymbolicLink(at: link,withDestinationURL: root)
+        for url in [file,link,root.appendingPathComponent("missing"),URL(string: "https://example.test/folder")!] {
+            XCTAssertThrowsError(try DownloadFolderSelection.checkedDirectory(url))
+        }
+        XCTAssertEqual(try DownloadFolderSelection.checkedDirectory(root),root.resolvingSymlinksInPath())
+    }
+    func testActualDownloadFolderChangePreservesFilesResumeCoreAndCredentialOwnership() async throws {
+        let root = URL(fileURLWithPath: "/private/tmp/bi-folder-service-" + UUID().uuidString)
+        let original = root.appendingPathComponent("original"), next = root.appendingPathComponent("next")
+        for folder in [original,next] { try FileManager.default.createDirectory(at: folder,withIntermediateDirectories: true) }
+        try FileManager.default.setAttributes([.posixPermissions: 0o750],ofItemAtPath: next.path)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let domain = "cc.blueice.folder-service-tests." + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: domain)); defer { defaults.removePersistentDomain(forName: domain) }
+        let config = DownloadConfiguration(directory: original,dataDirectory: root.appendingPathComponent("data"))
+        let fixture = try DownloadFixture(); defer { fixture.stop() }
+        let launcher = Bundle(for: Self.self).bundleURL.deletingLastPathComponent().appendingPathComponent("BlueIce.app/Contents/MacOS/blueice-launcher")
+        let workspace = BrowserWorkspace(contextDefaults: defaults,downloadConfiguration: config); defer { Task { await workspace.stop() } }
+        await workspace.start(launcher: launcher); await workspace.downloads.connect()
+        let core = try XCTUnwrap(workspace.processID), old = try XCTUnwrap(workspace.downloads.processID)
+        let done = try await started(workspace.downloads,fixture.origin + "/notes.txt",name: "notes.txt")
+        await wait { workspace.downloads.transfers.first { $0.id == done }?.state == .completed }
+        let reviewedValue = await workspace.downloads.resolveCredentialTarget("sftp://fixture@credential-fixture.invalid:2222")
+        let reviewed = try XCTUnwrap(reviewedValue)
+        fixture.setSlow(true,delay: 1)
+        let large = try await started(workspace.downloads,fixture.origin + "/large-folder-change.txt",name: "folder-change.txt")
+        await wait { workspace.downloads.transfers.first { $0.id == large }?.completedBytes ?? 0 > 0 }
+        let rejected = await workspace.downloads.applyDownloadFolder(root.appendingPathComponent("missing"))
+        XCTAssertFalse(rejected); XCTAssertEqual(workspace.downloads.processID,old)
+        XCTAssertNil(defaults.object(forKey: BrowserDownloadFolderPreferences.configurationKey))
+        let changed = await workspace.downloads.applyDownloadFolder(next)
+        XCTAssertTrue(changed); XCTAssertEqual(workspace.processID,core)
+        XCTAssertNotEqual(workspace.downloads.processID,old); XCTAssertNotEqual(kill(old,0),0)
+        XCTAssertEqual(workspace.downloads.transfers.first { $0.id == large }?.state,.paused)
+        let completed = try XCTUnwrap(workspace.downloads.transfers.first { $0.id == done })
+        XCTAssertEqual(completed.state,.completed); XCTAssertTrue(workspace.downloads.hasQuarantine(completed))
+        XCTAssertEqual(try Data(contentsOf: workspace.downloads.checkedCompletedFile(completed.destPath)),fixture.bytes)
+        XCTAssertThrowsError(try workspace.downloads.checkedCompletedFile(root.appendingPathComponent("outside.txt").path))
+        XCTAssertEqual((try FileManager.default.attributesOfItem(atPath: next.path)[.posixPermissions] as? NSNumber)?.intValue,0o750)
+        let stale = await workspace.downloads.removeCredential(reviewed,kind: .sftpPassword)
+        XCTAssertFalse(stale)
+        await workspace.stop()
+        let requests = fixture.requests.count
+        let reopened = BrowserWorkspace(contextDefaults: defaults,downloadConfiguration: config); defer { Task { await reopened.stop() } }
+        await reopened.start(launcher: launcher); await reopened.downloads.connect()
+        XCTAssertEqual(reopened.downloads.configuration.directory.path,next.resolvingSymlinksInPath().path)
+        XCTAssertEqual(reopened.downloads.transfers.first { $0.id == large }?.state,.paused)
+        XCTAssertEqual(fixture.requests.count,requests,"restoring the catalog never resumes downloads")
+        fixture.setSlow(false); await perform(reopened.downloads,"Resume",id: large)
+        await wait { reopened.downloads.transfers.first { $0.id == large }?.state == .completed }
+        XCTAssertEqual(try Data(contentsOf: original.appendingPathComponent("folder-change.txt")),fixture.large)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: next.appendingPathComponent("folder-change.txt").path))
+        let new = try await started(reopened.downloads,fixture.origin + "/notes.txt",name: "new.txt")
+        await wait { reopened.downloads.transfers.first { $0.id == new }?.state == .completed }
+        XCTAssertEqual(try Data(contentsOf: next.appendingPathComponent("new.txt")),fixture.bytes)
+        let restored = await reopened.downloads.applyDownloadFolder(nil)
+        XCTAssertTrue(restored); XCTAssertEqual(reopened.downloads.configuration.directory,original)
+        XCTAssertEqual(reopened.downloads.configuration.previousDirectories.map(\.path),[next.resolvingSymlinksInPath().path])
+        let newInfo = try XCTUnwrap(reopened.downloads.transfers.first { $0.id == new })
+        XCTAssertEqual(try Data(contentsOf: reopened.downloads.checkedCompletedFile(newInfo.destPath)),fixture.bytes)
+        await reopened.stop()
+    }
+    func testUnsupportedFolderPreferenceRepairPreservesHistoryUntilOriginalFolderIsExplicitlyChosen() async throws {
+        let root = URL(fileURLWithPath: "/private/tmp/bi-folder-history-repair-" + UUID().uuidString)
+        let original = root.appendingPathComponent("original"), next = root.appendingPathComponent("new")
+        for folder in [original,next] { try FileManager.default.createDirectory(at: folder,withIntermediateDirectories: true) }
+        defer { try? FileManager.default.removeItem(at: root) }
+        let domain = "cc.blueice.folder-history-repair-tests." + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: domain)); defer { defaults.removePersistentDomain(forName: domain) }
+        let config = DownloadConfiguration(directory: root.appendingPathComponent("default"),dataDirectory: root.appendingPathComponent("data"))
+        let fixture = try DownloadFixture(); defer { fixture.stop() }
+        let launcher = Bundle(for: Self.self).bundleURL.deletingLastPathComponent().appendingPathComponent("BlueIce.app/Contents/MacOS/blueice-launcher")
+        let first = BrowserWorkspace(contextDefaults: defaults,downloadConfiguration: config); defer { Task { await first.stop() } }
+        await first.start(launcher: launcher); await first.downloads.connect()
+        let chosen = await first.downloads.applyDownloadFolder(original)
+        XCTAssertTrue(chosen)
+        let id = try await started(first.downloads,fixture.origin + "/notes.txt",name: "human-chosen-name.txt")
+        await wait { first.downloads.transfers.first { $0.id == id }?.state == .completed }
+        await first.stop()
+        let catalog = config.dataDirectory.appendingPathComponent("transfers.json")
+        let before = try Data(contentsOf: catalog)
+        defaults.set(["version": 9,"directory": original.path],forKey: BrowserDownloadFolderPreferences.configurationKey)
+        let reopened = BrowserWorkspace(contextDefaults: defaults,downloadConfiguration: config); defer { Task { await reopened.stop() } }
+        await reopened.start(launcher: launcher); await reopened.downloads.connect()
+        XCTAssertFalse(reopened.downloads.available)
+        let core = try XCTUnwrap(reopened.processID)
+        let refused = await reopened.downloads.applyDownloadFolder(next)
+        XCTAssertFalse(refused); XCTAssertFalse(reopened.downloads.available)
+        XCTAssertEqual(try Data(contentsOf: catalog),before,"repair must preserve unapproved history byte for byte")
+        XCTAssertEqual(try Data(contentsOf: original.appendingPathComponent("human-chosen-name.txt")),fixture.bytes)
+        let recovered = await reopened.downloads.applyDownloadFolder(original)
+        XCTAssertTrue(recovered); XCTAssertEqual(reopened.processID,core)
+        let info = try XCTUnwrap(reopened.downloads.transfers.first { $0.id == id })
+        XCTAssertEqual(info.state,.completed)
+        XCTAssertEqual(try Data(contentsOf: reopened.downloads.checkedCompletedFile(info.destPath)),fixture.bytes)
+        let changed = await reopened.downloads.applyDownloadFolder(next)
+        XCTAssertTrue(changed)
+        XCTAssertEqual(reopened.downloads.transfers.first { $0.id == id }?.state,.completed)
+        await reopened.stop()
+    }
+    func testBrokenDownloadFolderPreferencesRequireExplicitRepairBeforeServiceStartup() async throws {
+        let root = URL(fileURLWithPath: "/private/tmp/bi-folder-repair-" + UUID().uuidString)
+        let folder = root.appendingPathComponent("chosen")
+        try FileManager.default.createDirectory(at: folder,withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let domain = "cc.blueice.folder-repair-tests." + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: domain)); defer { defaults.removePersistentDomain(forName: domain) }
+        defaults.set(["version": 9,"directory": "/future/folder"],forKey: BrowserDownloadFolderPreferences.configurationKey)
+        let config = DownloadConfiguration(directory: root.appendingPathComponent("default"),dataDirectory: root.appendingPathComponent("data"))
+        let workspace = BrowserWorkspace(contextDefaults: defaults,downloadConfiguration: config); defer { Task { await workspace.stop() } }
+        let launcher = Bundle(for: Self.self).bundleURL.deletingLastPathComponent().appendingPathComponent("BlueIce.app/Contents/MacOS/blueice-launcher")
+        await workspace.start(launcher: launcher); await workspace.downloads.connect()
+        XCTAssertFalse(workspace.downloads.available); XCTAssertNil(workspace.downloads.processID)
+        XCTAssertEqual(defaults.dictionary(forKey: BrowserDownloadFolderPreferences.configurationKey)?["version"] as? Int,9)
+        let repaired = await workspace.downloads.applyDownloadFolder(folder)
+        XCTAssertTrue(repaired); XCTAssertTrue(workspace.downloads.available)
+        XCTAssertEqual(workspace.downloads.configuration.directory.path,folder.resolvingSymlinksInPath().path)
+        await workspace.stop()
+        let stopped = await workspace.downloads.applyDownloadFolder(nil)
+        XCTAssertFalse(stopped)
+    }
     private func credentialExists(_ kind: DownloadCredentialKind, target: ReviewedDownloadCredential) -> Bool {
         let context = LAContext(); context.interactionNotAllowed = true
         let query: [CFString: Any] = [kSecClass: kSecClassGenericPassword,

@@ -1572,6 +1572,190 @@ fn a_subscriber_that_never_reads_cannot_stall_other_clients() {
 // ---- restarts and shutdown ----------------------------------------------
 
 #[test]
+fn opening_an_existing_download_folder_preserves_its_permissions() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let gate = FakeGatekeeper::clear_all();
+    let download_dir = TempDir::new();
+    let data_dir = TempDir::new();
+    std::fs::set_permissions(download_dir.path(), std::fs::Permissions::from_mode(0o750)).unwrap();
+    let manager = TransferManager::open(config_for(&download_dir, &data_dir, &gate)).unwrap();
+    assert_eq!(
+        std::fs::metadata(download_dir.path())
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o777,
+        0o750,
+        "selecting an existing user folder must not chmod it"
+    );
+    manager.shutdown();
+}
+
+#[test]
+fn opening_a_new_download_folder_creates_it_with_private_permissions() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let gate = FakeGatekeeper::clear_all();
+    let parent = TempDir::new();
+    let data_dir = TempDir::new();
+    let download_dir = parent.join("new/downloads");
+    let manager = TransferManager::open(ManagerConfig::new(
+        &download_dir,
+        data_dir.path(),
+        &gate.socket,
+    ))
+    .unwrap();
+    assert_eq!(
+        std::fs::metadata(&download_dir)
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o777,
+        0o700
+    );
+    manager.shutdown();
+}
+
+#[test]
+fn a_folder_change_keeps_completed_paused_and_unassigned_transfers_in_their_original_folder() {
+    let gate = FakeGatekeeper::clear_all();
+    let old_dir = TempDir::new();
+    let new_dir = TempDir::new();
+    let data_dir = TempDir::new();
+    let server = TestServer::start();
+    server.serve("/done.bin", Resource::new(body(1_000)));
+    server.serve("/big.bin", slow(2 * MIB));
+    server.serve("/queued.bin", Resource::new(body(2_000)));
+    let mut config = config_for(&old_dir, &data_dir, &gate);
+    config.max_concurrent = 1;
+    let first = TransferManager::open(config).unwrap();
+    let done = first
+        .start(&server.url("/done.bin"), None, false)
+        .unwrap()
+        .id;
+    wait_until(|| first.get(done).unwrap().state == TransferState::Completed);
+    let done_path = first.get(done).unwrap().dest_path;
+    let big = first
+        .start(&server.url("/big.bin"), None, false)
+        .unwrap()
+        .id;
+    wait_until(|| first.get(big).unwrap().completed_bytes > 64 * KIB as u64);
+    let big_path = first.get(big).unwrap().dest_path;
+    let queued = first
+        .start(&server.url("/queued.bin"), None, false)
+        .unwrap()
+        .id;
+    assert!(first.get(queued).unwrap().dest_path.is_empty());
+    first.shutdown();
+    drop(first);
+
+    let mut config = config_for(&new_dir, &data_dir, &gate);
+    config.previous_download_dirs = vec![old_dir.path().to_path_buf()];
+    let second = TransferManager::open(config).unwrap();
+    assert_eq!(second.get(done).unwrap().dest_path, done_path);
+    assert_eq!(second.get(done).unwrap().state, TransferState::Completed);
+    assert_eq!(second.get(big).unwrap().dest_path, big_path);
+    assert_eq!(second.get(big).unwrap().state, TransferState::Paused);
+    assert_eq!(second.get(queued).unwrap().state, TransferState::Paused);
+    assert!(
+        second.is_idle(),
+        "changing folders never auto-resumes history"
+    );
+    second.resume(queued).unwrap();
+    wait_until(|| second.get(queued).unwrap().state == TransferState::Completed);
+    assert_eq!(
+        PathBuf::from(second.get(queued).unwrap().dest_path),
+        std::fs::canonicalize(old_dir.path())
+            .unwrap()
+            .join("queued.bin")
+    );
+    second.resume(big).unwrap();
+    wait_until(|| second.get(big).unwrap().state == TransferState::Completed);
+    assert_eq!(std::fs::read(&big_path).unwrap(), body(2 * MIB));
+    let new = second
+        .start(&server.url("/done.bin"), None, false)
+        .unwrap()
+        .id;
+    assert!(new > queued);
+    wait_until(|| second.get(new).unwrap().state == TransferState::Completed);
+    assert_eq!(
+        PathBuf::from(second.get(new).unwrap().dest_path),
+        std::fs::canonicalize(new_dir.path())
+            .unwrap()
+            .join("done.bin")
+    );
+    assert_eq!(std::fs::read(&done_path).unwrap(), body(1_000));
+    second.shutdown();
+}
+
+#[test]
+fn a_stored_root_is_not_authorization_to_resume_outside_the_configured_folders() {
+    let gate = FakeGatekeeper::clear_all();
+    let old_dir = TempDir::new();
+    let new_dir = TempDir::new();
+    let data_dir = TempDir::new();
+    let server = TestServer::start();
+    server.serve("/done.bin", Resource::new(body(1_000)));
+    server.serve("/big.bin", slow(2 * MIB));
+    let first = TransferManager::open(config_for(&old_dir, &data_dir, &gate)).unwrap();
+    let completed = first
+        .start(&server.url("/done.bin"), None, false)
+        .unwrap()
+        .id;
+    wait_until(|| first.get(completed).unwrap().state == TransferState::Completed);
+    let id = first
+        .start(&server.url("/big.bin"), None, false)
+        .unwrap()
+        .id;
+    wait_until(|| first.get(id).unwrap().completed_bytes > 64 * KIB as u64);
+    first.shutdown();
+    drop(first);
+    let catalog = data_dir.join("transfers.json");
+    let before = std::fs::read(&catalog).unwrap();
+    let refusal = TransferManager::open(config_for(&new_dir, &data_dir, &gate))
+        .err()
+        .expect("an unapproved original folder must refuse startup");
+    assert_eq!(refusal.kind(), std::io::ErrorKind::PermissionDenied);
+    assert_eq!(
+        std::fs::read(&catalog).unwrap(),
+        before,
+        "refusal preserves every history field"
+    );
+    assert!(
+        !new_dir.join("big.bin").exists(),
+        "refusal must not redirect an old transfer"
+    );
+    let mut config = config_for(&new_dir, &data_dir, &gate);
+    config.previous_download_dirs = vec![old_dir.path().to_path_buf()];
+    let approved = TransferManager::open(config).unwrap();
+    assert_eq!(
+        approved.get(completed).unwrap().state,
+        TransferState::Completed
+    );
+    assert_eq!(approved.get(id).unwrap().state, TransferState::Paused);
+    assert_eq!(
+        std::fs::read(approved.get(completed).unwrap().dest_path).unwrap(),
+        body(1_000)
+    );
+    approved.shutdown();
+}
+
+#[test]
+fn an_unavailable_historical_folder_refuses_startup_without_rewriting_the_catalog() {
+    let gate = FakeGatekeeper::clear_all();
+    let download_dir = TempDir::new();
+    let data_dir = TempDir::new();
+    let catalog = data_dir.join("transfers.json");
+    let bytes = br#"{"version":1,"next_id":1,"transfers":[]}"#;
+    std::fs::write(&catalog, bytes).unwrap();
+    let mut config = config_for(&download_dir, &data_dir, &gate);
+    config.previous_download_dirs = vec![download_dir.join("missing")];
+    assert!(TransferManager::open(config).is_err());
+    assert_eq!(std::fs::read(catalog).unwrap(), bytes);
+}
+
+#[test]
 fn a_new_process_sees_history_and_finds_interrupted_transfers_paused_never_auto_started() {
     let gate = FakeGatekeeper::clear_all();
     let download_dir = TempDir::new();

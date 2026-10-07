@@ -431,3 +431,17 @@
 "The SSH file setting must be an absolute local path of at most 4096 bytes." = "SSH 檔案設定必須是最多 4096 位元組的本機絕對路徑。";
 "The saved SSH file settings are unsupported. Choose files or restore the defaults." = "已儲存的 SSH 檔案設定不受支援，請選擇檔案或還原預設值。";
 "Choose a readable regular local SSH file." = "請選擇可讀取的本機一般 SSH 檔案。";
+"Download folder" = "下載資料夾";
+"Choose Download Folder" = "選擇下載資料夾";
+"Choose where new downloads are saved. Existing downloads keep their original folders and files." = "選擇新下載的儲存位置。既有下載會保留原來的資料夾與檔案。";
+"Choose Folder…" = "選擇資料夾…";
+"Folder…" = "資料夾…";
+"Use default folder" = "使用預設資料夾";
+"Applying settings pauses unfinished downloads. Resume them explicitly; they continue in their original folders." = "套用設定會暫停未完成的下載。請手動繼續下載，檔案會儲存在原來的資料夾。";
+"Download folder applied. Existing downloads keep their original locations." = "已套用下載資料夾。既有下載會保留原來的位置。";
+"Applying download folder…" = "正在套用下載資料夾…";
+"Original folders retained for download history" = "下載紀錄保留的原始資料夾";
+"The saved download folder settings are unsupported. Choose a folder explicitly." = "儲存的下載資料夾設定不受支援。請手動選擇資料夾。";
+"Choose a readable and writable local folder." = "請選擇可讀寫的本機資料夾。";
+"A previous download folder is unavailable. Restore its location to keep the download history." = "先前的下載資料夾無法使用。請還原其位置，以保留下載紀錄。";
+"At most 32 previous download folders are supported." = "最多支援 32 個先前的下載資料夾。";
