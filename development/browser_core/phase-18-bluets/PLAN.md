@@ -5463,3 +5463,7 @@ G-T6 retains unmeasured computed/nested expression contexts, composed variance
 and broader library structural relations. G-T2/G-T3/G-T5 keep their remaining
 inference/operator/type combinations. K.3 and the measured K.4 leaves are complete;
 final workspace/coverage verification remains open. M8 remains open for K.5–K.9.
+
+### K.4.7 fixture provenance verified — 2026-10-08
+
+Ten supplemental fixtures now carry the required MPL-2.0 headers. Their program bodies are unchanged; the pinned compatibility and shared diagnostic recorders regenerate only source positions. The frozen 12-file Linux replay passes format, format check, both-crate all-target Clippy and all eight compatibility/diagnostics tests, including both pinned recorders and all four runtime/declaration witnesses. Production sources and Rust test harness inputs match `4abe6111f`. Evidence: `/private/tmp/blueice-k14-linux/blueice-k47-headers-status.json` and its compatibility/diagnostics logs. Final workspace CI remains open while an unrelated openSUSE repository initialization failure is repaired.

@@ -20473,9 +20473,9 @@
         "category": "error",
         "message": "Object literal may only specify known properties, and 'extra' does not exist in type 'Shape'.",
         "file": "typescript_oracle/relate-fresh-method-argument/main.ts",
-        "start": 160,
+        "start": 364,
         "length": 5,
-        "line": 5,
+        "line": 9,
         "column": 24
       },
       "diagnostics": [
@@ -20484,9 +20484,9 @@
           "category": "error",
           "message": "Object literal may only specify known properties, and 'extra' does not exist in type 'Shape'.",
           "file": "typescript_oracle/relate-fresh-method-argument/main.ts",
-          "start": 160,
+          "start": 364,
           "length": 5,
-          "line": 5,
+          "line": 9,
           "column": 24
         }
       ]
@@ -20515,9 +20515,9 @@
         "category": "error",
         "message": "Object literal may only specify known properties, and 'extra' does not exist in type 'Shape'.",
         "file": "typescript_oracle/relate-fresh-property-argument/main.ts",
-        "start": 128,
+        "start": 332,
         "length": 5,
-        "line": 3,
+        "line": 7,
         "column": 24
       },
       "diagnostics": [
@@ -20526,9 +20526,9 @@
           "category": "error",
           "message": "Object literal may only specify known properties, and 'extra' does not exist in type 'Shape'.",
           "file": "typescript_oracle/relate-fresh-property-argument/main.ts",
-          "start": 128,
+          "start": 332,
           "length": 5,
-          "line": 3,
+          "line": 7,
           "column": 24
         }
       ]
@@ -20579,9 +20579,9 @@
         "category": "error",
         "message": "Object literal may only specify known properties, and 'extra' does not exist in type 'Shape'.",
         "file": "typescript_oracle/relate-fresh-write-bracket/main.ts",
-        "start": 106,
+        "start": 310,
         "length": 5,
-        "line": 3,
+        "line": 7,
         "column": 29
       },
       "diagnostics": [
@@ -20590,9 +20590,9 @@
           "category": "error",
           "message": "Object literal may only specify known properties, and 'extra' does not exist in type 'Shape'.",
           "file": "typescript_oracle/relate-fresh-write-bracket/main.ts",
-          "start": 106,
+          "start": 310,
           "length": 5,
-          "line": 3,
+          "line": 7,
           "column": 29
         }
       ]
@@ -20621,9 +20621,9 @@
         "category": "error",
         "message": "Object literal may only specify known properties, and 'extra' does not exist in type 'Shape'.",
         "file": "typescript_oracle/relate-fresh-write-element/main.ts",
-        "start": 91,
+        "start": 295,
         "length": 5,
-        "line": 3,
+        "line": 7,
         "column": 25
       },
       "diagnostics": [
@@ -20632,9 +20632,9 @@
           "category": "error",
           "message": "Object literal may only specify known properties, and 'extra' does not exist in type 'Shape'.",
           "file": "typescript_oracle/relate-fresh-write-element/main.ts",
-          "start": 91,
+          "start": 295,
           "length": 5,
-          "line": 3,
+          "line": 7,
           "column": 25
         }
       ]
@@ -20685,9 +20685,9 @@
         "category": "error",
         "message": "Object literal may only specify known properties, and 'extra' does not exist in type 'Shape'.",
         "file": "typescript_oracle/relate-fresh-write-member/main.ts",
-        "start": 103,
+        "start": 307,
         "length": 5,
-        "line": 3,
+        "line": 7,
         "column": 26
       },
       "diagnostics": [
@@ -20696,9 +20696,9 @@
           "category": "error",
           "message": "Object literal may only specify known properties, and 'extra' does not exist in type 'Shape'.",
           "file": "typescript_oracle/relate-fresh-write-member/main.ts",
-          "start": 103,
+          "start": 307,
           "length": 5,
-          "line": 3,
+          "line": 7,
           "column": 26
         }
       ]
@@ -20727,9 +20727,9 @@
         "category": "error",
         "message": "Object literal may only specify known properties, and 'extra' does not exist in type 'Shape'.",
         "file": "typescript_oracle/relate-fresh-write-variable/main.ts",
-        "start": 82,
+        "start": 286,
         "length": 5,
-        "line": 3,
+        "line": 7,
         "column": 21
       },
       "diagnostics": [
@@ -20738,9 +20738,9 @@
           "category": "error",
           "message": "Object literal may only specify known properties, and 'extra' does not exist in type 'Shape'.",
           "file": "typescript_oracle/relate-fresh-write-variable/main.ts",
-          "start": 82,
+          "start": 286,
           "length": 5,
-          "line": 3,
+          "line": 7,
           "column": 21
         }
       ]

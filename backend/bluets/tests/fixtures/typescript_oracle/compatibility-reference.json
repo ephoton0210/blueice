@@ -282,7 +282,7 @@
         "message": "Object literal may only specify known properties, and 'extra' does not exist in type 'Shape'.",
         "module": "main.ts",
         "position": {
-          "line": 5,
+          "line": 9,
           "column": 24,
           "length": 5
         },
@@ -298,7 +298,7 @@
         "message": "Object literal may only specify known properties, and 'extra' does not exist in type 'Shape'.",
         "module": "main.ts",
         "position": {
-          "line": 3,
+          "line": 7,
           "column": 24,
           "length": 5
         },
@@ -320,7 +320,7 @@
         "message": "Object literal may only specify known properties, and 'extra' does not exist in type 'Shape'.",
         "module": "main.ts",
         "position": {
-          "line": 3,
+          "line": 7,
           "column": 29,
           "length": 5
         },
@@ -336,7 +336,7 @@
         "message": "Object literal may only specify known properties, and 'extra' does not exist in type 'Shape'.",
         "module": "main.ts",
         "position": {
-          "line": 3,
+          "line": 7,
           "column": 25,
           "length": 5
         },
@@ -358,7 +358,7 @@
         "message": "Object literal may only specify known properties, and 'extra' does not exist in type 'Shape'.",
         "module": "main.ts",
         "position": {
-          "line": 3,
+          "line": 7,
           "column": 26,
           "length": 5
         },
@@ -374,7 +374,7 @@
         "message": "Object literal may only specify known properties, and 'extra' does not exist in type 'Shape'.",
         "module": "main.ts",
         "position": {
-          "line": 3,
+          "line": 7,
           "column": 21,
           "length": 5
         },
