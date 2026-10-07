@@ -4488,6 +4488,15 @@ still required to produce no diagnostics.
 
 `record_diagnostic_positions.py` records coordinate differences without
 changing sources or emitting outputs. This failing replay and row-by-row
-baseline are committed before implementation under K.0.1. Configuration, native
-CLI and option-combination matrices still require their position inventory;
-K.3.2, K.3.3 and the final M7 gate remain open.
+baseline are committed before implementation under K.0.1.
+
+The supplemental pinned recorder covers all 69 configuration, 30 native CLI
+and 768 option-combination cases. Configuration cases preserve their original
+`--showConfig` operation; option/program checking suppresses publication. The
+16 primary failures are tracked in `baseline-project-position-mismatches.json`:
+14 early errors still use unstructured text and two semantic errors lack
+positions. The other 851 cases require no diagnostics. Four public-boundary
+controls independently record UTF-16 columns after a supplementary Unicode
+character and original LF, CRLF and CR line endings. This second failing replay
+is also committed before implementation. K.3.2, K.3.3 and the final M7 gate
+remain open.

@@ -323,7 +323,7 @@ and import rules.
 - [ ] **K.3.2 Position parity (M).** Compare line, column and length of the primary span with `tsc` in
   every accepted/rejected matrix; each mismatch is a tracked row until zero (expect many: BlueTS spans
   are statement-granular in places).
-  - *Test-first baseline (2026-10-07):* 800 primary coordinates are absent from machine JSON; derived byte spans differ in 543 entries of the 1,398 language/strictness cases. Each primary row is recorded for tracking to zero. Project/configuration, CLI and option-combination position inventories remain required.
+  - *Test-first baseline (2026-10-07):* 800 primary coordinates are absent from machine JSON; derived byte spans differ in 543 entries of the 1,398 language/strictness cases. Another 867 configuration/CLI/option-combination cases add 16 tracked primary failures (14 unstructured configuration/argument failures and two missing source positions). Four pinned controls cover UTF-16 columns and LF/CRLF/CR. Every mismatch remains tracked until zero.
 - [ ] **K.3.3 Presentation (S).** Related information, `--pretty` output, `--diagnostics`-style summary,
   and exit codes as `tsc` (0, 1 with emit, 2 without).
 

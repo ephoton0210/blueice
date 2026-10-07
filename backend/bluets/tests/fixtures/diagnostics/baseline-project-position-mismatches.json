@@ -1,0 +1,185 @@
+{
+  "version": "5.9.3",
+  "cases": 867,
+  "mismatches": [
+    {
+      "id": "config:config-cycle",
+      "expected": {
+        "code": 18000,
+        "position": null
+      },
+      "actual": null,
+      "cause": "unstructured diagnostic"
+    },
+    {
+      "id": "config:config-empty",
+      "expected": {
+        "code": 18003,
+        "position": null
+      },
+      "actual": null,
+      "cause": "unstructured diagnostic"
+    },
+    {
+      "id": "config:config-empty-files",
+      "expected": {
+        "code": 18002,
+        "position": {
+          "line": 5,
+          "column": 12,
+          "length": 2
+        },
+        "file": "tsconfig.json"
+      },
+      "actual": null,
+      "cause": "unstructured diagnostic"
+    },
+    {
+      "id": "config:config-empty-files-with-include",
+      "expected": {
+        "code": 18002,
+        "position": {
+          "line": 5,
+          "column": 12,
+          "length": 2
+        },
+        "file": "tsconfig.json"
+      },
+      "actual": null,
+      "cause": "unstructured diagnostic"
+    },
+    {
+      "id": "config:config-hidden-directory",
+      "expected": {
+        "code": 18003,
+        "position": null
+      },
+      "actual": null,
+      "cause": "unstructured diagnostic"
+    },
+    {
+      "id": "config:config-invalid-json",
+      "expected": {
+        "code": 18003,
+        "position": null
+      },
+      "actual": null,
+      "cause": "unstructured diagnostic"
+    },
+    {
+      "id": "config:config-invalid-type",
+      "expected": {
+        "code": 5024,
+        "position": {
+          "line": 5,
+          "column": 18,
+          "length": 5
+        },
+        "file": "tsconfig.json"
+      },
+      "actual": null,
+      "cause": "unstructured diagnostic"
+    },
+    {
+      "id": "config:config-missing-base",
+      "expected": {
+        "code": 5083,
+        "position": null
+      },
+      "actual": null,
+      "cause": "unstructured diagnostic"
+    },
+    {
+      "id": "config:config-unknown-null",
+      "expected": {
+        "code": 5023,
+        "position": {
+          "line": 5,
+          "column": 5,
+          "length": 16
+        },
+        "file": "tsconfig.json"
+      },
+      "actual": null,
+      "cause": "unstructured diagnostic"
+    },
+    {
+      "id": "config:config-unknown-option",
+      "expected": {
+        "code": 5023,
+        "position": {
+          "line": 5,
+          "column": 5,
+          "length": 12
+        },
+        "file": "tsconfig.json"
+      },
+      "actual": null,
+      "cause": "unstructured diagnostic"
+    },
+    {
+      "id": "cli:missing-project",
+      "expected": {
+        "code": 5058,
+        "position": null
+      },
+      "actual": null,
+      "cause": "unstructured diagnostic"
+    },
+    {
+      "id": "cli:unknown-option",
+      "expected": {
+        "code": 5023,
+        "position": null
+      },
+      "actual": null,
+      "cause": "unstructured diagnostic"
+    },
+    {
+      "id": "cli:project-plus-source",
+      "expected": {
+        "code": 5042,
+        "position": null
+      },
+      "actual": null,
+      "cause": "unstructured diagnostic"
+    },
+    {
+      "id": "cli:pretty-false-error",
+      "expected": {
+        "code": 2322,
+        "position": {
+          "line": 1,
+          "column": 14,
+          "length": 5
+        },
+        "file": "src/value.ts"
+      },
+      "actual": null,
+      "cause": "missing position"
+    },
+    {
+      "id": "cli:pretty-true-error",
+      "expected": {
+        "code": 2322,
+        "position": {
+          "line": 1,
+          "column": 14,
+          "length": 5
+        },
+        "file": "src/value.ts"
+      },
+      "actual": null,
+      "cause": "missing position"
+    },
+    {
+      "id": "cli:missing-project-value",
+      "expected": {
+        "code": 6044,
+        "position": null
+      },
+      "actual": null,
+      "cause": "unstructured diagnostic"
+    }
+  ]
+}
