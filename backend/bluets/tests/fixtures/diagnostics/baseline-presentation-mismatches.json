@@ -1,0 +1,3667 @@
+{
+  "version": "5.9.3",
+  "comparedPrimaries": 800,
+  "mismatches": [
+    {
+      "id": "class:class-accessor-assign-mismatch/main.ts",
+      "code": 2322,
+      "message": {
+        "expected": "Type 'string' is not assignable to type 'number'.",
+        "actual": "Type 'string' is not assignable to type 'v'."
+      }
+    },
+    {
+      "id": "class:class-accessor-nominal-private/main.ts",
+      "code": 2322,
+      "message": {
+        "expected": "Type '{ secret: number; }' is not assignable to type 'A'.\n  Property 'secret' is private in type 'A' but not in type '{ secret: number; }'.",
+        "actual": "Type 'record' is not assignable to type 'A'."
+      }
+    },
+    {
+      "id": "class:class-accessor-overridden-by-field/main.ts",
+      "code": 2610,
+      "message": {
+        "expected": "'v' is defined as an accessor in class 'Base', but is overridden here in 'Derived' as an instance property.",
+        "actual": "class defines `v` as a property but the base class defines it as an accessor"
+      }
+    },
+    {
+      "id": "class:class-accessor-override-type-mismatch/main.ts",
+      "code": 2416,
+      "message": {
+        "expected": "Property 'v' in type 'Derived' is not assignable to the same property in base type 'Base'.\n  Type 'string' is not assignable to type 'number'.",
+        "actual": "Property 'v' in type 'string' is not assignable to the same property in base type 'number'."
+      }
+    },
+    {
+      "id": "class:class-accessor-overrides-field/main.ts",
+      "code": 2611,
+      "message": {
+        "expected": "'v' is defined as a property in class 'Base', but is overridden here in 'Derived' as an accessor.",
+        "actual": "class defines `v` as an accessor but the base class defines it as a property"
+      }
+    },
+    {
+      "id": "class:class-accessor-overrides-method/main.ts",
+      "code": 2416,
+      "message": {
+        "expected": "Property 'v' in type 'Derived' is not assignable to the same property in base type 'Base'.\n  Type 'number' is not assignable to type '() => number'.",
+        "actual": "class defines `v` as an accessor but the base class defines it as a method"
+      }
+    },
+    {
+      "id": "class:class-construction-argument-error/main.ts",
+      "code": 2345,
+      "message": {
+        "expected": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+        "actual": "Argument of type ''wrong'' is not assignable to parameter of type 'number'."
+      }
+    },
+    {
+      "id": "class:class-construction-arity-error/main.ts",
+      "code": 2554,
+      "relatedInformation": {
+        "expected": [
+          {
+            "code": 6210,
+            "message": "An argument for 'value' was not provided.",
+            "module": "main.ts",
+            "position": {
+              "line": 5,
+              "column": 25,
+              "length": 13
+            }
+          }
+        ],
+        "actual": []
+      }
+    },
+    {
+      "id": "class:class-construction-inferred-shape-error/main.ts",
+      "code": 2741,
+      "message": {
+        "expected": "Property 'missing' is missing in type 'Box' but required in type '{ missing(): number; }'.",
+        "actual": "Property 'missing' is missing in type 'Box' but required in type 'record'."
+      },
+      "relatedInformation": {
+        "expected": [
+          {
+            "code": 2728,
+            "message": "'missing' is declared here.",
+            "module": "main.ts",
+            "position": {
+              "line": 7,
+              "column": 18,
+              "length": 17
+            }
+          }
+        ],
+        "actual": []
+      }
+    },
+    {
+      "id": "class:class-construction-nested-argument-error/main.ts",
+      "code": 2345,
+      "message": {
+        "expected": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+        "actual": "Argument of type ''wrong'' is not assignable to parameter of type 'number'."
+      }
+    },
+    {
+      "id": "class:class-constructor-body-invalid-return/main.ts",
+      "code": 2741,
+      "message": {
+        "expected": "Property 'read' is missing in type '{ wrong: number; }' but required in type 'Box'.",
+        "actual": "constructor return type `record` is not assignable to class `Box`"
+      },
+      "relatedInformation": {
+        "expected": [
+          {
+            "code": 2728,
+            "message": "'read' is declared here.",
+            "module": "main.ts",
+            "position": {
+              "line": 6,
+              "column": 5,
+              "length": 4
+            }
+          }
+        ],
+        "actual": []
+      }
+    },
+    {
+      "id": "class:class-constructor-body-nested-return/main.ts",
+      "code": 2741,
+      "message": {
+        "expected": "Property 'read' is missing in type '{ wrong: number; }' but required in type 'Box'.",
+        "actual": "constructor return type `record` is not assignable to class `Box`"
+      },
+      "relatedInformation": {
+        "expected": [
+          {
+            "code": 2728,
+            "message": "'read' is declared here.",
+            "module": "main.ts",
+            "position": {
+              "line": 6,
+              "column": 5,
+              "length": 4
+            }
+          }
+        ],
+        "actual": []
+      }
+    },
+    {
+      "id": "class:class-constructor-incompatible-overload/main.ts",
+      "code": 2394,
+      "relatedInformation": {
+        "expected": [
+          {
+            "code": 2750,
+            "message": "The implementation signature is declared here.",
+            "module": "main.ts",
+            "position": {
+              "line": 7,
+              "column": 5,
+              "length": 11
+            }
+          }
+        ],
+        "actual": []
+      }
+    },
+    {
+      "id": "class:class-constructor-invalid-default/main.ts",
+      "code": 2322,
+      "message": {
+        "expected": "Type 'string' is not assignable to type 'number'.",
+        "actual": "Type 'string' is not assignable to type 'value'."
+      }
+    },
+    {
+      "id": "class:class-dual-binding-wrong-side/main.ts",
+      "code": 2741,
+      "message": {
+        "expected": "Property 'read' is missing in type 'typeof Reader' but required in type 'Reader'.",
+        "actual": "Property 'read' is missing in type 'record' but required in type 'Reader'."
+      },
+      "relatedInformation": {
+        "expected": [
+          {
+            "code": 2728,
+            "message": "'read' is declared here.",
+            "module": "main.ts",
+            "position": {
+              "line": 6,
+              "column": 5,
+              "length": 4
+            }
+          },
+          {
+            "code": 6213,
+            "message": "Did you mean to use 'new' with this expression?",
+            "module": "main.ts",
+            "position": {
+              "line": 8,
+              "column": 25,
+              "length": 6
+            }
+          }
+        ],
+        "actual": []
+      }
+    },
+    {
+      "id": "class:class-field-assign-type-error/main.ts",
+      "code": 2322,
+      "message": {
+        "expected": "Type 'string' is not assignable to type 'number'.",
+        "actual": "Type 'string' is not assignable to type 'count'."
+      }
+    },
+    {
+      "id": "class:class-field-optional-read/main.ts",
+      "code": 2322,
+      "message": {
+        "expected": "Type 'string | undefined' is not assignable to type 'string'.\n  Type 'undefined' is not assignable to type 'string'.",
+        "actual": "Type 'string | undefined' is not assignable to type 'string'."
+      }
+    },
+    {
+      "id": "class:class-field-override-type-error/main.ts",
+      "code": 2416,
+      "message": {
+        "expected": "Property 'value' in type 'Derived' is not assignable to the same property in base type 'Base'.\n  Type 'string' is not assignable to type 'number'.",
+        "actual": "Property 'value' in type 'string' is not assignable to the same property in base type 'number'."
+      }
+    },
+    {
+      "id": "class:class-field-redeclare-definite/main.ts",
+      "code": 2612,
+      "message": {
+        "expected": "Property 'x' will overwrite the base property in 'Base'. If this is intentional, add an initializer. Otherwise, add a 'declare' modifier or remove the redundant declaration.",
+        "actual": "property `x` will overwrite the base property; add an initializer or remove the redundant declaration"
+      }
+    },
+    {
+      "id": "class:class-field-redeclare-grandparent/main.ts",
+      "code": 2612,
+      "message": {
+        "expected": "Property 'x' will overwrite the base property in 'B'. If this is intentional, add an initializer. Otherwise, add a 'declare' modifier or remove the redundant declaration.",
+        "actual": "property `x` will overwrite the base property; add an initializer or remove the redundant declaration"
+      }
+    },
+    {
+      "id": "class:class-field-redeclare-parameter-property/main.ts",
+      "code": 2612,
+      "message": {
+        "expected": "Property 'x' will overwrite the base property in 'Base'. If this is intentional, add an initializer. Otherwise, add a 'declare' modifier or remove the redundant declaration.",
+        "actual": "property `x` will overwrite the base property; add an initializer or remove the redundant declaration"
+      }
+    },
+    {
+      "id": "class:class-field-redeclare-uninitialized/main.ts",
+      "code": 2612,
+      "message": {
+        "expected": "Property 'x' will overwrite the base property in 'Base'. If this is intentional, add an initializer. Otherwise, add a 'declare' modifier or remove the redundant declaration.",
+        "actual": "property `x` will overwrite the base property; add an initializer or remove the redundant declaration"
+      }
+    },
+    {
+      "id": "class:class-heritage-forward-base/main.ts",
+      "code": 2449,
+      "message": {
+        "expected": "Class 'Base' used before its declaration.",
+        "actual": "TS2449: class Base is used before its declaration"
+      },
+      "relatedInformation": {
+        "expected": [
+          {
+            "code": 2728,
+            "message": "'Base' is declared here.",
+            "module": "main.ts",
+            "position": {
+              "line": 6,
+              "column": 7,
+              "length": 4
+            }
+          }
+        ],
+        "actual": []
+      }
+    },
+    {
+      "id": "class:class-heritage-mutual-cycle/main.ts",
+      "code": 2506,
+      "message": {
+        "expected": "'A' is referenced directly or indirectly in its own base expression.",
+        "actual": "class A has a cyclic base expression"
+      }
+    },
+    {
+      "id": "class:class-heritage-nonconstructor-base/main.ts",
+      "code": 2507,
+      "message": {
+        "expected": "Type 'number' is not a constructor function type.",
+        "actual": "class heritage NotClass is not a constructor"
+      }
+    },
+    {
+      "id": "class:class-heritage-self-cycle/main.ts",
+      "code": 2506,
+      "message": {
+        "expected": "'Self' is referenced directly or indirectly in its own base expression.",
+        "actual": "class Self has a cyclic base expression"
+      }
+    },
+    {
+      "id": "class:class-imported-base-type-reexport/argument-error.ts",
+      "code": 2345,
+      "message": {
+        "expected": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+        "actual": "Argument of type ''wrong'' is not assignable to parameter of type 'number'."
+      }
+    },
+    {
+      "id": "class:class-inherited-constructor-argument-error/main.ts",
+      "code": 2769,
+      "message": {
+        "expected": "No overload matches this call.\n  Overload 1 of 2, '(value: string): Child', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'string'.\n  Overload 2 of 2, '(value: number): Child', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'number'.",
+        "actual": "No overload matches this call."
+      },
+      "relatedInformation": {
+        "expected": [
+          {
+            "code": 2793,
+            "message": "The call would have succeeded against this implementation, but implementation signatures of overloads are not externally visible.",
+            "module": "main.ts",
+            "position": {
+              "line": 8,
+              "column": 5,
+              "length": 11
+            }
+          }
+        ],
+        "actual": []
+      }
+    },
+    {
+      "id": "class:class-inherited-constructor-arity-error/main.ts",
+      "code": 2554,
+      "relatedInformation": {
+        "expected": [
+          {
+            "code": 6210,
+            "message": "An argument for 'value' was not provided.",
+            "module": "main.ts",
+            "position": {
+              "line": 5,
+              "column": 26,
+              "length": 13
+            }
+          }
+        ],
+        "actual": []
+      }
+    },
+    {
+      "id": "class:class-inherited-constructor-result-error/main.ts",
+      "code": 2741,
+      "message": {
+        "expected": "Property 'missing' is missing in type 'Base' but required in type '{ missing(): void; }'.",
+        "actual": "Property 'missing' is missing in type 'Child' but required in type 'record'."
+      },
+      "relatedInformation": {
+        "expected": [
+          {
+            "code": 2728,
+            "message": "'missing' is declared here.",
+            "module": "main.ts",
+            "position": {
+              "line": 7,
+              "column": 16,
+              "length": 15
+            }
+          }
+        ],
+        "actual": []
+      }
+    },
+    {
+      "id": "class:class-inherited-instance-argument-error/main.ts",
+      "code": 2345,
+      "message": {
+        "expected": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+        "actual": "Argument of type ''wrong'' is not assignable to parameter of type 'number'."
+      }
+    },
+    {
+      "id": "class:class-inherited-static-argument-error/main.ts",
+      "code": 2769,
+      "message": {
+        "expected": "No overload matches this call.\n  Overload 1 of 2, '(value: string): string', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'string'.\n  Overload 2 of 2, '(value: number): number', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'number'.",
+        "actual": "No overload matches this call."
+      },
+      "relatedInformation": {
+        "expected": [
+          {
+            "code": 2793,
+            "message": "The call would have succeeded against this implementation, but implementation signatures of overloads are not externally visible.",
+            "module": "main.ts",
+            "position": {
+              "line": 8,
+              "column": 12,
+              "length": 5
+            }
+          }
+        ],
+        "actual": []
+      }
+    },
+    {
+      "id": "class:class-instance-overload-argument-error/main.ts",
+      "code": 2769,
+      "message": {
+        "expected": "No overload matches this call.\n  Overload 1 of 2, '(value: number): number', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'number'.\n  Overload 2 of 2, '(value: string): string', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'string'.",
+        "actual": "No overload matches this call."
+      }
+    },
+    {
+      "id": "class:class-instance-overload-this-argument-error/main.ts",
+      "code": 2769,
+      "message": {
+        "expected": "No overload matches this call.\n  Overload 1 of 2, '(value: number): number', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'number'.\n  Overload 2 of 2, '(value: string): string', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'string'.",
+        "actual": "No overload matches this call."
+      }
+    },
+    {
+      "id": "class:class-instance-this-argument-error/main.ts",
+      "code": 2345,
+      "message": {
+        "expected": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+        "actual": "Argument of type ''bad'' is not assignable to parameter of type 'number'."
+      }
+    },
+    {
+      "id": "class:class-instance-this-self-return-error/main.ts",
+      "code": 2322,
+      "message": {
+        "expected": "Type 'this' is not assignable to type 'number'.\n  Type 'Reader' is not assignable to type 'number'.",
+        "actual": "Type 'Reader' is not assignable to type 'number'."
+      }
+    },
+    {
+      "id": "class:class-interface-merge-error-type/main.ts",
+      "code": 2717,
+      "message": {
+        "expected": "Subsequent property declarations must have the same type.  Property 'v' must be of type 'string', but here has type 'number'.",
+        "actual": "subsequent declarations of property `v` must have the same type"
+      },
+      "relatedInformation": {
+        "expected": [
+          {
+            "code": 6203,
+            "message": "'v' was also declared here.",
+            "module": "main.ts",
+            "position": {
+              "line": 5,
+              "column": 17,
+              "length": 1
+            }
+          }
+        ],
+        "actual": []
+      }
+    },
+    {
+      "id": "class:class-local-called-without-new/main.ts",
+      "code": 2348,
+      "message": {
+        "expected": "Value of type 'typeof Box' is not callable. Did you mean to include 'new'?",
+        "actual": "Value of type 'new' is not callable. Did you mean to include 'new'?"
+      }
+    },
+    {
+      "id": "class:class-local-instance-wrong-side-call/main.ts",
+      "code": 2339,
+      "message": {
+        "expected": "Property 'read' does not exist on type 'typeof Box'.",
+        "actual": "Property 'read' does not exist on type 'record'."
+      }
+    },
+    {
+      "id": "class:class-local-instance-wrong-side-read/main.ts",
+      "code": 2339,
+      "message": {
+        "expected": "Property 'read' does not exist on type 'typeof Box'.",
+        "actual": "Property 'read' does not exist on type 'record'."
+      }
+    },
+    {
+      "id": "class:class-local-nested-call-without-new/main.ts",
+      "code": 2348,
+      "message": {
+        "expected": "Value of type 'typeof Box' is not callable. Did you mean to include 'new'?",
+        "actual": "Value of type 'new' is not callable. Did you mean to include 'new'?"
+      }
+    },
+    {
+      "id": "class:class-method-body-invalid-default/main.ts",
+      "code": 2322,
+      "message": {
+        "expected": "Type 'string' is not assignable to type 'number'.",
+        "actual": "Type 'string' is not assignable to type 'value'."
+      }
+    },
+    {
+      "id": "class:class-method-incompatible-overload/main.ts",
+      "code": 2394,
+      "relatedInformation": {
+        "expected": [
+          {
+            "code": 2750,
+            "message": "The implementation signature is declared here.",
+            "module": "main.ts",
+            "position": {
+              "line": 7,
+              "column": 5,
+              "length": 4
+            }
+          }
+        ],
+        "actual": []
+      }
+    },
+    {
+      "id": "class:class-override-ancestor-instance-parameter-error/main.ts",
+      "code": 2416,
+      "message": {
+        "expected": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Middle'.\n  Type '(value: string) => number' is not assignable to type '(value: number) => number'.\n    Types of parameters 'value' and 'value' are incompatible.\n      Type 'number' is not assignable to type 'string'.",
+        "actual": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Middle'."
+      }
+    },
+    {
+      "id": "class:class-override-ancestor-instance-result-error/main.ts",
+      "code": 2416,
+      "message": {
+        "expected": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Middle'.\n  Type '(value: number) => string' is not assignable to type '(value: number) => number'.\n    Type 'string' is not assignable to type 'number'.",
+        "actual": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Middle'."
+      }
+    },
+    {
+      "id": "class:class-override-ancestor-nearest-error/main.ts",
+      "code": 2416,
+      "message": {
+        "expected": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Middle'.\n  Type '(value: string) => number' is not assignable to type '(value: number) => number'.\n    Types of parameters 'value' and 'value' are incompatible.\n      Type 'number' is not assignable to type 'string'.",
+        "actual": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Middle'."
+      }
+    },
+    {
+      "id": "class:class-override-ancestor-static-parameter-error/main.ts",
+      "code": 2417,
+      "message": {
+        "expected": "Class static side 'typeof Child' incorrectly extends base class static side 'typeof Middle'.\n  Types of property 'parse' are incompatible.\n    Type '(value: string) => number' is not assignable to type '(value: number) => number'.\n      Types of parameters 'value' and 'value' are incompatible.\n        Type 'number' is not assignable to type 'string'.",
+        "actual": "Class static side 'typeof Child' incorrectly extends base class static side 'typeof Middle'."
+      }
+    },
+    {
+      "id": "class:class-override-ancestor-static-result-error/main.ts",
+      "code": 2417,
+      "message": {
+        "expected": "Class static side 'typeof Child' incorrectly extends base class static side 'typeof Middle'.\n  The types returned by 'parse(...)' are incompatible between these types.\n    Type 'string' is not assignable to type 'number'.",
+        "actual": "Class static side 'typeof Child' incorrectly extends base class static side 'typeof Middle'."
+      }
+    },
+    {
+      "id": "class:class-override-arity-instance-extra-required/main.ts",
+      "code": 2416,
+      "message": {
+        "expected": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'.\n  Type '(value: number, label: string) => number' is not assignable to type '(value: number) => number'.\n    Target signature provides too few arguments. Expected 2 or more, but got 1.",
+        "actual": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'."
+      }
+    },
+    {
+      "id": "class:class-override-arity-instance-optional-type-error/main.ts",
+      "code": 2416,
+      "message": {
+        "expected": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'.\n  Type '(value: number, label?: number | undefined) => number' is not assignable to type '(value: number, label?: string | undefined) => number'.\n    Types of parameters 'label' and 'label' are incompatible.\n      Type 'string | undefined' is not assignable to type 'number | undefined'.\n        Type 'string' is not assignable to type 'number'.",
+        "actual": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'."
+      }
+    },
+    {
+      "id": "class:class-override-arity-static-extra-required/main.ts",
+      "code": 2417,
+      "message": {
+        "expected": "Class static side 'typeof Child' incorrectly extends base class static side 'typeof Base'.\n  Types of property 'parse' are incompatible.\n    Type '(value: number, label: string) => number' is not assignable to type '(value: number) => number'.\n      Target signature provides too few arguments. Expected 2 or more, but got 1.",
+        "actual": "Class static side 'typeof Child' incorrectly extends base class static side 'typeof Base'."
+      }
+    },
+    {
+      "id": "class:class-override-arity-static-optional-type-error/main.ts",
+      "code": 2417,
+      "message": {
+        "expected": "Class static side 'typeof Child' incorrectly extends base class static side 'typeof Base'.\n  Types of property 'parse' are incompatible.\n    Type '(value: number, label?: number | undefined) => number' is not assignable to type '(value: number, label?: string | undefined) => number'.\n      Types of parameters 'label' and 'label' are incompatible.\n        Type 'string | undefined' is not assignable to type 'number | undefined'.\n          Type 'string' is not assignable to type 'number'.",
+        "actual": "Class static side 'typeof Child' incorrectly extends base class static side 'typeof Base'."
+      }
+    },
+    {
+      "id": "class:class-override-array-rest-instance-element-error/main.ts",
+      "code": 2416,
+      "message": {
+        "expected": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'.\n  Type '(prefix: number, ...values: string[]) => number' is not assignable to type '(prefix: number, ...values: number[]) => number'.\n    Types of parameters 'values' and 'values' are incompatible.\n      Type 'number' is not assignable to type 'string'.",
+        "actual": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'."
+      }
+    },
+    {
+      "id": "class:class-override-array-rest-instance-result-error/main.ts",
+      "code": 2416,
+      "message": {
+        "expected": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'.\n  Type '(prefix: number, ...values: number[]) => string' is not assignable to type '(prefix: number, ...values: number[]) => number'.\n    Type 'string' is not assignable to type 'number'.",
+        "actual": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'."
+      }
+    },
+    {
+      "id": "class:class-override-array-rest-prefix-error/main.ts",
+      "code": 2416,
+      "message": {
+        "expected": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'.\n  Type '(prefix: string, ...values: string[]) => number' is not assignable to type '(prefix: number, ...values: string[]) => number'.\n    Types of parameters 'prefix' and 'prefix' are incompatible.\n      Type 'number' is not assignable to type 'string'.",
+        "actual": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'."
+      }
+    },
+    {
+      "id": "class:class-override-array-rest-static-element-error/main.ts",
+      "code": 2417,
+      "message": {
+        "expected": "Class static side 'typeof Child' incorrectly extends base class static side 'typeof Base'.\n  Types of property 'parse' are incompatible.\n    Type '(prefix: number, ...values: string[]) => number' is not assignable to type '(prefix: number, ...values: number[]) => number'.\n      Types of parameters 'values' and 'values' are incompatible.\n        Type 'number' is not assignable to type 'string'.",
+        "actual": "Class static side 'typeof Child' incorrectly extends base class static side 'typeof Base'."
+      }
+    },
+    {
+      "id": "class:class-override-array-rest-static-result-error/main.ts",
+      "code": 2417,
+      "message": {
+        "expected": "Class static side 'typeof Child' incorrectly extends base class static side 'typeof Base'.\n  The types returned by 'parse(...)' are incompatible between these types.\n    Type 'string' is not assignable to type 'number'.",
+        "actual": "Class static side 'typeof Child' incorrectly extends base class static side 'typeof Base'."
+      }
+    },
+    {
+      "id": "class:class-override-base-middle-arity-error/main.ts",
+      "code": 2416,
+      "message": {
+        "expected": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'.\n  Type '(a: number) => number' is not assignable to type '(...parts: [head: number, ...middle: string[], done: boolean]) => number'.\n    Types of parameters 'a' and 'head' are incompatible.\n      Type '[head: number, ...middle: string[], done: boolean]' is not assignable to type '[a: number]'.\n        Source has 2 element(s) but target allows only 1.",
+        "actual": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'."
+      }
+    },
+    {
+      "id": "class:class-override-base-middle-array-error/main.ts",
+      "code": 2416,
+      "message": {
+        "expected": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'.\n  Type '(a: number, ...parts: string[]) => number' is not assignable to type '(...parts: [head: number, ...middle: string[], done: boolean]) => number'.\n    Types of parameters 'parts' and 'middle' are incompatible.\n      Type '[...middle: string[], done: boolean]' is not assignable to type 'string[]'.\n        Type 'string | boolean' is not assignable to type 'string'.\n          Type 'boolean' is not assignable to type 'string'.",
+        "actual": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'."
+      }
+    },
+    {
+      "id": "class:class-override-base-middle-element-error/main.ts",
+      "code": 2416,
+      "message": {
+        "expected": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'.\n  Type '(a: number, b: boolean, c: boolean) => number' is not assignable to type '(...parts: [head: number, ...middle: string[], done: boolean]) => number'.\n    Types of parameters 'b' and 'middle' are incompatible.\n      Type '[...middle: string[], done: boolean]' is not assignable to type '[b: boolean, c: boolean]'.\n        Target requires 2 element(s) but source may have fewer.",
+        "actual": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'."
+      }
+    },
+    {
+      "id": "class:class-override-base-middle-optional-error/main.ts",
+      "code": 2416,
+      "message": {
+        "expected": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'.\n  Type '(a: number, b?: boolean | undefined) => number' is not assignable to type '(...parts: [head: number, ...middle: string[], done: boolean]) => number'.\n    Types of parameters 'b' and 'middle' are incompatible.\n      Type '[...middle: string[], done: boolean]' is not assignable to type '[b?: boolean | undefined]'.\n        Target allows only 1 element(s) but source may have more.",
+        "actual": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'."
+      }
+    },
+    {
+      "id": "class:class-override-base-middle-shift-error/main.ts",
+      "code": 2416,
+      "message": {
+        "expected": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'.\n  Type '(a: number, b: string, ...parts: string[]) => number' is not assignable to type '(...parts: [head: number, ...middle: string[], end: string]) => number'.\n    Types of parameters 'b' and 'middle' are incompatible.\n      Type '[...middle: string[], end: string]' is not assignable to type '[b: string, ...parts: string[]]'.\n        Source provides no match for required element at position 0 in target.",
+        "actual": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'."
+      }
+    },
+    {
+      "id": "class:class-override-base-middle-static-error/main.ts",
+      "code": 2417,
+      "message": {
+        "expected": "Class static side 'typeof Child' incorrectly extends base class static side 'typeof Base'.\n  Types of property 'parse' are incompatible.\n    Type '(a: number, ...parts: string[]) => number' is not assignable to type '(...parts: [head: number, ...middle: string[], done: boolean]) => number'.\n      Types of parameters 'parts' and 'middle' are incompatible.\n        Type '[...middle: string[], done: boolean]' is not assignable to type 'string[]'.\n          Type 'string | boolean' is not assignable to type 'string'.\n            Type 'boolean' is not assignable to type 'string'.",
+        "actual": "Class static side 'typeof Child' incorrectly extends base class static side 'typeof Base'."
+      }
+    },
+    {
+      "id": "class:class-override-base-middle-suffix-error/main.ts",
+      "code": 2416,
+      "message": {
+        "expected": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'.\n  Type '(a: number, b: string) => number' is not assignable to type '(...parts: [head: number, ...middle: string[], done: boolean]) => number'.\n    Types of parameters 'b' and 'middle' are incompatible.\n      Type '[...middle: string[], done: boolean]' is not assignable to type '[b: string]'.\n        Target allows only 1 element(s) but source may have more.",
+        "actual": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'."
+      }
+    },
+    {
+      "id": "class:class-override-base-rest-extra-required/main.ts",
+      "code": 2416,
+      "message": {
+        "expected": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'.\n  Type '(prefix: number, label: string, active: boolean) => number' is not assignable to type '(prefix: number, ...labels: string[]) => number'.\n    Types of parameters 'active' and 'labels' are incompatible.\n      Type 'string' is not assignable to type 'boolean'.",
+        "actual": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'."
+      }
+    },
+    {
+      "id": "class:class-override-base-rest-instance-type-error/main.ts",
+      "code": 2416,
+      "message": {
+        "expected": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'.\n  Type '(prefix: number, label?: number | undefined) => number' is not assignable to type '(prefix: number, ...labels: string[]) => number'.\n    Types of parameters 'label' and 'labels' are incompatible.\n      Type 'string' is not assignable to type 'number'.",
+        "actual": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'."
+      }
+    },
+    {
+      "id": "class:class-override-base-rest-later-type-error/main.ts",
+      "code": 2416,
+      "message": {
+        "expected": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'.\n  Type '(prefix: number, label: string, active?: boolean | undefined) => number' is not assignable to type '(prefix: number, ...labels: string[]) => number'.\n    Types of parameters 'active' and 'labels' are incompatible.\n      Type 'string' is not assignable to type 'boolean | undefined'.",
+        "actual": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'."
+      }
+    },
+    {
+      "id": "class:class-override-base-rest-static-type-error/main.ts",
+      "code": 2417,
+      "message": {
+        "expected": "Class static side 'typeof Child' incorrectly extends base class static side 'typeof Base'.\n  Types of property 'parse' are incompatible.\n    Type '(prefix: number, label?: number | undefined) => number' is not assignable to type '(prefix: number, ...labels: string[]) => number'.\n      Types of parameters 'label' and 'labels' are incompatible.\n        Type 'string' is not assignable to type 'number'.",
+        "actual": "Class static side 'typeof Child' incorrectly extends base class static side 'typeof Base'."
+      }
+    },
+    {
+      "id": "class:class-override-base-tail-array-error/main.ts",
+      "code": 2417,
+      "message": {
+        "expected": "Class static side 'typeof Child' incorrectly extends base class static side 'typeof Base'.\n  Types of property 'parse' are incompatible.\n    Type '(a: number, ...tail: boolean[]) => number' is not assignable to type '(first: number, ...tail: string[]) => number'.\n      Types of parameters 'tail' and 'tail' are incompatible.\n        Type 'string' is not assignable to type 'boolean'.",
+        "actual": "Class static side 'typeof Child' incorrectly extends base class static side 'typeof Base'."
+      }
+    },
+    {
+      "id": "class:class-override-base-tail-fixed-error/main.ts",
+      "code": 2416,
+      "message": {
+        "expected": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'.\n  Type '(a: number, b: boolean) => number' is not assignable to type '(first: number, ...tail: string[]) => number'.\n    Types of parameters 'b' and 'tail' are incompatible.\n      Type 'string' is not assignable to type 'boolean'.",
+        "actual": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'."
+      }
+    },
+    {
+      "id": "class:class-override-base-tuple-array-type-error/main.ts",
+      "code": 2417,
+      "message": {
+        "expected": "Class static side 'typeof Child' incorrectly extends base class static side 'typeof Base'.\n  Types of property 'parse' are incompatible.\n    Type '(...parts: number[]) => number' is not assignable to type '(parts_0: number, parts_1: string) => number'.\n      Types of parameters 'parts' and 'parts_1' are incompatible.\n        Type 'string' is not assignable to type 'number'.",
+        "actual": "Class static side 'typeof Child' incorrectly extends base class static side 'typeof Base'."
+      }
+    },
+    {
+      "id": "class:class-override-base-tuple-fixed-arity-error/main.ts",
+      "code": 2416,
+      "message": {
+        "expected": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'.\n  Type '(a: number, b: string, c: boolean) => number' is not assignable to type '(parts_0: number, parts_1: string) => number'.\n    Target signature provides too few arguments. Expected 3 or more, but got 2.",
+        "actual": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'."
+      }
+    },
+    {
+      "id": "class:class-override-base-tuple-fixed-type-error/main.ts",
+      "code": 2416,
+      "message": {
+        "expected": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'.\n  Type '(a: number, b: number) => number' is not assignable to type '(a: number, parts_0: string, parts_1: boolean) => number'.\n    Types of parameters 'b' and 'parts_0' are incompatible.\n      Type 'string' is not assignable to type 'number'.",
+        "actual": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'."
+      }
+    },
+    {
+      "id": "class:class-override-both-middle-element-error/main.ts",
+      "code": 2416,
+      "message": {
+        "expected": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'.\n  Type '(...parts: [number, ...boolean[], boolean]) => number' is not assignable to type '(...parts: [number, ...string[], boolean]) => number'.\n    Types of parameters 'parts' and 'parts' are incompatible.\n      Type '[...string[], boolean]' is not assignable to type '[...boolean[], boolean]'.\n        Type at position 0 in source is not compatible with type at position 0 in target.\n          Type 'string' is not assignable to type 'boolean'.",
+        "actual": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'."
+      }
+    },
+    {
+      "id": "class:class-override-both-middle-shift-error/main.ts",
+      "code": 2416,
+      "message": {
+        "expected": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'.\n  Type '(...parts: [number, string, ...boolean[], boolean]) => number' is not assignable to type '(...parts: [number, ...string[], boolean]) => number'.\n    Types of parameters 'parts_1' and 'parts' are incompatible.\n      Type '[...string[], boolean]' is not assignable to type '[string, ...boolean[], boolean]'.\n        Source provides no match for required element at position 0 in target.",
+        "actual": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'."
+      }
+    },
+    {
+      "id": "class:class-override-both-middle-static-error/main.ts",
+      "code": 2417,
+      "message": {
+        "expected": "Class static side 'typeof Child' incorrectly extends base class static side 'typeof Base'.\n  Types of property 'parse' are incompatible.\n    Type '(...parts: [string, ...string[], boolean]) => number' is not assignable to type '(...parts: [number, ...string[], boolean]) => number'.\n      Types of parameters 'parts_0' and 'parts_0' are incompatible.\n        Type 'number' is not assignable to type 'string'.",
+        "actual": "Class static side 'typeof Child' incorrectly extends base class static side 'typeof Base'."
+      }
+    },
+    {
+      "id": "class:class-override-both-middle-suffix-error/main.ts",
+      "code": 2416,
+      "message": {
+        "expected": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'.\n  Type '(...parts: [number, ...string[], number]) => number' is not assignable to type '(...parts: [number, ...string[], boolean]) => number'.\n    Types of parameters 'parts' and 'parts' are incompatible.\n      Type '[...string[], boolean]' is not assignable to type '[...string[], number]'.\n        Type at position 1 in source is not compatible with type at position 1 in target.\n          Type 'boolean' is not assignable to type 'number'.",
+        "actual": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'."
+      }
+    },
+    {
+      "id": "class:class-override-both-middle-tail-error/main.ts",
+      "code": 2416,
+      "message": {
+        "expected": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'.\n  Type '(parts_0: number, ...parts: string[]) => number' is not assignable to type '(...parts: [number, ...string[], boolean]) => number'.\n    Types of parameters 'parts' and 'parts' are incompatible.\n      Type '[...string[], boolean]' is not assignable to type 'string[]'.\n        Type 'string | boolean' is not assignable to type 'string'.\n          Type 'boolean' is not assignable to type 'string'.",
+        "actual": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'."
+      }
+    },
+    {
+      "id": "class:class-override-both-tail-element-error/main.ts",
+      "code": 2416,
+      "message": {
+        "expected": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'.\n  Type '(parts_0: number, ...parts: boolean[]) => number' is not assignable to type '(parts_0: number, ...parts: string[]) => number'.\n    Types of parameters 'parts' and 'parts' are incompatible.\n      Type 'string' is not assignable to type 'boolean'.",
+        "actual": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'."
+      }
+    },
+    {
+      "id": "class:class-override-both-tail-prefix-error/main.ts",
+      "code": 2417,
+      "message": {
+        "expected": "Class static side 'typeof Child' incorrectly extends base class static side 'typeof Base'.\n  Types of property 'parse' are incompatible.\n    Type '(parts_0: number, parts_1: boolean, ...parts: boolean[]) => number' is not assignable to type '(a: number, parts_0: string, ...parts: boolean[]) => number'.\n      Types of parameters 'parts_1' and 'parts_0' are incompatible.\n        Type 'string' is not assignable to type 'boolean'.",
+        "actual": "Class static side 'typeof Child' incorrectly extends base class static side 'typeof Base'."
+      }
+    },
+    {
+      "id": "class:class-override-both-tuple-arity-error/main.ts",
+      "code": 2416,
+      "message": {
+        "expected": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'.\n  Type '(a: number, b: string, parts_0: boolean) => number' is not assignable to type '(a: number, parts_0: string) => number'.\n    Target signature provides too few arguments. Expected 3 or more, but got 2.",
+        "actual": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'."
+      }
+    },
+    {
+      "id": "class:class-override-both-tuple-static-type-error/main.ts",
+      "code": 2417,
+      "message": {
+        "expected": "Class static side 'typeof Child' incorrectly extends base class static side 'typeof Base'.\n  Types of property 'parse' are incompatible.\n    Type '(parts_0: number, parts_1: string, parts_2: number) => number' is not assignable to type '(a: number, parts_0: string, parts_1: boolean) => number'.\n      Types of parameters 'parts_2' and 'parts_1' are incompatible.\n        Type 'boolean' is not assignable to type 'number'.",
+        "actual": "Class static side 'typeof Child' incorrectly extends base class static side 'typeof Base'."
+      }
+    },
+    {
+      "id": "class:class-override-both-tuple-type-error/main.ts",
+      "code": 2416,
+      "message": {
+        "expected": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'.\n  Type '(parts_0: number, parts_1: number, parts_2: boolean) => number' is not assignable to type '(a: number, parts_0: string, parts_1: boolean) => number'.\n    Types of parameters 'parts_1' and 'parts_0' are incompatible.\n      Type 'string' is not assignable to type 'number'.",
+        "actual": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'."
+      }
+    },
+    {
+      "id": "class:class-override-derived-middle-arity-error/main.ts",
+      "code": 2416,
+      "message": {
+        "expected": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'.\n  Type '(...parts: [head: number, ...middle: string[], done: boolean]) => number' is not assignable to type '(a: number) => number'.\n    Types of parameters 'head' and 'a' are incompatible.\n      Type '[a: number]' is not assignable to type '[head: number, ...middle: string[], done: boolean]'.\n        Source has 1 element(s) but target requires 2.",
+        "actual": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'."
+      }
+    },
+    {
+      "id": "class:class-override-derived-middle-element-error/main.ts",
+      "code": 2416,
+      "message": {
+        "expected": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'.\n  Type '(...parts: [head: number, ...middle: boolean[], done: boolean]) => number' is not assignable to type '(a: number, b: string, c: boolean) => number'.\n    Types of parameters 'middle' and 'b' are incompatible.\n      Type '[b: string, c: boolean]' is not assignable to type '[...middle: boolean[], done: boolean]'.\n        Type at position 0 in source is not compatible with type at position 0 in target.\n          Type 'string' is not assignable to type 'boolean'.",
+        "actual": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'."
+      }
+    },
+    {
+      "id": "class:class-override-derived-middle-optional-error/main.ts",
+      "code": 2416,
+      "message": {
+        "expected": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'.\n  Type '(...parts: [head: number, ...middle: string[], done: boolean]) => number' is not assignable to type '(a: number, b?: boolean | undefined) => number'.\n    Types of parameters 'middle' and 'b' are incompatible.\n      Type '[b?: boolean | undefined]' is not assignable to type '[...middle: string[], done: boolean]'.\n        Source provides no match for required element at position 1 in target.",
+        "actual": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'."
+      }
+    },
+    {
+      "id": "class:class-override-derived-middle-static-error/main.ts",
+      "code": 2417,
+      "message": {
+        "expected": "Class static side 'typeof Child' incorrectly extends base class static side 'typeof Base'.\n  Types of property 'parse' are incompatible.\n    Type '(a: number, ...parts: [...middle: boolean[], end: string]) => number' is not assignable to type '(a: number, ...parts: string[]) => number'.\n      Types of parameters 'middle' and 'parts' are incompatible.\n        Type 'string[]' is not assignable to type '[...middle: boolean[], end: string]'.\n          Source provides no match for required element at position 1 in target.",
+        "actual": "Class static side 'typeof Child' incorrectly extends base class static side 'typeof Base'."
+      }
+    },
+    {
+      "id": "class:class-override-derived-middle-suffix-error/main.ts",
+      "code": 2416,
+      "message": {
+        "expected": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'.\n  Type '(...parts: [head: number, ...middle: string[], done: number]) => number' is not assignable to type '(a: number, b: string, c: boolean) => number'.\n    Types of parameters 'middle' and 'b' are incompatible.\n      Type '[b: string, c: boolean]' is not assignable to type '[...middle: string[], done: number]'.\n        Type at position 1 in source is not compatible with type at position 1 in target.\n          Type 'boolean' is not assignable to type 'number'.",
+        "actual": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'."
+      }
+    },
+    {
+      "id": "class:class-override-derived-rest-instance-type-error/main.ts",
+      "code": 2416,
+      "message": {
+        "expected": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'.\n  Type '(value: number, ...labels: number[]) => number' is not assignable to type '(value: number, label: string) => number'.\n    Types of parameters 'labels' and 'label' are incompatible.\n      Type 'string' is not assignable to type 'number'.",
+        "actual": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'."
+      }
+    },
+    {
+      "id": "class:class-override-derived-rest-later-type-error/main.ts",
+      "code": 2416,
+      "message": {
+        "expected": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'.\n  Type '(value: number, ...labels: string[]) => number' is not assignable to type '(value: number, label: string, active: boolean) => number'.\n    Types of parameters 'labels' and 'active' are incompatible.\n      Type 'boolean' is not assignable to type 'string'.",
+        "actual": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'."
+      }
+    },
+    {
+      "id": "class:class-override-derived-rest-static-type-error/main.ts",
+      "code": 2417,
+      "message": {
+        "expected": "Class static side 'typeof Child' incorrectly extends base class static side 'typeof Base'.\n  Types of property 'parse' are incompatible.\n    Type '(value: number, ...labels: number[]) => number' is not assignable to type '(value: number, label: string) => number'.\n      Types of parameters 'labels' and 'label' are incompatible.\n        Type 'string' is not assignable to type 'number'.",
+        "actual": "Class static side 'typeof Child' incorrectly extends base class static side 'typeof Base'."
+      }
+    },
+    {
+      "id": "class:class-override-derived-tail-arity-error/main.ts",
+      "code": 2416,
+      "message": {
+        "expected": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'.\n  Type '(first: number, second: string, ...tail: boolean[]) => number' is not assignable to type '(a: number) => number'.\n    Target signature provides too few arguments. Expected 2 or more, but got 1.",
+        "actual": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'."
+      }
+    },
+    {
+      "id": "class:class-override-derived-tail-array-error/main.ts",
+      "code": 2417,
+      "message": {
+        "expected": "Class static side 'typeof Child' incorrectly extends base class static side 'typeof Base'.\n  Types of property 'parse' are incompatible.\n    Type '(first: number, ...tail: string[]) => number' is not assignable to type '(a: number, ...rest: boolean[]) => number'.\n      Types of parameters 'tail' and 'rest' are incompatible.\n        Type 'boolean' is not assignable to type 'string'.",
+        "actual": "Class static side 'typeof Child' incorrectly extends base class static side 'typeof Base'."
+      }
+    },
+    {
+      "id": "class:class-override-derived-tail-fixed-error/main.ts",
+      "code": 2416,
+      "message": {
+        "expected": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'.\n  Type '(first: number, ...tail: string[]) => number' is not assignable to type '(a: number, b: boolean) => number'.\n    Types of parameters 'tail' and 'b' are incompatible.\n      Type 'boolean' is not assignable to type 'string'.",
+        "actual": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'."
+      }
+    },
+    {
+      "id": "class:class-override-derived-tuple-array-type-error/main.ts",
+      "code": 2417,
+      "message": {
+        "expected": "Class static side 'typeof Child' incorrectly extends base class static side 'typeof Base'.\n  Types of property 'parse' are incompatible.\n    Type '(a: number, parts_0: string, parts_1: number) => number' is not assignable to type '(a: number, ...labels: string[]) => number'.\n      Types of parameters 'parts_1' and 'labels' are incompatible.\n        Type 'string' is not assignable to type 'number'.",
+        "actual": "Class static side 'typeof Child' incorrectly extends base class static side 'typeof Base'."
+      }
+    },
+    {
+      "id": "class:class-override-derived-tuple-fixed-arity-error/main.ts",
+      "code": 2416,
+      "message": {
+        "expected": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'.\n  Type '(a: number, parts_0: string, parts_1: string) => number' is not assignable to type '(a: number, b: string) => number'.\n    Target signature provides too few arguments. Expected 3 or more, but got 2.",
+        "actual": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'."
+      }
+    },
+    {
+      "id": "class:class-override-derived-tuple-fixed-type-error/main.ts",
+      "code": 2416,
+      "message": {
+        "expected": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'.\n  Type '(a: number, parts_0: number) => number' is not assignable to type '(a: number, b: string, c: boolean) => number'.\n    Types of parameters 'parts_0' and 'b' are incompatible.\n      Type 'string' is not assignable to type 'number'.",
+        "actual": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'."
+      }
+    },
+    {
+      "id": "class:class-override-imported/alias-static-error.ts",
+      "code": 2417,
+      "message": {
+        "expected": "Class static side 'typeof Child' incorrectly extends base class static side 'typeof Base'.\n  Types of property 'parse' are incompatible.\n    Type '(value: string) => number' is not assignable to type '(value: number) => number'.\n      Types of parameters 'value' and 'value' are incompatible.\n        Type 'number' is not assignable to type 'string'.",
+        "actual": "Class static side 'typeof Child' incorrectly extends base class static side 'typeof Parent'."
+      }
+    },
+    {
+      "id": "class:class-override-imported/direct-instance-error.ts",
+      "code": 2416,
+      "message": {
+        "expected": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'.\n  Type '(value: string) => number' is not assignable to type '(value: number) => number'.\n    Types of parameters 'value' and 'value' are incompatible.\n      Type 'number' is not assignable to type 'string'.",
+        "actual": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'."
+      }
+    },
+    {
+      "id": "class:class-override-imported/direct-static-error.ts",
+      "code": 2417,
+      "message": {
+        "expected": "Class static side 'typeof Child' incorrectly extends base class static side 'typeof Base'.\n  Types of property 'parse' are incompatible.\n    Type '(value: string) => number' is not assignable to type '(value: number) => number'.\n      Types of parameters 'value' and 'value' are incompatible.\n        Type 'number' is not assignable to type 'string'.",
+        "actual": "Class static side 'typeof Child' incorrectly extends base class static side 'typeof Base'."
+      }
+    },
+    {
+      "id": "class:class-override-imported/direct-static-result-error.ts",
+      "code": 2417,
+      "message": {
+        "expected": "Class static side 'typeof Child' incorrectly extends base class static side 'typeof Base'.\n  The types returned by 'parse(...)' are incompatible between these types.\n    Type 'string' is not assignable to type 'number'.",
+        "actual": "Class static side 'typeof Child' incorrectly extends base class static side 'typeof Base'."
+      }
+    },
+    {
+      "id": "class:class-override-imported/required-extra-error.ts",
+      "code": 2416,
+      "message": {
+        "expected": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'.\n  Type '(value: number, label: string) => number' is not assignable to type '(value: number) => number'.\n    Target signature provides too few arguments. Expected 2 or more, but got 1.",
+        "actual": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'."
+      }
+    },
+    {
+      "id": "class:class-override-imported/transitive-instance-error.ts",
+      "code": 2416,
+      "message": {
+        "expected": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Middle'.\n  Type '(value: string) => number' is not assignable to type '(value: number) => number'.\n    Types of parameters 'value' and 'value' are incompatible.\n      Type 'number' is not assignable to type 'string'.",
+        "actual": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Middle'."
+      }
+    },
+    {
+      "id": "class:class-override-imported/transitive-instance-result-error.ts",
+      "code": 2416,
+      "message": {
+        "expected": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Middle'.\n  Type '(value: number) => string' is not assignable to type '(value: number) => number'.\n    Type 'string' is not assignable to type 'number'.",
+        "actual": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Middle'."
+      }
+    },
+    {
+      "id": "class:class-override-imported/transitive-static-error.ts",
+      "code": 2417,
+      "message": {
+        "expected": "Class static side 'typeof Child' incorrectly extends base class static side 'typeof Middle'.\n  Types of property 'parse' are incompatible.\n    Type '(value: string) => number' is not assignable to type '(value: number) => number'.\n      Types of parameters 'value' and 'value' are incompatible.\n        Type 'number' is not assignable to type 'string'.",
+        "actual": "Class static side 'typeof Child' incorrectly extends base class static side 'typeof Middle'."
+      }
+    },
+    {
+      "id": "class:class-override-labeled-tuple-arity-error/main.ts",
+      "code": 2416,
+      "message": {
+        "expected": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'.\n  Type '(left: number, right: string, extra: boolean) => number' is not assignable to type '(first: number, second?: string | undefined) => number'.\n    Target signature provides too few arguments. Expected 3 or more, but got 2.",
+        "actual": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'."
+      }
+    },
+    {
+      "id": "class:class-override-labeled-tuple-instance-error/main.ts",
+      "code": 2416,
+      "message": {
+        "expected": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'.\n  Type '(left: number, right: number) => number' is not assignable to type '(first: number, second: string) => number'.\n    Types of parameters 'right' and 'second' are incompatible.\n      Type 'string' is not assignable to type 'number'.",
+        "actual": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'."
+      }
+    },
+    {
+      "id": "class:class-override-labeled-tuple-static-error/main.ts",
+      "code": 2417,
+      "message": {
+        "expected": "Class static side 'typeof Child' incorrectly extends base class static side 'typeof Base'.\n  Types of property 'parse' are incompatible.\n    Type '(key: number, text?: number | undefined) => number' is not assignable to type '(first: number, second?: string | undefined) => number'.\n      Types of parameters 'text' and 'second' are incompatible.\n        Type 'string | undefined' is not assignable to type 'number | undefined'.\n          Type 'string' is not assignable to type 'number'.",
+        "actual": "Class static side 'typeof Child' incorrectly extends base class static side 'typeof Base'."
+      }
+    },
+    {
+      "id": "class:class-override-local-instance-parameter-error/main.ts",
+      "code": 2416,
+      "message": {
+        "expected": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'.\n  Type '(value: string) => number' is not assignable to type '(value: number) => number'.\n    Types of parameters 'value' and 'value' are incompatible.\n      Type 'number' is not assignable to type 'string'.",
+        "actual": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'."
+      }
+    },
+    {
+      "id": "class:class-override-local-instance-result-error/main.ts",
+      "code": 2416,
+      "message": {
+        "expected": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'.\n  Type '(value: number) => string' is not assignable to type '(value: number) => number'.\n    Type 'string' is not assignable to type 'number'.",
+        "actual": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'."
+      }
+    },
+    {
+      "id": "class:class-override-local-static-parameter-error/main.ts",
+      "code": 2417,
+      "message": {
+        "expected": "Class static side 'typeof Child' incorrectly extends base class static side 'typeof Base'.\n  Types of property 'parse' are incompatible.\n    Type '(value: string) => number' is not assignable to type '(value: number) => number'.\n      Types of parameters 'value' and 'value' are incompatible.\n        Type 'number' is not assignable to type 'string'.",
+        "actual": "Class static side 'typeof Child' incorrectly extends base class static side 'typeof Base'."
+      }
+    },
+    {
+      "id": "class:class-override-local-static-result-error/main.ts",
+      "code": 2417,
+      "message": {
+        "expected": "Class static side 'typeof Child' incorrectly extends base class static side 'typeof Base'.\n  The types returned by 'parse(...)' are incompatible between these types.\n    Type 'string' is not assignable to type 'number'.",
+        "actual": "Class static side 'typeof Child' incorrectly extends base class static side 'typeof Base'."
+      }
+    },
+    {
+      "id": "class:class-override-middle-fixed-base-arity-error/main.ts",
+      "code": 2416,
+      "message": {
+        "expected": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'.\n  Type '(parts_0: number) => number' is not assignable to type '(...parts: [number, ...string[], boolean]) => number'.\n    Types of parameters 'parts_0' and 'parts_0' are incompatible.\n      Type '[number, ...string[], boolean]' is not assignable to type '[number]'.\n        Source has 2 element(s) but target allows only 1.",
+        "actual": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'."
+      }
+    },
+    {
+      "id": "class:class-override-middle-fixed-base-element-error/main.ts",
+      "code": 2416,
+      "message": {
+        "expected": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'.\n  Type '(parts_0: number, parts_1: boolean, parts_2: boolean) => number' is not assignable to type '(...parts: [number, ...string[], boolean]) => number'.\n    Types of parameters 'parts_1' and 'parts' are incompatible.\n      Type '[...string[], boolean]' is not assignable to type '[boolean, boolean]'.\n        Target requires 2 element(s) but source may have fewer.",
+        "actual": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'."
+      }
+    },
+    {
+      "id": "class:class-override-middle-fixed-base-suffix-error/main.ts",
+      "code": 2416,
+      "message": {
+        "expected": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'.\n  Type '(parts_0: number, parts_1: string) => number' is not assignable to type '(...parts: [number, ...string[], boolean]) => number'.\n    Types of parameters 'parts_1' and 'parts' are incompatible.\n      Type '[...string[], boolean]' is not assignable to type '[string]'.\n        Target allows only 1 element(s) but source may have more.",
+        "actual": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'."
+      }
+    },
+    {
+      "id": "class:class-override-middle-fixed-derived-arity-error/main.ts",
+      "code": 2416,
+      "message": {
+        "expected": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'.\n  Type '(...parts: [number, ...string[], boolean]) => number' is not assignable to type '(parts_0: number) => number'.\n    Types of parameters 'parts_0' and 'parts_0' are incompatible.\n      Type '[number]' is not assignable to type '[number, ...string[], boolean]'.\n        Source has 1 element(s) but target requires 2.",
+        "actual": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'."
+      }
+    },
+    {
+      "id": "class:class-override-middle-fixed-derived-element-error/main.ts",
+      "code": 2416,
+      "message": {
+        "expected": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'.\n  Type '(...parts: [number, ...boolean[], boolean]) => number' is not assignable to type '(parts_0: number, parts_1: string, parts_2: boolean) => number'.\n    Types of parameters 'parts' and 'parts_1' are incompatible.\n      Type '[string, boolean]' is not assignable to type '[...boolean[], boolean]'.\n        Type at position 0 in source is not compatible with type at position 0 in target.\n          Type 'string' is not assignable to type 'boolean'.",
+        "actual": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'."
+      }
+    },
+    {
+      "id": "class:class-override-middle-fixed-derived-suffix-error/main.ts",
+      "code": 2416,
+      "message": {
+        "expected": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'.\n  Type '(...parts: [number, ...string[], number]) => number' is not assignable to type '(parts_0: number, parts_1: string, parts_2: boolean) => number'.\n    Types of parameters 'parts' and 'parts_1' are incompatible.\n      Type '[string, boolean]' is not assignable to type '[...string[], number]'.\n        Type at position 1 in source is not compatible with type at position 1 in target.\n          Type 'boolean' is not assignable to type 'number'.",
+        "actual": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'."
+      }
+    },
+    {
+      "id": "class:class-override-middle-fixed-static-error/main.ts",
+      "code": 2417,
+      "message": {
+        "expected": "Class static side 'typeof Child' incorrectly extends base class static side 'typeof Base'.\n  Types of property 'parse' are incompatible.\n    Type '(parts_0: number, parts_1: string) => number' is not assignable to type '(...parts: [number, ...string[], boolean]) => number'.\n      Types of parameters 'parts_1' and 'parts' are incompatible.\n        Type '[...string[], boolean]' is not assignable to type '[string]'.\n          Target allows only 1 element(s) but source may have more.",
+        "actual": "Class static side 'typeof Child' incorrectly extends base class static side 'typeof Base'."
+      }
+    },
+    {
+      "id": "class:class-override-named-spread-derived-error/main.ts",
+      "code": 2416,
+      "message": {
+        "expected": "Property 'method' in type 'Bad' is not assignable to the same property in base type 'Base'.\n  Type '(args_0: boolean, args_1: number, args_2: string, args_3: number) => void' is not assignable to type '(args_0: boolean, args_1: number, args_2: string) => void'.\n    Target signature provides too few arguments. Expected 4 or more, but got 3.",
+        "actual": "Property 'method' in type 'Bad' is not assignable to the same property in base type 'Base'."
+      }
+    },
+    {
+      "id": "class:class-override-named-spread-inherited-error/main.ts",
+      "code": 2416,
+      "message": {
+        "expected": "Property 'method' in type 'Bad' is not assignable to the same property in base type 'Base'.\n  Type '(args_0: boolean, args_1: string, args_2: string) => void' is not assignable to type '(args_0: boolean, args_1: number, args_2: string) => void'.\n    Types of parameters 'args_1' and 'args_1' are incompatible.\n      Type 'number' is not assignable to type 'string'.",
+        "actual": "Property 'method' in type 'Bad' is not assignable to the same property in base type 'Base'."
+      }
+    },
+    {
+      "id": "class:class-override-named-spread-static-error/main.ts",
+      "code": 2417,
+      "message": {
+        "expected": "Class static side 'typeof Bad' incorrectly extends base class static side 'typeof Base'.\n  Types of property 'method' are incompatible.\n    Type '(args_0: boolean, args_1: string, args_2: string) => void' is not assignable to type '(args_0: boolean, args_1: number, args_2: string) => void'.\n      Types of parameters 'args_1' and 'args_1' are incompatible.\n        Type 'number' is not assignable to type 'string'.",
+        "actual": "Class static side 'typeof Bad' incorrectly extends base class static side 'typeof Base'."
+      }
+    },
+    {
+      "id": "class:class-override-optional-fixed-middle-base-error/main.ts",
+      "code": 2416,
+      "message": {
+        "expected": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'.\n  Type '(...parts: [...string[], string]) => number' is not assignable to type '(parts_0: string, parts_1?: string | undefined) => number'.\n    Types of parameters 'parts' and 'parts_0' are incompatible.\n      Type '[string, (string | undefined)?]' is not assignable to type '[...string[], string]'.\n        Source provides no match for required element at position 1 in target.",
+        "actual": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'."
+      }
+    },
+    {
+      "id": "class:class-override-optional-fixed-middle-derived-error/main.ts",
+      "code": 2416,
+      "message": {
+        "expected": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'.\n  Type '(parts_0: string, parts_1?: string | undefined) => number' is not assignable to type '(...parts: [...string[], string]) => number'.\n    Types of parameters 'parts_0' and 'parts' are incompatible.\n      Type '[...string[], string]' is not assignable to type '[string, (string | undefined)?]'.\n        Target allows only 2 element(s) but source may have more.",
+        "actual": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'."
+      }
+    },
+    {
+      "id": "class:class-override-optional-fixed-middle-long-error/main.ts",
+      "code": 2416,
+      "message": {
+        "expected": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'.\n  Type '(...parts: [...string[], string]) => number' is not assignable to type '(parts_0: string, parts_1: string, parts_2?: string | undefined) => number'.\n    Types of parameters 'parts' and 'parts_0' are incompatible.\n      Type '[string, string, (string | undefined)?]' is not assignable to type '[...string[], string]'.\n        Source provides no match for required element at position 1 in target.",
+        "actual": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'."
+      }
+    },
+    {
+      "id": "class:class-override-optional-fixed-middle-static-error/main.ts",
+      "code": 2417,
+      "message": {
+        "expected": "Class static side 'typeof Child' incorrectly extends base class static side 'typeof Base'.\n  Types of property 'parse' are incompatible.\n    Type '(parts_0: string, parts_1?: string | undefined) => number' is not assignable to type '(...parts: [...string[], string]) => number'.\n      Types of parameters 'parts_0' and 'parts' are incompatible.\n        Type '[...string[], string]' is not assignable to type '[string, (string | undefined)?]'.\n          Target allows only 2 element(s) but source may have more.",
+        "actual": "Class static side 'typeof Child' incorrectly extends base class static side 'typeof Base'."
+      }
+    },
+    {
+      "id": "class:class-override-optional-tuple-arity-error/main.ts",
+      "code": 2416,
+      "message": {
+        "expected": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'.\n  Type '(a: number, b: string, c: boolean) => number' is not assignable to type '(parts_0: number, parts_1?: string | undefined) => number'.\n    Target signature provides too few arguments. Expected 3 or more, but got 2.",
+        "actual": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'."
+      }
+    },
+    {
+      "id": "class:class-override-optional-tuple-element-error/main.ts",
+      "code": 2416,
+      "message": {
+        "expected": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'.\n  Type '(parts_0: number, parts_1?: number | undefined) => number' is not assignable to type '(parts_0: number, parts_1?: string | undefined) => number'.\n    Types of parameters 'parts_1' and 'parts_1' are incompatible.\n      Type 'string | undefined' is not assignable to type 'number | undefined'.\n        Type 'string' is not assignable to type 'number'.",
+        "actual": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'."
+      }
+    },
+    {
+      "id": "class:class-override-optional-tuple-static-element-error/main.ts",
+      "code": 2417,
+      "message": {
+        "expected": "Class static side 'typeof Child' incorrectly extends base class static side 'typeof Base'.\n  Types of property 'parse' are incompatible.\n    Type '(parts_0: number, parts_1?: number | undefined) => number' is not assignable to type '(parts_0: number, parts_1?: string | undefined) => number'.\n      Types of parameters 'parts_1' and 'parts_1' are incompatible.\n        Type 'string | undefined' is not assignable to type 'number | undefined'.\n          Type 'string' is not assignable to type 'number'.",
+        "actual": "Class static side 'typeof Child' incorrectly extends base class static side 'typeof Base'."
+      }
+    },
+    {
+      "id": "class:class-override-optional-variable-base-error/main.ts",
+      "code": 2416,
+      "message": {
+        "expected": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'.\n  Type '(...parts: [...string[], string]) => number' is not assignable to type '(parts_0?: number | undefined, ...parts: string[]) => number'.\n    Types of parameters 'parts' and 'parts_0' are incompatible.\n      Type '[(number | undefined)?, ...string[]]' is not assignable to type '[...string[], string]'.\n        Type at position 0 in source is not compatible with type at position 0 in target.\n          Type 'number | undefined' is not assignable to type 'string'.\n            Type 'undefined' is not assignable to type 'string'.",
+        "actual": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'."
+      }
+    },
+    {
+      "id": "class:class-override-optional-variable-derived-error/main.ts",
+      "code": 2416,
+      "message": {
+        "expected": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'.\n  Type '(parts_0?: number | undefined, ...parts: string[]) => number' is not assignable to type '(...parts: [...string[], string]) => number'.\n    Types of parameters 'parts_0' and 'parts' are incompatible.\n      Type '[...string[], string]' is not assignable to type '[(number | undefined)?, ...string[]]'.\n        Type at position 0 in source is not compatible with type at position 0 in target.\n          Type 'string' is not assignable to type 'number'.",
+        "actual": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'."
+      }
+    },
+    {
+      "id": "class:class-override-optional-variable-shift-error/main.ts",
+      "code": 2416,
+      "message": {
+        "expected": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'.\n  Type '(...parts: [...string[], string]) => number' is not assignable to type '(parts_0?: string | undefined, parts_1?: number | undefined, ...parts: string[]) => number'.\n    Types of parameters 'parts' and 'parts_0' are incompatible.\n      Type '[(string | undefined)?, (number | undefined)?, ...string[]]' is not assignable to type '[...string[], string]'.\n        Type at positions 0 through 1 in source is not compatible with type at position 0 in target.\n          Type 'string | undefined' is not assignable to type 'string'.\n            Type 'undefined' is not assignable to type 'string'.",
+        "actual": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'."
+      }
+    },
+    {
+      "id": "class:class-override-optional-variable-static-error/main.ts",
+      "code": 2417,
+      "message": {
+        "expected": "Class static side 'typeof Child' incorrectly extends base class static side 'typeof Base'.\n  Types of property 'parse' are incompatible.\n    Type '(parts_0?: number | undefined, ...parts: string[]) => number' is not assignable to type '(...parts: [...string[], string]) => number'.\n      Types of parameters 'parts_0' and 'parts' are incompatible.\n        Type '[...string[], string]' is not assignable to type '[(number | undefined)?, ...string[]]'.\n          Type at position 0 in source is not compatible with type at position 0 in target.\n            Type 'string' is not assignable to type 'number'.",
+        "actual": "Class static side 'typeof Child' incorrectly extends base class static side 'typeof Base'."
+      }
+    },
+    {
+      "id": "class:class-override-ordinary-optional-both-prefix-error/main.ts",
+      "code": 2416,
+      "message": {
+        "expected": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'.\n  Type '(a?: string | undefined, ...parts: [...string[], boolean]) => number' is not assignable to type '(a?: number | undefined, ...parts: [...string[], boolean]) => number'.\n    Types of parameters 'a' and 'a' are incompatible.\n      Type 'number | undefined' is not assignable to type 'string | undefined'.\n        Type 'number' is not assignable to type 'string'.",
+        "actual": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'."
+      }
+    },
+    {
+      "id": "class:class-override-ordinary-optional-both-shift-error/main.ts",
+      "code": 2416,
+      "message": {
+        "expected": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'.\n  Type '(a?: string | undefined, ...parts: [...string[], boolean]) => number' is not assignable to type '(...parts: [number, ...string[], boolean]) => number'.\n    Types of parameters 'a' and 'parts_0' are incompatible.\n      Type 'number' is not assignable to type 'string'.",
+        "actual": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'."
+      }
+    },
+    {
+      "id": "class:class-override-ordinary-optional-both-static-error/main.ts",
+      "code": 2417,
+      "message": {
+        "expected": "Class static side 'typeof Child' incorrectly extends base class static side 'typeof Base'.\n  Types of property 'parse' are incompatible.\n    Type '(a?: string | undefined, ...parts: [...string[], boolean]) => number' is not assignable to type '(a?: number | undefined, ...parts: [...string[], boolean]) => number'.\n      Types of parameters 'a' and 'a' are incompatible.\n        Type 'number | undefined' is not assignable to type 'string | undefined'.\n          Type 'number' is not assignable to type 'string'.",
+        "actual": "Class static side 'typeof Child' incorrectly extends base class static side 'typeof Base'."
+      }
+    },
+    {
+      "id": "class:class-override-ordinary-optional-both-suffix-error/main.ts",
+      "code": 2416,
+      "message": {
+        "expected": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'.\n  Type '(a?: number | undefined, ...parts: [...string[], number]) => number' is not assignable to type '(a?: number | undefined, ...parts: [...string[], boolean]) => number'.\n    Types of parameters 'parts' and 'parts' are incompatible.\n      Type '[...string[], boolean]' is not assignable to type '[...string[], number]'.\n        Type at position 1 in source is not compatible with type at position 1 in target.\n          Type 'boolean' is not assignable to type 'number'.",
+        "actual": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'."
+      }
+    },
+    {
+      "id": "class:class-override-ordinary-optional-direction-arity-error/main.ts",
+      "code": 2416,
+      "message": {
+        "expected": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'.\n  Type '(a?: number | undefined, ...parts: [...string[], boolean]) => number' is not assignable to type '(a?: number | undefined, b?: boolean | undefined) => number'.\n    Types of parameters 'parts' and 'b' are incompatible.\n      Type '[b?: boolean | undefined]' is not assignable to type '[...string[], boolean]'.\n        Source provides no match for required element at position 1 in target.",
+        "actual": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'."
+      }
+    },
+    {
+      "id": "class:class-override-ordinary-optional-direction-derived-arity-error/main.ts",
+      "code": 2416,
+      "message": {
+        "expected": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'.\n  Type '(a?: number | undefined, ...parts: [...string[], boolean]) => number' is not assignable to type '(a: number) => number'.\n    Types of parameters 'a' and 'a' are incompatible.\n      Type '[a: number]' is not assignable to type '[a: number | undefined, ...string[], boolean]'.\n        Source has 1 element(s) but target requires 2.",
+        "actual": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'."
+      }
+    },
+    {
+      "id": "class:class-override-ordinary-optional-direction-derived-array-error/main.ts",
+      "code": 2416,
+      "message": {
+        "expected": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'.\n  Type '(a?: string | undefined, ...parts: [...string[], string]) => number' is not assignable to type '(a: number, ...parts: string[]) => number'.\n    Types of parameters 'a' and 'a' are incompatible.\n      Type 'number' is not assignable to type 'string'.",
+        "actual": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'."
+      }
+    },
+    {
+      "id": "class:class-override-ordinary-optional-direction-derived-fixed-error/main.ts",
+      "code": 2416,
+      "message": {
+        "expected": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'.\n  Type '(a?: string | undefined, ...parts: [...string[], boolean]) => number' is not assignable to type '(a: number, b: boolean) => number'.\n    Types of parameters 'a' and 'a' are incompatible.\n      Type 'number' is not assignable to type 'string'.",
+        "actual": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'."
+      }
+    },
+    {
+      "id": "class:class-override-ordinary-optional-direction-inherited-arity-error/main.ts",
+      "code": 2416,
+      "message": {
+        "expected": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'.\n  Type '(a: number) => number' is not assignable to type '(a?: number | undefined, ...parts: [...string[], boolean]) => number'.\n    Types of parameters 'a' and 'a' are incompatible.\n      Type '[a: number | undefined, ...string[], boolean]' is not assignable to type '[a: number]'.\n        Source has 2 element(s) but target allows only 1.",
+        "actual": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'."
+      }
+    },
+    {
+      "id": "class:class-override-ordinary-optional-direction-inherited-array-error/main.ts",
+      "code": 2416,
+      "message": {
+        "expected": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'.\n  Type '(a?: string | undefined, ...parts: string[]) => number' is not assignable to type '(a?: number | undefined, ...parts: [...string[], string]) => number'.\n    Types of parameters 'a' and 'a' are incompatible.\n      Type 'number | undefined' is not assignable to type 'string | undefined'.\n        Type 'number' is not assignable to type 'string'.",
+        "actual": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'."
+      }
+    },
+    {
+      "id": "class:class-override-ordinary-optional-direction-inherited-fixed-error/main.ts",
+      "code": 2416,
+      "message": {
+        "expected": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'.\n  Type '(a: string, b: boolean) => number' is not assignable to type '(a?: number | undefined, ...parts: [...string[], boolean]) => number'.\n    Types of parameters 'a' and 'a' are incompatible.\n      Type 'number | undefined' is not assignable to type 'string'.\n        Type 'undefined' is not assignable to type 'string'.",
+        "actual": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'."
+      }
+    },
+    {
+      "id": "class:class-override-ordinary-optional-direction-static-error/main.ts",
+      "code": 2417,
+      "message": {
+        "expected": "Class static side 'typeof Child' incorrectly extends base class static side 'typeof Base'.\n  Types of property 'parse' are incompatible.\n    Type '(a?: string | undefined, ...parts: string[]) => number' is not assignable to type '(a?: number | undefined, ...parts: [...string[], string]) => number'.\n      Types of parameters 'a' and 'a' are incompatible.\n        Type 'number | undefined' is not assignable to type 'string | undefined'.\n          Type 'number' is not assignable to type 'string'.",
+        "actual": "Class static side 'typeof Child' incorrectly extends base class static side 'typeof Base'."
+      }
+    },
+    {
+      "id": "class:class-override-ordinary-optional-fixedtuple-derived-error/main.ts",
+      "code": 2416,
+      "message": {
+        "expected": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'.\n  Type '(a?: string | undefined, ...parts: [...string[], boolean]) => number' is not assignable to type '(parts_0: number, parts_1: boolean) => number'.\n    Types of parameters 'a' and 'parts_0' are incompatible.\n      Type 'number' is not assignable to type 'string'.",
+        "actual": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'."
+      }
+    },
+    {
+      "id": "class:class-override-ordinary-optional-fixedtuple-empty-base-error/main.ts",
+      "code": 2416,
+      "message": {
+        "expected": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'.\n  Type '(...parts: [...number[], number]) => number' is not assignable to type '(a?: number | undefined) => number'.\n    Types of parameters 'parts' and 'a' are incompatible.\n      Type '[a?: number | undefined]' is not assignable to type '[...number[], number]'.\n        Source provides no match for required element at position 1 in target.",
+        "actual": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'."
+      }
+    },
+    {
+      "id": "class:class-override-ordinary-optional-fixedtuple-empty-derived-error/main.ts",
+      "code": 2416,
+      "message": {
+        "expected": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'.\n  Type '(a?: number | undefined) => number' is not assignable to type '(...parts: [number, ...string[], boolean]) => number'.\n    Types of parameters 'a' and 'parts_0' are incompatible.\n      Type '[number, ...string[], boolean]' is not assignable to type '[a?: number | undefined]'.\n        Source has 2 element(s) but target allows only 1.",
+        "actual": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'."
+      }
+    },
+    {
+      "id": "class:class-override-ordinary-optional-fixedtuple-inherited-error/main.ts",
+      "code": 2416,
+      "message": {
+        "expected": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'.\n  Type '(parts_0: string, parts_1: boolean) => number' is not assignable to type '(a?: number | undefined, ...parts: [...string[], boolean]) => number'.\n    Types of parameters 'parts_0' and 'a' are incompatible.\n      Type 'number | undefined' is not assignable to type 'string'.\n        Type 'undefined' is not assignable to type 'string'.",
+        "actual": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'."
+      }
+    },
+    {
+      "id": "class:class-override-ordinary-optional-fixedtuple-static-error/main.ts",
+      "code": 2417,
+      "message": {
+        "expected": "Class static side 'typeof Child' incorrectly extends base class static side 'typeof Base'.\n  Types of property 'parse' are incompatible.\n    Type '(a?: string | undefined, ...parts: [...string[], boolean]) => number' is not assignable to type '(parts_0: number, parts_1: boolean) => number'.\n      Types of parameters 'a' and 'parts_0' are incompatible.\n        Type 'number' is not assignable to type 'string'.",
+        "actual": "Class static side 'typeof Child' incorrectly extends base class static side 'typeof Base'."
+      }
+    },
+    {
+      "id": "class:class-override-overload-ancestor-error/main.ts",
+      "code": 2416,
+      "message": {
+        "expected": "Property 'm' in type 'B' is not assignable to the same property in base type 'Mid'.\n  Type '(a: string) => string' is not assignable to type '{ (a: string): string; (a: number): number; }'.\n    Types of parameters 'a' and 'a' are incompatible.\n      Type 'number' is not assignable to type 'string'.",
+        "actual": "Property 'm' in type 'B' is not assignable to the same property in base type 'Mid'."
+      }
+    },
+    {
+      "id": "class:class-override-overload-missing-error/main.ts",
+      "code": 2416,
+      "message": {
+        "expected": "Property 'm' in type 'B' is not assignable to the same property in base type 'A'.\n  Type '(a: string) => string' is not assignable to type '{ (a: string): string; (a: number): number; }'.\n    Types of parameters 'a' and 'a' are incompatible.\n      Type 'number' is not assignable to type 'string'.",
+        "actual": "Property 'm' in type 'B' is not assignable to the same property in base type 'A'."
+      }
+    },
+    {
+      "id": "class:class-override-overload-required-error/main.ts",
+      "code": 2416,
+      "message": {
+        "expected": "Property 'm' in type 'B' is not assignable to the same property in base type 'A'.\n  Type '{ (a: string, b: number): string; (a: number): number; }' is not assignable to type '{ (a: string): string; (a: number): number; }'.\n    Target signature provides too few arguments. Expected 2 or more, but got 1.",
+        "actual": "Property 'm' in type 'B' is not assignable to the same property in base type 'A'."
+      }
+    },
+    {
+      "id": "class:class-override-overload-return-error/main.ts",
+      "code": 2416,
+      "message": {
+        "expected": "Property 'm' in type 'B' is not assignable to the same property in base type 'A'.\n  Type '{ (a: string): string; (a: number): boolean; }' is not assignable to type '{ (a: string): string; (a: number): number; }'.\n    Types of parameters 'a' and 'a' are incompatible.\n      Type 'number' is not assignable to type 'string'.",
+        "actual": "Property 'm' in type 'B' is not assignable to the same property in base type 'A'."
+      }
+    },
+    {
+      "id": "class:class-override-overload-single-wide-error/main.ts",
+      "code": 2416,
+      "message": {
+        "expected": "Property 'm' in type 'B' is not assignable to the same property in base type 'A'.\n  Type '(a: string | number) => string | number' is not assignable to type '{ (a: string): string; (a: number): number; }'.\n    Type 'string | number' is not assignable to type 'string'.\n      Type 'number' is not assignable to type 'string'.",
+        "actual": "Property 'm' in type 'B' is not assignable to the same property in base type 'A'."
+      }
+    },
+    {
+      "id": "class:class-override-overload-static-error/main.ts",
+      "code": 2417,
+      "message": {
+        "expected": "Class static side 'typeof T' incorrectly extends base class static side 'typeof S'.\n  Types of property 's' are incompatible.\n    Type '(a: string) => string' is not assignable to type '{ (a: string): string; (a: number): number; }'.\n      Types of parameters 'a' and 'a' are incompatible.\n        Type 'number' is not assignable to type 'string'.",
+        "actual": "Class static side 'typeof T' incorrectly extends base class static side 'typeof S'."
+      }
+    },
+    {
+      "id": "class:class-override-shifted-rest-prefix-error/main.ts",
+      "code": 2416,
+      "message": {
+        "expected": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'.\n  Type '(prefix: number, ...labels: number[]) => number' is not assignable to type '(prefix: number, label: string, ...extras: string[]) => number'.\n    Types of parameters 'labels' and 'label' are incompatible.\n      Type 'string' is not assignable to type 'number'.",
+        "actual": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'."
+      }
+    },
+    {
+      "id": "class:class-override-shifted-rest-static-prefix-error/main.ts",
+      "code": 2417,
+      "message": {
+        "expected": "Class static side 'typeof Child' incorrectly extends base class static side 'typeof Base'.\n  Types of property 'parse' are incompatible.\n    Type '(prefix: number, label: number, ...labels: string[]) => number' is not assignable to type '(prefix: number, ...labels: string[]) => number'.\n      Types of parameters 'label' and 'labels' are incompatible.\n        Type 'string' is not assignable to type 'number'.",
+        "actual": "Class static side 'typeof Child' incorrectly extends base class static side 'typeof Base'."
+      }
+    },
+    {
+      "id": "class:class-override-shifted-rest-tail-error/main.ts",
+      "code": 2416,
+      "message": {
+        "expected": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'.\n  Type '(prefix: number, ...labels: string[]) => number' is not assignable to type '(prefix: number, label: string, ...extras: number[]) => number'.\n    Types of parameters 'labels' and 'extras' are incompatible.\n      Type 'number' is not assignable to type 'string'.",
+        "actual": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'."
+      }
+    },
+    {
+      "id": "class:class-param-property-argument-mismatch/main.ts",
+      "code": 2345,
+      "message": {
+        "expected": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+        "actual": "Argument of type '\"x\"' is not assignable to parameter of type 'number'."
+      }
+    },
+    {
+      "id": "class:class-param-property-assign-mismatch/main.ts",
+      "code": 2322,
+      "message": {
+        "expected": "Type 'string' is not assignable to type 'number'.",
+        "actual": "Type 'string' is not assignable to type 'a'."
+      }
+    },
+    {
+      "id": "class:class-param-property-inherited-visibility-conflict/main.ts",
+      "code": 2415,
+      "message": {
+        "expected": "Class 'Derived' incorrectly extends base class 'Base'.\n  Property 'a' is private in type 'Derived' but not in type 'Base'.",
+        "actual": "Class 'a' incorrectly extends base class 'Derived'."
+      }
+    },
+    {
+      "id": "class:class-param-property-modifier-order/main.ts",
+      "code": 1029,
+      "message": {
+        "expected": "'public' modifier must precede 'readonly' modifier.",
+        "actual": "parameter modifiers must be an accessibility modifier, then `readonly`, each at most once"
+      }
+    },
+    {
+      "id": "class:class-param-property-nominal/main.ts",
+      "code": 2322,
+      "message": {
+        "expected": "Type 'A' is not assignable to type 'B'.\n  Types have separate declarations of a private property 'a'.",
+        "actual": "Type 'A' is not assignable to type 'B'."
+      }
+    },
+    {
+      "id": "class:class-param-property-optional-mismatch/main.ts",
+      "code": 2322,
+      "message": {
+        "expected": "Type 'number | undefined' is not assignable to type 'number'.\n  Type 'undefined' is not assignable to type 'number'.",
+        "actual": "Type 'number | undefined' is not assignable to type 'number'."
+      }
+    },
+    {
+      "id": "class:class-private-name-assign-mismatch/main.ts",
+      "code": 2322,
+      "message": {
+        "expected": "Type 'string' is not assignable to type 'number'.",
+        "actual": "Type 'string' is not assignable to type '#x'."
+      }
+    },
+    {
+      "id": "class:class-private-name-brand-undeclared/main.ts",
+      "code": 2339,
+      "message": {
+        "expected": "Property '#y' does not exist on type 'any'.",
+        "actual": "Property '#y' does not exist on type 'A'."
+      }
+    },
+    {
+      "id": "class:class-private-name-method-argument/main.ts",
+      "code": 2345,
+      "message": {
+        "expected": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+        "actual": "Argument of type '\"s\"' is not assignable to parameter of type 'number'."
+      }
+    },
+    {
+      "id": "class:class-private-name-nominal-classes/main.ts",
+      "code": 2322,
+      "message": {
+        "expected": "Type 'A' is not assignable to type 'B'.\n  Property '#x' in type 'A' refers to a different member that cannot be accessed from within type 'B'.",
+        "actual": "Type 'A' is not assignable to type 'B'."
+      }
+    },
+    {
+      "id": "class:class-private-name-nominal-literal/main.ts",
+      "code": 2741,
+      "message": {
+        "expected": "Property '#x' is missing in type '{}' but required in type 'A'.",
+        "actual": "Property '#x' is missing in type 'record' but required in type 'A'."
+      },
+      "relatedInformation": {
+        "expected": [
+          {
+            "code": 2728,
+            "message": "'#x' is declared here.",
+            "module": "main.ts",
+            "position": {
+              "line": 6,
+              "column": 5,
+              "length": 2
+            }
+          }
+        ],
+        "actual": []
+      }
+    },
+    {
+      "id": "class:class-private-name-structural/main.ts",
+      "code": 2741,
+      "relatedInformation": {
+        "expected": [
+          {
+            "code": 2728,
+            "message": "'x' is declared here.",
+            "module": "main.ts",
+            "position": {
+              "line": 5,
+              "column": 15,
+              "length": 1
+            }
+          }
+        ],
+        "actual": []
+      }
+    },
+    {
+      "id": "class:class-static-argument-error/main.ts",
+      "code": 2345,
+      "message": {
+        "expected": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+        "actual": "Argument of type ''text'' is not assignable to parameter of type 'number'."
+      }
+    },
+    {
+      "id": "class:class-static-block-this-instance-member/main.ts",
+      "code": 2339,
+      "message": {
+        "expected": "Property 'x' does not exist on type 'typeof A'.",
+        "actual": "Property 'x' does not exist on type 'record'."
+      }
+    },
+    {
+      "id": "class:class-static-block-type-error/main.ts",
+      "code": 2322,
+      "message": {
+        "expected": "Type 'string' is not assignable to type 'number'.",
+        "actual": "Type 'string' is not assignable to type 'count'."
+      }
+    },
+    {
+      "id": "class:class-static-forward-reference/main.ts",
+      "code": 2729,
+      "relatedInformation": {
+        "expected": [
+          {
+            "code": 2728,
+            "message": "'b' is declared here.",
+            "module": "main.ts",
+            "position": {
+              "line": 7,
+              "column": 12,
+              "length": 1
+            }
+          }
+        ],
+        "actual": []
+      }
+    },
+    {
+      "id": "class:class-static-forward-this/main.ts",
+      "code": 2729,
+      "relatedInformation": {
+        "expected": [
+          {
+            "code": 2728,
+            "message": "'b' is declared here.",
+            "module": "main.ts",
+            "position": {
+              "line": 7,
+              "column": 12,
+              "length": 1
+            }
+          }
+        ],
+        "actual": []
+      }
+    },
+    {
+      "id": "class:class-static-overload-error/main.ts",
+      "code": 2769,
+      "message": {
+        "expected": "No overload matches this call.\n  Overload 1 of 2, '(value: string): string', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'string'.\n  Overload 2 of 2, '(value: number): number', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'number'.",
+        "actual": "No overload matches this call."
+      },
+      "relatedInformation": {
+        "expected": [
+          {
+            "code": 2793,
+            "message": "The call would have succeeded against this implementation, but implementation signatures of overloads are not externally visible.",
+            "module": "main.ts",
+            "position": {
+              "line": 8,
+              "column": 12,
+              "length": 5
+            }
+          }
+        ],
+        "actual": []
+      }
+    },
+    {
+      "id": "class:class-static-overload-this-argument-error/main.ts",
+      "code": 2769,
+      "message": {
+        "expected": "No overload matches this call.\n  Overload 1 of 2, '(value: string): string', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'string'.\n  Overload 2 of 2, '(value: number): number', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'number'.",
+        "actual": "No overload matches this call."
+      },
+      "relatedInformation": {
+        "expected": [
+          {
+            "code": 2793,
+            "message": "The call would have succeeded against this implementation, but implementation signatures of overloads are not externally visible.",
+            "module": "main.ts",
+            "position": {
+              "line": 8,
+              "column": 12,
+              "length": 5
+            }
+          }
+        ],
+        "actual": []
+      }
+    },
+    {
+      "id": "class:class-static-this-argument-error/main.ts",
+      "code": 2345,
+      "message": {
+        "expected": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+        "actual": "Argument of type ''bad'' is not assignable to parameter of type 'number'."
+      }
+    },
+    {
+      "id": "class:class-static-this-self-return-error/main.ts",
+      "code": 2741,
+      "message": {
+        "expected": "Property 'read' is missing in type 'typeof Reader' but required in type 'Reader'.",
+        "actual": "Property 'read' is missing in type 'record' but required in type 'Reader'."
+      },
+      "relatedInformation": {
+        "expected": [
+          {
+            "code": 2728,
+            "message": "'read' is declared here.",
+            "module": "main.ts",
+            "position": {
+              "line": 6,
+              "column": 5,
+              "length": 4
+            }
+          },
+          {
+            "code": 6213,
+            "message": "Did you mean to use 'new' with this expression?",
+            "module": "main.ts",
+            "position": {
+              "line": 7,
+              "column": 36,
+              "length": 4
+            }
+          }
+        ],
+        "actual": []
+      }
+    },
+    {
+      "id": "class:class-static-this-wrong-side-call/main.ts",
+      "code": 2339,
+      "message": {
+        "expected": "Property 'read' does not exist on type 'typeof Reader'.",
+        "actual": "Property 'read' does not exist on type 'record'."
+      }
+    },
+    {
+      "id": "class:class-static-this-wrong-side-read/main.ts",
+      "code": 2339,
+      "message": {
+        "expected": "Property 'read' does not exist on type 'typeof Reader'.",
+        "actual": "Property 'read' does not exist on type 'record'."
+      }
+    },
+    {
+      "id": "class:class-super-call-count-error/main.ts",
+      "code": 2554,
+      "relatedInformation": {
+        "expected": [
+          {
+            "code": 6210,
+            "message": "An argument for 'y' was not provided.",
+            "module": "main.ts",
+            "position": {
+              "line": 4,
+              "column": 34,
+              "length": 9
+            }
+          }
+        ],
+        "actual": []
+      }
+    },
+    {
+      "id": "class:class-super-call-overload-error/main.ts",
+      "code": 2769,
+      "message": {
+        "expected": "No overload matches this call.\n  Overload 1 of 2, '(x: number): O', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'number'.\n  Overload 2 of 2, '(x: string): O', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'string'.",
+        "actual": "No overload matches this call."
+      },
+      "relatedInformation": {
+        "expected": [
+          {
+            "code": 2793,
+            "message": "The call would have succeeded against this implementation, but implementation signatures of overloads are not externally visible.",
+            "module": "main.ts",
+            "position": {
+              "line": 4,
+              "column": 59,
+              "length": 11
+            }
+          }
+        ],
+        "actual": []
+      }
+    },
+    {
+      "id": "class:class-super-call-type-error/main.ts",
+      "code": 2345,
+      "message": {
+        "expected": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+        "actual": "Argument of type ''a'' is not assignable to parameter of type 'number'."
+      }
+    },
+    {
+      "id": "class:class-super-member-argcount-error/main.ts",
+      "code": 2554,
+      "message": {
+        "expected": "Expected 1 arguments, but got 0.",
+        "actual": "method m expects 1 to 1 argument(s), got 0"
+      },
+      "relatedInformation": {
+        "expected": [
+          {
+            "code": 6210,
+            "message": "An argument for 'a' was not provided.",
+            "module": "main.ts",
+            "position": {
+              "line": 4,
+              "column": 13,
+              "length": 9
+            }
+          }
+        ],
+        "actual": []
+      }
+    },
+    {
+      "id": "class:class-super-member-argtype-error/main.ts",
+      "code": 2345,
+      "message": {
+        "expected": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+        "actual": "Argument of type ''x'' is not assignable to parameter of type 'number'."
+      }
+    },
+    {
+      "id": "class:class-super-member-missing-error/main.ts",
+      "code": 2339,
+      "message": {
+        "expected": "Property 'zzz' does not exist on type 'A'.",
+        "actual": "Property 'zzz' does not exist on type 'super D@main.ts'."
+      }
+    },
+    {
+      "id": "class:class-super-member-static-side-error/main.ts",
+      "code": 2339,
+      "message": {
+        "expected": "Property 'm' does not exist on type 'typeof A'.",
+        "actual": "Property 'm' does not exist on type 'record'."
+      }
+    },
+    {
+      "id": "class:class-type-import-private/main.ts",
+      "code": 2459,
+      "message": {
+        "expected": "Module '\"./box.ts\"' declares 'Box' locally, but it is not exported.",
+        "actual": "Module './box.ts' declares 'Box' locally, but it is not exported."
+      },
+      "relatedInformation": {
+        "expected": [
+          {
+            "code": 2728,
+            "message": "'Box' is declared here.",
+            "module": "box.ts",
+            "position": {
+              "line": 5,
+              "column": 7,
+              "length": 3
+            }
+          }
+        ],
+        "actual": []
+      }
+    },
+    {
+      "id": "class:class-value-import-wrong-side-binding/main.ts",
+      "code": 2741,
+      "message": {
+        "expected": "Property 'clone' is missing in type 'typeof Box' but required in type 'Box'.",
+        "actual": "Property 'clone' is missing in type 'record' but required in type 'LocalBox'."
+      },
+      "relatedInformation": {
+        "expected": [
+          {
+            "code": 2728,
+            "message": "'clone' is declared here.",
+            "module": "box.ts",
+            "position": {
+              "line": 5,
+              "column": 20,
+              "length": 5
+            }
+          },
+          {
+            "code": 6213,
+            "message": "Did you mean to use 'new' with this expression?",
+            "module": "main.ts",
+            "position": {
+              "line": 6,
+              "column": 27,
+              "length": 8
+            }
+          }
+        ],
+        "actual": []
+      }
+    },
+    {
+      "id": "class:class-visibility-imported/nominal-error.ts",
+      "code": 2322,
+      "message": {
+        "expected": "Type 'Local' is not assignable to type 'Box'.\n  Types have separate declarations of a private property 'secret'.",
+        "actual": "Type 'Local' is not assignable to type 'Box'."
+      }
+    },
+    {
+      "id": "class:class-visibility-narrow-public-to-protected/main.ts",
+      "code": 2415,
+      "message": {
+        "expected": "Class 'Derived' incorrectly extends base class 'Base'.\n  Property 'value' is protected in type 'Derived' but public in type 'Base'.",
+        "actual": "Class 'value' incorrectly extends base class 'Derived'."
+      }
+    },
+    {
+      "id": "class:class-visibility-nominal-object-literal/main.ts",
+      "code": 2322,
+      "message": {
+        "expected": "Type '{ secret: number; }' is not assignable to type 'Box'.\n  Property 'secret' is private in type 'Box' but not in type '{ secret: number; }'.",
+        "actual": "Type 'record' is not assignable to type 'Box'."
+      }
+    },
+    {
+      "id": "class:class-visibility-nominal-separate-declarations/main.ts",
+      "code": 2322,
+      "message": {
+        "expected": "Type 'A' is not assignable to type 'B'.\n  Types have separate declarations of a private property 'secret'.",
+        "actual": "Type 'A' is not assignable to type 'B'."
+      }
+    },
+    {
+      "id": "class:class-visibility-private-constructor-new/main.ts",
+      "code": 2673,
+      "message": {
+        "expected": "Constructor of class 'Box' is private and only accessible within the class declaration.",
+        "actual": "constructor of class Box is private and is not accessible here"
+      }
+    },
+    {
+      "id": "class:class-visibility-private-method-nominal/main.ts",
+      "code": 2322,
+      "message": {
+        "expected": "Type '{ hidden(): number; }' is not assignable to type 'A'.\n  Property 'hidden' is private in type 'A' but not in type '{ hidden(): number; }'.",
+        "actual": "Type 'record' is not assignable to type 'A'."
+      }
+    },
+    {
+      "id": "class:class-visibility-private-vs-interface/main.ts",
+      "code": 2322,
+      "message": {
+        "expected": "Type 'Box' is not assignable to type 'HasSecret'.\n  Property 'secret' is private in type 'Box' but not in type 'HasSecret'.",
+        "actual": "Type 'Box' is not assignable to type 'HasSecret'."
+      }
+    },
+    {
+      "id": "class:class-visibility-protected-constructor-new/main.ts",
+      "code": 2674,
+      "message": {
+        "expected": "Constructor of class 'Box' is protected and only accessible within the class declaration.",
+        "actual": "constructor of class Box is protected and is not accessible here"
+      }
+    },
+    {
+      "id": "class:class-visibility-protected-to-private/main.ts",
+      "code": 2415,
+      "message": {
+        "expected": "Class 'Derived' incorrectly extends base class 'Base'.\n  Property 'value' is private in type 'Derived' but not in type 'Base'.",
+        "actual": "Class 'value' incorrectly extends base class 'Derived'."
+      }
+    },
+    {
+      "id": "class:class-visibility-protected-vs-interface/main.ts",
+      "code": 2322,
+      "message": {
+        "expected": "Type 'Box' is not assignable to type 'HasValue'.\n  Property 'value' is protected in type 'Box' but public in type 'HasValue'.",
+        "actual": "Type 'Box' is not assignable to type 'HasValue'."
+      }
+    },
+    {
+      "id": "class:class-visibility-redeclare-private/main.ts",
+      "code": 2415,
+      "message": {
+        "expected": "Class 'Derived' incorrectly extends base class 'Base'.\n  Types have separate declarations of a private property 'secret'.",
+        "actual": "Class 'Derived' incorrectly extends base class 'Base'."
+      }
+    },
+    {
+      "id": "class:paren-type-class-override-error/main.ts",
+      "code": 2416,
+      "message": {
+        "expected": "Property 'm' in type 'B' is not assignable to the same property in base type 'A'.\n  Type '(...a: string[]) => void' is not assignable to type '(a_0: boolean, ...a: (string | number)[]) => void'.\n    Types of parameters 'a' and 'a_0' are incompatible.\n      Type 'boolean' is not assignable to type 'string'.",
+        "actual": "Property 'm' in type 'B' is not assignable to the same property in base type 'A'."
+      }
+    },
+    {
+      "id": "class:tuple-literal-return-class-error/main.ts",
+      "code": 2322,
+      "message": {
+        "expected": "Type 'number' is not assignable to type 'string'.",
+        "actual": "Type '[number, number]' is not assignable to type '[number, string]'."
+      }
+    },
+    {
+      "id": "decorators:decorators-error-accessor-returns-function/main.ts",
+      "code": 1270,
+      "message": {
+        "expected": "Decorator function return type '() => void' is not assignable to type 'void | ClassAccessorDecoratorResult<C, number>'.",
+        "actual": "this decorator returns `function`, which a auto-accessor decorator cannot return"
+      }
+    },
+    {
+      "id": "decorators:decorators-error-field-returns-number/main.ts",
+      "code": 1270,
+      "message": {
+        "expected": "Decorator function return type 'number' is not assignable to type 'void | ((this: C, value: number) => number)'.",
+        "actual": "this decorator returns `number`, which a field decorator cannot return"
+      }
+    },
+    {
+      "id": "decorators:decorators-error-method-returns-number/main.ts",
+      "code": 1270,
+      "message": {
+        "expected": "Decorator function return type 'number' is not assignable to type 'void | (() => void)'.",
+        "actual": "this decorator returns `number`, which a method decorator cannot return"
+      }
+    },
+    {
+      "id": "decorators:decorators-error-no-parameters/main.ts",
+      "code": 1329,
+      "message": {
+        "expected": "'none' accepts too few arguments to be used as a decorator here. Did you mean to call it first and write '@none()'?",
+        "actual": "'@name()' accepts too few arguments to be used as a decorator here. Did you mean to call it first and write '@@name()()'?"
+      }
+    },
+    {
+      "id": "decorators:decorators-error-not-callable/main.ts",
+      "code": 1238,
+      "message": {
+        "expected": "Unable to resolve signature of class decorator when called as an expression.\n  This expression is not callable.\n    Type 'Number' has no call signatures.",
+        "actual": "Unable to resolve signature of class decorator when called as an expression."
+      }
+    },
+    {
+      "id": "decorators:decorators-error-returns-string-on-type/main.ts",
+      "code": 1270,
+      "message": {
+        "expected": "Decorator function return type 'string' is not assignable to type 'void | typeof C'.",
+        "actual": "this decorator returns `string`, which a class decorator cannot return"
+      }
+    },
+    {
+      "id": "decorators:decorators-error-too-many-required-parameters/main.ts",
+      "code": 1238,
+      "message": {
+        "expected": "Unable to resolve signature of class decorator when called as an expression.\n  The runtime will invoke the decorator with 2 arguments, but the decorator expects 3.",
+        "actual": "Unable to resolve signature of class decorator when called as an expression."
+      },
+      "relatedInformation": {
+        "expected": [
+          {
+            "code": 6210,
+            "message": "An argument for 'c' was not provided.",
+            "module": "main.ts",
+            "position": {
+              "line": 1,
+              "column": 36,
+              "length": 6
+            }
+          }
+        ],
+        "actual": []
+      }
+    },
+    {
+      "id": "decorators:decorators-error-undefined-decorator-call/main.ts",
+      "code": 2345,
+      "message": {
+        "expected": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+        "actual": "Argument of type '\"not a number\"' is not assignable to parameter of type 'number'."
+      }
+    },
+    {
+      "id": "decorators:decorators-error-zero-parameters/main.ts",
+      "code": 1329,
+      "message": {
+        "expected": "'none' accepts too few arguments to be used as a decorator here. Did you mean to call it first and write '@none()'?",
+        "actual": "'@name()' accepts too few arguments to be used as a decorator here. Did you mean to call it first and write '@@name()()'?"
+      }
+    },
+    {
+      "id": "enum:enum-computed-not-number/main.ts",
+      "code": 18033,
+      "message": {
+        "expected": "Type 'string' is not assignable to type 'number' as required for computed enum member values.",
+        "actual": "a computed enum member must be a number, not `string`"
+      }
+    },
+    {
+      "id": "enum:enum-const-imported/missing-export-error.ts",
+      "code": 2305,
+      "message": {
+        "expected": "Module '\"./colors.ts\"' has no exported member 'Missing'.",
+        "actual": "Module './colors.ts' has no exported member 'Missing'."
+      }
+    },
+    {
+      "id": "enum:enum-const-imported/type-only-value-error.ts",
+      "code": 1361,
+      "relatedInformation": {
+        "expected": [
+          {
+            "code": 1376,
+            "message": "'Mode' was imported here.",
+            "module": "type-only-value-error.ts",
+            "position": {
+              "line": 5,
+              "column": 15,
+              "length": 4
+            }
+          }
+        ],
+        "actual": []
+      }
+    },
+    {
+      "id": "enum:enum-const-imported/unexported-error.ts",
+      "code": 2724,
+      "message": {
+        "expected": "'\"./colors.ts\"' has no exported member named 'Local'. Did you mean 'localA'?",
+        "actual": "'./colors.ts' has no exported member named 'Local'. Did you mean 'localA'?"
+      },
+      "relatedInformation": {
+        "expected": [
+          {
+            "code": 2728,
+            "message": "'localA' is declared here.",
+            "module": "colors.ts",
+            "position": {
+              "line": 9,
+              "column": 17,
+              "length": 6
+            }
+          }
+        ],
+        "actual": []
+      }
+    },
+    {
+      "id": "enum:enum-different-enums/main.ts",
+      "code": 2322,
+      "message": {
+        "expected": "Type 'E2' is not assignable to type 'E1'.",
+        "actual": "Type 'E2.A' is not assignable to type 'E1'."
+      }
+    },
+    {
+      "id": "enum:enum-enum-to-string-wrong/main.ts",
+      "code": 2322,
+      "message": {
+        "expected": "Type 'E' is not assignable to type 'string'.",
+        "actual": "Type 'E.A' is not assignable to type 'string'."
+      }
+    },
+    {
+      "id": "enum:enum-reverse-on-string-enum/main.ts",
+      "code": 7053,
+      "message": {
+        "expected": "Element implicitly has an 'any' type because expression of type '0' can't be used to index type 'typeof S'.\n  Property '0' does not exist on type 'typeof S'.",
+        "actual": "Element implicitly has an 'any' type because expression of type 'number' can't be used to index type 'S'."
+      }
+    },
+    {
+      "id": "enum:enum-string-enum-to-number/main.ts",
+      "code": 2322,
+      "message": {
+        "expected": "Type 'S' is not assignable to type 'number'.",
+        "actual": "Type 'S.A' is not assignable to type 'number'."
+      }
+    },
+    {
+      "id": "enum:enum-string-literal-to-string-enum/main.ts",
+      "code": 2322,
+      "message": {
+        "expected": "Type '\"a\"' is not assignable to type 'S'.",
+        "actual": "Type 'string' is not assignable to type 'S'."
+      }
+    },
+    {
+      "id": "immutable:immutable-readonly-loop-key/main.ts",
+      "code": 7053,
+      "message": {
+        "expected": "Element implicitly has an 'any' type because expression of type 'string' can't be used to index type '{ readonly value: number; }'.\n  No index signature with a parameter of type 'string' was found on type '{ readonly value: number; }'.",
+        "actual": "Element implicitly has an 'any' type because expression of type 'string' can't be used to index type 'record'."
+      }
+    },
+    {
+      "id": "immutable:immutable-readonly-pattern-key/main.ts",
+      "code": 7053,
+      "message": {
+        "expected": "Element implicitly has an 'any' type because expression of type 'string' can't be used to index type '{ readonly value: number; }'.\n  No index signature with a parameter of type 'string' was found on type '{ readonly value: number; }'.",
+        "actual": "Element implicitly has an 'any' type because expression of type 'string' can't be used to index type 'record'."
+      }
+    },
+    {
+      "id": "imported-type:imported-type-chain-generic-error/main.ts",
+      "code": 2345,
+      "message": {
+        "expected": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+        "actual": "Argument of type '\"bad\"' is not assignable to parameter of type 'number'."
+      }
+    },
+    {
+      "id": "imported-type:imported-type-chain-overload-error/main.ts",
+      "code": 2769,
+      "message": {
+        "expected": "No overload matches this call.\n  Overload 1 of 2, '(seed: number): number', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'number'.\n  Overload 2 of 2, '(seed: string): string', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'string'.",
+        "actual": "No overload matches this call."
+      }
+    },
+    {
+      "id": "imported-type:imported-type-cjs-require-function-error/main.ts",
+      "code": 2345,
+      "message": {
+        "expected": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+        "actual": "Argument of type '\"bad\"' is not assignable to parameter of type 'number'."
+      }
+    },
+    {
+      "id": "imported-type:imported-type-cjs-require-module-write-error/main.ts",
+      "code": 2322,
+      "message": {
+        "expected": "Type 'string' is not assignable to type 'number'.",
+        "actual": "Type 'string' is not assignable to type 'value'."
+      }
+    },
+    {
+      "id": "imported-type:imported-type-default-constructor-error/main.ts",
+      "code": 2345,
+      "message": {
+        "expected": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+        "actual": "Argument of type '\"bad\"' is not assignable to parameter of type 'number'."
+      }
+    },
+    {
+      "id": "imported-type:imported-type-default-function-error/main.ts",
+      "code": 2345,
+      "message": {
+        "expected": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+        "actual": "Argument of type '\"bad\"' is not assignable to parameter of type 'number'."
+      }
+    },
+    {
+      "id": "imported-type:imported-type-default-member-group-error/main.ts",
+      "code": 2322,
+      "message": {
+        "expected": "Type 'import(\"<fixtures>/typescript_oracle/imported-type-default-member-group-error/dep\").default' is not assignable to type 'string'.",
+        "actual": "Type 'Mode.Ready' is not assignable to type 'string'."
+      }
+    },
+    {
+      "id": "imported-type:imported-type-default-missing-error/main.ts",
+      "code": 2613,
+      "message": {
+        "expected": "Module '\"<fixtures>/typescript_oracle/imported-type-default-missing-error/dep\"' has no default export. Did you mean to use 'import { value } from \"<fixtures>/typescript_oracle/imported-type-default-missing-error/dep\"' instead?",
+        "actual": "module `./dep.ts` has no exported member `default`"
+      }
+    },
+    {
+      "id": "imported-type:imported-type-named-constructor-error/main.ts",
+      "code": 2345,
+      "message": {
+        "expected": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+        "actual": "Argument of type '\"bad\"' is not assignable to parameter of type 'number'."
+      }
+    },
+    {
+      "id": "imported-type:imported-type-named-function-error/main.ts",
+      "code": 2345,
+      "message": {
+        "expected": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+        "actual": "Argument of type '\"bad\"' is not assignable to parameter of type 'number'."
+      }
+    },
+    {
+      "id": "imported-type:imported-type-named-generic-error/main.ts",
+      "code": 2345,
+      "message": {
+        "expected": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+        "actual": "Argument of type '\"bad\"' is not assignable to parameter of type 'number'."
+      }
+    },
+    {
+      "id": "imported-type:imported-type-named-member-group-error/main.ts",
+      "code": 2322,
+      "message": {
+        "expected": "Type 'import(\"<fixtures>/typescript_oracle/imported-type-named-member-group-error/dep\").Mode' is not assignable to type 'string'.",
+        "actual": "Type 'Mode.Ready' is not assignable to type 'string'."
+      }
+    },
+    {
+      "id": "imported-type:imported-type-named-overload-error/main.ts",
+      "code": 2769,
+      "message": {
+        "expected": "No overload matches this call.\n  Overload 1 of 2, '(seed: number): number', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'number'.\n  Overload 2 of 2, '(seed: string): string', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'string'.",
+        "actual": "No overload matches this call."
+      }
+    },
+    {
+      "id": "imported-type:imported-type-named-record-mutation-error/main.ts",
+      "code": 2322,
+      "message": {
+        "expected": "Type 'string' is not assignable to type 'number'.",
+        "actual": "Type 'string' is not assignable to type 'count'."
+      }
+    },
+    {
+      "id": "imported-type:imported-type-star-constructor-error/main.ts",
+      "code": 2345,
+      "message": {
+        "expected": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+        "actual": "Argument of type '\"bad\"' is not assignable to parameter of type 'number'."
+      }
+    },
+    {
+      "id": "imported-type:imported-type-star-function-error/main.ts",
+      "code": 2345,
+      "message": {
+        "expected": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+        "actual": "Argument of type '\"bad\"' is not assignable to parameter of type 'number'."
+      }
+    },
+    {
+      "id": "imported-type:imported-type-star-member-group-error/main.ts",
+      "code": 2322,
+      "message": {
+        "expected": "Type 'import(\"<fixtures>/typescript_oracle/imported-type-star-member-group-error/dep\").Mode' is not assignable to type 'string'.",
+        "actual": "Type 'dep.Mode.Ready' is not assignable to type 'string'."
+      }
+    },
+    {
+      "id": "imported-type:imported-type-star-missing-error/main.ts",
+      "code": 2339,
+      "message": {
+        "expected": "Property 'missing' does not exist on type 'typeof import(\"<fixtures>/typescript_oracle/imported-type-star-missing-error/dep\")'.",
+        "actual": "Property 'missing' does not exist on type 'record'."
+      }
+    },
+    {
+      "id": "imported-type:imported-type-star-new-number-error/main.ts",
+      "code": 2351,
+      "message": {
+        "expected": "This expression is not constructable.\n  Type 'Number' has no construct signatures.",
+        "actual": "This expression is not constructable."
+      }
+    },
+    {
+      "id": "infer-return:infer-return-array-error/main.ts",
+      "code": 2322,
+      "message": {
+        "expected": "Type 'number[]' is not assignable to type 'string[]'.\n  Type 'number' is not assignable to type 'string'.",
+        "actual": "Type 'number[]' is not assignable to type 'string[]'."
+      }
+    },
+    {
+      "id": "infer-return:infer-return-async-await-error/main.ts",
+      "code": 2322,
+      "message": {
+        "expected": "Type 'Promise<number>' is not assignable to type 'Promise<string>'.\n  Type 'number' is not assignable to type 'string'.",
+        "actual": "Type 'function' is not assignable to type 'function'."
+      }
+    },
+    {
+      "id": "infer-return:infer-return-async-error/main.ts",
+      "code": 2322,
+      "message": {
+        "expected": "Type 'Promise<number>' is not assignable to type 'Promise<string>'.\n  Type 'number' is not assignable to type 'string'.",
+        "actual": "Type 'function' is not assignable to type 'function'."
+      }
+    },
+    {
+      "id": "infer-return:infer-return-async-void-error/main.ts",
+      "code": 2322,
+      "message": {
+        "expected": "Type 'Promise<void>' is not assignable to type 'Promise<number>'.\n  Type 'void' is not assignable to type 'number'.",
+        "actual": "Type 'function' is not assignable to type 'function'."
+      }
+    },
+    {
+      "id": "infer-return:infer-return-fallthrough-error/main.ts",
+      "code": 2322,
+      "message": {
+        "expected": "Type 'number | undefined' is not assignable to type 'number'.\n  Type 'undefined' is not assignable to type 'number'.",
+        "actual": "Type '1 | undefined' is not assignable to type 'number'."
+      }
+    },
+    {
+      "id": "infer-return:infer-return-fresh-widen-error/main.ts",
+      "code": 2322,
+      "message": {
+        "expected": "Type 'string' is not assignable to type '\"hello\"'.",
+        "actual": "Type 'string' is not assignable to type ''hello''."
+      }
+    },
+    {
+      "id": "infer-return:infer-return-generator-error/main.ts",
+      "code": 2322,
+      "message": {
+        "expected": "Type 'Generator<number, string, unknown>' is not assignable to type 'Generator<boolean, string, unknown>'.\n  The types returned by 'next(...)' are incompatible between these types.\n    Type 'IteratorResult<number, string>' is not assignable to type 'IteratorResult<boolean, string>'.\n      Type 'IteratorYieldResult<number>' is not assignable to type 'IteratorResult<boolean, string>'.\n        Type 'IteratorYieldResult<number>' is not assignable to type 'IteratorYieldResult<boolean>'.\n          Type 'number' is not assignable to type 'boolean'.",
+        "actual": "Type 'function' is not assignable to type 'function'."
+      }
+    },
+    {
+      "id": "infer-return:infer-return-generator-next-error/main.ts",
+      "code": 2345,
+      "message": {
+        "expected": "Argument of type '[1]' is not assignable to parameter of type '[] | [string]'.\n  Type '[1]' is not assignable to type '[string]'.\n    Type 'number' is not assignable to type 'string'.",
+        "actual": "Argument of type 'number' is not assignable to parameter of type 'string'."
+      }
+    },
+    {
+      "id": "infer-return:infer-return-generator-return-error/main.ts",
+      "code": 2322,
+      "message": {
+        "expected": "Type 'Generator<number, string, unknown>' is not assignable to type 'Generator<number, boolean, unknown>'.\n  The types returned by 'next(...)' are incompatible between these types.\n    Type 'IteratorResult<number, string>' is not assignable to type 'IteratorResult<number, boolean>'.\n      Type 'IteratorReturnResult<string>' is not assignable to type 'IteratorResult<number, boolean>'.\n        Type 'IteratorReturnResult<string>' is not assignable to type 'IteratorReturnResult<boolean>'.\n          Type 'string' is not assignable to type 'boolean'.",
+        "actual": "Type 'function' is not assignable to type 'function'."
+      }
+    },
+    {
+      "id": "infer-return:infer-return-mutual-error/main.ts",
+      "code": 7023,
+      "message": {
+        "expected": "'first' implicitly has return type 'any' because it does not have a return type annotation and is referenced directly or indirectly in one of its return expressions.",
+        "actual": "recursive return type inference requires a return annotation"
+      }
+    },
+    {
+      "id": "infer-return:infer-return-object-error/main.ts",
+      "code": 2322,
+      "message": {
+        "expected": "Type '{ value: number; }' is not assignable to type '{ value: string; }'.\n  Types of property 'value' are incompatible.\n    Type 'number' is not assignable to type 'string'.",
+        "actual": "Type 'number' is not assignable to type 'string'."
+      }
+    },
+    {
+      "id": "infer-return:infer-return-parameter-literal-error/main.ts",
+      "code": 2322,
+      "message": {
+        "expected": "Type '\"hello\"' is not assignable to type '\"other\"'.",
+        "actual": "Type ''hello'' is not assignable to type ''other''."
+      }
+    },
+    {
+      "id": "infer-return:infer-return-union-error/main.ts",
+      "code": 2322,
+      "message": {
+        "expected": "Type 'string | number' is not assignable to type 'number'.\n  Type 'string' is not assignable to type 'number'.",
+        "actual": "Type ''one' | 1' is not assignable to type 'number'."
+      }
+    },
+    {
+      "id": "infer-return:infer-return-recursive-record-error/main.ts",
+      "code": 7023,
+      "message": {
+        "expected": "'loop' implicitly has return type 'any' because it does not have a return type annotation and is referenced directly or indirectly in one of its return expressions.",
+        "actual": "recursive return type inference requires a return annotation"
+      }
+    },
+    {
+      "id": "infer-return:infer-return-recursive-arithmetic-error/main.ts",
+      "code": 7023,
+      "message": {
+        "expected": "'loop' implicitly has return type 'any' because it does not have a return type annotation and is referenced directly or indirectly in one of its return expressions.",
+        "actual": "recursive return type inference requires a return annotation"
+      }
+    },
+    {
+      "id": "infer-return:infer-return-recursive-arrow-error/main.ts",
+      "code": 7023,
+      "message": {
+        "expected": "'loop' implicitly has return type 'any' because it does not have a return type annotation and is referenced directly or indirectly in one of its return expressions.",
+        "actual": "recursive return type inference requires a return annotation"
+      }
+    },
+    {
+      "id": "infer-return:infer-return-default-argument-error/main.ts",
+      "code": 2345,
+      "message": {
+        "expected": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+        "actual": "Argument of type '\"bad\"' is not assignable to parameter of type 'number | undefined'."
+      }
+    },
+    {
+      "id": "infer-return:infer-return-generic-member-argument-error/main.ts",
+      "code": 2769,
+      "message": {
+        "expected": "No overload matches this call.\n  Overload 1 of 3, '(value: number): Promise<number>', gave the following error.\n    Argument of type 'string' is not assignable to parameter of type 'number'.\n  Overload 2 of 3, '(value: number | PromiseLike<number>): Promise<number>', gave the following error.\n    Argument of type 'string' is not assignable to parameter of type 'number | PromiseLike<number>'.",
+        "actual": "No overload matches this call."
+      }
+    },
+    {
+      "id": "infer-return:infer-return-getter-setter-inferred-error/main.ts",
+      "code": 2322,
+      "message": {
+        "expected": "Type 'string' is not assignable to type 'number'.",
+        "actual": "Type 'string' is not assignable to type 'current'."
+      }
+    },
+    {
+      "id": "infer-return:infer-return-method-default-error/main.ts",
+      "code": 2345,
+      "message": {
+        "expected": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+        "actual": "Argument of type ''bad'' is not assignable to parameter of type 'number'."
+      }
+    },
+    {
+      "id": "jsx:jsx-error-attribute-expression-type/main.tsx",
+      "code": 2322,
+      "message": {
+        "expected": "Type 'number' is not assignable to type 'string'.",
+        "actual": "Type 'title' is not assignable to type 'number'."
+      },
+      "relatedInformation": {
+        "expected": [
+          {
+            "code": 6500,
+            "message": "The expected type comes from property 'title' which is declared here on type '{ title: string; children?: any; }'",
+            "module": "main.tsx",
+            "position": {
+              "line": 5,
+              "column": 13,
+              "length": 5
+            }
+          }
+        ],
+        "actual": []
+      }
+    },
+    {
+      "id": "jsx:jsx-error-attribute-type/main.tsx",
+      "code": 2322,
+      "message": {
+        "expected": "Type 'number' is not assignable to type 'string'.",
+        "actual": "Type 'id' is not assignable to type 'number'."
+      },
+      "relatedInformation": {
+        "expected": [
+          {
+            "code": 6500,
+            "message": "The expected type comes from property 'id' which is declared here on type '{ id?: string | undefined; hidden?: boolean | undefined; onClick?: ((n: number) => void) | undefined; children?: any; }'",
+            "module": "main.tsx",
+            "position": {
+              "line": 4,
+              "column": 12,
+              "length": 2
+            }
+          }
+        ],
+        "actual": []
+      }
+    },
+    {
+      "id": "jsx:jsx-error-children-type/main.tsx",
+      "code": 2322,
+      "message": {
+        "expected": "Type 'Element' is not assignable to type 'string'.",
+        "actual": "Type 'JSX.Element' is not assignable to type 'children: string'."
+      },
+      "relatedInformation": {
+        "expected": [
+          {
+            "code": 6500,
+            "message": "The expected type comes from property 'children' which is declared here on type 'IntrinsicAttributes & CardProps'",
+            "module": "main.tsx",
+            "position": {
+              "line": 11,
+              "column": 54,
+              "length": 8
+            }
+          }
+        ],
+        "actual": []
+      }
+    },
+    {
+      "id": "jsx:jsx-error-children-without-prop/main.tsx",
+      "code": 2322,
+      "message": {
+        "expected": "Type '{ children: string; title: string; }' is not assignable to type 'IntrinsicAttributes & { title: string; }'.\n  Property 'children' does not exist on type 'IntrinsicAttributes & { title: string; }'.",
+        "actual": "this element has children but its props declare no `children`"
+      }
+    },
+    {
+      "id": "jsx:jsx-error-class-component-attribute/main.tsx",
+      "code": 2322,
+      "message": {
+        "expected": "Type 'number' is not assignable to type 'string'.",
+        "actual": "Type 'label' is not assignable to type 'number'."
+      },
+      "relatedInformation": {
+        "expected": [
+          {
+            "code": 6500,
+            "message": "The expected type comes from property 'label' which is declared here on type 'IntrinsicAttributes & Props'",
+            "module": "main.tsx",
+            "position": {
+              "line": 13,
+              "column": 19,
+              "length": 5
+            }
+          }
+        ],
+        "actual": []
+      }
+    },
+    {
+      "id": "jsx:jsx-error-class-component-missing/main.tsx",
+      "code": 2322,
+      "message": {
+        "expected": "Type '{}' is not assignable to type 'IntrinsicAttributes & Props'.\n  Property 'label' is missing in type '{}' but required in type 'Props'.",
+        "actual": "missing required props: label"
+      },
+      "relatedInformation": {
+        "expected": [
+          {
+            "code": 2728,
+            "message": "'label' is declared here.",
+            "module": "main.tsx",
+            "position": {
+              "line": 13,
+              "column": 19,
+              "length": 5
+            }
+          }
+        ],
+        "actual": []
+      }
+    },
+    {
+      "id": "jsx:jsx-error-class-not-element-class/main.tsx",
+      "code": 2786,
+      "message": {
+        "expected": "'NotComp' cannot be used as a JSX component.\n  Its instance type 'NotComp' is not a valid JSX element.\n    Property 'render' is missing in type 'NotComp' but required in type 'ElementClass'.",
+        "actual": "'NotComp' cannot be used as a JSX component."
+      },
+      "relatedInformation": {
+        "expected": [
+          {
+            "code": 2728,
+            "message": "'render' is declared here.",
+            "module": "main.tsx",
+            "position": {
+              "line": 9,
+              "column": 28,
+              "length": 17
+            }
+          }
+        ],
+        "actual": []
+      }
+    },
+    {
+      "id": "jsx:jsx-error-component-attribute-type/main.tsx",
+      "code": 2322,
+      "message": {
+        "expected": "Type 'number' is not assignable to type 'string'.",
+        "actual": "Type 'title' is not assignable to type 'number'."
+      },
+      "relatedInformation": {
+        "expected": [
+          {
+            "code": 6500,
+            "message": "The expected type comes from property 'title' which is declared here on type 'IntrinsicAttributes & CardProps'",
+            "module": "main.tsx",
+            "position": {
+              "line": 11,
+              "column": 23,
+              "length": 5
+            }
+          }
+        ],
+        "actual": []
+      }
+    },
+    {
+      "id": "jsx:jsx-error-component-return/main.tsx",
+      "code": 2786,
+      "message": {
+        "expected": "'Bad' cannot be used as a JSX component.\n  Its return type 'string' is not a valid JSX element.",
+        "actual": "'string' cannot be used as a JSX component."
+      }
+    },
+    {
+      "id": "jsx:jsx-error-element-not-assignable/main.tsx",
+      "code": 2322,
+      "message": {
+        "expected": "Type 'Element' is not assignable to type 'number'.",
+        "actual": "Type 'JSX.Element' is not assignable to type 'number'."
+      }
+    },
+    {
+      "id": "jsx:jsx-error-excess-attribute/main.tsx",
+      "code": 2322,
+      "message": {
+        "expected": "Type '{ title: string; extra: string; }' is not assignable to type 'IntrinsicAttributes & CardProps'.\n  Property 'extra' does not exist on type 'IntrinsicAttributes & CardProps'.",
+        "actual": "Type 'extra' is not assignable to type 'title, count, children'."
+      }
+    },
+    {
+      "id": "jsx:jsx-error-factory-namespace-attribute/main.tsx",
+      "code": 2322,
+      "message": {
+        "expected": "Type 'number' is not assignable to type 'string'.",
+        "actual": "Type 'id' is not assignable to type 'number'."
+      },
+      "relatedInformation": {
+        "expected": [
+          {
+            "code": 6500,
+            "message": "The expected type comes from property 'id' which is declared here on type '{ id?: string | undefined; children?: any; }'",
+            "module": "lib.ts",
+            "position": {
+              "line": 3,
+              "column": 40,
+              "length": 2
+            }
+          }
+        ],
+        "actual": []
+      }
+    },
+    {
+      "id": "jsx:jsx-error-greater-than-in-text/main.tsx",
+      "code": 1382,
+      "message": {
+        "expected": "Unexpected token. Did you mean `{'>'}` or `&gt;`?",
+        "actual": "unexpected `>` in JSX text; use `{'>'}`"
+      }
+    },
+    {
+      "id": "jsx:jsx-error-handler-parameter/main.tsx",
+      "code": 2322,
+      "message": {
+        "expected": "Type '(k: string) => string' is not assignable to type '(n: number) => void'.\n  Types of parameters 'k' and 'n' are incompatible.\n    Type 'number' is not assignable to type 'string'.",
+        "actual": "Type 'onClick' is not assignable to type 'function'."
+      },
+      "relatedInformation": {
+        "expected": [
+          {
+            "code": 6500,
+            "message": "The expected type comes from property 'onClick' which is declared here on type '{ id?: string | undefined; hidden?: boolean | undefined; onClick?: ((n: number) => void) | undefined; children?: any; }'",
+            "module": "main.tsx",
+            "position": {
+              "line": 4,
+              "column": 43,
+              "length": 7
+            }
+          }
+        ],
+        "actual": []
+      }
+    },
+    {
+      "id": "jsx:jsx-error-key-on-intrinsic/main.tsx",
+      "code": 2322,
+      "message": {
+        "expected": "Type '{ key: string; }' is not assignable to type '{ id?: string | undefined; hidden?: boolean | undefined; onClick?: ((n: number) => void) | undefined; children?: any; }'.\n  Property 'key' does not exist on type '{ id?: string | undefined; hidden?: boolean | undefined; onClick?: ((n: number) => void) | undefined; children?: any; }'.",
+        "actual": "Type 'key' is not assignable to type 'id, hidden, onClick, children'."
+      }
+    },
+    {
+      "id": "jsx:jsx-error-literal-union-attribute/main.tsx",
+      "code": 2322,
+      "message": {
+        "expected": "Type '\"other\"' is not assignable to type '\"number\" | \"text\" | undefined'.",
+        "actual": "Type 'kind' is not assignable to type '\"other\"'."
+      },
+      "relatedInformation": {
+        "expected": [
+          {
+            "code": 6500,
+            "message": "The expected type comes from property 'kind' which is declared here on type '{ value?: string | undefined; disabled?: boolean | undefined; kind?: \"number\" | \"text\" | undefined; children?: any; }'",
+            "module": "main.tsx",
+            "position": {
+              "line": 6,
+              "column": 50,
+              "length": 4
+            }
+          }
+        ],
+        "actual": []
+      }
+    },
+    {
+      "id": "jsx:jsx-error-mismatched-closing/main.tsx",
+      "code": 17002,
+      "message": {
+        "expected": "Expected corresponding JSX closing tag for 'div'.",
+        "actual": "the closing JSX tag does not match the opening tag"
+      }
+    },
+    {
+      "id": "jsx:jsx-error-missing-required/main.tsx",
+      "code": 2322,
+      "message": {
+        "expected": "Type '{}' is not assignable to type 'IntrinsicAttributes & CardProps'.\n  Property 'title' is missing in type '{}' but required in type 'CardProps'.",
+        "actual": "missing required props: title"
+      },
+      "relatedInformation": {
+        "expected": [
+          {
+            "code": 2728,
+            "message": "'title' is declared here.",
+            "module": "main.tsx",
+            "position": {
+              "line": 11,
+              "column": 23,
+              "length": 5
+            }
+          }
+        ],
+        "actual": []
+      }
+    },
+    {
+      "id": "jsx:jsx-error-multiple-children-type/main.tsx",
+      "code": 2322,
+      "message": {
+        "expected": "Type '{ children: string[]; }' is not assignable to type 'IntrinsicAttributes & { children: string; }'.\n  Type '{ children: string[]; }' is not assignable to type '{ children: string; }'.\n    Types of property 'children' are incompatible.\n      Type 'string[]' is not assignable to type 'string'.",
+        "actual": "Type '(string | string)[]' is not assignable to type 'children: string'."
+      }
+    },
+    {
+      "id": "jsx:jsx-error-nested-attribute/main.tsx",
+      "code": 2322,
+      "message": {
+        "expected": "Type '{}' is not assignable to type 'IntrinsicAttributes & CardProps'.\n  Property 'title' is missing in type '{}' but required in type 'CardProps'.",
+        "actual": "missing required props: title"
+      },
+      "relatedInformation": {
+        "expected": [
+          {
+            "code": 2728,
+            "message": "'title' is declared here.",
+            "module": "main.tsx",
+            "position": {
+              "line": 11,
+              "column": 23,
+              "length": 5
+            }
+          }
+        ],
+        "actual": []
+      }
+    },
+    {
+      "id": "jsx:jsx-error-no-jsx-namespace/main.tsx",
+      "code": 7026,
+      "message": {
+        "expected": "JSX element implicitly has type 'any' because no interface 'JSX.IntrinsicElements' exists.",
+        "actual": "JSX element implicitly has type 'any' because no interface 'JSX.any' exists."
+      }
+    },
+    {
+      "id": "jsx:jsx-error-spread-type/main.tsx",
+      "code": 2322,
+      "message": {
+        "expected": "Type '{ id: number; }' is not assignable to type '{ id?: string | undefined; hidden?: boolean | undefined; onClick?: ((n: number) => void) | undefined; children?: any; }'.\n  Types of property 'id' are incompatible.\n    Type 'number' is not assignable to type 'string'.",
+        "actual": "Type 'id' is not assignable to type 'number'."
+      }
+    },
+    {
+      "id": "jsx:jsx-error-unterminated/main.tsx",
+      "code": 17008,
+      "message": {
+        "expected": "JSX element 'div' has no corresponding closing tag.",
+        "actual": "unterminated JSX element"
+      }
+    },
+    {
+      "id": "legacy-decorators:legacy-error-auto-accessor/main.ts",
+      "code": 1240,
+      "message": {
+        "expected": "Unable to resolve signature of property decorator when called as an expression.\n  The runtime will invoke the decorator with 3 arguments, but the decorator expects 2.",
+        "actual": "Unable to resolve signature of property decorator when called as an expression."
+      }
+    },
+    {
+      "id": "legacy-decorators:legacy-error-field-one-parameter/main.ts",
+      "code": 1240,
+      "message": {
+        "expected": "Unable to resolve signature of property decorator when called as an expression.\n  The runtime will invoke the decorator with 2 arguments, but the decorator expects 1.",
+        "actual": "Unable to resolve signature of property decorator when called as an expression."
+      }
+    },
+    {
+      "id": "legacy-decorators:legacy-error-field-three-parameters/main.ts",
+      "code": 1240,
+      "message": {
+        "expected": "Unable to resolve signature of property decorator when called as an expression.\n  The runtime will invoke the decorator with 2 arguments, but the decorator expects 3.",
+        "actual": "Unable to resolve signature of property decorator when called as an expression."
+      },
+      "relatedInformation": {
+        "expected": [
+          {
+            "code": 6210,
+            "message": "An argument for 'descriptor' was not provided.",
+            "module": "main.ts",
+            "position": {
+              "line": 1,
+              "column": 50,
+              "length": 15
+            }
+          }
+        ],
+        "actual": []
+      }
+    },
+    {
+      "id": "legacy-decorators:legacy-error-no-parameters-on-type/main.ts",
+      "code": 1329,
+      "message": {
+        "expected": "'none' accepts too few arguments to be used as a decorator here. Did you mean to call it first and write '@none()'?",
+        "actual": "unable to resolve the signature of this class decorator when called as an expression (it must accept 1 argument(s))"
+      }
+    },
+    {
+      "id": "legacy-decorators:legacy-error-not-callable/main.ts",
+      "code": 1238,
+      "message": {
+        "expected": "Unable to resolve signature of class decorator when called as an expression.\n  This expression is not callable.\n    Type 'Number' has no call signatures.",
+        "actual": "Unable to resolve signature of class decorator when called as an expression."
+      }
+    },
+    {
+      "id": "legacy-decorators:legacy-error-param-two-parameters/main.ts",
+      "code": 1239,
+      "message": {
+        "expected": "Unable to resolve signature of parameter decorator when called as an expression.\n  The runtime will invoke the decorator with 3 arguments, but the decorator expects 2.",
+        "actual": "Unable to resolve signature of parameter decorator when called as an expression."
+      }
+    },
+    {
+      "id": "legacy-decorators:legacy-error-two-parameters-on-type/main.ts",
+      "code": 1238,
+      "message": {
+        "expected": "Unable to resolve signature of class decorator when called as an expression.\n  The runtime will invoke the decorator with 1 arguments, but the decorator expects 2.",
+        "actual": "Unable to resolve signature of class decorator when called as an expression."
+      },
+      "relatedInformation": {
+        "expected": [
+          {
+            "code": 6210,
+            "message": "An argument for 'key' was not provided.",
+            "module": "main.ts",
+            "position": {
+              "line": 1,
+              "column": 35,
+              "length": 11
+            }
+          }
+        ],
+        "actual": []
+      }
+    },
+    {
+      "id": "lib:lib-array-literal-error/main.ts",
+      "code": 2345,
+      "message": {
+        "expected": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+        "actual": "Argument of type '\"bad\"' is not assignable to parameter of type 'number'."
+      }
+    },
+    {
+      "id": "lib:lib-array-pop-error/main.ts",
+      "code": 2322,
+      "message": {
+        "expected": "Type 'number | undefined' is not assignable to type 'string'.\n  Type 'undefined' is not assignable to type 'string'.",
+        "actual": "Type 'number | undefined' is not assignable to type 'string'."
+      }
+    },
+    {
+      "id": "lib:lib-array-push-error/main.ts",
+      "code": 2345,
+      "message": {
+        "expected": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+        "actual": "Argument of type '\"bad\"' is not assignable to parameter of type 'number'."
+      }
+    },
+    {
+      "id": "lib:lib-date-constructor-error/main.ts",
+      "code": 2769,
+      "message": {
+        "expected": "No overload matches this call.\n  Overload 1 of 4, '(value: string | number | Date): Date', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'string | number | Date'.\n  Overload 2 of 4, '(value: string | number): Date', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'string | number'.",
+        "actual": "No overload matches this call."
+      }
+    },
+    {
+      "id": "lib:lib-error-constructor-error/main.ts",
+      "code": 2769,
+      "message": {
+        "expected": "No overload matches this call.\n  Overload 1 of 2, '(message?: string | undefined): TypeError', gave the following error.\n    Argument of type 'number' is not assignable to parameter of type 'string'.\n  Overload 2 of 2, '(message?: string | undefined): Error', gave the following error.\n    Argument of type 'number' is not assignable to parameter of type 'string'.",
+        "actual": "No overload matches this call."
+      }
+    },
+    {
+      "id": "lib:lib-iterable-error/main.ts",
+      "code": 2322,
+      "message": {
+        "expected": "Type 'Iterable<number>' is not assignable to type 'Iterable<string>'.\n  The types returned by '[Symbol.iterator]().next(...)' are incompatible between these types.\n    Type 'IteratorResult<number, any>' is not assignable to type 'IteratorResult<string, any>'.\n      Type 'IteratorYieldResult<number>' is not assignable to type 'IteratorResult<string, any>'.\n        Type 'IteratorYieldResult<number>' is not assignable to type 'IteratorYieldResult<string>'.\n          Type 'number' is not assignable to type 'string'.",
+        "actual": "Type 'Iterable' is not assignable to type 'Iterable'."
+      }
+    },
+    {
+      "id": "lib:lib-iterator-error/main.ts",
+      "code": 2345,
+      "message": {
+        "expected": "Argument of type '[\"bad\"]' is not assignable to parameter of type '[] | [boolean]'.\n  Type '[\"bad\"]' is not assignable to type '[boolean]'.\n    Type 'string' is not assignable to type 'boolean'.",
+        "actual": "Argument of type '\"bad\"' is not assignable to parameter of type 'boolean'."
+      }
+    },
+    {
+      "id": "lib:lib-map-set-error/main.ts",
+      "code": 2345,
+      "message": {
+        "expected": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+        "actual": "Argument of type '\"bad\"' is not assignable to parameter of type 'number'."
+      }
+    },
+    {
+      "id": "lib:lib-math-max-error/main.ts",
+      "code": 2345,
+      "message": {
+        "expected": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+        "actual": "Argument of type '\"bad\"' is not assignable to parameter of type 'number'."
+      }
+    },
+    {
+      "id": "lib:lib-math-sqrt-error/main.ts",
+      "code": 2345,
+      "message": {
+        "expected": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+        "actual": "Argument of type '\"bad\"' is not assignable to parameter of type 'number'."
+      }
+    },
+    {
+      "id": "lib:lib-number-fixed-error/main.ts",
+      "code": 2345,
+      "message": {
+        "expected": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+        "actual": "Argument of type '\"bad\"' is not assignable to parameter of type 'number'."
+      }
+    },
+    {
+      "id": "lib:lib-object-keys-error/main.ts",
+      "code": 2322,
+      "message": {
+        "expected": "Type 'string[]' is not assignable to type 'number[]'.\n  Type 'string' is not assignable to type 'number'.",
+        "actual": "Type 'string[]' is not assignable to type 'number[]'."
+      }
+    },
+    {
+      "id": "lib:lib-promise-method-error/main.ts",
+      "code": 2345,
+      "message": {
+        "expected": "Argument of type '(x: string) => string' is not assignable to parameter of type '(value: number) => string | PromiseLike<string>'.\n  Types of parameters 'x' and 'value' are incompatible.\n    Type 'number' is not assignable to type 'string'.",
+        "actual": "Argument of type 'function' is not assignable to parameter of type 'function'."
+      }
+    },
+    {
+      "id": "lib:lib-promise-resolve-error/main.ts",
+      "code": 2322,
+      "message": {
+        "expected": "Type 'Promise<number>' is not assignable to type 'Promise<string>'.\n  Type 'number' is not assignable to type 'string'.",
+        "actual": "Type 'function' is not assignable to type 'function'."
+      }
+    },
+    {
+      "id": "lib:lib-readonly-array-error/main.ts",
+      "code": 2339,
+      "message": {
+        "expected": "Property 'push' does not exist on type 'readonly number[]'.",
+        "actual": "Property 'push' does not exist on type 'ReadonlyArray'."
+      }
+    },
+    {
+      "id": "lib:lib-regexp-constructor-error/main.ts",
+      "code": 2769,
+      "message": {
+        "expected": "No overload matches this call.\n  Overload 1 of 3, '(pattern: string | RegExp, flags?: string | undefined): RegExp', gave the following error.\n    Argument of type 'number' is not assignable to parameter of type 'string | RegExp'.\n  Overload 2 of 3, '(pattern: string | RegExp): RegExp', gave the following error.\n    Argument of type 'number' is not assignable to parameter of type 'string | RegExp'.\n  Overload 3 of 3, '(pattern: string, flags?: string | undefined): RegExp', gave the following error.\n    Argument of type 'number' is not assignable to parameter of type 'string'.",
+        "actual": "No overload matches this call."
+      }
+    },
+    {
+      "id": "lib:lib-set-add-error/main.ts",
+      "code": 2345,
+      "message": {
+        "expected": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+        "actual": "Argument of type '\"bad\"' is not assignable to parameter of type 'number'."
+      }
+    },
+    {
+      "id": "lib:lib-string-repeat-error/main.ts",
+      "code": 2345,
+      "message": {
+        "expected": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+        "actual": "Argument of type '\"bad\"' is not assignable to parameter of type 'number'."
+      }
+    },
+    {
+      "id": "lib:lib-symbol-call-error/main.ts",
+      "code": 2345,
+      "message": {
+        "expected": "Argument of type 'true' is not assignable to parameter of type 'string | number | undefined'.",
+        "actual": "Argument of type 'boolean' is not assignable to parameter of type 'string | number | undefined'."
+      }
+    },
+    {
+      "id": "lib:lib-weak-map-error/main.ts",
+      "code": 2345,
+      "message": {
+        "expected": "Argument of type 'number' is not assignable to parameter of type '{ id: number; }'.",
+        "actual": "Argument of type 'number' is not assignable to parameter of type 'record'."
+      }
+    },
+    {
+      "id": "lib:lib-array-map-too-many/main.ts",
+      "code": 2345,
+      "message": {
+        "expected": "Argument of type '(value: number, index: number, items: number[], extra: number) => number' is not assignable to parameter of type '(value: number, index: number, array: number[]) => number'.\n  Target signature provides too few arguments. Expected 4 or more, but got 3.",
+        "actual": "Argument of type 'function' is not assignable to parameter of type 'function'."
+      }
+    },
+    {
+      "id": "lib:lib-array-map-wrong-type/main.ts",
+      "code": 2345,
+      "message": {
+        "expected": "Argument of type '(value: string) => string' is not assignable to parameter of type '(value: number, index: number, array: number[]) => string'.\n  Types of parameters 'value' and 'value' are incompatible.\n    Type 'number' is not assignable to type 'string'.",
+        "actual": "Argument of type 'function' is not assignable to parameter of type 'function'."
+      }
+    },
+    {
+      "id": "lib:lib-method-chain-binary-arg-error/main.ts",
+      "code": 2345,
+      "message": {
+        "expected": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+        "actual": "Argument of type '\"bad\"' is not assignable to parameter of type 'number'."
+      }
+    },
+    {
+      "id": "lib:lib-method-generic-chain-arg-error/main.ts",
+      "code": 2345,
+      "message": {
+        "expected": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+        "actual": "Argument of type '\"bad\"' is not assignable to parameter of type 'number'."
+      }
+    },
+    {
+      "id": "lib:lib-method-chain-left-arg-error/main.ts",
+      "code": 2345,
+      "message": {
+        "expected": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+        "actual": "Argument of type '\"bad\"' is not assignable to parameter of type 'number'."
+      }
+    },
+    {
+      "id": "lib:lib-method-nested-chain-arg-error/main.ts",
+      "code": 2345,
+      "message": {
+        "expected": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+        "actual": "Argument of type '\"bad\"' is not assignable to parameter of type 'number'."
+      }
+    },
+    {
+      "id": "lib:lib-sort-callback-result-error/main.ts",
+      "code": 2345,
+      "message": {
+        "expected": "Argument of type '(left: number, right: number) => string' is not assignable to parameter of type '(a: number, b: number) => number'.\n  Type 'string' is not assignable to type 'number'.",
+        "actual": "Argument of type 'function' is not assignable to parameter of type 'function'."
+      }
+    },
+    {
+      "id": "lib:lib-sort-callback-type-error/main.ts",
+      "code": 2345,
+      "message": {
+        "expected": "Argument of type '(left: string, right: string) => number' is not assignable to parameter of type '(a: number, b: number) => number'.\n  Types of parameters 'left' and 'a' are incompatible.\n    Type 'number' is not assignable to type 'string'.",
+        "actual": "Argument of type 'function' is not assignable to parameter of type 'function'."
+      }
+    },
+    {
+      "id": "lib:lib-filter-callback-type-error/main.ts",
+      "code": 2769,
+      "message": {
+        "expected": "No overload matches this call.\n  Overload 1 of 2, '(predicate: (value: number, index: number, array: number[]) => value is number, thisArg?: any): number[]', gave the following error.\n    Argument of type '(item: string) => boolean' is not assignable to parameter of type '(value: number, index: number, array: number[]) => value is number'.\n      Types of parameters 'item' and 'value' are incompatible.\n        Type 'number' is not assignable to type 'string'.\n  Overload 2 of 2, '(predicate: (value: number, index: number, array: number[]) => unknown, thisArg?: any): number[]', gave the following error.\n    Argument of type '(item: string) => boolean' is not assignable to parameter of type '(value: number, index: number, array: number[]) => unknown'.\n      Types of parameters 'item' and 'value' are incompatible.\n        Type 'number' is not assignable to type 'string'.",
+        "actual": "No overload matches this call."
+      }
+    },
+    {
+      "id": "lib:lib-filter-result-error/main.ts",
+      "code": 2322,
+      "message": {
+        "expected": "Type 'number[]' is not assignable to type 'string[]'.\n  Type 'number' is not assignable to type 'string'.",
+        "actual": "Type 'number[]' is not assignable to type 'string[]'."
+      }
+    },
+    {
+      "id": "lib:lib-json-replacer-error/main.ts",
+      "code": 2769,
+      "message": {
+        "expected": "No overload matches this call.\n  Overload 1 of 2, '(value: any, replacer?: ((this: any, key: string, value: any) => any) | undefined, space?: string | number | undefined): string', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type '(this: any, key: string, value: any) => any'.\n  Overload 2 of 2, '(value: any, replacer?: (string | number)[] | null | undefined, space?: string | number | undefined): string', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type '(string | number)[]'.",
+        "actual": "No overload matches this call."
+      }
+    },
+    {
+      "id": "lib:lib-json-replacer-type-error/main.ts",
+      "code": 2769,
+      "message": {
+        "expected": "No overload matches this call.\n  Overload 1 of 2, '(value: any, replacer?: ((this: any, key: string, value: any) => any) | undefined, space?: string | number | undefined): string', gave the following error.\n    Argument of type '(key: number, item: any) => any' is not assignable to parameter of type '(this: any, key: string, value: any) => any'.\n      Types of parameters 'key' and 'key' are incompatible.\n        Type 'string' is not assignable to type 'number'.\n  Overload 2 of 2, '(value: any, replacer?: (string | number)[] | null | undefined, space?: string | number | undefined): string', gave the following error.\n    Argument of type '(key: number, item: any) => any' is not assignable to parameter of type '(string | number)[]'.",
+        "actual": "No overload matches this call."
+      }
+    },
+    {
+      "id": "lib:lib-json-space-error/main.ts",
+      "code": 2769,
+      "message": {
+        "expected": "No overload matches this call.\n  Overload 1 of 2, '(value: any, replacer?: ((this: any, key: string, value: any) => any) | undefined, space?: string | number | undefined): string', gave the following error.\n    Argument of type 'null' is not assignable to parameter of type '((this: any, key: string, value: any) => any) | undefined'.\n  Overload 2 of 2, '(value: any, replacer?: (string | number)[] | null | undefined, space?: string | number | undefined): string', gave the following error.\n    Argument of type 'true' is not assignable to parameter of type 'string | number | undefined'.",
+        "actual": "No overload matches this call."
+      }
+    },
+    {
+      "id": "lib:lib-numeric-member-method-error/main.ts",
+      "code": 2345,
+      "message": {
+        "expected": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+        "actual": "Argument of type '\"bad\"' is not assignable to parameter of type 'number'."
+      }
+    },
+    {
+      "id": "lib:lib-text-member-method-error/main.ts",
+      "code": 2551,
+      "message": {
+        "expected": "Property 'toFixed' does not exist on type 'Values.A'. Did you mean 'fixed'?",
+        "actual": "Property 'toFixed' does not exist on type 'string'. Did you mean 'fixed'?"
+      },
+      "relatedInformation": {
+        "expected": [
+          {
+            "code": 2728,
+            "message": "'fixed' is declared here.",
+            "module": "<typescript-lib>/lib.es2015.core.d.ts",
+            "position": {
+              "line": 487,
+              "column": 5,
+              "length": 16
+            }
+          }
+        ],
+        "actual": []
+      }
+    },
+    {
+      "id": "lib:lib-loop-unguarded-error/main.ts",
+      "code": 2345,
+      "message": {
+        "expected": "Argument of type 'string | number' is not assignable to parameter of type 'number'.\n  Type 'string' is not assignable to type 'number'.",
+        "actual": "Argument of type 'number | string' is not assignable to parameter of type 'number'."
+      }
+    },
+    {
+      "id": "lib:lib-loop-reassigned-error/main.ts",
+      "code": 2345,
+      "message": {
+        "expected": "Argument of type 'string | number' is not assignable to parameter of type 'number'.\n  Type 'string' is not assignable to type 'number'.",
+        "actual": "Argument of type 'number | string' is not assignable to parameter of type 'number'."
+      }
+    },
+    {
+      "id": "lib:lib-loop-return-assigned-error/main.ts",
+      "code": 2345,
+      "message": {
+        "expected": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+        "actual": "Argument of type 'number | string' is not assignable to parameter of type 'number'."
+      }
+    },
+    {
+      "id": "lib:lib-loop-shadowed-error/main.ts",
+      "code": 2345,
+      "message": {
+        "expected": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+        "actual": "Argument of type 'number | string' is not assignable to parameter of type 'number'."
+      }
+    },
+    {
+      "id": "lib:lib-loop-following-error/main.ts",
+      "code": 2345,
+      "message": {
+        "expected": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+        "actual": "Argument of type 'number | string' is not assignable to parameter of type 'number'."
+      }
+    },
+    {
+      "id": "namespace:namespace-error-bad-call/main.ts",
+      "code": 2345,
+      "message": {
+        "expected": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+        "actual": "Argument of type '\"x\"' is not assignable to parameter of type 'number'."
+      }
+    },
+    {
+      "id": "namespace:namespace-error-generic-arg/main.ts",
+      "code": 2322,
+      "relatedInformation": {
+        "expected": [
+          {
+            "code": 6500,
+            "message": "The expected type comes from property 'v' which is declared here on type 'Box<number>'",
+            "module": "main.ts",
+            "position": {
+              "line": 6,
+              "column": 31,
+              "length": 1
+            }
+          }
+        ],
+        "actual": []
+      }
+    },
+    {
+      "id": "namespace:namespace-error-inner-hidden/main.ts",
+      "code": 2339,
+      "message": {
+        "expected": "Property 'secret' does not exist on type 'typeof Inner'.",
+        "actual": "Property 'secret' does not exist on type 'typeof N.Inner'."
+      }
+    },
+    {
+      "id": "namespace:namespace-error-missing-method/main.ts",
+      "code": 2339,
+      "message": {
+        "expected": "Property 'nope' does not exist on type 'C'.",
+        "actual": "Property 'nope' does not exist on type 'N.C'."
+      }
+    },
+    {
+      "id": "namespace:namespace-error-type-as-value/main.ts",
+      "code": 2708,
+      "message": {
+        "expected": "Cannot use namespace 'N' as a value.",
+        "actual": "Cannot use namespace 'N.I' as a value."
+      }
+    },
+    {
+      "id": "namespace:namespace-imported/bad-argument-error.ts",
+      "code": 2322,
+      "relatedInformation": {
+        "expected": [
+          {
+            "code": 6500,
+            "message": "The expected type comes from property 'sides' which is declared here on type 'Shape'",
+            "module": "lib.ts",
+            "position": {
+              "line": 5,
+              "column": 26,
+              "length": 5
+            }
+          }
+        ],
+        "actual": []
+      }
+    },
+    {
+      "id": "namespace:namespace-imported/hidden-type-error.ts",
+      "code": 2724,
+      "message": {
+        "expected": "'\"<fixtures>/typescript_oracle/namespace-imported/lib\".Geo' has no exported member named 'Internal'. Did you mean 'internal'?",
+        "actual": "'Geo' has no exported member named 'Internal'. Did you mean 'internal'?"
+      }
+    },
+    {
+      "id": "namespace:namespace-imported/type-only-value-error.ts",
+      "code": 1361,
+      "relatedInformation": {
+        "expected": [
+          {
+            "code": 1376,
+            "message": "'Geo' was imported here.",
+            "module": "type-only-value-error.ts",
+            "position": {
+              "line": 5,
+              "column": 15,
+              "length": 3
+            }
+          }
+        ],
+        "actual": []
+      }
+    },
+    {
+      "id": "namespace:namespace-imported/unexported-error.ts",
+      "code": 2305,
+      "message": {
+        "expected": "Module '\"./lib.ts\"' has no exported member 'Missing'.",
+        "actual": "Module './lib.ts' has no exported member 'Missing'."
+      }
+    },
+    {
+      "id": "unknown-name:unknown-name-area-forward-error/main.ts",
+      "code": 2448,
+      "relatedInformation": {
+        "expected": [
+          {
+            "code": 2728,
+            "message": "'value' is declared here.",
+            "module": "main.ts",
+            "position": {
+              "line": 6,
+              "column": 31,
+              "length": 5
+            }
+          }
+        ],
+        "actual": []
+      }
+    },
+    {
+      "id": "unknown-name:unknown-name-area-merged-before-error/main.ts",
+      "code": 2449,
+      "relatedInformation": {
+        "expected": [
+          {
+            "code": 2728,
+            "message": "'Thing' is declared here.",
+            "module": "main.ts",
+            "position": {
+              "line": 5,
+              "column": 28,
+              "length": 5
+            }
+          }
+        ],
+        "actual": []
+      }
+    },
+    {
+      "id": "unknown-name:unknown-name-catch-escape-error/main.ts",
+      "code": 2552,
+      "relatedInformation": {
+        "expected": [
+          {
+            "code": 2728,
+            "message": "'Error' is declared here.",
+            "module": "<typescript-lib>/lib.es5.d.ts",
+            "position": {
+              "line": 1087,
+              "column": 13,
+              "length": 5
+            }
+          }
+        ],
+        "actual": []
+      }
+    },
+    {
+      "id": "unknown-name:unknown-name-const-before-error/main.ts",
+      "code": 2448,
+      "relatedInformation": {
+        "expected": [
+          {
+            "code": 2728,
+            "message": "'value' is declared here.",
+            "module": "main.ts",
+            "position": {
+              "line": 6,
+              "column": 7,
+              "length": 5
+            }
+          }
+        ],
+        "actual": []
+      }
+    },
+    {
+      "id": "unknown-name:unknown-name-extends-before-error/main.ts",
+      "code": 2449,
+      "message": {
+        "expected": "Class 'Base' used before its declaration.",
+        "actual": "TS2449: class Base is used before its declaration"
+      },
+      "relatedInformation": {
+        "expected": [
+          {
+            "code": 2728,
+            "message": "'Base' is declared here.",
+            "module": "main.ts",
+            "position": {
+              "line": 6,
+              "column": 7,
+              "length": 4
+            }
+          }
+        ],
+        "actual": []
+      }
+    },
+    {
+      "id": "unknown-name:unknown-name-let-before-error/main.ts",
+      "code": 2448,
+      "relatedInformation": {
+        "expected": [
+          {
+            "code": 2728,
+            "message": "'value' is declared here.",
+            "module": "main.ts",
+            "position": {
+              "line": 6,
+              "column": 5,
+              "length": 5
+            }
+          }
+        ],
+        "actual": []
+      }
+    },
+    {
+      "id": "unknown-name:unknown-name-new-before-error/main.ts",
+      "code": 2449,
+      "relatedInformation": {
+        "expected": [
+          {
+            "code": 2728,
+            "message": "'Box' is declared here.",
+            "module": "main.ts",
+            "position": {
+              "line": 6,
+              "column": 7,
+              "length": 3
+            }
+          }
+        ],
+        "actual": []
+      }
+    },
+    {
+      "id": "unknown-name:unknown-name-raw-catch-escape-error/main.ts",
+      "code": 2552,
+      "relatedInformation": {
+        "expected": [
+          {
+            "code": 2728,
+            "message": "'Error' is declared here.",
+            "module": "<typescript-lib>/lib.es5.d.ts",
+            "position": {
+              "line": 1087,
+              "column": 13,
+              "length": 5
+            }
+          }
+        ],
+        "actual": []
+      }
+    },
+    {
+      "id": "unknown-name:unknown-name-raw-self-error/main.ts",
+      "code": 2448,
+      "relatedInformation": {
+        "expected": [
+          {
+            "code": 2728,
+            "message": "'value' is declared here.",
+            "module": "main.ts",
+            "position": {
+              "line": 5,
+              "column": 19,
+              "length": 5
+            }
+          }
+        ],
+        "actual": []
+      }
+    },
+    {
+      "id": "unknown-name:unknown-name-self-initializer-error/main.ts",
+      "code": 2448,
+      "relatedInformation": {
+        "expected": [
+          {
+            "code": 2728,
+            "message": "'value' is declared here.",
+            "module": "main.ts",
+            "position": {
+              "line": 5,
+              "column": 7,
+              "length": 5
+            }
+          }
+        ],
+        "actual": []
+      }
+    },
+    {
+      "id": "unknown-name:unknown-name-shadow-before-error/main.ts",
+      "code": 2448,
+      "relatedInformation": {
+        "expected": [
+          {
+            "code": 2728,
+            "message": "'value' is declared here.",
+            "module": "main.ts",
+            "position": {
+              "line": 6,
+              "column": 35,
+              "length": 5
+            }
+          }
+        ],
+        "actual": []
+      }
+    },
+    {
+      "id": "strictness:strictness-exactoptionalpropertytypes-1",
+      "code": 2375,
+      "message": {
+        "expected": "Type '{ item: undefined; }' is not assignable to type 'Value' with 'exactOptionalPropertyTypes: true'. Consider adding 'undefined' to the types of the target's properties.\n  Types of property 'item' are incompatible.\n    Type 'undefined' is not assignable to type 'number'.",
+        "actual": "Type 'record' is not assignable to type 'Value' with 'exactOptionalPropertyTypes: true'. Consider adding 'undefined' to the types of the target's properties."
+      }
+    },
+    {
+      "id": "strictness:strictness-nouncheckedindexedaccess-1",
+      "code": 2322,
+      "message": {
+        "expected": "Type 'number | undefined' is not assignable to type 'number'.\n  Type 'undefined' is not assignable to type 'number'.",
+        "actual": "Type 'number | undefined' is not assignable to type 'number'."
+      }
+    },
+    {
+      "id": "strictness:strictness-strictbuiltiniteratorreturn-1",
+      "code": 2322,
+      "message": {
+        "expected": "Type 'number | undefined' is not assignable to type 'number'.\n  Type 'undefined' is not assignable to type 'number'.",
+        "actual": "Type 'number | undefined' is not assignable to type 'number'."
+      }
+    },
+    {
+      "id": "strictness:strictness-strictfunctiontypes-1",
+      "code": 2322,
+      "message": {
+        "expected": "Type '(value: string) => void' is not assignable to type '(value: string | number) => void'.\n  Types of parameters 'value' and 'value' are incompatible.\n    Type 'string | number' is not assignable to type 'string'.\n      Type 'number' is not assignable to type 'string'.",
+        "actual": "Type 'function' is not assignable to type 'function'."
+      }
+    },
+    {
+      "id": "strictness:strictness-useunknownincatchvariables-1",
+      "code": 2322,
+      "message": {
+        "expected": "Type 'unknown' is not assignable to type 'number'.",
+        "actual": "catch variable of type `unknown` is not assignable to the declared type"
+      }
+    }
+  ]
+}

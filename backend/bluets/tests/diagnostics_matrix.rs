@@ -229,3 +229,74 @@ fn recorded_codes_messages_and_spans_match_pinned_typescript() {
         String::from_utf8_lossy(&output.stderr)
     );
 }
+
+#[test]
+fn primary_messages_and_related_information_match_pinned_typescript() {
+    let mut failures = Vec::new();
+    for case in reference()["cases"].as_array().unwrap() {
+        let expected = &case["first"];
+        if expected.is_null() {
+            continue;
+        }
+        let mut command = Command::new(env!("CARGO_BIN_EXE_bluetsc"));
+        let source_root = if let Some(config) = case["config"].as_str() {
+            command
+                .arg("--project")
+                .arg(fixtures().join(config))
+                .arg("--noEmit");
+            Path::new(config).parent().unwrap().to_path_buf()
+        } else {
+            let entry = Path::new("typescript_oracle").join(case["entry"].as_str().unwrap());
+            command.arg("check").arg(fixtures().join(&entry));
+            command.args(legacy_flags(case["flags"].as_array().unwrap()));
+            entry.parent().unwrap().to_path_buf()
+        };
+        let output = command.arg("--diagnostics-json").output().unwrap();
+        let diagnostics = String::from_utf8_lossy(&output.stderr)
+            .lines()
+            .map(|line| serde_json::from_str::<Value>(line).unwrap())
+            .collect::<Vec<_>>();
+        let actual = &diagnostics[0]["typescript"];
+        let related = expected["related"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .map(|item| {
+                let file = item["file"].as_str().unwrap();
+                let module = if file.starts_with("<typescript-lib>/") {
+                    file.to_string()
+                } else {
+                    Path::new(file)
+                        .strip_prefix(&source_root)
+                        .unwrap()
+                        .to_string_lossy()
+                        .replace('\\', "/")
+                };
+                serde_json::json!({"code":item["code"],"message":item["message"],"module":module,
+                "position":{"line":item["line"],"column":item["column"],"length":item["length"]}})
+            })
+            .collect::<Vec<_>>();
+        let actual_related = actual["relatedInformation"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .map(|item| {
+                serde_json::json!({"code":item["code"],"message":item["message"],
+                "module":item["span"]["module"],"position":item["position"]})
+            })
+            .collect::<Vec<_>>();
+        if actual["message"] != expected["message"] || actual_related != related {
+            failures.push(format!(
+                "{}: expected message {} and related {:?}; received {} and {:?}",
+                case["id"], expected["message"], related, actual["message"], actual_related
+            ));
+        }
+    }
+    let count = failures.len();
+    failures.truncate(12);
+    assert!(
+        failures.is_empty(),
+        "{count} presentation mismatches:\n{}",
+        failures.join("\n")
+    );
+}

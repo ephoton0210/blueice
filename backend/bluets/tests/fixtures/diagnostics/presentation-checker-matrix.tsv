@@ -1,0 +1,15 @@
+valid-emit	accept
+valid-noemit	accept
+error-emit	reject
+error-noemit	reject
+error-blocked	reject
+error-noemit-blocked	reject
+pretty-error	reject
+pretty-related	reject
+plain-related	reject
+pretty-multiple	reject
+pretty-crlf	reject
+summary-valid	accept
+summary-error	reject
+cli-unknown	reject
+config-unknown	reject

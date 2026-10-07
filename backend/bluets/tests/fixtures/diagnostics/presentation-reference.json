@@ -1,0 +1,537 @@
+{
+  "version": "5.9.3",
+  "exitCodes": {
+    "success": 0,
+    "outputsSkipped": 1,
+    "outputsGenerated": 2
+  },
+  "cases": [
+    {
+      "name": "valid-emit",
+      "source": "export const value: number = 1;\nconsole.log(value);\n",
+      "config": {
+        "compilerOptions": {
+          "target": "es2022",
+          "module": "es2022",
+          "strict": true,
+          "outDir": "out",
+          "pretty": false
+        },
+        "files": [
+          "main.ts"
+        ]
+      },
+      "args": [
+        "--project",
+        "."
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": "",
+      "summaryFields": [],
+      "assets": [
+        "main.js"
+      ],
+      "runtime": "1\n"
+    },
+    {
+      "name": "valid-noemit",
+      "source": "export const value: number = 1;\nconsole.log(value);\n",
+      "config": {
+        "compilerOptions": {
+          "target": "es2022",
+          "module": "es2022",
+          "strict": true,
+          "outDir": "out",
+          "pretty": false,
+          "noEmit": true
+        },
+        "files": [
+          "main.ts"
+        ]
+      },
+      "args": [
+        "--project",
+        "."
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": "",
+      "summaryFields": [],
+      "assets": [],
+      "runtime": null
+    },
+    {
+      "name": "error-emit",
+      "source": "export const value: number = \"wrong\";\nconsole.log(value);\n",
+      "config": {
+        "compilerOptions": {
+          "target": "es2022",
+          "module": "es2022",
+          "strict": true,
+          "outDir": "out",
+          "pretty": false
+        },
+        "files": [
+          "main.ts"
+        ]
+      },
+      "args": [
+        "--project",
+        "."
+      ],
+      "exit": 2,
+      "stdout": "main.ts(1,14): error TS2322: Type 'string' is not assignable to type 'number'.\n",
+      "stderr": "",
+      "summaryFields": [],
+      "assets": [
+        "main.js"
+      ],
+      "runtime": "wrong\n"
+    },
+    {
+      "name": "error-noemit",
+      "source": "export const value: number = \"wrong\";\nconsole.log(value);\n",
+      "config": {
+        "compilerOptions": {
+          "target": "es2022",
+          "module": "es2022",
+          "strict": true,
+          "outDir": "out",
+          "pretty": false,
+          "noEmit": true
+        },
+        "files": [
+          "main.ts"
+        ]
+      },
+      "args": [
+        "--project",
+        "."
+      ],
+      "exit": 2,
+      "stdout": "main.ts(1,14): error TS2322: Type 'string' is not assignable to type 'number'.\n",
+      "stderr": "",
+      "summaryFields": [],
+      "assets": [],
+      "runtime": null
+    },
+    {
+      "name": "error-blocked",
+      "source": "export const value: number = \"wrong\";\nconsole.log(value);\n",
+      "config": {
+        "compilerOptions": {
+          "target": "es2022",
+          "module": "es2022",
+          "strict": true,
+          "outDir": "out",
+          "pretty": false,
+          "noEmitOnError": true
+        },
+        "files": [
+          "main.ts"
+        ]
+      },
+      "args": [
+        "--project",
+        "."
+      ],
+      "exit": 1,
+      "stdout": "main.ts(1,14): error TS2322: Type 'string' is not assignable to type 'number'.\n",
+      "stderr": "",
+      "summaryFields": [],
+      "assets": [],
+      "runtime": null
+    },
+    {
+      "name": "error-noemit-blocked",
+      "source": "export const value: number = \"wrong\";\nconsole.log(value);\n",
+      "config": {
+        "compilerOptions": {
+          "target": "es2022",
+          "module": "es2022",
+          "strict": true,
+          "outDir": "out",
+          "pretty": false,
+          "noEmit": true,
+          "noEmitOnError": true
+        },
+        "files": [
+          "main.ts"
+        ]
+      },
+      "args": [
+        "--project",
+        "."
+      ],
+      "exit": 2,
+      "stdout": "main.ts(1,14): error TS2322: Type 'string' is not assignable to type 'number'.\n",
+      "stderr": "",
+      "summaryFields": [],
+      "assets": [],
+      "runtime": null
+    },
+    {
+      "name": "pretty-error",
+      "source": "export const value: number = \"wrong\";\nconsole.log(value);\n",
+      "config": {
+        "compilerOptions": {
+          "target": "es2022",
+          "module": "es2022",
+          "strict": true,
+          "outDir": "out",
+          "pretty": true,
+          "noEmit": true
+        },
+        "files": [
+          "main.ts"
+        ]
+      },
+      "args": [
+        "--project",
+        "."
+      ],
+      "exit": 2,
+      "stdout": "\u001b[96mmain.ts\u001b[0m:\u001b[93m1\u001b[0m:\u001b[93m14\u001b[0m - \u001b[91merror\u001b[0m\u001b[90m TS2322: \u001b[0mType 'string' is not assignable to type 'number'.\n\n\u001b[7m1\u001b[0m export const value: number = \"wrong\";\n\u001b[7m \u001b[0m \u001b[91m             ~~~~~\u001b[0m\n\n\nFound 1 error in main.ts\u001b[90m:1\u001b[0m\n\n",
+      "stderr": "",
+      "summaryFields": [],
+      "assets": [],
+      "runtime": null
+    },
+    {
+      "name": "pretty-related",
+      "source": "class Child extends Base {}\nclass Base {}\nexport {};\n",
+      "config": {
+        "compilerOptions": {
+          "target": "es2022",
+          "module": "es2022",
+          "strict": true,
+          "outDir": "out",
+          "pretty": true,
+          "noEmit": true
+        },
+        "files": [
+          "main.ts"
+        ]
+      },
+      "args": [
+        "--project",
+        "."
+      ],
+      "exit": 2,
+      "stdout": "\u001b[96mmain.ts\u001b[0m:\u001b[93m1\u001b[0m:\u001b[93m21\u001b[0m - \u001b[91merror\u001b[0m\u001b[90m TS2449: \u001b[0mClass 'Base' used before its declaration.\n\n\u001b[7m1\u001b[0m class Child extends Base {}\n\u001b[7m \u001b[0m \u001b[91m                    ~~~~\u001b[0m\n\n  \u001b[96mmain.ts\u001b[0m:\u001b[93m2\u001b[0m:\u001b[93m7\u001b[0m\n    \u001b[7m2\u001b[0m class Base {}\n    \u001b[7m \u001b[0m \u001b[96m      ~~~~\u001b[0m\n    'Base' is declared here.\n\n\nFound 1 error in main.ts\u001b[90m:1\u001b[0m\n\n",
+      "stderr": "",
+      "summaryFields": [],
+      "assets": [],
+      "runtime": null
+    },
+    {
+      "name": "plain-related",
+      "source": "class Child extends Base {}\nclass Base {}\nexport {};\n",
+      "config": {
+        "compilerOptions": {
+          "target": "es2022",
+          "module": "es2022",
+          "strict": true,
+          "outDir": "out",
+          "pretty": false,
+          "noEmit": true
+        },
+        "files": [
+          "main.ts"
+        ]
+      },
+      "args": [
+        "--project",
+        "."
+      ],
+      "exit": 2,
+      "stdout": "main.ts(1,21): error TS2449: Class 'Base' used before its declaration.\n",
+      "stderr": "",
+      "summaryFields": [],
+      "assets": [],
+      "runtime": null
+    },
+    {
+      "name": "pretty-multiple",
+      "source": "export const first: number = \"x\";\nexport const second: boolean = 1;\n",
+      "config": {
+        "compilerOptions": {
+          "target": "es2022",
+          "module": "es2022",
+          "strict": true,
+          "outDir": "out",
+          "pretty": true,
+          "noEmit": true
+        },
+        "files": [
+          "main.ts"
+        ]
+      },
+      "args": [
+        "--project",
+        "."
+      ],
+      "exit": 2,
+      "stdout": "\u001b[96mmain.ts\u001b[0m:\u001b[93m1\u001b[0m:\u001b[93m14\u001b[0m - \u001b[91merror\u001b[0m\u001b[90m TS2322: \u001b[0mType 'string' is not assignable to type 'number'.\n\n\u001b[7m1\u001b[0m export const first: number = \"x\";\n\u001b[7m \u001b[0m \u001b[91m             ~~~~~\u001b[0m\n\n\u001b[96mmain.ts\u001b[0m:\u001b[93m2\u001b[0m:\u001b[93m14\u001b[0m - \u001b[91merror\u001b[0m\u001b[90m TS2322: \u001b[0mType 'number' is not assignable to type 'boolean'.\n\n\u001b[7m2\u001b[0m export const second: boolean = 1;\n\u001b[7m \u001b[0m \u001b[91m             ~~~~~~\u001b[0m\n\n\nFound 2 errors in the same file, starting at: main.ts\u001b[90m:1\u001b[0m\n\n",
+      "stderr": "",
+      "summaryFields": [],
+      "assets": [],
+      "runtime": null
+    },
+    {
+      "name": "pretty-crlf",
+      "source": "export const value: number = \"wrong\";\r\nconsole.log(value);\r\n",
+      "config": {
+        "compilerOptions": {
+          "target": "es2022",
+          "module": "es2022",
+          "strict": true,
+          "outDir": "out",
+          "pretty": true,
+          "noEmit": true
+        },
+        "files": [
+          "main.ts"
+        ]
+      },
+      "args": [
+        "--project",
+        "."
+      ],
+      "exit": 2,
+      "stdout": "\u001b[96mmain.ts\u001b[0m:\u001b[93m1\u001b[0m:\u001b[93m14\u001b[0m - \u001b[91merror\u001b[0m\u001b[90m TS2322: \u001b[0mType 'string' is not assignable to type 'number'.\n\n\u001b[7m1\u001b[0m export const value: number = \"wrong\";\n\u001b[7m \u001b[0m \u001b[91m             ~~~~~\u001b[0m\n\n\nFound 1 error in main.ts\u001b[90m:1\u001b[0m\n\n",
+      "stderr": "",
+      "summaryFields": [],
+      "assets": [],
+      "runtime": null
+    },
+    {
+      "name": "summary-valid",
+      "source": "export const value: number = 1;\nconsole.log(value);\n",
+      "config": {
+        "compilerOptions": {
+          "target": "es2022",
+          "module": "es2022",
+          "strict": true,
+          "outDir": "out",
+          "pretty": false,
+          "noEmit": true,
+          "diagnostics": true
+        },
+        "files": [
+          "main.ts"
+        ]
+      },
+      "args": [
+        "--project",
+        "."
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": "",
+      "summaryFields": [
+        {
+          "name": "Files",
+          "unit": "count"
+        },
+        {
+          "name": "Lines",
+          "unit": "count"
+        },
+        {
+          "name": "Identifiers",
+          "unit": "count"
+        },
+        {
+          "name": "Symbols",
+          "unit": "count"
+        },
+        {
+          "name": "Types",
+          "unit": "count"
+        },
+        {
+          "name": "Instantiations",
+          "unit": "count"
+        },
+        {
+          "name": "Memory used",
+          "unit": "K"
+        },
+        {
+          "name": "I/O read",
+          "unit": "s"
+        },
+        {
+          "name": "I/O write",
+          "unit": "s"
+        },
+        {
+          "name": "Parse time",
+          "unit": "s"
+        },
+        {
+          "name": "Bind time",
+          "unit": "s"
+        },
+        {
+          "name": "Check time",
+          "unit": "s"
+        },
+        {
+          "name": "Emit time",
+          "unit": "s"
+        },
+        {
+          "name": "Total time",
+          "unit": "s"
+        }
+      ],
+      "assets": [],
+      "runtime": null
+    },
+    {
+      "name": "summary-error",
+      "source": "export const value: number = \"wrong\";\nconsole.log(value);\n",
+      "config": {
+        "compilerOptions": {
+          "target": "es2022",
+          "module": "es2022",
+          "strict": true,
+          "outDir": "out",
+          "pretty": false,
+          "noEmit": true,
+          "diagnostics": true
+        },
+        "files": [
+          "main.ts"
+        ]
+      },
+      "args": [
+        "--project",
+        "."
+      ],
+      "exit": 2,
+      "stdout": "main.ts(1,14): error TS2322: Type 'string' is not assignable to type 'number'.\n",
+      "stderr": "",
+      "summaryFields": [
+        {
+          "name": "Files",
+          "unit": "count"
+        },
+        {
+          "name": "Lines",
+          "unit": "count"
+        },
+        {
+          "name": "Identifiers",
+          "unit": "count"
+        },
+        {
+          "name": "Symbols",
+          "unit": "count"
+        },
+        {
+          "name": "Types",
+          "unit": "count"
+        },
+        {
+          "name": "Instantiations",
+          "unit": "count"
+        },
+        {
+          "name": "Memory used",
+          "unit": "K"
+        },
+        {
+          "name": "I/O read",
+          "unit": "s"
+        },
+        {
+          "name": "I/O write",
+          "unit": "s"
+        },
+        {
+          "name": "Parse time",
+          "unit": "s"
+        },
+        {
+          "name": "Bind time",
+          "unit": "s"
+        },
+        {
+          "name": "Check time",
+          "unit": "s"
+        },
+        {
+          "name": "Emit time",
+          "unit": "s"
+        },
+        {
+          "name": "Total time",
+          "unit": "s"
+        }
+      ],
+      "assets": [],
+      "runtime": null
+    },
+    {
+      "name": "cli-unknown",
+      "source": "export const value: number = 1;\nconsole.log(value);\n",
+      "config": {
+        "compilerOptions": {
+          "target": "es2022",
+          "module": "es2022",
+          "strict": true,
+          "outDir": "out",
+          "pretty": false
+        },
+        "files": [
+          "main.ts"
+        ]
+      },
+      "args": [
+        "--project",
+        ".",
+        "--unknownPresentationOption"
+      ],
+      "exit": 1,
+      "stdout": "error TS5023: Unknown compiler option '--unknownPresentationOption'.\n",
+      "stderr": "",
+      "summaryFields": [],
+      "assets": [],
+      "runtime": null
+    },
+    {
+      "name": "config-unknown",
+      "source": "export const value: number = 1;\nconsole.log(value);\n",
+      "config": {
+        "compilerOptions": {
+          "target": "es2022",
+          "module": "es2022",
+          "strict": true,
+          "outDir": "out",
+          "pretty": true,
+          "unknownPresentationOption": true,
+          "noEmitOnError": true
+        },
+        "files": [
+          "main.ts"
+        ]
+      },
+      "args": [
+        "--project",
+        "."
+      ],
+      "exit": 2,
+      "stdout": "\u001b[96mtsconfig.json\u001b[0m:\u001b[93m8\u001b[0m:\u001b[93m5\u001b[0m - \u001b[91merror\u001b[0m\u001b[90m TS5023: \u001b[0mUnknown compiler option 'unknownPresentationOption'.\n\n\u001b[7m8\u001b[0m     \"unknownPresentationOption\": true,\n\u001b[7m \u001b[0m \u001b[91m    ~~~~~~~~~~~~~~~~~~~~~~~~~~~\u001b[0m\n\n\nFound 1 error in tsconfig.json\u001b[90m:8\u001b[0m\n\n",
+      "stderr": "",
+      "summaryFields": [],
+      "assets": [
+        "main.js"
+      ],
+      "runtime": "1\n"
+    }
+  ]
+}

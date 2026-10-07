@@ -326,7 +326,9 @@ and import rules.
   - *Test-first baseline (2026-10-07):* 800 primary coordinates are absent from machine JSON; derived byte spans differ in 543 entries of the 1,398 language/strictness cases. Another 867 configuration/CLI/option-combination cases add 16 tracked primary failures (14 unstructured configuration/argument failures and two missing source positions). Four pinned controls cover UTF-16 columns and LF/CRLF/CR. Every mismatch remains tracked until zero.
   - *Verified (2026-10-07):* zero primary position differences across 1,398 language/strictness and 867 configuration/CLI/option-combination cases; UTF-16 and original source module identity are enforced. Failed parser sources remain authorized and fingerprinted without reloading. K.0: format and Clippy pass; 1,091 tests in 65 groups pass, including all 125 ignored oracles. Largest production source: 1,185 lines.
 - [ ] **K.3.3 Presentation (S).** Related information, `--pretty` output, `--diagnostics`-style summary,
-  and exit codes as `tsc` (0, 1 with emit, 2 without).
+  and exit codes as pinned `tsc`: 0 on success, 1 when diagnostics block outputs through
+  `noEmitOnError`, and 2 for ordinary diagnostic completion (including `noEmit`).
+  - *Test-first baseline (2026-10-07):* 336 primary rendered-message differences and 57 missing related-information cases are tracked across the 800 rejected corpus entries. Fifteen actual CLI observations record plain/pretty source context, related context, multiple diagnostics, CRLF, summary fields, exact exit status, emitted artifacts and Node execution. Failing replay is committed before implementation. Resource measurements are checked by schema, not compared to TypeScript's different implementation costs.
 
 ### K.4 Type system — M8 — gaps G-T1 to G-T6
 

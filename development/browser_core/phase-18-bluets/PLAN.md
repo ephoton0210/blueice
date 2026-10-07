@@ -4537,3 +4537,30 @@ lines, below the review threshold.
 
 K.3.2 is complete. K.3.3 and the final M7 workspace/platform/coverage gate
 remain required; full TypeScript parity is not claimed.
+
+### K.3.3 Presentation baseline
+
+The pinned primary corpus exposes 336 rendered-message differences and 57
+missing related-information cases (358 distinct primary rows). The complete
+row tracker is `baseline-presentation-mismatches.json`; the public machine
+replay now requires exact rendered messages and related codes, messages,
+source module identity and UTF-16 coordinates for all 800 rejected entries.
+No accepted subset refusal is reclassified and no new language form is added.
+
+Fifteen additional actual CLI observations record plain and pretty output,
+source/related context, multiple diagnostics, CRLF, diagnostics summary fields,
+actual artifacts, Node execution and exit statuses. Numeric resource costs
+vary across implementations and runs, so their finite nonnegative values and
+units are checked instead of asserting TypeScript's counts or timings.
+The config-error formatting case uses `noEmitOnError` to preserve the existing
+fail-closed configuration boundary. The first public replay fails for both
+rendered/related metadata and CLI presentation before implementation.
+
+The TODO's previous exit-code description was reversed. TypeScript 5.9.3's
+actual `ExitStatus` and emitted-file observations establish success 0,
+diagnostics that block outputs through `noEmitOnError` 1, and ordinary
+diagnostic completion 2, including intentional `noEmit`. These measured
+statuses replace the mistaken description. The library compiler, registered
+project builds and strict-runtime publication retain their fail-closed rules;
+any native CLI error emission requires a separate bounded, explicit route.
+K.3.3 and the final M7 gate remain open.
