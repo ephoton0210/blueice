@@ -262,6 +262,126 @@
       }
     },
     {
+      "entry": "relate-fresh-member-alias/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "relate-fresh-method-alias/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "relate-fresh-method-argument/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2353,
+        "message": "Object literal may only specify known properties, and 'extra' does not exist in type 'Shape'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 24,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "relate-fresh-property-argument/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2353,
+        "message": "Object literal may only specify known properties, and 'extra' does not exist in type 'Shape'.",
+        "module": "main.ts",
+        "position": {
+          "line": 3,
+          "column": 24,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "relate-fresh-write-alias/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "relate-fresh-write-bracket/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2353,
+        "message": "Object literal may only specify known properties, and 'extra' does not exist in type 'Shape'.",
+        "module": "main.ts",
+        "position": {
+          "line": 3,
+          "column": 29,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "relate-fresh-write-element/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2353,
+        "message": "Object literal may only specify known properties, and 'extra' does not exist in type 'Shape'.",
+        "module": "main.ts",
+        "position": {
+          "line": 3,
+          "column": 25,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "relate-fresh-write-indexed/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "relate-fresh-write-member/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2353,
+        "message": "Object literal may only specify known properties, and 'extra' does not exist in type 'Shape'.",
+        "module": "main.ts",
+        "position": {
+          "line": 3,
+          "column": 26,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "relate-fresh-write-variable/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2353,
+        "message": "Object literal may only specify known properties, and 'extra' does not exist in type 'Shape'.",
+        "module": "main.ts",
+        "position": {
+          "line": 3,
+          "column": 21,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
       "entry": "relate-function-callable-record/main.ts",
       "accepts": true,
       "runtime": false,

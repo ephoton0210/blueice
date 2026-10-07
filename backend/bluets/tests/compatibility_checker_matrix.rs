@@ -53,7 +53,7 @@ fn position(position: &Option<blueice_bluets::TypeScriptPosition>) -> Value {
 #[test]
 fn matrix_covers_every_compatibility_fixture() {
     let cases = cases();
-    assert_eq!(cases.len(), 78);
+    assert_eq!(cases.len(), 88);
     assert_eq!(
         cases.iter().filter(|case| case["runtime"] == true).count(),
         4
@@ -168,7 +168,7 @@ fn compatibility_match_pinned_verdicts_and_primary_diagnostics() {
     }
     assert!(
         failures.is_empty(),
-        "{} flow mismatches:\n{}",
+        "{} compatibility mismatches:\n{}",
         failures.len(),
         failures.join("\n")
     );

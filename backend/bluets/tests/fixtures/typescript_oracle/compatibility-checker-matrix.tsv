@@ -21,6 +21,16 @@ relate-excess-union/main.ts	accept
 relate-excess-union-error/main.ts	reject
 relate-excess-variable-alias/main.ts	accept
 relate-excess-variable-error/main.ts	reject
+relate-fresh-member-alias/main.ts	accept
+relate-fresh-method-alias/main.ts	accept
+relate-fresh-method-argument/main.ts	reject
+relate-fresh-property-argument/main.ts	reject
+relate-fresh-write-alias/main.ts	accept
+relate-fresh-write-bracket/main.ts	reject
+relate-fresh-write-element/main.ts	reject
+relate-fresh-write-indexed/main.ts	accept
+relate-fresh-write-member/main.ts	reject
+relate-fresh-write-variable/main.ts	reject
 relate-function-callable-record/main.ts	accept
 relate-function-callable-record-error/main.ts	reject
 relate-function-contravariance/main.ts	accept
