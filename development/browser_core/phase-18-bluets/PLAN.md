@@ -4422,3 +4422,11 @@ witnesses bring the source record to 97. Their pre-refinement CLI replay
 incorrectly assigns TS1051/TS1049 and is recorded before implementation. The
 public replay also now forwards the `noUnusedLocals` witness option, producing
 TS6196 rather than misclassifying a disabled diagnostic as a checker gap.
+
+The frozen implementation passes the full K.0 gate: 1,081 tests in 64
+target/doctest groups, including every ignored oracle, with format and all-target
+two-crate Clippy clean. Two final metadata regressions remain before committing
+the implementation: a custom owner loader refusal needs an explicit owner
+reason, and the existing missing-module counterpart must also match Windows
+filesystem error wording. These failures are recorded before refinement;
+the final source still requires its own complete gate. K.3.1 remains open.

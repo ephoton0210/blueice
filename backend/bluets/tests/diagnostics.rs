@@ -5,7 +5,8 @@
 //! Diagnostic compatibility through the public compiler boundary.
 
 use blueice_bluets::{
-    compile, CompilerOptions, DiagnosticCode, MapLoader, ModuleSource, DIAGNOSTICS_VERSION,
+    compile, CompilerOptions, Diagnostic, DiagnosticCode, MapLoader, ModuleLoader, ModuleSource,
+    SourceSpan, DIAGNOSTICS_VERSION,
 };
 
 #[test]
@@ -55,6 +56,47 @@ fn an_owner_resource_budget_retains_a_precise_blue_only_diagnostic() {
         .unwrap()
         .contains("resource budget"));
     assert!(diagnostic.message.contains("module limit"));
+}
+
+#[test]
+fn an_owner_loader_refusal_is_explicit_even_with_a_custom_message() {
+    struct DeniedLoader;
+    impl ModuleLoader for DeniedLoader {
+        fn load(&self, _: &str) -> Result<ModuleSource, String> {
+            Err("The owner denied this input request.".into())
+        }
+    }
+    let result = compile(
+        "memory:///main.ts",
+        &DeniedLoader,
+        CompilerOptions::default(),
+    );
+    assert!(result.has_errors());
+    assert!(result.output.is_none());
+    let diagnostic = &result.diagnostics[0];
+    assert_eq!(diagnostic.code, DiagnosticCode::ModuleNotFound);
+    let json = diagnostic.to_json();
+    assert!(json["typescript"].is_null());
+    assert!(json["noTypeScriptCounterpart"]
+        .as_str()
+        .unwrap()
+        .contains("owner-controlled"));
+}
+
+#[test]
+fn a_missing_module_counterpart_does_not_depend_on_os_error_wording() {
+    for detail in [
+        "No such file or directory (os error 2)",
+        "The system cannot find the path specified. (os error 3)",
+    ] {
+        let diagnostic = Diagnostic::error(
+            DiagnosticCode::ModuleNotFound,
+            SourceSpan::new("memory:///main.ts", 0, 1),
+            format!("cannot resolve `absent` from `main.ts`: {detail}"),
+        );
+        assert_eq!(diagnostic.typescript.as_ref().unwrap().code, 2792);
+        assert_eq!(diagnostic.to_json()["btsCode"], "BTS2000");
+    }
 }
 
 #[test]
