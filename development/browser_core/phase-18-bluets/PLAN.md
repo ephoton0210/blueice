@@ -4645,3 +4645,25 @@ inventory is regenerated (164 refusal sites in ten areas). K.3.3 is complete
 for its measured presentation scope. Final M7 still requires fresh complete
 workspace/platform/coverage CI on the pushed implementation SHA; the earlier
 K.2 CI does not close it.
+
+### M7 Final K.2/K.3 validation
+
+Fresh CI [37590055063](https://github.com/ephoton0210/blueice/actions/runs/37590055063) tests the exact final implementation SHA
+`ed8b6d088d0bb908b5f2914c446c605d6ccbe154` and finishes successfully with all 29 jobs passing.
+All 25 platform configurations pass complete workspace build, tests,
+all-target Clippy with warnings denied, formatting and their existing
+platform/differential gates. The Ubuntu and macOS pinned TypeScript 5.9.3
+oracle jobs both pass, including the corrected presentation recorder.
+Workspace line coverage is 90.60% (181,085 lines, 17,026 missed); independent
+BlueJS line coverage is 93.00% (77,553 lines, 5,427 missed). Both required
+floors pass, with no additional coverage exclusions. This evidence is for the
+K.3 implementation source, rather than reusing the earlier K.2 CI result.
+
+K.2, K.3 and M7 are complete in their documented measured scope. The three
+source-hashed iterator-result type-fact message differences remain explicit
+G-T1/K.4.1 work, and the other inventory gaps remain open; full TypeScript
+parity is not claimed. Production sources remain at most 1,185 lines, so no
+source-size split is required in K.3. The next ordered leaf is K.4.1, starting
+with its required narrowing design decision before implementation.
+This final status update changes documentation only; the validated source,
+fixtures, Git attributes and CI configuration retain the tested SHA's bytes.
