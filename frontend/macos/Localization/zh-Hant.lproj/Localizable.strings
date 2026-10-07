@@ -445,3 +445,5 @@
 "Choose a readable and writable local folder." = "請選擇可讀寫的本機資料夾。";
 "A previous download folder is unavailable. Restore its location to keep the download history." = "先前的下載資料夾無法使用。請還原其位置，以保留下載紀錄。";
 "At most 32 previous download folders are supported." = "最多支援 32 個先前的下載資料夾。";
+
+"This response cannot be resumed. Navigate again to download a new response." = "此回應無法繼續下載。請再次瀏覽以取得新的下載回應。";

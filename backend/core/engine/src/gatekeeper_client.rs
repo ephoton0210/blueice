@@ -60,6 +60,13 @@ pub(crate) struct GatekeeperClearance {
 /// to real `Page`/`TabManager` state on this (background) thread
 /// itself.
 pub(crate) enum NavOutcome {
+    DownloadStarted {
+        transfer_id: u64,
+    },
+    /// URL/form and every redirect have been reviewed; body remains unread.
+    Download {
+        response: blueice_net::FetchedDownload,
+    },
     /// Both gatekeeper stages cleared and the fetch succeeded: ready to
     /// apply via [`crate::Page::apply_fetched`].
     Cleared {
@@ -85,12 +92,16 @@ pub(crate) enum NavOutcome {
     /// immutable start-of-navigation rule snapshot. This is deliberately not
     /// reported as a gatekeeper decision: no review or network request was
     /// made for the blocked hop.
-    ExtensionRuleBlocked { url: String },
+    ExtensionRuleBlocked {
+        url: String,
+    },
     /// The gatekeeper cleared the URL stage, but the actual network
     /// fetch itself failed -- an ordinary navigation error, mapped to
     /// `ServerMessage::Error` exactly as an unfetchable URL was before
     /// gating existed, *not* `GatekeeperBlocked`.
-    FetchFailed { message: String },
+    FetchFailed {
+        message: String,
+    },
 }
 
 enum StageOutcome {
@@ -254,6 +265,7 @@ pub(crate) fn check_and_fetch_request(
                 continue;
             }
             blueice_net::FetchHop::Page(fetched) => fetched,
+            blueice_net::FetchHop::Download(response) => return NavOutcome::Download { response },
         };
 
         if let StageOutcome::Rejected { reason, category } = check_stage(
@@ -709,7 +721,9 @@ mod tests {
             NavOutcome::GatekeeperBlocked { category, .. } => {
                 assert_eq!(category, "gatekeeper-unavailable")
             }
-            NavOutcome::Cleared { .. } => {
+            NavOutcome::DownloadStarted { .. }
+            | NavOutcome::Download { .. }
+            | NavOutcome::Cleared { .. } => {
                 panic!("an unreachable gatekeeper must never be treated as cleared")
             }
             NavOutcome::FetchFailed { .. } => {

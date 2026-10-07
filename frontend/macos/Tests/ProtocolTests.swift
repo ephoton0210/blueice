@@ -395,6 +395,23 @@ final class ProtocolTests: XCTestCase {
         XCTAssertEqual(kill(pid, 0), -1)
         XCTAssertFalse(FileManager.default.fileExists(atPath: session.runtimeDirectory.path))
     }
+    func testOriginalResponseDownloadProtocolRetainsCurrentDocumentMetadata() throws {
+        let payload = Data(#"{"tab_id":2,"request_id":8,"message":{"NavigationDownloadOffered":{"navigation_id":42,"current_url":"https://example.test/current"}}}"#.utf8)
+        let envelope = try JSONDecoder().decode(IncomingEnvelope.self,from: payload)
+        if case .downloadOffered(let id,let current) = envelope.message {
+            XCTAssertEqual(id,42); XCTAssertEqual(current,"https://example.test/current")
+        } else { XCTFail("Expected original-response offer") }
+        let packet = try BrowserWire.encode(.values("ContinueNavigationDownload",["navigation_id": .unsigned(42),"accept": .boolean(true)]),tab: 2,request: 9)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: packet.dropFirst(4)) as? [String: Any])
+        let message = try XCTUnwrap(object["message"] as? [String: [String: Any]])
+        XCTAssertEqual(message["ContinueNavigationDownload"]?["accept"] as? Bool,true)
+        XCTAssertEqual(message["ContinueNavigationDownload"]?["navigation_id"] as? Int,42)
+        let started = try JSONDecoder().decode(IncomingEnvelope.self,from: Data(#"{"tab_id":2,"message":{"NavigationDownloadStarted":{"transfer_id":7}}}"#.utf8))
+        if case .downloadStarted(let id) = started.message { XCTAssertEqual(id,7) }
+        else { XCTFail("Expected native download start") }
+        XCTAssertThrowsError(try JSONDecoder().decode(IncomingEnvelope.self,from: Data(#"{"message":{"NavigationDownloadOffered":{"navigation_id":0}}}"#.utf8)))
+    }
+
     func testResubmissionProtocolHasMetadataAndTypedBooleanConsent() throws {
         let payload = Data(#"{"tab_id":2,"message":{"FormResubmission":{"confirmation_id":42,"url":"https://example.test/submit"}}}"#.utf8)
         let envelope = try JSONDecoder().decode(IncomingEnvelope.self, from: payload)

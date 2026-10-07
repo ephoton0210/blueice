@@ -123,6 +123,11 @@ pub enum ClientMessage {
     Navigate {
         url: String,
     },
+    /// Complete an owned original-response offer after the native service is ready.
+    ContinueNavigationDownload {
+        navigation_id: u64,
+        accept: bool,
+    },
     /// Restore the addressed tab's preceding session-history entry. This is
     /// intentionally a tab-addressed page operation, never a global "active
     /// tab" command: separate frontend and MCP observers may be working in
@@ -414,6 +419,14 @@ pub enum ServerMessage {
     NavigationStarted {
         url: String,
         method: String,
+    },
+    /// The active document is retained while the native download service starts.
+    NavigationDownloadOffered {
+        navigation_id: u64,
+        current_url: Option<String>,
+    },
+    NavigationDownloadStarted {
+        transfer_id: u64,
     },
     /// Metadata-only POST resubmission prompt; the core retains bounded request data.
     FormResubmission {

@@ -204,11 +204,23 @@ final class BrowserWorkspace: ObservableObject {
     }
     private func receive(_ envelope: IncomingEnvelope, pixels: FramePixels?) {
         guard !stopping else { return }
+        if case .downloadOffered(let sequence,_) = envelope.message, let tab = envelope.tabID {
+            let owner = envelope.requestID.flatMap { requestOwners[$0] }.flatMap { models[$0] }
+                ?? models.values.first { $0.tabs.contains(where: { $0.id == tab }) }
+            if let owner {
+                Task { [weak self,weak owner] in
+                    guard let self,let owner else { return }
+                    let available = await self.downloads.connectForNavigation()
+                    guard !self.stopping, self.models[owner.windowID] === owner else { return }
+                    _ = try? await self.send(.values("ContinueNavigationDownload",["navigation_id": .unsigned(sequence),"accept": .boolean(available)]),tab: tab,owner: owner)
+                }
+            }
+        }
         if let request = envelope.requestID, let navigation = sessionRequests[request] {
             let terminal: Bool
             switch envelope.message {
             case .navigationSessionState, .sessionUnavailable, .error, .blocked: terminal = true
-            case .navigated: terminal = navigation
+            case .navigated, .downloadOffered: terminal = navigation
             default: terminal = false
             }
             if terminal {

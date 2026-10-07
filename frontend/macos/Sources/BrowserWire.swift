@@ -321,6 +321,7 @@ enum BrowserMessage: Decodable, Sendable {
     case fileInputState(FileInputState)
     case printState(PrintReply)
     case hello(UInt32), tabs([BrowserTab]), opened(UInt64, String?), closed(UInt64)
+    case downloadOffered(UInt64, String?), downloadStarted(UInt64)
     case navigationStarted, navigated(String), history(HistoryState), frame(FrameNotice)
     case blocked(String), error(String), representation(PageRepresentation), representationUnavailable, unknown
     case textInputState(TextInputState), textInputUnavailable
@@ -342,6 +343,8 @@ enum BrowserMessage: Decodable, Sendable {
         struct Hello: Decodable { let protocol_version: UInt32 }
         struct Tab: Decodable { let tab_id: UInt64 }
         struct Navigation: Decodable { let url: String }
+        struct DownloadOffer: Decodable { let navigation_id: UInt64; let current_url: String? }
+        struct DownloadStart: Decodable { let transfer_id: UInt64 }
         struct Blocked: Decodable { let reason: String }
         struct Failure: Decodable { let message: String }
         switch key.stringValue {
@@ -410,6 +413,14 @@ enum BrowserMessage: Decodable, Sendable {
             struct Closed: Decodable { let group_id: UInt64 }
             if let value = try? object.decode(Closed.self, forKey: key), value.group_id > 0 { self = .groupClosed(value.group_id) }
             else { self = .groupsUnavailable }
+        case "NavigationDownloadOffered":
+            let offer = try object.decode(DownloadOffer.self,forKey: key)
+            guard offer.navigation_id > 0, offer.current_url.map({ $0.utf8.count <= 8192 }) != false else { throw BrowserFailure.invalid("Invalid original-response offer") }
+            self = .downloadOffered(offer.navigation_id,offer.current_url)
+        case "NavigationDownloadStarted":
+            let started = try object.decode(DownloadStart.self,forKey: key)
+            guard started.transfer_id > 0 else { throw BrowserFailure.invalid("Invalid original-response download") }
+            self = .downloadStarted(started.transfer_id)
         case "NavigationStarted": self = .navigationStarted
         case "Navigated": self = .navigated(try object.decode(Navigation.self, forKey: key).url)
         case "HistoryState": self = .history(try object.decode(HistoryState.self, forKey: key))

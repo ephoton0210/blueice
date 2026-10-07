@@ -445,3 +445,5 @@
 "Choose a readable and writable local folder." = "Choose a readable and writable local folder.";
 "A previous download folder is unavailable. Restore its location to keep the download history." = "A previous download folder is unavailable. Restore its location to keep the download history.";
 "At most 32 previous download folders are supported." = "At most 32 previous download folders are supported.";
+
+"This response cannot be resumed. Navigate again to download a new response." = "This response cannot be resumed. Navigate again to download a new response.";

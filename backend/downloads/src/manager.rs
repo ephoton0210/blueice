@@ -30,6 +30,9 @@
 use crate::policy::{is_reserved_download_name, reconfine_stored, resolve_requested, unique_path};
 use crate::store::{Store, StoredTransfer};
 use blueice_ipc::downloads::{BlockedInfo, ErrorCode, TransferEvent, TransferInfo, TransferState};
+use blueice_ipc::downloads::{
+    ResponseBodyReader, ResponseDownload, SingleStreamReason, TransferMode,
+};
 use blueice_ipc::local_socket::ensure_private_dir;
 use blueice_net::download::backend::validate_url;
 use blueice_net::download::clearance::{Blocked, Reviewer};
@@ -40,12 +43,14 @@ use blueice_net::download::credentials::{
 };
 use blueice_net::download::file_name::choose_file_name;
 use blueice_net::download::probe::probe;
+use blueice_net::download::response::{validate_metadata, ResponseFile, MAX_RESPONSE_CHUNK_BYTES};
 use blueice_net::download::sidecar::remove_partials;
 use blueice_net::download::transfer::{DownloadSpec, Snapshot, Transfer};
 use blueice_net::download::{bounded_transfer_text, DownloadOptions, MAX_TRANSFER_SEGMENTS};
 use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::fmt;
-use std::io;
+use std::io::{self, Read};
+use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
@@ -148,7 +153,13 @@ struct Job {
     transfer: Option<Arc<Transfer>>,
 }
 
+struct PendingResponse {
+    metadata: ResponseDownload,
+    body: ResponseBodyReader<UnixStream>,
+}
+
 struct Entry {
+    response: Option<PendingResponse>,
     info: TransferInfo,
     overwrite: bool,
     download_root: PathBuf,
@@ -560,7 +571,31 @@ impl TransferManager {
                     }
                 }
             }
-            if matches!(
+            if info.original_response
+                && matches!(
+                    info.state,
+                    TransferState::Queued
+                        | TransferState::AwaitingClearance
+                        | TransferState::Active
+                        | TransferState::Paused
+                )
+            {
+                info.state = TransferState::Failed;
+                info.last_error =
+                    Some("the original response was interrupted; navigate again explicitly".into());
+                info.finished_at_ms = Some(now_ms());
+                info.speed_bps = 0;
+                info.eta_secs = None;
+                info.connections = 0;
+                if !info.dest_path.is_empty() {
+                    remove_partials(Path::new(&info.dest_path));
+                }
+                push_event(
+                    &mut events,
+                    "the original response cannot be restored or replayed after a restart",
+                );
+                info.events = events.clone();
+            } else if matches!(
                 info.state,
                 TransferState::Queued | TransferState::AwaitingClearance | TransferState::Active
             ) {
@@ -577,6 +612,7 @@ impl TransferManager {
             entries.insert(
                 info.id,
                 Entry {
+                    response: None,
                     info,
                     overwrite: stored.overwrite,
                     download_root,
@@ -627,6 +663,40 @@ impl TransferManager {
         url: &str,
         dest: Option<&str>,
         overwrite: bool,
+    ) -> Result<TransferInfo, ManagerError> {
+        self.queue(url, dest, overwrite, None)
+    }
+
+    /// Own a dedicated input socket. Reads have a short timeout for cancellation;
+    /// framing requires explicit completion even when the HTTP length is unknown.
+    pub fn start_response(
+        &self,
+        response: ResponseDownload,
+        input: UnixStream,
+    ) -> Result<TransferInfo, ManagerError> {
+        validate_metadata(&response)
+            .map_err(|error| ManagerError::new(ErrorCode::InvalidRequest, error.to_string()))?;
+        input
+            .set_read_timeout(Some(Duration::from_millis(100)))
+            .map_err(|error| ManagerError::new(ErrorCode::Internal, error.to_string()))?;
+        let url = response.url.clone();
+        self.queue(
+            &url,
+            None,
+            false,
+            Some(PendingResponse {
+                metadata: response,
+                body: ResponseBodyReader::new(input),
+            }),
+        )
+    }
+
+    fn queue(
+        &self,
+        url: &str,
+        dest: Option<&str>,
+        overwrite: bool,
+        response: Option<PendingResponse>,
     ) -> Result<TransferInfo, ManagerError> {
         validate_url(url)
             .map_err(|error| ManagerError::new(ErrorCode::InvalidRequest, error.to_string()))?;
@@ -699,11 +769,13 @@ impl TransferManager {
             dest_path,
             state: TransferState::Queued,
             created_at_ms: now_ms(),
+            original_response: response.is_some(),
             ..TransferInfo::default()
         };
         state.entries.insert(
             id,
             Entry {
+                response,
                 info,
                 overwrite,
                 download_root: self.shared.root.clone(),
@@ -828,6 +900,9 @@ impl TransferManager {
                 .entries
                 .get_mut(&id)
                 .ok_or_else(|| ManagerError::not_found(id))?;
+            if entry.info.original_response {
+                return Err(ManagerError::invalid_state("original navigation responses cannot be paused or replayed; cancel this transfer instead"));
+            }
             match entry.info.state {
                 TransferState::Paused => return Ok(entry.info.clone()),
                 TransferState::Queued if entry.job.is_none() => {
@@ -874,6 +949,9 @@ impl TransferManager {
                 .entries
                 .get(&id)
                 .ok_or_else(|| ManagerError::not_found(id))?;
+            if entry.info.original_response {
+                return Err(ManagerError::invalid_state("original navigation responses cannot be resumed or replayed; navigate again explicitly"));
+            }
             if !matches!(
                 entry.info.state,
                 TransferState::Paused | TransferState::Failed | TransferState::Blocked
@@ -978,6 +1056,9 @@ impl TransferManager {
             if entry.info.state == TransferState::Completed {
                 return Ok(entry.info.clone());
             }
+            // A queued original response owns its input before a job exists.
+            // Retire that connection too, so its producer can stop immediately.
+            entry.response.take();
             entry.info.state = TransferState::Cancelled;
             entry.info.finished_at_ms = Some(now_ms());
             entry.info.speed_bps = 0;
@@ -1084,9 +1165,9 @@ impl TransferManager {
         self.shared.persister.last_error()
     }
 
-    /// An orderly stop: pauses everything running (checkpointing it, so it
-    /// can be resumed), puts queued transfers back to paused, persists,
-    /// and refuses new starts.
+    /// An orderly stop: checkpoints resumable transfers, fails original
+    /// responses whose one-shot source cannot be replayed, persists, and
+    /// refuses new starts.
     pub fn shutdown(&self) {
         let jobs: Vec<(u64, Arc<Control>, Option<Arc<Transfer>>)> = {
             let mut state = self.shared.lock();
@@ -1119,11 +1200,23 @@ impl TransferManager {
             .collect();
         for id in ids {
             if let Some(entry) = state.entries.get_mut(&id) {
-                entry.info.state = TransferState::Paused;
-                push_event(
-                    &mut entry.events_before_engine,
-                    "paused: the downloads process shut down",
-                );
+                if entry.info.original_response {
+                    entry.response.take();
+                    entry.info.state = TransferState::Failed;
+                    entry.info.finished_at_ms = Some(now_ms());
+                    entry.info.last_error =
+                        Some("The original response was interrupted and cannot be replayed".into());
+                    push_event(
+                        &mut entry.events_before_engine,
+                        "failed: the downloads process shut down; original response cannot be replayed",
+                    );
+                } else {
+                    entry.info.state = TransferState::Paused;
+                    push_event(
+                        &mut entry.events_before_engine,
+                        "paused: the downloads process shut down",
+                    );
+                }
                 entry.info.events = entry.events_before_engine.clone();
             }
             self.shared.commit(&mut state, id, false);
@@ -1369,6 +1462,13 @@ fn run_job(shared: Arc<Shared>, id: u64, control: Arc<Control>) {
                     entry.info.last_error = Some(message);
                     entry.info.finished_at_ms = Some(now_ms());
                 }
+                JobEnd::Paused if entry.info.original_response => {
+                    entry.info.state = TransferState::Failed;
+                    entry.info.last_error = Some(
+                        "the original response was interrupted; navigate again explicitly".into(),
+                    );
+                    entry.info.finished_at_ms = Some(now_ms());
+                }
                 JobEnd::Paused => {
                     entry.info.state = TransferState::Paused;
                     push_event(
@@ -1394,7 +1494,188 @@ fn run_job(shared: Arc<Shared>, id: u64, control: Arc<Control>) {
     Shared::schedule(&shared, &mut state);
 }
 
+fn response_steps(
+    shared: &Arc<Shared>,
+    id: u64,
+    control: &Arc<Control>,
+    mut response: PendingResponse,
+) -> JobEnd {
+    let metadata = &response.metadata;
+    let root = {
+        let mut state = shared.lock();
+        let Some(entry) = state.entries.get_mut(&id) else {
+            return JobEnd::Failed("the transfer was removed".into());
+        };
+        entry.info.state = TransferState::AwaitingClearance;
+        entry.info.final_url = Some(metadata.url.clone());
+        entry.info.content_type = metadata.content_type.clone();
+        entry.info.total_bytes = metadata.total_bytes;
+        entry.info.mode = TransferMode::SingleStream {
+            reason: SingleStreamReason::Unknown,
+        };
+        let root = entry.download_root.clone();
+        shared.commit(&mut state, id, true);
+        root
+    };
+    if let Some(end) = interrupted(control) {
+        return end;
+    }
+    let reviewer =
+        Reviewer::new(&shared.config.gatekeeper_socket).with_timeout(shared.config.review_timeout);
+    let cleared = match reviewer.review_url(&metadata.url) {
+        Ok(cleared) => cleared,
+        Err(blocked) => return JobEnd::Blocked(blocked),
+    };
+    if let Some(end) = interrupted(control) {
+        return end;
+    }
+    let name = choose_file_name(metadata.content_disposition.as_deref(), &metadata.url);
+    let name = if is_reserved_download_name(&name) {
+        format!("{name}.download")
+    } else {
+        name
+    };
+    let dest = {
+        let mut state = shared.lock();
+        let claimed: Vec<PathBuf> = state
+            .entries
+            .values()
+            .filter(|entry| {
+                entry.info.id != id
+                    && claims_destination(entry.info.state)
+                    && !entry.info.dest_path.is_empty()
+            })
+            .map(|entry| PathBuf::from(&entry.info.dest_path))
+            .collect();
+        let dest = unique_path(&root, &name, &|path| {
+            claimed.iter().any(|claim| same_destination(path, claim))
+        });
+        state
+            .entries
+            .get_mut(&id)
+            .expect("owned response entry")
+            .info
+            .dest_path = dest.to_string_lossy().into_owned();
+        shared.commit(&mut state, id, true);
+        dest
+    };
+    let file_name = dest
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("");
+    let clearance = match reviewer.review_response(cleared, metadata, file_name) {
+        Ok(clearance) => clearance,
+        Err(blocked) => return JobEnd::Blocked(blocked),
+    };
+    if let Some(end) = interrupted(control) {
+        return end;
+    }
+    let mut file = match ResponseFile::begin(
+        &dest,
+        metadata.clone(),
+        clearance,
+        shared.config.options.clone(),
+    ) {
+        Ok(file) => file,
+        Err(error) => return JobEnd::Failed(error.to_string()),
+    };
+    {
+        let mut state = shared.lock();
+        let entry = state.entries.get_mut(&id).expect("owned response entry");
+        entry.info.state = TransferState::Active;
+        entry.info.connections = 1;
+        push_event(
+            &mut entry.events_before_engine,
+            "receiving the original navigation response without refetch or replay",
+        );
+        entry.info.events = entry.events_before_engine.clone();
+        shared.commit(&mut state, id, true);
+    }
+    let mut buffer = [0; MAX_RESPONSE_CHUNK_BYTES];
+    let started = Instant::now();
+    let mut last_byte = started;
+    loop {
+        if let Some(end) = interrupted(control) {
+            return end;
+        }
+        let count = match response.body.read(&mut buffer) {
+            Ok(count) => count,
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    io::ErrorKind::TimedOut
+                        | io::ErrorKind::WouldBlock
+                        | io::ErrorKind::Interrupted
+                ) =>
+            {
+                if last_byte.elapsed() >= shared.config.options.stall_timeout {
+                    return JobEnd::Failed(
+                        "the original response stream stalled; no request was replayed".into(),
+                    );
+                }
+                continue;
+            }
+            Err(error) => return JobEnd::Failed(error.to_string()),
+        };
+        if let Some(end) = interrupted(control) {
+            return end;
+        }
+        if count == 0 {
+            // Serialize cancel and final publication with the manager's lock.
+            // A cancel accepted before this boundary prevents publication.
+            let mut state = shared.lock();
+            if let Some(end) = interrupted(control) {
+                return end;
+            }
+            let completed = match file.finish() {
+                Ok(completed) => completed,
+                Err(error) => return JobEnd::Failed(error.to_string()),
+            };
+            let entry = state.entries.get_mut(&id).expect("owned response entry");
+            entry.info.state = TransferState::Completed;
+            entry.info.completed_bytes = completed;
+            entry.info.finished_at_ms = Some(now_ms());
+            push_event(
+                &mut entry.events_before_engine,
+                format!("completed original response: {completed} bytes"),
+            );
+            entry.info.events = entry.events_before_engine.clone();
+            shared.commit(&mut state, id, true);
+            return JobEnd::Engine;
+        }
+        let completed = match file.append(&buffer[..count]) {
+            Ok(completed) => completed,
+            Err(error) => return JobEnd::Failed(error.to_string()),
+        };
+        last_byte = Instant::now();
+        let mut state = shared.lock();
+        let entry = state.entries.get_mut(&id).expect("owned response entry");
+        entry.info.completed_bytes = completed;
+        entry.info.speed_bps =
+            (completed as f64 / started.elapsed().as_secs_f64().max(0.001)) as u64;
+        shared.commit(&mut state, id, false);
+    }
+}
+
 fn job_steps(shared: &Arc<Shared>, id: u64, control: &Arc<Control>) -> JobEnd {
+    let response = shared
+        .lock()
+        .entries
+        .get_mut(&id)
+        .and_then(|entry| entry.response.take());
+    if let Some(response) = response {
+        return response_steps(shared, id, control, response);
+    }
+    if shared
+        .lock()
+        .entries
+        .get(&id)
+        .is_some_and(|entry| entry.info.original_response)
+    {
+        return JobEnd::Failed(
+            "the original response stream is no longer available; navigate again explicitly".into(),
+        );
+    }
     let config = &shared.config;
     let (url, existing_dest, overwrite, download_root) = {
         let mut state = shared.lock();

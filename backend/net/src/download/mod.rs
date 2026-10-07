@@ -71,6 +71,8 @@ pub mod progress;
 #[cfg(target_os = "macos")]
 mod quarantine;
 #[cfg(unix)]
+pub mod response;
+#[cfg(unix)]
 pub(crate) mod secure_fs;
 #[cfg(unix)]
 mod sftp;

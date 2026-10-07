@@ -169,7 +169,7 @@ enum Outcome {
     Revoked,
 }
 
-fn available_bytes(path: &std::path::Path) -> Result<u64, DownloadError> {
+pub(crate) fn available_bytes(path: &std::path::Path) -> Result<u64, DownloadError> {
     let path = CString::new(path.as_os_str().as_bytes()).map_err(|_| {
         DownloadError::Io("the destination directory contains an interior NUL byte".to_string())
     })?;
@@ -187,7 +187,7 @@ fn available_bytes(path: &std::path::Path) -> Result<u64, DownloadError> {
         .ok_or_else(|| DownloadError::Io("the available-space value overflowed".to_string()))
 }
 
-fn check_capacity(
+pub(crate) fn check_capacity(
     total: Option<u64>,
     available: u64,
     options: &DownloadOptions,
@@ -1154,7 +1154,7 @@ impl Shared {
     }
 }
 
-fn publish_file(
+pub(crate) fn publish_file(
     file: &File,
     dest: &std::path::Path,
     overwrite: bool,

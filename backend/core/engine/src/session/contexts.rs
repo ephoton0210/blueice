@@ -155,6 +155,7 @@ pub(super) fn scoped_command(
         | ClientMessage::GoBack
         | ClientMessage::GoForward
         | ClientMessage::ConfirmFormResubmission { .. }
+        | ClientMessage::ContinueNavigationDownload { .. }
         | ClientMessage::GetHistoryState
         | ClientMessage::AssistantPage { .. }
         | ClientMessage::NavigationSession(_)

@@ -27,7 +27,9 @@ use url::Url;
 
 pub mod download;
 mod navigation;
+mod navigation_transport;
 pub use navigation::{FormEncoding, NavigationRequest, MAX_FORM_BODY_BYTES};
+pub use navigation_transport::ResponseCancellation;
 
 #[derive(Debug)]
 pub enum FetchError {
@@ -60,6 +62,82 @@ pub struct FetchedPage {
     pub content_type: Option<String>,
 }
 
+/// An original navigation response whose bytes belong to a download. The body
+/// is owned and unread: consuming it never issues a probe or another request.
+pub struct FetchedDownload {
+    pub final_url: String,
+    pub status: u16,
+    pub content_type: Option<String>,
+    pub content_disposition: Option<String>,
+    pub content_length: Option<u64>,
+    body: Option<ureq::Body>,
+    cancellation: ResponseCancellation,
+}
+
+impl FetchedDownload {
+    pub fn cancellation(&self) -> ResponseCancellation {
+        self.cancellation.clone()
+    }
+    pub fn into_reader(mut self) -> impl std::io::Read + Send + 'static {
+        DownloadBody {
+            reader: self.body.take().expect("owned unread body").into_reader(),
+            cancellation: self.cancellation.clone(),
+        }
+    }
+}
+impl Drop for FetchedDownload {
+    fn drop(&mut self) {
+        if self.body.is_some() {
+            self.cancellation.cancel();
+        }
+    }
+}
+struct DownloadBody {
+    reader: ureq::BodyReader<'static>,
+    cancellation: ResponseCancellation,
+}
+impl std::io::Read for DownloadBody {
+    fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+        self.reader.read(buffer)
+    }
+}
+impl Drop for DownloadBody {
+    fn drop(&mut self) {
+        self.cancellation.cancel();
+    }
+}
+
+fn safe_content_disposition(response: &ureq::http::Response<ureq::Body>) -> Option<String> {
+    let value = response
+        .headers()
+        .get("content-disposition")?
+        .to_str()
+        .ok()?;
+    (value.len() <= 4096 && !value.bytes().any(|byte| byte.is_ascii_control()))
+        .then(|| value.to_string())
+}
+
+fn response_is_download(content_type: Option<&str>, disposition: Option<&str>) -> bool {
+    if let Some(disposition) = disposition {
+        let token = disposition.split(';').next().unwrap_or("").trim();
+        // RFC 6266: unknown valid disposition types receive attachment handling.
+        let valid = !token.is_empty()
+            && token
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || b"!#$%&'*+-.^_`|~".contains(&byte));
+        if valid && !token.eq_ignore_ascii_case("inline") {
+            return true;
+        }
+    }
+    let Some(content_type) = content_type else {
+        return false; // Preserve the existing unspecified-type HTML path.
+    };
+    let mime = content_type.split(';').next().unwrap_or("").trim();
+    !["text/html", "application/xhtml+xml", "text/plain"]
+        .iter()
+        .any(|supported| mime.eq_ignore_ascii_case(supported))
+}
+
 fn safe_content_type(response: &ureq::http::Response<ureq::Body>) -> Option<String> {
     let value = response.headers().get("content-type")?.to_str().ok()?;
     (value.len() <= 256
@@ -76,6 +154,8 @@ fn safe_content_type(response: &ureq::http::Response<ureq::Body>) -> Option<Stri
 pub enum FetchHop {
     /// A non-redirect response body, ready for normal content review.
     Page(FetchedPage),
+    /// Download metadata and the unread original response stream.
+    Download(FetchedDownload),
     /// A resolved, validated HTTP(S) target from one redirect response.
     Redirect { location: String, status: u16 },
 }
@@ -171,11 +251,8 @@ pub fn fetch_navigation_hop(url: &str) -> Result<FetchHop, FetchError> {
 pub fn fetch_navigation_request_hop(request: &NavigationRequest) -> Result<FetchHop, FetchError> {
     let url = request.url();
     validate_url_scheme(url)?;
-    let agent: ureq::Agent = ureq::config::Config::builder()
-        .max_redirects(0)
-        .http_status_as_error(false)
-        .build()
-        .into();
+    let cancellation = ResponseCancellation::default();
+    let agent = navigation_transport::agent(cancellation.clone());
     let mut response = if let Some(content_type) = request.content_type() {
         agent
             .post(url)
@@ -207,6 +284,23 @@ pub fn fetch_navigation_request_hop(request: &NavigationRequest) -> Result<Fetch
     }
     let status = response.status().as_u16();
     let content_type = safe_content_type(&response);
+    let content_disposition = safe_content_disposition(&response);
+    if response_is_download(content_type.as_deref(), content_disposition.as_deref()) {
+        let content_length = response
+            .headers()
+            .get("content-length")
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| value.parse().ok());
+        return Ok(FetchHop::Download(FetchedDownload {
+            final_url: url.to_string(),
+            status,
+            content_type,
+            content_disposition,
+            content_length,
+            body: Some(response.into_body()),
+            cancellation,
+        }));
+    }
     let body = response
         .body_mut()
         .read_to_string()
@@ -355,7 +449,9 @@ mod tests {
                 assert_eq!(location, format!("http://{addr}/after"));
                 assert_eq!(status, 302);
             }
-            FetchHop::Page(_) => panic!("a 302 must remain a policy-visible redirect hop"),
+            FetchHop::Page(_) | FetchHop::Download(_) => {
+                panic!("a 302 must remain a policy-visible redirect hop")
+            }
         }
     }
 

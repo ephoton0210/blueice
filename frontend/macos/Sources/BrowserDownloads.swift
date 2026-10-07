@@ -63,12 +63,14 @@ struct DownloadInfo: Decodable, Sendable, Identifiable {
     let etaSecs: UInt64?
     let connections: UInt32
     let resumeSafe: Bool
+    let originalResponse: Bool
     let generation: UInt64
     let blocked: Block?
     let lastError: String?
     let events: [Event]
     let segments: [Segment]
     enum Keys: String, CodingKey {
+        case originalResponse = "original_response"
         case id, url, state, connections, generation, blocked, events, segments
         case destPath = "dest_path", totalBytes = "total_bytes", completedBytes = "completed_bytes", speedBps = "speed_bps", etaSecs = "eta_secs", resumeSafe = "resume_safe", lastError = "last_error"
     }
@@ -82,6 +84,7 @@ struct DownloadInfo: Decodable, Sendable, Identifiable {
         speedBps = try value.decodeIfPresent(UInt64.self, forKey: .speedBps) ?? 0
         etaSecs = try value.decodeIfPresent(UInt64.self, forKey: .etaSecs)
         connections = try value.decodeIfPresent(UInt32.self, forKey: .connections) ?? 0
+        originalResponse = try value.decodeIfPresent(Bool.self, forKey: .originalResponse) ?? false
         resumeSafe = try value.decodeIfPresent(Bool.self, forKey: .resumeSafe) ?? false
         generation = try value.decode(UInt64.self, forKey: .generation)
         blocked = try value.decodeIfPresent(Block.self, forKey: .blocked)
@@ -250,6 +253,14 @@ final class BrowserDownloadsModel: ObservableObject {
     var defaultDirectory: URL { defaultConfiguration.directory }
     var configuringDownloads: Bool { configuringSFTP || configuringDestination }
     var canConfigureSFTP: Bool { !connecting && !starting && !credentialBusy && !configuringDownloads && busy.isEmpty && requests.isEmpty && !stopping }
+    func connectForNavigation() async -> Bool {
+        await connect()
+        let deadline = Date().addingTimeInterval(8)
+        while connecting, !stopping, !Task.isCancelled, Date() < deadline {
+            try? await Task.sleep(for: .milliseconds(20))
+        }
+        return available && !configuringDownloads && !stopping && !Task.isCancelled
+    }
     func connect() async {
         guard !configuringDownloads else { return }
         await establishConnection()

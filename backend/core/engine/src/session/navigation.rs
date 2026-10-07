@@ -408,6 +408,7 @@ pub(super) fn apply_completion<S: Write>(
     generation: &mut u64,
     pending_nav_seq: &HashMap<TabId, u64>,
     completion: Completion,
+    pending_downloads: &mut HashMap<TabId, response_downloads::PendingDownload>,
     downloads_refresher: &mut DownloadsRefresher,
     page_script_runtime: &mut PageScriptRuntime<'_>,
     script_requests: Option<&ScriptRequestReceiver>,
@@ -430,6 +431,50 @@ pub(super) fn apply_completion<S: Write>(
     tabs.get_mut(tab_id).expect("live tab").submission_pending = false;
     let reply_tab = Some(tab_id.as_u64());
     match outcome {
+        NavOutcome::Download { response } => {
+            let page = tabs.get(tab_id).expect("live tab");
+            let current_url = page.url().map(str::to_string);
+            let document = page.document_generation();
+            if matches!(kind, PendingKind::OpenTab) {
+                blueice_ipc::write_server_message_with_ids(
+                    stream,
+                    reply_tab,
+                    request_id,
+                    &ServerMessage::TabOpened {
+                        tab_id: tab_id.as_u64(),
+                        url: Some(current_url.clone().unwrap_or_else(|| "about:blank".into())),
+                    },
+                )?;
+            }
+            pending_downloads.insert(
+                tab_id,
+                response_downloads::PendingDownload {
+                    sequence: seq,
+                    document,
+                    response,
+                    created: Instant::now(),
+                },
+            );
+            blueice_ipc::write_server_message_with_ids(
+                stream,
+                reply_tab,
+                request_id,
+                &ServerMessage::NavigationDownloadOffered {
+                    navigation_id: seq,
+                    current_url,
+                },
+            )?;
+            Ok(false)
+        }
+        NavOutcome::DownloadStarted { transfer_id } => {
+            blueice_ipc::write_server_message_with_ids(
+                stream,
+                reply_tab,
+                request_id,
+                &ServerMessage::NavigationDownloadStarted { transfer_id },
+            )?;
+            Ok(false)
+        }
         NavOutcome::Cleared {
             clearance,
             final_url,

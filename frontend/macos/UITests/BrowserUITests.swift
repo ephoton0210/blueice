@@ -852,6 +852,87 @@ final class BrowserUITests: XCTestCase {
         XCTAssertTrue(cancel.waitForExistence(timeout: 15)); cancel.click()
     }
 
+    func testNativeAutomaticResponseDownloadsReturnLinkPostAndHistory() throws {
+        let fixture = try DownloadFixture(); defer { fixture.stop() }
+        let root = URL(fileURLWithPath: "/private/tmp/bi-response-ui-" + UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let files = root.appendingPathComponent("files")
+        app.launchArguments += ["--downloads-directory",files.path,"--downloads-data-directory",root.appendingPathComponent("data").path,"-browser.session.remember","NO","-browser.session.reopen","NO"]
+        let saved = saveClipboard(); defer { NSPasteboard.general.clearContents(); NSPasteboard.general.writeObjects(saved) }
+        launch(); positionWindowForUnobstructedSheet(app.windows["browser-window"])
+        enter(fixture.origin + "/response-links")
+        let editor = app.groups["page"].textFields["Retained editor"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 15)); waitValue(editor,"Keep this document")
+        let beforeBack = app.buttons["back"].isEnabled
+        enter(fixture.origin + "/response.bin")
+        waitDownload(1,"Completed")
+        XCTAssertTrue(app.staticTexts["download-quarantine-1"].exists)
+        XCTAssertFalse(app.buttons["download-pause-1"].exists); XCTAssertFalse(app.buttons["download-resume-1"].exists)
+        XCTAssertEqual(try Data(contentsOf: files.appendingPathComponent("下載.bin")),fixture.responseBytes)
+        app.buttons["download-reveal-1"].click()
+        let finder = XCUIApplication(bundleIdentifier: "com.apple.finder")
+        XCTAssertTrue(finder.descendants(matching: .any).matching(NSPredicate(format: "label == %@","下載.bin")).firstMatch.waitForExistence(timeout: 15),finder.debugDescription)
+        app.activate()
+        app.buttons["downloads-close"].click()
+        waitValue(app.textFields["address"],fixture.origin + "/response-links")
+        waitValue(editor,"Keep this document"); XCTAssertEqual(app.buttons["back"].isEnabled,beforeBack)
+        app.groups["page"].links["Download response"].click(); waitDownload(2,"Completed")
+        app.buttons["downloads-close"].click(); waitValue(editor,"Keep this document")
+        app.groups["page"].buttons["Download POST"].click(); waitDownload(3,"Completed")
+        let post = try XCTUnwrap(fixture.responses.first { $0.path == "/response-post" })
+        XCTAssertEqual(post.method,"POST"); XCTAssertEqual(post.body,Data("token=one-shot".utf8))
+        XCTAssertEqual(fixture.requests,["/response-links","/response.bin","/response.bin","/response-post"])
+        let attachment = XCTAttachment(screenshot: app.windows["browser-window"].screenshot())
+        attachment.name = "macos-native-response-downloads"; attachment.lifetime = .keepAlways; add(attachment)
+        app.buttons["downloads-close"].click(); waitValue(editor,"Keep this document")
+        waitValue(app.textFields["address"],fixture.origin + "/response-links")
+        let requests = fixture.requests
+        app.typeKey("q",modifierFlags: .command); XCTAssertTrue(app.wait(for: .notRunning,timeout: 15))
+        launch(); app.buttons["downloads"].click(); waitDownload(1,"Completed"); waitDownload(3,"Completed")
+        XCTAssertEqual(fixture.requests,requests,"Relaunch must not replay original requests")
+    }
+
+    func testNativeAutomaticResponseDownloadCancelDoesNotPublishOrReplay() throws {
+        let fixture = try DownloadFixture(); defer { fixture.stop() }; fixture.setSlow(true,delay: 1)
+        let root = URL(fileURLWithPath: "/private/tmp/bi-response-cancel-ui-" + UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let files = root.appendingPathComponent("files")
+        app.launchArguments += ["--downloads-directory",files.path,"--downloads-data-directory",root.appendingPathComponent("data").path]
+        let saved = saveClipboard(); defer { NSPasteboard.general.clearContents(); NSPasteboard.general.writeObjects(saved) }
+        launch(); positionWindowForUnobstructedSheet(app.windows["browser-window"])
+        enter(fixture.origin + "/response-large.bin"); waitDownload(1,"Downloading")
+        XCTAssertFalse(app.buttons["download-pause-1"].exists)
+        app.buttons["download-cancel-1"].click(); waitDownload(1,"Cancelled")
+        XCTAssertFalse(app.buttons["download-resume-1"].exists)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: files.appendingPathComponent("下載.bin").path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: files.appendingPathComponent("下載.bin.blueice-part").path))
+        XCTAssertEqual(fixture.requests,["/response-large.bin"])
+        app.buttons["downloads-close"].click()
+    }
+
+    func testNativeAutomaticResponseDownloadTraditionalChinese() throws {
+        let fixture = try DownloadFixture(); defer { fixture.stop() }
+        let root = URL(fileURLWithPath: "/private/tmp/bi-response-zh-ui-" + UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let files = root.appendingPathComponent("下載資料夾")
+        let index = try XCTUnwrap(app.launchArguments.firstIndex(of: "--interface-language")); app.launchArguments[index + 1] = "zh-Hant"
+        app.launchArguments += ["--downloads-directory",files.path,"--downloads-data-directory",root.appendingPathComponent("data").path]
+        let saved = saveClipboard(); defer { NSPasteboard.general.clearContents(); NSPasteboard.general.writeObjects(saved) }
+        launch(); positionWindowForUnobstructedSheet(app.windows["browser-window"])
+        let address = app.textFields["address"]
+        address.click(); address.typeKey("a",modifierFlags: .command)
+        NSPasteboard.general.clearContents(); NSPasteboard.general.setString(fixture.origin + "/response.bin",forType: .string)
+        address.typeKey("v",modifierFlags: .command); address.typeKey(.return,modifierFlags: [])
+        waitDownload(1,"已完成")
+        waitAssistantText(app.staticTexts["downloads-title"],"下載項目")
+        XCTAssertEqual(try Data(contentsOf: files.appendingPathComponent("下載.bin")),fixture.responseBytes)
+        XCTAssertTrue(app.buttons["download-reveal-1"].exists)
+        XCTAssertEqual(fixture.requests,["/response.bin"])
+        let attachment = XCTAttachment(screenshot: app.windows["browser-window"].screenshot())
+        attachment.name = "macos-native-response-downloads-zh"; attachment.lifetime = .keepAlways; add(attachment)
+        app.buttons["downloads-close"].click()
+    }
+
     func testNativeDownloadQuarantineAndFinderOriginSurviveRelaunchWithoutExposingTokens() throws {
         let fixture = try DownloadFixture(); defer { fixture.stop() }
         let root = URL(fileURLWithPath: "/private/tmp/bi-quarantine-ui-" + UUID().uuidString)

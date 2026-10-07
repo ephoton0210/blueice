@@ -10,6 +10,52 @@ import XCTest
 
 @MainActor
 final class DownloadTests: XCTestCase {
+    func testActualNavigationResponseDownloadKeepsDocumentAndSelectedFolder() async throws {
+        let root = URL(fileURLWithPath: "/private/tmp/bi-response-model-" + UUID().uuidString)
+        let selected = root.appendingPathComponent("selected")
+        try FileManager.default.createDirectory(at: selected,withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let domain = "cc.blueice.response-tests." + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: domain)); defer { defaults.removePersistentDomain(forName: domain) }
+        let config = DownloadConfiguration(directory: root.appendingPathComponent("original"),dataDirectory: root.appendingPathComponent("data"))
+        let fixture = try DownloadFixture(); defer { fixture.stop() }
+        let launcher = Bundle(for: Self.self).bundleURL.deletingLastPathComponent().appendingPathComponent("BlueIce.app/Contents/MacOS/blueice-launcher")
+        let workspace = BrowserWorkspace(contextDefaults: defaults,downloadConfiguration: config); defer { Task { await workspace.stop() } }
+        await workspace.start(launcher: launcher)
+        let model = try XCTUnwrap(workspace.models[workspace.activeWindowID])
+        await wait { model.selected != nil && model.status == "Ready" && model.canInteract }
+        XCTAssertNil(workspace.downloads.processID,"Downloads stay lazy until a response needs them")
+        try FileManager.default.createDirectory(at: config.directory,withIntermediateDirectories: true)
+        let selection = try XCTUnwrap(workspace.downloads.folderPreferences.selection).changing(to: selected,base: config)
+        try workspace.downloads.folderPreferences.save(selection,base: config)
+        let tab = try XCTUnwrap(model.selected)
+        _ = try await workspace.send(.values("Navigate",["url": .string(fixture.origin + "/response-links")]),tab: tab,owner: model)
+        await wait { model.address == fixture.origin + "/response-links" && model.textInputState != nil && model.status == "Ready" }
+        let extraWindow = await workspace.createWindow()
+        let extra = try XCTUnwrap(extraWindow)
+        let other = try XCTUnwrap(workspace.models[extra])
+        await wait { other.selected != nil && other.status == "Ready" }
+        XCTAssertFalse(other.downloadsPresented)
+        let before = try XCTUnwrap(model.textInputState)
+        let core = workspace.processID
+        model.address = fixture.origin + "/response.bin"; model.navigateAddress()
+        await wait { workspace.downloads.transfers.first?.state == .completed }
+        let info = try XCTUnwrap(workspace.downloads.transfers.first)
+        XCTAssertTrue(info.originalResponse); XCTAssertFalse(info.resumeSafe)
+        XCTAssertEqual(try Data(contentsOf: URL(fileURLWithPath: info.destPath)),fixture.responseBytes)
+        XCTAssertEqual(URL(fileURLWithPath: info.destPath).deletingLastPathComponent().resolvingSymlinksInPath().path,selected.resolvingSymlinksInPath().path)
+        XCTAssertTrue(workspace.downloads.hasQuarantine(info))
+        XCTAssertTrue(model.downloadsPresented); XCTAssertFalse(other.downloadsPresented,"Only the originating window opens its downloads pane")
+        XCTAssertEqual(model.address,fixture.origin + "/response-links")
+        XCTAssertEqual(model.textInputState?.frame_source,before.frame_source)
+        XCTAssertEqual(model.textInputState?.document_generation,before.document_generation)
+        XCTAssertEqual(workspace.processID,core)
+        XCTAssertEqual(fixture.requests,["/response-links","/response.bin"])
+        let pause = await workspace.downloads.perform("Pause",id: info.id)
+        XCTAssertFalse(pause)
+        await workspace.stop()
+    }
+
     func testDownloadFolderSelectionPreservesHistoryAcrossSaveRelaunchAndDefault() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("bi-folder-prefs-" + UUID().uuidString)
         let old = root.appendingPathComponent("original"), next = root.appendingPathComponent("下載 + new")

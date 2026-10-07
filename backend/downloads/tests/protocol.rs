@@ -2040,3 +2040,249 @@ fn credential_target_resolution_is_owned_metadata_only_and_does_not_start_a_tran
     assert!(!format!("{reply:?}").contains("credential-marker"));
     assert!(rig.manager.list(None).is_empty());
 }
+
+fn original_response_input(rig: &Rig, total: Option<u64>) -> (UnixStream, u64) {
+    use blueice_ipc::downloads::ResponseDownload;
+    let mut input = UnixStream::connect(rig.socket()).unwrap();
+    input
+        .set_read_timeout(Some(Duration::from_secs(4)))
+        .unwrap();
+    write_downloads_request(
+        &mut input,
+        Some(1),
+        &DownloadsRequest::Hello {
+            protocol_version: 1,
+        },
+    )
+    .unwrap();
+    assert!(matches!(
+        read_downloads_reply(&mut input).unwrap(),
+        (
+            Some(1),
+            DownloadsReply::Hello {
+                protocol_version: 1
+            }
+        )
+    ));
+    write_downloads_request(
+        &mut input,
+        Some(2),
+        &DownloadsRequest::StartResponse {
+            response: ResponseDownload {
+                url: rig.url("/one-shot"),
+                status: 201,
+                content_type: Some("application/octet-stream".into()),
+                content_disposition: Some("attachment; filename=original.bin".into()),
+                total_bytes: total,
+            },
+        },
+    )
+    .unwrap();
+    let (request, reply) = read_downloads_reply(&mut input).unwrap();
+    assert_eq!(request, Some(2));
+    let DownloadsReply::Started(info) = reply else {
+        panic!("expected original-response handoff: {reply:?}")
+    };
+    (input, info.id)
+}
+
+#[test]
+fn original_response_publishes_exact_binary_bytes_without_any_http_request() {
+    use blueice_ipc::downloads::write_response_chunk;
+    let rig = Rig::new();
+    let bytes = [0xff, 0, 0x80, 0xfe, 42];
+    let (mut input, id) = original_response_input(&rig, Some(bytes.len() as u64));
+    write_response_chunk(&mut input, &bytes[..2]).unwrap();
+    write_response_chunk(&mut input, &bytes[2..]).unwrap();
+    write_response_chunk(&mut input, &[]).unwrap();
+    let info = wait_state(&mut rig.client(), id, TransferState::Completed);
+    assert_eq!(info.completed_bytes, bytes.len() as u64);
+    assert_eq!(std::fs::read(&info.dest_path).unwrap(), bytes);
+    assert!(
+        rig.server.requests().is_empty(),
+        "an original response must never be probed or refetched"
+    );
+    assert_eq!(
+        rig.gate.requests().len(),
+        2,
+        "URL and file review still apply"
+    );
+    assert!(!part_path(std::path::Path::new(&info.dest_path)).exists());
+}
+
+#[test]
+fn original_response_disconnect_never_publishes_unknown_length_bytes() {
+    use blueice_ipc::downloads::write_response_chunk;
+    let rig = Rig::new();
+    let (mut input, id) = original_response_input(&rig, None);
+    write_response_chunk(&mut input, b"incomplete").unwrap();
+    drop(input);
+    let info = wait_state(&mut rig.client(), id, TransferState::Failed);
+    assert!(!std::path::Path::new(&info.dest_path).exists());
+    assert!(!part_path(std::path::Path::new(&info.dest_path)).exists());
+    assert!(rig.server.requests().is_empty());
+}
+
+#[test]
+fn original_response_cancel_releases_a_stalled_body_without_publication() {
+    let rig = Rig::new();
+    let (_input, id) = original_response_input(&rig, None);
+    let mut client = rig.client();
+    wait_state(&mut client, id, TransferState::Active);
+    let start = Instant::now();
+    let info = client.cancel(id).unwrap();
+    assert_eq!(info.state, TransferState::Cancelled);
+    assert!(start.elapsed() < Duration::from_secs(3));
+    assert!(!std::path::Path::new(&info.dest_path).exists());
+    assert!(!part_path(std::path::Path::new(&info.dest_path)).exists());
+    assert!(rig.server.requests().is_empty());
+}
+
+#[test]
+fn original_response_download_policy_refusal_never_creates_or_publishes_a_file() {
+    use blueice_ipc::gatekeeper::GatekeeperRequest;
+    let gate = FakeGatekeeper::start(|request| match request {
+        GatekeeperRequest::CheckDownload { .. } => GateReply::Reject {
+            reason: "test file refusal".into(),
+            category: "test-policy".into(),
+        },
+        _ => GateReply::Clear,
+    });
+    let rig = Rig::with_gate(gate, |_| {});
+    let (_input, id) = original_response_input(&rig, Some(5));
+    let info = wait_state(&mut rig.client(), id, TransferState::Blocked);
+    assert_eq!(info.blocked.unwrap().category, "test-policy");
+    assert!(!std::path::Path::new(&info.dest_path).exists());
+    assert!(!part_path(std::path::Path::new(&info.dest_path)).exists());
+    assert!(rig.server.requests().is_empty());
+    assert!(rig.manager.resume(id).is_err());
+}
+
+#[test]
+fn original_response_length_mismatch_never_publishes_partial_or_extra_bytes() {
+    use blueice_ipc::downloads::write_response_chunk;
+    for (total, bytes) in [
+        (5, b"short".as_slice().get(..2).unwrap()),
+        (1, b"extra".as_slice()),
+    ] {
+        let rig = Rig::new();
+        let (mut input, id) = original_response_input(&rig, Some(total));
+        write_response_chunk(&mut input, bytes).unwrap();
+        write_response_chunk(&mut input, &[]).unwrap();
+        let info = wait_state(&mut rig.client(), id, TransferState::Failed);
+        assert!(!std::path::Path::new(&info.dest_path).exists());
+        assert!(!part_path(std::path::Path::new(&info.dest_path)).exists());
+        assert!(rig.manager.resume(id).is_err());
+        assert!(rig.server.requests().is_empty());
+    }
+}
+
+#[test]
+fn original_response_known_and_streamed_sizes_obey_the_limit_without_replay() {
+    use blueice_ipc::downloads::write_response_chunk;
+    for total in [Some(5), None] {
+        let rig = Rig::with(|config| config.options.max_total_bytes = Some(4));
+        let (mut input, id) = original_response_input(&rig, total);
+        if total.is_none() {
+            write_response_chunk(&mut input, b"large").unwrap();
+            write_response_chunk(&mut input, &[]).unwrap();
+        }
+        let info = wait_state(&mut rig.client(), id, TransferState::Failed);
+        assert!(info.last_error.unwrap().contains("limit"));
+        assert!(!std::path::Path::new(&info.dest_path).exists());
+        assert!(!part_path(std::path::Path::new(&info.dest_path)).exists());
+        assert!(rig.server.requests().is_empty());
+    }
+}
+
+#[test]
+fn original_response_interrupted_record_restarts_failed_without_resume_or_partial_file() {
+    let rig = Rig::new();
+    let (_input, id) = original_response_input(&rig, None);
+    let info = wait_state(&mut rig.client(), id, TransferState::Active);
+    assert!(
+        rig.manager.pause(id).is_err(),
+        "one-shot original requests cannot be paused"
+    );
+    rig.manager.shutdown();
+    let catalog = rig.data_dir.join("transfers.json");
+    let mut stored: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&catalog).unwrap()).unwrap();
+    let entry = stored["transfers"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|entry| entry["info"]["id"] == id)
+        .unwrap();
+    assert_eq!(entry["info"]["original_response"], true);
+    entry["info"]["state"] = "active".into();
+    entry["info"]["last_error"] = serde_json::Value::Null;
+    std::fs::write(&catalog, serde_json::to_vec(&stored).unwrap()).unwrap();
+    std::fs::write(
+        part_path(std::path::Path::new(&info.dest_path)),
+        b"interrupted original bytes",
+    )
+    .unwrap();
+    let reopened = TransferManager::open(ManagerConfig::new(
+        rig.download_dir.path(),
+        rig.data_dir.path(),
+        &rig.gate.socket,
+    ))
+    .unwrap();
+    let restored = reopened.get(id).unwrap();
+    let resume = reopened.resume(id);
+    reopened.shutdown();
+    assert_eq!(restored.state, TransferState::Failed);
+    assert!(resume.is_err());
+    assert!(!part_path(std::path::Path::new(&info.dest_path)).exists());
+    assert!(rig.server.requests().is_empty());
+}
+
+#[test]
+fn original_response_queued_cancel_closes_its_owned_input() {
+    use std::io::Read;
+    let rig = Rig::with(|config| config.max_concurrent = 1);
+    let (_active_input, active) = original_response_input(&rig, None);
+    let mut client = rig.client();
+    wait_state(&mut client, active, TransferState::Active);
+    let (mut queued_input, queued) = original_response_input(&rig, None);
+    wait_state(&mut client, queued, TransferState::Queued);
+    queued_input
+        .set_read_timeout(Some(Duration::from_secs(1)))
+        .unwrap();
+    let cancelled = client.cancel(queued).unwrap();
+    let closed = queued_input.read(&mut [0]);
+    client.cancel(active).unwrap();
+    assert_eq!(cancelled.state, TransferState::Cancelled);
+    assert_eq!(
+        closed.unwrap(),
+        0,
+        "queued cancellation must retire the original response connection"
+    );
+    assert!(rig.server.requests().is_empty());
+}
+
+#[test]
+fn original_response_shutdown_closes_queued_input_and_cannot_resume() {
+    use std::io::Read;
+    let rig = Rig::with(|config| config.max_concurrent = 1);
+    let (_active_input, active) = original_response_input(&rig, None);
+    let mut client = rig.client();
+    wait_state(&mut client, active, TransferState::Active);
+    let (mut queued_input, queued) = original_response_input(&rig, None);
+    wait_state(&mut client, queued, TransferState::Queued);
+    queued_input
+        .set_read_timeout(Some(Duration::from_secs(1)))
+        .unwrap();
+    rig.manager.shutdown();
+    let closed = queued_input.read(&mut [0]);
+    let interrupted = rig.manager.get(queued).unwrap();
+    assert_eq!(interrupted.state, TransferState::Failed);
+    assert!(rig.manager.resume(queued).is_err());
+    assert_eq!(
+        closed.unwrap(),
+        0,
+        "shutdown must retire queued original response connections"
+    );
+    assert!(rig.server.requests().is_empty());
+}

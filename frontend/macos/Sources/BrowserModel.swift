@@ -415,7 +415,7 @@ final class BrowserModel: ObservableObject {
         }
         if windowTabs != nil, let tab, !tabs.contains(where: { $0.id == tab }) {
             switch envelope.message {
-            case .opened, .closed, .frame, .navigated, .navigationStarted, .history, .textInputState, .textInputUnavailable,
+            case .opened, .closed, .frame, .navigated, .navigationStarted, .downloadOffered, .downloadStarted, .history, .textInputState, .textInputUnavailable,
                  .viewportState, .displayPreferences, .representation, .representationUnavailable, .blocked, .error: return
             default: break
             }
@@ -508,6 +508,14 @@ final class BrowserModel: ObservableObject {
             }
         case .closed:
             Task { await send(.unit("ListTabs")) }
+        case .downloadOffered(_,let currentURL):
+            // Download navigation keeps page-local input/find/accessibility
+            // identities and history. Restore only the address draft/status.
+            if let tab, let index = tabs.firstIndex(where: { $0.id == tab }) { tabs[index].url = currentURL }
+            if tab == selected { address = currentURL ?? ""; status = "Starting downloads…" }
+            downloadsPresented = true
+        case .downloadStarted:
+            if tab == selected { status = "Ready" }
         case .navigationStarted:
             if let tab { assistant.invalidate(tab, clear: false) }
             if tab == selected { status = "Loading…" }

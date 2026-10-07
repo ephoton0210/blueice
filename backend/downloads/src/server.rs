@@ -176,6 +176,26 @@ fn handle_connection_with_hello_timeout(
                 .start(&url, dest.as_deref(), overwrite)
                 .map(DownloadsReply::Started)
                 .unwrap_or_else(refusal),
+            DownloadsRequest::StartResponse { response } => {
+                if subscribed {
+                    return send(
+                        &writer,
+                        id,
+                        &error_reply(
+                            ErrorCode::InvalidRequest,
+                            "a response requires a dedicated connection",
+                        ),
+                    );
+                }
+                let input = reader.try_clone()?;
+                let reply = manager
+                    .start_response(response, input)
+                    .map(DownloadsReply::Started)
+                    .unwrap_or_else(refusal);
+                // Ownership has moved to the bounded worker; never interpret
+                // original binary bytes as another ordinary protocol request.
+                return send(&writer, id, &reply);
+            }
             DownloadsRequest::List { state } => DownloadsReply::Transfers(manager.list(state)),
             DownloadsRequest::Get { id } => manager
                 .get(id)

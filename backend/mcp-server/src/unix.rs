@@ -254,6 +254,8 @@ impl<S: Read + Write> CoreConnection<S> {
                     | ServerMessage::ContextMenu(_)
                     | ServerMessage::ContextMenuLink { .. }
                 | ServerMessage::NavigationStarted { .. }
+                | ServerMessage::NavigationDownloadOffered { .. }
+                | ServerMessage::NavigationDownloadStarted { .. }
                 | ServerMessage::FormResubmissionResolved { .. }
                 | ServerMessage::FormResubmission { .. }
                 | ServerMessage::Unknown
@@ -311,6 +313,13 @@ impl<S: Read + Write> CoreConnection<S> {
                     error = Some("Form resubmission requires confirmation in the browser".into());
                     break;
                 }
+                ServerMessage::NavigationDownloadOffered { .. } => {
+                    error = Some(
+                        "Navigation returned a download response; the current page was retained"
+                            .into(),
+                    );
+                    break;
+                }
                 ServerMessage::Navigated { .. } => navigated = true,
                 ServerMessage::Error { message } => {
                     error = Some(message);
@@ -365,6 +374,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::ContextMenu(_)
                 | ServerMessage::ContextMenuLink { .. }
                 | ServerMessage::NavigationStarted { .. }
+                | ServerMessage::NavigationDownloadStarted { .. }
                 | ServerMessage::FormResubmissionResolved { .. }
                 | ServerMessage::Unknown
                 | ServerMessage::TabOpened { .. }
@@ -631,6 +641,8 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::ContextMenu(_)
                 | ServerMessage::ContextMenuLink { .. }
                 | ServerMessage::NavigationStarted { .. }
+                | ServerMessage::NavigationDownloadOffered { .. }
+                | ServerMessage::NavigationDownloadStarted { .. }
                 | ServerMessage::FormResubmissionResolved { .. }
                 | ServerMessage::FormResubmission { .. }
                 | ServerMessage::Unknown
@@ -713,6 +725,8 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::ContextMenu(_)
                 | ServerMessage::ContextMenuLink { .. }
                 | ServerMessage::NavigationStarted { .. }
+                | ServerMessage::NavigationDownloadOffered { .. }
+                | ServerMessage::NavigationDownloadStarted { .. }
                 | ServerMessage::FormResubmissionResolved { .. }
                 | ServerMessage::FormResubmission { .. }
                 | ServerMessage::Unknown
@@ -842,6 +856,8 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::ContextMenu(_)
                 | ServerMessage::ContextMenuLink { .. }
                 | ServerMessage::NavigationStarted { .. }
+                | ServerMessage::NavigationDownloadOffered { .. }
+                | ServerMessage::NavigationDownloadStarted { .. }
                 | ServerMessage::FormResubmissionResolved { .. }
                 | ServerMessage::FormResubmission { .. }
                 | ServerMessage::Unknown
@@ -921,6 +937,8 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::ContextMenu(_)
                 | ServerMessage::ContextMenuLink { .. }
                 | ServerMessage::NavigationStarted { .. }
+                | ServerMessage::NavigationDownloadOffered { .. }
+                | ServerMessage::NavigationDownloadStarted { .. }
                 | ServerMessage::FormResubmissionResolved { .. }
                 | ServerMessage::FormResubmission { .. }
                 | ServerMessage::Unknown
@@ -999,6 +1017,8 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::ContextMenu(_)
                 | ServerMessage::ContextMenuLink { .. }
                 | ServerMessage::NavigationStarted { .. }
+                | ServerMessage::NavigationDownloadOffered { .. }
+                | ServerMessage::NavigationDownloadStarted { .. }
                 | ServerMessage::FormResubmissionResolved { .. }
                 | ServerMessage::FormResubmission { .. }
                 | ServerMessage::Unknown
@@ -1089,6 +1109,8 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::ContextMenu(_)
                 | ServerMessage::ContextMenuLink { .. }
                 | ServerMessage::NavigationStarted { .. }
+                | ServerMessage::NavigationDownloadOffered { .. }
+                | ServerMessage::NavigationDownloadStarted { .. }
                 | ServerMessage::FormResubmissionResolved { .. }
                 | ServerMessage::FormResubmission { .. }
                 | ServerMessage::Unknown
@@ -1219,6 +1241,8 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::ContextMenu(_)
                 | ServerMessage::ContextMenuLink { .. }
                 | ServerMessage::NavigationStarted { .. }
+                | ServerMessage::NavigationDownloadOffered { .. }
+                | ServerMessage::NavigationDownloadStarted { .. }
                 | ServerMessage::FormResubmissionResolved { .. }
                 | ServerMessage::FormResubmission { .. }
                 | ServerMessage::Unknown

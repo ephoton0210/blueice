@@ -1803,6 +1803,18 @@ mod unix {
                     ServerMessage::FormResubmission { url, .. } => {
                         eprintln!("blueice-frontend: form resubmission for {url} requires a frontend with confirmation support");
                     }
+                    ServerMessage::NavigationDownloadOffered { navigation_id, .. } => {
+                        if let Some(tab_id) = tab_id {
+                            self.send_selected_to(
+                                tab_id,
+                                &ClientMessage::ContinueNavigationDownload {
+                                    navigation_id,
+                                    accept: false,
+                                },
+                            );
+                        }
+                        eprintln!("blueice-frontend: automatic response downloads require native download support");
+                    }
                     ServerMessage::Error { message } => {
                         eprintln!("blueice-frontend: core reported an error: {message}");
                     }
@@ -1837,6 +1849,7 @@ mod unix {
                     | ServerMessage::BlueJsScriptReports(_)
                     | ServerMessage::Hello { .. }
                     | ServerMessage::NavigationStarted { .. }
+                    | ServerMessage::NavigationDownloadStarted { .. }
                     | ServerMessage::FormResubmissionResolved { .. }
                     | ServerMessage::Unknown
                     | ServerMessage::FindState(_)

@@ -215,6 +215,8 @@ pub struct TransferInfo {
     /// means a pause restarts from byte 0 -- reported up front, not
     /// discovered afterward.
     pub resume_safe: bool,
+    /// Original navigation bytes cannot be refetched, resumed or replayed.
+    pub original_response: bool,
     pub segments: Vec<SegmentInfo>,
     /// Failed attempts so far, across all segments.
     pub retries: u32,
@@ -324,6 +326,17 @@ impl fmt::Display for ErrorCode {
     }
 }
 
+/// Metadata for an already received navigation response. It contains no local
+/// path, credentials, request body, or authority to replay the request.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ResponseDownload {
+    pub url: String,
+    pub status: u16,
+    pub content_type: Option<String>,
+    pub content_disposition: Option<String>,
+    pub total_bytes: Option<u64>,
+}
+
 /// What a client asks the downloads process to do.
 #[derive(Clone, PartialEq, Serialize, Deserialize)]
 pub enum DownloadsRequest {
@@ -342,6 +355,12 @@ pub enum DownloadsRequest {
         dest: Option<String>,
         #[serde(default)]
         overwrite: bool,
+    },
+    /// A dedicated connection supplies the original response. After Started,
+    /// its remaining input is bounded length-prefixed binary chunks ending in
+    /// an explicit zero-length chunk. No subsequent ordinary requests follow.
+    StartResponse {
+        response: ResponseDownload,
     },
     /// Every known transfer, optionally only those in `state`.
     List {
@@ -433,6 +452,7 @@ pub enum DownloadsRequest {
 impl fmt::Debug for DownloadsRequest {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            DownloadsRequest::StartResponse { .. } => f.write_str("StartResponse(<metadata>)"),
             DownloadsRequest::ResolveCredentialTarget { .. } => f
                 .debug_struct("ResolveCredentialTarget")
                 .field("url", &"<redacted>")
@@ -490,6 +510,7 @@ impl fmt::Debug for DownloadsRequest {
                         .field("dest", dest)
                         .field("overwrite", overwrite)
                         .finish(),
+                    DownloadsRequest::StartResponse { .. } => unreachable!(),
                     DownloadsRequest::List { state } => {
                         f.debug_struct("List").field("state", state).finish()
                     }
@@ -988,6 +1009,7 @@ mod tests {
             connections: 2,
             mode: TransferMode::Segmented,
             resume_safe: true,
+            original_response: false,
             segments: vec![
                 SegmentInfo {
                     start: 0,
@@ -1944,3 +1966,7 @@ mod tests {
             .contains("boom"));
     }
 }
+
+#[path = "response_stream.rs"]
+mod response_stream;
+pub use response_stream::{write_response_chunk, ResponseBodyReader, MAX_RESPONSE_CHUNK_BYTES};

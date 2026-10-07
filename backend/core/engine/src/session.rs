@@ -1086,6 +1086,7 @@ mod extension_bridge;
 use extension_bridge::*;
 mod contexts;
 mod navigation;
+mod response_downloads;
 mod windows;
 use navigation::*;
 mod assistant_tasks;

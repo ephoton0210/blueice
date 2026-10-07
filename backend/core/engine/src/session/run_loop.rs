@@ -58,6 +58,7 @@ pub(super) fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
     let (assistant_tx, assistant_rx) = mpsc::channel::<AssistantCompletion>();
     let mut pending_nav_seq: HashMap<TabId, u64> = HashMap::new();
     let mut print_jobs = printing::PrintJobs::default();
+    let mut pending_downloads: HashMap<TabId, response_downloads::PendingDownload> = HashMap::new();
     let mut pending_resubmissions: HashMap<TabId, PendingResubmission> = HashMap::new();
     let (listing_tx, listing_rx) = mpsc::channel::<DownloadsListing>();
     let mut downloads_refresher = DownloadsRefresher::default();
@@ -68,6 +69,7 @@ pub(super) fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
     let mut requests = requests;
     loop {
         print_jobs.expire(tabs);
+        pending_downloads.retain(|tab, pending| pending.is_current(tabs, &pending_nav_seq, *tab));
         pending_resubmissions.retain(|tab, pending| {
             tabs.get(*tab)
                 .is_some_and(|page| page.document_generation() == pending.document)
@@ -147,6 +149,22 @@ pub(super) fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
                 // by a request that left it implicit.
                 let reply_tab = Some(target.as_u64());
                 match msg {
+                    ClientMessage::ContinueNavigationDownload {
+                        navigation_id,
+                        accept,
+                    } => {
+                        response_downloads::continue_download(
+                            tabs,
+                            stream,
+                            target,
+                            request_id,
+                            navigation_id,
+                            accept,
+                            &pending_nav_seq,
+                            &mut pending_downloads,
+                            &completion_tx,
+                        )?;
+                    }
                     ClientMessage::BrowserContext(action) => {
                         contexts::handle_context_action(tabs, stream, request_id, action)?
                     }
@@ -1916,6 +1934,7 @@ pub(super) fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
                 generation,
                 &pending_nav_seq,
                 completion,
+                &mut pending_downloads,
                 &mut downloads_refresher,
                 &mut page_script_runtime,
                 requests.script,

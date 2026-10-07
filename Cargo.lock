@@ -340,6 +340,7 @@ dependencies = [
  "blueice-bluets-bluejs",
  "blueice-css",
  "blueice-dom",
+ "blueice-downloads",
  "blueice-extension-host",
  "blueice-font",
  "blueice-html",

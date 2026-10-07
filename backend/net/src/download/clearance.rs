@@ -133,6 +133,34 @@ pub struct Reviewer {
 }
 
 impl Reviewer {
+    /// Reviews original-response metadata without probing or replaying a URL.
+    pub fn review_response(
+        &self,
+        cleared: UrlCleared,
+        response: &blueice_ipc::downloads::ResponseDownload,
+        file_name: &str,
+    ) -> Result<DownloadClearance, Blocked> {
+        if cleared.url != response.url {
+            return Err(Blocked {
+                reason: "the response URL differs from the reviewed URL".to_string(),
+                category: "clearance-mismatch".to_string(),
+            });
+        }
+        self.ask(&GatekeeperRequest::CheckDownload {
+            url: response.url.clone(),
+            file_name: file_name.to_string(),
+            content_type: response.content_type.clone(),
+            total_bytes: response.total_bytes,
+        })?;
+        Ok(DownloadClearance {
+            requested_url: response.url.clone(),
+            final_url: response.url.clone(),
+            file_name: file_name.to_string(),
+            content_type: response.content_type.clone(),
+            total_bytes: response.total_bytes,
+        })
+    }
+
     pub fn new(socket: impl AsRef<Path>) -> Self {
         Reviewer {
             socket: socket.as_ref().to_path_buf(),

@@ -33,6 +33,7 @@ getrandom = "0.3"
 zeroize = "1.9.0"
 
 [dev-dependencies]
+blueice-downloads = { path = "../../downloads" }
 blueice-testing = { path = "../../testing" }
 blueice-ai-gatekeeper = { path = "../../ai-gatekeeper" }
 blueice-ai-assistant = { path = "../../ai-assistant" }

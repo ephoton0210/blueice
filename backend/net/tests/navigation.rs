@@ -44,7 +44,7 @@ fn post_hop_sends_bounded_private_bytes_and_exposes_error_html_for_review() {
             assert_eq!(page.status, 422);
             assert_eq!(page.body, "<p>Try again</p>");
         }
-        FetchHop::Redirect { .. } => panic!("expected error page, not redirect"),
+        FetchHop::Redirect { .. } | FetchHop::Download(_) => panic!("expected error page"),
     }
     server.join().unwrap();
 }

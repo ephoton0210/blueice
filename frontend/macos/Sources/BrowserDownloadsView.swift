@@ -114,7 +114,8 @@ private struct DownloadRow: View {
                 Text(BrowserStrings.format("%@/s · %llu connections%@", DownloadInfo.bytes(info.speedBps), UInt64(info.connections),
                     info.etaSecs.map { BrowserStrings.format(" · %llus remaining", $0) } ?? "")).font(.caption)
             }
-            if info.state == .paused && !info.resumeSafe { Text(BrowserStrings.text("Resuming starts again from the beginning.")).font(.caption) }
+            if info.state == .paused && !info.resumeSafe && !info.originalResponse { Text(BrowserStrings.text("Resuming starts again from the beginning.")).font(.caption) }
+            if info.originalResponse && [.paused,.failed,.blocked].contains(info.state) { Text(BrowserStrings.text("This response cannot be resumed. Navigate again to download a new response.")).font(.caption) }
             if let block = info.blocked { Text(block.reason).font(.caption).foregroundStyle(.red).accessibilityIdentifier("download-blocked-\(info.id)") }
             if let error = info.lastError, info.state == .failed { Text(error).font(.caption).foregroundStyle(.red) }
             if downloads.hasQuarantine(info) {
@@ -122,8 +123,11 @@ private struct DownloadRow: View {
                     .accessibilityIdentifier("download-quarantine-\(info.id)")
             }
             HStack {
-                if [.queued,.awaitingClearance,.active].contains(info.state) { operation("Pause","Pause","pause"); operation("Cancel","Cancel","cancel") }
-                if [.paused,.failed,.blocked].contains(info.state) { operation("Resume","Resume","resume") }
+                if [.queued,.awaitingClearance,.active].contains(info.state) {
+                    if !info.originalResponse { operation("Pause","Pause","pause") }
+                    operation("Cancel","Cancel","cancel")
+                }
+                if !info.originalResponse && [.paused,.failed,.blocked].contains(info.state) { operation("Resume","Resume","resume") }
                 if info.state == .paused { operation("Cancel","Cancel","cancel") }
                 if info.state.terminal { operation("Remove from List","Remove","remove") }
                 if info.state == .completed {
