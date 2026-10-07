@@ -348,6 +348,7 @@ narrowing needs a flow graph or can stay structural, recorded in PLAN.md before 
   *Today:* one immutable-local `typeof` form (H.3).
   - *Design decision (2026-10-07):* PLAN.md records a bounded flow graph per execution scope, reusing lexical binding identities and authorized syntax. Graph construction, predicates and evaluation remain separate modules; assignments, joins, loops, abrupt completion and closure boundaries require pinned positive and negative witnesses before implementation.
   - *Failing baseline (2026-10-07):* 97 pinned cases (67 accept, 30 reject), eleven accepted runtime/declaration witnesses. Linux replay reports 82 checker mismatches and ten runtime failures; fixture coverage and the pinned recorder pass. No production implementation is included in the baseline.
+  - *Supplemental baseline (2026-10-07):* twenty additional path/execution witnesses bring the corpus to 117 cases (81 accept, 36 reject) and thirteen runtime witnesses. Before the extension, Linux replay records eighteen checker mismatches and two runtime failures; recorder and completeness pass.
 - [ ] **K.4.2 Guards and assertions (M).** `x is T`, `this is T`, `asserts x`, `asserts x is T`, `never`
   exhaustiveness (TS2366, TS2678).
 - [ ] **K.4.3 Generic inference (XL).** Inference from arguments (candidates, unification, widening),

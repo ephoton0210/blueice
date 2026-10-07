@@ -34,10 +34,10 @@ fn position(position: &Option<blueice_bluets::TypeScriptPosition>) -> Value {
 #[test]
 fn matrix_covers_every_narrowing_fixture() {
     let cases = cases();
-    assert_eq!(cases.len(), 97);
+    assert_eq!(cases.len(), 117);
     assert_eq!(
         cases.iter().filter(|case| case["runtime"] == true).count(),
-        11
+        13
     );
     let recorded = cases
         .iter()
@@ -231,7 +231,11 @@ fn narrowing_preserves_execution_and_declarations() {
                 .unwrap()
                 .replace("\r\n", "\n")
         {
-            failures.push(format!("{entry}: declaration differs"));
+            failures.push(format!(
+                "{entry}: declaration differs:\nBlue: {}\nTypeScript: {}",
+                fs::read_to_string(blue.join("main.d.ts")).unwrap(),
+                fs::read_to_string(reference.join("main.d.ts")).unwrap()
+            ));
         }
     }
     fs::remove_dir_all(root).unwrap();

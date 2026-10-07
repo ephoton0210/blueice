@@ -4741,3 +4741,19 @@ finishes in 41.46 seconds and preserves the failure log at
 `/logs/blueice-k41-red.log` in the existing Linux validation container.
 The existing diagnostic corpus is also regenerated to include this matrix.
 These failures are intentional K.0 evidence; K.4.1 remains unchecked.
+
+### K.4.1 Supplemental path and execution replay
+
+The initial flow implementation passes the original 97 pinned cases. Before
+extending it, twenty further TypeScript 5.9.3 witnesses establish property-path
+facts, optional receiver/value projection, default clauses preceding later
+switch cases, unreachable `never`, inherited `instanceof`, compound writes and
+branching immediate invocations. The combined baseline contains 117 programs
+(81 accept, 36 reject) and thirteen accepted runtime/declaration witnesses.
+
+The supplemental Linux public replay reports eighteen checker mismatches and
+two runtime failures; completeness and the pinned recorder pass. All four tests
+run, including both ignored oracles, in 19.69 seconds. The failure log is
+`/logs/blueice-k41-supplement-red.log`. This commit records evidence only;
+production changes remain outside the committed baseline and K.4.1 remains
+unchecked. Existing class/static/readonly refusals stay authoritative.
