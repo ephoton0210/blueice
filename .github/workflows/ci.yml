@@ -72,6 +72,11 @@ jobs:
       - name: Install SUSE prerequisites
         if: matrix.family == 'suse'
         run: |
+          # These build dependencies do not use the optional codec repository.
+          # Its availability must not prevent installing the required packages.
+          if [ -f /etc/zypp/repos.d/repo-openh264.repo ]; then
+            zypper --non-interactive modifyrepo --disable repo-openh264
+          fi
           zypper --non-interactive install --no-recommends git-core gcc gcc-c++ make tar gzip xz zstd diffutils timezone findutils curl
           # These images declare no PATH of their own, so the first entry a
           # later step adds to GITHUB_PATH (rustup's) would become the whole
