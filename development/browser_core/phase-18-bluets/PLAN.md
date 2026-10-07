@@ -4757,3 +4757,59 @@ run, including both ignored oracles, in 19.69 seconds. The failure log is
 `/logs/blueice-k41-supplement-red.log`. This commit records evidence only;
 production changes remain outside the committed baseline and K.4.1 remains
 unchecked. Existing class/static/readonly refusals stay authoritative.
+
+### K.4.1 Lexical flow implementation
+
+The compiler now builds a bounded graph per lexical execution scope from
+retained authorized syntax. Binding identities distinguish shadows; original
+token offsets select flow facts. Property paths use a separate fact map, so
+narrowing a field does not replace its owner's nominal/readonly type. Positive
+and negative predicates, short-circuit operands, discriminant alternatives,
+reachable joins, loop fixed points, assignment resets and delayed capture
+boundaries replace the earlier single-local `typeof` and iterator-loop helpers.
+Immediate invocations reuse the graph solver, including branches and returns;
+switch default entry excludes every case regardless of textual position.
+
+The pinned matrix now passes all 117 verdicts and exact primary diagnostics
+without exemptions. Thirteen accepted CLI builds match Node output and exact
+TypeScript declarations. Necessary declaration support retains referenced
+private aliases and renders inline record unions in signatures. The three
+source-hashed K.3.3 iterator wording allowances are removed: the shared message
+replay compares TypeScript directly. Its regenerated corpus contains 1,515
+programs (679 accept, 836 reject) and 137 message templates. BTS codes and raw
+messages stay separate from TypeScript presentation.
+
+Flow versioning participates in compiler fingerprints. Work, nesting and type
+lookup bounds retain precise resource diagnostics and fail-closed publication.
+Existing class/static/private and readonly regressions remain enforced; no
+filesystem, network or runtime capability changes. The largest production
+source remains 1,185 lines; graph construction, evaluation, predicates,
+properties, assignments and binding lookup remain individual small modules.
+K.0 final-source gate evidence follows before this leaf is checked complete.
+Broader exception-flow and dotted capture precision are unmeasured; user guards,
+assertions and exhaustiveness are the next K.4.2 leaf, while M8 remains open.
+
+The first complete K.0 test run reaches all 68 groups and all 128 ignored
+oracles: 1,100 tests pass and one legacy oracle fails. Its optional missing
+property witness observes an additional assignment error caused by inference
+falling back to the receiver type. The inference fix retains the two required
+refusals and avoids that cascade. Failure evidence is preserved as
+`/logs/blueice-k41-gate-attempt1-gate.log`; the complete gate is rerun on the
+corrected frozen backend source rather than changing the oracle's expected
+diagnostic count.
+
+### K.4.1 Optional receiver boundary replay
+
+Six further pinned witnesses cover a known-null mutable/const receiver, a
+nullable alias, its missing property and an alias runtime/declaration witness.
+Known-null receivers must reject with TS2339 on `never`; accepting the old
+coverage controls was incorrect. Missing optional members also require the
+TypeScript property diagnostic rather than an unmapped BTS-only error.
+
+The corpus now contains 123 programs (83 accept, 40 reject) and fourteen
+accepted runtime/declaration witnesses. Before the production correction, the
+Linux CLI replay disagrees on all six added programs. The exact evidence is
+`/logs/blueice-k41-optional-red.json`, recorded with the existing binary while
+the previous 117-case K.0 snapshot remains unchanged. These new fixtures and
+reference observations are committed before the receiver/metadata fix.
+K.4.1 remains unchecked.

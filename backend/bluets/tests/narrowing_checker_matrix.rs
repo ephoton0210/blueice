@@ -34,10 +34,10 @@ fn position(position: &Option<blueice_bluets::TypeScriptPosition>) -> Value {
 #[test]
 fn matrix_covers_every_narrowing_fixture() {
     let cases = cases();
-    assert_eq!(cases.len(), 117);
+    assert_eq!(cases.len(), 123);
     assert_eq!(
         cases.iter().filter(|case| case["runtime"] == true).count(),
-        13
+        14
     );
     let recorded = cases
         .iter()
@@ -89,7 +89,7 @@ fn lexical_flow_matches_pinned_verdicts_and_primary_diagnostics() {
             },
         );
         let accepts = case["accepts"] == true;
-        if !result.has_errors() != accepts || result.output.is_some() != accepts {
+        if result.has_errors() == accepts || result.output.is_some() != accepts {
             failures.push(format!(
                 "{entry}: expected accept={accepts}: {:?}",
                 result.diagnostics

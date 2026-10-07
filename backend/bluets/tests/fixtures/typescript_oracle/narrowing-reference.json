@@ -624,6 +624,28 @@
       "first": null
     },
     {
+      "entry": "narrow-optional-alias/main.ts",
+      "accepts": true,
+      "runtime": false,
+      "first": null
+    },
+    {
+      "entry": "narrow-optional-alias-missing-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2339,
+        "message": "Property 'missing' does not exist on type '{ value: number; }'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 105,
+          "length": 7
+        },
+        "related": []
+      }
+    },
+    {
       "entry": "narrow-optional-chain/main.ts",
       "accepts": true,
       "runtime": false,
@@ -657,6 +679,54 @@
           "line": 5,
           "column": 115,
           "length": 3
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "narrow-optional-known-null-const-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2339,
+        "message": "Property 'value' does not exist on type 'never'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 90,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "narrow-optional-known-null-mutable-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2339,
+        "message": "Property 'value' does not exist on type 'never'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 87,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "narrow-optional-missing-property-error/main.ts",
+      "accepts": false,
+      "runtime": false,
+      "first": {
+        "code": 2339,
+        "message": "Property 'missing' does not exist on type '{ value: number; }'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 85,
+          "length": 7
         },
         "related": []
       }
@@ -801,6 +871,12 @@
     },
     {
       "entry": "narrow-runtime-optional/main.ts",
+      "accepts": true,
+      "runtime": true,
+      "first": null
+    },
+    {
+      "entry": "narrow-runtime-optional-alias/main.ts",
       "accepts": true,
       "runtime": true,
       "first": null

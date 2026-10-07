@@ -65,9 +65,14 @@ narrow-null-strict/main.ts	accept
 narrow-null-strict-keeps-undefined/main.ts	reject
 narrow-null-throw/main.ts	accept
 narrow-null-unbraced-return/main.ts	accept
+narrow-optional-alias/main.ts	accept
+narrow-optional-alias-missing-error/main.ts	reject
 narrow-optional-chain/main.ts	accept
 narrow-optional-chain-negative/main.ts	reject
 narrow-optional-equal-undefined-owner-error/main.ts	reject
+narrow-optional-known-null-const-error/main.ts	reject
+narrow-optional-known-null-mutable-error/main.ts	reject
+narrow-optional-missing-property-error/main.ts	reject
 narrow-optional-nested-chain/main.ts	accept
 narrow-optional-not-undefined-owner/main.ts	accept
 narrow-optional-null-projection/main.ts	accept
@@ -87,6 +92,7 @@ narrow-runtime-instanceof/main.ts	accept
 narrow-runtime-loop/main.ts	accept
 narrow-runtime-nullish/main.ts	accept
 narrow-runtime-optional/main.ts	accept
+narrow-runtime-optional-alias/main.ts	accept
 narrow-runtime-property-path/main.ts	accept
 narrow-runtime-switch/main.ts	accept
 narrow-runtime-truthy/main.ts	accept
