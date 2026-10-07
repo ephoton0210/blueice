@@ -4472,3 +4472,22 @@ source is 1,185 lines, below the 1,200-line review threshold, so no split is due
 K.3.1 is complete. The ordered next leaf is K.3.2. K.3.3 and the final M7
 workspace/platform/coverage gate remain required; full TypeScript parity is
 not claimed.
+
+### K.3.2 Primary position baseline
+
+The existing 1,398-entry pinned record already contains one-based UTF-16
+line/column and UTF-16 length for every primary source diagnostic. The public
+replay now requires these coordinates alongside the verified code/template.
+Its test-first run has 800 expected position failures because the machine
+representation does not yet expose that coordinate object. The position
+tracker records every row in `baseline-position-mismatches.json`; converting
+the existing byte spans separately identifies 543 different primary spans.
+Five exact language-corpus subset refusals have no TypeScript primary span and
+retain their explicit K.3.1 exception records. The other accepted entries are
+still required to produce no diagnostics.
+
+`record_diagnostic_positions.py` records coordinate differences without
+changing sources or emitting outputs. This failing replay and row-by-row
+baseline are committed before implementation under K.0.1. Configuration, native
+CLI and option-combination matrices still require their position inventory;
+K.3.2, K.3.3 and the final M7 gate remain open.

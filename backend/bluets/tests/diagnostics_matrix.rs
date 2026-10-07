@@ -83,7 +83,7 @@ fn record_covers_every_existing_checker_matrix() {
 }
 
 #[test]
-fn primary_codes_and_message_templates_match_the_pinned_corpus() {
+fn primary_codes_templates_and_positions_match_the_pinned_corpus() {
     let reference = reference();
     let no_counterpart: Vec<Value> = serde_json::from_str(include_str!(
         "fixtures/diagnostics/no-typescript-counterpart.json"
@@ -166,6 +166,15 @@ fn primary_codes_and_message_templates_match_the_pinned_corpus() {
         {
             failures.push(format!(
                 "{id}: expected {expected_template}; received {primary}"
+            ));
+        }
+        let expected_position = serde_json::json!({
+            "line": expected["line"], "column": expected["column"], "length": expected["length"],
+        });
+        if actual["position"] != expected_position {
+            failures.push(format!(
+                "{id}: expected position {expected_position}; received {}",
+                actual["position"]
             ));
         }
     }
