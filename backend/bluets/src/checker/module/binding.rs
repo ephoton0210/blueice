@@ -447,6 +447,7 @@ impl<'a> ModuleChecker<'a> {
     }
 
     pub(crate) fn check_types(&mut self) {
+        self.check_alias_cycles();
         self.validate_class_heritage_cycles();
         self.bind_inherited_class_instance_methods();
         self.bind_inherited_class_static_methods();

@@ -323,6 +323,24 @@ impl<'a> ModuleChecker<'a> {
             );
         }
         if let Some(value) = erased_assertion_operand(tokens) {
+            if let Some(annotation) = tokens
+                .get(value.len())
+                .and_then(|token| self.module.type_assertions.get(&token.start))
+            {
+                let target = match annotation {
+                    Type::Named { name, .. } => self
+                        .types
+                        .get(name)
+                        .map(|definition| &definition.value)
+                        .unwrap_or(annotation),
+                    value => value,
+                };
+                if target.operator_children().is_some()
+                    || matches!(target, Type::KeyOf(_) | Type::IndexedAccess { .. })
+                {
+                    return annotation.clone();
+                }
+            }
             // Both forms disappear from emitted JavaScript. Keep the known
             // runtime receiver type, including readonly host qualifiers,
             // rather than accidentally inferring its first identifier.

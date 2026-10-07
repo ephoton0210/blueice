@@ -182,7 +182,11 @@ impl<'a> ModuleChecker<'a> {
     ) -> Option<Vec<TypeField>> {
         match value {
             Type::Record(fields) | Type::CallableRecord { fields, .. } => Some(fields),
-            Type::Named { .. } => {
+            Type::Named { .. }
+            | Type::Conditional(_)
+            | Type::Mapped(_)
+            | Type::KeyOf(_)
+            | Type::IndexedAccess { .. } => {
                 let expanded =
                     instantiate_named(&value, &self.types, visited, budget, "record spread")?;
                 self.expand_record_fields(expanded, visited, budget)

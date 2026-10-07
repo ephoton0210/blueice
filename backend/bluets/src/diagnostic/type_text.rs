@@ -25,8 +25,13 @@ fn text(value: &Type, depth: usize, project: Option<&crate::Project>) -> String 
     }
     let render = |value: &Type| text(value, depth + 1, project);
     match value {
+        Type::Conditional(_) | Type::Infer(_) | Type::Mapped(_) | Type::TemplateLiteral(_) => {
+            value.operator_text(render).expect("operator type")
+        }
         Type::KeyOf(value) => format!("keyof {}", render(value)),
-        Type::IndexedAccess { object, index } => format!("{}[{}]", render(object), render(index)),
+        Type::IndexedAccess { object, index, .. } => {
+            format!("{}[{}]", render(object), render(index))
+        }
         Type::Predicate(predicate) => predicate.text(render),
         Type::Literal(value) => {
             if value.starts_with('\'') && value.ends_with('\'') {

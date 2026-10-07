@@ -774,8 +774,11 @@ fn emit_type_parameters(output: &mut String, parameters: &[TypeParameter]) {
 
 fn type_to_ts(value: &Type) -> String {
     match value {
+        Type::Conditional(_) | Type::Infer(_) | Type::Mapped(_) | Type::TemplateLiteral(_) => {
+            value.operator_text(type_to_ts).expect("operator type")
+        }
         Type::KeyOf(value) => format!("keyof {}", type_to_ts(value)),
-        Type::IndexedAccess { object, index } => {
+        Type::IndexedAccess { object, index, .. } => {
             format!("{}[{}]", type_to_ts(object), type_to_ts(index))
         }
         Type::Predicate(predicate) => predicate.text(type_to_ts),

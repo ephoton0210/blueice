@@ -10,6 +10,9 @@ use crate::syntax::{
 };
 use std::collections::BTreeMap;
 
+mod type_forms;
+pub use type_forms::{ConditionalType, MappedModifier, MappedType, TemplateLiteralType};
+
 /// Parser work bounds. Hosts may lower these for a constrained compile slot;
 /// the values are included in [`crate::CompilerLimits`] fingerprints.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -48,6 +51,8 @@ pub struct Module {
     pub(crate) type_references: Vec<TypeReference>,
     /// Annotations on declarations retained inside opaque control flow.
     pub(crate) expression_variable_types: BTreeMap<usize, Type>,
+    /// Retained static `as` targets, keyed by the assertion keyword.
+    pub(crate) type_assertions: BTreeMap<usize, Type>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -945,6 +950,7 @@ impl Type {
                 | Type::Function { .. }
                 | Type::GenericFunction { .. }
                 | Type::KeyOf(_)
+                | Type::Conditional(_)
         ) {
             format!("({text})[]")
         } else {
@@ -1023,7 +1029,12 @@ pub enum Type {
     IndexedAccess {
         object: Box<Type>,
         index: Box<Type>,
+        index_span: SourceSpan,
     },
+    Conditional(Box<ConditionalType>),
+    Infer(Box<TypeParameter>),
+    Mapped(Box<MappedType>),
+    TemplateLiteral(TemplateLiteralType),
     GenericFunction {
         type_parameters: Vec<TypeParameter>,
         parameters: Vec<Parameter>,

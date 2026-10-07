@@ -500,6 +500,10 @@ impl Lowerer<'_, '_> {
             | Type::Record(_)
             | Type::CallableRecord { .. }
             | Type::Intersection(_)
+            | Type::Conditional(_)
+            | Type::Infer(_)
+            | Type::Mapped(_)
+            | Type::TemplateLiteral(_)
             | Type::KeyOf(_)
             | Type::IndexedAccess { .. } => "Object".to_string(),
             Type::Array(_) | Type::Tuple(_) => "Array".to_string(),

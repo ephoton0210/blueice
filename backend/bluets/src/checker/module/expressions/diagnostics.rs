@@ -5,6 +5,7 @@
 //! Diagnostic causes determined from the checked call signatures.
 
 use super::*;
+mod operators;
 
 impl ModuleChecker<'_> {
     pub(in crate::checker::module) fn call_argument_error(
@@ -172,6 +173,9 @@ impl ModuleChecker<'_> {
         actual: &Type,
         expected: &Type,
     ) {
+        if self.operator_assignment_error(span, &message, bts_code, actual, expected) {
+            return;
+        }
         let (actual_fields, actual_exhausted) = self.expanded_record_fields(actual.clone());
         let literal_initializer =
             self.module
@@ -301,6 +305,12 @@ impl ModuleChecker<'_> {
                 }
             }
         }
+        let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
+        let display = super::super::super::type_operators::diagnostic_type(
+            expected,
+            &self.types,
+            &mut budget,
+        );
         self.typescript_type_error(
             span,
             message,
@@ -308,10 +318,10 @@ impl ModuleChecker<'_> {
             2322,
             vec![
                 crate::diagnostic::type_text::render_in(actual, self.project),
-                crate::diagnostic::type_text::render_in(expected, self.project),
+                crate::diagnostic::type_text::render_in(&display, self.project),
             ],
         );
-        self.explain_last_type_pair(actual, expected);
+        self.explain_last_type_pair(actual, &display);
     }
 
     fn explain_last_type_pair(&mut self, actual: &Type, expected: &Type) {

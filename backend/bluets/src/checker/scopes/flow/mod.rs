@@ -14,7 +14,7 @@ mod graph;
 mod predicates;
 mod properties;
 
-pub(crate) const VERSION: &str = "lexical-flow-v5";
+pub(crate) const VERSION: &str = "lexical-flow-v6";
 #[derive(Clone, Debug, PartialEq)]
 struct State {
     reachable: bool,

@@ -132,7 +132,18 @@ impl<'a> Index<'a> {
         }
     }
     fn type_fields(&mut self, owner: &str, ty: &Type) {
+        if let Some(children) = ty.operator_children() {
+            for child in children {
+                self.type_fields(owner, child);
+            }
+            return;
+        }
         match ty {
+            Type::Named { name, arguments } => {
+                for argument in arguments {
+                    self.type_fields(name, argument);
+                }
+            }
             Type::Record(fields) | Type::CallableRecord { fields, .. } => {
                 for field in fields {
                     let span = self.name_in(&field.name, &field.span);

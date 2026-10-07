@@ -8,6 +8,22 @@ use super::*;
 
 /// Every named type a type mentions.
 pub(super) fn named_types(value: &Type, into: &mut BTreeSet<String>) {
+    if let Some(children) = value.operator_children() {
+        let mut names = BTreeSet::new();
+        for child in children {
+            named_types(child, &mut names);
+        }
+        if let Type::Mapped(value) = value {
+            names.remove(&value.parameter.name);
+        }
+        if let Type::Conditional(value) = value {
+            for parameter in value.extends.infer_parameters() {
+                names.remove(&parameter.name);
+            }
+        }
+        into.extend(names);
+        return;
+    }
     match value {
         Type::CallableRecord { fields, signatures } => {
             named_types(&Type::Record(fields.clone()), into);
@@ -41,7 +57,7 @@ pub(super) fn named_types(value: &Type, into: &mut BTreeSet<String>) {
             }
         }
         Type::KeyOf(value) => named_types(value, into),
-        Type::IndexedAccess { object, index } => {
+        Type::IndexedAccess { object, index, .. } => {
             named_types(object, into);
             named_types(index, into);
         }
@@ -103,6 +119,17 @@ impl Qualifier<'_> {
     }
 
     pub(super) fn ty(&self, value: &Type) -> Type {
+        if let Some(value) = value.map_operator(|value, bound| {
+            let rename = self
+                .rename
+                .iter()
+                .filter(|(name, _)| !bound.contains(name))
+                .map(|(name, target)| (name.clone(), target.clone()))
+                .collect();
+            Qualifier { rename: &rename }.ty(value)
+        }) {
+            return value;
+        }
         match value {
             Type::CallableRecord { fields, signatures } => {
                 let Type::Record(fields) = self.ty(&Type::Record(fields.clone())) else {
@@ -125,9 +152,14 @@ impl Qualifier<'_> {
                 Type::Predicate(predicate)
             }
             Type::KeyOf(value) => Type::KeyOf(Box::new(self.ty(value))),
-            Type::IndexedAccess { object, index } => Type::IndexedAccess {
+            Type::IndexedAccess {
+                object,
+                index,
+                index_span,
+            } => Type::IndexedAccess {
                 object: Box::new(self.ty(object)),
                 index: Box::new(self.ty(index)),
+                index_span: index_span.clone(),
             },
             Type::GenericFunction {
                 type_parameters,

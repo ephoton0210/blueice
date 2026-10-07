@@ -5,6 +5,7 @@
 //! Lexical lookup, named types and generic declaration validation.
 
 use super::*;
+mod operators;
 
 impl ModuleChecker<'_> {
     pub(crate) fn check_names(&mut self) {
@@ -65,7 +66,7 @@ impl ModuleChecker<'_> {
     pub(in crate::checker::module) fn type_is_bound(&self, value: &Type) -> bool {
         match value {
             Type::KeyOf(value) => self.type_is_bound(value),
-            Type::IndexedAccess { object, index } => {
+            Type::IndexedAccess { object, index, .. } => {
                 self.type_is_bound(object) && self.type_is_bound(index)
             }
             Type::Predicate(predicate) => predicate.return_position,
@@ -102,9 +103,25 @@ impl ModuleChecker<'_> {
     }
 
     pub(in crate::checker::module) fn check_type(&mut self, value: &Type, span: &SourceSpan) {
+        self.check_operator(value);
+        if let Some(children) = value.operator_children() {
+            let previous = self.type_parameters.clone();
+            if let Type::Mapped(value) = value {
+                self.type_parameters.insert(value.parameter.name.clone());
+            }
+            if let Type::Conditional(value) = value {
+                self.type_parameters
+                    .extend(value.extends.infer_parameters().into_iter().map(|p| p.name));
+            }
+            for child in children {
+                self.check_type(child, span);
+            }
+            self.type_parameters = previous;
+            return;
+        }
         match value {
             Type::KeyOf(value) => self.check_type(value, span),
-            Type::IndexedAccess { object, index } => {
+            Type::IndexedAccess { object, index, .. } => {
                 self.check_type(object, span);
                 self.check_type(index, span);
             }

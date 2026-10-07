@@ -2,11 +2,18 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Concrete record keys and projections needed by generic constraints.
+//! Bounded type operators share the structural relation's expansion budget.
 
 use super::*;
+use crate::parser::{ConditionalType, MappedModifier, MappedType, TemplateLiteralType};
 
-fn expanded(
+mod conditional;
+mod keys;
+mod literal_order;
+mod mapped;
+mod templates;
+
+pub(super) fn expanded(
     value: &Type,
     aliases: &BTreeMap<String, TypeDefinition>,
     visited: &mut HashSet<String>,
@@ -14,9 +21,33 @@ fn expanded(
 ) -> Type {
     let mut value = value.clone();
     while let Some(next) = instantiate_named(&value, aliases, visited, budget, "operator operand") {
+        if next == value {
+            break;
+        }
         value = next;
     }
     value
+}
+
+fn union(values: impl IntoIterator<Item = Type>) -> Type {
+    fn add(value: Type, into: &mut Vec<Type>) {
+        match value {
+            Type::Never => {}
+            Type::Union(values) => values.into_iter().for_each(|value| add(value, into)),
+            value => {
+                if !into.contains(&value) {
+                    into.push(value);
+                }
+            }
+        }
+    }
+    let mut parts = Vec::new();
+    values.into_iter().for_each(|value| add(value, &mut parts));
+    match parts.len() {
+        0 => Type::Never,
+        1 => parts.pop().expect("one union constituent"),
+        _ => Type::Union(parts),
+    }
 }
 
 pub(super) fn resolve(
@@ -25,50 +56,123 @@ pub(super) fn resolve(
     visited: &mut HashSet<String>,
     budget: &mut TypeExpansionBudget,
 ) -> Option<Type> {
+    if !budget.consume() {
+        return None;
+    }
     match value {
-        Type::KeyOf(operand) => {
-            if !budget.consume() {
-                return None;
-            }
-            let Type::Record(fields) = expanded(operand, aliases, visited, budget) else {
-                return None;
-            };
-            let keys = fields
-                .iter()
-                .map(|field| Type::Literal(format!("{:?}", field.name)))
-                .collect::<Vec<_>>();
-            Some(match keys.len() {
-                0 => Type::Never,
-                1 => keys.into_iter().next()?,
-                _ => Type::Union(keys),
-            })
+        Type::KeyOf(value) => keys::keyof(value, aliases, visited, budget),
+        Type::IndexedAccess { object, index, .. } => {
+            keys::indexed(object, index, aliases, visited, budget)
         }
-        Type::IndexedAccess { object, index } => {
-            if !budget.consume() {
-                return None;
-            }
-            let object = expanded(object, aliases, visited, budget);
-            let index = expanded(index, aliases, visited, budget);
-            let Type::Literal(key) = index else {
-                return None;
-            };
-            let key = key.trim_matches(['\'', '"']);
-            match object {
-                Type::Record(fields) => {
-                    let field = fields.into_iter().find(|field| field.name == key)?;
-                    Some(if field.optional {
-                        Type::Union(vec![field.value, Type::Undefined])
-                    } else {
-                        field.value
-                    })
-                }
-                Type::Array(item) if key.parse::<usize>().is_ok() => Some(*item),
-                Type::Tuple(items) => items
-                    .get(key.parse::<usize>().ok()?)
-                    .map(TupleTypeElement::indexed_type),
-                _ => None,
-            }
-        }
+        Type::Conditional(value) => conditional::resolve(value, aliases, visited, budget),
+        Type::Mapped(value) => mapped::resolve(value, aliases, visited, budget),
+        Type::TemplateLiteral(value) => templates::resolve(value, aliases, visited, budget),
         _ => None,
+    }
+}
+
+pub(super) fn template_matches(
+    actual: &Type,
+    expected: &TemplateLiteralType,
+    aliases: &BTreeMap<String, TypeDefinition>,
+    budget: &mut TypeExpansionBudget,
+) -> bool {
+    templates::matches(actual, expected, &mut BTreeMap::new(), aliases, budget)
+}
+
+/// Diagnostic aliases retain their name for records and ordinary unions;
+/// reduced operator scalars and literal products display the selected result.
+pub(super) fn diagnostic_type(
+    value: &Type,
+    aliases: &BTreeMap<String, TypeDefinition>,
+    budget: &mut TypeExpansionBudget,
+) -> Type {
+    let original = value.clone();
+    let mut value = value.clone();
+    let mut visited = HashSet::new();
+    let mut operator = false;
+    let mut indexed = false;
+    loop {
+        if let Type::KeyOf(operand) = &value {
+            let operand = expanded(operand, aliases, &mut HashSet::new(), budget);
+            if matches!(operand, Type::Array(_) | Type::Tuple(_)) {
+                return Type::KeyOf(Box::new(operand));
+            }
+        }
+        operator |= matches!(
+            value,
+            Type::Conditional(_)
+                | Type::KeyOf(_)
+                | Type::IndexedAccess { .. }
+                | Type::TemplateLiteral(_)
+        );
+        indexed |= matches!(value, Type::IndexedAccess { .. });
+        if let Type::Named { name, .. } = &value {
+            let Some(definition) = aliases.get(name) else {
+                break;
+            };
+            if !operator
+                && matches!(
+                    definition.value,
+                    Type::Union(_)
+                        | Type::Record(_)
+                        | Type::CallableRecord { .. }
+                        | Type::Mapped(_)
+                )
+            {
+                return original;
+            }
+        }
+        let Some(next) =
+            instantiate_named(&value, aliases, &mut visited, budget, "diagnostic operator")
+        else {
+            break;
+        };
+        if next == value {
+            break;
+        }
+        value = next;
+    }
+    if let Type::Union(parts) = value {
+        let parts = parts
+            .into_iter()
+            .map(|part| diagnostic_type(&part, aliases, budget))
+            .collect::<Vec<_>>();
+        value = union(parts);
+    }
+    if matches!(
+        value,
+        Type::Record(_) | Type::CallableRecord { .. } | Type::Mapped(_)
+    ) || (indexed && matches!(value, Type::Union(_)))
+    {
+        original
+    } else {
+        value
+    }
+}
+
+/// Inspect alias syntax without changing ordinary literal-union inference.
+pub(super) fn is_operator_context(
+    value: &Type,
+    aliases: &BTreeMap<String, TypeDefinition>,
+) -> bool {
+    let mut value = value;
+    let mut visited = HashSet::new();
+    loop {
+        if value.operator_children().is_some()
+            || matches!(value, Type::KeyOf(_) | Type::IndexedAccess { .. })
+        {
+            return true;
+        }
+        let Type::Named { name, .. } = value else {
+            return false;
+        };
+        if !visited.insert(name) {
+            return false;
+        }
+        let Some(definition) = aliases.get(name) else {
+            return false;
+        };
+        value = &definition.value;
     }
 }

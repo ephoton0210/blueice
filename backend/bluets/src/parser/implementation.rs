@@ -17,9 +17,11 @@ pub(super) struct Parser {
     nested_functions: BTreeMap<usize, NestedFunction>,
     type_references: Vec<TypeReference>,
     expression_variable_types: BTreeMap<usize, Type>,
+    type_assertions: BTreeMap<usize, Type>,
     diagnostics: Vec<Diagnostic>,
     max_type_depth: usize,
     type_depth: usize,
+    infer_depth: usize,
     /// Set while a class constructor's parameters are parsed, where an
     /// accessibility modifier or `readonly` declares a property.
     parameter_property_mode: bool,

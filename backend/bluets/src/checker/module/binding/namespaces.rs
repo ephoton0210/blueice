@@ -248,6 +248,7 @@ impl ModuleChecker<'_> {
             nested_functions: self.module.nested_functions.clone(),
             type_references: self.module.type_references.clone(),
             expression_variable_types: self.module.expression_variable_types.clone(),
+            type_assertions: self.module.type_assertions.clone(),
         };
         let declared = declared_in(namespace);
         let mut sub = ModuleChecker::new(

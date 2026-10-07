@@ -128,7 +128,12 @@ pub(super) fn property_type(
                 },
             }
         }
-        Type::Named { .. } => {
+        Type::Named { .. }
+        | Type::Conditional(_)
+        | Type::Mapped(_)
+        | Type::IndexedAccess { .. }
+        | Type::KeyOf(_)
+        | Type::TemplateLiteral(_) => {
             match instantiate_named(value, aliases, visited, budget, "property") {
                 Some(value) => property_type(&value, property, aliases, visited, budget),
                 None if budget.exhausted => PropertyType::Exhausted,
@@ -220,7 +225,12 @@ pub(super) fn contains_readonly_member(
         Type::Record(fields) | Type::CallableRecord { fields, .. } => {
             Ok(fields.iter().any(|field| field.readonly))
         }
-        Type::Named { .. } => {
+        Type::Named { .. }
+        | Type::Conditional(_)
+        | Type::Mapped(_)
+        | Type::IndexedAccess { .. }
+        | Type::KeyOf(_)
+        | Type::TemplateLiteral(_) => {
             match instantiate_named(value, aliases, visited, budget, "readonly property") {
                 Some(value) => contains_readonly_member(&value, aliases, visited, budget),
                 None if budget.exhausted => Err(()),
@@ -270,7 +280,12 @@ pub(super) fn readonly_property(
                     .is_some_and(|field| field.readonly)
             }
         }
-        Type::Named { .. } => {
+        Type::Named { .. }
+        | Type::Conditional(_)
+        | Type::Mapped(_)
+        | Type::IndexedAccess { .. }
+        | Type::KeyOf(_)
+        | Type::TemplateLiteral(_) => {
             instantiate_named(owner, aliases, visited, budget, "readonly mutation").is_some_and(
                 |value| {
                     readonly_property(
@@ -342,7 +357,12 @@ pub(super) fn mutation_field_type(
                     field.value.clone()
                 }
             }),
-        Type::Named { .. } => {
+        Type::Named { .. }
+        | Type::Conditional(_)
+        | Type::Mapped(_)
+        | Type::IndexedAccess { .. }
+        | Type::KeyOf(_)
+        | Type::TemplateLiteral(_) => {
             instantiate_named(owner, aliases, visited, budget, "mutation receiver").and_then(
                 |value| {
                     mutation_field_type(

@@ -539,8 +539,42 @@ impl ScopeModel<'_> {
 
     pub(super) fn type_scopes(&mut self, value: &Type, span: &SourceSpan, scope: ScopeId) {
         match value {
+            Type::Conditional(value) => {
+                self.type_scopes(&value.check, &value.span, scope);
+                self.type_scopes(&value.extends, &value.span, scope);
+                let inner = self.generic_scope(
+                    scope,
+                    &value.when_true_span,
+                    &value.extends.infer_parameters(),
+                );
+                self.type_scopes(&value.when_true, &value.when_true_span, inner);
+                self.type_scopes(&value.when_false, &value.span, scope);
+            }
+            Type::Mapped(value) => {
+                if let Some(constraint) = &value.parameter.constraint {
+                    self.type_scopes(constraint, &value.parameter.span, scope);
+                }
+                let inner_span =
+                    SourceSpan::new(&self.module.id, value.parameter.span.end, value.span.end);
+                let inner =
+                    self.generic_scope(scope, &inner_span, std::slice::from_ref(&value.parameter));
+                if let Some(name) = &value.name_type {
+                    self.type_scopes(name, &inner_span, inner);
+                }
+                self.type_scopes(&value.value, &inner_span, inner);
+            }
+            Type::Infer(parameter) => {
+                if let Some(constraint) = &parameter.constraint {
+                    self.type_scopes(constraint, &parameter.span, scope);
+                }
+            }
+            Type::TemplateLiteral(value) => {
+                for (value, _) in &value.spans {
+                    self.type_scopes(value, span, scope);
+                }
+            }
             Type::KeyOf(value) => self.type_scopes(value, span, scope),
-            Type::IndexedAccess { object, index } => {
+            Type::IndexedAccess { object, index, .. } => {
                 self.type_scopes(object, span, scope);
                 self.type_scopes(index, span, scope);
             }

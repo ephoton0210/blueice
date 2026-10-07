@@ -35,6 +35,25 @@ impl<'a> ModuleChecker<'a> {
         ) {
             contextual = expanded;
         }
+        let literal_display =
+            crate::checker::type_operators::diagnostic_type(&contextual, &self.types, &mut budget);
+        let literal_context = crate::checker::type_operators::is_operator_context(
+            expected,
+            &self.types,
+        ) && (matches!(
+            literal_display,
+            Type::Literal(_) | Type::Never | Type::TemplateLiteral(_)
+        ) || matches!(&literal_display, Type::Union(parts) if parts.iter().any(|part| matches!(part, Type::Literal(_)))));
+        if literal_context {
+            if let [literal] = strip_outer_parentheses(tokens) {
+                if matches!(literal.kind, TokenKind::String | TokenKind::Number)
+                    || literal.is("true")
+                    || literal.is("false")
+                {
+                    return Type::Literal(literal.text.clone());
+                }
+            }
+        }
         match &contextual {
             Type::Function { parameters, .. } => {
                 let tokens = strip_outer_parentheses(tokens);

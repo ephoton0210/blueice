@@ -31,9 +31,11 @@ impl Parser {
             nested_functions: BTreeMap::new(),
             type_references: Vec::new(),
             expression_variable_types: BTreeMap::new(),
+            type_assertions: BTreeMap::new(),
             diagnostics: Vec::new(),
             max_type_depth,
             type_depth: 0,
+            infer_depth: 0,
             parameter_property_mode: false,
             parameter_properties: Vec::new(),
             namespace_depth: 0,
@@ -71,6 +73,7 @@ impl Parser {
                 nested_functions: self.nested_functions,
                 type_references: self.type_references,
                 expression_variable_types: self.expression_variable_types,
+                type_assertions: self.type_assertions,
             })
         } else {
             Err(self.diagnostics)

@@ -162,7 +162,12 @@ pub(crate) fn attach(project: &Project, diagnostics: &mut [Diagnostic]) {
                 let props = index.jsx_owner(span, child_type).unwrap_or_default();
                 if let Some(field) = index
                     .field(name, &props, &span.module)
-                    .filter(|_| child_type || attribute_type || nested_record)
+                    .filter(|field| (child_type || attribute_type || nested_record)
+                        && !(nested_record && project.modules.get(&field.span.module).is_some_and(|module| {
+                            module.declarations.iter().any(|declaration| matches!(declaration,
+                                crate::Declaration::TypeAlias(alias) if alias.name == field.owner
+                                    && matches!(&alias.value, crate::Type::Union(parts) if parts.iter().any(|part| !matches!(part, crate::Type::Record(_))))))
+                        })))
                 {
                     let owner = index.expected_owner(field, span);
                     push(

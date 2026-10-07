@@ -1,0 +1,91 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+//! Homomorphic modifiers survive key remapping and bounded property expansion.
+use super::*;
+
+fn modifier(value: MappedModifier, inherited: bool) -> bool {
+    match value {
+        MappedModifier::Preserve => inherited,
+        MappedModifier::Add => true,
+        MappedModifier::Remove => false,
+    }
+}
+
+pub(super) fn resolve(
+    value: &MappedType,
+    aliases: &BTreeMap<String, TypeDefinition>,
+    visited: &mut HashSet<String>,
+    budget: &mut TypeExpansionBudget,
+) -> Option<Type> {
+    let constraint = value.parameter.constraint.as_ref()?;
+    let origin = if let Type::KeyOf(object) = constraint {
+        Some(expanded(object, aliases, &mut visited.clone(), budget))
+    } else {
+        None
+    };
+    let keys = expanded(constraint, aliases, &mut visited.clone(), budget);
+    let keys = match keys {
+        Type::Never => vec![],
+        Type::Union(keys) => keys,
+        Type::Literal(_) => vec![keys],
+        _ => return None,
+    };
+    let mut fields: Vec<TypeField> = Vec::new();
+    for key in keys {
+        if !budget.consume() {
+            return None;
+        }
+        let substitutions = BTreeMap::from([(value.parameter.name.clone(), key.clone())]);
+        let mapped_key = value
+            .name_type
+            .as_ref()
+            .map(|name| substitute_type(name, &substitutions))
+            .unwrap_or_else(|| key.clone());
+        let mapped_key = expanded(&mapped_key, aliases, &mut visited.clone(), budget);
+        let mapped_keys = match mapped_key {
+            Type::Never => vec![],
+            Type::Union(keys) => keys,
+            key => vec![key],
+        };
+        let inherited = match &origin {
+            Some(Type::Record(fields) | Type::CallableRecord { fields, .. }) => fields
+                .iter()
+                .find(|field| Some(field.name.clone()) == keys::key_name(&key)),
+            _ => None,
+        };
+        let property = substitute_type(&value.value, &substitutions);
+        let mut property = expanded(&property, aliases, &mut visited.clone(), budget);
+        if value.optional == MappedModifier::Remove && inherited.is_some_and(|field| field.optional)
+        {
+            if let Type::Union(parts) = property {
+                property = union(parts.into_iter().filter(|part| *part != Type::Undefined));
+            }
+        }
+        for key in mapped_keys {
+            if !budget.consume() {
+                return None;
+            }
+            let name = keys::key_name(&key)?;
+            if let Some(field) = fields.iter_mut().find(|field| field.name == name) {
+                field.value = union([field.value.clone(), property.clone()]);
+            } else {
+                fields.push(TypeField {
+                    name,
+                    value: property.clone(),
+                    readonly: modifier(
+                        value.readonly,
+                        inherited.is_some_and(|field| field.readonly),
+                    ),
+                    optional: modifier(
+                        value.optional,
+                        inherited.is_some_and(|field| field.optional),
+                    ),
+                    span: value.span.clone(),
+                });
+            }
+        }
+    }
+    Some(Type::Record(fields))
+}

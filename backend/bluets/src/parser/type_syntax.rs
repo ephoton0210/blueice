@@ -6,6 +6,8 @@
 
 #[path = "type_syntax/callable_objects.rs"]
 mod callable_objects;
+#[path = "type_syntax/operators.rs"]
+mod operators;
 
 use super::runtime_syntax::*;
 use super::*;
@@ -108,7 +110,7 @@ impl Parser {
         let value = if predicate {
             self.parse_predicate_until(stop, assertion, return_position)
         } else {
-            self.parse_union(stop)
+            self.parse_conditional(stop)
         };
         if self.index == type_start && !self.at_eof() && !stop.iter().any(|stop| self.peek(stop)) {
             self.error_here(DiagnosticCode::ParseError, "expected a type");
@@ -205,7 +207,11 @@ impl Parser {
     }
 
     pub(super) fn parse_type_primary(&mut self, _stop: &[&str]) -> Type {
-        let mut value = if self.consume("keyof") {
+        let mut value = if self.peek("infer") {
+            self.parse_infer_type()
+        } else if self.current().kind == TokenKind::Template {
+            self.parse_template_type()
+        } else if self.consume("keyof") {
             Type::KeyOf(Box::new(self.parse_type_primary(_stop)))
         } else if self.peek("<") {
             let start = self.current().start;
@@ -308,7 +314,11 @@ impl Parser {
             }
             Type::Tuple(values)
         } else if self.consume("{") {
-            self.parse_record_type("expected a record field name")
+            if self.starts_mapped_type() {
+                self.parse_mapped_type()
+            } else {
+                self.parse_record_type("expected a record field name")
+            }
         } else if self.peek("(") && !self.parenthesis_starts_function_type() {
             // A parenthesized type only groups: `(A | B)[]`.
             self.bump();
@@ -319,6 +329,7 @@ impl Parser {
             let mut parameters = Vec::new();
             while !self.at_eof() && !self.consume(")") {
                 let start = self.current().start;
+                let rest = self.consume("...");
                 let name = self.require_identifier("expected a function type parameter name");
                 let optional = self.consume("?");
                 self.expect(":");
@@ -328,7 +339,7 @@ impl Parser {
                     decorators: Vec::new(),
                     name,
                     pattern: None,
-                    rest: false,
+                    rest,
                     optional,
                     annotation: Some(annotation),
                     default: None,
@@ -425,11 +436,14 @@ impl Parser {
             value = if self.consume("]") {
                 Type::Array(Box::new(value))
             } else {
+                let start = self.current().start;
                 let index = self.parse_type_until(&["]"]);
+                let index_span = SourceSpan::new(&self.id, start, self.previous().end);
                 self.expect("]");
                 Type::IndexedAccess {
                     object: Box::new(value),
                     index: Box::new(index),
+                    index_span,
                 }
             };
         }
@@ -526,6 +540,11 @@ impl Parser {
     }
 
     pub(super) fn require_property_name(&mut self, message: impl Into<String>) -> String {
+        if matches!(self.current().kind, TokenKind::Number | TokenKind::String) {
+            let name = self.current().text.trim_matches(['\'', '"']).to_string();
+            self.bump();
+            return name;
+        }
         self.consume_identifier_or_keyword().unwrap_or_else(|| {
             self.error_here(DiagnosticCode::ParseError, message);
             "<error>".to_string()

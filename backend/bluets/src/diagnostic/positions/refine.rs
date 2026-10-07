@@ -14,7 +14,7 @@ pub(super) fn refine(diagnostic: &Diagnostic, tokens: &[Token]) -> SourceSpan {
     let selected = tokens.get(begin..end).unwrap_or(&[]);
     let code = counterpart.code;
     let chosen = match code {
-        2322 | 2741 | 2375 => assignment(selected, tokens, begin, diagnostic),
+        2322 | 2741 | 2375 | 2820 => assignment(selected, tokens, begin, diagnostic),
         2345 | 2769 | 2554 | 2555 => call_argument(selected, &diagnostic.message, code),
         2417 | 2415 => class_name(tokens, begin),
         2416 | 2378 | 1054 | 1095 | 1049 | 2390 | 2391 | 2392 | 2393 | 2394 | 2385 | 2377

@@ -700,6 +700,7 @@ fn render_members(
                 nested_functions: BTreeMap::new(),
                 type_references: Vec::new(),
                 expression_variable_types: BTreeMap::new(),
+                type_assertions: BTreeMap::new(),
             };
             let text = super::emit_declaration(&synthetic, &[], None)?;
             let hidden_names: BTreeSet<&str> = chunk

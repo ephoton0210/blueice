@@ -26,7 +26,7 @@ instrumented.paths = module.paths;
 instrumented._compile(source.replace(anchor,
     "    if (!numberLiteralTypes.has(value)) process.emit('blueice-numeric-literal', value);\n" + anchor), filename);
 const ts = instrumented.exports;
-const virtual = path.join(fixtures, 'oracle_support', 'operator_literal_cache.ts');
+const virtual = ts.normalizePath(path.join(fixtures, 'oracle_support', 'operator_literal_cache.ts'));
 const host = ts.createCompilerHost(options);
 const getSourceFile = host.getSourceFile;
 host.getSourceFile = (file, version, onError, createNew) => file === virtual

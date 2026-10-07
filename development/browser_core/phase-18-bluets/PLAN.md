@@ -5259,3 +5259,50 @@ Evidence: `/private/tmp/blueice-k14-linux/blueice-k45-order-red.log`.
 The shared diagnostic corpus is regenerated to 1,826 programs (836 accept,
 990 reject) and 152 templates. This supplemental commit records only fixtures,
 test evidence and documentation; production remains an uncommitted draft.
+
+### K.4.5 type operators verified — 2026-10-08
+
+Conditional, inferred, mapped and template-literal types retain explicit syntax,
+binders and source spans in focused parser modules. Conditional substitution
+preserves naked-parameter distribution and tuple wrapping; infer bindings belong
+to the true branch, and mapped key binders remain local to their remap/value.
+All visitors preserve the forms through namespace qualification, imports,
+substitution and declaration output. Value queries retain lexical declarations
+and property types. Type-only assertions retain measured operator targets.
+
+Bounded key sets cover the measured records, arrays, numeric keys, unions and
+intersections. Indexed projection retains optional fields and diagnoses missing
+properties and tuple bounds at the index token. Conditional pattern inference
+handles the measured array, tuple, function, record and template forms. Mapped
+records preserve optional/readonly modifiers and support key remapping/filtering.
+Finite template products and open numeric patterns share expansion work with
+named aliases and structural comparisons; productive recursive record paths
+retain the actual structural identity. Unguarded alias cycles are diagnosed.
+
+Assignment messages display reduced scalars and literal products while retaining
+record/ordinary-union alias names, related property origins and source positions.
+The measured literal spelling suggestions use declaration order for ties. The
+pinned ES2022 default-library numeric cache supplies product ordering from 652
+reproducible observations; newly encountered numeric literals keep source order.
+Ordinary literal unions retain their existing BTS wording. Exact declarations
+preserve operator syntax, mapped formatting and inline generic record arguments.
+The analysis identity advances to `lexical-flow-v6`; no runtime helper or owner
+permission is added, and data-only contract refusals remain explicit.
+
+All 82 pinned programs (39 accept, 43 reject), exact primary/related diagnostics,
+three Node/runtime and every-declaration witnesses, both pinned recorders and
+six operator-budget refusal controls pass. The complete frozen-source Linux K.0
+gate passes format, format check, both-crate all-target Clippy with warnings
+denied, the operator/shared-diagnostic regressions and all 1,120 tests in 72
+groups, including all 137 ignored oracles in 37 differential suite files.
+Evidence: `/private/tmp/blueice-k14-linux/blueice-k45-final-status.json`,
+`blueice-k45-final-gate.log` and `blueice-k45-final-clippy.log`. All 39 frozen
+changed backend files match the host and Linux snapshots. Largest production
+source: 1,153 lines; the operator responsibilities remain in small child modules.
+The shared diagnostic corpus records 1,826 programs (836 accept, 990 reject) and
+152 templates; generated refusal evidence records 163 sites in 10 areas.
+
+G-T3 retains unmeasured nested patterns, overloaded queries, escape normalization
+and broader library/primitive-key combinations. Index/readonly/symbol and mapped
+array/tuple composition remain in K.4.6; wider relations remain in K.4.7. M8 and
+the final workspace/coverage gate remain open.

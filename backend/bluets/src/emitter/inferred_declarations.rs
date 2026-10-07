@@ -227,6 +227,12 @@ impl<'a> Context<'a> {
     }
 
     fn references(&mut self, value: &Type) {
+        if let Some(children) = value.operator_children() {
+            for child in children {
+                self.references(child);
+            }
+            return;
+        }
         match value {
             Type::CallableRecord { fields, signatures } => {
                 self.references(&Type::Record(fields.clone()));
@@ -235,7 +241,7 @@ impl<'a> Context<'a> {
                 }
             }
             Type::KeyOf(value) => self.references(value),
-            Type::IndexedAccess { object, index } => {
+            Type::IndexedAccess { object, index, .. } => {
                 self.references(object);
                 self.references(index);
             }
@@ -337,12 +343,62 @@ impl<'a> Context<'a> {
         declared_function(source, &local, self.project, &mut BTreeSet::new(), 0).then_some(name)
     }
 
+    fn render_operator(
+        &mut self,
+        value: &Type,
+        indent: usize,
+        span: &SourceSpan,
+    ) -> Option<Result<String, Diagnostic>> {
+        let mut failure = None;
+        let mapped = value.map_operator(|child, _| {
+            match self.render(
+                child,
+                indent + usize::from(matches!(value, Type::Mapped(_))) * 4,
+                span,
+            ) {
+                Ok(text) => Type::Literal(text),
+                Err(error) => {
+                    failure = Some(error);
+                    Type::Unknown
+                }
+            }
+        })?;
+        if let Some(error) = failure {
+            return Some(Err(error));
+        }
+        let text = mapped
+            .operator_text(|value| {
+                if let Type::Literal(text) = value {
+                    text.clone()
+                } else {
+                    type_to_ts(value)
+                }
+            })
+            .expect("mapped operator");
+        Some(Ok(if matches!(value, Type::Mapped(_)) {
+            let member = text
+                .strip_prefix("{ ")
+                .and_then(|text| text.strip_suffix(" }"))
+                .expect("mapped spelling");
+            format!(
+                "{{\n{}{member}\n{}}}",
+                " ".repeat(indent + 4),
+                " ".repeat(indent)
+            )
+        } else {
+            text
+        }))
+    }
+
     fn render(
         &mut self,
         value: &Type,
         indent: usize,
         span: &SourceSpan,
     ) -> Result<String, Diagnostic> {
+        if let Some(rendered) = self.render_operator(value, indent, span) {
+            return rendered;
+        }
         Ok(match value {
             Type::Predicate(predicate) => {
                 let target = predicate
@@ -712,7 +768,8 @@ fn declares_symbol_value(module: &Module) -> bool {
 
 fn record_annotation(value: &Type) -> bool {
     match value {
-        Type::Record(_) => true,
+        Type::Record(_) | Type::Mapped(_) => true,
+        Type::Named { arguments, .. } => arguments.iter().any(record_annotation),
         Type::Predicate(predicate) => predicate.target.as_deref().is_some_and(record_annotation),
         Type::Union(parts) | Type::Intersection(parts) => parts.iter().any(record_annotation),
         _ => false,

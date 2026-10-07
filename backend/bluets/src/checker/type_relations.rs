@@ -270,17 +270,18 @@ pub(super) fn is_assignable(
         return is_assignable(&expanded, expected, aliases, visited, budget);
     }
     let mut expected_visited = visited.clone();
-    if let (Type::Record(_), Type::Named { name, .. }) = (actual, expected) {
-        if aliases
-            .get(name)
-            .is_some_and(|definition| matches!(definition.value, Type::Record(_)))
-        {
-            expected_visited.remove(&format!("expected:{}", type_identity(expected)));
-        }
-    }
-    if let Some(expanded) =
-        instantiate_named(expected, aliases, &mut expected_visited, budget, "expected")
-    {
+    let expected_side = if matches!(expected, Type::Named { .. }) {
+        format!("expected for {}", type_identity(actual))
+    } else {
+        "expected".to_string()
+    };
+    if let Some(expanded) = instantiate_named(
+        expected,
+        aliases,
+        &mut expected_visited,
+        budget,
+        &expected_side,
+    ) {
         return is_assignable(actual, &expanded, aliases, &mut expected_visited, budget);
     }
     if !budget.checking.strict_null_checks
@@ -324,6 +325,9 @@ pub(super) fn is_assignable(
         return parts
             .iter()
             .any(|part| is_assignable(part, expected, aliases, &mut visited.clone(), budget));
+    }
+    if let Type::TemplateLiteral(template) = expected {
+        return super::type_operators::template_matches(actual, template, aliases, budget);
     }
     match (actual, expected) {
         (Type::Predicate(actual), Type::Predicate(expected)) => {
@@ -749,7 +753,15 @@ pub(super) fn instantiate_named(
     budget: &mut TypeExpansionBudget,
     side: &str,
 ) -> Option<Type> {
-    if matches!(value, Type::KeyOf(_) | Type::IndexedAccess { .. }) {
+    if matches!(
+        value,
+        Type::Conditional(_)
+            | Type::Infer(_)
+            | Type::Mapped(_)
+            | Type::TemplateLiteral(_)
+            | Type::KeyOf(_)
+            | Type::IndexedAccess { .. }
+    ) {
         return super::type_operators::resolve(value, aliases, visited, budget);
     }
     let Type::Named { name, arguments } = value else {
@@ -805,11 +817,48 @@ pub(super) fn complete_type_arguments(
 }
 
 pub(super) fn substitute_type(value: &Type, substitutions: &BTreeMap<String, Type>) -> Type {
+    if let Type::Conditional(conditional) = value {
+        if let Type::Named { name, arguments } = &conditional.check {
+            if arguments.is_empty() {
+                match substitutions.get(name) {
+                    Some(Type::Never) => return Type::Never,
+                    Some(Type::Union(options)) => {
+                        return Type::Union(
+                            options
+                                .iter()
+                                .map(|option| {
+                                    let mut substitutions = substitutions.clone();
+                                    substitutions.insert(name.clone(), option.clone());
+                                    substitute_type(value, &substitutions)
+                                })
+                                .collect(),
+                        );
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+    if let Some(value) = value.map_operator(|value, bound| {
+        let mut substitutions = substitutions.clone();
+        for name in bound {
+            substitutions.remove(name);
+        }
+        substitute_type(value, &substitutions)
+    }) {
+        return value;
+    }
+
     match value {
         Type::KeyOf(value) => Type::KeyOf(Box::new(substitute_type(value, substitutions))),
-        Type::IndexedAccess { object, index } => Type::IndexedAccess {
+        Type::IndexedAccess {
+            object,
+            index,
+            index_span,
+        } => Type::IndexedAccess {
             object: Box::new(substitute_type(object, substitutions)),
             index: Box::new(substitute_type(index, substitutions)),
+            index_span: index_span.clone(),
         },
         Type::Predicate(predicate) => {
             let mut predicate = predicate.clone();
@@ -943,8 +992,11 @@ pub(super) fn substitute_type(value: &Type, substitutions: &BTreeMap<String, Typ
 
 pub(super) fn type_identity(value: &Type) -> String {
     match value {
+        Type::Conditional(_) | Type::Infer(_) | Type::Mapped(_) | Type::TemplateLiteral(_) => {
+            value.operator_text(type_identity).expect("operator type")
+        }
         Type::KeyOf(value) => format!("keyof {}", type_identity(value)),
-        Type::IndexedAccess { object, index } => {
+        Type::IndexedAccess { object, index, .. } => {
             format!("{}[{}]", type_identity(object), type_identity(index))
         }
         Type::Predicate(predicate) => predicate.text(type_identity),
@@ -972,8 +1024,10 @@ pub(super) fn type_identity(value: &Type) -> String {
                 .collect::<Vec<_>>()
                 .join(",")
         ),
-        Type::Record(_) | Type::CallableRecord { .. } => "record".to_string(),
-        Type::Function { .. } | Type::GenericFunction { .. } => "function".to_string(),
+        Type::Record(_)
+        | Type::CallableRecord { .. }
+        | Type::Function { .. }
+        | Type::GenericFunction { .. } => crate::diagnostic::type_text::render(value),
         Type::Union(values) => values
             .iter()
             .map(type_identity)
@@ -990,8 +1044,11 @@ pub(super) fn type_identity(value: &Type) -> String {
 
 pub(crate) fn type_label(value: &Type) -> String {
     match value {
+        Type::Conditional(_) | Type::Infer(_) | Type::Mapped(_) | Type::TemplateLiteral(_) => {
+            value.operator_text(type_label).expect("operator type")
+        }
         Type::KeyOf(value) => format!("keyof {}", type_label(value)),
-        Type::IndexedAccess { object, index } => {
+        Type::IndexedAccess { object, index, .. } => {
             format!("{}[{}]", type_label(object), type_label(index))
         }
         Type::Predicate(predicate) => predicate.text(type_label),
