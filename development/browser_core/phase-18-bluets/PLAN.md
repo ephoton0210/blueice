@@ -4667,3 +4667,55 @@ source-size split is required in K.3. The next ordered leaf is K.4.1, starting
 with its required narrowing design decision before implementation.
 This final status update changes documentation only; the validated source,
 fixtures, Git attributes and CI configuration retain the tested SHA's bytes.
+
+### K.4.1 Narrowing design decision
+
+Use a bounded control-flow graph per module/function execution scope rather
+than extending the current flat name maps and separate guard recognizers.
+`ScopeModel` already resolves lexical declaration owners, delayed execution
+boundaries, shadowing and writes; `functions/narrowing.rs` selects one immutable
+string/number local, while `iterator_guards.rs` projects only the loop entry.
+Neither representation can carry facts through joins, loop backedges,
+assignment, abrupt completion or closure creation. The three measured K.3.3
+iterator-result type-fact gaps are initial regression witnesses for this leaf.
+
+The graph is compiler-only data built from retained authorized AST and tokens.
+Facts identify a lexical binding by its declaring scope/declaration, with a
+property path for discriminants; names alone never select facts. Nodes model
+entry, conditions, assignments, reachable joins, loop backedges and abrupt
+completion (`return`, `throw`, `break`, `continue`). Structured function items
+are reused, with a dedicated balanced-token adapter for the existing opaque
+statement forms (including unbraced branches and switches). This adapter does
+not replace the emitter parser or grant support to otherwise refused syntax.
+
+Expression/type queries use the fact at their original token offset. Positive
+and negative predicates cover `typeof`, `instanceof`, `in`, literal/nullish
+equality, discriminants, truthiness, logical/optional chains and switches.
+Assignments check against the declared type and then update the observed flow
+type; writes invalidate dependent property facts, and shadowed bindings remain
+independent. Joins include only reachable predecessors. Loops converge over
+bounded type constituents and conservatively widen within the declared type;
+work/node/depth limits produce a precise resource diagnostic rather than
+silently substituting `unknown`. Existing type-expansion budgets and independent
+checking flags remain authoritative, and flow semantics participate in compiler
+cache identity.
+
+Closure facts are established at creation/delayed-execution boundaries.
+Immutable captures and eligible mutable captures after their last assignment
+follow pinned TypeScript observations; later writes and hoisted/delayed
+functions cannot reuse a stale guard. Do not blanket-reset facts at every call
+or drop every mutable capture: the accepted/rejected oracle must establish
+these boundaries explicitly. Unknown/unsupported constructs retain their
+existing owner/subset refusal, and compile/strict-runtime publication remains
+fail-closed.
+
+Implementation is split into flow graph construction, lexical binding access,
+predicates/type filtering, bounded evaluation and small checker integration
+modules. Source-size checks apply before adding responsibility to existing
+files; production sources currently reach at most 1,185 lines. Record the
+narrowing accepted/rejected matrix from TypeScript 5.9.3 and commit its failing
+public replay before implementation. Accepted runtime forms also receive Node
+execution and declaration comparisons. The K.0 gate, removal of the three
+measured type-fact allowances and G-T1 inventory update are required before
+checking K.4.1 complete; K.4.2 through K.4.7 remain ordered later leaves.
+This design decision introduces no source, filesystem, network or runtime grant.

@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: K.4.1 (narrowing design first).** Sections A to J are complete (summarized below); J.6 closed in its
+**Current leaf: K.4.1 (pinned narrowing baseline).** Sections A to J are complete (summarized below); J.6 closed in its
 measured form (`COMPATIBILITY_INVENTORY.md`). Section K closes the gaps that inventory lists.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
@@ -346,6 +346,7 @@ narrowing needs a flow graph or can stay structural, recorded in PLAN.md before 
   `undefined`, discriminant property checks, truthiness, optional chaining, `switch`, early return and
   `throw`, loops and assignments that reset narrowing, closures that capture narrowed `const` vs `let`.
   *Today:* one immutable-local `typeof` form (H.3).
+  - *Design decision (2026-10-07):* PLAN.md records a bounded flow graph per execution scope, reusing lexical binding identities and authorized syntax. Graph construction, predicates and evaluation remain separate modules; assignments, joins, loops, abrupt completion and closure boundaries require pinned positive and negative witnesses before implementation.
 - [ ] **K.4.2 Guards and assertions (M).** `x is T`, `this is T`, `asserts x`, `asserts x is T`, `never`
   exhaustiveness (TS2366, TS2678).
 - [ ] **K.4.3 Generic inference (XL).** Inference from arguments (candidates, unification, widening),
