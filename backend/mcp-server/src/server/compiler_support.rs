@@ -993,8 +993,7 @@ mod project_inventory_tests {
                 sequence: 1,
             },
             kind: blueice_ipc::compiler::CompilerStaticMetadataKind::Sources,
-            ids: (1..=u32::try_from(MAX_OBSERVED_COMPILER_STATIC_METADATA_IDS).unwrap())
-                .collect(),
+            ids: (1..=u32::try_from(MAX_OBSERVED_COMPILER_STATIC_METADATA_IDS).unwrap()).collect(),
             next_cursor: None,
         };
         state
@@ -1152,8 +1151,7 @@ mod project_inventory_tests {
 
     #[test]
     fn compiler_contract_value_from_json_rejects_oversized_collections_and_keys() {
-        let oversized_array =
-            serde_json::Value::Array(vec![serde_json::Value::Null; 4_096 + 1]);
+        let oversized_array = serde_json::Value::Array(vec![serde_json::Value::Null; 4_096 + 1]);
         assert!(compiler_contract_value_from_json(oversized_array).is_err());
 
         let oversized_object = serde_json::Value::Object(
@@ -1166,8 +1164,7 @@ mod project_inventory_tests {
         let mut long_key_object = serde_json::Map::new();
         long_key_object.insert("a".repeat(256 * 1_024 + 1), serde_json::Value::Null);
         assert!(
-            compiler_contract_value_from_json(serde_json::Value::Object(long_key_object))
-                .is_err()
+            compiler_contract_value_from_json(serde_json::Value::Object(long_key_object)).is_err()
         );
 
         // A well-formed value round-trips.

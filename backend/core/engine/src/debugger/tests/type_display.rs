@@ -39,8 +39,10 @@ impl PageJavaScriptDebuggerLocations for TypeDisplayLocations {
         _document_generation: u64,
         _program_handle: u64,
         _program_generation: u64,
-    ) -> Result<Vec<crate::script::javascript::JavaScriptPageDebuggerSafePoint>, JavaScriptPageDebuggerError>
-    {
+    ) -> Result<
+        Vec<crate::script::javascript::JavaScriptPageDebuggerSafePoint>,
+        JavaScriptPageDebuggerError,
+    > {
         Ok(Vec::new())
     }
 

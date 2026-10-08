@@ -30,8 +30,10 @@ impl PageJavaScriptDebuggerLocations for SourceSpanStepLocations {
         _document_generation: u64,
         _program_handle: u64,
         _program_generation: u64,
-    ) -> Result<Vec<crate::script::javascript::JavaScriptPageDebuggerSafePoint>, JavaScriptPageDebuggerError>
-    {
+    ) -> Result<
+        Vec<crate::script::javascript::JavaScriptPageDebuggerSafePoint>,
+        JavaScriptPageDebuggerError,
+    > {
         Ok(Vec::new())
     }
 
@@ -123,7 +125,12 @@ impl PageJavaScriptDebuggerLocations for SourceSpanStepLocations {
         crate::script::javascript::JavaScriptPageDebuggerStaticMetadataSafePointSpan,
         JavaScriptPageDebuggerError,
     > {
-        if (target.code_unit_ordinal, target.bytecode_offset, target.source_id) != (1, 0, 0) {
+        if (
+            target.code_unit_ordinal,
+            target.bytecode_offset,
+            target.source_id,
+        ) != (1, 0, 0)
+        {
             return Err(JavaScriptPageDebuggerError::UnknownProgram);
         }
         Ok(
@@ -170,7 +177,8 @@ impl PageJavaScriptDebuggerLocations for SourceSpanStepLocations {
 }
 
 fn granted_session() -> DebuggerMetadataSessionAuthorization {
-    let manifest = blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::opaque_source_span_step();
+    let manifest =
+        blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::opaque_source_span_step();
     let hello = DebuggerRequest::Hello {
         protocol_version: DEBUGGER_PROTOCOL_VERSION,
         requested_bounded_values: false,

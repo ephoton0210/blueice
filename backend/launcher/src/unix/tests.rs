@@ -31,8 +31,7 @@ fn supervise_out_of_process_bluejs_builders_set_their_own_fields() {
 #[test]
 fn generation_pinned_relay_fails_closed_before_any_generation_is_activated() {
     let path = unique_internal_socket_path();
-    let relay =
-        GenerationPinnedUnixRelay::bind(&path, "test", Arc::new(Mutex::new(()))).unwrap();
+    let relay = GenerationPinnedUnixRelay::bind(&path, "test", Arc::new(Mutex::new(()))).unwrap();
     let mut client = UnixStream::connect(&path).unwrap();
     let mut buf = [0u8; 1];
     // No target generation has been activated yet: the accept loop must
@@ -44,8 +43,7 @@ fn generation_pinned_relay_fails_closed_before_any_generation_is_activated() {
 #[test]
 fn generation_pinned_relay_close_is_idempotent_and_drop_calls_close() {
     let path = unique_internal_socket_path();
-    let relay =
-        GenerationPinnedUnixRelay::bind(&path, "test", Arc::new(Mutex::new(()))).unwrap();
+    let relay = GenerationPinnedUnixRelay::bind(&path, "test", Arc::new(Mutex::new(()))).unwrap();
     assert!(path.exists());
     relay.close();
     assert!(!path.exists());
@@ -457,8 +455,7 @@ fn prepare_stable_endpoint_rejects_relative_oversized_and_parentless_or_missing_
         io::ErrorKind::InvalidInput
     );
 
-    let oversized =
-        PathBuf::from("/").join("a".repeat(MAX_STABLE_ENDPOINT_SOCKET_PATH_BYTES + 1));
+    let oversized = PathBuf::from("/").join("a".repeat(MAX_STABLE_ENDPOINT_SOCKET_PATH_BYTES + 1));
     assert_eq!(
         prepare_stable_endpoint(&oversized, "test")
             .unwrap_err()
@@ -500,9 +497,7 @@ fn prepare_stable_endpoint_surfaces_a_non_not_found_stat_error_verbatim() {
     // `InvalidInput` error, distinct from a merely-absent socket.
     let path = PathBuf::from("/tmp").join(std::ffi::OsStr::from_bytes(b"blueice-nul-\0-test"));
     assert_eq!(
-        prepare_stable_endpoint(&path, "test")
-            .unwrap_err()
-            .kind(),
+        prepare_stable_endpoint(&path, "test").unwrap_err().kind(),
         io::ErrorKind::InvalidInput
     );
 }
@@ -1183,8 +1178,7 @@ fn replay_tabs_first_tab_skips_a_premature_frame_ready_and_an_unrelated_reply() 
 }
 
 #[test]
-fn replay_tabs_later_tab_skips_a_mismatched_id_and_a_premature_frame_ready_then_reports_an_error()
-{
+fn replay_tabs_later_tab_skips_a_mismatched_id_and_a_premature_frame_ready_then_reports_an_error() {
     // The same request-id filtering and premature-`FrameReady` tolerance
     // as the first-tab `Navigate` path above, exercised on the later-tab
     // `OpenTab` path (`expect_open_tab_success`), plus a reply shape

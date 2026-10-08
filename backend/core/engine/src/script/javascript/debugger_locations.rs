@@ -899,7 +899,10 @@ mod tests {
         assert!(!debugger.debugger_has_live_realm(tab(), 1));
         assert_eq!(debugger.max_debugger_safe_points_per_program(), 0);
         assert_eq!(debugger.debugger_programs(tab(), 1), Ok(Vec::new()));
-        assert_eq!(debugger.debugger_safe_points(tab(), 1, 1, 1), Ok(Vec::new()));
+        assert_eq!(
+            debugger.debugger_safe_points(tab(), 1, 1, 1),
+            Ok(Vec::new())
+        );
         assert_eq!(
             debugger.validate_debugger_safe_point(tab(), 1, 1, 1, 0, 0),
             Ok(())
@@ -1106,7 +1109,10 @@ mod tests {
             debugger.set_debugger_breakpoint(tab(), 1, 1, 1, 0, 0),
             Err(JavaScriptPageDebuggerError::NoLiveRealm)
         );
-        assert_eq!(debugger.debugger_breakpoints(tab(), 1), Err(JavaScriptPageDebuggerError::NoLiveRealm));
+        assert_eq!(
+            debugger.debugger_breakpoints(tab(), 1),
+            Err(JavaScriptPageDebuggerError::NoLiveRealm)
+        );
         assert_eq!(
             debugger.clear_debugger_breakpoint(tab(), 1, 1, 1, 0, 0),
             Err(JavaScriptPageDebuggerError::NoLiveRealm)

@@ -16,8 +16,6 @@ fn exponential_formatting_normalizes_sign_and_optional_precision() {
 fn a_number_that_cannot_be_formatted_is_a_range_error() {
     assert_eq!(
         number_format_error(blueice_ecma402::NumberFormatError::FormattingFailed),
-        RuntimeError::RangeError(
-            blueice_ecma402::NumberFormatError::FormattingFailed.to_string()
-        )
+        RuntimeError::RangeError(blueice_ecma402::NumberFormatError::FormattingFailed.to_string())
     );
 }

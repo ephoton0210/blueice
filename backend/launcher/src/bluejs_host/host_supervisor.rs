@@ -430,19 +430,26 @@ mod tests {
     #[test]
     fn wait_for_child_socket_fails_once_a_short_lived_child_exits_without_binding() {
         let mut child = std::process::Command::new("true").spawn().unwrap();
-        let never_created = std::env::temp_dir()
-            .join(format!("blueice-wait-test-{}-nonexistent.sock", std::process::id()));
-        let error = wait_for_child_socket(&mut child, &never_created, Duration::from_secs(5))
-            .unwrap_err();
+        let never_created = std::env::temp_dir().join(format!(
+            "blueice-wait-test-{}-nonexistent.sock",
+            std::process::id()
+        ));
+        let error =
+            wait_for_child_socket(&mut child, &never_created, Duration::from_secs(5)).unwrap_err();
         assert!(error.to_string().contains("exited before binding"));
         let _ = child.wait();
     }
 
     #[test]
     fn wait_for_child_socket_times_out_while_a_child_is_still_running() {
-        let mut child = std::process::Command::new("sleep").arg("5").spawn().unwrap();
-        let never_created = std::env::temp_dir()
-            .join(format!("blueice-wait-test-{}-timeout.sock", std::process::id()));
+        let mut child = std::process::Command::new("sleep")
+            .arg("5")
+            .spawn()
+            .unwrap();
+        let never_created = std::env::temp_dir().join(format!(
+            "blueice-wait-test-{}-timeout.sock",
+            std::process::id()
+        ));
         let error = wait_for_child_socket(&mut child, &never_created, Duration::from_millis(50))
             .unwrap_err();
         assert_eq!(error.kind(), io::ErrorKind::TimedOut);

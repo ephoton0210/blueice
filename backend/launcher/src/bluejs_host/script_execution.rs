@@ -562,10 +562,11 @@ mod tests {
     #[test]
     fn bluets_bridge_position_is_none_for_every_other_error_category() {
         let graph = graph_with_one_module("blueice://page/a.ts", "const x: number = 1;");
-        assert!(
-            bluets_bridge_position(&BridgeError::InvalidSourceIdentity("bad".to_string()), &graph)
-                .is_none()
-        );
+        assert!(bluets_bridge_position(
+            &BridgeError::InvalidSourceIdentity("bad".to_string()),
+            &graph
+        )
+        .is_none());
     }
 
     #[test]

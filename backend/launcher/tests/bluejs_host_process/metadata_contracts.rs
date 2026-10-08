@@ -26,7 +26,9 @@ fn isolated_child_answers_every_private_bluets_contract_and_relation_endpoint() 
         kind: PageHostScriptKind::Classic,
         graph: graph(entry, vec![PageHostSource::new(entry, source)]),
     };
-    let admitted = host.synchronize_document(document(1, vec![script])).unwrap();
+    let admitted = host
+        .synchronize_document(document(1, vec![script]))
+        .unwrap();
     let debug_admitted = format!("{admitted:?}");
     assert!(
         matches!(
@@ -154,13 +156,15 @@ fn isolated_child_answers_every_private_bluets_contract_and_relation_endpoint() 
     };
     assert!(!source_ids.is_empty());
     let location = match host
-        .request(PageHostRequest::DescribeDebuggerBlueTsMetadataContractLocation {
-            tab_id: 41,
-            document_generation: 1,
-            program,
-            metadata,
-            contract_id,
-        })
+        .request(
+            PageHostRequest::DescribeDebuggerBlueTsMetadataContractLocation {
+                tab_id: 41,
+                document_generation: 1,
+                program,
+                metadata,
+                contract_id,
+            },
+        )
         .unwrap()
     {
         PageHostReply::DebuggerBlueTsMetadataContractLocation { location, .. } => location,
@@ -288,17 +292,21 @@ fn isolated_child_answers_every_private_bluets_contract_and_relation_endpoint() 
     let mut confirmed_symbol_contracts = 0;
     for symbol in &symbol_ids {
         let reply = host
-            .request(PageHostRequest::DescribeDebuggerBlueTsMetadataSymbolContract {
-                tab_id: 41,
-                document_generation: 1,
-                program,
-                metadata,
-                symbol_id: symbol.symbol_id,
-                contract_id,
-            })
+            .request(
+                PageHostRequest::DescribeDebuggerBlueTsMetadataSymbolContract {
+                    tab_id: 41,
+                    document_generation: 1,
+                    program,
+                    metadata,
+                    symbol_id: symbol.symbol_id,
+                    contract_id,
+                },
+            )
             .unwrap();
         match reply {
-            PageHostReply::DebuggerBlueTsMetadataSymbolContract { symbol_contract, .. } => {
+            PageHostReply::DebuggerBlueTsMetadataSymbolContract {
+                symbol_contract, ..
+            } => {
                 assert_eq!(symbol_contract.symbol_id, symbol.symbol_id);
                 assert_eq!(symbol_contract.contract_id, contract_id);
                 assert_eq!(symbol.symbol_id, settings_symbol);
@@ -341,13 +349,15 @@ fn isolated_child_answers_every_private_bluets_contract_and_relation_endpoint() 
         }
     ));
     assert!(matches!(
-        host.request(PageHostRequest::DescribeDebuggerBlueTsMetadataContractLocation {
-            tab_id: 41,
-            document_generation: 1,
-            program,
-            metadata,
-            contract_id: unknown_id,
-        })
+        host.request(
+            PageHostRequest::DescribeDebuggerBlueTsMetadataContractLocation {
+                tab_id: 41,
+                document_generation: 1,
+                program,
+                metadata,
+                contract_id: unknown_id,
+            }
+        )
         .unwrap(),
         PageHostReply::Error {
             code: PageHostErrorCode::InvalidRequest,
@@ -355,14 +365,16 @@ fn isolated_child_answers_every_private_bluets_contract_and_relation_endpoint() 
         }
     ));
     assert!(matches!(
-        host.request(PageHostRequest::DescribeDebuggerBlueTsMetadataSymbolContract {
-            tab_id: 41,
-            document_generation: 1,
-            program,
-            metadata,
-            symbol_id: count_symbol,
-            contract_id,
-        })
+        host.request(
+            PageHostRequest::DescribeDebuggerBlueTsMetadataSymbolContract {
+                tab_id: 41,
+                document_generation: 1,
+                program,
+                metadata,
+                symbol_id: count_symbol,
+                contract_id,
+            }
+        )
         .unwrap(),
         PageHostReply::Error {
             code: PageHostErrorCode::InvalidRequest,
@@ -388,12 +400,14 @@ fn isolated_child_answers_every_private_bluets_contract_and_relation_endpoint() 
     // metadata-family endpoints this fixture can answer for real without a
     // second subprocess.
     let summary = match host
-        .request(PageHostRequest::DescribeDebuggerBlueTsMetadataLoweringSummary {
-            tab_id: 41,
-            document_generation: 1,
-            program,
-            metadata,
-        })
+        .request(
+            PageHostRequest::DescribeDebuggerBlueTsMetadataLoweringSummary {
+                tab_id: 41,
+                document_generation: 1,
+                program,
+                metadata,
+            },
+        )
         .unwrap()
     {
         PageHostReply::DebuggerBlueTsMetadataLoweringSummary { summary, .. } => summary,
@@ -425,13 +439,15 @@ fn isolated_child_answers_every_private_bluets_contract_and_relation_endpoint() 
     assert_eq!(count_type_display.display, "number");
 
     let count_location = match host
-        .request(PageHostRequest::DescribeDebuggerBlueTsMetadataSymbolLocation {
-            tab_id: 41,
-            document_generation: 1,
-            program,
-            metadata,
-            symbol_id: count_symbol,
-        })
+        .request(
+            PageHostRequest::DescribeDebuggerBlueTsMetadataSymbolLocation {
+                tab_id: 41,
+                document_generation: 1,
+                program,
+                metadata,
+                symbol_id: count_symbol,
+            },
+        )
         .unwrap()
     {
         PageHostReply::DebuggerBlueTsMetadataSymbolLocation { location, .. } => location,
@@ -471,12 +487,14 @@ fn isolated_child_answers_every_private_bluets_contract_and_relation_endpoint() 
         document_generation: 1,
         program: malformed_program,
     });
-    assert_rejects_malformed!(PageHostRequest::DescribeDebuggerBlueTsMetadataLoweringSummary {
-        tab_id: 41,
-        document_generation: 1,
-        program,
-        metadata: malformed_metadata,
-    });
+    assert_rejects_malformed!(
+        PageHostRequest::DescribeDebuggerBlueTsMetadataLoweringSummary {
+            tab_id: 41,
+            document_generation: 1,
+            program,
+            metadata: malformed_metadata,
+        }
+    );
     assert_rejects_malformed!(PageHostRequest::ListDebuggerBlueTsMetadataSources {
         tab_id: 41,
         document_generation: 1,
@@ -509,13 +527,15 @@ fn isolated_child_answers_every_private_bluets_contract_and_relation_endpoint() 
         metadata,
         symbol_id: count_symbol,
     });
-    assert_rejects_malformed!(PageHostRequest::DescribeDebuggerBlueTsMetadataSymbolLocation {
-        tab_id: 41,
-        document_generation: 1,
-        program,
-        metadata: malformed_metadata,
-        symbol_id: count_symbol,
-    });
+    assert_rejects_malformed!(
+        PageHostRequest::DescribeDebuggerBlueTsMetadataSymbolLocation {
+            tab_id: 41,
+            document_generation: 1,
+            program,
+            metadata: malformed_metadata,
+            symbol_id: count_symbol,
+        }
+    );
     assert_rejects_malformed!(PageHostRequest::ListDebuggerBlueTsMetadataContracts {
         tab_id: 41,
         document_generation: 1,
@@ -529,13 +549,15 @@ fn isolated_child_answers_every_private_bluets_contract_and_relation_endpoint() 
         metadata: malformed_metadata,
         contract_id,
     });
-    assert_rejects_malformed!(PageHostRequest::DescribeDebuggerBlueTsMetadataContractLocation {
-        tab_id: 41,
-        document_generation: 1,
-        program: malformed_program,
-        metadata,
-        contract_id,
-    });
+    assert_rejects_malformed!(
+        PageHostRequest::DescribeDebuggerBlueTsMetadataContractLocation {
+            tab_id: 41,
+            document_generation: 1,
+            program: malformed_program,
+            metadata,
+            contract_id,
+        }
+    );
     assert_rejects_malformed!(PageHostRequest::ValidateDebuggerBlueTsMetadataContract {
         tab_id: 41,
         document_generation: 1,
@@ -552,14 +574,16 @@ fn isolated_child_answers_every_private_bluets_contract_and_relation_endpoint() 
         symbol_id: count_symbol,
         type_id: count_type_display.type_id,
     });
-    assert_rejects_malformed!(PageHostRequest::DescribeDebuggerBlueTsMetadataSymbolContract {
-        tab_id: 41,
-        document_generation: 1,
-        program,
-        metadata: malformed_metadata,
-        symbol_id: settings_symbol,
-        contract_id,
-    });
+    assert_rejects_malformed!(
+        PageHostRequest::DescribeDebuggerBlueTsMetadataSymbolContract {
+            tab_id: 41,
+            document_generation: 1,
+            program,
+            metadata: malformed_metadata,
+            symbol_id: settings_symbol,
+            contract_id,
+        }
+    );
     assert_rejects_malformed!(PageHostRequest::DescribeDebuggerBlueTsMetadataSource {
         tab_id: 41,
         document_generation: 1,

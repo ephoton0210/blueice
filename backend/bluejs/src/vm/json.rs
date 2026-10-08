@@ -788,10 +788,7 @@ fn decode_json_string_body(body: &str) -> Vec<u16> {
             }
             i += 2;
         } else {
-            let character = body[i..]
-                .chars()
-                .next()
-                .expect("i is a character boundary");
+            let character = body[i..].chars().next().expect("i is a character boundary");
             let mut buf = [0u16; 2];
             units.extend_from_slice(character.encode_utf16(&mut buf));
             i += character.len_utf8();

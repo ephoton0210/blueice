@@ -634,10 +634,7 @@ fn every_debugger_dispatch_method_forwards_its_reply_and_every_capability_flag_i
         canned.clone()
     );
     assert_eq!(connection.child_stats().unwrap(), canned.clone());
-    assert_eq!(
-        connection.debugger_programs(1, 1).unwrap(),
-        canned.clone()
-    );
+    assert_eq!(connection.debugger_programs(1, 1).unwrap(), canned.clone());
     assert_eq!(
         connection.debugger_bluets_metadata(1, 1, program).unwrap(),
         canned.clone()
@@ -816,9 +813,7 @@ fn every_debugger_dispatch_method_forwards_its_reply_and_every_capability_flag_i
         canned.clone()
     );
     assert_eq!(
-        connection
-            .resume_debugger_nested_execution(frame)
-            .unwrap(),
+        connection.resume_debugger_nested_execution(frame).unwrap(),
         canned.clone()
     );
     assert_eq!(
@@ -835,7 +830,11 @@ fn every_debugger_dispatch_method_forwards_its_reply_and_every_capability_flag_i
     );
     assert_eq!(
         connection
-            .debugger_linked_stack_spans(linked_frame, linked_snapshot, [linked_source, linked_source])
+            .debugger_linked_stack_spans(
+                linked_frame,
+                linked_snapshot,
+                [linked_source, linked_source]
+            )
             .unwrap(),
         canned.clone()
     );
@@ -852,9 +851,7 @@ fn every_debugger_dispatch_method_forwards_its_reply_and_every_capability_flag_i
         canned.clone()
     );
     assert_eq!(
-        connection
-            .debugger_execution_state(1, 1, program)
-            .unwrap(),
+        connection.debugger_execution_state(1, 1, program).unwrap(),
         canned.clone()
     );
     assert_eq!(
