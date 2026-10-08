@@ -64,8 +64,8 @@ roots stay outside that partition. Public test changes select the changed
 native case names when shared imports, constants and helpers are identical;
 changing a shared input selects the whole owning target.
 
-The isolated common-boundary and payload fixtures also have explicit native
-module and ordinary-library verification contracts. A new fixture or a change
+The isolated common-boundary, payload-accounting and independent host/byte-codec
+fixtures have explicit native module and ordinary-library verification contracts. A new fixture or a change
 to its shared setup selects every case in that native module and each public
 wrapper case. An absent verification root, additional public API or exported
 macro keeps broader selection. Fixture corrections therefore do not require
@@ -134,6 +134,14 @@ still require every selected target and the final complete inventory. An
 ignored failed case blocks the gate; a removed case is marked skipped and its
 current target still runs. A successful complete round clears the older failure
 prerequisite.
+
+A passed exact Rust partition retires only the earlier failed cases that its
+log actually reports as passed on the same frozen source. Its native executable
+hash, command selection and pass counts must match. Missing or replaced
+executables, changed source, different selections, missing logs and zero or
+ignored cases cannot retire failures. Unrelated failed cases stay selected.
+This avoids repeating an already corrected case before the full gate; partial
+profiles still do not contribute to complete coverage.
 
 Test262 runs explicitly budgeted long fixtures in a separate group with at most
 two workers, after ordinary fixtures. This limits contention without increasing

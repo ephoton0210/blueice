@@ -1538,6 +1538,104 @@ fn synchronous_debugger_exit_validation_preserves_return_pause_and_error_contrac
     vm.heap.unroot(root).unwrap();
 }
 
+#[cfg_attr(test, test)]
+fn uninstalled_root_pause_refuses_inspection_and_still_resumes() {
+    let program = code("let answer = 41; answer + 1;");
+    let offset = non_entry_root_offset(&program);
+    let mut vm = Vm::default();
+    assert_eq!(
+        vm.execute_script_until_debugger_pause(&program, offset),
+        Ok(VmDebuggerExecutionState::Paused {
+            bytecode_offset: offset
+        })
+    );
+    assert_eq!(
+        vm.debugger_stack_snapshot(None, 1, 256),
+        Err(RuntimeError::Unsupported(
+            "debugger-paused program has no installed generation"
+        ))
+    );
+    assert_eq!(
+        vm.resume_debugger_execution(),
+        Ok(VmDebuggerExecutionState::Completed)
+    );
+    assert_eq!(vm.execute_script(&code("21 + 21")), Ok(Value::Number(42.0)));
+}
+#[cfg_attr(test, test)]
+fn nested_uncaptured_slot_preview_preserves_tdz_without_resuming() {
+    let program = installed_script("function inner() { let local = 19; return local; } inner();");
+    let child = program.child_code_units().next().unwrap();
+    let slot = child
+        .bindings
+        .iter()
+        .position(|b| b.name == "local")
+        .unwrap() as u32;
+    let mut vm = Vm::default();
+    let VmDebuggerNestedExecutionState::Paused { frame_serial, .. } = vm
+        .execute_script_until_nested_debugger_pause(&program, 1, 0)
+        .unwrap()
+    else {
+        panic!("the real child must pause")
+    };
+    let mut saw_tdz = false;
+    let mut saw_value = false;
+    for _ in 0..64 {
+        let frame = vm
+            .debugger_stack_snapshot(Some(frame_serial), 2, 256)
+            .unwrap()
+            .frames
+            .remove(0);
+        if let Some(entry) = frame
+            .scope_entries
+            .iter()
+            .find(|entry| entry.slot_ordinal == slot)
+        {
+            assert!(!vm
+                .debugger_nested_continuation
+                .as_ref()
+                .unwrap()
+                .execution
+                .cells
+                .contains_key(&(slot as usize)));
+            let before = frame.bytecode_offset;
+            match vm.debugger_value_preview(
+                Some(frame_serial),
+                0,
+                frame.code_unit_ordinal,
+                before,
+                *entry,
+            ) {
+                Err(RuntimeError::Unsupported("debugger value binding is uninitialized")) => {
+                    saw_tdz = true
+                }
+                Ok(VmDebuggerValuePreview::NumberBits(bits)) if bits == 19.0_f64.to_bits() => {
+                    saw_value = true;
+                    break;
+                }
+                outcome => panic!("unexpected real lexical preview: {outcome:?}"),
+            }
+            assert_eq!(
+                vm.debugger_stack_snapshot(Some(frame_serial), 2, 256)
+                    .unwrap()
+                    .frames[0]
+                    .bytecode_offset,
+                before
+            );
+        }
+        vm.step_debugger_nested_instruction(frame_serial).unwrap();
+    }
+    assert!(
+        saw_tdz && saw_value,
+        "observe TDZ followed by the initialized uncaptured slot"
+    );
+    assert!(matches!(
+        vm.resume_debugger_nested_execution(frame_serial),
+        Ok(VmDebuggerNestedExecutionState::FrameReturned { .. })
+    ));
+    vm.resume_debugger_execution().unwrap();
+    assert_eq!(vm.execute_script(&code("21+21")), Ok(Value::Number(42.0)));
+}
+
 impl crate::Vm {
     /// Runs debugger lifecycle contracts in unit and coverage builds.
     #[doc(hidden)]
@@ -1563,6 +1661,8 @@ impl crate::Vm {
         stack_snapshot_excludes_inactive_scopes_and_never_evaluates_a_getter();
         paused_root_previews_lossless_primitives_and_rejects_wrong_targets();
         paused_nested_preview_reads_cell_backed_capture_without_running_child();
+        uninstalled_root_pause_refuses_inspection_and_still_resumes();
+        nested_uncaptured_slot_preview_preserves_tdz_without_resuming();
         paused_module_root_preview_reads_retained_module_binding();
         paused_preview_copies_plain_records_and_sparse_arrays_without_handles();
         paused_preview_refuses_accessors_proxies_cycles_and_non_plain_arrays();

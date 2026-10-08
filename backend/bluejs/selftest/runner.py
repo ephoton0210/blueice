@@ -348,11 +348,40 @@ class Manager:
         selected = {t.get("target_id", t["id"]): {**t, "id": t.get("target_id", t["id"])}
                     for t in tests if t["kind"] in ("rust", "test262")}
         cleared = set()
+        corrected_cases = {}
         for previous in self.history():
             if previous["id"] == self.active["id"]:
                 continue
             if previous["status"] == "passed" and previous["mode"] in ("full", "pipeline"):
                 return []
+            if previous["status"] == "passed" and previous["mode"] == "partition":
+                # A partition retires only cases actually observed on the same
+                # frozen source and executable. It does not replace the full gate.
+                if not previous.get("snapshot") or previous["snapshot"] != self.active.get("snapshot"):
+                    continue
+                directory = self.state / "runs" / previous["id"]
+                for task in previous.get("tasks", []):
+                    target = task.get("target_id")
+                    if target not in selected or selected[target]["kind"] != "rust" or task.get("status") != "passed":
+                        continue
+                    binary = Path(task.get("binary", ""))
+                    command = task.get("command", [])
+                    counts = task.get("counts", [])
+                    path = directory / task.get("log", "")
+                    if (not binary.is_file() or not task.get("binary_sha256")
+                            or digest(binary) != task["binary_sha256"] or not command
+                            or Path(command[0]).resolve() != binary.resolve() or "--exact" not in command
+                            or not counts or any(row[1] or row[2] for row in counts)
+                            or not path.resolve().is_relative_to(directory.resolve()) or not path.is_file()):
+                        continue
+                    requested = command[command.index("--exact") + 1:]
+                    if not requested or any(not re.fullmatch(r"[A-Za-z_][A-Za-z_0-9:]*", case) for case in requested):
+                        continue
+                    observed = set(re.findall(r"^test ([A-Za-z_][A-Za-z_0-9:]*) \.\.\. ok$", path.read_text(), re.M))
+                    if len(observed) != sum(row[0] for row in counts):
+                        continue
+                    corrected_cases.setdefault(target, set()).update(observed.intersection(requested))
+                continue
             if previous["status"] not in ("failed", "cancelled"):
                 continue
             cases = {}
@@ -389,6 +418,8 @@ class Manager:
                 if not path.resolve().is_relative_to(directory.resolve()) or not path.is_file():
                     continue
                 for case in re.findall(r"^test ([A-Za-z_][A-Za-z_0-9:]*) \.\.\. FAILED$", path.read_text(), re.M):
+                    if case in corrected_cases.get(target, set()):
+                        continue
                     key = target + ":case:" + case
                     cases[key] = {**selected[target], "id": key, "target_id": target, "case": case,
                                   "label": selected[target]["label"] + " / " + case}

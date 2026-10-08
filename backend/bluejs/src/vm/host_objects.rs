@@ -173,30 +173,46 @@ impl Vm {
         let prototype = self
             .host_object_families
             .get(family.index as usize)
-            .ok_or_else(|| RuntimeError::TypeError("host-object family is unavailable".into()))?
+            .expect("this opaque same-heap family belongs to the append-only VM registry")
             .prototype;
-        if self.heap.get_own(prototype, "addEventListener")?.is_some()
+        if self
+            .heap
+            .get_own(prototype, "addEventListener")
+            .expect("the family retains its ordinary prototype root")
+            .is_some()
             || self
                 .heap
-                .get_own(prototype, "removeEventListener")?
+                .get_own(prototype, "removeEventListener")
+                .expect("the family retains its ordinary prototype root")
                 .is_some()
         {
             return Err(RuntimeError::TypeError(
                 "host click listener methods are already installed".into(),
             ));
         }
+        self.function_prototype()?;
         self.install_host_callable_native(
             prototype,
             "addEventListener",
             2,
             NativeFunction::HostClickListenerAdd(family.index),
         )?;
-        self.install_host_callable_native(
+        let result = self.install_host_callable_native(
             prototype,
             "removeEventListener",
             2,
             NativeFunction::HostClickListenerRemove(family.index),
-        )
+        );
+        if result.is_err() {
+            // Both own methods are configurable and no script runs during
+            // installation. Roll back the first publication on second refusal,
+            // allowing the same family to retry the complete pair.
+            assert!(self
+                .heap
+                .delete(prototype, "addEventListener")
+                .expect("the retained ordinary prototype owns a configurable method"));
+        }
+        result
     }
 
     /// Dispatches one host-authorized click to an exact minted wrapper. The
@@ -215,19 +231,19 @@ impl Vm {
                 "host-object family belongs to a different realm".into(),
             ));
         }
-        let Some(state) = self.host_object_families.get(family.index as usize) else {
-            return Err(RuntimeError::TypeError(
-                "host-object family is unavailable".into(),
-            ));
-        };
+        let state = self
+            .host_object_families
+            .get(family.index as usize)
+            .expect("this opaque same-heap family belongs to the append-only VM registry");
         let Some(&(wrapper, _)) = state.wrappers.get(&key) else {
             return Ok(false);
         };
-        if self.active_host_click_event.is_some() {
-            return Err(RuntimeError::TypeError(
-                "host click dispatch is already active".into(),
-            ));
-        }
+        // An exclusive VM borrow and the primitive-only host callback ABI
+        // prevent script from reentering this host-authorized dispatch.
+        self.active_host_click_event
+            .is_none()
+            .then_some(())
+            .expect("exclusive host dispatch cannot replace an active event");
         let callbacks = self
             .host_click_listeners
             .iter()
@@ -243,7 +259,9 @@ impl Vm {
                 Ok(root) => snapshot_roots.push(root),
                 Err(error) => {
                     for root in snapshot_roots {
-                        let _ = self.heap.unroot(root);
+                        self.heap
+                            .unroot(root)
+                            .expect("snapshot rollback releases only its own root registrations");
                     }
                     return Err(error.into());
                 }
@@ -251,7 +269,9 @@ impl Vm {
         }
         let outcome = self.dispatch_rooted_host_click(family.index, key, wrapper, &callbacks);
         for root in snapshot_roots {
-            self.heap.unroot(root)?;
+            self.heap
+                .unroot(root)
+                .expect("dispatch releases its independent retained snapshot registrations");
         }
         outcome
     }
@@ -337,7 +357,9 @@ impl Vm {
             result.map(|()| prevented)
         })();
         self.active_host_click_event = None;
-        self.heap.unroot(event_root)?;
+        self.heap
+            .unroot(event_root)
+            .expect("dispatch exclusively owns its event root");
         outcome
     }
 
@@ -369,7 +391,7 @@ impl Vm {
         }
         let callback = args[1]
             .object_id()
-            .ok_or_else(|| RuntimeError::TypeError("invalid host click listener".into()))?;
+            .expect("a successfully classified callable value is an object");
         let existing = self.host_click_listeners.iter().position(|listener| {
             listener.family_index == family_index
                 && listener.key == key
@@ -397,7 +419,9 @@ impl Vm {
             }
         } else if let Some(index) = existing {
             let listener = self.host_click_listeners.remove(index);
-            self.heap.unroot(listener.root)?;
+            self.heap
+                .unroot(listener.root)
+                .expect("the removed listener exclusively owns this registration");
         }
         Ok(Value::Undefined)
     }
@@ -430,23 +454,25 @@ impl Vm {
     /// Creates a realm-local prototype and identity table. The prototype is
     /// kept alive even before a wrapper exists; all roots die with the VM.
     pub fn create_host_object_family(&mut self) -> Result<HostObjectFamily, RuntimeError> {
-        let index = host_registration_index(
+        host_registration_index(
             self.host_object_families.len(),
             0,
             "too many host-object families",
-        )?;
-        let object_prototype = self.object_prototype;
-        let prototype = self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;
-        let root = self.heap.root(prototype)?;
-        self.host_object_families.push(HostObjectFamilyState {
-            prototype,
-            _prototype_root: root,
-            wrappers: HashMap::new(),
-            keys_by_wrapper: HashMap::new(),
-        });
-        Ok(HostObjectFamily {
-            heap: self.object_prototype.heap,
-            index,
+        )
+        .and_then(|index| {
+            let object_prototype = self.object_prototype;
+            let prototype = self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;
+            let root = self.heap.root(prototype)?;
+            self.host_object_families.push(HostObjectFamilyState {
+                prototype,
+                _prototype_root: root,
+                wrappers: HashMap::new(),
+                keys_by_wrapper: HashMap::new(),
+            });
+            Ok(HostObjectFamily {
+                heap: self.object_prototype.heap,
+                index,
+            })
         })
     }
 
@@ -468,29 +494,37 @@ impl Vm {
         let prototype = self
             .host_object_families
             .get(family.index as usize)
-            .ok_or_else(|| RuntimeError::TypeError("host-object family is unavailable".into()))?
+            .expect("this opaque same-heap family belongs to the append-only VM registry")
             .prototype;
-        if self.heap.get_own(prototype, name)?.is_some() {
+        if self
+            .heap
+            .get_own(prototype, name)
+            .expect("the family retains its ordinary prototype root")
+            .is_some()
+        {
             return Err(RuntimeError::TypeError(
                 "host-object method is already defined".into(),
             ));
         }
-        let index = host_registration_index(
+        host_registration_index(
             self.host_object_methods.len(),
             0,
             "too many host-object methods",
-        )?;
-        self.install_host_callable_native(
-            prototype,
-            name,
-            length,
-            NativeFunction::HostObjectMethod(index),
-        )?;
-        self.host_object_methods.push(HostObjectMethodRegistration {
-            family_index: family.index,
-            method: Box::new(method),
-        });
-        Ok(())
+        )
+        .and_then(|index| {
+            self.function_prototype()?;
+            self.install_host_callable_native(
+                prototype,
+                name,
+                length,
+                NativeFunction::HostObjectMethod(index),
+            )?;
+            self.host_object_methods.push(HostObjectMethodRegistration {
+                family_index: family.index,
+                method: Box::new(method),
+            });
+            Ok(())
+        })
     }
 
     /// Installs a one-child operation on the family's private prototype.
@@ -511,30 +545,38 @@ impl Vm {
         let prototype = self
             .host_object_families
             .get(family.index as usize)
-            .ok_or_else(|| RuntimeError::TypeError("host-object family is unavailable".into()))?
+            .expect("this opaque same-heap family belongs to the append-only VM registry")
             .prototype;
-        if self.heap.get_own(prototype, name)?.is_some() {
+        if self
+            .heap
+            .get_own(prototype, name)
+            .expect("the family retains its ordinary prototype root")
+            .is_some()
+        {
             return Err(RuntimeError::TypeError(
                 "host-object method is already defined".into(),
             ));
         }
-        let index = host_registration_index(
+        host_registration_index(
             self.host_object_pair_methods.len(),
             0,
             "too many host-object pair methods",
-        )?;
-        self.install_host_callable_native(
-            prototype,
-            name,
-            length,
-            NativeFunction::HostObjectPairMethod(index),
-        )?;
-        self.host_object_pair_methods
-            .push(HostObjectPairMethodRegistration {
-                family_index: family.index,
-                method: Box::new(method),
-            });
-        Ok(())
+        )
+        .and_then(|index| {
+            self.function_prototype()?;
+            self.install_host_callable_native(
+                prototype,
+                name,
+                length,
+                NativeFunction::HostObjectPairMethod(index),
+            )?;
+            self.host_object_pair_methods
+                .push(HostObjectPairMethodRegistration {
+                    family_index: family.index,
+                    method: Box::new(method),
+                });
+            Ok(())
+        })
     }
 
     /// Installs a genuine JavaScript accessor on the private wrapper
@@ -556,38 +598,45 @@ impl Vm {
         let prototype = self
             .host_object_families
             .get(family.index as usize)
-            .ok_or_else(|| RuntimeError::TypeError("host-object family is unavailable".into()))?
+            .expect("this opaque same-heap family belongs to the append-only VM registry")
             .prototype;
-        if self.heap.get_own(prototype, name)?.is_some() {
+        if self
+            .heap
+            .get_own(prototype, name)
+            .expect("the family retains its ordinary prototype root")
+            .is_some()
+        {
             return Err(RuntimeError::TypeError(
                 "host-object accessor is already defined".into(),
             ));
         }
-        let getter_index = host_registration_index(
+        host_registration_index(
             self.host_object_methods.len(),
             1,
             "too many host-object methods",
-        )?;
-        let setter_index = getter_index + 1;
-        let function_prototype = self.function_prototype()?;
-        self.install_native_accessor(
-            prototype,
-            function_prototype,
-            name,
-            NativeFunction::HostObjectMethod(getter_index),
-            NativeFunction::HostObjectMethod(setter_index),
-        )?;
-        self.host_object_methods.extend([
-            HostObjectMethodRegistration {
-                family_index: family.index,
-                method: Box::new(getter),
-            },
-            HostObjectMethodRegistration {
-                family_index: family.index,
-                method: Box::new(setter),
-            },
-        ]);
-        Ok(())
+        )
+        .and_then(|getter_index| {
+            let setter_index = getter_index + 1;
+            let function_prototype = self.function_prototype()?;
+            self.install_native_accessor(
+                prototype,
+                function_prototype,
+                name,
+                NativeFunction::HostObjectMethod(getter_index),
+                NativeFunction::HostObjectMethod(setter_index),
+            )?;
+            self.host_object_methods.extend([
+                HostObjectMethodRegistration {
+                    family_index: family.index,
+                    method: Box::new(getter),
+                },
+                HostObjectMethodRegistration {
+                    family_index: family.index,
+                    method: Box::new(setter),
+                },
+            ]);
+            Ok(())
+        })
     }
 
     /// Installs one non-constructable global factory. Only private keys cross
@@ -634,39 +683,42 @@ impl Vm {
         family: HostObjectFamily,
         factory: impl HostObjectFactory,
     ) -> Result<(), RuntimeError> {
-        if family.heap != self.object_prototype.heap
-            || self
-                .host_object_families
-                .get(family.index as usize)
-                .is_none()
-        {
+        if family.heap != self.object_prototype.heap {
             return Err(RuntimeError::TypeError(
                 "host-object family belongs to a different realm".into(),
             ));
         }
-        if !host_property_name_is_valid(name) || self.heap.get_own(owner, name)?.is_some() {
+        if !host_property_name_is_valid(name)
+            || self
+                .heap
+                .get_own(owner, name)
+                .expect("the validated host/global owner remains realm-rooted")
+                .is_some()
+        {
             return Err(RuntimeError::TypeError(
                 "host factory name is invalid or already defined".into(),
             ));
         }
-        let index = host_registration_index(
+        host_registration_index(
             self.host_object_factories.len(),
             0,
             "too many host-object factories",
-        )?;
-        self.install_host_callable_native(
-            owner,
-            name,
-            length,
-            NativeFunction::HostObjectFactory(index),
-        )?;
-        self.host_object_factories
-            .push(HostObjectFactoryRegistration {
-                family_index: family.index,
-                required_receiver,
-                factory: Box::new(factory),
-            });
-        Ok(())
+        )
+        .and_then(|index| {
+            self.install_host_callable_native(
+                owner,
+                name,
+                length,
+                NativeFunction::HostObjectFactory(index),
+            )?;
+            self.host_object_factories
+                .push(HostObjectFactoryRegistration {
+                    family_index: family.index,
+                    required_receiver,
+                    factory: Box::new(factory),
+                });
+            Ok(())
+        })
     }
 
     pub(super) fn host_object_factory_call(

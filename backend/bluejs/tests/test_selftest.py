@@ -571,25 +571,32 @@ class ExecutionContracts(unittest.TestCase):
         ordinary = next(test for test in selection["tests"] if test["id"] == "rust:test:ordinary_library")
         self.assertEqual(ordinary["case_filters"], ["boundary_case"])
 
-    def test_registered_common_fixture_selects_both_builds_when_new_helpers_change(self):
+    def test_registered_fixtures_select_both_builds_when_new_helpers_change(self):
         ordinary = self.root / "backend/bluejs/tests/ordinary_library.rs"
-        ordinary.write_text("#[test] fn common_case() {Vm::verify_common_boundary_contracts();}\n"
-                            "#[test] fn unrelated_case() {}")
+        ordinary.write_text("#[test] fn unrelated_case() {}")
         self.retain_rust_anchor()
-        fixture = self.root / "backend/bluejs/tests/fixtures/common_boundary_contracts.rs"
-        fixture.parent.mkdir(parents=True)
-        fixture.write_text("fn shared_setup() { install_real_host(); }\n"
-                           "#[cfg_attr(test, test)] fn actual_boundary() {shared_setup();}\n"
-                           "pub fn verify_common_boundary_contracts() {actual_boundary();}")
-        selection = partition_plan(self.manager, [str(fixture)])
-        self.assertEqual(selection["unknown_sources"], [])
-        self.assertEqual({t["id"] for t in selection["tests"]}, {"rust:lib", "rust:test:ordinary_library"})
-        library = next(t for t in selection["tests"] if t["id"] == "rust:lib")
-        self.assertEqual(library["case_filters"], ["vm::classification::boundary_contracts::"])
-        public = next(t for t in selection["tests"] if t["id"] == "rust:test:ordinary_library")
-        self.assertEqual(public["case_filters"], ["common_case"])
-        fixture.write_text(fixture.read_text().replace("install_real_host", "protect_vm_roots"))
-        self.assertEqual(partition_plan(self.manager, [str(fixture)])["unknown_sources"], [])
+        for name, wrapper, prefix in [
+            ("common_boundary_contracts", "verify_common_boundary_contracts", "vm::classification::boundary_contracts::"),
+            ("payload_accounting_contracts", "verify_payload_accounting_contracts", "ast::retained_payload::accounting_contracts::"),
+            ("independent_boundary_contracts", "verify_independent_boundary_contracts", "vm::tests::independent_boundary_contracts::"),
+        ]:
+            with self.subTest(fixture=name):
+                ordinary.write_text(f"#[test] fn boundary_case() {{Vm::{wrapper}();}}\n"
+                                    "#[test] fn unrelated_case() {}")
+                fixture = self.root / f"backend/bluejs/tests/fixtures/{name}.rs"
+                fixture.parent.mkdir(parents=True, exist_ok=True)
+                fixture.write_text("fn shared_setup() { install_real_host(); }\n"
+                                   "#[cfg_attr(test, test)] fn actual_boundary() {shared_setup();}\n"
+                                   f"pub fn {wrapper}() {{actual_boundary();}}")
+                selection = partition_plan(self.manager, [str(fixture)])
+                self.assertEqual(selection["unknown_sources"], [])
+                self.assertEqual({t["id"] for t in selection["tests"]}, {"rust:lib", "rust:test:ordinary_library"})
+                library = next(t for t in selection["tests"] if t["id"] == "rust:lib")
+                self.assertEqual(library["case_filters"], [prefix])
+                public = next(t for t in selection["tests"] if t["id"] == "rust:test:ordinary_library")
+                self.assertEqual(public["case_filters"], ["boundary_case"])
+                fixture.write_text(fixture.read_text().replace("install_real_host", "protect_vm_roots"))
+                self.assertEqual(partition_plan(self.manager, [str(fixture)])["unknown_sources"], [])
 
     def test_registered_common_fixture_without_expected_wrapper_keeps_broad_fallback(self):
         self.retain_rust_anchor()
@@ -967,6 +974,46 @@ class ExecutionContracts(unittest.TestCase):
             (self.root / "backend/bluejs/src/lib.rs").write_text("pub struct Changed;")
             with self.assertRaises(ValueError):
                 self.manager.start("full", ["backend/bluejs/src/lib.rs"])
+
+    def test_same_snapshot_partition_retires_only_observed_exact_cases(self):
+        target = {"id": "rust:lib", "kind": "rust", "label": "unit"}
+        failed = self.manager.state / "runs/20261006-120000-abcdef12"
+        failed.mkdir(parents=True)
+        (failed / "case.log").write_text("test vm::one ... FAILED\ntest vm::two ... FAILED\n")
+        (failed / "run.json").write_text(json.dumps({"id": failed.name, "mode": "pipeline", "status": "failed",
+            "tasks": [{"id": "impact:rust:lib", "status": "failed", "log": "case.log"}]}))
+        passed = self.manager.state / "runs/20261006-120050-abcdef13"
+        passed.mkdir()
+        binary = self.root / "current-unit-artifact"
+        binary.write_bytes(b"retained native artifact identity")
+        task = {"id": "partition:rust:lib:case:vm::one", "target_id": "rust:lib", "case": "vm::one",
+                "status": "passed", "binary": str(binary), "binary_sha256": digest(binary),
+                "counts": [[1, 0, 0]], "command": [str(binary), "--test-threads=8", "--exact", "vm::one"], "log": "case.log"}
+        row = {"id": passed.name, "mode": "partition", "status": "passed", "snapshot": "same-source", "tasks": [task]}
+        (passed / "case.log").write_text("test vm::one ... ok\n")
+        self.manager.active = {"id": "20261006-120100-abcdef14", "snapshot": "same-source"}
+        invalid = [
+            ("source", {"snapshot": "older-source"}, {}),
+            ("hash", {}, {"binary_sha256": "different"}),
+            ("zero", {}, {"counts": [[0, 0, 0]]}),
+            ("ignored", {}, {"counts": [[0, 0, 1]]}),
+            ("failed", {}, {"status": "failed"}),
+            ("wrong-selection", {}, {"command": [str(binary), "--exact", "vm::two"]}),
+            ("not-exact", {}, {"command": [str(binary), "vm::one"]}),
+            ("missing-log", {}, {"log": "missing.log"}),
+            ("missing-binary", {}, {"binary": str(self.root / "absent")}),
+            ("unexpected-count", {}, {"counts": [[2, 0, 0]]}),
+        ]
+        for label, changes, task_changes in invalid:
+            with self.subTest(label=label):
+                (passed / "run.json").write_text(json.dumps({**row, **changes, "tasks": [{**task, **task_changes}]}))
+                self.assertEqual({t["case"] for t in self.manager.prior_failed_cases([target])}, {"vm::one", "vm::two"})
+        (passed / "run.json").write_text(json.dumps(row))
+        self.assertEqual([t["case"] for t in self.manager.prior_failed_cases([target])], ["vm::two"])
+        # Native selection identity also guards against an artifact replaced
+        # after a partition passed, even when its path is unchanged.
+        binary.write_bytes(b"rebuilt native artifact")
+        self.assertEqual({t["case"] for t in self.manager.prior_failed_cases([target])}, {"vm::one", "vm::two"})
 
     def test_cancelled_round_keeps_known_failure_cases_for_the_next_partition_run(self):
         target = {"id": "rust:lib", "kind": "rust", "label": "unit"}

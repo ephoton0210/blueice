@@ -1643,3 +1643,6 @@ impl crate::Vm {
         temporal_duration_receiver_rejects_invalid_internal_values();
     }
 }
+
+#[path = "independent_boundary_contracts.rs"]
+mod independent_boundary_contracts;

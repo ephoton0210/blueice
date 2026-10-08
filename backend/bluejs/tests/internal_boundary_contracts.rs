@@ -97,3 +97,9 @@ fn ordinary_library_retained_internal_contracts() {
     blueice_bluejs::Vm::verify_zoned_difference_arithmetic_contracts();
     blueice_bluejs::Vm::verify_debugger_lifecycle_contracts();
 }
+
+#[cfg(coverage)]
+#[test]
+fn ordinary_library_independent_boundary_contracts() {
+    blueice_bluejs::Vm::verify_independent_boundary_contracts();
+}

@@ -37,6 +37,8 @@ REGEX_POOL_FIXTURE = re.compile(
     r'pub\s+use\s+pool_boundary_contracts::verify_regex_pool_boundary_contracts\s*;')
 PUBLIC_TEST_PATTERN = r"(?:#\[[^\n]*\]\s*)*#\[test\]\s*(?:#\[[^\n]*\]\s*)*fn\s+(\w+)\s*"
 ISOLATED_FIXTURES = {
+    "backend/bluejs/tests/fixtures/independent_boundary_contracts.rs":
+        ("vm::tests::independent_boundary_contracts::", "verify_independent_boundary_contracts"),
     "backend/bluejs/tests/fixtures/common_boundary_contracts.rs":
         ("vm::classification::boundary_contracts::", "verify_common_boundary_contracts"),
     "backend/bluejs/tests/fixtures/payload_accounting_contracts.rs":

@@ -1,14 +1,176 @@
 {
   "artifact_kind": "verified_shared_boundaries_and_current_coverage_debt",
   "counts": {
-    "complete_files": 153,
+    "complete_files": 158,
     "instrumented_files": 169,
-    "missing_functions": 13,
-    "missing_lines": 146,
-    "missing_regions": 249,
-    "remaining_files": 16
+    "missing_functions": 0,
+    "missing_lines": 30,
+    "missing_regions": 88,
+    "remaining_files": 11
   },
   "coupling_review": {
+    "completed_independent_owners": [
+      {
+        "owner": "vm/host_objects.rs",
+        "prerequisite": "Initialize Function before cold method/pair/click installation; publish click methods atomically or roll back on second refusal. Preserve the opaque same-heap family registry and primitive host ABI.",
+        "raw": {
+          "branches": {
+            "count": 0,
+            "covered": 0,
+            "notcovered": 0,
+            "percent": 0
+          },
+          "functions": {
+            "count": 52,
+            "covered": 52,
+            "percent": 100
+          },
+          "instantiations": {
+            "count": 248,
+            "covered": 240,
+            "percent": 96.7741935483871
+          },
+          "lines": {
+            "count": 662,
+            "covered": 662,
+            "percent": 100
+          },
+          "mcdc": {
+            "count": 0,
+            "covered": 0,
+            "notcovered": 0,
+            "percent": 0
+          },
+          "regions": {
+            "count": 707,
+            "covered": 707,
+            "notcovered": 0,
+            "percent": 100
+          }
+        },
+        "status": "verified_complete"
+      },
+      {
+        "owner": "vm/builtins/uint8array.rs",
+        "prerequisite": "Retain the newly allocated buffer across cold prototype installation; validate buffer state after observable options before byte copying/writing.",
+        "raw": {
+          "branches": {
+            "count": 0,
+            "covered": 0,
+            "notcovered": 0,
+            "percent": 0
+          },
+          "functions": {
+            "count": 34,
+            "covered": 34,
+            "percent": 100
+          },
+          "instantiations": {
+            "count": 68,
+            "covered": 60,
+            "percent": 88.23529411764706
+          },
+          "lines": {
+            "count": 515,
+            "covered": 515,
+            "percent": 100
+          },
+          "mcdc": {
+            "count": 0,
+            "covered": 0,
+            "notcovered": 0,
+            "percent": 0
+          },
+          "regions": {
+            "count": 762,
+            "covered": 762,
+            "notcovered": 0,
+            "percent": 100
+          }
+        },
+        "status": "verified_complete"
+      },
+      {
+        "owner": "vm/debugger/inspection.rs",
+        "prerequisite": "Preserve the reachable uninstalled root-generation refusal; compiler-owned nested frames, retained cells and active slots provide separate guarantees.",
+        "raw": {
+          "branches": {
+            "count": 0,
+            "covered": 0,
+            "notcovered": 0,
+            "percent": 0
+          },
+          "functions": {
+            "count": 6,
+            "covered": 6,
+            "percent": 100
+          },
+          "instantiations": {
+            "count": 12,
+            "covered": 12,
+            "percent": 100
+          },
+          "lines": {
+            "count": 188,
+            "covered": 188,
+            "percent": 100
+          },
+          "mcdc": {
+            "count": 0,
+            "covered": 0,
+            "notcovered": 0,
+            "percent": 0
+          },
+          "regions": {
+            "count": 187,
+            "covered": 187,
+            "notcovered": 0,
+            "percent": 100
+          }
+        },
+        "status": "verified_complete"
+      },
+      {
+        "owner": "ast/retained_payload.rs",
+        "prerequisite": "Use real Vec/Box layouts and compiler-produced owned class initializer shapes. Keep unavailable-child and aggregate overflow protocols; use the pinned logical BigInt limb iterator.",
+        "raw": {
+          "branches": {
+            "count": 0,
+            "covered": 0,
+            "notcovered": 0,
+            "percent": 0
+          },
+          "functions": {
+            "count": 42,
+            "covered": 42,
+            "percent": 100
+          },
+          "instantiations": {
+            "count": 167,
+            "covered": 114,
+            "percent": 68.26347305389223
+          },
+          "lines": {
+            "count": 523,
+            "covered": 523,
+            "percent": 100
+          },
+          "mcdc": {
+            "count": 0,
+            "covered": 0,
+            "notcovered": 0,
+            "percent": 0
+          },
+          "regions": {
+            "count": 852,
+            "covered": 852,
+            "notcovered": 0,
+            "percent": 100
+          }
+        },
+        "status": "verified_complete"
+      }
+    ],
     "confirmed_coupling_groups": [
       {
         "consumers": [
@@ -53,7 +215,7 @@
           "vm/builtins/native_dispatch/dispatch.rs",
           "vm/builtins/promise_core.rs"
         ],
-        "preparation": "Preserve this verified contract while completing the remaining local owners.",
+        "preparation": "Preserve the verified shared owner contract for future local changes.",
         "priority": "P0",
         "relationship": "Promise resolving functions and async-from-sync completion now belong to promise_core; dispatch delegates. The first AlreadyResolved flag write remains fallible.",
         "status": "verified_complete"
@@ -107,7 +269,7 @@
           "vm/temporal/conversion/options.rs",
           "vm/temporal/epoch.rs"
         ],
-        "preparation": "Preserve this verified contract while completing the remaining local owners.",
+        "preparation": "Preserve the verified shared owner contract for future local changes.",
         "priority": "P1",
         "relationship": "Shared option readers and validators belong to conversion/options; producer-validated epoch conversions belong to epoch.",
         "shared_symbols": [
@@ -155,7 +317,7 @@
         "owners": [
           "vm/builtins/arrays.rs"
         ],
-        "preparation": "Preserve this verified contract while completing the remaining local owners.",
+        "preparation": "Preserve the verified shared owner contract for future local changes.",
         "priority": "P1",
         "relationship": "VM IsArray now belongs to arrays, retaining nested/revoked Proxy and foreign heap ingress errors.",
         "status": "verified_complete"
@@ -202,7 +364,7 @@
           "vm/builtins/promise_core.rs",
           "vm/builtins/resource_management.rs"
         ],
-        "preparation": "Preserve this verified contract while completing the remaining local owners.",
+        "preparation": "Preserve the verified shared owner contract for future local changes.",
         "priority": "P1",
         "relationship": "Settlement/refusal and cold disposal initialization are verified together, including nullish async await ticks and suppression.",
         "status": "verified_complete"
@@ -224,7 +386,7 @@
             "symbol": "ClassPrivateBrand"
           },
           {
-            "line": 437,
+            "line": 449,
             "source": "ast/retained_payload.rs",
             "symbol": "ClassField"
           },
@@ -243,7 +405,7 @@
         "owners": [
           "vm/properties.rs"
         ],
-        "preparation": "Preserve this verified contract while completing the remaining local owners.",
+        "preparation": "Preserve the verified shared owner contract for future local changes.",
         "priority": "P1",
         "producers": [
           "compiler/functions.rs",
@@ -254,17 +416,9 @@
         "status": "verified_complete"
       }
     ],
-    "current_remaining_d3_d4": [
-      "ast/retained_payload.rs",
-      "vm/builtins/uint8array.rs",
-      "vm/debugger/inspection.rs",
-      "vm/host_objects.rs"
-    ],
-    "grades": {
-      "D3": 3,
-      "D4": 1
-    },
-    "graph_created_at": "2026-10-08T08:32:18.179478+00:00",
+    "current_remaining_d3_d4": [],
+    "grades": {},
+    "graph_created_at": "2026-10-08T10:12:56.500350+00:00",
     "graph_probes": [
       {
         "fallbacks": [],
@@ -361,7 +515,7 @@
       },
       {
         "fallbacks": [],
-        "selected_rust_targets": 7,
+        "selected_rust_targets": 8,
         "source": "backend/bluejs/src/vm/builtins/uint8array.rs",
         "test262_selection": "full_inventory",
         "verified_body_contract": false
@@ -409,35 +563,18 @@
         "verified_body_contract": false
       }
     ],
-    "graph_sha256": "75c7180e8219078ee4ee41e761c939441a9056f6f60a04dedf85a9a7ac9a118e",
-    "independent_follow_up": [
-      {
-        "owner": "vm/host_objects.rs",
-        "prerequisite": "Initialize Function before cold method/pair/click installation; publish click methods atomically or roll back on second refusal. Preserve the opaque same-heap family registry and primitive host ABI."
-      },
-      {
-        "owner": "vm/builtins/uint8array.rs",
-        "prerequisite": "Retain the newly allocated buffer across cold prototype installation; validate buffer state after observable options before byte copying/writing."
-      },
-      {
-        "owner": "vm/debugger/inspection.rs",
-        "prerequisite": "Preserve the reachable uninstalled root-generation refusal; compiler-owned nested frames, retained cells and active slots provide separate guarantees."
-      },
-      {
-        "owner": "ast/retained_payload.rs",
-        "prerequisite": "Use real Vec/Box layouts and compiler-produced owned class initializer shapes. Keep unavailable-child and aggregate overflow protocols; use the pinned logical BigInt limb iterator."
-      }
-    ],
+    "graph_sha256": "ff78317404e94fc3662c2dafc109ad2ab9fc41571a078b10d59341cbca4c7e6e",
+    "independent_batch_acceptance": "passed",
     "independent_owners": [
       "vm/host_objects.rs",
       "vm/builtins/uint8array.rs",
       "ast/retained_payload.rs",
       "vm/debugger/inspection.rs"
     ],
-    "kind": "verified_shared_contracts_and_local_follow_up",
-    "lexical_audit": "target/bluejs-selftest/runs/20261008-154319-0641e2d9/shared-function-audit.json",
+    "kind": "verified_shared_and_independent_d3_d4_contracts",
+    "lexical_audit": "target/bluejs-selftest/runs/20261008-165752-6640389a/shared-function-audit.json",
     "lexical_limits": "Same-name methods such as expect/new/take and Heap::is_array are not automatically VM dependencies. Confirmed groups were checked against actual source call sites.",
-    "measurement_run": "20261008-154319-0641e2d9",
+    "measurement_run": "20261008-165752-6640389a",
     "numeric_conversion_proof": {
       "behavior": "BigUint to_f64 always returns Some, including infinity; BigInt applies its sign. The Number(BigInt) unwrap_or_else branch is not a reachable magnitude-overflow path.",
       "dependency": "num-bigint",
@@ -446,15 +583,15 @@
       "status": "verified_complete",
       "version": "0.4.6"
     },
-    "prepared_source_identity": "ffee5cd5ed8ea212b581b06a304f35e6073e0c4818c80388f8661992435303c9",
+    "prepared_source_identity": "d74e94b3251170b33fe8f24c7ab6728e5d408264b54d583fe2b5961fc9780a6b",
     "probe_limits": "Explicit unchanged-source path plans, not cases or timings. Interfaces/new functions/imports and fixtures can broaden selection. Historical partition observations are not counted as current owning targets.",
     "proposals_implemented": true,
     "raw_missing": {
-      "functions": 13,
-      "lines": 116,
-      "regions": 160
+      "functions": 0,
+      "lines": 0,
+      "regions": 0
     },
-    "runtime_source_identity": "ffee5cd5ed8ea212b581b06a304f35e6073e0c4818c80388f8661992435303c9",
+    "runtime_source_identity": "d74e94b3251170b33fe8f24c7ab6728e5d408264b54d583fe2b5961fc9780a6b",
     "runtime_tests_executed": true,
     "shared_batch_acceptance": "passed",
     "source_files": [
@@ -472,13 +609,13 @@
       "backend/bluejs/src/vm/temporal/plain_time.rs"
     ],
     "source_hashes": {
-      "backend/bluejs/src/ast/retained_payload.rs": "edbbb7dbac06b994c91956efb798051cf1fdc0b1dc0db6a39fdbe9ed775672fe",
+      "backend/bluejs/src/ast/retained_payload.rs": "49c753930f5e0eeac75839b8303b13ad6ccf1a1bf1ea81de1d0c69683123493f",
       "backend/bluejs/src/vm/builtins/native_dispatch/dispatch.rs": "7524834f44ddb24a2bd40b8b54a67bfa55774878aa97133fb87d0ff315267e98",
       "backend/bluejs/src/vm/builtins/promise_core.rs": "3de084836a3ad73f369b5643a6c2d375c5d36f438273ef3285e7718f47234d0f",
       "backend/bluejs/src/vm/builtins/resource_management.rs": "4b5d725e3f15109aefba0dac5d59b375b197837482188bf0d7924b5c92311d55",
-      "backend/bluejs/src/vm/builtins/uint8array.rs": "57360162ff6b9d12bb2fcd425ccd0312489a180e6eacfdf28305a82678ae012e",
-      "backend/bluejs/src/vm/debugger/inspection.rs": "dc1f9d7e0de1a5f40895cc78576e119abeb5502971fcf86b58b9f718ad277710",
-      "backend/bluejs/src/vm/host_objects.rs": "6782f286fd4e1135c743a7133787c5db26ae4a4d7eff580bc8e4750ab21b70ec",
+      "backend/bluejs/src/vm/builtins/uint8array.rs": "bf5c57198596076877c123be65c934e9e90a77fff3e2b1fe055bffd59473e50c",
+      "backend/bluejs/src/vm/debugger/inspection.rs": "eb85c986900f8055cdf36a70886b2b95e3e2f0b7962c7ad385b61dd27e0b77e3",
+      "backend/bluejs/src/vm/host_objects.rs": "3e40625747f2f50cfdbe954afab8d40fa607397f06f1dd45bb6dd5da675e47f0",
       "backend/bluejs/src/vm/json.rs": "0096347b3a88e916676bacb24c79021c8d2972a80b4e3e24ae7ed2f676bef125",
       "backend/bluejs/src/vm/properties.rs": "4d47754f50168427ce4ad94dc34ce0f33d93460497bfe7e3738e14c3a8b64728",
       "backend/bluejs/src/vm/temporal/conversion/zoned_conversion.rs": "566b30aceef3f739620010b597e77ca6c412f1ca5f6f8617540873b0888727e4",
@@ -486,295 +623,22 @@
       "backend/bluejs/src/vm/temporal/plain_time.rs": "ad585f39067456d474da82fcffa64fe69b5c9a94133fa676dc1e1a3a2bfe7d00"
     },
     "verification": {
-      "boundary_cases_passed": 26,
-      "changed_production_owners_complete": 15,
+      "changed_production_owners_complete": 4,
       "coverage_percentage_regressions": 0,
-      "full_run": "20261008-154319-0641e2d9",
+      "full_run": "20261008-165752-6640389a",
+      "native_independent_cases_passed": 7,
       "ordinary_library_contract_passed": true,
-      "preceding_complete_preserved": 150,
-      "related_run": "20261008-154026-3b1f5f7c",
+      "preceding_complete_preserved": 153,
+      "related_run": "20261008-165153-bcf6bf6d",
+      "related_rust_cases_passed": 27,
       "semantic_contract_changes": 0,
       "static_gates": "passed",
       "status": "full_acceptance_passed",
-      "tooling_contracts_passed": 84
+      "tooling_contracts_passed": 85
     },
     "verification_policy": "Prepare all changes/fixtures in each batch first; run related graph partitions; run the final complete inventory once for the final snapshot. An already complete affected execution can supply the full engine gate. Preserve every previously complete file and require fresh raw lines/functions/regions for each modified production file. No new module is required."
   },
   "files": {
-    "ast/retained_payload.rs": {
-      "difficulty": "D3",
-      "gap_functions": [
-        {
-          "best_instance_region_count": 17,
-          "covered": 15,
-          "definition": [
-            65,
-            5,
-            65,
-            72
-          ],
-          "missing": [
-            {
-              "context": "heap_payload",
-              "location": [
-                66,
-                78,
-                66,
-                79
-              ],
-              "source": "        let mut bytes = self.capacity().checked_mul(std::mem::size_of::<T>())?;"
-            },
-            {
-              "context": "heap_payload",
-              "location": [
-                68,
-                67,
-                68,
-                68
-              ],
-              "source": "            bytes = add_payload(bytes, item.heap_payload(context))?;"
-            }
-          ],
-          "name": "_RNvXs2_NtNtCs2uwQbOZXl4G_14blueice_bluejs3ast16retained_payloadINtNtCs8FVZETqzQuY_5alloc3vec3VecINtNtCsf0LoT3TAtAe_4core6option6OptionNtB7_12ArrayElementEENtB5_11HeapPayload12heap_payloadB9_",
-          "total": 17
-        },
-        {
-          "best_instance_region_count": 13,
-          "covered": 11,
-          "definition": [
-            75,
-            5,
-            75,
-            66
-          ],
-          "missing": [
-            {
-              "context": "heap_payload",
-              "location": [
-                76,
-                53,
-                76,
-                54
-              ],
-              "source": "        let bits = usize::try_from(self.bits()).ok()?;"
-            },
-            {
-              "context": "heap_payload",
-              "location": [
-                77,
-                30,
-                77,
-                31
-              ],
-              "source": "        (bits.checked_add(31)? / 32).checked_mul(std::mem::size_of::<u32>())"
-            }
-          ],
-          "name": "_RNvXs3_NtNtCs2uwQbOZXl4G_14blueice_bluejs3ast16retained_payloadNtNtCs7CGfHqqMqjs_10num_bigint6bigint6BigIntNtB5_11HeapPayload12heap_payload",
-          "total": 13
-        },
-        {
-          "best_instance_region_count": 158,
-          "covered": 140,
-          "definition": [
-            370,
-            5,
-            370,
-            72
-          ],
-          "missing": [
-            {
-              "context": "heap_payload",
-              "location": [
-                437,
-                30,
-                437,
-                35
-              ],
-              "source": "            Self::ClassField(field) => field.heap_payload(context),"
-            },
-            {
-              "context": "heap_payload",
-              "location": [
-                437,
-                40,
-                437,
-                45
-              ],
-              "source": "            Self::ClassField(field) => field.heap_payload(context),"
-            },
-            {
-              "context": "heap_payload",
-              "location": [
-                437,
-                46,
-                437,
-                58
-              ],
-              "source": "            Self::ClassField(field) => field.heap_payload(context),"
-            },
-            {
-              "context": "heap_payload",
-              "location": [
-                437,
-                59,
-                437,
-                66
-              ],
-              "source": "            Self::ClassField(field) => field.heap_payload(context),"
-            },
-            {
-              "context": "heap_payload",
-              "location": [
-                438,
-                37,
-                438,
-                41
-              ],
-              "source": "            Self::ClassPrivateBrand(name) | Self::ClassExtraInitializers(name) => {"
-            },
-            {
-              "context": "heap_payload",
-              "location": [
-                438,
-                74,
-                438,
-                78
-              ],
-              "source": "            Self::ClassPrivateBrand(name) | Self::ClassExtraInitializers(name) => {"
-            },
-            {
-              "context": "heap_payload",
-              "location": [
-                439,
-                17,
-                439,
-                21
-              ],
-              "source": "                name.heap_payload(context)"
-            },
-            {
-              "context": "heap_payload",
-              "location": [
-                439,
-                22,
-                439,
-                34
-              ],
-              "source": "                name.heap_payload(context)"
-            },
-            {
-              "context": "heap_payload",
-              "location": [
-                439,
-                35,
-                439,
-                42
-              ],
-              "source": "                name.heap_payload(context)"
-            },
-            {
-              "context": "heap_payload",
-              "location": [
-                441,
-                41,
-                441,
-                46
-              ],
-              "source": "            Self::ClassDecoratedField { field, record } => {"
-            },
-            {
-              "context": "heap_payload",
-              "location": [
-                441,
-                48,
-                441,
-                54
-              ],
-              "source": "            Self::ClassDecoratedField { field, record } => {"
-            },
-            {
-              "context": "heap_payload",
-              "location": [
-                442,
-                17,
-                442,
-                21
-              ],
-              "source": "                sum!(field.heap_payload(context), record.heap_payload(context),)"
-            },
-            {
-              "context": "heap_payload",
-              "location": [
-                442,
-                22,
-                442,
-                27
-              ],
-              "source": "                sum!(field.heap_payload(context), record.heap_payload(context),)"
-            },
-            {
-              "context": "heap_payload",
-              "location": [
-                442,
-                28,
-                442,
-                40
-              ],
-              "source": "                sum!(field.heap_payload(context), record.heap_payload(context),)"
-            },
-            {
-              "context": "heap_payload",
-              "location": [
-                442,
-                41,
-                442,
-                48
-              ],
-              "source": "                sum!(field.heap_payload(context), record.heap_payload(context),)"
-            },
-            {
-              "context": "heap_payload",
-              "location": [
-                442,
-                51,
-                442,
-                57
-              ],
-              "source": "                sum!(field.heap_payload(context), record.heap_payload(context),)"
-            },
-            {
-              "context": "heap_payload",
-              "location": [
-                442,
-                58,
-                442,
-                70
-              ],
-              "source": "                sum!(field.heap_payload(context), record.heap_payload(context),)"
-            },
-            {
-              "context": "heap_payload",
-              "location": [
-                442,
-                71,
-                442,
-                78
-              ],
-              "source": "                sum!(field.heap_payload(context), record.heap_payload(context),)"
-            }
-          ],
-          "name": "_RNvXsr_NtNtCs2uwQbOZXl4G_14blueice_bluejs3ast16retained_payloadNtB7_4StmtNtB5_11HeapPayload12heap_payload",
-          "total": 158
-        }
-      ],
-      "missing": {
-        "functions": 0,
-        "lines": 5,
-        "regions": 22
-      },
-      "residual_work": "Generated class AST shapes and raw generic-instantiation accounting.",
-      "source_sha256": "edbbb7dbac06b994c91956efb798051cf1fdc0b1dc0db6a39fdbe9ed775672fe"
-    },
     "compiler.rs": {
       "difficulty": "D2",
       "gap_functions": [
@@ -1849,646 +1713,6 @@
       "residual_work": "Getter order, noncallable methods, foreign callables and iterator closing.",
       "source_sha256": "1317acb689bd3984261c2ad926815caac3c9cfbd303771cf354c65cd4ddd01f2"
     },
-    "vm/builtins/uint8array.rs": {
-      "difficulty": "D3",
-      "gap_functions": [
-        {
-          "best_instance_region_count": 27,
-          "covered": 26,
-          "definition": [
-            49,
-            5,
-            53,
-            37
-          ],
-          "missing": [
-            {
-              "context": "uint8_array_from_base64",
-              "location": [
-                55,
-                20,
-                57,
-                15
-              ],
-              "source": "            return Err(RuntimeError::TypeError("
-            }
-          ],
-          "name": "_RNvMs_NtNtNtCscam13rsCSfI_14blueice_bluejs2vm8builtins10uint8arrayNtB8_2Vm23uint8_array_from_base64",
-          "total": 27
-        },
-        {
-          "best_instance_region_count": 19,
-          "covered": 18,
-          "definition": [
-            68,
-            5,
-            72,
-            37
-          ],
-          "missing": [
-            {
-              "context": "uint8_array_from_hex",
-              "location": [
-                74,
-                20,
-                76,
-                15
-              ],
-              "source": "            return Err(RuntimeError::TypeError("
-            }
-          ],
-          "name": "_RNvMs_NtNtNtCscam13rsCSfI_14blueice_bluejs2vm8builtins10uint8arrayNtB8_2Vm20uint8_array_from_hex",
-          "total": 19
-        },
-        {
-          "best_instance_region_count": 21,
-          "covered": 20,
-          "definition": [
-            88,
-            5,
-            94,
-            37
-          ],
-          "missing": [
-            {
-              "context": "uint8_array_method",
-              "location": [
-                96,
-                20,
-                98,
-                15
-              ],
-              "source": "            return Err(RuntimeError::TypeError("
-            }
-          ],
-          "name": "_RNvMs_NtNtNtCscam13rsCSfI_14blueice_bluejs2vm8builtins10uint8arrayNtB8_2Vm18uint8_array_method",
-          "total": 21
-        },
-        {
-          "best_instance_region_count": 46,
-          "covered": 45,
-          "definition": [
-            108,
-            5,
-            112,
-            37
-          ],
-          "missing": [
-            {
-              "context": "uint8_array_set_from_base64",
-              "location": [
-                121,
-                61,
-                121,
-                62
-              ],
-              "source": "        self.uint8_array_write_bytes(target, &decoded.bytes)?;"
-            }
-          ],
-          "name": "_RNvMs_NtNtNtCscam13rsCSfI_14blueice_bluejs2vm8builtins10uint8arrayNtB8_2Vm27uint8_array_set_from_base64",
-          "total": 46
-        },
-        {
-          "best_instance_region_count": 38,
-          "covered": 37,
-          "definition": [
-            128,
-            5,
-            132,
-            37
-          ],
-          "missing": [
-            {
-              "context": "uint8_array_set_from_hex",
-              "location": [
-                138,
-                61,
-                138,
-                62
-              ],
-              "source": "        self.uint8_array_write_bytes(target, &decoded.bytes)?;"
-            }
-          ],
-          "name": "_RNvMs_NtNtNtCscam13rsCSfI_14blueice_bluejs2vm8builtins10uint8arrayNtB8_2Vm24uint8_array_set_from_hex",
-          "total": 38
-        },
-        {
-          "best_instance_region_count": 28,
-          "covered": 27,
-          "definition": [
-            147,
-            5,
-            151,
-            37
-          ],
-          "missing": [
-            {
-              "context": "uint8_array_to_base64",
-              "location": [
-                156,
-                59,
-                156,
-                60
-              ],
-              "source": "        let bytes = self.uint8_array_bytes(target, length)?;"
-            }
-          ],
-          "name": "_RNvMs_NtNtNtCscam13rsCSfI_14blueice_bluejs2vm8builtins10uint8arrayNtB8_2Vm21uint8_array_to_base64",
-          "total": 28
-        },
-        {
-          "best_instance_region_count": 24,
-          "covered": 23,
-          "definition": [
-            162,
-            5,
-            162,
-            86
-          ],
-          "missing": [
-            {
-              "context": "uint8_array_to_hex",
-              "location": [
-                164,
-                59,
-                164,
-                60
-              ],
-              "source": "        let bytes = self.uint8_array_bytes(target, length)?;"
-            }
-          ],
-          "name": "_RNvMs_NtNtNtCscam13rsCSfI_14blueice_bluejs2vm8builtins10uint8arrayNtB8_2Vm18uint8_array_to_hex",
-          "total": 24
-        },
-        {
-          "best_instance_region_count": 22,
-          "covered": 20,
-          "definition": [
-            185,
-            5,
-            185,
-            85
-          ],
-          "missing": [
-            {
-              "context": "uint8_array_object",
-              "location": [
-                189,
-                45,
-                189,
-                46
-              ],
-              "source": "        if !self.heap.is_typed_array(object)? {"
-            },
-            {
-              "context": "uint8_array_object",
-              "location": [
-                194,
-                65,
-                194,
-                66
-              ],
-              "source": "        let (_, _, _, kind) = self.heap.typed_array_info(object)?;"
-            }
-          ],
-          "name": "_RNvMs_NtNtNtCscam13rsCSfI_14blueice_bluejs2vm8builtins10uint8arrayNtB8_2Vm18uint8_array_object",
-          "total": 22
-        },
-        {
-          "best_instance_region_count": 14,
-          "covered": 11,
-          "definition": [
-            214,
-            26,
-            214,
-            27
-          ],
-          "missing": [
-            {
-              "context": "uint8_array_bytes",
-              "location": [
-                217,
-                60,
-                217,
-                61
-              ],
-              "source": "                    .typed_array_index_value(target, index)?"
-            },
-            {
-              "context": "uint8_array_bytes",
-              "location": [
-                218,
-                98,
-                218,
-                99
-              ],
-              "source": "                    .ok_or_else(|| RuntimeError::TypeError(\"Uint8Array is out of bounds\".into()))?;"
-            },
-            {
-              "context": "uint8_array_bytes",
-              "location": [
-                221,
-                26,
-                221,
-                91
-              ],
-              "source": "                    _ => Err(RuntimeError::TypeError(\"invalid Uint8Array element\".into())),"
-            }
-          ],
-          "name": "_RNCNvMs_NtNtNtCscam13rsCSfI_14blueice_bluejs2vm8builtins10uint8arrayNtBa_2Vm17uint8_array_bytes0Bc_",
-          "total": 14
-        },
-        {
-          "best_instance_region_count": 2,
-          "covered": 0,
-          "definition": [
-            218,
-            60,
-            218,
-            89
-          ],
-          "missing": [
-            {
-              "context": "uint8_array_bytes",
-              "location": [
-                218,
-                60,
-                218,
-                89
-              ],
-              "source": "                    .ok_or_else(|| RuntimeError::TypeError(\"Uint8Array is out of bounds\".into()))?;"
-            },
-            {
-              "context": "uint8_array_bytes",
-              "location": [
-                218,
-                90,
-                218,
-                94
-              ],
-              "source": "                    .ok_or_else(|| RuntimeError::TypeError(\"Uint8Array is out of bounds\".into()))?;"
-            }
-          ],
-          "name": "_RNCNCNvMs_NtNtNtCs2uwQbOZXl4G_14blueice_bluejs2vm8builtins10uint8arrayNtBc_2Vm17uint8_array_bytes00Be_",
-          "total": 2
-        },
-        {
-          "best_instance_region_count": 11,
-          "covered": 10,
-          "definition": [
-            227,
-            5,
-            231,
-            34
-          ],
-          "missing": [
-            {
-              "context": "uint8_array_write_bytes",
-              "location": [
-                235,
-                15,
-                235,
-                16
-              ],
-              "source": "            })?;"
-            }
-          ],
-          "name": "_RNvMs_NtNtNtCscam13rsCSfI_14blueice_bluejs2vm8builtins10uint8arrayNtB8_2Vm23uint8_array_write_bytes",
-          "total": 11
-        },
-        {
-          "best_instance_region_count": 24,
-          "covered": 22,
-          "definition": [
-            240,
-            5,
-            240,
-            88
-          ],
-          "missing": [
-            {
-              "context": "uint8_array_from_bytes",
-              "location": [
-                242,
-                60,
-                242,
-                61
-              ],
-              "source": "        let prototype = self.buffer_prototype(\"Uint8Array\")?;"
-            },
-            {
-              "context": "uint8_array_from_bytes",
-              "location": [
-                253,
-                53,
-                253,
-                54
-              ],
-              "source": "        self.uint8_array_write_bytes(target, &bytes)?;"
-            }
-          ],
-          "name": "_RNvMs_NtNtNtCscam13rsCSfI_14blueice_bluejs2vm8builtins10uint8arrayNtB8_2Vm22uint8_array_from_bytes",
-          "total": 24
-        },
-        {
-          "best_instance_region_count": 34,
-          "covered": 33,
-          "definition": [
-            311,
-            5,
-            314,
-            54
-          ],
-          "missing": [
-            {
-              "context": "uint8_array_encode_options",
-              "location": [
-                330,
-                53,
-                330,
-                54
-              ],
-              "source": "        Ok((alphabet, self.to_boolean(&omit_padding)?))"
-            }
-          ],
-          "name": "_RNvMs_NtNtNtCscam13rsCSfI_14blueice_bluejs2vm8builtins10uint8arrayNtB8_2Vm26uint8_array_encode_options",
-          "total": 34
-        },
-        {
-          "best_instance_region_count": 149,
-          "covered": 143,
-          "definition": [
-            334,
-            1,
-            339,
-            18
-          ],
-          "missing": [
-            {
-              "context": "decode_base64",
-              "location": [
-                397,
-                17,
-                397,
-                36
-              ],
-              "source": "                DecodedBytes::error(read, bytes)"
-            },
-            {
-              "context": "decode_base64",
-              "location": [
-                397,
-                37,
-                397,
-                41
-              ],
-              "source": "                DecodedBytes::error(read, bytes)"
-            },
-            {
-              "context": "decode_base64",
-              "location": [
-                397,
-                43,
-                397,
-                48
-              ],
-              "source": "                DecodedBytes::error(read, bytes)"
-            },
-            {
-              "context": "decode_base64",
-              "location": [
-                459,
-                21,
-                459,
-                40
-              ],
-              "source": "        _ => return DecodedBytes::error(read, bytes),"
-            },
-            {
-              "context": "decode_base64",
-              "location": [
-                459,
-                41,
-                459,
-                45
-              ],
-              "source": "        _ => return DecodedBytes::error(read, bytes),"
-            },
-            {
-              "context": "decode_base64",
-              "location": [
-                459,
-                47,
-                459,
-                52
-              ],
-              "source": "        _ => return DecodedBytes::error(read, bytes),"
-            }
-          ],
-          "name": "_RNvNtNtNtCscam13rsCSfI_14blueice_bluejs2vm8builtins10uint8array13decode_base64",
-          "total": 149
-        },
-        {
-          "best_instance_region_count": 52,
-          "covered": 51,
-          "definition": [
-            584,
-            1,
-            584,
-            87
-          ],
-          "missing": [
-            {
-              "context": "encode_base64",
-              "location": [
-                616,
-                18,
-                616,
-                30
-              ],
-              "source": "            _ => unreachable!(\"chunks(3) never yields an empty slice\"),"
-            }
-          ],
-          "name": "_RNvNtNtNtCscam13rsCSfI_14blueice_bluejs2vm8builtins10uint8array13encode_base64",
-          "total": 52
-        }
-      ],
-      "missing": {
-        "functions": 1,
-        "lines": 15,
-        "regions": 25
-      },
-      "residual_work": "Base64 malformed tails/partial writes/progress, hex handling, cold prototype and encoding proof.",
-      "source_sha256": "57360162ff6b9d12bb2fcd425ccd0312489a180e6eacfdf28305a82678ae012e"
-    },
-    "vm/debugger/inspection.rs": {
-      "difficulty": "D3",
-      "gap_functions": [
-        {
-          "best_instance_region_count": 38,
-          "covered": 37,
-          "definition": [
-            11,
-            5,
-            18,
-            54
-          ],
-          "missing": [
-            {
-              "context": "debugger_value_preview",
-              "location": [
-                50,
-                22,
-                50,
-                23
-              ],
-              "source": "                    )?;"
-            }
-          ],
-          "name": "_RNvMNtNtNtCs2uwQbOZXl4G_14blueice_bluejs2vm8debugger10inspectionNtB6_2Vm22debugger_value_preview",
-          "total": 38
-        },
-        {
-          "best_instance_region_count": 27,
-          "covered": 26,
-          "definition": [
-            60,
-            5,
-            65,
-            54
-          ],
-          "missing": [
-            {
-              "context": "debugger_linked_value_preview",
-              "location": [
-                86,
-                15,
-                86,
-                16
-              ],
-              "source": "            ))?;"
-            }
-          ],
-          "name": "_RNvMNtNtNtCs2uwQbOZXl4G_14blueice_bluejs2vm8debugger10inspectionNtB6_2Vm29debugger_linked_value_preview",
-          "total": 27
-        },
-        {
-          "best_instance_region_count": 26,
-          "covered": 20,
-          "definition": [
-            90,
-            5,
-            95,
-            54
-          ],
-          "missing": [
-            {
-              "context": "debugger_binding_preview",
-              "location": [
-                98,
-                46,
-                98,
-                47
-              ],
-              "source": "            self.heap.get_own(*cell, \"value\")?"
-            },
-            {
-              "context": "debugger_binding_preview",
-              "location": [
-                100,
-                13,
-                100,
-                21
-              ],
-              "source": "            bindings.get(slot).cloned().flatten()"
-            },
-            {
-              "context": "debugger_binding_preview",
-              "location": [
-                100,
-                22,
-                100,
-                25
-              ],
-              "source": "            bindings.get(slot).cloned().flatten()"
-            },
-            {
-              "context": "debugger_binding_preview",
-              "location": [
-                100,
-                26,
-                100,
-                30
-              ],
-              "source": "            bindings.get(slot).cloned().flatten()"
-            },
-            {
-              "context": "debugger_binding_preview",
-              "location": [
-                100,
-                32,
-                100,
-                38
-              ],
-              "source": "            bindings.get(slot).cloned().flatten()"
-            },
-            {
-              "context": "debugger_binding_preview",
-              "location": [
-                100,
-                41,
-                100,
-                48
-              ],
-              "source": "            bindings.get(slot).cloned().flatten()"
-            }
-          ],
-          "name": "_RNvMNtNtNtCs2uwQbOZXl4G_14blueice_bluejs2vm8debugger10inspectionNtB6_2Vm24debugger_binding_preview",
-          "total": 26
-        },
-        {
-          "best_instance_region_count": 73,
-          "covered": 71,
-          "definition": [
-            152,
-            5,
-            158,
-            55
-          ],
-          "missing": [
-            {
-              "context": "debugger_stack_snapshot_inner",
-              "location": [
-                184,
-                19,
-                184,
-                20
-              ],
-              "source": "                ))?;"
-            },
-            {
-              "context": "debugger_stack_snapshot_inner",
-              "location": [
-                195,
-                27,
-                195,
-                28
-              ],
-              "source": "                        ))?;"
-            }
-          ],
-          "name": "_RNvMNtNtNtCs2uwQbOZXl4G_14blueice_bluejs2vm8debugger10inspectionNtB6_2Vm29debugger_stack_snapshot_inner",
-          "total": 73
-        }
-      ],
-      "missing": {
-        "functions": 0,
-        "lines": 2,
-        "regions": 10
-      },
-      "residual_work": "Real uncaptured binding preview, paused generations, TDZ and stale selectors.",
-      "source_sha256": "dc1f9d7e0de1a5f40895cc78576e119abeb5502971fcf86b58b9f718ad277710"
-    },
     "vm/functions.rs": {
       "difficulty": "D2",
       "gap_functions": [
@@ -2588,1476 +1812,6 @@
       },
       "residual_work": "Bind/hasInstance prototype callbacks, target roots and foreign/bound behavior.",
       "source_sha256": "c5307b79a4b4ab12484bf3b8fe43405a7da37d98780696967aa5676e32fa8503"
-    },
-    "vm/host_objects.rs": {
-      "difficulty": "D4",
-      "gap_functions": [
-        {
-          "best_instance_region_count": 3,
-          "covered": 0,
-          "definition": [
-            44,
-            5,
-            44,
-            31
-          ],
-          "missing": [
-            {
-              "context": "object",
-              "location": [
-                44,
-                5,
-                44,
-                31
-              ],
-              "source": "    pub fn object(self) -> u64 {"
-            },
-            {
-              "context": "object",
-              "location": [
-                45,
-                9,
-                45,
-                20
-              ],
-              "source": "        self.object"
-            },
-            {
-              "context": "object",
-              "location": [
-                46,
-                5,
-                46,
-                6
-              ],
-              "source": "    }"
-            }
-          ],
-          "name": "_RNvMNtNtCs2uwQbOZXl4G_14blueice_bluejs2vm12host_objectsNtB2_13HostObjectKey6object",
-          "total": 3
-        },
-        {
-          "best_instance_region_count": 33,
-          "covered": 27,
-          "definition": [
-            164,
-            5,
-            167,
-            34
-          ],
-          "missing": [
-            {
-              "context": "install_host_click_event_methods",
-              "location": [
-                169,
-                20,
-                171,
-                15
-              ],
-              "source": "            return Err(RuntimeError::TypeError("
-            },
-            {
-              "context": "install_host_click_event_methods",
-              "location": [
-                176,
-                96,
-                176,
-                97
-              ],
-              "source": "            .ok_or_else(|| RuntimeError::TypeError(\"host-object family is unavailable\".into()))?"
-            },
-            {
-              "context": "install_host_click_event_methods",
-              "location": [
-                178,
-                60,
-                178,
-                61
-              ],
-              "source": "        if self.heap.get_own(prototype, \"addEventListener\")?.is_some()"
-            },
-            {
-              "context": "install_host_click_event_methods",
-              "location": [
-                181,
-                59,
-                181,
-                60
-              ],
-              "source": "                .get_own(prototype, \"removeEventListener\")?"
-            },
-            {
-              "context": "install_host_click_event_methods",
-              "location": [
-                184,
-                20,
-                186,
-                15
-              ],
-              "source": "            return Err(RuntimeError::TypeError("
-            },
-            {
-              "context": "install_host_click_event_methods",
-              "location": [
-                193,
-                10,
-                193,
-                11
-              ],
-              "source": "        )?;"
-            }
-          ],
-          "name": "_RNvMs2_NtNtCs2uwQbOZXl4G_14blueice_bluejs2vm12host_objectsNtB7_2Vm32install_host_click_event_methods",
-          "total": 33
-        },
-        {
-          "best_instance_region_count": 2,
-          "covered": 0,
-          "definition": [
-            176,
-            52,
-            176,
-            87
-          ],
-          "missing": [
-            {
-              "context": "install_host_click_event_methods",
-              "location": [
-                176,
-                52,
-                176,
-                87
-              ],
-              "source": "            .ok_or_else(|| RuntimeError::TypeError(\"host-object family is unavailable\".into()))?"
-            },
-            {
-              "context": "install_host_click_event_methods",
-              "location": [
-                176,
-                88,
-                176,
-                92
-              ],
-              "source": "            .ok_or_else(|| RuntimeError::TypeError(\"host-object family is unavailable\".into()))?"
-            }
-          ],
-          "name": "_RNCNvMs2_NtNtCs2uwQbOZXl4G_14blueice_bluejs2vm12host_objectsNtB9_2Vm32install_host_click_event_methods0Bb_",
-          "total": 2
-        },
-        {
-          "best_instance_region_count": 61,
-          "covered": 51,
-          "definition": [
-            207,
-            5,
-            211,
-            36
-          ],
-          "missing": [
-            {
-              "context": "dispatch_host_click",
-              "location": [
-                212,
-                47,
-                212,
-                48
-              ],
-              "source": "        self.ensure_no_debugger_continuation()?;"
-            },
-            {
-              "context": "dispatch_host_click",
-              "location": [
-                219,
-                20,
-                221,
-                15
-              ],
-              "source": "            return Err(RuntimeError::TypeError("
-            },
-            {
-              "context": "dispatch_host_click",
-              "location": [
-                227,
-                20,
-                229,
-                15
-              ],
-              "source": "            return Err(RuntimeError::TypeError("
-            },
-            {
-              "context": "dispatch_host_click",
-              "location": [
-                244,
-                21,
-                244,
-                26
-              ],
-              "source": "                Err(error) => {"
-            },
-            {
-              "context": "dispatch_host_click",
-              "location": [
-                245,
-                25,
-                245,
-                29
-              ],
-              "source": "                    for root in snapshot_roots {"
-            },
-            {
-              "context": "dispatch_host_click",
-              "location": [
-                245,
-                33,
-                245,
-                47
-              ],
-              "source": "                    for root in snapshot_roots {"
-            },
-            {
-              "context": "dispatch_host_click",
-              "location": [
-                245,
-                48,
-                247,
-                22
-              ],
-              "source": "                    for root in snapshot_roots {"
-            },
-            {
-              "context": "dispatch_host_click",
-              "location": [
-                246,
-                33,
-                246,
-                42
-              ],
-              "source": "                        let _ = self.heap.unroot(root);"
-            },
-            {
-              "context": "dispatch_host_click",
-              "location": [
-                248,
-                28,
-                248,
-                45
-              ],
-              "source": "                    return Err(error.into());"
-            },
-            {
-              "context": "dispatch_host_click",
-              "location": [
-                254,
-                35,
-                254,
-                36
-              ],
-              "source": "            self.heap.unroot(root)?;"
-            }
-          ],
-          "name": "_RNvMs2_NtNtCs2uwQbOZXl4G_14blueice_bluejs2vm12host_objectsNtB7_2Vm19dispatch_host_click",
-          "total": 61
-        },
-        {
-          "best_instance_region_count": 21,
-          "covered": 18,
-          "definition": [
-            259,
-            5,
-            265,
-            36
-          ],
-          "missing": [
-            {
-              "context": "dispatch_rooted_host_click",
-              "location": [
-                268,
-                86,
-                268,
-                87
-              ],
-              "source": "        let event = self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;"
-            },
-            {
-              "context": "dispatch_rooted_host_click",
-              "location": [
-                269,
-                47,
-                269,
-                48
-              ],
-              "source": "        let event_root = self.heap.root(event)?;"
-            },
-            {
-              "context": "dispatch_rooted_host_click",
-              "location": [
-                340,
-                37,
-                340,
-                38
-              ],
-              "source": "        self.heap.unroot(event_root)?;"
-            }
-          ],
-          "name": "_RNvMs2_NtNtCs2uwQbOZXl4G_14blueice_bluejs2vm12host_objectsNtB7_2Vm26dispatch_rooted_host_click",
-          "total": 21
-        },
-        {
-          "best_instance_region_count": 55,
-          "covered": 45,
-          "definition": [
-            270,
-            27,
-            270,
-            28
-          ],
-          "missing": [
-            {
-              "context": "dispatch_rooted_host_click",
-              "location": [
-                278,
-                14,
-                278,
-                15
-              ],
-              "source": "            )?;"
-            },
-            {
-              "context": "dispatch_rooted_host_click",
-              "location": [
-                279,
-                90,
-                279,
-                91
-              ],
-              "source": "            self.define_data(event, \"target\", Value::Object(wrapper), false, true, false)?;"
-            },
-            {
-              "context": "dispatch_rooted_host_click",
-              "location": [
-                287,
-                14,
-                287,
-                15
-              ],
-              "source": "            )?;"
-            },
-            {
-              "context": "dispatch_rooted_host_click",
-              "location": [
-                288,
-                89,
-                288,
-                90
-              ],
-              "source": "            self.define_data(event, \"cancelable\", Value::Bool(true), false, true, false)?;"
-            },
-            {
-              "context": "dispatch_rooted_host_click",
-              "location": [
-                294,
-                14,
-                294,
-                15
-              ],
-              "source": "            )?;"
-            },
-            {
-              "context": "dispatch_rooted_host_click",
-              "location": [
-                306,
-                21,
-                306,
-                29
-              ],
-              "source": "                    continue;"
-            },
-            {
-              "context": "dispatch_rooted_host_click",
-              "location": [
-                319,
-                25,
-                319,
-                33
-              ],
-              "source": "                    if !matches!("
-            },
-            {
-              "context": "dispatch_rooted_host_click",
-              "location": [
-                327,
-                25,
-                327,
-                31
-              ],
-              "source": "                        result = Err(error);"
-            },
-            {
-              "context": "dispatch_rooted_host_click",
-              "location": [
-                327,
-                34,
-                327,
-                44
-              ],
-              "source": "                        result = Err(error);"
-            },
-            {
-              "context": "dispatch_rooted_host_click",
-              "location": [
-                328,
-                25,
-                328,
-                30
-              ],
-              "source": "                        break;"
-            }
-          ],
-          "name": "_RNCNvMs2_NtNtCs2uwQbOZXl4G_14blueice_bluejs2vm12host_objectsNtB9_2Vm26dispatch_rooted_host_clicks_0Bb_",
-          "total": 55
-        },
-        {
-          "best_instance_region_count": 66,
-          "covered": 59,
-          "definition": [
-            344,
-            5,
-            351,
-            37
-          ],
-          "missing": [
-            {
-              "context": "host_click_listener_call",
-              "location": [
-                360,
-                96,
-                360,
-                97
-              ],
-              "source": "            .ok_or_else(|| RuntimeError::TypeError(\"host-object family is unavailable\".into()))?;"
-            },
-            {
-              "context": "host_click_listener_call",
-              "location": [
-                365,
-                39,
-                365,
-                40
-              ],
-              "source": "        if !self.is_callable(&args[1])? {"
-            },
-            {
-              "context": "host_click_listener_call",
-              "location": [
-                372,
-                90,
-                372,
-                91
-              ],
-              "source": "            .ok_or_else(|| RuntimeError::TypeError(\"invalid host click listener\".into()))?;"
-            },
-            {
-              "context": "host_click_listener_call",
-              "location": [
-                386,
-                28,
-                388,
-                23
-              ],
-              "source": "                    return Err(RuntimeError::RangeError("
-            },
-            {
-              "context": "host_click_listener_call",
-              "location": [
-                390,
-                52,
-                390,
-                53
-              ],
-              "source": "                let root = self.heap.root(callback)?;"
-            },
-            {
-              "context": "host_click_listener_call",
-              "location": [
-                400,
-                44,
-                400,
-                45
-              ],
-              "source": "            self.heap.unroot(listener.root)?;"
-            },
-            {
-              "context": "host_click_listener_call",
-              "location": [
-                401,
-                9,
-                401,
-                10
-              ],
-              "source": "        }"
-            }
-          ],
-          "name": "_RNvMs2_NtNtCs2uwQbOZXl4G_14blueice_bluejs2vm12host_objectsNtB7_2Vm24host_click_listener_call",
-          "total": 66
-        },
-        {
-          "best_instance_region_count": 2,
-          "covered": 0,
-          "definition": [
-            360,
-            52,
-            360,
-            87
-          ],
-          "missing": [
-            {
-              "context": "host_click_listener_call",
-              "location": [
-                360,
-                52,
-                360,
-                87
-              ],
-              "source": "            .ok_or_else(|| RuntimeError::TypeError(\"host-object family is unavailable\".into()))?;"
-            },
-            {
-              "context": "host_click_listener_call",
-              "location": [
-                360,
-                88,
-                360,
-                92
-              ],
-              "source": "            .ok_or_else(|| RuntimeError::TypeError(\"host-object family is unavailable\".into()))?;"
-            }
-          ],
-          "name": "_RNCNvMs2_NtNtCs2uwQbOZXl4G_14blueice_bluejs2vm12host_objectsNtB9_2Vm24host_click_listener_call0Bb_",
-          "total": 2
-        },
-        {
-          "best_instance_region_count": 2,
-          "covered": 0,
-          "definition": [
-            372,
-            52,
-            372,
-            81
-          ],
-          "missing": [
-            {
-              "context": "host_click_listener_call",
-              "location": [
-                372,
-                52,
-                372,
-                81
-              ],
-              "source": "            .ok_or_else(|| RuntimeError::TypeError(\"invalid host click listener\".into()))?;"
-            },
-            {
-              "context": "host_click_listener_call",
-              "location": [
-                372,
-                82,
-                372,
-                86
-              ],
-              "source": "            .ok_or_else(|| RuntimeError::TypeError(\"invalid host click listener\".into()))?;"
-            }
-          ],
-          "name": "_RNCNvMs2_NtNtCs2uwQbOZXl4G_14blueice_bluejs2vm12host_objectsNtB9_2Vm24host_click_listener_calls1_0Bb_",
-          "total": 2
-        },
-        {
-          "best_instance_region_count": 14,
-          "covered": 12,
-          "definition": [
-            405,
-            5,
-            410,
-            37
-          ],
-          "missing": [
-            {
-              "context": "host_click_prevent_default",
-              "location": [
-                412,
-                20,
-                414,
-                15
-              ],
-              "source": "            return Err(RuntimeError::TypeError("
-            },
-            {
-              "context": "host_click_prevent_default",
-              "location": [
-                422,
-                20,
-                424,
-                15
-              ],
-              "source": "            return Err(RuntimeError::TypeError("
-            }
-          ],
-          "name": "_RNvMs2_NtNtCs2uwQbOZXl4G_14blueice_bluejs2vm12host_objectsNtB7_2Vm26host_click_prevent_default",
-          "total": 14
-        },
-        {
-          "best_instance_region_count": 24,
-          "covered": 21,
-          "definition": [
-            432,
-            5,
-            432,
-            90
-          ],
-          "missing": [
-            {
-              "context": "create_host_object_family",
-              "location": [
-                437,
-                10,
-                437,
-                11
-              ],
-              "source": "        )?;"
-            },
-            {
-              "context": "create_host_object_family",
-              "location": [
-                439,
-                90,
-                439,
-                91
-              ],
-              "source": "        let prototype = self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;"
-            },
-            {
-              "context": "create_host_object_family",
-              "location": [
-                440,
-                45,
-                440,
-                46
-              ],
-              "source": "        let root = self.heap.root(prototype)?;"
-            }
-          ],
-          "name": "_RNvMs2_NtNtCs2uwQbOZXl4G_14blueice_bluejs2vm12host_objectsNtB7_2Vm25create_host_object_family",
-          "total": 24
-        },
-        {
-          "best_instance_region_count": 36,
-          "covered": 30,
-          "definition": [
-            456,
-            5,
-            462,
-            34
-          ],
-          "missing": [
-            {
-              "context": "install_host_object_method",
-              "location": [
-                464,
-                20,
-                466,
-                15
-              ],
-              "source": "            return Err(RuntimeError::TypeError("
-            },
-            {
-              "context": "install_host_object_method",
-              "location": [
-                471,
-                96,
-                471,
-                97
-              ],
-              "source": "            .ok_or_else(|| RuntimeError::TypeError(\"host-object family is unavailable\".into()))?"
-            },
-            {
-              "context": "install_host_object_method",
-              "location": [
-                473,
-                46,
-                473,
-                47
-              ],
-              "source": "        if self.heap.get_own(prototype, name)?.is_some() {"
-            },
-            {
-              "context": "install_host_object_method",
-              "location": [
-                474,
-                20,
-                476,
-                15
-              ],
-              "source": "            return Err(RuntimeError::TypeError("
-            },
-            {
-              "context": "install_host_object_method",
-              "location": [
-                482,
-                10,
-                482,
-                11
-              ],
-              "source": "        )?;"
-            },
-            {
-              "context": "install_host_object_method",
-              "location": [
-                488,
-                10,
-                488,
-                11
-              ],
-              "source": "        )?;"
-            }
-          ],
-          "name": "_RINvMs2_NtNtCs2uwQbOZXl4G_14blueice_bluejs2vm12host_objectsNtB8_2Vm26install_host_object_methodNCNvNtB8_5testss_65opaque_host_object_methods_require_an_exact_live_wrapper_receivers_0EBa_",
-          "total": 36
-        },
-        {
-          "best_instance_region_count": 2,
-          "covered": 0,
-          "definition": [
-            471,
-            52,
-            471,
-            87
-          ],
-          "missing": [
-            {
-              "context": "install_host_object_method",
-              "location": [
-                471,
-                52,
-                471,
-                87
-              ],
-              "source": "            .ok_or_else(|| RuntimeError::TypeError(\"host-object family is unavailable\".into()))?"
-            },
-            {
-              "context": "install_host_object_method",
-              "location": [
-                471,
-                88,
-                471,
-                92
-              ],
-              "source": "            .ok_or_else(|| RuntimeError::TypeError(\"host-object family is unavailable\".into()))?"
-            }
-          ],
-          "name": "_RNCINvMs2_NtNtCs2uwQbOZXl4G_14blueice_bluejs2vm12host_objectsNtBa_2Vm26install_host_object_methodNCNvNtBa_5testss_65opaque_host_object_methods_require_an_exact_live_wrapper_receivers1_0E0Bc_",
-          "total": 2
-        },
-        {
-          "best_instance_region_count": 36,
-          "covered": 30,
-          "definition": [
-            499,
-            5,
-            505,
-            34
-          ],
-          "missing": [
-            {
-              "context": "install_host_object_pair_method",
-              "location": [
-                507,
-                20,
-                509,
-                15
-              ],
-              "source": "            return Err(RuntimeError::TypeError("
-            },
-            {
-              "context": "install_host_object_pair_method",
-              "location": [
-                514,
-                96,
-                514,
-                97
-              ],
-              "source": "            .ok_or_else(|| RuntimeError::TypeError(\"host-object family is unavailable\".into()))?"
-            },
-            {
-              "context": "install_host_object_pair_method",
-              "location": [
-                516,
-                46,
-                516,
-                47
-              ],
-              "source": "        if self.heap.get_own(prototype, name)?.is_some() {"
-            },
-            {
-              "context": "install_host_object_pair_method",
-              "location": [
-                517,
-                20,
-                519,
-                15
-              ],
-              "source": "            return Err(RuntimeError::TypeError("
-            },
-            {
-              "context": "install_host_object_pair_method",
-              "location": [
-                525,
-                10,
-                525,
-                11
-              ],
-              "source": "        )?;"
-            },
-            {
-              "context": "install_host_object_pair_method",
-              "location": [
-                531,
-                10,
-                531,
-                11
-              ],
-              "source": "        )?;"
-            }
-          ],
-          "name": "_RINvMs2_NtNtCs2uwQbOZXl4G_14blueice_bluejs2vm12host_objectsNtB8_2Vm31install_host_object_pair_methodNCNvNtB8_5testss_73host_pair_method_requires_two_exact_minted_wrappers_and_returns_the_childs_0EBa_",
-          "total": 36
-        },
-        {
-          "best_instance_region_count": 2,
-          "covered": 0,
-          "definition": [
-            514,
-            52,
-            514,
-            87
-          ],
-          "missing": [
-            {
-              "context": "install_host_object_pair_method",
-              "location": [
-                514,
-                52,
-                514,
-                87
-              ],
-              "source": "            .ok_or_else(|| RuntimeError::TypeError(\"host-object family is unavailable\".into()))?"
-            },
-            {
-              "context": "install_host_object_pair_method",
-              "location": [
-                514,
-                88,
-                514,
-                92
-              ],
-              "source": "            .ok_or_else(|| RuntimeError::TypeError(\"host-object family is unavailable\".into()))?"
-            }
-          ],
-          "name": "_RNCINvMs2_NtNtCs2uwQbOZXl4G_14blueice_bluejs2vm12host_objectsNtBa_2Vm31install_host_object_pair_methodNCNvNtBa_5testss_73host_pair_method_requires_two_exact_minted_wrappers_and_returns_the_childs_0E0Bc_",
-          "total": 2
-        },
-        {
-          "best_instance_region_count": 45,
-          "covered": 38,
-          "definition": [
-            544,
-            5,
-            550,
-            34
-          ],
-          "missing": [
-            {
-              "context": "install_host_object_accessor",
-              "location": [
-                552,
-                20,
-                554,
-                15
-              ],
-              "source": "            return Err(RuntimeError::TypeError("
-            },
-            {
-              "context": "install_host_object_accessor",
-              "location": [
-                559,
-                96,
-                559,
-                97
-              ],
-              "source": "            .ok_or_else(|| RuntimeError::TypeError(\"host-object family is unavailable\".into()))?"
-            },
-            {
-              "context": "install_host_object_accessor",
-              "location": [
-                561,
-                46,
-                561,
-                47
-              ],
-              "source": "        if self.heap.get_own(prototype, name)?.is_some() {"
-            },
-            {
-              "context": "install_host_object_accessor",
-              "location": [
-                562,
-                20,
-                564,
-                15
-              ],
-              "source": "            return Err(RuntimeError::TypeError("
-            },
-            {
-              "context": "install_host_object_accessor",
-              "location": [
-                570,
-                10,
-                570,
-                11
-              ],
-              "source": "        )?;"
-            },
-            {
-              "context": "install_host_object_accessor",
-              "location": [
-                572,
-                59,
-                572,
-                60
-              ],
-              "source": "        let function_prototype = self.function_prototype()?;"
-            },
-            {
-              "context": "install_host_object_accessor",
-              "location": [
-                579,
-                10,
-                579,
-                11
-              ],
-              "source": "        )?;"
-            }
-          ],
-          "name": "_RINvMs2_NtNtCs2uwQbOZXl4G_14blueice_bluejs2vm12host_objectsNtB8_2Vm28install_host_object_accessorNCNvNtB8_5testss_61host_document_factory_and_node_accessor_verify_both_receiverss_0NCB1z_s0_0EBa_",
-          "total": 45
-        },
-        {
-          "best_instance_region_count": 2,
-          "covered": 0,
-          "definition": [
-            559,
-            52,
-            559,
-            87
-          ],
-          "missing": [
-            {
-              "context": "install_host_object_accessor",
-              "location": [
-                559,
-                52,
-                559,
-                87
-              ],
-              "source": "            .ok_or_else(|| RuntimeError::TypeError(\"host-object family is unavailable\".into()))?"
-            },
-            {
-              "context": "install_host_object_accessor",
-              "location": [
-                559,
-                88,
-                559,
-                92
-              ],
-              "source": "            .ok_or_else(|| RuntimeError::TypeError(\"host-object family is unavailable\".into()))?"
-            }
-          ],
-          "name": "_RNCINvMs2_NtNtCs2uwQbOZXl4G_14blueice_bluejs2vm12host_objectsNtBa_2Vm28install_host_object_accessorNCNvNtBa_5testss_61host_document_factory_and_node_accessor_verify_both_receiverss_0NCB1B_s0_0E0Bc_",
-          "total": 2
-        },
-        {
-          "best_instance_region_count": 18,
-          "covered": 17,
-          "definition": [
-            596,
-            5,
-            602,
-            34
-          ],
-          "missing": [
-            {
-              "context": "install_host_object_factory",
-              "location": [
-                604,
-                34,
-                604,
-                35
-              ],
-              "source": "            .global(\"globalThis\")?"
-            }
-          ],
-          "name": "_RINvMs2_NtNtCs2uwQbOZXl4G_14blueice_bluejs2vm12host_objectsNtB8_2Vm27install_host_object_factoryNCNvNtB8_5testss_48opaque_host_object_family_has_a_fixed_root_limit0EBa_",
-          "total": 18
-        },
-        {
-          "best_instance_region_count": 13,
-          "covered": 12,
-          "definition": [
-            612,
-            5,
-            619,
-            34
-          ],
-          "missing": [
-            {
-              "context": "install_host_object_factory_method",
-              "location": [
-                621,
-                20,
-                623,
-                15
-              ],
-              "source": "            return Err(RuntimeError::TypeError("
-            }
-          ],
-          "name": "_RINvMs2_NtNtCs2uwQbOZXl4G_14blueice_bluejs2vm12host_objectsNtB8_2Vm34install_host_object_factory_methodNCNCNvNtNtBa_12page_runtime5testss_68host_click_dispatch_is_realm_bound_and_old_document_listeners_expire00EBa_",
-          "total": 13
-        },
-        {
-          "best_instance_region_count": 35,
-          "covered": 30,
-          "definition": [
-            628,
-            5,
-            636,
-            34
-          ],
-          "missing": [
-            {
-              "context": "install_host_object_factory_on",
-              "location": [
-                643,
-                20,
-                645,
-                15
-              ],
-              "source": "            return Err(RuntimeError::TypeError("
-            },
-            {
-              "context": "install_host_object_factory_on",
-              "location": [
-                647,
-                80,
-                647,
-                81
-              ],
-              "source": "        if !host_property_name_is_valid(name) || self.heap.get_own(owner, name)?.is_some() {"
-            },
-            {
-              "context": "install_host_object_factory_on",
-              "location": [
-                648,
-                20,
-                650,
-                15
-              ],
-              "source": "            return Err(RuntimeError::TypeError("
-            },
-            {
-              "context": "install_host_object_factory_on",
-              "location": [
-                656,
-                10,
-                656,
-                11
-              ],
-              "source": "        )?;"
-            },
-            {
-              "context": "install_host_object_factory_on",
-              "location": [
-                662,
-                10,
-                662,
-                11
-              ],
-              "source": "        )?;"
-            }
-          ],
-          "name": "_RINvMs2_NtNtCs2uwQbOZXl4G_14blueice_bluejs2vm12host_objectsNtB8_2Vm30install_host_object_factory_onNCNCNvNtNtBa_12page_runtime5testss_68host_click_dispatch_is_realm_bound_and_old_document_listeners_expire00EBa_",
-          "total": 35
-        },
-        {
-          "best_instance_region_count": 61,
-          "covered": 56,
-          "definition": [
-            672,
-            5,
-            678,
-            37
-          ],
-          "missing": [
-            {
-              "context": "host_object_factory_call",
-              "location": [
-                680,
-                20,
-                682,
-                15
-              ],
-              "source": "            return Err(RuntimeError::TypeError("
-            },
-            {
-              "context": "host_object_factory_call",
-              "location": [
-                692,
-                97,
-                692,
-                98
-              ],
-              "source": "            .ok_or_else(|| RuntimeError::TypeError(\"host-object factory is unavailable\".into()))?;"
-            },
-            {
-              "context": "host_object_factory_call",
-              "location": [
-                705,
-                73,
-                705,
-                74
-              ],
-              "source": "            .map_err(|error| RuntimeError::TypeError(error.to_string()))?"
-            },
-            {
-              "context": "host_object_factory_call",
-              "location": [
-                719,
-                80,
-                719,
-                81
-              ],
-              "source": "        let object = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;"
-            },
-            {
-              "context": "host_object_factory_call",
-              "location": [
-                720,
-                42,
-                720,
-                43
-              ],
-              "source": "        let root = self.heap.root(object)?;"
-            }
-          ],
-          "name": "_RNvMs2_NtNtCs2uwQbOZXl4G_14blueice_bluejs2vm12host_objectsNtB7_2Vm24host_object_factory_call",
-          "total": 61
-        },
-        {
-          "best_instance_region_count": 2,
-          "covered": 0,
-          "definition": [
-            692,
-            52,
-            692,
-            88
-          ],
-          "missing": [
-            {
-              "context": "host_object_factory_call",
-              "location": [
-                692,
-                52,
-                692,
-                88
-              ],
-              "source": "            .ok_or_else(|| RuntimeError::TypeError(\"host-object factory is unavailable\".into()))?;"
-            },
-            {
-              "context": "host_object_factory_call",
-              "location": [
-                692,
-                89,
-                692,
-                93
-              ],
-              "source": "            .ok_or_else(|| RuntimeError::TypeError(\"host-object factory is unavailable\".into()))?;"
-            }
-          ],
-          "name": "_RNCNvMs2_NtNtCs2uwQbOZXl4G_14blueice_bluejs2vm12host_objectsNtB9_2Vm24host_object_factory_calls_0Bb_",
-          "total": 2
-        },
-        {
-          "best_instance_region_count": 2,
-          "covered": 0,
-          "definition": [
-            705,
-            54,
-            705,
-            59
-          ],
-          "missing": [
-            {
-              "context": "host_object_factory_call",
-              "location": [
-                705,
-                54,
-                705,
-                59
-              ],
-              "source": "            .map_err(|error| RuntimeError::TypeError(error.to_string()))?"
-            },
-            {
-              "context": "host_object_factory_call",
-              "location": [
-                705,
-                60,
-                705,
-                69
-              ],
-              "source": "            .map_err(|error| RuntimeError::TypeError(error.to_string()))?"
-            }
-          ],
-          "name": "_RNCNvMs2_NtNtCs2uwQbOZXl4G_14blueice_bluejs2vm12host_objectsNtB9_2Vm24host_object_factory_calls1_0Bb_",
-          "total": 2
-        },
-        {
-          "best_instance_region_count": 37,
-          "covered": 34,
-          "definition": [
-            730,
-            5,
-            736,
-            37
-          ],
-          "missing": [
-            {
-              "context": "host_object_method_call",
-              "location": [
-                738,
-                20,
-                740,
-                15
-              ],
-              "source": "            return Err(RuntimeError::TypeError("
-            },
-            {
-              "context": "host_object_method_call",
-              "location": [
-                745,
-                96,
-                745,
-                97
-              ],
-              "source": "            .ok_or_else(|| RuntimeError::TypeError(\"host-object method is unavailable\".into()))?;"
-            },
-            {
-              "context": "host_object_method_call",
-              "location": [
-                765,
-                35,
-                765,
-                36
-              ],
-              "source": "        self.check_string(&result)?;"
-            }
-          ],
-          "name": "_RNvMs2_NtNtCs2uwQbOZXl4G_14blueice_bluejs2vm12host_objectsNtB7_2Vm23host_object_method_call",
-          "total": 37
-        },
-        {
-          "best_instance_region_count": 2,
-          "covered": 0,
-          "definition": [
-            745,
-            52,
-            745,
-            87
-          ],
-          "missing": [
-            {
-              "context": "host_object_method_call",
-              "location": [
-                745,
-                52,
-                745,
-                87
-              ],
-              "source": "            .ok_or_else(|| RuntimeError::TypeError(\"host-object method is unavailable\".into()))?;"
-            },
-            {
-              "context": "host_object_method_call",
-              "location": [
-                745,
-                88,
-                745,
-                92
-              ],
-              "source": "            .ok_or_else(|| RuntimeError::TypeError(\"host-object method is unavailable\".into()))?;"
-            }
-          ],
-          "name": "_RNCNvMs2_NtNtCs2uwQbOZXl4G_14blueice_bluejs2vm12host_objectsNtB9_2Vm23host_object_method_call0Bb_",
-          "total": 2
-        },
-        {
-          "best_instance_region_count": 38,
-          "covered": 36,
-          "definition": [
-            769,
-            5,
-            775,
-            37
-          ],
-          "missing": [
-            {
-              "context": "host_object_pair_method_call",
-              "location": [
-                786,
-                15,
-                786,
-                16
-              ],
-              "source": "            })?;"
-            },
-            {
-              "context": "host_object_pair_method_call",
-              "location": [
-                794,
-                88,
-                794,
-                89
-              ],
-              "source": "            .ok_or_else(|| RuntimeError::TypeError(\"invalid host-object child\".into()))?;"
-            }
-          ],
-          "name": "_RNvMs2_NtNtCs2uwQbOZXl4G_14blueice_bluejs2vm12host_objectsNtB7_2Vm28host_object_pair_method_call",
-          "total": 38
-        },
-        {
-          "best_instance_region_count": 3,
-          "covered": 0,
-          "definition": [
-            784,
-            28,
-            784,
-            29
-          ],
-          "missing": [
-            {
-              "context": "host_object_pair_method_call",
-              "location": [
-                784,
-                28,
-                784,
-                29
-              ],
-              "source": "            .ok_or_else(|| {"
-            },
-            {
-              "context": "host_object_pair_method_call",
-              "location": [
-                785,
-                17,
-                785,
-                89
-              ],
-              "source": "                RuntimeError::TypeError(\"host-object pair method is unavailable\".into())"
-            },
-            {
-              "context": "host_object_pair_method_call",
-              "location": [
-                786,
-                13,
-                786,
-                14
-              ],
-              "source": "            })?;"
-            }
-          ],
-          "name": "_RNCNvMs2_NtNtCs2uwQbOZXl4G_14blueice_bluejs2vm12host_objectsNtB9_2Vm28host_object_pair_method_call0Bb_",
-          "total": 3
-        },
-        {
-          "best_instance_region_count": 2,
-          "covered": 0,
-          "definition": [
-            794,
-            52,
-            794,
-            79
-          ],
-          "missing": [
-            {
-              "context": "host_object_pair_method_call",
-              "location": [
-                794,
-                52,
-                794,
-                79
-              ],
-              "source": "            .ok_or_else(|| RuntimeError::TypeError(\"invalid host-object child\".into()))?;"
-            },
-            {
-              "context": "host_object_pair_method_call",
-              "location": [
-                794,
-                80,
-                794,
-                84
-              ],
-              "source": "            .ok_or_else(|| RuntimeError::TypeError(\"invalid host-object child\".into()))?;"
-            }
-          ],
-          "name": "_RNCNvMs2_NtNtCs2uwQbOZXl4G_14blueice_bluejs2vm12host_objectsNtB9_2Vm28host_object_pair_method_calls1_0Bb_",
-          "total": 2
-        }
-      ],
-      "missing": {
-        "functions": 12,
-        "lines": 94,
-        "regions": 103
-      },
-      "residual_work": "Listener mutation, cancellation, callback errors, quotas and registry publication rollback.",
-      "source_sha256": "6782f286fd4e1135c743a7133787c5db26ae4a4d7eff580bc8e4750ab21b70ec"
-    },
-    "vm/temporal/conversion/calendar_fields.rs": {
-      "difficulty": "D2",
-      "gap_functions": [
-        {
-          "best_instance_region_count": 48,
-          "covered": 47,
-          "definition": [
-            86,
-            5,
-            89,
-            38
-          ],
-          "missing": [
-            {
-              "context": "temporal_calendar_identifier",
-              "location": [
-                94,
-                69,
-                94,
-                70
-              ],
-              "source": "            if let Some(temporal) = self.heap.temporal_value(object)? {"
-            }
-          ],
-          "name": "_RNvMNtNtNtNtCscam13rsCSfI_14blueice_bluejs2vm8temporal10conversion15calendar_fieldsNtB8_2Vm28temporal_calendar_identifier",
-          "total": 48
-        }
-      ],
-      "missing": {
-        "functions": 0,
-        "lines": 0,
-        "regions": 1
-      },
-      "residual_work": "Calendar arguments, missing required calendar and getter ordering.",
-      "source_sha256": "f8c58f1086990c19ed2ddb6568de29e9cedd87af0de15ad1aa78d913d7b4b509"
     },
     "vm/temporal/dates/construction.rs": {
       "difficulty": "D2",
@@ -4459,19 +2213,19 @@
     }
   },
   "license": "MPL-2.0",
-  "measurement_run": "20261008-154319-0641e2d9",
-  "measurement_time": "2026-10-08T08:31:19.980982+00:00",
+  "measurement_run": "20261008-165752-6640389a",
+  "measurement_time": "2026-10-08T10:11:43.221647+00:00",
   "preservation": {
     "original_complete_preserved": {
       "passed": 95,
       "total": 95
     },
-    "preceding_complete_preserved": 150,
-    "preceding_modified_complete_preserved": 68,
+    "preceding_complete_preserved": 153,
+    "preceding_modified_complete_preserved": 75,
     "selected_complete_preserved": 22
   },
   "production_modified": true,
-  "runtime_source_identity": "ffee5cd5ed8ea212b581b06a304f35e6073e0c4818c80388f8661992435303c9",
+  "runtime_source_identity": "d74e94b3251170b33fe8f24c7ab6728e5d408264b54d583fe2b5961fc9780a6b",
   "runtime_tests_executed": true,
   "schema": 2,
   "shared_functions": [
@@ -4481,7 +2235,7 @@
         {
           "line": 27,
           "source": "backend/bluejs/src/ast/retained_payload.rs",
-          "source_sha256": "edbbb7dbac06b994c91956efb798051cf1fdc0b1dc0db6a39fdbe9ed775672fe"
+          "source_sha256": "49c753930f5e0eeac75839b8303b13ad6ccf1a1bf1ea81de1d0c69683123493f"
         }
       ],
       "references": [
@@ -4489,21 +2243,21 @@
           "function": null,
           "line": 34,
           "source": "backend/bluejs/src/ast/retained_payload.rs",
-          "source_sha256": "edbbb7dbac06b994c91956efb798051cf1fdc0b1dc0db6a39fdbe9ed775672fe",
+          "source_sha256": "49c753930f5e0eeac75839b8303b13ad6ccf1a1bf1ea81de1d0c69683123493f",
           "symbol": "add_payload"
         },
         {
           "function": "heap_payload",
           "line": 60,
           "source": "backend/bluejs/src/ast/retained_payload.rs",
-          "source_sha256": "edbbb7dbac06b994c91956efb798051cf1fdc0b1dc0db6a39fdbe9ed775672fe",
+          "source_sha256": "49c753930f5e0eeac75839b8303b13ad6ccf1a1bf1ea81de1d0c69683123493f",
           "symbol": "add_payload"
         },
         {
           "function": "heap_payload",
-          "line": 68,
+          "line": 73,
           "source": "backend/bluejs/src/ast/retained_payload.rs",
-          "source_sha256": "edbbb7dbac06b994c91956efb798051cf1fdc0b1dc0db6a39fdbe9ed775672fe",
+          "source_sha256": "49c753930f5e0eeac75839b8303b13ad6ccf1a1bf1ea81de1d0c69683123493f",
           "symbol": "add_payload"
         }
       ],
@@ -4718,37 +2472,37 @@
       "references": [
         {
           "function": "create_host_object_family",
-          "line": 433,
+          "line": 457,
           "source": "backend/bluejs/src/vm/host_objects.rs",
-          "source_sha256": "6782f286fd4e1135c743a7133787c5db26ae4a4d7eff580bc8e4750ab21b70ec",
+          "source_sha256": "3e40625747f2f50cfdbe954afab8d40fa607397f06f1dd45bb6dd5da675e47f0",
           "symbol": "host_registration_index"
         },
         {
           "function": "install_host_object_method",
-          "line": 478,
+          "line": 509,
           "source": "backend/bluejs/src/vm/host_objects.rs",
-          "source_sha256": "6782f286fd4e1135c743a7133787c5db26ae4a4d7eff580bc8e4750ab21b70ec",
+          "source_sha256": "3e40625747f2f50cfdbe954afab8d40fa607397f06f1dd45bb6dd5da675e47f0",
           "symbol": "host_registration_index"
         },
         {
           "function": "install_host_object_pair_method",
-          "line": 521,
+          "line": 560,
           "source": "backend/bluejs/src/vm/host_objects.rs",
-          "source_sha256": "6782f286fd4e1135c743a7133787c5db26ae4a4d7eff580bc8e4750ab21b70ec",
+          "source_sha256": "3e40625747f2f50cfdbe954afab8d40fa607397f06f1dd45bb6dd5da675e47f0",
           "symbol": "host_registration_index"
         },
         {
           "function": "install_host_object_accessor",
-          "line": 566,
+          "line": 613,
           "source": "backend/bluejs/src/vm/host_objects.rs",
-          "source_sha256": "6782f286fd4e1135c743a7133787c5db26ae4a4d7eff580bc8e4750ab21b70ec",
+          "source_sha256": "3e40625747f2f50cfdbe954afab8d40fa607397f06f1dd45bb6dd5da675e47f0",
           "symbol": "host_registration_index"
         },
         {
           "function": "install_host_object_factory_on",
-          "line": 652,
+          "line": 702,
           "source": "backend/bluejs/src/vm/host_objects.rs",
-          "source_sha256": "6782f286fd4e1135c743a7133787c5db26ae4a4d7eff580bc8e4750ab21b70ec",
+          "source_sha256": "3e40625747f2f50cfdbe954afab8d40fa607397f06f1dd45bb6dd5da675e47f0",
           "symbol": "host_registration_index"
         },
         {
@@ -5486,9 +3240,9 @@
         },
         {
           "function": "host_click_listener_call",
-          "line": 365,
+          "line": 387,
           "source": "backend/bluejs/src/vm/host_objects.rs",
-          "source_sha256": "6782f286fd4e1135c743a7133787c5db26ae4a4d7eff580bc8e4750ab21b70ec",
+          "source_sha256": "3e40625747f2f50cfdbe954afab8d40fa607397f06f1dd45bb6dd5da675e47f0",
           "symbol": "is_callable"
         },
         {
@@ -7285,9 +5039,9 @@
         },
         {
           "function": "uint8_array_encode_options",
-          "line": 330,
+          "line": 343,
           "source": "backend/bluejs/src/vm/builtins/uint8array.rs",
-          "source_sha256": "57360162ff6b9d12bb2fcd425ccd0312489a180e6eacfdf28305a82678ae012e",
+          "source_sha256": "bf5c57198596076877c123be65c934e9e90a77fff3e2b1fe055bffd59473e50c",
           "symbol": "to_boolean"
         },
         {
@@ -7609,7 +5363,7 @@
       "body_contract_available": false,
       "fallbacks": [],
       "note": "Read-only explicit-path probe against this complete snapshot; target counts are not case counts or timing estimates.",
-      "prospective_body_only_rust_targets": 7,
+      "prospective_body_only_rust_targets": 8,
       "test262_selection": [
         "test262:all"
       ]

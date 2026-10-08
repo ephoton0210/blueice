@@ -63,7 +63,12 @@ impl<T: HeapPayload> HeapPayload for Box<T> {
 
 impl<T: HeapPayload> HeapPayload for Vec<T> {
     fn heap_payload(&self, context: &mut CountContext) -> Option<usize> {
-        let mut bytes = self.capacity().checked_mul(std::mem::size_of::<T>())?;
+        // Vec's allocation layout bounds this product by isize::MAX. For
+        // zero-sized elements the product is zero, including capacity MAX.
+        let mut bytes = self
+            .capacity()
+            .checked_mul(std::mem::size_of::<T>())
+            .expect("an allocated Vec has a representable byte capacity");
         for item in self {
             bytes = add_payload(bytes, item.heap_payload(context))?;
         }
@@ -73,8 +78,15 @@ impl<T: HeapPayload> HeapPayload for Vec<T> {
 
 impl HeapPayload for BigInt {
     fn heap_payload(&self, _: &mut CountContext) -> Option<usize> {
-        let bits = usize::try_from(self.bits()).ok()?;
-        (bits.checked_add(31)? / 32).checked_mul(std::mem::size_of::<u32>())
+        // The pinned num-bigint digit iterator reports the exact logical
+        // u32 limb count, without copying. Its byte length cannot exceed
+        // the allocated native-digit buffer, including zero and sign.
+        Some(
+            self.iter_u32_digits()
+                .len()
+                .checked_mul(std::mem::size_of::<u32>())
+                .expect("logical BigInt limbs fit their allocated digit buffer"),
+        )
     }
 }
 

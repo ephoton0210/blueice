@@ -118,7 +118,7 @@ impl Vm {
         let (alphabet, handling) = self.uint8_array_decode_options(native::argument(args, 1))?;
         let (target, length) = self.uint8_array_validated_receiver(receiver)?;
         let decoded = decode_base64(input, alphabet, handling, length);
-        self.uint8_array_write_bytes(target, &decoded.bytes)?;
+        self.uint8_array_write_bytes(target, &decoded.bytes);
         if decoded.syntax_error {
             return Err(RuntimeError::SyntaxError("invalid base64 string".into()));
         }
@@ -135,7 +135,7 @@ impl Vm {
         let input = self.uint8_array_string_argument(native::argument(args, 0))?;
         let (target, length) = self.uint8_array_validated_receiver(receiver)?;
         let decoded = decode_hex(input, length);
-        self.uint8_array_write_bytes(target, &decoded.bytes)?;
+        self.uint8_array_write_bytes(target, &decoded.bytes);
         if decoded.syntax_error {
             return Err(RuntimeError::SyntaxError(
                 "invalid hexadecimal string".into(),
@@ -153,7 +153,7 @@ impl Vm {
         let (alphabet, omit_padding) =
             self.uint8_array_encode_options(native::argument(args, 0))?;
         let (target, length) = self.uint8_array_validated_receiver(receiver)?;
-        let bytes = self.uint8_array_bytes(target, length)?;
+        let bytes = self.uint8_array_bytes(target, length);
         Ok(Value::String(
             encode_base64(&bytes, alphabet, omit_padding).into(),
         ))
@@ -161,7 +161,7 @@ impl Vm {
 
     fn uint8_array_to_hex(&mut self, receiver: &Value) -> Result<Value, RuntimeError> {
         let (target, length) = self.uint8_array_validated_receiver(receiver)?;
-        let bytes = self.uint8_array_bytes(target, length)?;
+        let bytes = self.uint8_array_bytes(target, length);
         let mut result = String::with_capacity(bytes.len() * 2);
         for byte in bytes {
             use std::fmt::Write;
@@ -191,7 +191,10 @@ impl Vm {
                 "Uint8Array method requires a Uint8Array receiver".into(),
             ));
         }
-        let (_, _, _, kind) = self.heap.typed_array_info(object)?;
+        let (_, _, _, kind) = self
+            .heap
+            .typed_array_info(object)
+            .expect("the first brand lookup validated this unchanged live TypedArray");
         if kind != TypedArrayKind::Uint8 {
             return Err(RuntimeError::TypeError(
                 "Uint8Array method requires a Uint8Array receiver".into(),
@@ -209,49 +212,57 @@ impl Vm {
         Ok((object, length))
     }
 
-    fn uint8_array_bytes(&self, target: ObjectId, length: usize) -> Result<Vec<u8>, RuntimeError> {
+    // These helpers follow the post-options validation above. They perform
+    // no callbacks, managed allocation, detachment or shrinking; a shared
+    // backing can only grow. Numeric writes have already been normalized.
+    fn uint8_array_bytes(&self, target: ObjectId, length: usize) -> Vec<u8> {
         (0..length)
             .map(|index| {
                 let value = self
                     .heap
-                    .typed_array_index_value(target, index)?
-                    .ok_or_else(|| RuntimeError::TypeError("Uint8Array is out of bounds".into()))?;
-                match value {
-                    Value::Number(value) => Ok(value as u8),
-                    _ => Err(RuntimeError::TypeError("invalid Uint8Array element".into())),
-                }
+                    .typed_array_index_value(target, index)
+                    .expect("the validated Uint8Array remains live during byte copying")
+                    .expect("the validated span retains every requested byte");
+                value
+                    .as_number()
+                    .expect("Uint8Array storage decodes only Number elements") as u8
             })
             .collect()
     }
 
-    fn uint8_array_write_bytes(
-        &mut self,
-        target: ObjectId,
-        bytes: &[u8],
-    ) -> Result<(), RuntimeError> {
+    fn uint8_array_write_bytes(&mut self, target: ObjectId, bytes: &[u8]) {
         for (index, byte) in bytes.iter().enumerate() {
-            self.with_roots(|heap| {
-                heap.typed_array_set_index(target, index, &Value::Number(f64::from(*byte)))
-            })?;
+            self.heap
+                .typed_array_set_index(target, index, &Value::Number(f64::from(*byte)))
+                .expect("validated writable Uint8Array bytes require no callback or allocation")
+                .then_some(())
+                .expect("the decoded bytes fit the validated writable span");
         }
-        Ok(())
     }
 
     fn uint8_array_from_bytes(&mut self, bytes: Vec<u8>) -> Result<Value, RuntimeError> {
         let buffer = self.new_typed_array_buffer(bytes.len(), TypedArrayKind::Uint8)?;
-        let prototype = self.buffer_prototype("Uint8Array")?;
-        let target = self.with_roots(|heap| {
-            heap.alloc_typed_array(
-                buffer,
-                0,
-                bytes.len(),
-                false,
-                TypedArrayKind::Uint8,
-                Some(prototype),
-            )
-        })?;
-        self.uint8_array_write_bytes(target, &bytes)?;
-        Ok(Value::Object(target))
+        let base = self.stack.len();
+        self.stack.push(Value::Object(buffer));
+        let result = (|| {
+            // Cold prototype installation can collect or refuse allocation.
+            // The unpublished backing buffer remains an operand on both paths.
+            let prototype = self.buffer_prototype("Uint8Array")?;
+            let target = self.with_roots(|heap| {
+                heap.alloc_typed_array(
+                    buffer,
+                    0,
+                    bytes.len(),
+                    false,
+                    TypedArrayKind::Uint8,
+                    Some(prototype),
+                )
+            })?;
+            self.uint8_array_write_bytes(target, &bytes);
+            Ok(Value::Object(target))
+        })();
+        self.stack.truncate(base);
+        result
     }
 
     fn uint8_array_progress_record(
@@ -327,7 +338,11 @@ impl Vm {
             }
         };
         let omit_padding = self.get_property(options, &"omitPadding".into())?;
-        Ok((alphabet, self.to_boolean(&omit_padding)?))
+        Ok((
+            alphabet,
+            self.to_boolean(&omit_padding)
+                .expect("the successful options Get produced a live local value"),
+        ))
     }
 }
 
@@ -387,14 +402,12 @@ fn decode_base64(
             };
         }
         if padded {
-            return if position == units.len() {
-                DecodedBytes {
-                    read,
-                    bytes,
-                    syntax_error: false,
-                }
-            } else {
-                DecodedBytes::error(read, bytes)
+            // An earlier gate rejects trailing data unless the target fills;
+            // that filled-target success has already returned above.
+            return DecodedBytes {
+                read,
+                bytes,
+                syntax_error: false,
             };
         }
     }
@@ -453,10 +466,15 @@ fn decode_base64(
     let Some(values) = values else {
         return DecodedBytes::error(read, bytes);
     };
-    let decoded = match values.as_slice() {
-        [first, second] => vec![(first << 2) | (second >> 4)],
-        [first, second, third] => vec![(first << 2) | (second >> 4), (second << 4) | (third >> 2)],
-        _ => return DecodedBytes::error(read, bytes),
+    // Empty/full/one-character and strict partial groups already returned.
+    // Every remaining decoded group contains exactly two or three values.
+    let decoded = if values.len() == 2 {
+        vec![(values[0] << 2) | (values[1] >> 4)]
+    } else {
+        vec![
+            (values[0] << 2) | (values[1] >> 4),
+            (values[1] << 4) | (values[2] >> 2),
+        ]
     };
     if bytes.len().saturating_add(decoded.len()) > maximum {
         return DecodedBytes {
@@ -594,26 +612,25 @@ fn encode_base64(bytes: &[u8], alphabet: Base64Alphabet, omit_padding: bool) -> 
     for chunk in bytes.chunks(3) {
         let first = chunk[0];
         output.push(alphabet[(first >> 2) as usize] as char);
-        match chunk {
-            [first, second, third] => {
-                output.push(alphabet[((first & 0x03) << 4 | (second >> 4)) as usize] as char);
-                output.push(alphabet[((second & 0x0f) << 2 | (third >> 6)) as usize] as char);
-                output.push(alphabet[(third & 0x3f) as usize] as char);
+        // chunks(3) yields only nonempty slices with lengths 1, 2 or 3.
+        if chunk.len() == 3 {
+            let second = chunk[1];
+            let third = chunk[2];
+            output.push(alphabet[((first & 0x03) << 4 | (second >> 4)) as usize] as char);
+            output.push(alphabet[((second & 0x0f) << 2 | (third >> 6)) as usize] as char);
+            output.push(alphabet[(third & 0x3f) as usize] as char);
+        } else if chunk.len() == 2 {
+            let second = chunk[1];
+            output.push(alphabet[((first & 0x03) << 4 | (second >> 4)) as usize] as char);
+            output.push(alphabet[((second & 0x0f) << 2) as usize] as char);
+            if !omit_padding {
+                output.push('=');
             }
-            [first, second] => {
-                output.push(alphabet[((first & 0x03) << 4 | (second >> 4)) as usize] as char);
-                output.push(alphabet[((second & 0x0f) << 2) as usize] as char);
-                if !omit_padding {
-                    output.push('=');
-                }
+        } else {
+            output.push(alphabet[((first & 0x03) << 4) as usize] as char);
+            if !omit_padding {
+                output.push_str("==");
             }
-            [first] => {
-                output.push(alphabet[((first & 0x03) << 4) as usize] as char);
-                if !omit_padding {
-                    output.push_str("==");
-                }
-            }
-            _ => unreachable!("chunks(3) never yields an empty slice"),
         }
     }
     output
