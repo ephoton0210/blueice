@@ -18,12 +18,90 @@
       "first": null
     },
     {
+      "entry": "dynamic-computed-field-broad-call-error/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 1166,
+        "message": "A computed property name in a class property declaration must have a simple literal type or a 'unique symbol' type.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 26,
+          "length": 17
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "dynamic-computed-field-broad-call-error-assign/main.ts",
+      "accepts": false,
+      "flags": [
+        "--useDefineForClassFields",
+        "false"
+      ],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 1166,
+        "message": "A computed property name in a class property declaration must have a simple literal type or a 'unique symbol' type.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 26,
+          "length": 17
+        },
+        "related": []
+      }
+    },
+    {
       "entry": "dynamic-computed-field-key-error/main.ts",
       "accepts": true,
       "flags": [],
       "runtime": false,
       "declaration": false,
       "first": null
+    },
+    {
+      "entry": "dynamic-computed-field-literal-call-error/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 1166,
+        "message": "A computed property name in a class property declaration must have a simple literal type or a 'unique symbol' type.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 55,
+          "length": 7
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "dynamic-computed-field-literal-call-error-assign/main.ts",
+      "accepts": false,
+      "flags": [
+        "--useDefineForClassFields",
+        "false"
+      ],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 1166,
+        "message": "A computed property name in a class property declaration must have a simple literal type or a 'unique symbol' type.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 55,
+          "length": 7
+        },
+        "related": []
+      }
     },
     {
       "entry": "dynamic-computed-literal/main.ts",
@@ -100,6 +178,46 @@
         },
         "related": []
       }
+    },
+    {
+      "entry": "dynamic-declarations-expression-factory/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "dynamic-declarations-expression-generic/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "dynamic-declarations-expression-literal/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "dynamic-declarations-expression-named-self/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "dynamic-declarations-expression-static-self/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": true,
+      "first": null
     },
     {
       "entry": "dynamic-declarations-surface/main.ts",
@@ -826,7 +944,42 @@
       "first": null
     },
     {
+      "entry": "dynamic-runtime-computed-field-effects/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "dynamic-runtime-computed-field-effects-assign/main.ts",
+      "accepts": true,
+      "flags": [
+        "--useDefineForClassFields",
+        "false"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
       "entry": "dynamic-runtime-declare/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "dynamic-runtime-expression-factory/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "dynamic-runtime-expression-generic/main.ts",
       "accepts": true,
       "flags": [],
       "runtime": true,

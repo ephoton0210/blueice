@@ -1,6 +1,10 @@
 dynamic-computed-accessor/main.ts	accept
 dynamic-computed-bound/main.ts	accept
+dynamic-computed-field-broad-call-error/main.ts	reject
+dynamic-computed-field-broad-call-error-assign/main.ts	reject
 dynamic-computed-field-key-error/main.ts	accept
+dynamic-computed-field-literal-call-error/main.ts	reject
+dynamic-computed-field-literal-call-error-assign/main.ts	reject
 dynamic-computed-literal/main.ts	accept
 dynamic-computed-method/main.ts	accept
 dynamic-computed-method-index-error/main.ts	reject
@@ -8,6 +12,11 @@ dynamic-computed-numeric/main.ts	accept
 dynamic-computed-static/main.ts	accept
 dynamic-computed-symbol/main.ts	accept
 dynamic-computed-unknown-name/main.ts	reject
+dynamic-declarations-expression-factory/main.ts	accept
+dynamic-declarations-expression-generic/main.ts	accept
+dynamic-declarations-expression-literal/main.ts	accept
+dynamic-declarations-expression-named-self/main.ts	accept
+dynamic-declarations-expression-static-self/main.ts	accept
 dynamic-declarations-surface/main.ts	accept
 dynamic-declare-abstract-error/main.ts	accept
 dynamic-declare-field/main.ts	accept
@@ -66,7 +75,11 @@ dynamic-method-static/main.ts	accept
 dynamic-method-this/main.ts	accept
 dynamic-method-valid/main.ts	accept
 dynamic-runtime-computed/main.ts	accept
+dynamic-runtime-computed-field-effects/main.ts	accept
+dynamic-runtime-computed-field-effects-assign/main.ts	accept
 dynamic-runtime-declare/main.ts	accept
+dynamic-runtime-expression-factory/main.ts	accept
+dynamic-runtime-expression-generic/main.ts	accept
 dynamic-runtime-heritage/main.ts	accept
 dynamic-runtime-method/main.ts	accept
 dynamic-runtime-names/main.ts	accept

@@ -523,7 +523,11 @@ class:tuple-literal-return-class-error/main.ts	reject
 class:tuple-literal-return-class-valid/main.ts	accept
 class-dynamic:dynamic-computed-accessor/main.ts	accept
 class-dynamic:dynamic-computed-bound/main.ts	accept
+class-dynamic:dynamic-computed-field-broad-call-error/main.ts	reject
+class-dynamic:dynamic-computed-field-broad-call-error-assign/main.ts	reject
 class-dynamic:dynamic-computed-field-key-error/main.ts	accept
+class-dynamic:dynamic-computed-field-literal-call-error/main.ts	reject
+class-dynamic:dynamic-computed-field-literal-call-error-assign/main.ts	reject
 class-dynamic:dynamic-computed-literal/main.ts	accept
 class-dynamic:dynamic-computed-method/main.ts	accept
 class-dynamic:dynamic-computed-method-index-error/main.ts	reject
@@ -531,6 +535,11 @@ class-dynamic:dynamic-computed-numeric/main.ts	accept
 class-dynamic:dynamic-computed-static/main.ts	accept
 class-dynamic:dynamic-computed-symbol/main.ts	accept
 class-dynamic:dynamic-computed-unknown-name/main.ts	reject
+class-dynamic:dynamic-declarations-expression-factory/main.ts	accept
+class-dynamic:dynamic-declarations-expression-generic/main.ts	accept
+class-dynamic:dynamic-declarations-expression-literal/main.ts	accept
+class-dynamic:dynamic-declarations-expression-named-self/main.ts	accept
+class-dynamic:dynamic-declarations-expression-static-self/main.ts	accept
 class-dynamic:dynamic-declarations-surface/main.ts	accept
 class-dynamic:dynamic-declare-abstract-error/main.ts	accept
 class-dynamic:dynamic-declare-field/main.ts	accept
@@ -589,7 +598,11 @@ class-dynamic:dynamic-method-static/main.ts	accept
 class-dynamic:dynamic-method-this/main.ts	accept
 class-dynamic:dynamic-method-valid/main.ts	accept
 class-dynamic:dynamic-runtime-computed/main.ts	accept
+class-dynamic:dynamic-runtime-computed-field-effects/main.ts	accept
+class-dynamic:dynamic-runtime-computed-field-effects-assign/main.ts	accept
 class-dynamic:dynamic-runtime-declare/main.ts	accept
+class-dynamic:dynamic-runtime-expression-factory/main.ts	accept
+class-dynamic:dynamic-runtime-expression-generic/main.ts	accept
 class-dynamic:dynamic-runtime-heritage/main.ts	accept
 class-dynamic:dynamic-runtime-method/main.ts	accept
 class-dynamic:dynamic-runtime-names/main.ts	accept

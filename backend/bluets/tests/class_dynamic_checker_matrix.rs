@@ -45,6 +45,14 @@ fn prepare(case: &Value, directory: &Path) -> PathBuf {
         }
     }
     let mut options = json!({"target":"ES2022","module":"ES2022","strict":true});
+    if case["flags"]
+        .as_array()
+        .unwrap()
+        .windows(2)
+        .any(|pair| pair[0] == "--useDefineForClassFields" && pair[1] == "false")
+    {
+        options["useDefineForClassFields"] = Value::Bool(false);
+    }
     if directory.join("base.ts").is_file() {
         options["allowImportingTsExtensions"] = Value::Bool(true);
     }
@@ -68,17 +76,17 @@ fn prepare(case: &Value, directory: &Path) -> PathBuf {
 #[test]
 fn matrix_covers_every_class_dynamic_fixture() {
     let cases = cases();
-    assert_eq!(cases.len(), 83);
+    assert_eq!(cases.len(), 96);
     assert_eq!(
         cases.iter().filter(|case| case["runtime"] == true).count(),
-        5
+        9
     );
     assert_eq!(
         cases
             .iter()
             .filter(|case| case["declaration"] == true)
             .count(),
-        6
+        15
     );
     let recorded = cases
         .iter()
@@ -222,7 +230,10 @@ fn declarations(directory: &Path) -> BTreeMap<String, String> {
 #[ignore = "requires pinned TypeScript 5.9.3 and Node"]
 fn class_dynamic_preserve_execution_and_declarations() {
     let tsc = pinned_tsc();
-    let root = env::temp_dir().join(format!("bluets-dynamic-runtime-{}", std::process::id()));
+    // Configured output directories must use the same canonical root as the CLI.
+    let root = fs::canonicalize(env::temp_dir())
+        .unwrap()
+        .join(format!("bluets-dynamic-runtime-{}", std::process::id()));
     let _ = fs::remove_dir_all(&root);
     fs::create_dir_all(&root).unwrap();
     fs::write(root.join("package.json"), "{\"type\":\"module\"}").unwrap();
