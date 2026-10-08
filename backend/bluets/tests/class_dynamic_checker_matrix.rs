@@ -76,7 +76,7 @@ fn prepare(case: &Value, directory: &Path) -> PathBuf {
 #[test]
 fn matrix_covers_every_class_dynamic_fixture() {
     let cases = cases();
-    assert_eq!(cases.len(), 122);
+    assert_eq!(cases.len(), 126);
     assert_eq!(
         cases.iter().filter(|case| case["runtime"] == true).count(),
         18

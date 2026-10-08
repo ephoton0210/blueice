@@ -580,6 +580,10 @@ class-dynamic:dynamic-heritage-multiple-arguments/main.ts	accept
 class-dynamic:dynamic-heritage-specialized/main.ts	accept
 class-dynamic:dynamic-heritage-super-error/main.ts	reject
 class-dynamic:dynamic-heritage-valid/main.ts	accept
+class-dynamic:dynamic-import-expression/main.ts	accept
+class-dynamic:dynamic-import-expression-error/main.ts	reject
+class-dynamic:dynamic-import-expression-heritage/main.ts	accept
+class-dynamic:dynamic-import-expression-heritage-error/main.ts	reject
 class-dynamic:dynamic-imported-generic-alias/main.ts	accept
 class-dynamic:dynamic-imported-heritage/main.ts	accept
 class-dynamic:dynamic-imported-heritage-error/main.ts	reject

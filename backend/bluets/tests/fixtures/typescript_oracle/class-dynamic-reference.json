@@ -720,6 +720,58 @@
       "first": null
     },
     {
+      "entry": "dynamic-import-expression/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "dynamic-import-expression-error/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2322,
+        "message": "Type 'number' is not assignable to type 'string'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 41,
+          "length": 6
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "dynamic-import-expression-heritage/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "dynamic-import-expression-heritage-error/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2345,
+        "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 94,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
       "entry": "dynamic-imported-generic-alias/main.ts",
       "accepts": true,
       "flags": [],

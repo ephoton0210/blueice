@@ -57,6 +57,10 @@ dynamic-heritage-multiple-arguments/main.ts	accept
 dynamic-heritage-specialized/main.ts	accept
 dynamic-heritage-super-error/main.ts	reject
 dynamic-heritage-valid/main.ts	accept
+dynamic-import-expression/main.ts	accept
+dynamic-import-expression-error/main.ts	reject
+dynamic-import-expression-heritage/main.ts	accept
+dynamic-import-expression-heritage-error/main.ts	reject
 dynamic-imported-generic-alias/main.ts	accept
 dynamic-imported-heritage/main.ts	accept
 dynamic-imported-heritage-error/main.ts	reject
