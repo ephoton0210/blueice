@@ -5748,3 +5748,29 @@ stateful ES2020 expression keys containing await/yield, decorated expressions
 and other unmeasured combinations. G-T9 records only the measured surface. The
 largest changed production source is 1,194 lines; no production source approaches
 1,300. K.5.3 and M8 remain open.
+
+### K.5.3 Class refusal retirement failing baseline — 2026-10-09
+
+The public project CLI records 35 pinned TypeScript 5.9.3 programs (18 accept,
+17 reject) for independent accessor read/write contracts, imported-base member
+kinds, inferred getters and constructor branch initialization. All 16 Node and
+17 declaration witnesses are accepted by the pinned compiler. The isolated
+Rust replay on `8132479c4` passes completeness and the pinned recorder, but finds
+27 verdict/primary differences, 14 emission failures and two exact declaration
+differences (literal union order and multiline inferred getter records). All
+three direct regression tests fail. One constructor that can return before its
+field is initialized is incorrectly accepted. The shared diagnostic corpus
+contains 2,304 programs (1,092 accept, 1,212 reject), 195 templates; every prior
+observation is unchanged. Evidence is retained under
+`/private/tmp/blueice-k14-linux/blueice-k53-baseline/`, including raw public-CLI
+JSON, runtime/declaration reports, Rust/direct replay status and source hashes.
+Commit this failing replay before production changes; K.5.3 remains open.
+
+The parameter-property branch-super refusal is still measured separately by the
+legacy deferred class matrix. TypeScript 5.9.3 rejects assignment field mode
+with TS2401. It accepts ES2022 define mode, but places `this.extra = extra`
+before the branch's `super`, and the emitted program throws ReferenceError under
+Node 26.7. This refusal is not obsolete. The isolated probe and its generated
+JavaScript are retained with the baseline; no runtime comparison is weakened to
+accept this compiler defect. Ordinary branch field assignment has valid Node
+witnesses in both field modes and remains required K.5.3 work.

@@ -475,6 +475,10 @@
       "message": "Property '{0}' has no initializer and is not definitely assigned in the constructor."
     },
     {
+      "code": 2565,
+      "message": "Property '{0}' is used before being assigned."
+    },
+    {
       "code": 2567,
       "message": "Enum declarations can only merge with namespace or other enum declarations."
     },
@@ -27821,6 +27825,1089 @@
       "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/modifiers-runtime-noimplicit/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-retirement:retire-accessor-read-error/main.ts",
+      "matrix": "class-retirement",
+      "entry": "retire-accessor-read-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/retire-accessor-read-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'number' is not assignable to type 'string'.",
+        "file": "typescript_oracle/retire-accessor-read-error/main.ts",
+        "start": 338,
+        "length": 6,
+        "line": 5,
+        "column": 135
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "file": "typescript_oracle/retire-accessor-read-error/main.ts",
+          "start": 338,
+          "length": 6,
+          "line": 5,
+          "column": 135
+        }
+      ]
+    },
+    {
+      "id": "class-retirement:retire-accessor-setter-context/main.ts",
+      "matrix": "class-retirement",
+      "entry": "retire-accessor-setter-context/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/retire-accessor-setter-context/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-retirement:retire-accessor-write-error/main.ts",
+      "matrix": "class-retirement",
+      "entry": "retire-accessor-write-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/retire-accessor-write-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'number' is not assignable to type 'string'.",
+        "file": "typescript_oracle/retire-accessor-write-error/main.ts",
+        "start": 353,
+        "length": 7,
+        "line": 5,
+        "column": 150
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "file": "typescript_oracle/retire-accessor-write-error/main.ts",
+          "start": 353,
+          "length": 7,
+          "line": 5,
+          "column": 150
+        }
+      ]
+    },
+    {
+      "id": "class-retirement:retire-branch-assignment-type-error/main.ts",
+      "matrix": "class-retirement",
+      "entry": "retire-branch-assignment-type-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/retire-branch-assignment-type-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'string' is not assignable to type 'number'.",
+        "file": "typescript_oracle/retire-branch-assignment-type-error/main.ts",
+        "start": 272,
+        "length": 10,
+        "line": 5,
+        "column": 69
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "file": "typescript_oracle/retire-branch-assignment-type-error/main.ts",
+          "start": 272,
+          "length": 10,
+          "line": 5,
+          "column": 69
+        }
+      ]
+    },
+    {
+      "id": "class-retirement:retire-branch-missing-error/main.ts",
+      "matrix": "class-retirement",
+      "entry": "retire-branch-missing-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/retire-branch-missing-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2564,
+        "category": "error",
+        "message": "Property 'value' has no initializer and is not definitely assigned in the constructor.",
+        "file": "typescript_oracle/retire-branch-missing-error/main.ts",
+        "start": 216,
+        "length": 5,
+        "line": 5,
+        "column": 13
+      },
+      "diagnostics": [
+        {
+          "code": 2564,
+          "category": "error",
+          "message": "Property 'value' has no initializer and is not definitely assigned in the constructor.",
+          "file": "typescript_oracle/retire-branch-missing-error/main.ts",
+          "start": 216,
+          "length": 5,
+          "line": 5,
+          "column": 13
+        }
+      ]
+    },
+    {
+      "id": "class-retirement:retire-branch-nested-function-error/main.ts",
+      "matrix": "class-retirement",
+      "entry": "retire-branch-nested-function-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/retire-branch-nested-function-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2564,
+        "category": "error",
+        "message": "Property 'value' has no initializer and is not definitely assigned in the constructor.",
+        "file": "typescript_oracle/retire-branch-nested-function-error/main.ts",
+        "start": 216,
+        "length": 5,
+        "line": 5,
+        "column": 13
+      },
+      "diagnostics": [
+        {
+          "code": 2564,
+          "category": "error",
+          "message": "Property 'value' has no initializer and is not definitely assigned in the constructor.",
+          "file": "typescript_oracle/retire-branch-nested-function-error/main.ts",
+          "start": 216,
+          "length": 5,
+          "line": 5,
+          "column": 13
+        }
+      ]
+    },
+    {
+      "id": "class-retirement:retire-branch-read-before-assign-error/main.ts",
+      "matrix": "class-retirement",
+      "entry": "retire-branch-read-before-assign-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/retire-branch-read-before-assign-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2565,
+        "category": "error",
+        "message": "Property 'value' is used before being assigned.",
+        "file": "typescript_oracle/retire-branch-read-before-assign-error/main.ts",
+        "start": 289,
+        "length": 5,
+        "line": 5,
+        "column": 86
+      },
+      "diagnostics": [
+        {
+          "code": 2565,
+          "category": "error",
+          "message": "Property 'value' is used before being assigned.",
+          "file": "typescript_oracle/retire-branch-read-before-assign-error/main.ts",
+          "start": 289,
+          "length": 5,
+          "line": 5,
+          "column": 86
+        }
+      ]
+    },
+    {
+      "id": "class-retirement:retire-branch-return-error/main.ts",
+      "matrix": "class-retirement",
+      "entry": "retire-branch-return-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/retire-branch-return-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2564,
+        "category": "error",
+        "message": "Property 'value' has no initializer and is not definitely assigned in the constructor.",
+        "file": "typescript_oracle/retire-branch-return-error/main.ts",
+        "start": 216,
+        "length": 5,
+        "line": 5,
+        "column": 13
+      },
+      "diagnostics": [
+        {
+          "code": 2564,
+          "category": "error",
+          "message": "Property 'value' has no initializer and is not definitely assigned in the constructor.",
+          "file": "typescript_oracle/retire-branch-return-error/main.ts",
+          "start": 216,
+          "length": 5,
+          "line": 5,
+          "column": 13
+        }
+      ]
+    },
+    {
+      "id": "class-retirement:retire-declarations-getter-throw/main.ts",
+      "matrix": "class-retirement",
+      "entry": "retire-declarations-getter-throw/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/retire-declarations-getter-throw/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-retirement:retire-getter-no-return-error/main.ts",
+      "matrix": "class-retirement",
+      "entry": "retire-getter-no-return-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/retire-getter-no-return-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2378,
+        "category": "error",
+        "message": "A 'get' accessor must return a value.",
+        "file": "typescript_oracle/retire-getter-no-return-error/main.ts",
+        "start": 220,
+        "length": 5,
+        "line": 5,
+        "column": 17
+      },
+      "diagnostics": [
+        {
+          "code": 2378,
+          "category": "error",
+          "message": "A 'get' accessor must return a value.",
+          "file": "typescript_oracle/retire-getter-no-return-error/main.ts",
+          "start": 220,
+          "length": 5,
+          "line": 5,
+          "column": 17
+        }
+      ]
+    },
+    {
+      "id": "class-retirement:retire-getter-read-error/main.ts",
+      "matrix": "class-retirement",
+      "entry": "retire-getter-read-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/retire-getter-read-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'number' is not assignable to type 'string'.",
+        "file": "typescript_oracle/retire-getter-read-error/main.ts",
+        "start": 250,
+        "length": 6,
+        "line": 5,
+        "column": 47
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "file": "typescript_oracle/retire-getter-read-error/main.ts",
+          "start": 250,
+          "length": 6,
+          "line": 5,
+          "column": 47
+        }
+      ]
+    },
+    {
+      "id": "class-retirement:retire-getter-readonly-error/main.ts",
+      "matrix": "class-retirement",
+      "entry": "retire-getter-readonly-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/retire-getter-readonly-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2540,
+        "category": "error",
+        "message": "Cannot assign to 'value' because it is a read-only property.",
+        "file": "typescript_oracle/retire-getter-readonly-error/main.ts",
+        "start": 267,
+        "length": 5,
+        "line": 5,
+        "column": 64
+      },
+      "diagnostics": [
+        {
+          "code": 2540,
+          "category": "error",
+          "message": "Cannot assign to 'value' because it is a read-only property.",
+          "file": "typescript_oracle/retire-getter-readonly-error/main.ts",
+          "start": 267,
+          "length": 5,
+          "line": 5,
+          "column": 64
+        }
+      ]
+    },
+    {
+      "id": "class-retirement:retire-imported-accessor-field-error/main.ts",
+      "matrix": "class-retirement",
+      "entry": "retire-imported-accessor-field-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/retire-imported-accessor-field-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2610,
+        "category": "error",
+        "message": "'value' is defined as an accessor in class 'Base', but is overridden here in 'Box' as an instance property.",
+        "file": "typescript_oracle/retire-imported-accessor-field-error/main.ts",
+        "start": 263,
+        "length": 5,
+        "line": 5,
+        "column": 60
+      },
+      "diagnostics": [
+        {
+          "code": 2610,
+          "category": "error",
+          "message": "'value' is defined as an accessor in class 'Base', but is overridden here in 'Box' as an instance property.",
+          "file": "typescript_oracle/retire-imported-accessor-field-error/main.ts",
+          "start": 263,
+          "length": 5,
+          "line": 5,
+          "column": 60
+        }
+      ]
+    },
+    {
+      "id": "class-retirement:retire-imported-field-accessor-error/main.ts",
+      "matrix": "class-retirement",
+      "entry": "retire-imported-field-accessor-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/retire-imported-field-accessor-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2611,
+        "category": "error",
+        "message": "'value' is defined as a property in class 'Base', but is overridden here in 'Box' as an accessor.",
+        "file": "typescript_oracle/retire-imported-field-accessor-error/main.ts",
+        "start": 267,
+        "length": 5,
+        "line": 5,
+        "column": 64
+      },
+      "diagnostics": [
+        {
+          "code": 2611,
+          "category": "error",
+          "message": "'value' is defined as a property in class 'Base', but is overridden here in 'Box' as an accessor.",
+          "file": "typescript_oracle/retire-imported-field-accessor-error/main.ts",
+          "start": 267,
+          "length": 5,
+          "line": 5,
+          "column": 64
+        }
+      ]
+    },
+    {
+      "id": "class-retirement:retire-imported-field-type-error/main.ts",
+      "matrix": "class-retirement",
+      "entry": "retire-imported-field-type-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/retire-imported-field-type-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2416,
+        "category": "error",
+        "message": "Property 'value' in type 'Box' is not assignable to the same property in base type 'Base'.\n  Type 'string' is not assignable to type 'number'.",
+        "file": "typescript_oracle/retire-imported-field-type-error/main.ts",
+        "start": 263,
+        "length": 5,
+        "line": 5,
+        "column": 60
+      },
+      "diagnostics": [
+        {
+          "code": 2416,
+          "category": "error",
+          "message": "Property 'value' in type 'Box' is not assignable to the same property in base type 'Base'.\n  Type 'string' is not assignable to type 'number'.",
+          "file": "typescript_oracle/retire-imported-field-type-error/main.ts",
+          "start": 263,
+          "length": 5,
+          "line": 5,
+          "column": 60
+        }
+      ]
+    },
+    {
+      "id": "class-retirement:retire-imported-getter-type-error/main.ts",
+      "matrix": "class-retirement",
+      "entry": "retire-imported-getter-type-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/retire-imported-getter-type-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2416,
+        "category": "error",
+        "message": "Property 'value' in type 'Box' is not assignable to the same property in base type 'Base'.\n  Type 'string' is not assignable to type 'number'.",
+        "file": "typescript_oracle/retire-imported-getter-type-error/main.ts",
+        "start": 267,
+        "length": 5,
+        "line": 5,
+        "column": 64
+      },
+      "diagnostics": [
+        {
+          "code": 2416,
+          "category": "error",
+          "message": "Property 'value' in type 'Box' is not assignable to the same property in base type 'Base'.\n  Type 'string' is not assignable to type 'number'.",
+          "file": "typescript_oracle/retire-imported-getter-type-error/main.ts",
+          "start": 267,
+          "length": 5,
+          "line": 5,
+          "column": 64
+        }
+      ]
+    },
+    {
+      "id": "class-retirement:retire-imported-method-field-error/main.ts",
+      "matrix": "class-retirement",
+      "entry": "retire-imported-method-field-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/retire-imported-method-field-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2416,
+        "category": "error",
+        "message": "Property 'value' in type 'Box' is not assignable to the same property in base type 'Base'.\n  Type 'number' is not assignable to type '() => number'.",
+        "file": "typescript_oracle/retire-imported-method-field-error/main.ts",
+        "start": 263,
+        "length": 5,
+        "line": 5,
+        "column": 60
+      },
+      "diagnostics": [
+        {
+          "code": 2416,
+          "category": "error",
+          "message": "Property 'value' in type 'Box' is not assignable to the same property in base type 'Base'.\n  Type 'number' is not assignable to type '() => number'.",
+          "file": "typescript_oracle/retire-imported-method-field-error/main.ts",
+          "start": 263,
+          "length": 5,
+          "line": 5,
+          "column": 60
+        }
+      ]
+    },
+    {
+      "id": "class-retirement:retire-imported-private-field-error/main.ts",
+      "matrix": "class-retirement",
+      "entry": "retire-imported-private-field-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/retire-imported-private-field-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2415,
+        "category": "error",
+        "message": "Class 'Box' incorrectly extends base class 'Base'.\n  Property 'value' is private in type 'Base' but not in type 'Box'.",
+        "file": "typescript_oracle/retire-imported-private-field-error/main.ts",
+        "start": 244,
+        "length": 3,
+        "line": 5,
+        "column": 41
+      },
+      "diagnostics": [
+        {
+          "code": 2415,
+          "category": "error",
+          "message": "Class 'Box' incorrectly extends base class 'Base'.\n  Property 'value' is private in type 'Base' but not in type 'Box'.",
+          "file": "typescript_oracle/retire-imported-private-field-error/main.ts",
+          "start": 244,
+          "length": 3,
+          "line": 5,
+          "column": 41
+        }
+      ]
+    },
+    {
+      "id": "class-retirement:retire-imported-static-field-error/main.ts",
+      "matrix": "class-retirement",
+      "entry": "retire-imported-static-field-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "inputs": [
+        "typescript_oracle/retire-imported-static-field-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2417,
+        "category": "error",
+        "message": "Class static side 'typeof Box' incorrectly extends base class static side 'typeof Base'.\n  Types of property 'value' are incompatible.\n    Type 'string' is not assignable to type 'number'.",
+        "file": "typescript_oracle/retire-imported-static-field-error/main.ts",
+        "start": 244,
+        "length": 3,
+        "line": 5,
+        "column": 41
+      },
+      "diagnostics": [
+        {
+          "code": 2417,
+          "category": "error",
+          "message": "Class static side 'typeof Box' incorrectly extends base class static side 'typeof Base'.\n  Types of property 'value' are incompatible.\n    Type 'string' is not assignable to type 'number'.",
+          "file": "typescript_oracle/retire-imported-static-field-error/main.ts",
+          "start": 244,
+          "length": 3,
+          "line": 5,
+          "column": 41
+        }
+      ]
+    },
+    {
+      "id": "class-retirement:retire-runtime-branch-fields-assign/main.ts",
+      "matrix": "class-retirement",
+      "entry": "retire-runtime-branch-fields-assign/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2020",
+        "--useDefineForClassFields",
+        "false"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/retire-runtime-branch-fields-assign/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-retirement:retire-runtime-branch-fields-define/main.ts",
+      "matrix": "class-retirement",
+      "entry": "retire-runtime-branch-fields-define/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2022",
+        "--useDefineForClassFields",
+        "true"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/retire-runtime-branch-fields-define/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-retirement:retire-runtime-branch-nested/main.ts",
+      "matrix": "class-retirement",
+      "entry": "retire-runtime-branch-nested/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/retire-runtime-branch-nested/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-retirement:retire-runtime-branch-throws/main.ts",
+      "matrix": "class-retirement",
+      "entry": "retire-runtime-branch-throws/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/retire-runtime-branch-throws/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-retirement:retire-runtime-generic-accessors/main.ts",
+      "matrix": "class-retirement",
+      "entry": "retire-runtime-generic-accessors/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/retire-runtime-generic-accessors/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-retirement:retire-runtime-getter-branches/main.ts",
+      "matrix": "class-retirement",
+      "entry": "retire-runtime-getter-branches/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/retire-runtime-getter-branches/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-retirement:retire-runtime-getter-record/main.ts",
+      "matrix": "class-retirement",
+      "entry": "retire-runtime-getter-record/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/retire-runtime-getter-record/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-retirement:retire-runtime-imported-accessors/main.ts",
+      "matrix": "class-retirement",
+      "entry": "retire-runtime-imported-accessors/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/retire-runtime-imported-accessors/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-retirement:retire-runtime-imported-field/main.ts",
+      "matrix": "class-retirement",
+      "entry": "retire-runtime-imported-field/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/retire-runtime-imported-field/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-retirement:retire-runtime-imported-getter/main.ts",
+      "matrix": "class-retirement",
+      "entry": "retire-runtime-imported-getter/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/retire-runtime-imported-getter/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-retirement:retire-runtime-imported-protected-method/main.ts",
+      "matrix": "class-retirement",
+      "entry": "retire-runtime-imported-protected-method/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/retire-runtime-imported-protected-method/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-retirement:retire-runtime-imported-static-field/main.ts",
+      "matrix": "class-retirement",
+      "entry": "retire-runtime-imported-static-field/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/retire-runtime-imported-static-field/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-retirement:retire-runtime-inherited-accessors/main.ts",
+      "matrix": "class-retirement",
+      "entry": "retire-runtime-inherited-accessors/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/retire-runtime-inherited-accessors/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-retirement:retire-runtime-interface-merge-heritage/main.ts",
+      "matrix": "class-retirement",
+      "entry": "retire-runtime-interface-merge-heritage/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/retire-runtime-interface-merge-heritage/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-retirement:retire-runtime-static-accessors/main.ts",
+      "matrix": "class-retirement",
+      "entry": "retire-runtime-static-accessors/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/retire-runtime-static-accessors/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-retirement:retire-runtime-unrelated-accessors/main.ts",
+      "matrix": "class-retirement",
+      "entry": "retire-runtime-unrelated-accessors/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "inputs": [
+        "typescript_oracle/retire-runtime-unrelated-accessors/main.ts"
       ],
       "accepts": true,
       "first": null,

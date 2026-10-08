@@ -423,6 +423,8 @@ narrowing needs a flow graph or can stay structural, recorded in PLAN.md before 
   member of an imported base, accessor type mismatch, definite assignment through a branch, getter without
   annotation) and move their fixtures into the class matrix.
 
+  - *Failing baseline (2026-10-09):* 35 isolated pinned programs (18 accept, 17 reject), 16 Node and 17 exact declaration witnesses cover independent accessor read/write types, inferred getters, imported field/accessor/method redeclarations and constructor branch initialization. On verified K.5.2 source `8132479c4`, the public CLI/Rust replay records 27 verdict/primary differences, 14 emission failures and two declaration-format differences; completeness and the pinned recorder pass. All three direct regression tests fail, including an unsafe acceptance when a constructor returns before initializing its field. The shared corpus records 2,304 programs (1,092 accept, 1,212 reject), 195 templates; all prior observations are unchanged. Evidence: `/private/tmp/blueice-k14-linux/blueice-k53-baseline/` (`rust-baseline-status.json`, `runtime-red-status.json`, `direct-red-status.json` and frozen source hashes). No production implementation is included in this baseline. The derived parameter-property branch refusal remains separate: pinned TypeScript rejects assignment mode with TS2401, but accepts ES2022 define mode and emits a `this.extra` assignment before `super`, which throws ReferenceError under Node. Existing deferred coverage preserves this measured limitation. K.5.3 remains open.
+
 ### K.6 Module syntax — M8 — gap G-T10
 
 - [ ] **K.6.1 Default and re-exports (M).** `export default <expression>`, anonymous default function and

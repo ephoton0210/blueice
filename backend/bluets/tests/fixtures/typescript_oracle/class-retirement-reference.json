@@ -1,0 +1,465 @@
+{
+  "version": "5.9.3",
+  "cases": [
+    {
+      "entry": "retire-accessor-read-error/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2322,
+        "message": "Type 'number' is not assignable to type 'string'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 135,
+          "length": 6
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "retire-accessor-setter-context/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "retire-accessor-write-error/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2322,
+        "message": "Type 'number' is not assignable to type 'string'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 150,
+          "length": 7
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "retire-branch-assignment-type-error/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2322,
+        "message": "Type 'string' is not assignable to type 'number'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 69,
+          "length": 10
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "retire-branch-missing-error/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2564,
+        "message": "Property 'value' has no initializer and is not definitely assigned in the constructor.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 13,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "retire-branch-nested-function-error/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2564,
+        "message": "Property 'value' has no initializer and is not definitely assigned in the constructor.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 13,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "retire-branch-read-before-assign-error/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2565,
+        "message": "Property 'value' is used before being assigned.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 86,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "retire-branch-return-error/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2564,
+        "message": "Property 'value' has no initializer and is not definitely assigned in the constructor.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 13,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "retire-declarations-getter-throw/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "retire-getter-no-return-error/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2378,
+        "message": "A 'get' accessor must return a value.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 17,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "retire-getter-read-error/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2322,
+        "message": "Type 'number' is not assignable to type 'string'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 47,
+          "length": 6
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "retire-getter-readonly-error/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2540,
+        "message": "Cannot assign to 'value' because it is a read-only property.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 64,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "retire-imported-accessor-field-error/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2610,
+        "message": "'value' is defined as an accessor in class 'Base', but is overridden here in 'Box' as an instance property.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 60,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "retire-imported-field-accessor-error/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2611,
+        "message": "'value' is defined as a property in class 'Base', but is overridden here in 'Box' as an accessor.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 64,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "retire-imported-field-type-error/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2416,
+        "message": "Property 'value' in type 'Box' is not assignable to the same property in base type 'Base'.\n  Type 'string' is not assignable to type 'number'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 60,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "retire-imported-getter-type-error/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2416,
+        "message": "Property 'value' in type 'Box' is not assignable to the same property in base type 'Base'.\n  Type 'string' is not assignable to type 'number'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 64,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "retire-imported-method-field-error/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2416,
+        "message": "Property 'value' in type 'Box' is not assignable to the same property in base type 'Base'.\n  Type 'number' is not assignable to type '() => number'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 60,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "retire-imported-private-field-error/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2415,
+        "message": "Class 'Box' incorrectly extends base class 'Base'.\n  Property 'value' is private in type 'Base' but not in type 'Box'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 41,
+          "length": 3
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "retire-imported-static-field-error/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2417,
+        "message": "Class static side 'typeof Box' incorrectly extends base class static side 'typeof Base'.\n  Types of property 'value' are incompatible.\n    Type 'string' is not assignable to type 'number'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 41,
+          "length": 3
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "retire-runtime-branch-fields-assign/main.ts",
+      "accepts": true,
+      "flags": [
+        "--target",
+        "ES2020",
+        "--useDefineForClassFields",
+        "false"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "retire-runtime-branch-fields-define/main.ts",
+      "accepts": true,
+      "flags": [
+        "--target",
+        "ES2022",
+        "--useDefineForClassFields",
+        "true"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "retire-runtime-branch-nested/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "retire-runtime-branch-throws/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "retire-runtime-generic-accessors/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "retire-runtime-getter-branches/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "retire-runtime-getter-record/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "retire-runtime-imported-accessors/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "retire-runtime-imported-field/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "retire-runtime-imported-getter/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "retire-runtime-imported-protected-method/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "retire-runtime-imported-static-field/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "retire-runtime-inherited-accessors/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "retire-runtime-interface-merge-heritage/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "retire-runtime-static-accessors/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "retire-runtime-unrelated-accessors/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    }
+  ]
+}
