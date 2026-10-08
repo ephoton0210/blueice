@@ -564,6 +564,9 @@ impl<'a> ModuleChecker<'a> {
         expected: &Type,
         span: &SourceSpan,
     ) -> bool {
+        let actual = canonical_parameter_references(actual, &self.types);
+        let expected = canonical_parameter_references(expected, &self.types);
+        let (actual, expected) = (&actual, &expected);
         let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
         budget.checking = self.checking;
         let assignable = if self.strict_catch_unknown && matches!(actual, Type::Unknown) {

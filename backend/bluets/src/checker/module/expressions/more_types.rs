@@ -112,6 +112,41 @@ impl ModuleChecker<'_> {
                         );
                         return true;
                     }
+                } else if marker.is("as") && matches!(annotation, Type::Literal(_)) {
+                    let actual = self.infer_expression(operand, scope);
+                    let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
+                    budget.checking = self.checking;
+                    let overlaps = is_assignable(
+                        &actual,
+                        &annotation,
+                        &self.types,
+                        &mut HashSet::new(),
+                        &mut budget,
+                    ) || is_assignable(
+                        &annotation,
+                        &actual,
+                        &self.types,
+                        &mut HashSet::new(),
+                        &mut budget,
+                    );
+                    if !overlaps && !budget.exhausted {
+                        let point = SourceSpan::new(
+                            &self.module.id,
+                            tokens.first().expect("assertion operand").start,
+                            tokens.last().expect("assertion target").end,
+                        );
+                        self.typescript_type_error(
+                            &point,
+                            "literal assertion types do not overlap".into(),
+                            DiagnosticCode::TypeMismatch,
+                            2352,
+                            vec![
+                                crate::diagnostic::type_text::render_in(&actual, self.project),
+                                crate::diagnostic::type_text::render_in(&annotation, self.project),
+                            ],
+                        );
+                        return true;
+                    }
                 } else if marker.is("satisfies") {
                     self.check_type(&annotation, span);
                     let actual = self.infer_in_context(operand, scope, &annotation);
@@ -234,7 +269,21 @@ impl ModuleChecker<'_> {
             );
             let readonly = match &owner {
                 Type::Readonly(_) => true,
-                Type::IndexedRecord { indices, .. } => indices.iter().any(|index| index.readonly),
+                Type::IndexedRecord { object, indices } => {
+                    let named = mutation.property.and_then(|property| {
+                        match property_type(
+                            object,
+                            property,
+                            &self.types,
+                            &mut HashSet::new(),
+                            &mut budget,
+                        ) {
+                            PropertyType::Found { readonly, .. } => Some(readonly),
+                            _ => None,
+                        }
+                    });
+                    named.unwrap_or_else(|| indices.iter().any(|index| index.readonly))
+                }
                 _ => false,
             };
             if readonly {

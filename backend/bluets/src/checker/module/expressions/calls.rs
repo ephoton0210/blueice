@@ -158,6 +158,27 @@ impl<'a> ModuleChecker<'a> {
             }
             PropertyType::Indeterminate => return,
         };
+        if signatures::callable_signatures(&member_type, false).is_some_and(|signatures| {
+            signatures
+                .iter()
+                .any(|signature| !signature.type_parameters.is_empty())
+        }) {
+            let member_index = tokens
+                .iter()
+                .position(|token| token.start == call.member.start)
+                .expect("member belongs to call");
+            let mut qualified = tokens[member_index..].to_vec();
+            qualified[0].text = format!("#member@{}", call.member.start);
+            let mut local = scope.clone();
+            local.insert(qualified[0].text.clone(), member_type);
+            let call_span = SourceSpan::new(
+                &span.module,
+                tokens[0].start,
+                tokens.last().expect("member call has tokens").end,
+            );
+            self.check_function_call(&qualified, &local, &call_span);
+            return;
+        }
         let Some(arguments) = split_call_arguments(call.arguments) else {
             return;
         };

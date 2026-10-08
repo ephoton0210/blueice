@@ -9,16 +9,27 @@ use super::*;
 use crate::parser::{ClassConstructor, ClassDeclaration, ClassMemberKind, ClassMethod, Visibility};
 
 mod accessors;
+mod aliases;
 mod bodies;
+mod computed_keys;
 mod constructors;
+mod expressions;
 mod types;
 
 pub(in crate::checker::module) use types::class_constructor_side_type;
 pub(in crate::checker::module) use types::class_is_fully_structured;
 use types::*;
 mod fields;
+mod generics;
+mod heritage;
+pub(in crate::checker) use heritage::{heritage_substitutions, specialize_constructor};
 mod implements;
+mod indices;
 mod modifiers;
+mod parameters;
+pub(super) use parameters::class_body_this_type;
+use parameters::*;
+pub(in crate::checker) use parameters::{class_definition_parameters, formal_class_type};
 mod overrides;
 mod super_calls;
 mod visibility;
@@ -173,6 +184,10 @@ impl ModuleChecker<'_> {
         scope: &BTreeMap<String, Type>,
     ) -> bool {
         self.class_constructors.contains_key(name)
+            && self
+                .types
+                .get(name)
+                .is_some_and(|definition| definition.kind == TypeDefinitionKind::Class)
             && scope
                 .get(name)
                 .is_some_and(|value| self.values.get(name) == Some(value))
@@ -211,13 +226,13 @@ impl ModuleChecker<'_> {
 
         // TypeScript permits an interface with the same name as a class.
         // Retain the prior interface surface until declaration merging is
-        // checked later; class output is refused throughout this phase.
+        // checked later.
         if existing_type.is_none() {
             self.types.insert(
                 class.name.clone(),
                 TypeDefinition {
                     kind: TypeDefinitionKind::Class,
-                    parameters: class.type_parameters.clone(),
+                    parameters: class_definition_parameters(class),
                     value: class_instance_type(class),
                 },
             );
@@ -341,187 +356,6 @@ impl ModuleChecker<'_> {
         }
         for (span, code, message) in failures {
             self.type_error(&span, message, code);
-        }
-    }
-
-    pub(super) fn bind_inherited_class_instance_methods(&mut self) {
-        let classes = self
-            .module
-            .declarations
-            .iter()
-            .filter_map(|declaration| match declaration {
-                Declaration::Class(class) => Some(class.clone()),
-                _ => None,
-            })
-            .collect::<Vec<_>>();
-        let local_classes = classes
-            .iter()
-            .map(|class| (class.name.clone(), self.class_with_inferred_returns(class)))
-            .collect::<BTreeMap<_, _>>();
-        let mut surfaces = Vec::new();
-        for class in local_classes.values() {
-            if !self
-                .types
-                .get(&class.name)
-                .is_some_and(|definition| definition.kind == TypeDefinitionKind::Class)
-            {
-                continue;
-            }
-            let mut fields = class_method_fields(class, false);
-            let mut names = fields
-                .iter()
-                .map(|field| field.name.clone())
-                .collect::<BTreeSet<_>>();
-            let mut visited = BTreeSet::new();
-            let mut base_name = class.extends_name.as_deref();
-            for _ in 0..self.max_type_expansions {
-                let Some(name) = base_name else {
-                    break;
-                };
-                if !visited.insert(name) {
-                    break;
-                }
-                let inherited = if let Some(base) = local_classes.get(name) {
-                    base_name = base.extends_name.as_deref();
-                    class_method_fields(base, false)
-                } else if let Some(TypeDefinition {
-                    kind: TypeDefinitionKind::Class,
-                    value: Type::Record(fields),
-                    ..
-                }) = self.types.get(name)
-                {
-                    base_name = None;
-                    fields.clone()
-                } else {
-                    break;
-                };
-                fields.extend(
-                    inherited
-                        .iter()
-                        .filter(|field| !names.contains(&field.name))
-                        .cloned(),
-                );
-                names.extend(inherited.iter().map(|field| field.name.clone()));
-            }
-            surfaces.push((class.name.clone(), Type::Record(fields)));
-        }
-        for (name, value) in surfaces {
-            if let Some(definition) = self.types.get_mut(&name) {
-                definition.value = value;
-            }
-        }
-    }
-
-    pub(super) fn bind_inherited_class_static_methods(&mut self) {
-        let classes = self
-            .module
-            .declarations
-            .iter()
-            .filter_map(|declaration| match declaration {
-                Declaration::Class(class) => Some(class.clone()),
-                _ => None,
-            })
-            .collect::<Vec<_>>();
-        let local_classes = classes
-            .iter()
-            .map(|class| (class.name.clone(), self.class_with_inferred_returns(class)))
-            .collect::<BTreeMap<_, _>>();
-        let mut surfaces = Vec::new();
-        for class in local_classes.values() {
-            if !self.class_constructors.contains_key(&class.name) {
-                continue;
-            }
-            let Type::CallableRecord {
-                mut fields,
-                signatures,
-            } = class_constructor_side_type(class)
-            else {
-                unreachable!("class constructor side retains construct signatures")
-            };
-            let mut names = fields
-                .iter()
-                .map(|field| field.name.clone())
-                .collect::<BTreeSet<_>>();
-            let mut visited = BTreeSet::new();
-            let mut base_name = class.extends_name.as_deref();
-            for _ in 0..self.max_type_expansions {
-                let Some(name) = base_name else {
-                    break;
-                };
-                if !visited.insert(name) {
-                    break;
-                }
-                let inherited = if let Some(base) = local_classes.get(name) {
-                    base_name = base.extends_name.as_deref();
-                    class_constructor_side_type(base)
-                } else if self.class_constructors.contains_key(name) {
-                    base_name = None;
-                    self.values.get(name).cloned().unwrap_or(Type::Unknown)
-                } else {
-                    break;
-                };
-                let (Type::Record(inherited)
-                | Type::CallableRecord {
-                    fields: inherited, ..
-                }) = inherited
-                else {
-                    break;
-                };
-                fields.extend(
-                    inherited
-                        .iter()
-                        .filter(|field| !names.contains(&field.name))
-                        .cloned(),
-                );
-                names.extend(inherited.iter().map(|field| field.name.clone()));
-            }
-            surfaces.push((
-                class.name.clone(),
-                Type::CallableRecord { fields, signatures },
-            ));
-        }
-        for (name, value) in surfaces {
-            self.values.insert(name, value);
-        }
-    }
-
-    pub(super) fn bind_inherited_class_constructors(&mut self) {
-        for declaration in &self.module.declarations {
-            let Declaration::Class(class) = declaration else {
-                continue;
-            };
-            let Some(base_name) = class.extends_name.as_deref() else {
-                continue;
-            };
-            if class_declares_constructor(class) {
-                continue;
-            }
-            let Some(base) = self.class_constructors.get(base_name).cloned() else {
-                continue;
-            };
-            if base.inherited {
-                continue;
-            }
-            let signatures = base
-                .signatures
-                .into_iter()
-                .map(|mut signature| {
-                    signature.return_type = Type::Named {
-                        name: class.name.clone(),
-                        arguments: Vec::new(),
-                    };
-                    signature
-                })
-                .collect();
-            self.class_constructors.insert(
-                class.name.clone(),
-                ClassConstructorBinding {
-                    modifiers: ClassModifierSurface::declared(class),
-                    signatures,
-                    inherited: false,
-                    visibility: base.visibility,
-                },
-            );
         }
     }
 
@@ -1169,9 +1003,13 @@ impl ModuleChecker<'_> {
 pub(in crate::checker) fn class_export(class: &ClassDeclaration) -> ExportedClass {
     ExportedClass {
         source_name: class.name.clone(),
-        type_parameters: class.type_parameters.clone(),
-        instance_type: class_instance_type(class),
-        constructor_type: class_constructor_side_type(class),
+        type_parameters: class_definition_parameters(class),
+        instance_type: indices::class_indexed_type(class, false, class_instance_type(class)),
+        constructor_type: indices::class_indexed_type(
+            class,
+            true,
+            class_constructor_side_type(class),
+        ),
         constructor_binding: ClassConstructorBinding {
             modifiers: ClassModifierSurface::declared(class),
             signatures: class_constructor_signatures(class),
@@ -1184,5 +1022,5 @@ pub(in crate::checker) fn class_export(class: &ClassDeclaration) -> ExportedClas
 }
 
 pub(in crate::checker) fn class_instance_type(class: &ClassDeclaration) -> Type {
-    Type::Record(class_method_fields(class, false))
+    formal_class_type(class, &Type::Record(class_method_fields(class, false)))
 }

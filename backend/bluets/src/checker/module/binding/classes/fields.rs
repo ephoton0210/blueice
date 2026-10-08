@@ -90,10 +90,12 @@ impl ModuleChecker<'_> {
             .unwrap_or_else(|| class_constructor_side_type(class));
         for (position, field) in fields.iter().enumerate() {
             if field.is_static && field.name == "prototype" {
-                self.type_error(
+                self.typescript_type_error(
                     &field.name_span,
                     "static property `prototype` conflicts with the built-in property of the constructor function".to_string(),
                     DiagnosticCode::DuplicateDeclaration,
+                    2699,
+                    vec!["prototype".into(), class.name.clone()],
                 );
             }
             if let (Some(annotation), Some(span)) = (&field.annotation, &field.annotation_span) {
@@ -135,10 +137,7 @@ impl ModuleChecker<'_> {
                     if field.is_static {
                         constructor_side.clone()
                     } else {
-                        Type::Named {
-                            name: class.name.clone(),
-                            arguments: Vec::new(),
-                        }
+                        class_body_this_type(class)
                     },
                 );
                 let variable = crate::parser::VariableDeclaration {
@@ -177,6 +176,7 @@ impl ModuleChecker<'_> {
         }
         for field in fields {
             if field.is_static
+                || field.declared
                 || field.initializer.is_some()
                 || field.from_default
                 || field.name.starts_with('#')
@@ -355,6 +355,9 @@ impl ModuleChecker<'_> {
             .filter_map(|constructor| constructor.body.as_deref())
             .collect();
         for field in fields {
+            if field.declared {
+                continue;
+            }
             if class.members.iter().any(|member| {
                 member.abstract_modifier.is_some()
                     && member
@@ -439,7 +442,7 @@ impl ModuleChecker<'_> {
             let Some(own_type) = class_field_type(field) else {
                 continue;
             };
-            let inherited = self.inherited_member(base_name, &field.name, field.is_static);
+            let inherited = self.inherited_class_member(class, &field.name, field.is_static);
             let Some(inherited) = inherited else {
                 continue;
             };
@@ -464,8 +467,31 @@ impl ModuleChecker<'_> {
                 own_type
             };
             if !self.is_assignable_bounded(&declared, &inherited, &field.span) {
-                self.type_error(
-                    &field.name_span,
+                let (code, arguments, span) = if field.is_static {
+                    (
+                        2417,
+                        vec![
+                            format!("typeof {}", class.name),
+                            format!("typeof {base_name}"),
+                        ],
+                        &class.name_span,
+                    )
+                } else {
+                    (
+                        2416,
+                        vec![
+                            field.name.clone(),
+                            class.name.clone(),
+                            type_label(&Type::Named {
+                                name: base_name.into(),
+                                arguments: class.extends_arguments.clone(),
+                            }),
+                        ],
+                        &field.name_span,
+                    )
+                };
+                self.typescript_type_error(
+                    span,
                     format!(
                         "property `{}` of type `{}` is not assignable to the base property type `{}`",
                         field.name,
@@ -473,6 +499,8 @@ impl ModuleChecker<'_> {
                         type_label(&inherited)
                     ),
                     DiagnosticCode::TypeMismatch,
+                    code,
+                    arguments,
                 );
             }
         }
@@ -485,7 +513,7 @@ impl ModuleChecker<'_> {
         );
         let base_name = class.extends_name.as_deref().unwrap_or_default();
         let incompatible = class_field_type(field)
-            .zip(self.inherited_member(base_name, &field.name, field.is_static))
+            .zip(self.inherited_class_member(class, &field.name, field.is_static))
             .is_some_and(|(own, inherited)| {
                 !self.is_assignable_bounded(&own, &inherited, &field.span)
             });
@@ -535,7 +563,9 @@ impl ModuleChecker<'_> {
                 .filter(|definition| definition.kind == TypeDefinitionKind::Class)
                 .map(|definition| &definition.value)
         };
-        let Some(Type::Record(fields)) = surface else {
+        let Some(Type::Record(fields) | Type::CallableRecord { fields, .. }) =
+            surface.map(Type::object_type)
+        else {
             return None;
         };
         fields
@@ -549,6 +579,29 @@ impl ModuleChecker<'_> {
                             visibility == crate::parser::Visibility::Protected && member == name
                         },
                     )
+                })
+            })
+            .map(|field| field.value.clone())
+    }
+
+    fn inherited_class_member(
+        &self,
+        class: &ClassDeclaration,
+        name: &str,
+        is_static: bool,
+    ) -> Option<Type> {
+        let surface = self.specialized_base_surface(class, is_static)?;
+        let (Type::Record(fields) | Type::CallableRecord { fields, .. }) = surface.object_type()
+        else {
+            return None;
+        };
+        fields
+            .iter()
+            .find(|field| field.name == name)
+            .or_else(|| {
+                fields.iter().find(|field| {
+                    super::visibility::parse_restricted_name(&field.name)
+                        .is_some_and(|(_, _, member)| member == name)
                 })
             })
             .map(|field| field.value.clone())

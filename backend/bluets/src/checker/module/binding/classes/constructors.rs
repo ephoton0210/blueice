@@ -28,7 +28,9 @@ impl ClassConstructorBinding {
 impl ModuleChecker<'_> {
     pub(in crate::checker::module) fn bind_class_constructor_value_signatures(&mut self) {
         for (name, binding) in &self.class_constructors {
-            let Some(Type::CallableRecord { signatures, .. }) = self.values.get_mut(name) else {
+            let Some(Type::CallableRecord { signatures, .. }) =
+                self.values.get_mut(name).map(Type::object_type_mut)
+            else {
                 continue;
             };
             let Some(span) = signatures.first().map(|signature| signature.span.clone()) else {
@@ -59,7 +61,7 @@ impl ModuleChecker<'_> {
         ) {
             value = expanded;
         }
-        let Type::CallableRecord { signatures, .. } = value else {
+        let Type::CallableRecord { signatures, .. } = value.object_type() else {
             return false;
         };
         let Some((visibility, name)) = signatures.iter().find_map(|signature| {

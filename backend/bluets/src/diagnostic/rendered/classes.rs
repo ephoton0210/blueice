@@ -102,9 +102,19 @@ pub(super) fn refine(project: &Project, diagnostic: &mut Diagnostic) {
             .push_str(&detail);
         return;
     }
-    let member = class.members.iter().find(|member| {
-        member.span.start <= diagnostic.span.start && member.span.end >= diagnostic.span.start
-    });
+    let member = class
+        .members
+        .iter()
+        .find(|member| {
+            member.span.start <= diagnostic.span.start && member.span.end >= diagnostic.span.start
+        })
+        .or_else(|| {
+            let name = diagnostic.message.split('`').nth(1)?;
+            class
+                .members
+                .iter()
+                .find(|member| member.name.as_deref() == Some(name))
+        });
     let name = member
         .and_then(|member| member.name.as_ref())
         .or_else(|| counterpart.arguments.first());
@@ -112,6 +122,7 @@ pub(super) fn refine(project: &Project, diagnostic: &mut Diagnostic) {
     let static_side = counterpart.code == 2417;
     let own = members(class, name, static_side);
     let mut parent = base;
+    let mut arguments = class.extends_arguments.clone();
     let mut inherited = members(parent, name, static_side);
     for _ in 0..64 {
         if !inherited.is_empty() {
@@ -124,6 +135,12 @@ pub(super) fn refine(project: &Project, diagnostic: &mut Diagnostic) {
         else {
             break;
         };
+        let substitutions = class_substitutions(parent, &arguments);
+        arguments = parent
+            .extends_arguments
+            .iter()
+            .map(|value| crate::checker::substitute_type(value, &substitutions))
+            .collect();
         parent = next;
         inherited = members(parent, name, static_side);
     }
@@ -131,15 +148,24 @@ pub(super) fn refine(project: &Project, diagnostic: &mut Diagnostic) {
         return;
     }
     let actual = member_type(own[0]);
+    let substitutions = if static_side {
+        Default::default()
+    } else {
+        class_substitutions(parent, &arguments)
+    };
     let expected = inherited
         .iter()
         .filter_map(|member| member_type(member))
+        .map(|value| crate::checker::substitute_type(&value, &substitutions))
         .find(|expected| {
             actual.as_ref().is_some_and(|actual| {
                 !super::super::type_text::detail(actual, expected, project).is_empty()
             })
         })
-        .or_else(|| member_type(inherited[0]));
+        .or_else(|| {
+            member_type(inherited[0])
+                .map(|value| crate::checker::substitute_type(&value, &substitutions))
+        });
     let (Some(actual), Some(expected)) = (actual, expected) else {
         return;
     };
@@ -149,7 +175,17 @@ pub(super) fn refine(project: &Project, diagnostic: &mut Diagnostic) {
             format!("typeof {}", base.name),
         ]
     } else {
-        vec![name.clone(), class.name.clone(), base.name.clone()]
+        vec![
+            name.clone(),
+            class.name.clone(),
+            super::super::type_text::render_in(
+                &Type::Named {
+                    name: base_name.clone(),
+                    arguments: class.extends_arguments.clone(),
+                },
+                project,
+            ),
+        ]
     };
     let header = super::super::mapping::build(
         counterpart.code,
@@ -161,7 +197,7 @@ pub(super) fn refine(project: &Project, diagnostic: &mut Diagnostic) {
     .message;
     let actual_text = signature_text(&own, project)
         .unwrap_or_else(|| super::super::type_text::render_in(&actual, project));
-    let expected_text = signature_text(&inherited, project)
+    let expected_text = signature_text_specialized(&inherited, project, &substitutions)
         .unwrap_or_else(|| super::super::type_text::render_in(&expected, project));
     let detail = super::super::type_text::detail(&actual, &expected, project);
     let result_only = matches!((&actual,&expected),(Type::Function{parameters:a,result:ar},Type::Function{parameters:e,result:er}) if a.len()==e.len() && a.iter().zip(e).all(|(a,e)|a.annotation==e.annotation && a.optional==e.optional && a.rest==e.rest) && ar!=er);
@@ -257,15 +293,27 @@ fn member_type(member: &ClassMemberShell) -> Option<Type> {
     })
 }
 fn signature_text(members: &[&ClassMemberShell], project: &Project) -> Option<String> {
+    signature_text_specialized(members, project, &Default::default())
+}
+fn signature_text_specialized(
+    members: &[&ClassMemberShell],
+    project: &Project,
+    substitutions: &std::collections::BTreeMap<String, Type>,
+) -> Option<String> {
     let signatures = members
         .iter()
         .map(|member| {
-            let method = member.method.as_ref()?;
-            let parameters = parameter_text(&method.parameters, project);
-            let result = super::super::type_text::render_in(
-                method.return_type.as_ref().unwrap_or(&Type::Any),
-                project,
-            );
+            member.method.as_ref()?;
+            let value = crate::checker::substitute_type(&member_type(member)?, substitutions);
+            let (Type::Function { parameters, result }
+            | Type::GenericFunction {
+                parameters, result, ..
+            }) = value
+            else {
+                return None;
+            };
+            let parameters = parameter_text(&parameters, project);
+            let result = super::super::type_text::render_in(&result, project);
             Some((parameters, result))
         })
         .collect::<Option<Vec<_>>>()?;
@@ -284,4 +332,18 @@ fn signature_text(members: &[&ClassMemberShell], project: &Project) -> Option<St
 }
 fn parameter_text(parameters: &[Parameter], project: &Project) -> String {
     super::super::type_text::parameter_list_in(parameters, Some(project))
+}
+
+fn class_substitutions(
+    class: &ClassDeclaration,
+    arguments: &[Type],
+) -> std::collections::BTreeMap<String, Type> {
+    let arguments = crate::checker::complete_type_arguments(&class.type_parameters, arguments)
+        .unwrap_or_default();
+    class
+        .type_parameters
+        .iter()
+        .map(|parameter| parameter.name.clone())
+        .zip(arguments)
+        .collect()
 }

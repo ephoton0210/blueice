@@ -25,7 +25,10 @@ pub(in crate::checker::module) use functions::promise_value_type;
 pub(crate) use namespaces::{ExportedValue, NamespaceExport, NamespaceMembers};
 pub(in crate::checker::module) use nested_functions::{async_result, declared_function_type};
 mod nested_functions;
-pub(in crate::checker) use classes::{class_export, class_instance_type};
+pub(in crate::checker) use classes::{
+    class_definition_parameters, class_export, class_instance_type, formal_class_type,
+    heritage_substitutions, specialize_constructor,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum StructuredTermination {
@@ -72,6 +75,7 @@ impl<'a> ModuleChecker<'a> {
             jsx_pragmas: crate::jsx::Pragmas::of(&module.source),
             checked_jsx_elements: BTreeSet::new(),
             checked_nested_functions: BTreeSet::new(),
+            checked_class_expressions: BTreeSet::new(),
             async_context: None,
             generator_context: None,
             constructor_readonly_fields: None,
@@ -119,6 +123,9 @@ impl<'a> ModuleChecker<'a> {
 
     /// Binds what the module's (or a namespace body's) own declarations declare.
     pub(super) fn bind_declarations(&mut self) {
+        for expression in self.module.class_expressions.values() {
+            self.bind_class(&expression.class);
+        }
         self.enum_evaluations = crate::enum_eval::evaluate_enums(self.module);
         let mut enum_index = 0usize;
         for declaration in &self.module.declarations {
@@ -237,14 +244,13 @@ impl<'a> ModuleChecker<'a> {
                 Declaration::Class(class) => {
                     self.bind_class(class);
                     // Only a class whose every member has a structured form
-                    // (constructors and methods) is admitted, so emitted
+                    // is admitted, so emitted
                     // JavaScript never carries unerased TypeScript.
                     if !classes::class_is_fully_structured(class) {
                         self.diagnostics.push(self.class_shape_counterpart(class, Diagnostic::error(
                             DiagnosticCode::UnsupportedSyntax,
                             class.span.clone(),
-                            "a class member other than a constructor, method, field or accessor \
-                             (a computed, generator or `accessor` member) is not supported yet",
+                            "an unstructured class member (a generator or auto-accessor) is not supported yet",
                         )));
                     }
                 }
@@ -455,6 +461,7 @@ impl<'a> ModuleChecker<'a> {
     }
 
     pub(crate) fn check_types(&mut self) {
+        self.bind_class_expression_aliases();
         self.check_alias_cycles();
         self.validate_class_heritage_cycles();
         self.bind_inherited_class_instance_methods();
@@ -462,6 +469,9 @@ impl<'a> ModuleChecker<'a> {
         self.bind_inherited_class_constructors();
         self.bind_class_modifier_surfaces();
         self.bind_class_constructor_value_signatures();
+        self.bind_class_indices();
+        self.bind_class_expression_names();
+        self.bind_computed_class_field_names();
         self.collect_restricted_member_names();
         let mut enum_index = 0usize;
         for declaration in &self.module.declarations {
@@ -530,28 +540,7 @@ impl<'a> ModuleChecker<'a> {
                 }
                 Declaration::Variable(variable) => self.check_variable(variable),
                 Declaration::Function(function) => self.check_function(function),
-                Declaration::Class(original) => {
-                    let inferred = self.class_with_inferred_returns(original);
-                    let class = &inferred;
-                    let previous_parameters = self.type_parameters.clone();
-                    self.check_type_parameters(&class.type_parameters);
-                    self.validate_class_heritage_name(class);
-                    self.validate_class_modifiers(class);
-                    self.validate_class_implements(class);
-                    self.validate_class_constructor_group(class);
-                    self.validate_class_method_groups(class);
-                    self.validate_class_method_overrides(class);
-                    self.validate_class_accessors(class);
-                    self.validate_class_visibility(class);
-                    self.with_class_access(class, |checker| {
-                        checker.validate_class_fields(class);
-                        checker.check_class_constructor_bodies(class);
-                        checker.check_class_method_bodies(class);
-                        checker.check_class_static_blocks(class);
-                        checker.check_class_decorators(class);
-                    });
-                    self.type_parameters = previous_parameters;
-                }
+                Declaration::Class(original) => self.check_class_structure(original),
                 Declaration::Import(_)
                 | Declaration::TypeExport(_)
                 | Declaration::DefaultExport(_)
@@ -730,6 +719,10 @@ impl<'a> ModuleChecker<'a> {
         if tokens.is_empty() {
             return;
         }
+        if self.check_class_expression(tokens, scope) {
+            return;
+        }
+        self.check_nested_class_expressions(tokens, scope);
         self.check_namespace_value_use(tokens, span);
         self.check_jsx_elements(tokens, scope);
         self.check_yield_expressions(tokens, scope, span);
@@ -807,6 +800,7 @@ impl<'a> ModuleChecker<'a> {
         self.check_function_call(tokens, scope, span);
         self.check_flow_calls(tokens, scope, span);
         self.check_member_calls_in_expression(tokens, scope, span);
+        self.check_class_index_accesses(tokens, scope);
         self.check_direct_property_access(tokens, scope, span);
         self.check_member_assignment(tokens, scope, span);
         self.check_variable_assignment(tokens, scope, span);

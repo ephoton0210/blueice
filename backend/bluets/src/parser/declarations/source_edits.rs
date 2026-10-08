@@ -12,9 +12,12 @@ impl Parser {
         start: usize,
         end: usize,
     ) {
-        self.diagnose_unsupported_opaque_syntax(start, end);
         let mut index = start;
         while index < end {
+            if let Some(next) = self.try_parse_class_expression(index, end) {
+                index = next;
+                continue;
+            }
             if self.tokens[index].kind == TokenKind::Template {
                 let token = self.tokens[index].clone();
                 self.collect_template_type_edits(&token);
@@ -102,6 +105,7 @@ impl Parser {
             }
             index += 1;
         }
+        self.diagnose_unsupported_opaque_syntax(start, end);
     }
 
     pub(in crate::parser::implementation) fn collect_following_variable_types(
@@ -194,6 +198,14 @@ impl Parser {
         end: usize,
     ) {
         for index in start..end.saturating_sub(1) {
+            if self
+                .class_expressions
+                .range(..=self.tokens[index].start)
+                .next_back()
+                .is_some_and(|(_, expression)| self.tokens[index].start < expression.class.span.end)
+            {
+                continue;
+            }
             let previous_is_abstract = self
                 .tokens
                 .get(index.saturating_sub(1))

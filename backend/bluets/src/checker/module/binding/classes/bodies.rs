@@ -12,7 +12,7 @@ pub(super) enum ClassBodyReturnRule<'a> {
         class_name: &'a str,
         instance_type: &'a Type,
         /// The base whose constructor a `super(...)` call must satisfy.
-        super_base: Option<&'a str>,
+        super_class: &'a ClassDeclaration,
     },
     Method {
         return_type: Option<&'a Type>,
@@ -43,20 +43,7 @@ impl ModuleChecker<'_> {
                 continue;
             };
             let mut scope = self.class_body_parameter_scope(&constructor.parameters);
-            scope.insert(
-                "this".to_string(),
-                Type::Named {
-                    name: class.name.clone(),
-                    arguments: class
-                        .type_parameters
-                        .iter()
-                        .map(|p| Type::Named {
-                            name: p.name.clone(),
-                            arguments: Vec::new(),
-                        })
-                        .collect(),
-                },
-            );
+            scope.insert("this".to_string(), class_body_this_type(class));
             if let Some(base) = self.super_scope_type(class, false) {
                 scope.insert("super".to_string(), base);
             }
@@ -78,7 +65,7 @@ impl ModuleChecker<'_> {
                 ClassBodyReturnRule::Constructor {
                     class_name: &class.name,
                     instance_type: &instance_type,
-                    super_base: class.extends_name.as_deref(),
+                    super_class: class,
                 },
             );
             self.constructor_readonly_fields = None;
@@ -101,56 +88,47 @@ impl ModuleChecker<'_> {
             .filter_map(|member| member.method.as_ref())
             .chain(accessor_methods.iter())
         {
+            self.with_class_type_scope(&method.type_parameters, |checker| {
             let accessor = class
                 .members
                 .iter()
                 .filter_map(|member| member.accessor.as_ref())
                 .find(|accessor| accessor.span == method.span);
-            self.validate_class_parameters(&method.parameters, method.body.is_some(), "method");
+            checker.validate_class_parameters(&method.parameters, method.body.is_some(), "method");
             let return_type = method.return_type.as_ref().filter(|return_type| {
-                let before = self.diagnostics.len();
-                self.check_type(
+                let before = checker.diagnostics.len();
+                checker.check_type(
                     return_type,
                     method.return_type_span.as_ref().unwrap_or(&method.span),
                 );
-                !self.diagnostics[before..]
+                !checker.diagnostics[before..]
                     .iter()
                     .any(|diagnostic| diagnostic.code == DiagnosticCode::UnknownType)
             });
             if let Some(return_type) = return_type {
-                self.check_predicate_signature(return_type, &method.parameters);
+                checker.check_predicate_signature(return_type, &method.parameters);
             }
             let runtime_return_type = return_type.map(Type::runtime_result);
             let return_type = runtime_return_type.as_ref();
             if let Some(body) = &method.body {
-                let mut scope = self.class_body_parameter_scope(&method.parameters);
-                if let Some(base) = self.super_scope_type(class, method.is_static) {
+                let mut scope = checker.class_body_parameter_scope(&method.parameters);
+                if let Some(base) = checker.super_scope_type(class, method.is_static) {
                     scope.insert("super".to_string(), base);
                 }
-                self.check_method_super_placement(class, body);
+                checker.check_method_super_placement(class, body);
                 hoist_local_functions(body, &mut scope);
                 scope.insert(
                     "this".to_string(),
                     if method.is_static {
                         constructor_side.clone()
                     } else {
-                        Type::Named {
-                            name: class.name.clone(),
-                            arguments: class
-                                .type_parameters
-                                .iter()
-                                .map(|p| Type::Named {
-                                    name: p.name.clone(),
-                                    arguments: Vec::new(),
-                                })
-                                .collect(),
-                        }
+                        class_body_this_type(class)
                     },
                 );
                 let allows_implicit_undefined = return_type.is_none_or(|return_type| {
-                    self.return_type_allows_implicit_undefined(return_type, &method.span)
+                    checker.return_type_allows_implicit_undefined(return_type, &method.span)
                 });
-                self.check_class_body_items(
+                checker.check_class_body_items(
                     body,
                     &scope,
                     ClassBodyReturnRule::Method {
@@ -166,7 +144,7 @@ impl ModuleChecker<'_> {
                             StructuredTermination::FallsThrough
                         )
                     {
-                        self.typescript_type_error(
+                        checker.typescript_type_error(
                             &method.span,
                             format!(
                                 "class method with return type `{}` can complete without returning a value",
@@ -179,6 +157,7 @@ impl ModuleChecker<'_> {
                     }
                 }
             }
+            });
         }
     }
 
@@ -270,13 +249,18 @@ impl ModuleChecker<'_> {
                     self.check_direct_runtime_expression(tokens, &scope, span);
                     if let (
                         FunctionBodyItem::Expression { .. },
-                        ClassBodyReturnRule::Constructor {
-                            super_base: Some(base),
-                            ..
-                        },
+                        ClassBodyReturnRule::Constructor { super_class, .. },
                     ) = (item, return_rule)
                     {
-                        self.check_super_call_arguments(base, tokens, &scope, span);
+                        if let Some(base) = super_class.extends_name.as_deref() {
+                            self.check_super_call_arguments(
+                                base,
+                                super_class,
+                                tokens,
+                                &scope,
+                                span,
+                            );
+                        }
                     }
                 }
                 FunctionBodyItem::Return { tokens, span } => {

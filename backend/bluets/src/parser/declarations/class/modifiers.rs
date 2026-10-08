@@ -15,6 +15,7 @@ pub(super) struct MemberModifiers {
     pub(super) readonly_token: Option<usize>,
     pub(super) abstract_token: Option<usize>,
     pub(super) override_token: Option<usize>,
+    pub(super) declare_token: Option<usize>,
     pub(super) name_index: usize,
     order_error: Option<(usize, &'static str, &'static str)>,
 }
@@ -33,16 +34,19 @@ pub(super) fn scan_member_modifiers(
         readonly_token: None,
         abstract_token: None,
         override_token: None,
+        declare_token: None,
         name_index: start,
         order_error: None,
     };
     let mut previous = (0, "");
     while result.name_index + 1 < end {
         let index = result.name_index;
-        if !tokens
-            .get(index + 1)
-            .is_some_and(|token| matches!(token.kind, TokenKind::Identifier | TokenKind::Keyword))
-        {
+        if !tokens.get(index + 1).is_some_and(|token| {
+            matches!(
+                token.kind,
+                TokenKind::Identifier | TokenKind::Keyword | TokenKind::String | TokenKind::Number
+            ) || token.is("[")
+        }) {
             break;
         }
         let (rank, word, slot) = match tokens.get(index)?.text.as_str() {
@@ -58,6 +62,7 @@ pub(super) fn scan_member_modifiers(
                 result.visibility = Visibility::Private;
                 (0, "private", &mut result.visibility_token)
             }
+            "declare" => (0, "declare", &mut result.declare_token),
             "static" => {
                 result.is_static = true;
                 (1, "static", &mut result.static_token)
@@ -105,6 +110,28 @@ impl Parser {
             return;
         };
         self.erase_member_type_modifiers(&modifiers);
+        if let Some(index) = modifiers.declare_token {
+            if member.kind != ClassMemberKind::Field {
+                self.diagnostics.push(
+                    Diagnostic::error(
+                        DiagnosticCode::ParseError,
+                        self.tokens[index].span(&self.id),
+                        "declare is only valid on a class field",
+                    )
+                    .with_typescript(1031, vec!["declare".into()]),
+                );
+            }
+            if let Some(override_index) = modifiers.override_token {
+                self.diagnostics.push(
+                    Diagnostic::error(
+                        DiagnosticCode::ParseError,
+                        self.tokens[override_index].span(&self.id),
+                        "override and declare cannot be combined",
+                    )
+                    .with_typescript(1243, vec!["override".into(), "declare".into()]),
+                );
+            }
+        }
         if let Some((index, word, previous)) = modifiers.order_error {
             self.diagnostics.push(
                 Diagnostic::error(

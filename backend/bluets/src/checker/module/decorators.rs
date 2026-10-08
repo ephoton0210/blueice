@@ -98,8 +98,20 @@ impl<'a> ModuleChecker<'a> {
                 continue;
             }
             let first = &shell.decorators[0].span;
+            if shell.key.first().is_some_and(|key| {
+                key.is("[") || matches!(key.kind, TokenKind::String | TokenKind::Number)
+            }) {
+                self.type_error(
+                    first,
+                    "decorators on computed or literal member names are not supported yet".into(),
+                    DiagnosticCode::UnsupportedSyntax,
+                );
+                continue;
+            }
             let target = match shell.kind {
-                ClassMemberKind::Constructor | ClassMemberKind::StaticBlock => {
+                ClassMemberKind::Constructor
+                | ClassMemberKind::StaticBlock
+                | ClassMemberKind::IndexSignature => {
                     self.type_error(
                         first,
                         "decorators are not valid here: they decorate a class or a class member"

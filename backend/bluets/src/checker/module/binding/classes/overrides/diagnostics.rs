@@ -10,7 +10,10 @@ pub(super) fn override_context(
     class: &ClassDeclaration,
     group: &ClassMethodGroup,
 ) -> (u32, Vec<String>) {
-    let parent = class.extends_name.clone().unwrap_or_default();
+    let parent = crate::checker::type_label(&crate::parser::Type::Named {
+        name: class.extends_name.clone().unwrap_or_default(),
+        arguments: class.extends_arguments.clone(),
+    });
     if group.is_static {
         (
             2417,

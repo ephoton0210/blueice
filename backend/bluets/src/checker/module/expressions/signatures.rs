@@ -10,6 +10,7 @@ pub(in crate::checker::module) fn callable_signatures(
     construct: bool,
 ) -> Option<Vec<FunctionSignature>> {
     match value {
+        Type::IndexedRecord { object, .. } => callable_signatures(object, construct),
         Type::Function { parameters, result } if !construct => Some(vec![FunctionSignature {
             parameters: parameters.clone(),
             type_parameters: Vec::new(),

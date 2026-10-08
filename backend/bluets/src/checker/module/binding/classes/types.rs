@@ -29,17 +29,7 @@ pub(super) fn class_constructor_signatures(class: &ClassDeclaration) -> Vec<Func
         return vec![FunctionSignature {
             parameters: Vec::new(),
             type_parameters: class.type_parameters.clone(),
-            return_type: Type::Named {
-                name: class.name.clone(),
-                arguments: class
-                    .type_parameters
-                    .iter()
-                    .map(|p| Type::Named {
-                        name: p.name.clone(),
-                        arguments: Vec::new(),
-                    })
-                    .collect(),
-            },
+            return_type: class.this_type(),
         }];
     }
     selected
@@ -47,17 +37,7 @@ pub(super) fn class_constructor_signatures(class: &ClassDeclaration) -> Vec<Func
         .map(|constructor| FunctionSignature {
             parameters: constructor.parameters.clone(),
             type_parameters: class.type_parameters.clone(),
-            return_type: Type::Named {
-                name: class.name.clone(),
-                arguments: class
-                    .type_parameters
-                    .iter()
-                    .map(|p| Type::Named {
-                        name: p.name.clone(),
-                        arguments: Vec::new(),
-                    })
-                    .collect(),
-            },
+            return_type: class.this_type(),
         })
         .collect()
 }
@@ -71,6 +51,7 @@ pub(in crate::checker::module) fn class_is_fully_structured(class: &ClassDeclara
         ClassMemberKind::Field => member.field.is_some(),
         ClassMemberKind::Accessor => member.accessor.is_some(),
         ClassMemberKind::StaticBlock => member.static_block.is_some(),
+        ClassMemberKind::IndexSignature => member.index.is_some(),
         ClassMemberKind::Opaque => false,
     })
 }
@@ -99,6 +80,11 @@ pub(super) fn class_method_fields(class: &ClassDeclaration, is_static: bool) -> 
     let mut fields = fields::class_field_type_fields(class, is_static);
     fields.extend(accessors::class_accessor_type_fields(class, is_static));
     for group in &class.method_groups {
+        // Dynamic method keys have effects but no statically named property.
+        // Their bodies remain checked by the ordinary method pass.
+        if group.name.starts_with("[computed@") {
+            continue;
+        }
         if group.is_static != is_static {
             continue;
         }
@@ -119,9 +105,18 @@ pub(super) fn class_method_fields(class: &ClassDeclaration, is_static: bool) -> 
                 name: visibility::member_field_name(class, method.visibility, &method.name),
                 readonly: false,
                 optional: method.optional,
-                value: Type::Function {
-                    parameters: method.parameters.clone(),
-                    result: Box::new(method.return_type.clone().unwrap_or(Type::Unknown)),
+                value: if method.type_parameters.is_empty() {
+                    Type::Function {
+                        parameters: method.parameters.clone(),
+                        result: Box::new(method.return_type.clone().unwrap_or(Type::Unknown)),
+                    }
+                } else {
+                    Type::GenericFunction {
+                        type_parameters: method.type_parameters.clone(),
+                        parameters: method.parameters.clone(),
+                        result: Box::new(method.return_type.clone().unwrap_or(Type::Unknown)),
+                        span: method.span.clone(),
+                    }
                 },
                 span: method.span.clone(),
             });
@@ -145,10 +140,7 @@ pub(in crate::checker::module) fn class_constructor_side_type(class: &ClassDecla
         name: "prototype".to_string(),
         readonly: true,
         optional: false,
-        value: Type::Named {
-            name: class.name.clone(),
-            arguments: Vec::new(),
-        },
+        value: class.instance_reference(vec![Type::Any; class.type_parameters.len()]),
         span: class.name_span.clone(),
     }];
     fields.extend(class_method_fields(class, true));

@@ -70,15 +70,16 @@ pub use namespace_analysis::{
     NamespaceExports,
 };
 pub use parser::{
-    parse_module, ClassAccessor, ClassConstructor, ClassDeclaration, ClassField, ClassMemberKind,
-    ClassMemberShell, ClassMethod, ClassMethodGroup, ConditionalType, Declaration, Decorator,
-    EnumDeclaration, EnumMember, FunctionBodyItem, FunctionCatchClause, FunctionDeclaration,
-    FunctionElseBranch, FunctionIfStatement, FunctionTryStatement, FunctionWhileStatement,
-    ImportDeclaration, IndexSignature, InterfaceDeclaration, MappedModifier, MappedType, Module,
-    NamespaceDeclaration, Parameter, ParameterProperty, ParameterPropertyInsertion, ParserLimits,
-    RawDeclaration, TemplateLiteralType, TupleTypeElement, TypeAliasDeclaration,
-    TypeExportDeclaration, TypeParameter, TypePredicate, TypeSignature, ValueExportBinding,
-    ValueExportDeclaration, VariableDeclaration, VariableKind, Variance, Visibility,
+    parse_module, ClassAccessor, ClassConstructor, ClassDeclaration, ClassExpression, ClassField,
+    ClassMemberKind, ClassMemberShell, ClassMethod, ClassMethodGroup, ConditionalType, Declaration,
+    Decorator, EnumDeclaration, EnumMember, FunctionBodyItem, FunctionCatchClause,
+    FunctionDeclaration, FunctionElseBranch, FunctionIfStatement, FunctionTryStatement,
+    FunctionWhileStatement, ImportDeclaration, IndexSignature, InterfaceDeclaration,
+    MappedModifier, MappedType, Module, NamespaceDeclaration, Parameter, ParameterProperty,
+    ParameterPropertyInsertion, ParserLimits, RawDeclaration, TemplateLiteralType,
+    TupleTypeElement, TypeAliasDeclaration, TypeExportDeclaration, TypeParameter, TypePredicate,
+    TypeSignature, ValueExportBinding, ValueExportDeclaration, VariableDeclaration, VariableKind,
+    Variance, Visibility,
 };
 pub use performance::CompilerPerformance;
 pub use syntax::parse_jsx;

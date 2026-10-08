@@ -80,7 +80,7 @@ pub(super) fn lower_enum_function(
                 let value = member
                     .initializer
                     .as_deref()
-                    .map(|tokens| ExpressionLowerer::new(&module.id, tokens).parse())
+                    .map(|tokens| ExpressionLowerer::for_module(module, tokens).parse())
                     .transpose()?
                     .unwrap_or(bluejs::Expr::Identifier("undefined".to_string()));
                 let forward = assign_expr(member_key(&member.name), value);
@@ -305,8 +305,9 @@ impl NamespaceLowering<'_> {
                 Declaration::Variable(variable) if !variable.declared => {
                     if variable.exported {
                         if !variable.initializer.is_empty() {
-                            let value = ExpressionLowerer::new(&module.id, &variable.initializer)
-                                .parse()?;
+                            let value =
+                                ExpressionLowerer::for_module(module, &variable.initializer)
+                                    .parse()?;
                             statements.push(bluejs::Stmt::Expr(assign_expr(
                                 property_expr(param, &variable.name),
                                 value,
@@ -367,7 +368,7 @@ impl NamespaceLowering<'_> {
                 }
                 Declaration::Raw(raw) => {
                     statements.push(bluejs::Stmt::Expr(
-                        ExpressionLowerer::new(&module.id, &raw.tokens).parse()?,
+                        ExpressionLowerer::for_module(module, &raw.tokens).parse()?,
                     ));
                 }
                 Declaration::TypeAlias(_) | Declaration::Interface(_) => {}

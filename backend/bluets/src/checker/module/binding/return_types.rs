@@ -67,13 +67,15 @@ impl ModuleChecker<'_> {
         &mut self,
         class: &ClassDeclaration,
     ) -> ClassDeclaration {
+        let resolved = self.class_with_resolved_heritage(class);
+        let class = &resolved;
         self.with_class_access(class, |checker| checker.infer_class_return_types(class))
     }
 
     fn infer_class_return_types(&self, class: &ClassDeclaration) -> ClassDeclaration {
         let mut inferred = class.clone();
         for member in &mut inferred.members {
-            let (parameters, body, result, span, is_static) =
+            let (parameters, body, result, span, is_static, type_parameters) =
                 if let Some(method) = &mut member.method {
                     let Some(body) = &method.body else { continue };
                     (
@@ -82,6 +84,7 @@ impl ModuleChecker<'_> {
                         &mut method.return_type,
                         &method.span,
                         method.is_static,
+                        method.type_parameters.clone(),
                     )
                 } else if let Some(accessor) = &mut member.accessor {
                     if !accessor.getter {
@@ -93,6 +96,7 @@ impl ModuleChecker<'_> {
                         &mut accessor.return_type,
                         &accessor.span,
                         accessor.is_static,
+                        Vec::new(),
                     )
                 } else {
                     continue;
@@ -106,10 +110,7 @@ impl ModuleChecker<'_> {
                         .cloned()
                         .unwrap_or(Type::Unknown)
                 } else {
-                    Type::Named {
-                        name: class.name.clone(),
-                        arguments: Vec::new(),
-                    }
+                    super::classes::class_body_this_type(class)
                 },
             );
             if let Some(base) = &class.extends_name {
@@ -121,7 +122,11 @@ impl ModuleChecker<'_> {
                         } else {
                             base.clone()
                         },
-                        arguments: Vec::new(),
+                        arguments: if is_static {
+                            Vec::new()
+                        } else {
+                            class.extends_arguments.clone()
+                        },
                     },
                 );
             }
@@ -134,7 +139,7 @@ impl ModuleChecker<'_> {
                 async_function: false,
                 generator: false,
                 body_open: None,
-                type_parameters: Vec::new(),
+                type_parameters,
                 parameters: parameters.clone(),
                 return_type: None,
                 body: body.clone(),

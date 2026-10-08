@@ -88,6 +88,7 @@ pub(crate) fn check_incremental(
         let value_exports = checker.exported_values(false);
         let inferred_returns = checker.inferred_return_types();
         let inferred_parameters = checker.inferred_parameter_types();
+        let class_expression_surfaces = checker.class_expression_surfaces();
         diagnostics.extend(checker.diagnostics);
         let symbols = checker.symbols;
         namespace_exports.insert(module_id.clone(), exported_namespaces.clone());
@@ -101,6 +102,7 @@ pub(crate) fn check_incremental(
                 symbols,
                 inferred_returns,
                 inferred_parameters,
+                class_expression_surfaces,
                 namespace_exports: exported_namespaces,
                 value_exports,
             },

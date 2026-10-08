@@ -328,7 +328,9 @@ fn transpile_only_emits_structured_classes_and_still_refuses_unstructured_ones()
     ));
     assert!(structured.output.is_some(), "{:#?}", structured.diagnostics);
     // A member the parser cannot erase is refused even without checking.
-    let unstructured = compile_transpile("class A { ['x'] = 1; }");
+    let computed = compile_transpile("class A { ['x'] = 1; }");
+    assert!(computed.output.is_some(), "{:?}", computed.diagnostics);
+    let unstructured = compile_transpile("class A { *generate() {} }");
     assert!(unstructured.output.is_none());
     assert!(unstructured
         .diagnostics
@@ -4094,10 +4096,6 @@ fn unsupported_and_misplaced_syntax_is_diagnosed_not_passed_through() {
             "decorators and TSX/JSX are not in the initial BlueTS matrix",
         ),
         (
-            "class A { ['x'] = 1; }",
-            "a class member other than a constructor, method, field or accessor",
-        ),
-        (
             "declare abstract class A {}",
             "`abstract` is not in the initial BlueTS matrix",
         ),
@@ -5433,10 +5431,7 @@ fn class_output_stays_atomic_and_refuses_unstructured_classes() {
     // faithfully, so it stays refused.
     let opaque = compile(
         ENTRY,
-        &MapLoader::from([ModuleSource::new(
-            ENTRY,
-            "class A { ['value'](): number { return 1; } }",
-        )]),
+        &MapLoader::from([ModuleSource::new(ENTRY, "class A { *generate() {} }")]),
         emit_all_artifacts_options(),
     );
     assert!(opaque.output.is_none());

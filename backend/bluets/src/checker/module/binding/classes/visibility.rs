@@ -73,7 +73,7 @@ fn class_declares_private_name(class: &ClassDeclaration, name: &str) -> bool {
 
 /// The token index where the receiver expression ending just before the `.`
 /// at `dot` begins: a chain of names, calls, index accesses and `new`.
-fn receiver_start(tokens: &[Token], dot: usize) -> Option<usize> {
+pub(super) fn receiver_start(tokens: &[Token], dot: usize) -> Option<usize> {
     let mut end = dot;
     loop {
         let last = tokens.get(end.checked_sub(1)?)?;
@@ -275,7 +275,9 @@ impl ModuleChecker<'_> {
                     .filter(|definition| definition.kind == TypeDefinitionKind::Class)
                     .map(|definition| &definition.value)
             };
-            let Some(Type::Record(fields) | Type::CallableRecord { fields, .. }) = record else {
+            let Some(Type::Record(fields) | Type::CallableRecord { fields, .. }) =
+                record.map(Type::object_type)
+            else {
                 continue;
             };
             let Some(base_visibility) = effective_visibility(fields, &name) else {
@@ -413,7 +415,8 @@ impl ModuleChecker<'_> {
                     .filter_map(|name| self.values.get(name)),
             );
         for record in records {
-            if let Type::Record(fields) | Type::CallableRecord { fields, .. } = record {
+            if let Type::Record(fields) | Type::CallableRecord { fields, .. } = record.object_type()
+            {
                 names.extend(
                     fields
                         .iter()
@@ -439,7 +442,8 @@ impl ModuleChecker<'_> {
             resolved =
                 instantiate_named(&resolved, &self.types, &mut visited, &mut budget, "member")?;
         }
-        let (Type::Record(fields) | Type::CallableRecord { fields, .. }) = resolved else {
+        let (Type::Record(fields) | Type::CallableRecord { fields, .. }) = resolved.object_type()
+        else {
             return None;
         };
         if fields.iter().any(|field| field.name == member) {
@@ -635,7 +639,8 @@ impl ModuleChecker<'_> {
         holder: &str,
         is_static: bool,
     ) -> Option<Type> {
-        let (Type::Record(fields) | Type::CallableRecord { fields, .. }) = record else {
+        let (Type::Record(fields) | Type::CallableRecord { fields, .. }) = record.object_type()
+        else {
             return None;
         };
         let own_key = class_owner_key(class);
@@ -670,15 +675,13 @@ impl ModuleChecker<'_> {
         if exposed.is_empty() {
             return None;
         }
-        let mut fields = fields.clone();
+        let mut result = record.clone();
+        let (Type::Record(fields) | Type::CallableRecord { fields, .. }) = result.object_type_mut()
+        else {
+            unreachable!()
+        };
         fields.extend(exposed);
-        Some(match record {
-            Type::CallableRecord { signatures, .. } => Type::CallableRecord {
-                fields,
-                signatures: signatures.clone(),
-            },
-            _ => Type::Record(fields),
-        })
+        Some(result)
     }
 
     /// The base class's record as `super` sees it from `class`: the plain
@@ -699,7 +702,9 @@ impl ModuleChecker<'_> {
                 .filter(|definition| definition.kind == TypeDefinitionKind::Class)
                 .map(|definition| &definition.value)
         };
-        let (Type::Record(fields) | Type::CallableRecord { fields, .. }) = record? else {
+        let mut record = record?.clone();
+        let (Type::Record(fields) | Type::CallableRecord { fields, .. }) = record.object_type()
+        else {
             return None;
         };
         let mut result = fields.clone();
@@ -708,8 +713,10 @@ impl ModuleChecker<'_> {
             else {
                 continue;
             };
-            if matches!(field.value, Type::Function { .. })
-                && owner_record.iter().any(|other| other.name == field.name)
+            if matches!(
+                field.value,
+                Type::Function { .. } | Type::GenericFunction { .. }
+            ) && owner_record.iter().any(|other| other.name == field.name)
                 && !result.iter().any(|other| other.name == member)
             {
                 result.push(TypeField {
@@ -718,7 +725,8 @@ impl ModuleChecker<'_> {
                 });
             }
         }
-        Some(Type::Record(result))
+        *record.object_type_mut() = Type::Record(result);
+        Some(record)
     }
 
     /// Runs `body` with the restricted members `class` may reach visible under
@@ -728,15 +736,16 @@ impl ModuleChecker<'_> {
         class: &ClassDeclaration,
         body: impl FnOnce(&mut Self) -> R,
     ) -> R {
-        let instance_owner: Vec<TypeField> = match self.types.get(&class.name) {
-            Some(TypeDefinition {
-                kind: TypeDefinitionKind::Class,
-                value: Type::Record(fields),
-                ..
-            }) => fields.clone(),
+        let instance_owner = match self
+            .types
+            .get(&class.name)
+            .filter(|definition| definition.kind == TypeDefinitionKind::Class)
+            .map(|definition| definition.value.object_type())
+        {
+            Some(Type::Record(fields)) => fields.clone(),
             _ => Vec::new(),
         };
-        let static_owner: Vec<TypeField> = match self.values.get(&class.name) {
+        let static_owner = match self.values.get(&class.name).map(Type::object_type) {
             Some(Type::Record(fields) | Type::CallableRecord { fields, .. }) => fields.clone(),
             _ => Vec::new(),
         };
@@ -774,7 +783,12 @@ impl ModuleChecker<'_> {
                 super_key.clone(),
                 TypeDefinition {
                     kind: TypeDefinitionKind::Class,
-                    parameters: Vec::new(),
+                    parameters: class
+                        .extends_name
+                        .as_ref()
+                        .and_then(|base| self.types.get(base))
+                        .map(|definition| definition.parameters.clone())
+                        .unwrap_or_default(),
                     value,
                 },
             );

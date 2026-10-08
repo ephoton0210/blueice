@@ -508,6 +508,17 @@ impl<'a> ScopeModel<'a> {
         Some(value)
     }
 
+    /// Identifies the lexical declaration owning a type name at a reference.
+    pub(super) fn type_name_is_bound_in(
+        &self,
+        name: &str,
+        offset: usize,
+        origin: &SourceSpan,
+    ) -> bool {
+        self.resolve(self.scope_at(offset), name, Meaning::Type)
+            .is_some_and(|(scope, _)| self.scopes[scope].span == *origin)
+    }
+
     /// An implicit library default is irrelevant to opaque writes until source
     /// code actually references it. Resolve identities to preserve local/owner
     /// shadows, and retain references inside alias initializers and closures.

@@ -33,14 +33,20 @@ impl ModuleChecker<'_> {
     ) -> bool {
         if let Type::Named { name, .. } = expected {
             if self.bound_parameters.contains_key(name) {
+                let typescript_code = if self.unrelated_parameter_origin(actual, expected).is_some()
+                {
+                    2719
+                } else {
+                    2322
+                };
                 self.typescript_type_error(
                     span,
                     message.into(),
                     code,
-                    2322,
+                    typescript_code,
                     vec![
                         crate::diagnostic::type_text::render_in(actual, self.project),
-                        name.clone(),
+                        crate::parser::source_type_name(name).to_string(),
                     ],
                 );
                 self.explain_last_type_pair(actual, expected);
@@ -175,6 +181,7 @@ impl ModuleChecker<'_> {
     pub(super) fn compatibility_detail(&self, actual: &Type, expected: &Type) -> Option<String> {
         if let Type::Named { name, .. } = expected {
             if let Some(parameter) = self.bound_parameters.get(name) {
+                let name = crate::parser::source_type_name(name);
                 let source = crate::diagnostic::type_text::render_in(actual, self.project);
                 return Some(if let Some(constraint) = &parameter.constraint {
                     format!("\n  '{source}' is assignable to the constraint of type '{name}', but '{name}' could be instantiated with a different subtype of constraint '{}'.",crate::diagnostic::type_text::render_in(constraint,self.project))

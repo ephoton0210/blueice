@@ -108,6 +108,8 @@ pub(super) fn named_types(value: &Type, into: &mut BTreeSet<String>) {
 /// Renames type keys to their qualified form inside a type.
 pub(super) struct Qualifier<'r> {
     pub(super) rename: &'r BTreeMap<String, String>,
+    /// A lexical self name carries its enclosing binders before its own arguments.
+    pub(super) argument_prefix: Option<(&'r str, &'r [Type])>,
 }
 
 impl Qualifier<'_> {
@@ -126,7 +128,13 @@ impl Qualifier<'_> {
                 .filter(|(name, _)| !bound.contains(name))
                 .map(|(name, target)| (name.clone(), target.clone()))
                 .collect();
-            Qualifier { rename: &rename }.ty(value)
+            Qualifier {
+                rename: &rename,
+                argument_prefix: self
+                    .argument_prefix
+                    .filter(|(name, _)| !bound.iter().any(|parameter| parameter.as_str() == *name)),
+            }
+            .ty(value)
         }) {
             return value;
         }
@@ -173,7 +181,14 @@ impl Qualifier<'_> {
                     .filter(|(name, _)| !type_parameters.iter().any(|p| &p.name == *name))
                     .map(|(name, target)| (name.clone(), target.clone()))
                     .collect();
-                let scoped = Qualifier { rename: &rename };
+                let scoped = Qualifier {
+                    rename: &rename,
+                    argument_prefix: self.argument_prefix.filter(|(name, _)| {
+                        !type_parameters
+                            .iter()
+                            .any(|parameter| parameter.name == *name)
+                    }),
+                };
                 Type::GenericFunction {
                     type_parameters: scoped.type_parameters(type_parameters),
                     parameters: scoped.parameters(parameters),
@@ -183,7 +198,13 @@ impl Qualifier<'_> {
             }
             Type::Named { name, arguments } => Type::Named {
                 name: self.name(name),
-                arguments: arguments.iter().map(|argument| self.ty(argument)).collect(),
+                arguments: self
+                    .argument_prefix
+                    .filter(|(source, _)| *source == name.as_str())
+                    .into_iter()
+                    .flat_map(|(_, prefix)| prefix.iter().cloned())
+                    .chain(arguments.iter().map(|argument| self.ty(argument)))
+                    .collect(),
             },
             Type::Literal(text) => Type::Literal(self.name(text)),
             Type::Array(element) => Type::Array(Box::new(self.ty(element))),

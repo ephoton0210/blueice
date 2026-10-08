@@ -29,7 +29,10 @@ impl ModuleChecker<'_> {
         if budget.exhausted {
             return false;
         }
-        if source == Type::StrictUnknown && *actual != Type::StrictUnknown {
+        if source == Type::StrictUnknown
+            && *actual != Type::StrictUnknown
+            && self.bound_parameter_identity(actual).is_none()
+        {
             self.typescript_type_error(
                 span,
                 message.into(),

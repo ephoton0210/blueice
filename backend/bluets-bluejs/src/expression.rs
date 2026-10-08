@@ -11,6 +11,7 @@ mod writes;
 
 pub(super) struct ExpressionLowerer<'a> {
     pub(super) module: &'a str,
+    pub(super) module_ast: Option<&'a Module>,
     pub(super) tokens: &'a [Token],
     pub(super) index: usize,
 }
@@ -19,12 +20,39 @@ impl<'a> ExpressionLowerer<'a> {
     pub(super) fn new(module: &'a str, tokens: &'a [Token]) -> Self {
         Self {
             module,
+            module_ast: None,
+            tokens,
+            index: 0,
+        }
+    }
+
+    pub(super) fn for_module(module: &'a Module, tokens: &'a [Token]) -> Self {
+        Self {
+            module: &module.id,
+            module_ast: Some(module),
             tokens,
             index: 0,
         }
     }
 
     pub(super) fn parse(mut self) -> Result<bluejs::Expr, BridgeError> {
+        if let Some(module) = self.module_ast {
+            let spans = module.erased_assertion_spans().collect::<Vec<_>>();
+            let erased = |token: &Token| {
+                spans
+                    .iter()
+                    .any(|span| span.start <= token.start && token.end <= span.end)
+            };
+            if self.tokens.iter().any(erased) {
+                let tokens = self
+                    .tokens
+                    .iter()
+                    .filter(|token| !erased(token))
+                    .cloned()
+                    .collect::<Vec<_>>();
+                return ExpressionLowerer::for_module(module, &tokens).parse();
+            }
+        }
         let expression = self.parse_sequence()?;
         if let Some(token) = self.tokens.get(self.index) {
             return Err(unsupported(
@@ -426,6 +454,25 @@ impl<'a> ExpressionLowerer<'a> {
                 "expected a runtime expression",
             ));
         };
+        if let Some((module, expression)) = self.module_ast.and_then(|module| {
+            module
+                .class_expression(token.start)
+                .map(|expression| (module, expression))
+        }) {
+            let bluejs::Stmt::ClassDecl(mut class) = lowering::classes::lower_class(
+                module,
+                &expression.class,
+                jsx_direct::defines_class_fields(),
+            )?
+            else {
+                unreachable!("class lowering produces a class declaration");
+            };
+            class.name = expression.name.clone();
+            self.index = self
+                .tokens
+                .partition_point(|token| token.start < expression.class.span.end);
+            return Ok(bluejs::Expr::Class(class));
+        }
         self.index += 1;
         match token.kind {
             TokenKind::Number => token

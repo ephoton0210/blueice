@@ -139,14 +139,14 @@ suite entry, then removing the row.
 | ID | Gap |
 | --- | --- |
 | G-T1 | K.4.1 supplies lexical control-flow facts for the 123 pinned `typeof`/`instanceof`/`in`/literal/nullish/discriminant/truthiness, optional-chain, switch, loop, assignment and closure witnesses. Property facts retain their owning lexical binding and path. The three K.3.3 iterator-flow wording gaps are resolved and their message allowances removed. K.4.2 adds 75 pinned user-defined guard/assertion and exhaustive-completion witnesses, including imported and function-valued signatures, receiver predicates, explicit-call-target diagnostics and known `never` calls. Broader inferred predicate synthesis, exceptional-flow and dotted capture precision remain unmeasured. |
-| G-T2 | K.4.3 adds 74 pinned argument/contextual candidate, widening, constraint/default, explicit argument and generic callable/class/interface witnesses, including imported signatures and dependent defaults. Concrete record `keyof`/indexed projections supply the measured prerequisites, and contextual budget exhaustion remains a precise refusal. Remaining: inference across arbitrary recursive/operator forms, higher-kinded patterns and broader variance; K.4.5 provides the measured operators; compatibility remains K.4.7 and generic heritage/methods K.5.2. |
+| G-T2 | K.4.3 adds 74 pinned argument/contextual candidate, widening, constraint/default, explicit argument and generic callable/class/interface witnesses, including imported signatures and dependent defaults. Concrete record `keyof`/indexed projections supply the measured prerequisites, and contextual budget exhaustion remains a precise refusal. Remaining: inference across arbitrary recursive/operator forms, higher-kinded patterns and broader variance; K.4.5/K.4.7 provide measured operator/compatibility relations, and K.5.2 measures generic heritage/methods; unmeasured compositions remain. |
 | G-T3 | K.4.5 supplies 82 pinned record/array key-set, value-query, indexed, distributive/non-distributive conditional, infer, mapped modifier/remap/filter, template product/pattern and recursive-alias witnesses, with three exact runtime/declaration comparisons and six budget controls. Default ES2022 numeric products retain the measured 652-entry native cache order. Remaining: unmeasured nested patterns, overloaded queries, escape normalization and broader primitive/library keys; K.4.6 supplies measured index/readonly/symbol and homomorphic array/tuple composition; K.4.7 supplies measured structural relations; broader combinations remain open. Expansion beyond the configured budget remains a precise refusal. |
 | G-T4 | K.4.4 supplies 74 pinned ordered call/construct/method overload, callback-context, direct literal-priority, merged-interface-group and implementation-compatibility witnesses, with six exact runtime/declaration comparisons. Anonymous signatures retain data members and generic binders, and obsolete two-tag/named-callback restrictions are retired. Remaining: unmeasured candidate/operator/variance interactions and optional chaining/non-null assertion typing in every position. |
 | G-T5 | K.4.6 supplies 100 pinned index-signature, readonly array/tuple, bigint, symbol/unique-symbol, satisfies/const-assertion, tuple metadata, unknown/never, enum and void/undefined witnesses, with six exact runtime/declaration comparisons. Explicit strict unknown preserves legacy opaque compatibility; original Array/ReadonlyArray and homomorphic mapped container forms compose. Remaining: unmeasured computed symbol/index combinations, broader tuple and const/satisfies contexts, unknown/never flow combinations and unmeasured structural combinations beyond K.4.7. |
 | G-T6 | K.4.7 supplies 88 pinned freshness, weak-record, strict function/method variance, optional/undefined, declared variance, rigid generic parameter, predicate/assertion and callable/indexed alias witnesses, with four exact runtime/declaration comparisons. Freshness covers initializer/variable/member/element assignment, direct/member argument and explicit return boundaries, with nested/array/spread/union/generic controls. Existing exactOptionalPropertyTypes/noUncheckedIndexedAccess and readonly write controls remain green. Remaining: unmeasured computed/nested expression contexts, composed variance and broader library structural relations. |
 | G-T7 | K.1.4 adds an original, versioned minimum ECMAScript library selected by target, with owner replacement and no runtime grant. The tested Array/ReadonlyArray, boxed/primitive methods, Object/Function, Promise, collections, Math/JSON/Symbol, errors, iteration and Date/RegExp forms match the same pinned target/lib. Remaining catalogs, constructors, computed iteration, callback result precision and opaque compatibility names are enumerated in `STANDARD_LIBRARY.md`; DOM remains owner supplied. |
 | G-T8 | K.1.5 infers the tested unannotated function/getter/method signatures, unions, void/never completion, async Promise and generator types, with literal widening and a bounded recursion guard. Imports and declaration emit retain those signatures. Remaining: literal freshness and widening in all positions, broader contextual and flow-sensitive inference, unproven unknown getter bodies and declaration precision; K.4/K.8 retain these gaps. |
-| G-T9 | K.5.1 measures abstract classes/members, structural `implements`, explicit `override` and independent `noImplicitOverride`, JavaScript erasure and declarations with 95 pinned programs, five runtime and six declaration witnesses. Twelve further constructor capability controls preserve abstractness, accessibility, inherited parameters and imported/generic constructor signatures through aliases. Remaining: generic heritage/methods and wider static-member rules (K.5.2), class expressions, computed member names, `declare` fields, index signatures and unmeasured combinations. |
+| G-T9 | K.5.1 measures abstract classes/members, structural `implements`, `override`, constructor capabilities and imported aliases. K.5.2 measures generic heritage/methods/defaults, static lexical restrictions, named/anonymous class expressions with captured self types and constructor aliases, computed/string/numeric keys, index signatures and `declare` fields in 160 pinned programs, 30 runtime and 36 exact declaration witnesses. Same-named binders preserve declaration identities and TS2208 origins. ES2020 expression wrappers retain per-evaluation private/static stores, computed keys and contextual names; both field modes reach the direct VM. Remaining: K.5.3 imported-base redeclarations, distinct accessor read/write types, branch definite assignment and unannotated getters; generators/auto-accessors, computed heritage expressions, stateful ES2020 expression keys containing await/yield, decorated class expressions and unmeasured combinations (section 4). |
 | G-T10 | K.1.3 supplies checked value types for the tested named/default/namespace and CommonJS import forms, with inferred variable declarations and module-owned type identities. Remaining: imported-type query parsing; `import type`/`export type` forms beyond the supported ones, `export default <expression>`, value re-exports (`export * from`, `export { x } from`), import attributes, `export as namespace`, `declare module` augmentation and ambient module declarations, global augmentation, triple-slash directives, `unique` declaration merging beyond class+interface+namespace. |
 
 ### 3.2 Emit
@@ -195,34 +195,36 @@ legacy decorators, preserved and automatic JSX are refused with a diagnostic nam
 Generated by `python3 tools/inventory_refusals.py` from the source (malformed-input diagnostics are
 excluded). A refusal is never silent: the program is rejected with this text.
 
-162 refusal sites in 10 areas
+166 refusal sites in 10 areas
 
 ### bin (1)
 
 - `backend/bluets/src/bin/bluetsc/native_cli/mod.rs:187` — BlueTSC configuration or an explicit owner policy refused this input.
 
-### checker (22)
+### checker (24)
 
 - `backend/bluets/src/checker/module/binding/modules.rs:174` — `export =` cannot be used when the module system is ECMAScript; use `--module commonjs`
 - `backend/bluets/src/checker/module/binding/modules.rs:166` — `import x = require()` cannot be used when the module system is ECMAScript; use `--module commonjs`
-- `backend/bluets/src/checker/module/binding.rs:244` — a class member other than a constructor, method, field or accessor \ (a computed, generator or `accessor` member) is not supported yet
+- `backend/bluets/src/checker/module/binding/classes/expressions.rs:184` — a class expression member has no structured runtime representation
 - `backend/bluets/src/checker/module/binding/enums.rs:215` — a computed initializer that refers to the member `{}` must write it \ as `{}.{}`
-- `backend/bluets/src/checker/module/decorators.rs:116` — a decorator can only decorate a method implementation, not an overload
+- `backend/bluets/src/checker/module/decorators.rs:128` — a decorator can only decorate a method implementation, not an overload
 - `backend/bluets/src/checker/module/binding/classes/fields.rs:328` — a field initializer that refers to a later field inside a nested \ function is not supported yet
 - `backend/bluets/src/checker/module/binding/classes/fields.rs:259` — a static block that refers to a later static field inside a nested \ function is not supported yet
-- `backend/bluets/src/checker/module/binding/classes/visibility.rs:499` — cannot prove that access to `{}` is permitted for this receiver
-- `backend/bluets/src/checker/module/binding/classes/visibility.rs:580` — cannot prove that access to `{}` is permitted for this receiver
-- `backend/bluets/src/checker/module/binding/classes/fields.rs:114` — class field `{}` needs a type annotation unless its initializer \ or default is a number, string or boolean literal
-- `backend/bluets/src/checker/module/binding/classes.rs:666` — class tuple rest annotation cannot be specialized within the type budget
+- `backend/bluets/src/checker/module/binding.rs:251` — an unstructured class member (a generator or auto-accessor) is not supported yet
+- `backend/bluets/src/checker/module/binding/classes/visibility.rs:503` — cannot prove that access to `{}` is permitted for this receiver
+- `backend/bluets/src/checker/module/binding/classes/visibility.rs:584` — cannot prove that access to `{}` is permitted for this receiver
+- `backend/bluets/src/checker/module/binding/classes/fields.rs:116` — class field `{}` needs a type annotation unless its initializer \ or default is a number, string or boolean literal
+- `backend/bluets/src/checker/module/binding/classes.rs:500` — class tuple rest annotation cannot be specialized within the type budget
 - `backend/bluets/src/checker/module/binding/names.rs:193` — cyclic tuple spread cannot be resolved
-- `backend/bluets/src/checker/module/binding/classes/fields.rs:393` — definite assignment of `{}` through a branch is not supported yet
-- `backend/bluets/src/checker/module/binding/classes/fields.rs:448` — field `{}` redeclares a member of an imported base class, which is not supported yet
-- `backend/bluets/src/checker/module/binding/classes/accessors.rs:146` — getter `{}` needs a return type annotation; inferring it from the \ body is not supported yet
-- `backend/bluets/src/checker/module/binding.rs:625` — interface heritage {name} must name an interface declaration
-- `backend/bluets/src/checker/module/binding/namespaces.rs:966` — namespace `{source}` has no run-time members; import it with `import type`
-- `backend/bluets/src/checker/module/binding/classes/accessors.rs:367` — redeclaring `{name}` as an accessor over a member of an \ imported base class is not supported yet
-- `backend/bluets/src/checker/module/binding/classes/visibility.rs:302` — redeclaring the protected member `{name}` of an imported base \ class is not supported yet
-- `backend/bluets/src/checker/module/binding/classes/accessors.rs:198` — the getter and setter of `{name}` have different types, \ which is not supported yet
+- `backend/bluets/src/checker/module/decorators.rs:107` — decorators are not valid here: they decorate a class or a class member
+- `backend/bluets/src/checker/module/binding/classes/fields.rs:396` — definite assignment of `{}` through a branch is not supported yet
+- `backend/bluets/src/checker/module/binding/classes/fields.rs:451` — field `{}` redeclares a member of an imported base class, which is not supported yet
+- `backend/bluets/src/checker/module/binding/classes/accessors.rs:140` — getter `{}` needs a return type annotation; inferring it from the \ body is not supported yet
+- `backend/bluets/src/checker/module/binding.rs:614` — interface heritage {name} must name an interface declaration
+- `backend/bluets/src/checker/module/binding/namespaces.rs:1004` — namespace `{source}` has no run-time members; import it with `import type`
+- `backend/bluets/src/checker/module/binding/classes/accessors.rs:361` — redeclaring `{name}` as an accessor over a member of an \ imported base class is not supported yet
+- `backend/bluets/src/checker/module/binding/classes/visibility.rs:304` — redeclaring the protected member `{name}` of an imported base \ class is not supported yet
+- `backend/bluets/src/checker/module/binding/classes/accessors.rs:192` — the getter and setter of `{name}` have different types, \ which is not supported yet
 - `backend/bluets/src/checker/module/binding/names.rs:197` — tuple spread names an unresolved type
 - `backend/bluets/src/checker/module/binding/names.rs:201` — tuple spread requires one concrete tuple or array type
 
@@ -230,51 +232,53 @@ excluded). A refusal is never silent: the program is rejected with this text.
 
 - `backend/bluets/src/diagnostic/mapping.rs:123` — BlueTSC deliberately refuses a documented subset boundary.
 
-### emitter (37)
+### emitter (39)
 
-- `backend/bluets/src/emitter/decorators.rs:455` — `super` in a static member of a class with decorators is not lowered yet
-- `backend/bluets/src/emitter/decorators.rs:697` — a constructor of a decorated class needs its `super(...)` call as a top-level statement
+- `backend/bluets/src/emitter/decorators.rs:465` — `super` in a static member of a class with decorators is not lowered yet
+- `backend/bluets/src/emitter/decorators.rs:707` — a constructor of a decorated class needs its `super(...)` call as a top-level statement
 - `backend/bluets/src/emitter/legacy_decorators.rs:87` — a decorated class inside a namespace is not lowered yet
 - `backend/bluets/src/emitter/decorators.rs:181` — a decorated class or auto-accessor inside a namespace is not lowered yet
-- `backend/bluets/src/emitter/decorators.rs:374` — a decorated private method or accessor is not lowered yet
-- `backend/bluets/src/emitter/decorators.rs:310` — a decorator can only decorate a method implementation, not an overload
+- `backend/bluets/src/emitter/decorators.rs:384` — a decorated private method or accessor is not lowered yet
+- `backend/bluets/src/emitter/decorators.rs:318` — a decorator can only decorate a method implementation, not an overload
 - `backend/bluets/src/emitter/decorators.rs:286` — a decorator expression with a line comment is not lowered
 - `backend/bluets/src/emitter/legacy_decorators.rs:156` — a decorator expression with a line comment is not lowered
-- `backend/bluets/src/emitter/class_lowering.rs:383` — a derived constructor whose class needs statements at its start must have a top-level \ `super(...)` statement to place them after
-- `backend/bluets/src/emitter/class_lowering.rs:82` — a private name in a class inside a namespace is not lowered for this target yet
-- `backend/bluets/src/emitter/class_lowering.rs:392` — a static initializer or block that uses `super` cannot be lowered for this target
+- `backend/bluets/src/emitter/class_lowering.rs:445` — a derived constructor whose class needs statements at its start must have a top-level \ `super(...)` statement to place them after
+- `backend/bluets/src/emitter/class_lowering.rs:107` — a private name in a class inside a namespace is not lowered for this target yet
+- `backend/bluets/src/emitter/class_lowering.rs:454` — a static initializer or block that uses `super` cannot be lowered for this target
+- `backend/bluets/src/emitter/class_lowering/expressions.rs:46` — an ES2020 class expression with state and an await/yield key needs lexical suspension lowering
 - `backend/bluets/src/emitter/namespaces.rs:344` — an exported namespace variable with several declarators is not supported yet
 - `backend/bluets/src/emitter/namespaces.rs:359` — an exported namespace variable's name could not be located
 - `backend/bluets/src/emitter/commonjs.rs:242` — an exported variable with several declarators is not supported in CommonJS output yet
 - `backend/bluets/src/emitter/commonjs.rs:259` — an exported variable's name could not be located
 - `backend/bluets/src/emitter/legacy_decorators.rs:215` — auto-accessors are not combined with experimentalDecorators
-- `backend/bluets/src/emitter/classes.rs:61` — declaration output for this string literal field needs an annotation
-- `backend/bluets/src/emitter/classes.rs:282` — declaration output requires a class field type
-- `backend/bluets/src/emitter/classes.rs:219` — declaration output requires a parameter property type
-- `backend/bluets/src/emitter/classes.rs:405` — declaration output requires an explicit class method return type
-- `backend/bluets/src/emitter/classes.rs:359` — declaration output requires an explicit getter return type
+- `backend/bluets/src/emitter/decorators.rs:300` — computed or literal member names in decorator lowering are not supported yet
+- `backend/bluets/src/emitter/classes.rs:111` — declaration output for this string literal field needs an annotation
+- `backend/bluets/src/emitter/classes.rs:368` — declaration output requires a class field type
+- `backend/bluets/src/emitter/classes.rs:281` — declaration output requires a parameter property type
+- `backend/bluets/src/emitter/classes.rs:491` — declaration output requires an explicit class method return type
+- `backend/bluets/src/emitter/classes.rs:445` — declaration output requires an explicit getter return type
 - `backend/bluets/src/emitter/legacy_decorators.rs:581` — decorator metadata cannot serialize `{name}`: only types declared in this module are supported
 - `backend/bluets/src/emitter/legacy_decorators.rs:430` — decorator metadata needs this accessor's type annotation
 - `backend/bluets/src/emitter/legacy_decorators.rs:378` — decorator metadata needs this field's type
 - `backend/bluets/src/emitter/legacy_decorators.rs:391` — decorator metadata needs this method's return type annotation
 - `backend/bluets/src/emitter/decorators.rs:187` — decorators and auto-accessors are lowered for target ES2022 with class fields defined (the default); other targets are not supported yet
-- `backend/bluets/src/emitter/decorators.rs:349` — decorators are not valid here
+- `backend/bluets/src/emitter/decorators.rs:359` — decorators are not valid here
 - `backend/bluets/src/emitter/legacy_decorators.rs:263` — decorators cannot be applied to both the getter and the setter of the same name
 - `backend/bluets/src/emitter/legacy_decorators.rs:246` — decorators on private names are not valid with experimentalDecorators
 - `backend/bluets/src/emitter/private_lowering.rs:657` — the identifier `{helper}` is reserved for the private-name helpers
 - `backend/bluets/src/emitter/private_lowering.rs:167` — the identifier `{variable}` is needed to lower this class's private names but is already used
-- `backend/bluets/src/emitter/decorators.rs:358` — this decorated member shape (computed or literal name, or a form the class parser does not structure) is not lowered
+- `backend/bluets/src/emitter/decorators.rs:368` — this decorated member shape (computed or literal name, or a form the class parser does not structure) is not lowered
 - `backend/bluets/src/emitter/legacy_decorators.rs:226` — this decorated member shape is not lowered
-- `backend/bluets/src/emitter/decorators.rs:303` — this decorated method shape is not lowered
+- `backend/bluets/src/emitter/decorators.rs:311` — this decorated method shape is not lowered
 - `backend/bluets/src/emitter/private_lowering.rs:326` — this private member could not be located in its own text
 - `backend/bluets/src/emitter/private_lowering.rs:318` — this private member has no lowering
 - `backend/bluets/src/emitter/private_lowering.rs:564` — {what} cannot be lowered for a target below ES2022
 
 ### expression (23)
 
-- `backend/bluets-bluejs/src/expression.rs:349` — a unary expression cannot be the unparenthesized base of exponentiation
-- `backend/bluets-bluejs/src/expression.rs:504` — array literals cannot combine holes and spread elements in the v1 direct bridge subset
-- `backend/bluets-bluejs/src/expression.rs:515` — array literals cannot combine holes and spread elements in the v1 direct bridge subset
+- `backend/bluets-bluejs/src/expression.rs:377` — a unary expression cannot be the unparenthesized base of exponentiation
+- `backend/bluets-bluejs/src/expression.rs:551` — array literals cannot combine holes and spread elements in the v1 direct bridge subset
+- `backend/bluets-bluejs/src/expression.rs:562` — array literals cannot combine holes and spread elements in the v1 direct bridge subset
 - `backend/bluets-bluejs/src/expression/calls.rs:127` — only a direct identifier receiver may use optional dot access
 - `backend/bluets-bluejs/src/expression/calls.rs:140` — only an identifier property is in the first optional dot subset
 - `backend/bluets-bluejs/src/expression/calls.rs:53` — only constructor calls with parentheses are in the v1 direct bridge subset
@@ -283,29 +287,29 @@ excluded). A refusal is never silent: the program is rejected with this text.
 - `backend/bluets-bluejs/src/expression/writes.rs:128` — only identifier and property update targets are in the v1 direct bridge subset
 - `backend/bluets-bluejs/src/expression/calls.rs:21` — only identifier constructors are in the v1 direct bridge subset
 - `backend/bluets-bluejs/src/expression/calls.rs:161` — only identifier dot property names are in the v1 direct bridge subset
-- `backend/bluets-bluejs/src/expression.rs:627` — only identifier object keys may use shorthand; methods are not in the v1 direct bridge subset
-- `backend/bluets-bluejs/src/expression.rs:609` — only identifier, string, numeric, and computed object property keys are in the v1 direct bridge subset
-- `backend/bluets-bluejs/src/expression.rs:404` — only property delete targets are in the v1 direct bridge subset
-- `backend/bluets-bluejs/src/expression.rs:103` — parentheses are required when mixing `??` with `&&` or `||`
-- `backend/bluets-bluejs/src/expression.rs:111` — parentheses are required when mixing `??` with `&&` or `||`
-- `backend/bluets-bluejs/src/expression.rs:857` — unsupported expression token `?.` in a template substitution
-- `backend/bluets-bluejs/src/expression.rs:30` — unsupported expression token `{}`
-- `backend/bluets-bluejs/src/expression.rs:451` — unsupported keyword `{}` in a runtime expression
-- `backend/bluets-bluejs/src/expression.rs:436` — unsupported numeric literal
-- `backend/bluets-bluejs/src/expression.rs:600` — unsupported numeric object key
-- `backend/bluets-bluejs/src/expression.rs:478` — unsupported runtime expression token `{}`
-- `backend/bluets-bluejs/src/expression.rs:730` — unsupported string escape in the v1 direct bridge subset
+- `backend/bluets-bluejs/src/expression.rs:674` — only identifier object keys may use shorthand; methods are not in the v1 direct bridge subset
+- `backend/bluets-bluejs/src/expression.rs:656` — only identifier, string, numeric, and computed object property keys are in the v1 direct bridge subset
+- `backend/bluets-bluejs/src/expression.rs:432` — only property delete targets are in the v1 direct bridge subset
+- `backend/bluets-bluejs/src/expression.rs:131` — parentheses are required when mixing `??` with `&&` or `||`
+- `backend/bluets-bluejs/src/expression.rs:139` — parentheses are required when mixing `??` with `&&` or `||`
+- `backend/bluets-bluejs/src/expression.rs:904` — unsupported expression token `?.` in a template substitution
+- `backend/bluets-bluejs/src/expression.rs:58` — unsupported expression token `{}`
+- `backend/bluets-bluejs/src/expression.rs:498` — unsupported keyword `{}` in a runtime expression
+- `backend/bluets-bluejs/src/expression.rs:483` — unsupported numeric literal
+- `backend/bluets-bluejs/src/expression.rs:647` — unsupported numeric object key
+- `backend/bluets-bluejs/src/expression.rs:525` — unsupported runtime expression token `{}`
+- `backend/bluets-bluejs/src/expression.rs:777` — unsupported string escape in the v1 direct bridge subset
 
 ### jsx_direct (8)
 
-- `backend/bluets-bluejs/src/jsx_direct.rs:110` — JSX needs the `jsx` option
-- `backend/bluets-bluejs/src/jsx_direct.rs:275` — a JSX element has fewer embedded expressions than its syntax
-- `backend/bluets-bluejs/src/jsx_direct.rs:132` — a JSX element is missing its expression group
-- `backend/bluets-bluejs/src/jsx_direct.rs:140` — a JSX element is missing its expression group
-- `backend/bluets-bluejs/src/jsx_direct.rs:150` — a JSX element's expression group is unterminated
-- `backend/bluets-bluejs/src/jsx_direct.rs:113` — cannot use JSX unless the `jsx` option is provided
-- `backend/bluets-bluejs/src/jsx_direct.rs:115` — preserved JSX is not executable; choose `jsx: react` for direct execution
-- `backend/bluets-bluejs/src/jsx_direct.rs:121` — the automatic JSX runtime imports a runtime module, which the direct bridge does not link; use the classic mode with an in-program factory
+- `backend/bluets-bluejs/src/jsx_direct.rs:116` — JSX needs the `jsx` option
+- `backend/bluets-bluejs/src/jsx_direct.rs:281` — a JSX element has fewer embedded expressions than its syntax
+- `backend/bluets-bluejs/src/jsx_direct.rs:138` — a JSX element is missing its expression group
+- `backend/bluets-bluejs/src/jsx_direct.rs:146` — a JSX element is missing its expression group
+- `backend/bluets-bluejs/src/jsx_direct.rs:156` — a JSX element's expression group is unterminated
+- `backend/bluets-bluejs/src/jsx_direct.rs:119` — cannot use JSX unless the `jsx` option is provided
+- `backend/bluets-bluejs/src/jsx_direct.rs:121` — preserved JSX is not executable; choose `jsx: react` for direct execution
+- `backend/bluets-bluejs/src/jsx_direct.rs:127` — the automatic JSX runtime imports a runtime module, which the direct bridge does not link; use the classic mode with an in-program factory
 
 ### lib (11)
 
@@ -323,38 +327,38 @@ excluded). A refusal is never silent: the program is rejected with this text.
 
 ### lowering (32)
 
-- `backend/bluets-bluejs/src/lowering/classes.rs:29` — BlueJS implements the standard decorators; `experimentalDecorators` programs run as `bluetsc build --experimental-decorators` output
-- `backend/bluets-bluejs/src/lowering.rs:227` — BlueTS did not retain a canonical target for this runtime import
-- `backend/bluets-bluejs/src/lowering.rs:52` — ESM default exports require the module bridge
-- `backend/bluets-bluejs/src/lowering.rs:58` — ESM named exports require the module bridge
-- `backend/bluets-bluejs/src/lowering/classes.rs:271` — a derived constructor needs a top-level super call for the statements that must follow it
-- `backend/bluets-bluejs/src/lowering.rs:576` — a nested function declaration is outside the direct try subset
-- `backend/bluets-bluejs/src/lowering.rs:629` — a nested function declaration is outside the direct while subset
-- `backend/bluets-bluejs/src/lowering.rs:404` — a rest parameter must be the final direct function parameter
+- `backend/bluets-bluejs/src/lowering/classes.rs:50` — BlueJS implements the standard decorators; `experimentalDecorators` programs run as `bluetsc build --experimental-decorators` output
+- `backend/bluets-bluejs/src/lowering.rs:229` — BlueTS did not retain a canonical target for this runtime import
+- `backend/bluets-bluejs/src/lowering.rs:53` — ESM default exports require the module bridge
+- `backend/bluets-bluejs/src/lowering.rs:59` — ESM named exports require the module bridge
+- `backend/bluets-bluejs/src/lowering/classes.rs:334` — a derived constructor needs a top-level super call for the statements that must follow it
+- `backend/bluets-bluejs/src/lowering.rs:580` — a nested function declaration is outside the direct try subset
+- `backend/bluets-bluejs/src/lowering.rs:633` — a nested function declaration is outside the direct while subset
+- `backend/bluets-bluejs/src/lowering.rs:407` — a rest parameter must be the final direct function parameter
 - `backend/bluets-bluejs/src/lowering/namespaces.rs:46` — an ambient const enum needs its uses inlined, which the direct bridge does not do
-- `backend/bluets-bluejs/src/lowering.rs:97` — an exported class requires the module bridge
-- `backend/bluets-bluejs/src/lowering.rs:125` — an exported enum requires the module bridge
-- `backend/bluets-bluejs/src/lowering.rs:103` — an exported namespace requires the module bridge
-- `backend/bluets-bluejs/src/lowering.rs:557` — block-local declarations are outside the direct try subset
-- `backend/bluets-bluejs/src/lowering.rs:582` — body syntax is outside the direct try subset
-- `backend/bluets-bluejs/src/lowering.rs:70` — declared or exported variables require a non-script bridge mode
-- `backend/bluets-bluejs/src/lowering.rs:262` — declared or overloaded functions cannot be lowered to a direct module
-- `backend/bluets-bluejs/src/lowering.rs:256` — declared variables cannot be lowered to a direct module
-- `backend/bluets-bluejs/src/lowering.rs:86` — declared, overloaded, or exported functions require a non-script bridge mode
-- `backend/bluets-bluejs/src/lowering/classes.rs:120` — decorators and auto-accessors need class fields to be defined (the default for ES2022)
-- `backend/bluets-bluejs/src/lowering.rs:398` — destructured parameters are not yet in the v1 direct bridge subset
-- `backend/bluets-bluejs/src/lowering.rs:471` — function body syntax is not yet in the v1 direct bridge subset
-- `backend/bluets-bluejs/src/lowering.rs:635` — loop body syntax is outside the direct while subset
-- `backend/bluets-bluejs/src/lowering.rs:608` — loop-local declarations are outside the direct while subset
-- `backend/bluets-bluejs/src/lowering.rs:563` — loops are outside the direct try subset
-- `backend/bluets-bluejs/src/lowering.rs:465` — nested function declarations are not yet in the v1 direct bridge subset
-- `backend/bluets-bluejs/src/lowering.rs:614` — nested loops are outside the direct while subset
-- `backend/bluets-bluejs/src/lowering.rs:569` — nested try statements are outside the direct try subset
-- `backend/bluets-bluejs/src/lowering.rs:218` — runtime imports require the direct module-graph bridge
-- `backend/bluets-bluejs/src/lowering.rs:64` — runtime imports require the module bridge
-- `backend/bluets-bluejs/src/lowering/classes.rs:147` — this class member has no direct lowering
-- `backend/bluets-bluejs/src/lowering/namespaces.rs:376` — this declaration cannot appear in a namespace body lowered directly
-- `backend/bluets-bluejs/src/lowering.rs:620` — try statements are outside the direct while body subset
+- `backend/bluets-bluejs/src/lowering.rs:98` — an exported class requires the module bridge
+- `backend/bluets-bluejs/src/lowering.rs:126` — an exported enum requires the module bridge
+- `backend/bluets-bluejs/src/lowering.rs:104` — an exported namespace requires the module bridge
+- `backend/bluets-bluejs/src/lowering.rs:561` — block-local declarations are outside the direct try subset
+- `backend/bluets-bluejs/src/lowering.rs:586` — body syntax is outside the direct try subset
+- `backend/bluets-bluejs/src/lowering.rs:71` — declared or exported variables require a non-script bridge mode
+- `backend/bluets-bluejs/src/lowering.rs:264` — declared or overloaded functions cannot be lowered to a direct module
+- `backend/bluets-bluejs/src/lowering.rs:258` — declared variables cannot be lowered to a direct module
+- `backend/bluets-bluejs/src/lowering.rs:87` — declared, overloaded, or exported functions require a non-script bridge mode
+- `backend/bluets-bluejs/src/lowering/classes.rs:167` — decorators and auto-accessors need class fields to be defined (the default for ES2022)
+- `backend/bluets-bluejs/src/lowering.rs:401` — destructured parameters are not yet in the v1 direct bridge subset
+- `backend/bluets-bluejs/src/lowering.rs:474` — function body syntax is not yet in the v1 direct bridge subset
+- `backend/bluets-bluejs/src/lowering.rs:639` — loop body syntax is outside the direct while subset
+- `backend/bluets-bluejs/src/lowering.rs:612` — loop-local declarations are outside the direct while subset
+- `backend/bluets-bluejs/src/lowering.rs:567` — loops are outside the direct try subset
+- `backend/bluets-bluejs/src/lowering.rs:468` — nested function declarations are not yet in the v1 direct bridge subset
+- `backend/bluets-bluejs/src/lowering.rs:618` — nested loops are outside the direct while subset
+- `backend/bluets-bluejs/src/lowering.rs:573` — nested try statements are outside the direct try subset
+- `backend/bluets-bluejs/src/lowering.rs:220` — runtime imports require the direct module-graph bridge
+- `backend/bluets-bluejs/src/lowering.rs:65` — runtime imports require the module bridge
+- `backend/bluets-bluejs/src/lowering/classes.rs:199` — this class member has no direct lowering
+- `backend/bluets-bluejs/src/lowering/namespaces.rs:377` — this declaration cannot appear in a namespace body lowered directly
+- `backend/bluets-bluejs/src/lowering.rs:624` — try statements are outside the direct while body subset
 
 ### namespace_analysis (1)
 
@@ -363,20 +367,20 @@ excluded). A refusal is never silent: the program is rejected with this text.
 ### parser (26)
 
 - `backend/bluets/src/parser/declarations/erasure_audit.rs:83` — TypeScript annotations on functions nested in expressions are not supported yet
-- `backend/bluets/src/parser/declarations.rs:414` — TypeScript assertions outside a supported declaration are not in the initial BlueTS matrix
-- `backend/bluets/src/parser/declarations.rs:323` — `{}` is not in the initial BlueTS matrix
-- `backend/bluets/src/parser/declarations.rs:270` — an async enum is not valid
-- `backend/bluets/src/parser/declarations.rs:282` — an async enum is not valid
+- `backend/bluets/src/parser/declarations.rs:418` — TypeScript assertions outside a supported declaration are not in the initial BlueTS matrix
+- `backend/bluets/src/parser/declarations.rs:327` — `{}` is not in the initial BlueTS matrix
+- `backend/bluets/src/parser/declarations/class.rs:111` — a computed class heritage expression is not supported yet
+- `backend/bluets/src/parser/declarations.rs:274` — an async enum is not valid
+- `backend/bluets/src/parser/declarations.rs:286` — an async enum is not valid
 - `backend/bluets/src/parser/declarations/typed_declarations.rs:192` — an async generator is not supported yet
-- `backend/bluets/src/parser/declarations.rs:307` — an async namespace is not valid
+- `backend/bluets/src/parser/declarations.rs:311` — an async namespace is not valid
 - `backend/bluets/src/parser/declarations/enums.rs:53` — an enum member name with an escape sequence is not supported yet
-- `backend/bluets/src/parser/declarations.rs:153` — an import, `export default`, `export =`, `export *` or export list inside a namespace body is not supported
-- `backend/bluets/src/parser/declarations.rs:167` — anonymous default function exports are not in the initial BlueTS matrix
-- `backend/bluets/src/parser/declarations.rs:255` — declared and async classes are not in the first class form
-- `backend/bluets/src/parser/declarations.rs:338` — decorators and TSX/JSX are not in the initial BlueTS matrix
+- `backend/bluets/src/parser/declarations.rs:157` — an import, `export default`, `export =`, `export *` or export list inside a namespace body is not supported
+- `backend/bluets/src/parser/declarations.rs:171` — anonymous default function exports are not in the initial BlueTS matrix
+- `backend/bluets/src/parser/declarations.rs:259` — declared and async classes are not in the first class form
+- `backend/bluets/src/parser/declarations.rs:342` — decorators and TSX/JSX are not in the initial BlueTS matrix
 - `backend/bluets/src/parser/declarations/imports_exports.rs:293` — default aliases in named value exports are not in the initial BlueTS matrix
-- `backend/bluets/src/parser/declarations.rs:186` — default export expressions are not in the initial BlueTS matrix
-- `backend/bluets/src/parser/declarations/class.rs:87` — generic and computed class heritage is not in the first class form
+- `backend/bluets/src/parser/declarations.rs:190` — default export expressions are not in the initial BlueTS matrix
 - `backend/bluets/src/parser/declarations/typed_declarations.rs:55` — interface heritage supports only named interface types
 - `backend/bluets/src/parser/declarations/imports_exports.rs:147` — mixed value/type imports are not in the initial BlueTS matrix; use a separate `import type` declaration
 - `backend/bluets/src/parser/declarations/imports_exports.rs:183` — only `export = name;` of a local declaration is supported
@@ -385,6 +389,6 @@ excluded). A refusal is never silent: the program is rejected with this text.
 - `backend/bluets/src/parser/declarations/typed_declarations.rs:371` — this destructuring pattern is not supported yet
 - `backend/bluets/src/parser/type_syntax.rs:314` — tuple rest element must have an array or named tuple annotation
 - `backend/bluets/src/parser/declarations/imports_exports.rs:278` — type-only bindings in a value export are not in the initial BlueTS matrix; use `export type`
-- `backend/bluets/src/parser/declarations/source_edits.rs:85` — typed arrow parameters are not in the initial BlueTS matrix
-- `backend/bluets/src/parser/declarations.rs:199` — value re-exports from another module are not in the initial BlueTS matrix
+- `backend/bluets/src/parser/declarations/source_edits.rs:88` — typed arrow parameters are not in the initial BlueTS matrix
+- `backend/bluets/src/parser/declarations.rs:203` — value re-exports from another module are not in the initial BlueTS matrix
 - `backend/bluets/src/parser/declarations/imports_exports.rs:309` — value re-exports from another module are not in the initial BlueTS matrix

@@ -28,33 +28,12 @@ impl<'a> ModuleChecker<'a> {
         let previous_parameters = self.type_parameters.clone();
         let previous_types = self.types.clone();
         let previous_bound = self.bound_parameters.clone();
-        for parameter in &function.type_parameters {
-            self.bound_parameters
-                .insert(parameter.name.clone(), parameter.clone());
-            self.types.insert(
-                parameter.name.clone(),
-                TypeDefinition {
-                    kind: TypeDefinitionKind::Parameter,
-                    parameters: Vec::new(),
-                    value: parameter.constraint.clone().unwrap_or(Type::StrictUnknown),
-                },
-            );
+        for value in scope.values_mut() {
+            *value = canonical_parameter_references(value, &self.types);
         }
         let previous_spreads = self.allowed_tuple_spread_parameters.clone();
-        self.allowed_tuple_spread_parameters = function
-            .type_parameters
-            .iter()
-            .filter(|parameter| {
-                matches!(parameter.constraint, Some(Type::Array(_) | Type::Tuple(_)))
-            })
-            .map(|parameter| {
-                (
-                    parameter.name.clone(),
-                    parameter.constraint.clone().expect("filtered constraint"),
-                )
-            })
-            .collect();
-        self.check_type_parameters(&function.type_parameters);
+        self.allowed_tuple_spread_parameters = BTreeMap::new();
+        self.bind_lexical_type_parameters(&function.type_parameters);
         self.check_function_flags(function, &scope);
         for (index, parameter) in function.parameters.iter().enumerate() {
             if parameter.rest && index + 1 != function.parameters.len() {
@@ -129,6 +108,7 @@ impl<'a> ModuleChecker<'a> {
                     }),
                 None => Type::Unknown,
             };
+            let parameter_type = canonical_parameter_references(&parameter_type, &self.types);
             match &parameter.pattern {
                 // A destructured parameter binds the names in its pattern.
                 Some(pattern) => {
@@ -155,7 +135,10 @@ impl<'a> ModuleChecker<'a> {
                 .annotation
                 .clone()
                 .unwrap_or_else(|| self.infer_expression(&local.initializer, &scope));
-            scope.insert(local.name.clone(), inferred);
+            scope.insert(
+                local.name.clone(),
+                canonical_parameter_references(&inferred, &self.types),
+            );
         }
         self.check_flow_initializers(function, &scope);
         hoist_local_functions(&function.body, &mut scope);

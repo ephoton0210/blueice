@@ -29,6 +29,7 @@ impl Parser {
             edits: Vec::new(),
             generic_call_type_arguments: BTreeMap::new(),
             nested_functions: BTreeMap::new(),
+            class_expressions: BTreeMap::new(),
             type_references: Vec::new(),
             expression_variable_types: BTreeMap::new(),
             type_assertions: BTreeMap::new(),
@@ -64,17 +65,20 @@ impl Parser {
         }
         if self.diagnostics.is_empty() {
             self.edits.sort_by_key(|edit| (edit.start, edit.end));
-            Ok(Module {
+            let mut module = Module {
                 id: self.id,
                 source: self.source,
                 declarations: self.declarations,
                 edits: self.edits,
                 generic_call_type_arguments: self.generic_call_type_arguments,
                 nested_functions: self.nested_functions,
+                class_expressions: self.class_expressions,
                 type_references: self.type_references,
                 expression_variable_types: self.expression_variable_types,
                 type_assertions: self.type_assertions,
-            })
+            };
+            module.bind_class_expression_captures();
+            Ok(module)
         } else {
             Err(self.diagnostics)
         }
@@ -431,6 +435,8 @@ impl Parser {
 
 #[path = "declarations/class.rs"]
 mod class;
+#[path = "declarations/class_expressions.rs"]
+mod class_expressions;
 #[path = "declarations/enums.rs"]
 mod enums;
 #[path = "declarations/erasure_audit.rs"]

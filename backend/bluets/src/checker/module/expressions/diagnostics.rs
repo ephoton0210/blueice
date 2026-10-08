@@ -352,6 +352,7 @@ impl ModuleChecker<'_> {
         expected: &Type,
     ) {
         if self.enforce_types {
+            let origin = self.parameter_constraint_origin(actual, expected);
             let detail = self
                 .compatibility_detail(actual, expected)
                 .unwrap_or_else(|| {
@@ -362,8 +363,19 @@ impl ModuleChecker<'_> {
                 .last_mut()
                 .and_then(|diagnostic| diagnostic.typescript.as_mut())
             {
-                if matches!(counterpart.code, 2322 | 2345 | 2375) {
+                if matches!(counterpart.code, 2322 | 2345 | 2375 | 2719) {
                     counterpart.message.push_str(&detail);
+                    if let Some((name, span)) = origin {
+                        let related = crate::TypeScriptRelatedInformation {
+                            code: 2208,
+                            message: format!(
+                                "This type parameter might need an `extends {name}` constraint."
+                            ),
+                            span,
+                            position: None,
+                        };
+                        counterpart.related_information.push(related);
+                    }
                 }
             }
         }

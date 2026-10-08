@@ -65,6 +65,7 @@ pub(super) struct ModuleChecker<'a> {
     /// Arrow functions already checked, by start offset, so an expression
     /// visited from several checks reports its body once.
     checked_nested_functions: BTreeSet<usize>,
+    checked_class_expressions: BTreeSet<usize>,
     /// Whether the function being checked is `async`; `None` at module level.
     async_context: Option<bool>,
     /// What the generator being checked may yield, return and receive.
@@ -124,5 +125,8 @@ mod decorators;
 mod expressions;
 mod jsx;
 mod return_inference;
-pub(in crate::checker) use binding::{class_export, class_instance_type};
+pub(in crate::checker) use binding::{
+    class_definition_parameters, class_export, class_instance_type, formal_class_type,
+    heritage_substitutions, specialize_constructor,
+};
 pub(crate) use binding::{ExportedValue, NamespaceExport};

@@ -49,7 +49,12 @@ impl ModuleChecker<'_> {
             .unwrap_or_default()
             .iter()
             .filter(|t| t.is("this"))
-            {
+            .filter(|token| {
+                let position = function.span.start + token.start;
+                !self.module.class_expressions().any(|expression| {
+                    expression.class.span.start <= position && position < expression.class.span.end
+                })
+            }) {
                 self.type_error(
                     &SourceSpan::new(
                         &self.module.id,

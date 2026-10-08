@@ -229,6 +229,9 @@ impl ModuleChecker<'_> {
                 ..
             } => {
                 let previous = self.type_parameters.clone();
+                for parameter in type_parameters {
+                    self.type_parameters.remove(&parameter.name);
+                }
                 self.check_type_parameters(type_parameters);
                 self.check_type(
                     &Type::Function {
@@ -316,6 +319,19 @@ impl ModuleChecker<'_> {
             .count();
         if arguments.len() < required || arguments.len() > definition.parameters.len() {
             let total = definition.parameters.len();
+            let display_name = if definition.kind == TypeDefinitionKind::Class && total > 0 {
+                format!(
+                    "{name}<{}>",
+                    definition
+                        .parameters
+                        .iter()
+                        .map(|parameter| crate::parser::source_type_name(&parameter.name))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+            } else {
+                name.into()
+            };
             self.typescript_type_error(
                 span,
                 format!(
@@ -331,7 +347,7 @@ impl ModuleChecker<'_> {
                 } else {
                     2707
                 },
-                vec![name.into(), required.to_string(), total.to_string()],
+                vec![display_name, required.to_string(), total.to_string()],
             );
         }
         for argument in arguments {

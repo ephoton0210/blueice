@@ -91,16 +91,23 @@ pub(super) fn specialize_class_rest_parameters(
     Ok(specialized)
 }
 
-pub(super) fn nearest_inherited_method<'a>(
-    declarations: &'a [Declaration],
-    types: &'a BTreeMap<String, TypeDefinition>,
-    values: &'a BTreeMap<String, Type>,
+pub(super) struct OwnedInheritedMethod {
+    pub(super) base_name: String,
+    pub(super) parameters: Vec<Parameter>,
+    pub(super) return_type: Option<Type>,
+}
+
+pub(super) fn nearest_inherited_method(
+    declarations: &[Declaration],
+    types: &BTreeMap<String, TypeDefinition>,
+    values: &BTreeMap<String, Type>,
     constructors: &BTreeMap<String, ClassConstructorBinding>,
     class: &ClassDeclaration,
     group: &ClassMethodGroup,
     max_edges: usize,
-) -> Option<InheritedMethod<'a>> {
+) -> Option<OwnedInheritedMethod> {
     let mut base_name = class.extends_name.clone();
+    let mut arguments = class.extends_arguments.clone();
     let mut visited = BTreeSet::new();
     for _ in 0..max_edges {
         let name = base_name?;
@@ -113,6 +120,18 @@ pub(super) fn nearest_inherited_method<'a>(
             };
             (base.name == name && base.name_span.start < class.name_span.start).then_some(base)
         });
+        let parameters = base
+            .map(|base| base.type_parameters.as_slice())
+            .or_else(|| {
+                types
+                    .get(&name)
+                    .map(|definition| definition.parameters.as_slice())
+            })?;
+        let substitutions = super::super::heritage::heritage_substitutions(parameters, &arguments);
+        let label = type_label(&Type::Named {
+            name: name.clone(),
+            arguments: arguments.clone(),
+        });
         if let Some(base) = base {
             if let Some(candidate) = base.method_groups.iter().find(|candidate| {
                 candidate.name == group.name && candidate.is_static == group.is_static
@@ -120,20 +139,43 @@ pub(super) fn nearest_inherited_method<'a>(
                 if !candidate.signature_member_indices.is_empty() {
                     return None;
                 }
-                return candidate
+                let method = candidate
                     .implementation_member_index
-                    .and_then(|index| base.members[index].method.as_ref())
-                    .map(|method| InheritedMethod {
-                        base_name: base.name.clone(),
-                        parameters: &method.parameters,
-                        return_type: method.return_type.as_ref(),
-                    });
+                    .and_then(|index| base.members[index].method.as_ref())?;
+                let value = if method.type_parameters.is_empty() {
+                    Type::Function {
+                        parameters: method.parameters.clone(),
+                        result: Box::new(method.return_type.clone().unwrap_or(Type::Unknown)),
+                    }
+                } else {
+                    Type::GenericFunction {
+                        type_parameters: method.type_parameters.clone(),
+                        parameters: method.parameters.clone(),
+                        result: Box::new(method.return_type.clone().unwrap_or(Type::Unknown)),
+                        span: method.span.clone(),
+                    }
+                };
+                let (Type::Function { parameters, result }
+                | Type::GenericFunction {
+                    parameters, result, ..
+                }) = substitute_type(&value, &substitutions)
+                else {
+                    unreachable!()
+                };
+                return Some(OwnedInheritedMethod {
+                    base_name: label,
+                    parameters,
+                    return_type: method.return_type.as_ref().map(|_| *result),
+                });
             }
+            arguments = base
+                .extends_arguments
+                .iter()
+                .map(|value| substitute_type(value, &substitutions))
+                .collect();
             base_name = base.extends_name.clone();
             continue;
         }
-        // A forward local base has its own heritage diagnostic. Only a bound
-        // value-imported class can provide a runtime base surface here.
         if declarations.iter().any(
             |declaration| matches!(declaration, Declaration::Class(local) if local.name == name),
         ) || !constructors.contains_key(&name)
@@ -155,13 +197,17 @@ pub(super) fn nearest_inherited_method<'a>(
         if matching.next().is_some() {
             return None;
         }
-        let Type::Function { parameters, result } = &field.value else {
+        let (Type::Function { parameters, result }
+        | Type::GenericFunction {
+            parameters, result, ..
+        }) = substitute_type(&field.value, &substitutions)
+        else {
             return None;
         };
-        return Some(InheritedMethod {
-            base_name: name,
+        return Some(OwnedInheritedMethod {
+            base_name: label,
             parameters,
-            return_type: Some(result),
+            return_type: Some(*result),
         });
     }
     None

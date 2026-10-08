@@ -13,17 +13,21 @@ impl<'a> ModuleChecker<'a> {
         scope: &BTreeMap<String, Type>,
         span: &SourceSpan,
     ) {
-        let [base, dot, property] = tokens else {
+        let [receiver @ .., dot, property] = tokens else {
             return;
         };
-        if base.kind != TokenKind::Identifier && !base.is("this")
+        let Some(base) = receiver.first() else {
+            return;
+        };
+        if (receiver.len() == 1 && base.kind != TokenKind::Identifier && !base.is("this"))
+            || (receiver.len() > 1 && constructor_call_parts(receiver).is_none())
             || !dot.is(".")
             || !matches!(property.kind, TokenKind::Identifier | TokenKind::Keyword)
         {
             return;
         }
-        let value = self.infer_expression(std::slice::from_ref(base), scope);
-        if self.flow_nullish_error(base, &value) {
+        let value = self.infer_expression(receiver, scope);
+        if receiver.len() == 1 && self.flow_nullish_error(base, &value) {
             return;
         }
         let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
@@ -52,7 +56,7 @@ impl<'a> ModuleChecker<'a> {
                     diagnostic_span,
                     &value,
                     &property.text,
-                    Some(&base.text),
+                    (receiver.len() == 1).then_some(base.text.as_str()),
                 );
             }
             PropertyType::Exhausted => self.type_error(

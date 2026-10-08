@@ -14,17 +14,20 @@
 
 use super::*;
 
-struct Signature<'a> {
-    parameters: &'a [Parameter],
-    return_type: &'a Type,
+struct Signature {
+    parameters: Vec<Parameter>,
+    return_type: Type,
+    type_parameters: Vec<TypeParameter>,
+    span: SourceSpan,
 }
 
 /// The externally visible signatures of one method group, or `None` when a
 /// signature is outside the compared subset.
-fn visible_signatures<'a>(
-    class: &'a ClassDeclaration,
+fn visible_signatures(
+    class: &ClassDeclaration,
     group: &ClassMethodGroup,
-) -> Option<Vec<Signature<'a>>> {
+    substitutions: &BTreeMap<String, Type>,
+) -> Option<Vec<Signature>> {
     let indices: Vec<usize> = if group.signature_member_indices.is_empty() {
         vec![group.implementation_member_index?]
     } else {
@@ -39,9 +42,40 @@ fn visible_signatures<'a>(
                 .parameters
                 .iter()
                 .all(|parameter| !parameter.rest && parameter.annotation.is_some())
-                .then_some(Signature {
-                    parameters: &method.parameters,
-                    return_type,
+                .then(|| {
+                    let value = if method.type_parameters.is_empty() {
+                        Type::Function {
+                            parameters: method.parameters.clone(),
+                            result: Box::new(return_type.clone()),
+                        }
+                    } else {
+                        Type::GenericFunction {
+                            type_parameters: method.type_parameters.clone(),
+                            parameters: method.parameters.clone(),
+                            result: Box::new(return_type.clone()),
+                            span: method.span.clone(),
+                        }
+                    };
+                    let value = substitute_type(&value, substitutions);
+                    let type_parameters = match &value {
+                        Type::GenericFunction {
+                            type_parameters, ..
+                        } => type_parameters.clone(),
+                        _ => Vec::new(),
+                    };
+                    let (Type::Function { parameters, result }
+                    | Type::GenericFunction {
+                        parameters, result, ..
+                    }) = value
+                    else {
+                        unreachable!()
+                    };
+                    Signature {
+                        parameters,
+                        return_type: *result,
+                        type_parameters,
+                        span: method.span.clone(),
+                    }
                 })
         })
         .collect()
@@ -53,8 +87,13 @@ fn nearest_local_group<'a>(
     class: &ClassDeclaration,
     group: &ClassMethodGroup,
     max_edges: usize,
-) -> Option<(&'a ClassDeclaration, &'a ClassMethodGroup)> {
+) -> Option<(
+    &'a ClassDeclaration,
+    &'a ClassMethodGroup,
+    BTreeMap<String, Type>,
+)> {
     let mut base_name = class.extends_name.clone();
+    let mut arguments = class.extends_arguments.clone();
     let mut visited = BTreeSet::new();
     for _ in 0..max_edges {
         let name = base_name?;
@@ -67,22 +106,53 @@ fn nearest_local_group<'a>(
             };
             (base.name == name && base.name_span.start < class.name_span.start).then_some(base)
         })?;
+        let substitutions =
+            super::super::heritage::heritage_substitutions(&base.type_parameters, &arguments);
         if let Some(candidate) = base.method_groups.iter().find(|candidate| {
             candidate.name == group.name && candidate.is_static == group.is_static
         }) {
-            return Some((base, candidate));
+            return Some((base, candidate, substitutions));
         }
+        arguments = base
+            .extends_arguments
+            .iter()
+            .map(|value| substitute_type(value, &substitutions))
+            .collect();
         base_name = base.extends_name.clone();
     }
     None
 }
 
 fn signature_related(
-    derived: &Signature<'_>,
-    inherited: &Signature<'_>,
+    derived: &Signature,
+    inherited: &Signature,
     aliases: &BTreeMap<String, TypeDefinition>,
     budget: &mut TypeExpansionBudget,
 ) -> bool {
+    if !derived.type_parameters.is_empty() || !inherited.type_parameters.is_empty() {
+        let surface = |signature: &Signature| {
+            Type::Record(vec![TypeField {
+                name: "method".into(),
+                method: true,
+                readonly: false,
+                optional: false,
+                value: Type::GenericFunction {
+                    type_parameters: signature.type_parameters.clone(),
+                    parameters: signature.parameters.clone(),
+                    result: Box::new(signature.return_type.clone()),
+                    span: signature.span.clone(),
+                },
+                span: signature.span.clone(),
+            }])
+        };
+        return is_assignable(
+            &surface(derived),
+            &surface(inherited),
+            aliases,
+            &mut HashSet::new(),
+            budget,
+        );
+    }
     let required = derived
         .parameters
         .iter()
@@ -92,7 +162,7 @@ fn signature_related(
         && derived
             .parameters
             .iter()
-            .zip(inherited.parameters)
+            .zip(&inherited.parameters)
             .all(|(derived, inherited)| {
                 parameter_types_compatible(
                     &override_parameter_type(derived),
@@ -101,10 +171,10 @@ fn signature_related(
                     budget,
                 )
             })
-        && (matches!(inherited.return_type, Type::Void)
+        && (matches!(&inherited.return_type, Type::Void)
             || is_assignable(
-                derived.return_type,
-                inherited.return_type,
+                &derived.return_type,
+                &inherited.return_type,
                 aliases,
                 &mut HashSet::new(),
                 budget,
@@ -119,7 +189,7 @@ impl ModuleChecker<'_> {
         class: &ClassDeclaration,
         group: &ClassMethodGroup,
     ) -> bool {
-        let Some((base, inherited_group)) = nearest_local_group(
+        let Some((base, inherited_group, substitutions)) = nearest_local_group(
             &self.module.declarations,
             class,
             group,
@@ -133,8 +203,8 @@ impl ModuleChecker<'_> {
             return false;
         }
         let (Some(derived), Some(inherited)) = (
-            visible_signatures(class, group),
-            visible_signatures(base, inherited_group),
+            visible_signatures(class, group, &BTreeMap::new()),
+            visible_signatures(base, inherited_group, &substitutions),
         ) else {
             return true;
         };

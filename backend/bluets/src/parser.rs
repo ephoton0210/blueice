@@ -10,6 +10,7 @@ use crate::syntax::{
 };
 use std::collections::BTreeMap;
 
+mod assertions;
 mod type_forms;
 pub use type_forms::{
     ConditionalType, IndexSignature, MappedModifier, MappedType, TemplateLiteralType, Variance,
@@ -49,6 +50,8 @@ pub struct Module {
     /// Their annotations are erased through `edits`; the checker reads
     /// parameters, result type and body from here.
     pub(crate) nested_functions: BTreeMap<usize, NestedFunction>,
+    /// Class expressions retain their lexical self name independently of their identity.
+    pub(crate) class_expressions: BTreeMap<usize, ClassExpression>,
     /// Named type uses, including erased assertions, at their original tokens.
     pub(crate) type_references: Vec<TypeReference>,
     /// Annotations on declarations retained inside opaque control flow.
@@ -56,6 +59,10 @@ pub struct Module {
     /// Retained static `as` targets, keyed by the assertion keyword.
     pub(crate) type_assertions: BTreeMap<usize, Type>,
 }
+
+mod class_expressions;
+pub(crate) use class_expressions::type_parameter_identity;
+pub use class_expressions::ClassExpression;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct TypeReference {
@@ -219,12 +226,18 @@ pub struct ClassDeclaration {
     /// Structural instance obligations, with each original heritage type span.
     pub implements: Vec<(Type, SourceSpan)>,
     pub type_parameters: Vec<TypeParameter>,
+    /// Lexical binders retained by a class expression, without becoming its
+    /// constructor's own generic parameters.
+    pub captured_type_parameters: Box<[TypeParameter]>,
     /// The decorators written before the class (before or after `export`).
     pub decorators: Vec<Decorator>,
     pub name: String,
     pub name_span: SourceSpan,
     pub extends_name: Option<String>,
     pub extends_span: Option<SourceSpan>,
+    /// Type arguments on the runtime base expression, erased from JavaScript.
+    pub extends_arguments: Vec<Type>,
+    pub extends_type_span: Option<SourceSpan>,
     pub body: Vec<Token>,
     /// Token-indexed member boundaries within `body`; opaque members remain
     /// unavailable to the checker and direct bridge.
@@ -280,6 +293,7 @@ pub enum ClassMemberKind {
     Field,
     Accessor,
     StaticBlock,
+    IndexSignature,
     Opaque,
 }
 
@@ -294,6 +308,8 @@ pub struct ClassMemberShell {
     pub decorators: Vec<Decorator>,
     pub kind: ClassMemberKind,
     pub name: Option<String>,
+    /// Original property-name tokens, including brackets for a computed key.
+    pub key: Vec<Token>,
     pub token_start: usize,
     pub token_end: usize,
     pub span: SourceSpan,
@@ -304,6 +320,8 @@ pub struct ClassMemberShell {
     pub field: Option<ClassField>,
     pub accessor: Option<ClassAccessor>,
     pub static_block: Option<ClassStaticBlock>,
+    /// Placement and static-only contract of `[key: K]: V`.
+    pub index: Option<(bool, IndexSignature)>,
 }
 
 /// `[export] [declare] namespace A.B { .. }` (or `module`). A dotted name is one
@@ -409,6 +427,8 @@ pub struct ClassAccessor {
 /// `[static] [readonly] name[?|!][: T] [= initializer];`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClassField {
+    /// An ambient field contributes a type without defining a runtime property.
+    pub declared: bool,
     /// Written `accessor name`: an auto-accessor, a field with a private backing
     /// store and a generated getter and setter.
     pub accessor: bool,
@@ -441,6 +461,7 @@ impl ClassDeclaration {
                 name_span: accessor.name_span.clone(),
                 visibility: accessor.visibility,
                 is_static: accessor.is_static,
+                type_parameters: Vec::new(),
                 parameters: accessor.parameters.clone(),
                 return_type: if accessor.getter {
                     accessor.return_type.clone()
@@ -480,6 +501,7 @@ impl ClassDeclaration {
                         .and_then(|tokens| widen_literal_tokens(tokens, false))
                 });
                 ClassField {
+                    declared: false,
                     accessor: false,
                     name: parameter.name.clone(),
                     name_span: parameter.span.clone(),
@@ -592,6 +614,7 @@ pub struct ClassMethod {
     pub visibility: Visibility,
     pub is_static: bool,
     pub optional: bool,
+    pub type_parameters: Vec<TypeParameter>,
     pub parameters: Vec<Parameter>,
     pub return_type: Option<Type>,
     /// Original annotation tokens, excluding the colon and trailing gap.
@@ -959,6 +982,9 @@ pub(crate) fn require_tuple_positions_before_suffix(elements: &mut [TupleTypeEle
 /// two queries with the same spelling can resolve different shadowed values.
 /// Diagnostics and declaration output retain the source spelling.
 pub(crate) fn source_type_name(name: &str) -> &str {
+    if let Some(source) = class_expressions::parameter_source_name(name) {
+        return source;
+    }
     if name.starts_with("typeof ") {
         if let Some((source, position)) = name.rsplit_once('@') {
             if position.parse::<usize>().is_ok() {

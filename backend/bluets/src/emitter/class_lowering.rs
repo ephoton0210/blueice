@@ -33,6 +33,8 @@ use crate::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
 use crate::parser::{ClassDeclaration, ClassField, ClassMemberShell, Declaration};
 use crate::Token;
 
+mod expressions;
+
 /// The emitted form of a class's fields for one target and option set.
 #[derive(Clone, Copy)]
 struct FieldEmit {
@@ -60,13 +62,36 @@ pub(super) fn lower_class_members(
     };
     let mut needed: BTreeSet<Helper> = BTreeSet::new();
     let mut first_private_class: Option<usize> = None;
-    for (declaration, nested) in super::runtime_declarations(&module.declarations) {
-        let Declaration::Class(class) = declaration else {
-            continue;
-        };
+    let mut classes = super::runtime_declarations(&module.declarations)
+        .into_iter()
+        .filter_map(|(declaration, nested)| {
+            if let Declaration::Class(class) = declaration {
+                Some((class, nested))
+            } else {
+                None
+            }
+        })
+        .chain(
+            module
+                .class_expressions
+                .values()
+                .map(|expression| (&expression.class, false)),
+        )
+        .collect::<Vec<_>>();
+    // Lower children before a field initializer or private method moves them.
+    classes.sort_by_key(|(class, _)| std::cmp::Reverse(class.span.start));
+    for (class, nested) in classes {
         if emit.native() {
             native_parameter_properties(class, edits)?;
             continue;
+        }
+        if !emit.es2022 {
+            if let Some(expression) = module.class_expression(class.span.start) {
+                if expressions::needs_wrapper(class) {
+                    expressions::lower(module, expression, emit, edits)?;
+                    continue;
+                }
+            }
         }
         // Below ES2022 a private name is lowered to external state; on ES2022
         // with assign semantics it stays native beside the lowered fields.
@@ -143,6 +168,7 @@ fn lower_class(
 ) -> Result<(), Diagnostic> {
     let source = &module.source;
     let class_name = &class.name;
+    let keys = super::computed_fields::capture(module, class, emit.es2022, edits)?;
 
     // Instance side: the private brand, then parameter properties, then
     // declared fields in source order.
@@ -157,7 +183,9 @@ fn lower_class(
         ));
     }
     for member in &class.members {
-        if member.abstract_modifier.is_some() {
+        if member.abstract_modifier.is_some()
+            || member.field.as_ref().is_some_and(|field| field.declared)
+        {
             continue;
         }
         let Some(field) = member.field.as_ref().filter(|field| !field.is_static) else {
@@ -177,7 +205,13 @@ fn lower_class(
             continue;
         }
         if value.is_some() || emit.define {
-            prologue.push_str(&store_this(emit, &field.name, value));
+            prologue.push_str(&store_field(
+                emit,
+                "this",
+                &field.name,
+                keys.get(&member.span.start),
+                value,
+            ));
         }
         erase_member(edits, member);
     }
@@ -192,7 +226,9 @@ fn lower_class(
         .unwrap_or_default();
     let mut statics = String::new();
     for member in &class.members {
-        if member.abstract_modifier.is_some() {
+        if member.abstract_modifier.is_some()
+            || member.field.as_ref().is_some_and(|field| field.declared)
+        {
             continue;
         }
         if let Some(field) = member.field.as_ref().filter(|field| field.is_static) {
@@ -216,7 +252,18 @@ fn lower_class(
                     edits,
                     member,
                     value
-                        .map(|value| format!("static {{ this.{} = {value}; }}", field.name))
+                        .map(|value| {
+                            format!(
+                                "static {{{} }}",
+                                store_field(
+                                    emit,
+                                    "this",
+                                    &field.name,
+                                    keys.get(&member.span.start),
+                                    Some(value)
+                                )
+                            )
+                        })
                         .unwrap_or_default(),
                 );
             } else {
@@ -225,7 +272,13 @@ fn lower_class(
                         .map(|value| bind_static_this(class_name, tokens_of(field), &value))
                         .transpose()
                         .map_err(|()| unsupported_super(&member.span))?;
-                    statics.push_str(&store_static(emit, class_name, &field.name, value));
+                    statics.push_str(&store_field(
+                        emit,
+                        class_name,
+                        &field.name,
+                        keys.get(&member.span.start),
+                        value,
+                    ));
                 }
                 erase_member(edits, member);
             }
@@ -272,28 +325,37 @@ fn lower_class(
 
 /// `this.name = value;` or its `Object.defineProperty` form.
 fn store_this(emit: FieldEmit, name: &str, value: Option<String>) -> String {
-    if emit.define {
-        format!(
-            " Object.defineProperty(this, {name:?}, {});",
-            descriptor(value)
-        )
-    } else {
-        format!(
-            " this.{name} = {};",
-            value.unwrap_or_else(|| "void 0".into())
-        )
-    }
+    store_field(emit, "this", name, None, value)
 }
 
-fn store_static(emit: FieldEmit, class_name: &str, name: &str, value: Option<String>) -> String {
+fn store_field(
+    emit: FieldEmit,
+    receiver: &str,
+    name: &str,
+    key: Option<&String>,
+    value: Option<String>,
+) -> String {
+    let literal = format!("{name:?}");
+    let key_text = key.map_or(literal.as_str(), String::as_str);
     if emit.define {
         format!(
-            " Object.defineProperty({class_name}, {name:?}, {});",
+            " Object.defineProperty({receiver}, {key_text}, {});",
             descriptor(value)
         )
     } else {
+        let access = if let Some(key) = key {
+            format!("[{key}]")
+        } else if name
+            .chars()
+            .all(|c| c.is_alphanumeric() || matches!(c, '_' | '$'))
+            && !name.chars().next().is_some_and(|c| c.is_ascii_digit())
+        {
+            format!(".{name}")
+        } else {
+            format!("[{literal}]")
+        };
         format!(
-            " {class_name}.{name} = {};",
+            " {receiver}{access} = {};",
             value.unwrap_or_else(|| "void 0".into())
         )
     }

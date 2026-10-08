@@ -294,6 +294,14 @@ impl Lowerer<'_, '_> {
     fn plans<'c>(&mut self, class: &'c ClassDeclaration) -> Result<Vec<Plan<'c>>, Diagnostic> {
         let mut plans = Vec::new();
         for shell in &class.members {
+            if shell.key.first().is_some_and(|key| {
+                key.is("[") || matches!(key.kind, TokenKind::String | TokenKind::Number)
+            }) {
+                return Err(unsupported(
+                    &shell.span,
+                    "computed or literal member names in decorator lowering are not supported yet",
+                ));
+            }
             let (kind, is_static, name) = match shell.kind {
                 ClassMemberKind::Method => {
                     let Some(method) = &shell.method else {
@@ -344,7 +352,9 @@ impl Lowerer<'_, '_> {
                         field.name.clone(),
                     )
                 }
-                ClassMemberKind::Constructor | ClassMemberKind::StaticBlock => {
+                ClassMemberKind::Constructor
+                | ClassMemberKind::StaticBlock
+                | ClassMemberKind::IndexSignature => {
                     if let Some(decorator) = shell.decorators.first() {
                         return Err(unsupported(
                             &decorator.span,

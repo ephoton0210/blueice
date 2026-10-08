@@ -18,9 +18,11 @@ pub use legacy_decorators::LEGACY_DECORATOR_HELPER_V1_VERSION;
 pub use private_lowering::CLASS_HELPER_V1_VERSION;
 
 mod callable_objects;
+mod class_expressions;
 mod class_lowering;
 mod classes;
 mod commonjs;
+mod computed_fields;
 mod decorators;
 mod enums;
 mod inferred_declarations;
@@ -487,6 +489,7 @@ fn emit_declaration(
     let enum_evaluations = crate::enum_eval::evaluate_enums(module);
     let mut enum_position = 0usize;
     let mut private_alias = false;
+    let computed_key_dependencies = classes::computed_key_dependencies(module);
     for declaration in &module.declarations {
         let enum_index = enum_position;
         if matches!(declaration, Declaration::Enum(_)) {
@@ -554,8 +557,11 @@ fn emit_declaration(
                 if !variable.declared
                     && (variable.exported
                         || is_default_export_name(module, &variable.name)
-                        || is_value_export_name(module, &variable.name)) =>
+                        || is_value_export_name(module, &variable.name)
+                        || computed_key_dependencies.contains(&variable.name)) =>
             {
+                private_alias |=
+                    !variable.exported && computed_key_dependencies.contains(&variable.name);
                 if variable.exported {
                     output.push_str("export declare ");
                 } else {
@@ -681,8 +687,10 @@ fn emit_declaration(
             Declaration::Class(class)
                 if class.exported
                     || is_default_export_name(module, &class.name)
-                    || is_value_export_name(module, &class.name) =>
+                    || is_value_export_name(module, &class.name)
+                    || computed_key_dependencies.contains(&class.name) =>
             {
+                private_alias |= !class.exported && computed_key_dependencies.contains(&class.name);
                 let prefix = if class.exported {
                     "export declare "
                 } else {
@@ -714,6 +722,10 @@ fn emit_declaration(
                 output.push_str(&format!("export = {};\n", export.bindings[0].local));
             }
             Declaration::ValueExport(export) => {
+                if export.bindings.is_empty() {
+                    output.push_str("export {};\n");
+                    continue;
+                }
                 output.push_str("export { ");
                 for (index, binding) in export.bindings.iter().enumerate() {
                     if index > 0 {

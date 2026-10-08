@@ -13,14 +13,58 @@ pub(super) fn assignable(
     visited: &mut HashSet<String>,
     budget: &mut TypeExpansionBudget,
 ) -> Option<bool> {
-    if actual == expected {
+    if actual == expected || matches!(expected, Type::Union(parts) if parts.contains(actual)) {
         return Some(true);
+    }
+    // Lexical source names point at declaration identities. Resolve them before
+    // parameter rigidity, including when a method shadows its class parameter.
+    for (value, other, actual_side) in [(actual, expected, true), (expected, actual, false)] {
+        let Type::Named { name, arguments } = value else {
+            continue;
+        };
+        if !arguments.is_empty() {
+            continue;
+        }
+        let Some(definition) = aliases.get(name).filter(|definition| {
+            definition.kind == TypeDefinitionKind::Alias && definition.parameters.is_empty()
+        }) else {
+            continue;
+        };
+        let Type::Named {
+            name: target,
+            arguments,
+        } = &definition.value
+        else {
+            continue;
+        };
+        if !arguments.is_empty()
+            || !aliases
+                .get(target)
+                .is_some_and(|definition| definition.kind == TypeDefinitionKind::Parameter)
+        {
+            continue;
+        }
+        if !budget.consume() {
+            return Some(false);
+        }
+        return Some(if actual_side {
+            is_assignable(&definition.value, other, aliases, visited, budget)
+        } else {
+            is_assignable(other, &definition.value, aliases, visited, budget)
+        });
     }
     if let Type::Named { name, .. } = actual {
         if let Some(definition) = aliases
             .get(name)
             .filter(|definition| definition.kind == TypeDefinitionKind::Parameter)
         {
+            if let Type::Union(options) = expected {
+                if options.iter().any(|option| {
+                    is_assignable(actual, option, aliases, &mut visited.clone(), budget)
+                }) {
+                    return Some(true);
+                }
+            }
             if !visited.insert(format!("parameter:{name}:{}", type_identity(expected)))
                 || !budget.consume()
             {

@@ -28,7 +28,7 @@ use member_calls::{member_call_parts, member_call_ranges};
 mod properties;
 mod scopes;
 pub(crate) use scopes::flow::VERSION as FLOW_VERSION;
-pub(crate) const CLASS_SURFACE_VERSION: &str = "class-surface-v1";
+pub(crate) const CLASS_SURFACE_VERSION: &str = "class-surface-v2";
 mod type_operators;
 mod type_relations;
 use properties::{
@@ -37,10 +37,10 @@ use properties::{
 };
 pub(crate) use type_relations::type_label;
 use type_relations::{
-    accepts_strict_unknown, complete_type_arguments, expand_concrete_tuple_spreads,
-    instantiate_named, is_assignable, substitute_type, tuple_type_at_length, type_identity,
-    TupleSpreadError,
+    accepts_strict_unknown, canonical_parameter_references, expand_concrete_tuple_spreads,
+    instantiate_named, is_assignable, tuple_type_at_length, type_identity, TupleSpreadError,
 };
+pub(crate) use type_relations::{complete_type_arguments, substitute_type};
 
 const MAX_LITERAL_INFERENCE_CONTAINERS: usize = 128;
 const MAX_LOGICAL_ASSIGNMENT_INFERENCE_OPERATORS: usize = 128;
@@ -76,10 +76,18 @@ pub struct CheckedModule {
     /// Return types inferred without changing source annotations or runtime policy.
     pub(crate) inferred_returns: BTreeMap<usize, Type>,
     pub(crate) inferred_parameters: BTreeMap<usize, Type>,
+    pub(crate) class_expression_surfaces: BTreeMap<String, ClassExpressionSurface>,
     /// The namespaces the module exports, as an importer binds them.
     pub(crate) namespace_exports: BTreeMap<String, NamespaceExport>,
     /// Checked runtime bindings, retained for incremental importers.
     pub(crate) value_exports: BTreeMap<String, module::ExportedValue>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct ClassExpressionSurface {
+    pub(crate) parameters: Vec<TypeParameter>,
+    pub(crate) instance: Type,
+    pub(crate) constructor: Type,
 }
 
 #[derive(Debug, Clone)]
@@ -568,8 +576,13 @@ fn type_parameter_substitutions(
 ) -> BTreeMap<String, Type> {
     parameters
         .iter()
-        .map(|parameter| parameter.name.clone())
         .zip(arguments)
+        .flat_map(|(parameter, value)| {
+            [
+                (parameter.name.clone(), value.clone()),
+                (crate::parser::type_parameter_identity(parameter), value),
+            ]
+        })
         .collect()
 }
 

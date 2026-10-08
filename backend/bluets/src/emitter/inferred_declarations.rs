@@ -59,6 +59,12 @@ impl<'a> Context<'a> {
                 })
                 .and_then(|symbol| symbol.value_type.as_ref())
                 .unwrap_or(&Type::Unknown);
+            let expanded = super::class_expressions::declaration_type(
+                value,
+                &checked.class_expression_surfaces,
+                &variable.span,
+            )?;
+            let value = &expanded;
             let value = if variable.kind == VariableKind::Const
                 && matches!(value, Type::Named { name, arguments } if name == "symbol" && arguments.is_empty())
                 && context.fresh_symbol_initializer(variable)
@@ -115,7 +121,15 @@ impl<'a> Context<'a> {
                             context.return_types.insert(function.span.start, rendered);
                         }
                     } else if let Some(value) = checked.inferred_returns.get(&function.span.start) {
-                        let value = super::inferred_returns::canonical(value);
+                        let value = super::class_expressions::declaration_type(
+                            &super::inferred_returns::canonical(value),
+                            &checked.class_expression_surfaces,
+                            &function.span,
+                        )?;
+                        let value = super::class_expressions::rename_shadowed_binders(
+                            &value,
+                            &function.type_parameters,
+                        );
                         let rendered = context.render(&value, 0, &function.span)?;
                         context.return_types.insert(function.span.start, rendered);
                     }
@@ -390,6 +404,36 @@ impl<'a> Context<'a> {
         }))
     }
 
+    fn render_fields(
+        &mut self,
+        fields: &[crate::parser::TypeField],
+        indent: usize,
+        span: &SourceSpan,
+    ) -> Result<Vec<crate::parser::TypeField>, Diagnostic> {
+        let mut rendered = Vec::with_capacity(fields.len());
+        for field in fields {
+            let mut field = field.clone();
+            match &mut field.value {
+                Type::Function { parameters, result }
+                | Type::GenericFunction {
+                    parameters, result, ..
+                } if field.method => {
+                    for parameter in parameters {
+                        parameter.annotation = parameter
+                            .annotation
+                            .as_ref()
+                            .map(|value| self.render(value, indent + 4, span).map(Type::Literal))
+                            .transpose()?;
+                    }
+                    **result = Type::Literal(self.render(result, indent + 4, span)?);
+                }
+                value => *value = Type::Literal(self.render(value, indent + 4, span)?),
+            }
+            rendered.push(field);
+        }
+        Ok(rendered)
+    }
+
     fn render(
         &mut self,
         value: &Type,
@@ -408,8 +452,32 @@ impl<'a> Context<'a> {
                     .transpose()?;
                 predicate.text(|_| target.unwrap_or_default())
             }
+            Type::CallableRecord { fields, signatures } => {
+                let fields = self.render_fields(fields, indent, span)?;
+                let mut mapped = Vec::new();
+                for signature in signatures {
+                    let mut signature = signature.clone();
+                    for parameter in &mut signature.parameters {
+                        parameter.annotation = parameter
+                            .annotation
+                            .as_ref()
+                            .map(|value| self.render(value, indent + 4, span).map(Type::Literal))
+                            .transpose()?;
+                    }
+                    signature.result =
+                        Type::Literal(self.render(&signature.result, indent + 4, span)?);
+                    mapped.push(signature);
+                }
+                if fields.is_empty() && mapped.len() == 1 && mapped[0].constructor_arrow {
+                    callable_objects::render(&fields, &mapped)
+                } else {
+                    callable_objects::render_with_indent(&fields, &mapped, &[], indent)
+                }
+            }
             Type::Named { name, arguments } => {
-                let name = if let Some((bare, id)) = name.split_once('@') {
+                let name = if name.starts_with("#typeparam@") {
+                    crate::parser::source_type_name(name).to_string()
+                } else if let Some((bare, id)) = name.split_once('@') {
                     let (root, suffix) = bare
                         .split_once('.')
                         .map_or((bare, "".to_string()), |(root, rest)| {
@@ -455,19 +523,8 @@ impl<'a> Context<'a> {
                 }
             }
             Type::Record(fields) => {
-                let pad = " ".repeat(indent + 4);
-                let mut text = String::from("{\n");
-                for field in fields {
-                    text.push_str(&format!(
-                        "{pad}{}{}{}: {};\n",
-                        if field.readonly { "readonly " } else { "" },
-                        field.name,
-                        if field.optional { "?" } else { "" },
-                        self.render(&field.value, indent + 4, span)?
-                    ));
-                }
-                text.push_str(&format!("{}}}", " ".repeat(indent)));
-                text
+                let fields = self.render_fields(fields, indent, span)?;
+                callable_objects::render_with_indent(&fields, &[], &[], indent)
             }
             Type::Array(element) => {
                 let text = self.render(element, indent, span)?;

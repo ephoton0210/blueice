@@ -17,16 +17,66 @@ use crate::parser::{
     Visibility,
 };
 
+pub(super) fn computed_key_dependencies(module: &Module) -> std::collections::BTreeSet<String> {
+    module
+        .declarations
+        .iter()
+        .filter_map(|declaration| {
+            let Declaration::Class(class) = declaration else {
+                return None;
+            };
+            (class.exported
+                || super::is_default_export_name(module, &class.name)
+                || super::is_value_export_name(module, &class.name))
+            .then_some(class)
+        })
+        .flat_map(|class| &class.members)
+        .filter(|member| {
+            member.key.first().is_some_and(|token| token.is("["))
+                && !(member.method.is_some()
+                    && member
+                        .name
+                        .as_ref()
+                        .is_some_and(|name| name.starts_with("[computed@")))
+        })
+        .flat_map(|member| &member.key)
+        .filter(|token| token.kind == crate::syntax::TokenKind::Identifier)
+        .map(|token| token.text.clone())
+        .collect()
+}
+
+fn declaration_key(member: &ClassMemberShell, name: &str) -> String {
+    if member.key.is_empty() {
+        name.into()
+    } else {
+        member.key.iter().map(|token| token.text.as_str()).collect()
+    }
+}
+
 /// Erase every constructor and method overload signature: a declaration with
 /// no body has no JavaScript form.
 pub(super) fn overload_signature_erasures(module: &Module) -> Vec<TextEdit> {
     let mut edits = Vec::new();
-    for (declaration, _) in super::runtime_declarations(&module.declarations) {
-        let Declaration::Class(class) = declaration else {
-            continue;
-        };
+    let classes = super::runtime_declarations(&module.declarations)
+        .into_iter()
+        .filter_map(|(declaration, _)| {
+            if let Declaration::Class(class) = declaration {
+                Some(class)
+            } else {
+                None
+            }
+        })
+        .chain(
+            module
+                .class_expressions
+                .values()
+                .map(|expression| &expression.class),
+        );
+    for class in classes {
         for member in &class.members {
             let signature = member.abstract_modifier.is_some()
+                || member.index.is_some()
+                || member.field.as_ref().is_some_and(|field| field.declared)
                 || member
                     .constructor
                     .as_ref()
@@ -184,6 +234,18 @@ pub(super) fn emit_class_declaration(
     if let Some(base) = &class.extends_name {
         output.push_str(" extends ");
         output.push_str(base);
+        if !class.extends_arguments.is_empty() {
+            output.push('<');
+            output.push_str(
+                &class
+                    .extends_arguments
+                    .iter()
+                    .map(type_to_ts)
+                    .collect::<Vec<_>>()
+                    .join(", "),
+            );
+            output.push('>');
+        }
     }
     if !class.implements.is_empty() {
         output.push_str(" implements ");
@@ -243,6 +305,30 @@ pub(super) fn emit_class_declaration(
         })
         .collect();
     for (index, member) in class.members.iter().enumerate() {
+        if let Some((is_static, signature)) = &member.index {
+            output.push_str("    ");
+            if *is_static {
+                output.push_str("static ");
+            }
+            if signature.readonly {
+                output.push_str("readonly ");
+            }
+            output.push_str(&format!(
+                "[{}: {}]: {};\n",
+                signature.name,
+                type_to_ts(&signature.key),
+                type_to_ts(&signature.value)
+            ));
+            continue;
+        }
+        if member.method.is_some()
+            && member
+                .name
+                .as_ref()
+                .is_some_and(|name| name.starts_with("[computed@"))
+        {
+            continue;
+        }
         // A private name is declared once, as `#private;`, not member by member.
         if member
             .name
@@ -298,7 +384,7 @@ pub(super) fn emit_class_declaration(
             if field.readonly {
                 output.push_str("readonly ");
             }
-            output.push_str(&field.name);
+            output.push_str(&declaration_key(member, &field.name));
             if field.optional {
                 output.push('?');
             }
@@ -329,7 +415,7 @@ pub(super) fn emit_class_declaration(
                 output.push_str("static ");
             }
             output.push_str(if accessor.getter { "get " } else { "set " });
-            output.push_str(&accessor.name);
+            output.push_str(&declaration_key(member, &accessor.name));
             if accessor.visibility == Visibility::Private {
                 // A private accessor is declared by name only; TypeScript
                 // names a setter's parameter `value`.
@@ -396,7 +482,7 @@ pub(super) fn emit_class_declaration(
                     if method.is_static {
                         output.push_str("static ");
                     }
-                    output.push_str(&method.name);
+                    output.push_str(&declaration_key(shell, &method.name));
                     output.push_str(";\n");
                     break;
                 }
@@ -415,10 +501,11 @@ pub(super) fn emit_class_declaration(
                 if method.is_static {
                     output.push_str("static ");
                 }
-                output.push_str(&method.name);
+                output.push_str(&declaration_key(shell, &method.name));
                 if method.optional {
                     output.push('?');
                 }
+                super::emit_type_parameters(output, &method.type_parameters);
                 output.push_str(&parameters_to_ts(&method.parameters));
                 output.push_str(": ");
                 output.push_str(

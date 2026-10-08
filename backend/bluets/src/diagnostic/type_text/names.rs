@@ -6,6 +6,9 @@
 use crate::{Declaration, Project};
 
 pub(super) fn display(name: &str, project: Option<&Project>) -> String {
+    if name.starts_with("#typeparam@") {
+        return crate::parser::source_type_name(name).into();
+    }
     let name = crate::parser::source_type_name(name);
     let Some(project) = project else {
         return name.into();

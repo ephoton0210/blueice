@@ -30,6 +30,15 @@ pub(super) fn render_with_indices(
     signatures: &[crate::parser::TypeSignature],
     indices: &[crate::parser::IndexSignature],
 ) -> String {
+    render_with_indent(fields, signatures, indices, 0)
+}
+
+pub(super) fn render_with_indent(
+    fields: &[crate::parser::TypeField],
+    signatures: &[crate::parser::TypeSignature],
+    indices: &[crate::parser::IndexSignature],
+    indent: usize,
+) -> String {
     let mut members = Vec::new();
     for index in indices {
         members.push((
@@ -47,7 +56,7 @@ pub(super) fn render_with_indices(
         let name = format!(
             "{}{}{}",
             if field.readonly { "readonly " } else { "" },
-            field.name,
+            property_name(&field.name),
             if field.optional { "?" } else { "" }
         );
         let text = match &field.value {
@@ -84,14 +93,28 @@ pub(super) fn render_with_indices(
     }
     members.sort_by_key(|(start, _)| *start);
     if members.is_empty() {
-        return "{\n}".into();
+        return "{}".into();
     }
     format!(
-        "{{\n{}\n}}",
+        "{{\n{}\n{}}}",
         members
             .into_iter()
-            .map(|(_, text)| format!("    {text};"))
+            .map(|(_, text)| format!("{}{text};", " ".repeat(indent + 4)))
             .collect::<Vec<_>>()
-            .join("\n")
+            .join("\n"),
+        " ".repeat(indent)
     )
+}
+
+fn property_name(name: &str) -> String {
+    let mut characters = name.chars();
+    let identifier = characters
+        .next()
+        .is_some_and(|c| c.is_alphabetic() || matches!(c, '_' | '$'))
+        && characters.all(|c| c.is_alphanumeric() || matches!(c, '_' | '$'));
+    if identifier || name.parse::<f64>().is_ok() || name.starts_with(['[', '\'', '"']) {
+        name.into()
+    } else {
+        serde_json::to_string(name).expect("a property name is a JSON string")
+    }
 }

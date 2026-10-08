@@ -5,11 +5,13 @@
 use super::*;
 mod compatibility;
 mod more_types;
+mod parameters;
 mod variance;
 use crate::checker::type_operators::union;
 pub(super) use compatibility::constructor_relation_type;
 pub(super) use compatibility::record_fields_assignable;
 pub(super) use more_types::normalized as normalize_more_type;
+pub(super) use parameters::canonical_parameter_references;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum TupleSpreadError {
@@ -801,6 +803,14 @@ pub(super) fn instantiate_named(
         .iter()
         .map(|parameter| parameter.name.clone())
         .zip(arguments)
+        .map(|(name, value)| {
+            let value = if definition.kind == TypeDefinitionKind::Class {
+                canonical_parameter_references(&value, aliases)
+            } else {
+                value
+            };
+            (name, value)
+        })
         .collect();
     crate::performance::instantiated();
     Some(substitute_type(&definition.value, &substitutions))
@@ -810,7 +820,7 @@ pub(super) fn instantiate_named(
 /// defaults. The parser/checker reports invalid argument counts and constraint
 /// violations separately; this helper is also used by structural expansion,
 /// where `None` simply means the named type cannot be expanded safely.
-pub(super) fn complete_type_arguments(
+pub(crate) fn complete_type_arguments(
     parameters: &[TypeParameter],
     supplied: &[Type],
 ) -> Option<Vec<Type>> {
@@ -827,12 +837,16 @@ pub(super) fn complete_type_arguments(
                 .map(|value| substitute_type(value, &substitutions))
         })?;
         substitutions.insert(parameter.name.clone(), value.clone());
+        substitutions.insert(
+            crate::parser::type_parameter_identity(parameter),
+            value.clone(),
+        );
         arguments.push(value);
     }
     Some(arguments)
 }
 
-pub(super) fn substitute_type(value: &Type, substitutions: &BTreeMap<String, Type>) -> Type {
+pub(crate) fn substitute_type(value: &Type, substitutions: &BTreeMap<String, Type>) -> Type {
     if let Type::Conditional(conditional) = value {
         if let Type::Named { name, arguments } = &conditional.check {
             if arguments.is_empty() {

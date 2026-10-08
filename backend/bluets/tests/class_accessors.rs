@@ -284,7 +284,7 @@ fn an_accessor_class_is_structurally_a_plain_property_type() {
 }
 
 #[test]
-fn computed_accessor_names_are_refused() {
+fn computed_accessor_names_require_a_bound_key() {
     let source = "class A { get [k](): number { return 1; } }";
     let compiled = compile_with(source, CompilerOptions::default());
     assert!(
@@ -292,6 +292,10 @@ fn computed_accessor_names_are_refused() {
         "`{source}` must be refused: {:?}",
         compiled.diagnostics
     );
+    assert!(compiled
+        .diagnostics
+        .iter()
+        .any(|diagnostic| diagnostic.code == DiagnosticCode::UnknownName));
 }
 
 #[test]

@@ -9,6 +9,11 @@ use super::*;
 #[path = "class/modifiers.rs"]
 mod modifiers;
 use modifiers::*;
+#[path = "class/keys.rs"]
+mod keys;
+use keys::*;
+#[path = "class/indices.rs"]
+mod indices;
 
 impl Parser {
     pub(in crate::parser::implementation) fn parse_class(
@@ -61,6 +66,25 @@ impl Parser {
             None
         };
 
+        let mut extends_arguments = Vec::new();
+        let argument_start = self.current().start;
+        if heritage.is_some() && self.consume("<") {
+            loop {
+                extends_arguments.push(self.parse_type_until(&[",", ">"]));
+                if !self.consume(",") {
+                    self.expect(">");
+                    break;
+                }
+            }
+            self.edits.push(TextEdit {
+                start: argument_start,
+                end: self.previous().end,
+                replacement: String::new(),
+            });
+        }
+        let extends_type_span = heritage.as_ref().map(|token| {
+            SourceSpan::new(&self.id, token.start, self.previous().end.max(token.end))
+        });
         let mut implements = Vec::new();
         if self.consume("implements") {
             let begin = self.previous().start;
@@ -86,7 +110,7 @@ impl Parser {
             if matches!(token.text.as_str(), "<" | "." | "[" | "(") {
                 self.unsupported(
                     token.span(&self.id),
-                    "generic and computed class heritage is not in the first class form",
+                    "a computed class heritage expression is not supported yet",
                 );
             } else {
                 self.error_here(DiagnosticCode::ParseError, "expected a class body");
@@ -123,6 +147,10 @@ impl Parser {
                 self.parse_class_accessor(opening + 1 + member.token_start, member);
             } else if member.kind == ClassMemberKind::StaticBlock {
                 self.parse_class_static_block(opening + 1 + member.token_start, member);
+            } else if member.kind == ClassMemberKind::Opaque
+                && self.parse_class_index(opening + 1 + member.token_start, member)
+            {
+                member.kind = ClassMemberKind::IndexSignature;
             } else if member.kind == ClassMemberKind::Opaque
                 && !body
                     .get(member.token_start + 1)
@@ -181,10 +209,13 @@ impl Parser {
             implements,
             decorators,
             type_parameters,
+            captured_type_parameters: Box::default(),
             name: name_token.text,
             name_span,
             extends_name: heritage.as_ref().map(|token| token.text.clone()),
             extends_span: heritage.as_ref().map(|token| token.span(&self.id)),
+            extends_arguments,
+            extends_type_span,
             body,
             members,
             method_groups,
@@ -316,14 +347,15 @@ impl Parser {
         }
         let mut index = modifiers.name_index;
         let name_token = self.tokens[index].clone();
-        if !matches!(name_token.kind, TokenKind::Identifier | TokenKind::Keyword)
-            || name_token.is("constructor")
-            || index >= end
-        {
+        let Some(key_end) = class_key_end(&self.tokens, index, end) else {
+            return false;
+        };
+        if name_token.is("constructor") {
             return false;
         }
+        let (name, name_span) = self.class_member_key(index, key_end, member);
         let visibility = self.private_name_visibility(&name_token, &modifiers);
-        index += 1;
+        index = key_end;
         let optional = self.tokens.get(index).is_some_and(|token| token.is("?")) && index < end;
         let definite = self.tokens.get(index).is_some_and(|token| token.is("!")) && index < end;
         let marker_end = (optional || definite).then(|| self.tokens[index].end);
@@ -377,7 +409,7 @@ impl Parser {
         }
         if let Some(erased_end) = erased_end {
             self.edits.push(TextEdit {
-                start: name_token.end,
+                start: self.tokens[key_end - 1].end,
                 end: erased_end,
                 replacement: String::new(),
             });
@@ -386,11 +418,26 @@ impl Parser {
             self.collect_expression_type_edits(initializer_start, initializer_end);
             self.tokens[initializer_start..initializer_end].to_vec()
         });
-        member.name = Some(name_token.text.clone());
+        if modifiers.declare_token.is_some() {
+            if let Some(tokens) = &initializer {
+                if let Some(token) = tokens.first() {
+                    self.diagnostics.push(
+                        Diagnostic::error(
+                            DiagnosticCode::ParseError,
+                            token.span(&self.id),
+                            "a declare field cannot have an initializer",
+                        )
+                        .with_typescript(1039, Vec::new()),
+                    );
+                }
+            }
+        }
+        member.name = Some(name.clone());
         member.field = Some(ClassField {
+            declared: modifiers.declare_token.is_some(),
             accessor: modifiers.accessor_token.is_some(),
-            name: name_token.text.clone(),
-            name_span: name_token.span(&self.id),
+            name,
+            name_span,
             visibility,
             is_static,
             readonly,
@@ -443,8 +490,12 @@ impl Parser {
         let keyword = modifiers.name_index;
         let getter = self.tokens[keyword].is("get");
         let name_token = self.tokens[keyword + 1].clone();
+        let Some(key_end) = class_key_end(&self.tokens, keyword + 1, end) else {
+            return;
+        };
+        let (name, name_span) = self.class_member_key(keyword + 1, key_end, member);
         let visibility = self.private_name_visibility(&name_token, &modifiers);
-        self.index = keyword + 2;
+        self.index = key_end;
         let parameters = self.parse_parameters();
         let return_start = self.current().start;
         let (return_type, return_type_span) = if self.consume(":") {
@@ -524,10 +575,10 @@ impl Parser {
             );
             return;
         }
-        member.name = Some(name_token.text.clone());
+        member.name = Some(name.clone());
         member.accessor = Some(ClassAccessor {
-            name: name_token.text.clone(),
-            name_span: name_token.span(&self.id),
+            name,
+            name_span,
             visibility,
             is_static: modifiers.is_static,
             getter,
@@ -548,13 +599,26 @@ impl Parser {
         self.erase_visibility_keyword(&modifiers);
         let is_static = modifiers.is_static;
         let name_index = modifiers.name_index;
-        let name = self.tokens[name_index].text.clone();
+        let Some(key_end) = class_key_end(&self.tokens, name_index, end) else {
+            return;
+        };
+        let (name, name_span) = self.class_member_key(name_index, key_end, member);
+        member.name = Some(name.clone());
         let visibility = self.private_name_visibility(&self.tokens[name_index].clone(), &modifiers);
-        self.index = name_index + 1;
+        self.index = key_end;
         let optional = self.consume("?");
         if optional {
             self.edits.push(TextEdit {
                 start: self.previous().start,
+                end: self.current().start,
+                replacement: String::new(),
+            });
+        }
+        let generic_start = self.current().start;
+        let type_parameters = self.parse_type_parameters();
+        if !type_parameters.is_empty() {
+            self.edits.push(TextEdit {
+                start: generic_start,
                 end: self.current().start,
                 replacement: String::new(),
             });
@@ -600,10 +664,11 @@ impl Parser {
         }
         member.method = Some(ClassMethod {
             name,
-            name_span: self.tokens[name_index].span(&self.id),
+            name_span,
             optional,
             visibility,
             is_static,
+            type_parameters,
             parameters,
             return_type,
             return_type_span,
@@ -763,26 +828,28 @@ fn class_member_shells(module: &str, tokens: &[Token]) -> Vec<ClassMemberShell> 
             .as_ref()
             .is_some_and(|modifiers| modifiers.readonly_token.is_none())
             && (name_token.is("get") || name_token.is("set"))
-            && tokens.get(name_index + 1).is_some_and(|token| {
-                matches!(token.kind, TokenKind::Identifier | TokenKind::Keyword)
-            })
-            && tokens
-                .get(name_index + 2)
-                .is_some_and(|token| token.is("("));
+            && class_key_end(tokens, name_index + 1, tokens.len())
+                .is_some_and(|end| tokens.get(end).is_some_and(|token| token.is("(")));
         let head_index = name_index + usize::from(accessor_head);
         let name_token = &tokens[head_index];
-        let parameters_index = head_index
-            + 1
-            + usize::from(
-                tokens
-                    .get(head_index + 1)
-                    .is_some_and(|token| token.is("?")),
-            );
+        let key_end = class_key_end(tokens, head_index, tokens.len()).unwrap_or(head_index + 1);
+        let mut parameters_index =
+            key_end + usize::from(tokens.get(key_end).is_some_and(|token| token.is("?")));
+        if tokens
+            .get(parameters_index)
+            .is_some_and(|token| token.is("<"))
+        {
+            if let Some(closing) =
+                matching_closing_delimiter(tokens, parameters_index, tokens.len(), "<", ">")
+            {
+                parameters_index = closing + 1;
+            }
+        }
         let method_head = accessor_head
             || (modifiers
                 .as_ref()
                 .is_some_and(|modifiers| modifiers.readonly_token.is_none())
-                && matches!(name_token.kind, TokenKind::Identifier | TokenKind::Keyword)
+                && class_key_end(tokens, head_index, tokens.len()).is_some()
                 && tokens
                     .get(parameters_index)
                     .is_some_and(|token| token.is("(")));
@@ -900,6 +967,7 @@ fn class_member_shell(
         decorators,
         kind,
         name,
+        key: Vec::new(),
         token_start: start,
         token_end: end,
         span: SourceSpan::new(module, tokens[start].start, tokens[end - 1].end),
@@ -908,5 +976,6 @@ fn class_member_shell(
         field: None,
         accessor: None,
         static_block: None,
+        index: None,
     }
 }

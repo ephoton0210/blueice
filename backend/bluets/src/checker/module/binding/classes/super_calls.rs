@@ -98,7 +98,7 @@ impl ModuleChecker<'_> {
                 } else {
                     base.clone()
                 },
-                arguments: Vec::new(),
+                arguments: class.extends_arguments.clone(),
             })
         }
     }
@@ -200,6 +200,7 @@ impl ModuleChecker<'_> {
     pub(super) fn check_super_call_arguments(
         &mut self,
         base: &str,
+        class: &ClassDeclaration,
         tokens: &[Token],
         scope: &BTreeMap<String, Type>,
         span: &SourceSpan,
@@ -225,11 +226,28 @@ impl ModuleChecker<'_> {
         let Some(arguments) = split_call_arguments(arguments) else {
             return;
         };
-        let signatures = binding.signatures.clone();
+        let substitutions = super::heritage::heritage_substitutions(
+            &self
+                .types
+                .get(base)
+                .map(|definition| definition.parameters.clone())
+                .unwrap_or_default(),
+            &class.extends_arguments,
+        );
+        let signatures = binding
+            .signatures
+            .iter()
+            .map(|signature| {
+                let mut specialized =
+                    super::heritage::specialize_constructor(signature, &substitutions, base, &[]);
+                specialized.return_type = substitute_type(&signature.return_type, &substitutions);
+                specialized
+            })
+            .collect::<Vec<_>>();
         if let Some(alternatives) = self.optional_spread_scopes(&arguments, scope) {
             let before = self.diagnostics.len();
             for alternative in &alternatives {
-                self.check_super_call_arguments(base, tokens, alternative, span);
+                self.check_super_call_arguments(base, class, tokens, alternative, span);
             }
             self.dedupe_diagnostics_since(before);
             return;

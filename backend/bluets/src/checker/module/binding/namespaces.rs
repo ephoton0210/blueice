@@ -18,6 +18,18 @@
 //! again when its body has been checked, with inferred ones.
 
 use super::*;
+
+pub(in crate::checker::module::binding) fn rename_type_names(
+    value: &Type,
+    rename: &BTreeMap<String, String>,
+    argument_prefix: Option<(&str, &[Type])>,
+) -> Type {
+    type_traversal::Qualifier {
+        rename,
+        argument_prefix,
+    }
+    .ty(value)
+}
 use crate::parser::NamespaceDeclaration;
 
 mod type_traversal;
@@ -246,6 +258,7 @@ impl ModuleChecker<'_> {
             edits: self.module.edits.clone(),
             generic_call_type_arguments: self.module.generic_call_type_arguments.clone(),
             nested_functions: self.module.nested_functions.clone(),
+            class_expressions: self.module.class_expressions.clone(),
             type_references: self.module.type_references.clone(),
             expression_variable_types: self.module.expression_variable_types.clone(),
             type_assertions: self.module.type_assertions.clone(),
@@ -411,7 +424,10 @@ impl ModuleChecker<'_> {
                 rename.insert(relative.to_string(), key.clone());
             }
         }
-        let qualify = Qualifier { rename: &rename };
+        let qualify = Qualifier {
+            rename: &rename,
+            argument_prefix: None,
+        };
         let mut published = Published {
             has_values: body_has_values(&namespace.body),
             ..Published::default()
@@ -817,7 +833,7 @@ impl ModuleChecker<'_> {
         };
         // The module's own types the entries mention travel with them, under
         // keys that say which module they belong to.
-        let local_roots: BTreeSet<String> = self
+        let mut local_roots: BTreeSet<String> = self
             .module
             .declarations
             .iter()
@@ -829,6 +845,11 @@ impl ModuleChecker<'_> {
                 _ => None,
             })
             .collect();
+        local_roots.extend(
+            self.module
+                .class_expressions()
+                .map(|expression| expression.class.name.clone()),
+        );
         let mut dependencies: BTreeSet<String> = BTreeSet::new();
         let mut pending: Vec<Type> = Vec::new();
         let scan = |export: &NamespaceExport, pending: &mut Vec<Type>| {
@@ -899,7 +920,10 @@ impl ModuleChecker<'_> {
                 }
             }
         }
-        let qualify = Qualifier { rename: &rename };
+        let qualify = Qualifier {
+            rename: &rename,
+            argument_prefix: None,
+        };
         export.values = export
             .values
             .iter()
@@ -933,6 +957,20 @@ impl ModuleChecker<'_> {
                 export
                     .types
                     .insert(new.clone(), qualify.definition(definition));
+                if definition.kind == TypeDefinitionKind::Class {
+                    if let Some(binding) = self.class_constructors.get(old) {
+                        export.class_constructors.insert(
+                            new.clone(),
+                            ClassConstructorBinding {
+                                signatures: qualify.signatures(&binding.signatures),
+                                ..binding.clone()
+                            },
+                        );
+                    }
+                    if let Some(value) = self.values.get(old) {
+                        export.values.insert(new.clone(), qualify.ty(value));
+                    }
+                }
             }
         }
         export
@@ -994,10 +1032,19 @@ impl ModuleChecker<'_> {
                 rename.insert(key.clone(), new);
             }
         }
-        let qualify = Qualifier { rename: &rename };
+        let qualify = Qualifier {
+            rename: &rename,
+            argument_prefix: None,
+        };
         if with_value {
             for (key, value) in &export.values {
-                if let Some(new) = rename_key(key) {
+                if let Some(new) = rename_key(key).or_else(|| {
+                    export
+                        .types
+                        .get(key)
+                        .filter(|definition| definition.kind == TypeDefinitionKind::Class)
+                        .map(|_| key.clone())
+                }) {
                     if !(merged && new == local) {
                         self.values.insert(new, qualify.ty(value));
                     }
@@ -1011,7 +1058,13 @@ impl ModuleChecker<'_> {
                 }
             }
             for (key, binding) in &export.class_constructors {
-                if let Some(new) = rename_key(key) {
+                if let Some(new) = rename_key(key).or_else(|| {
+                    export
+                        .types
+                        .get(key)
+                        .filter(|definition| definition.kind == TypeDefinitionKind::Class)
+                        .map(|_| key.clone())
+                }) {
                     if merged && new == local {
                         continue;
                     }

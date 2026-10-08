@@ -65,12 +65,8 @@ impl ModuleChecker<'_> {
     pub(in crate::checker::module::binding) fn bind_class_modifier_surfaces(&mut self) {
         let classes = self
             .module
-            .declarations
-            .iter()
-            .filter_map(|declaration| match declaration {
-                Declaration::Class(class) => Some((class.name.clone(), class.clone())),
-                _ => None,
-            })
+            .classes()
+            .map(|class| (class.name.clone(), self.class_with_resolved_heritage(class)))
             .collect::<BTreeMap<_, _>>();
         for class in classes.values() {
             if self.diagnostics.iter().any(|diagnostic| {
@@ -121,7 +117,7 @@ impl ModuleChecker<'_> {
         } else {
             self.types.get(base).map(|definition| &definition.value)
         };
-        matches!(value,Some(Type::Record(fields)|Type::CallableRecord{fields,..}) if visibility::effective_visibility(fields,name).is_some())
+        matches!(value.map(Type::object_type),Some(Type::Record(fields)|Type::CallableRecord{fields,..}) if visibility::effective_visibility(fields,name).is_some())
     }
 
     pub(in crate::checker::module::binding) fn validate_class_modifiers(
@@ -289,7 +285,7 @@ impl ModuleChecker<'_> {
         ) {
             value = expanded;
         }
-        let signature = matches!(&value,Type::CallableRecord{signatures,..} if signatures.iter().any(|signature|signature.construct && signature.abstract_constructor));
+        let signature = matches!(value.object_type(),Type::CallableRecord{signatures,..} if signatures.iter().any(|signature|signature.construct && signature.abstract_constructor));
         if class || signature {
             let span =
                 SourceSpan::new(&self.module.id, tokens[0].start, tokens.last().unwrap().end);

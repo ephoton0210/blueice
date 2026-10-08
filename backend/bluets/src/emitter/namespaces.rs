@@ -698,6 +698,7 @@ fn render_members(
                 edits: Vec::new(),
                 generic_call_type_arguments: BTreeMap::new(),
                 nested_functions: BTreeMap::new(),
+                class_expressions: BTreeMap::new(),
                 type_references: Vec::new(),
                 expression_variable_types: BTreeMap::new(),
                 type_assertions: BTreeMap::new(),

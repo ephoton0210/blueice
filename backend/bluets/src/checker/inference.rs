@@ -124,6 +124,11 @@ pub(super) fn infer_contextual_result(
             }
         }
     }
+    for parameter in &signature.type_parameters {
+        if let Some(value) = substitutions.get(&parameter.name).cloned() {
+            substitutions.insert(crate::parser::type_parameter_identity(parameter), value);
+        }
+    }
     InferenceResult {
         substitutions,
         rejected_constraint,

@@ -277,19 +277,22 @@ fn fields_are_lowered_for_an_es2020_target() {
 }
 
 #[test]
-fn computed_and_generator_members_are_still_refused() {
-    for source in [
-        "class A { ['computed'] = 1; }",
-        "class A { ['m']() {} }",
-        "class A { *generate() {} }",
-    ] {
+fn computed_members_are_structured_and_generator_members_remain_refused() {
+    for source in ["class A { ['computed'] = 1; }", "class A { ['m']() {} }"] {
         let compiled = compile_with(source, CompilerOptions::default());
         assert!(
-            compiled.output.is_none() && !compiled.diagnostics.is_empty(),
-            "`{source}` must be refused, not emitted: {:?}",
+            compiled.output.is_some() && compiled.diagnostics.is_empty(),
+            "`{source}` must emit: {:?}",
             compiled.diagnostics
         );
     }
+    let source = "class A { *generate() {} }";
+    let compiled = compile_with(source, CompilerOptions::default());
+    assert!(
+        compiled.output.is_none() && !compiled.diagnostics.is_empty(),
+        "`{source}` must be refused, not emitted: {:?}",
+        compiled.diagnostics
+    );
 }
 
 #[test]

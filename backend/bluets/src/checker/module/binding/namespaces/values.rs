@@ -140,7 +140,13 @@ impl ModuleChecker<'_> {
             module: self.module.id.clone(),
             span: span.clone(),
             exported: false,
-            value_type: Some(Qualifier { rename: &rename }.ty(&value.value_type())),
+            value_type: Some(
+                Qualifier {
+                    rename: &rename,
+                    argument_prefix: None,
+                }
+                .ty(&value.value_type()),
+            ),
         });
     }
 

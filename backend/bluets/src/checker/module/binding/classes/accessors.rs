@@ -115,13 +115,7 @@ impl ModuleChecker<'_> {
                 && !super::super::super::return_inference::has_return(&accessor.body)
             {
                 let mut scope = self.values.clone();
-                scope.insert(
-                    "this".to_string(),
-                    Type::Named {
-                        name: class.name.clone(),
-                        arguments: Vec::new(),
-                    },
-                );
+                scope.insert("this".to_string(), class_body_this_type(class));
                 if self.inference_body_completes(&accessor.body, &scope) {
                     self.type_error(
                         &accessor.name_span,

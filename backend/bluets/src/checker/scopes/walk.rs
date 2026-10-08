@@ -471,12 +471,29 @@ impl ScopeModel<'_> {
             .unwrap_or(Type::Unknown);
         self.value(scope, &class.name, 0, true, false, constructor);
         self.binding_kind(scope, &class.name, BindingKind::Class);
+        if let Some(name) = self
+            .module
+            .class_expression(class.span.start)
+            .and_then(|expression| expression.name.as_ref())
+        {
+            self.declaration_names.insert(class.name_span.start);
+            self.scopes[scope].types.insert(name.clone());
+            let constructor = self.scopes[scope].values[&class.name].declared_type.clone();
+            self.value(scope, name, 0, true, false, constructor);
+            self.binding_kind(scope, name, BindingKind::Class);
+        }
         self.class_this(scope, &class.name, true);
         for member in &class.members {
+            if member.key.first().is_some_and(|token| token.is("[")) {
+                self.expression(&member.key[1..member.key.len() - 1], scope);
+            }
             for decorator in &member.decorators {
                 self.expression(&decorator.tokens, parent);
             }
             if let Some(field) = &member.field {
+                if let Some(annotation) = &field.annotation {
+                    self.type_scopes(annotation, &field.span, scope);
+                }
                 if let Some(initializer) = &field.initializer {
                     let initializer_scope = if field.is_static {
                         scope
@@ -519,6 +536,12 @@ impl ScopeModel<'_> {
             }
             if let Some(method) = &member.method {
                 let inner = self.child(Some(scope), method.span.clone(), true, true);
+                self.scopes[inner].types.extend(
+                    method
+                        .type_parameters
+                        .iter()
+                        .map(|parameter| parameter.name.clone()),
+                );
                 self.class_this(inner, &class.name, method.is_static);
                 self.value(inner, "arguments", 0, false, false, Type::Unknown);
                 self.parameters(&method.parameters, inner);

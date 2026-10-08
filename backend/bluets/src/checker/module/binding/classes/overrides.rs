@@ -31,7 +31,7 @@ impl ModuleChecker<'_> {
             else {
                 continue;
             };
-            let Some(inherited) = nearest_inherited_method(
+            let Some(inherited_owned) = nearest_inherited_method(
                 &self.module.declarations,
                 &self.types,
                 &self.values,
@@ -41,6 +41,11 @@ impl ModuleChecker<'_> {
                 self.max_type_expansions,
             ) else {
                 continue;
+            };
+            let inherited = InheritedMethod {
+                base_name: inherited_owned.base_name,
+                parameters: &inherited_owned.parameters,
+                return_type: inherited_owned.return_type.as_ref(),
             };
             // Align fixed positions and rest elements where the signatures
             // have a supported rest shape.

@@ -65,6 +65,12 @@ impl ScopeModel<'_> {
                 .partition_point(|token| token.start < function.span.end)
                 .max(index + 1);
         }
+        if let Some(expression) = self.module.class_expression(token.start) {
+            self.class(&expression.class, scope, true);
+            return tokens
+                .partition_point(|token| token.start < expression.class.span.end)
+                .max(index + 1);
+        }
         if let Some(nested) = self.module.nested_functions.get(&token.start) {
             if self.visited_functions.insert(nested.span.start) {
                 self.nested_function(nested, scope);

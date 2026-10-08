@@ -68,6 +68,24 @@ pub struct TemplateLiteralType {
 }
 
 impl Type {
+    pub(crate) fn object_type(&self) -> &Self {
+        let mut current = self;
+        while let Self::IndexedRecord { object, .. } = current {
+            current = object;
+        }
+        current
+    }
+
+    pub(crate) fn object_type_mut(&mut self) -> &mut Self {
+        let mut current = self;
+        loop {
+            match current {
+                Self::IndexedRecord { object, .. } => current = object,
+                _ => return current,
+            }
+        }
+    }
+
     /// A shallow visitor, used where operator children have no local binding.
     pub(crate) fn operator_children(&self) -> Option<Vec<&Type>> {
         Some(match self {

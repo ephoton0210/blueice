@@ -100,22 +100,15 @@ fn a_missing_module_counterpart_does_not_depend_on_os_error_wording() {
 }
 
 #[test]
-fn a_valid_computed_member_refusal_does_not_invent_a_typescript_error() {
+fn a_valid_computed_member_emits_without_a_subset_diagnostic() {
     let source = "class Box { ['value'](): number { return 1; } }";
     let result = compile(
         "memory:///main.ts",
         &MapLoader::from([ModuleSource::new("memory:///main.ts", source)]),
         CompilerOptions::default(),
     );
-    assert!(result.has_errors());
-    let diagnostic = result
-        .diagnostics
-        .iter()
-        .find(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax)
-        .unwrap();
-    let json = diagnostic.to_json();
-    assert!(json["typescript"].is_null());
-    assert!(json["noTypeScriptCounterpart"].as_str().is_some());
+    assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
+    assert!(result.output.is_some());
 }
 
 #[test]

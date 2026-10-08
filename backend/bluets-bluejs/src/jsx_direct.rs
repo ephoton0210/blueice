@@ -27,6 +27,7 @@ pub(super) struct JsxContext {
     fragment: String,
     automatic: bool,
     experimental_decorators: bool,
+    define_class_fields: bool,
 }
 
 impl JsxContext {
@@ -52,6 +53,7 @@ impl JsxContext {
                 .unwrap_or_else(|| "React.Fragment".to_string()),
             automatic,
             experimental_decorators: options.experimental_decorators,
+            define_class_fields: options.defines_class_fields(),
         }
     }
 }
@@ -78,6 +80,10 @@ impl Drop for JsxScope {
 /// Whether the module being lowered is compiled with `experimentalDecorators`.
 pub(super) fn experimental_decorators() -> bool {
     current().is_some_and(|context| context.experimental_decorators)
+}
+
+pub(super) fn defines_class_fields() -> bool {
+    current().is_none_or(|context| context.define_class_fields)
 }
 
 fn current() -> Option<JsxContext> {

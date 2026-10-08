@@ -103,7 +103,7 @@ pub(super) fn exported_types(
                         class.name.clone(),
                         TypeDefinition {
                             kind: TypeDefinitionKind::Class,
-                            parameters: class.type_parameters.clone(),
+                            parameters: module::class_definition_parameters(class),
                             value: module::class_instance_type(class),
                         },
                     );
@@ -320,7 +320,12 @@ fn local_exported_class_surfaces(
                 let depth = base.heritage_depth.saturating_add(1);
                 value.heritage_depth = depth;
                 if depth <= max_type_expansions {
-                    inherit_exported_class_surface(&mut value, base);
+                    let arguments = class
+                        .extends_arguments
+                        .iter()
+                        .map(|argument| module::formal_class_type(class, argument))
+                        .collect::<Vec<_>>();
+                    inherit_exported_class_surface(&mut value, base, &arguments);
                 }
             }
         }
@@ -363,53 +368,88 @@ fn local_exported_class_surfaces(
     exports
 }
 
-fn inherit_exported_class_surface(derived: &mut ExportedClass, base: &ExportedClass) {
+fn inherit_exported_class_surface(
+    derived: &mut ExportedClass,
+    base: &ExportedClass,
+    arguments: &[Type],
+) {
     derived
         .constructor_binding
         .modifiers
         .inherit(&base.constructor_binding.modifiers);
     fn append_unshadowed(own: &mut Type, inherited: &Type) {
         let (
-            Type::Record(own) | Type::CallableRecord { fields: own, .. },
-            Type::Record(inherited)
+            Type::Record(own_fields)
             | Type::CallableRecord {
-                fields: inherited, ..
+                fields: own_fields, ..
             },
-        ) = (own, inherited)
+            Type::Record(inherited_fields)
+            | Type::CallableRecord {
+                fields: inherited_fields,
+                ..
+            },
+        ) = (own.object_type_mut(), inherited.object_type())
         else {
             return;
         };
-        let names = own
+        let names = own_fields
             .iter()
             .map(|field| field.name.clone())
             .collect::<BTreeSet<_>>();
-        own.extend(
-            inherited
+        own_fields.extend(
+            inherited_fields
                 .iter()
                 .filter(|field| !names.contains(&field.name))
                 .cloned(),
         );
+        if let Type::IndexedRecord {
+            indices: inherited, ..
+        } = inherited
+        {
+            if let Type::IndexedRecord { indices, .. } = own {
+                let keys = indices
+                    .iter()
+                    .map(|index| index.key.clone())
+                    .collect::<Vec<_>>();
+                indices.extend(
+                    inherited
+                        .iter()
+                        .filter(|index| !keys.contains(&index.key))
+                        .cloned(),
+                );
+            } else if !inherited.is_empty() {
+                *own = Type::IndexedRecord {
+                    object: Box::new(own.clone()),
+                    indices: inherited.clone(),
+                };
+            }
+        }
     }
 
-    append_unshadowed(&mut derived.instance_type, &base.instance_type);
+    let substitutions = module::heritage_substitutions(&base.type_parameters, arguments);
+    append_unshadowed(
+        &mut derived.instance_type,
+        &substitute_type(&base.instance_type, &substitutions),
+    );
     append_unshadowed(&mut derived.constructor_type, &base.constructor_type);
     if derived.constructor_binding.inherited && !base.constructor_binding.inherited {
         derived.constructor_binding.signatures = base
             .constructor_binding
             .signatures
             .iter()
-            .cloned()
-            .map(|mut signature| {
-                signature.return_type = Type::Named {
-                    name: derived.source_name.clone(),
-                    arguments: Vec::new(),
-                };
-                signature
+            .map(|signature| {
+                module::specialize_constructor(
+                    signature,
+                    &substitutions,
+                    &derived.source_name,
+                    &derived.type_parameters,
+                )
             })
             .collect();
         derived.constructor_binding.inherited = false;
         derived.constructor_binding.visibility = base.constructor_binding.visibility;
-        if let Type::CallableRecord { signatures, .. } = &mut derived.constructor_type {
+        if let Type::CallableRecord { signatures, .. } = derived.constructor_type.object_type_mut()
+        {
             if let Some(span) = signatures.first().map(|signature| signature.span.clone()) {
                 *signatures = derived.constructor_binding.value_signatures(&span);
             }
@@ -442,7 +482,7 @@ pub(super) fn local_type_definitions(module: &Module) -> BTreeMap<String, TypeDe
                 class.name.clone(),
                 TypeDefinition {
                     kind: TypeDefinitionKind::Class,
-                    parameters: class.type_parameters.clone(),
+                    parameters: module::class_definition_parameters(class),
                     value: module::class_instance_type(class),
                 },
             )),

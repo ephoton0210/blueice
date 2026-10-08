@@ -2,7 +2,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-mod classes;
+pub(super) mod classes;
+mod computed_fields;
 mod namespaces;
 
 use classes::*;
@@ -43,7 +44,7 @@ pub(super) fn lower_script(
             }
             Declaration::Raw(raw) => {
                 body.push(bluejs::Stmt::Expr(
-                    ExpressionLowerer::new(&module.id, &raw.tokens).parse()?,
+                    ExpressionLowerer::for_module(module, &raw.tokens).parse()?,
                 ));
                 provenance.push((raw.span.clone(), LoweringProvenanceKind::Copied));
             }
@@ -138,6 +139,7 @@ pub(super) fn lower_script(
             }
         }
     }
+    computed_fields::root(module, &mut body, &mut provenance);
     Ok((body, finalize_provenance(module, provenance)?))
 }
 
@@ -193,7 +195,7 @@ pub(super) fn lower_module(
             }
             Declaration::Raw(raw) => {
                 body.push(bluejs::Stmt::Expr(
-                    ExpressionLowerer::new(&module.id, &raw.tokens).parse()?,
+                    ExpressionLowerer::for_module(module, &raw.tokens).parse()?,
                 ));
                 provenance.push((raw.span.clone(), LoweringProvenanceKind::Copied));
             }
@@ -326,6 +328,7 @@ pub(super) fn lower_module(
             }
         }
     }
+    computed_fields::root(module, &mut body, &mut provenance);
     Ok((
         bluejs::Module {
             body,
@@ -411,7 +414,7 @@ fn lower_function_value(
             default: parameter
                 .default
                 .as_deref()
-                .map(|tokens| ExpressionLowerer::new(&module.id, tokens).parse())
+                .map(|tokens| ExpressionLowerer::for_module(module, tokens).parse())
                 .transpose()?,
             rest: parameter.rest,
         });
@@ -443,14 +446,14 @@ fn lower_function_body(
         match item {
             FunctionBodyItem::Variable(variable) => body.push(lower_variable(module, variable)?),
             FunctionBodyItem::Expression { tokens, .. } => body.push(bluejs::Stmt::Expr(
-                ExpressionLowerer::new(&module.id, tokens).parse()?,
+                ExpressionLowerer::for_module(module, tokens).parse()?,
             )),
             FunctionBodyItem::Throw { tokens, .. } => body.push(bluejs::Stmt::Throw(
-                ExpressionLowerer::new(&module.id, tokens).parse()?,
+                ExpressionLowerer::for_module(module, tokens).parse()?,
             )),
             FunctionBodyItem::Return { tokens, .. } => {
                 let value = (!tokens.is_empty())
-                    .then(|| ExpressionLowerer::new(&module.id, tokens).parse())
+                    .then(|| ExpressionLowerer::for_module(module, tokens).parse())
                     .transpose()?;
                 body.push(bluejs::Stmt::Return(value));
             }
@@ -475,6 +478,7 @@ fn lower_function_body(
             }
         }
     }
+    computed_fields::body(module, items, &mut body);
     Ok(body)
 }
 
@@ -482,7 +486,7 @@ fn lower_function_if(
     module: &Module,
     statement: &FunctionIfStatement,
 ) -> Result<bluejs::Stmt, BridgeError> {
-    let test = ExpressionLowerer::new(&module.id, &statement.test).parse()?;
+    let test = ExpressionLowerer::for_module(module, &statement.test).parse()?;
     let consequent = Box::new(bluejs::Stmt::Block(lower_function_body(
         module,
         &statement.consequent,
@@ -508,7 +512,7 @@ fn lower_function_while(
     statement: &FunctionWhileStatement,
 ) -> Result<bluejs::Stmt, BridgeError> {
     ensure_supported_while_body(&statement.body)?;
-    let test = ExpressionLowerer::new(&module.id, &statement.test).parse()?;
+    let test = ExpressionLowerer::for_module(module, &statement.test).parse()?;
     let body = bluejs::Stmt::Block(lower_function_body(module, &statement.body)?);
     Ok(bluejs::Stmt::While {
         test,
@@ -659,7 +663,7 @@ fn lower_variable(
     variable: &VariableDeclaration,
 ) -> Result<bluejs::Stmt, BridgeError> {
     let init = (!variable.initializer.is_empty())
-        .then(|| ExpressionLowerer::new(&module.id, &variable.initializer).parse())
+        .then(|| ExpressionLowerer::for_module(module, &variable.initializer).parse())
         .transpose()?;
     Ok(bluejs::Stmt::VarDecl(
         match variable.kind {

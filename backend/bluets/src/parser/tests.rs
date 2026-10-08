@@ -202,12 +202,7 @@ fn retains_named_class_headers_and_bodies_without_claiming_class_semantics() {
 
 #[test]
 fn class_header_errors_and_unimplemented_forms_fail_closed_and_a_plain_class_compiles() {
-    for source in [
-        "class Missing",
-        "class { }",
-        "class Box<T> extends Base<T> {}",
-        "class C extends Base[0] {}",
-    ] {
+    for source in ["class Missing", "class { }", "class C extends Base[0] {}"] {
         assert!(
             parse_module("memory:///classes.ts", source).is_err(),
             "{source}"
@@ -319,13 +314,15 @@ fn partitions_constructor_method_and_opaque_class_members_at_source_spans() {
     );
     assert_eq!(class.members[2].kind, ClassMemberKind::Accessor);
 
-    // A computed member is not one this parser structures.
+    // A computed literal key keeps both its cooked name and runtime tokens.
     let module = parse_module("memory:///computed.ts", "class Other { ['field'] = 1; }").unwrap();
     let Declaration::Class(class) = &module.declarations[0] else {
         panic!("expected a class");
     };
     assert_eq!(class.members.len(), 1);
-    assert_eq!(class.members[0].kind, ClassMemberKind::Opaque);
+    assert_eq!(class.members[0].kind, ClassMemberKind::Field);
+    assert_eq!(class.members[0].name.as_deref(), Some("field"));
+    assert_eq!(class.members[0].key[1].text, "'field'");
 }
 
 #[test]
@@ -441,7 +438,7 @@ fn parses_simple_named_method_signatures_and_bodies_at_original_spans() {
 }
 
 #[test]
-fn incomplete_methods_fail_and_computed_members_remain_opaque() {
+fn incomplete_methods_fail_and_computed_members_keep_their_structure() {
     for source in [
         "class Bad { read(value: ) {} }",
         "class Bad { read(value: number) }",
@@ -456,7 +453,8 @@ fn incomplete_methods_fail_and_computed_members_remain_opaque() {
     let Declaration::Class(class) = &module.declarations[0] else {
         panic!("expected a class");
     };
-    assert_eq!(class.members[0].kind, ClassMemberKind::Opaque);
+    assert_eq!(class.members[0].kind, ClassMemberKind::Field);
+    assert_eq!(class.members[0].field.as_ref().unwrap().name, "value");
 }
 
 #[test]
@@ -538,13 +536,7 @@ fn opaque_class_member_interrupts_method_overload_group() {
 
 #[test]
 fn routes_unimplemented_class_member_shapes_to_opaque_shells() {
-    for source in [
-        "class C { ['field'] = 1; }",
-        "class C { async read() {} }",
-        "class C { [key]() {} }",
-        "class C { *generate() {} }",
-        "class C { generic<T>() {} }",
-    ] {
+    for source in ["class C { async read() {} }", "class C { *generate() {} }"] {
         let module = parse_module("memory:///opaque.ts", source).unwrap();
         let Declaration::Class(class) = &module.declarations[0] else {
             panic!("expected a class");
@@ -761,4 +753,27 @@ fn records_and_erases_explicit_direct_call_type_arguments() {
     assert!(module.edits.iter().any(|edit| {
         &source[edit.start..edit.end] == "<string>" && edit.replacement.is_empty()
     }));
+}
+#[test]
+fn class_expressions_keep_their_lexical_name_and_do_not_declare_it_in_the_parent() {
+    for source in [
+        "const C = class { value = 3; };",
+        "const C = class Inner { clone(): Inner { return new Inner(); } };",
+        "const C = class<T> { constructor(public value: T) {} };",
+        "function make() { return class { value = 3; }; }",
+    ] {
+        let module = parse_module("memory:///expression.ts", source).unwrap();
+        let start = source.find("class").unwrap();
+        let expression = module.class_expression(start).unwrap();
+        assert_eq!(expression.class.span.start, start);
+        assert!(expression.class.name.starts_with("#class@"));
+        assert_eq!(
+            expression.name.as_deref(),
+            source.contains("Inner").then_some("Inner")
+        );
+        assert!(!module
+            .declarations
+            .iter()
+            .any(|declaration| matches!(declaration, Declaration::Class(_))));
+    }
 }

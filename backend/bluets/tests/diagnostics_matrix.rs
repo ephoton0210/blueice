@@ -91,6 +91,8 @@ fn replay(case: &Value) -> std::process::Output {
                 let value = flags.next().unwrap().as_str().unwrap();
                 if name == "lib" {
                     serde_json::json!(value.split(',').collect::<Vec<_>>())
+                } else if name == "useDefineForClassFields" && matches!(value, "true" | "false") {
+                    Value::Bool(value == "true")
                 } else {
                     Value::String(value.to_string())
                 }

@@ -102,6 +102,22 @@ impl<'a> ModuleChecker<'a> {
         if let Some(function) = self.nested_function_type(strip_outer_parentheses(tokens), scope) {
             return function;
         }
+        let unwrapped = strip_outer_parentheses(tokens);
+        if let Some(expression) = unwrapped
+            .first()
+            .and_then(|first| self.module.class_expression(first.start))
+            .filter(|expression| {
+                unwrapped
+                    .last()
+                    .is_some_and(|last| last.end == expression.class.span.end)
+            })
+        {
+            return self
+                .values
+                .get(&expression.class.name)
+                .cloned()
+                .unwrap_or(Type::Unknown);
+        }
         if let Some(result) = self.infer_yield(tokens, scope) {
             return result;
         }
@@ -207,6 +223,12 @@ impl<'a> ModuleChecker<'a> {
                 value => value,
             };
         }
+        if let Some((_, consequent, alternate)) = conditional_expression_parts(tokens) {
+            return merge_conditional_branch_types(
+                self.infer_expression(consequent, scope),
+                self.infer_expression(alternate, scope),
+            );
+        }
         if tokens
             .first()
             .is_some_and(|token| token.is("++") || token.is("--"))
@@ -244,13 +266,29 @@ impl<'a> ModuleChecker<'a> {
             if let PropertyType::Found { value, .. } = found {
                 match value {
                     Type::Function { result, .. } => return *result,
+                    value @ Type::GenericFunction { .. } => {
+                        let signatures = signatures::callable_signatures(&value, false)
+                            .expect("generic function has call signature");
+                        let explicit = call.generic.then(|| {
+                            self.module.generic_call_type_arguments[&call.member.start].as_slice()
+                        });
+                        return self.infer_function_call(
+                            &signatures,
+                            call.arguments,
+                            scope,
+                            explicit,
+                        );
+                    }
                     Type::Intersection(overloads) => {
                         if let Some(signatures) = method_overload_signatures(&overloads) {
                             return self.infer_function_call(
                                 &signatures,
                                 call.arguments,
                                 scope,
-                                None,
+                                call.generic.then(|| {
+                                    self.module.generic_call_type_arguments[&call.member.start]
+                                        .as_slice()
+                                }),
                             );
                         }
                     }
@@ -291,12 +329,6 @@ impl<'a> ModuleChecker<'a> {
             // A call through a value that is not a known function type has no
             // known result.
             return Type::Unknown;
-        }
-        if let Some((_, consequent, alternate)) = conditional_expression_parts(tokens) {
-            return merge_conditional_branch_types(
-                self.infer_expression(consequent, scope),
-                self.infer_expression(alternate, scope),
-            );
         }
         if let Some((left, _, right)) = top_level_binary_parts(tokens, &["??"], |start| {
             self.module.generic_call_type_arguments.contains_key(&start)
@@ -341,7 +373,8 @@ impl<'a> ModuleChecker<'a> {
                         .unwrap_or(annotation),
                     value => value,
                 };
-                if target.operator_children().is_some()
+                if matches!(target, Type::Literal(_))
+                    || target.operator_children().is_some()
                     || matches!(target, Type::KeyOf(_) | Type::IndexedAccess { .. })
                 {
                     return annotation.clone();

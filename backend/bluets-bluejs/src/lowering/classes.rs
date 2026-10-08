@@ -6,6 +6,27 @@
 
 use super::*;
 
+fn lower_class_key(
+    module: &Module,
+    member: &blueice_bluets::ClassMemberShell,
+    name: &str,
+) -> Result<bluejs::PropertyKey, BridgeError> {
+    let tokens = &member.key;
+    if tokens.is_empty()
+        || matches!(tokens.as_slice(), [token] if matches!(token.kind, blueice_bluets::TokenKind::Identifier | blueice_bluets::TokenKind::Keyword))
+    {
+        return Ok(bluejs::PropertyKey::Identifier(name.into()));
+    }
+    let expression = if tokens[0].is("[") {
+        &tokens[1..tokens.len() - 1]
+    } else {
+        tokens.as_slice()
+    };
+    Ok(bluejs::PropertyKey::Computed(Box::new(
+        ExpressionLowerer::for_module(module, expression).parse()?,
+    )))
+}
+
 /// A class as a BlueJS class declaration. Overload signatures have no runtime
 /// form and are skipped; the constructor is the non-static method named
 /// `constructor`, as BlueJS represents it.
@@ -33,16 +54,17 @@ pub(super) fn lower_decorators(
     }
     decorators
         .iter()
-        .map(|decorator| ExpressionLowerer::new(&module.id, &decorator.tokens).parse())
+        .map(|decorator| ExpressionLowerer::for_module(module, &decorator.tokens).parse())
         .collect()
 }
 
-pub(super) fn lower_class(
+pub(crate) fn lower_class(
     module: &Module,
     class: &ClassDeclaration,
     define_class_fields: bool,
 ) -> Result<bluejs::Stmt, BridgeError> {
     let mut elements = Vec::new();
+    let mut pending_keys = Vec::new();
     let properties = class.parameter_property_fields();
     // A constructor's parameter properties declare fields ahead of every other
     // member, as TypeScript emits them, when fields are defined.
@@ -62,20 +84,31 @@ pub(super) fn lower_class(
     // be written ahead of the fields.
     let mut field_assignments = Vec::new();
     if !define_class_fields {
-        for field in class
-            .members
-            .iter()
-            .filter_map(|member| member.field.as_ref())
-            .filter(|field| !field.is_static && !field.name.starts_with('#'))
-        {
+        for member in &class.members {
+            let Some(field) = member.field.as_ref().filter(|field| {
+                !field.declared && !field.is_static && !field.name.starts_with('#')
+            }) else {
+                continue;
+            };
             if let Some(tokens) = field.initializer.as_deref() {
-                let initializer = ExpressionLowerer::new(&module.id, tokens).parse()?;
-                field_assignments.push(assign_this_member(&field.name, initializer));
+                let initializer = ExpressionLowerer::for_module(module, tokens).parse()?;
+                let key = match super::computed_fields::temporary(member) {
+                    Some(name) => {
+                        bluejs::PropertyKey::Computed(Box::new(bluejs::Expr::Identifier(name)))
+                    }
+                    None => lower_class_key(module, member, &field.name)?,
+                };
+                field_assignments.push(super::computed_fields::assign_this_key(key, initializer));
             }
         }
     }
     for member in &class.members {
-        if member.abstract_modifier.is_some() {
+        if member.index.is_some() {
+            continue;
+        }
+        if member.abstract_modifier.is_some()
+            || member.field.as_ref().is_some_and(|field| field.declared)
+        {
             continue;
         }
         if let Some(block) = &member.static_block {
@@ -87,7 +120,10 @@ pub(super) fn lower_class(
         }
         if let Some(accessor) = &member.accessor {
             elements.push(bluejs::ClassElement::Accessor {
-                key: bluejs::PropertyKey::Identifier(accessor.name.clone()),
+                key: super::computed_fields::ordered_key(
+                    lower_class_key(module, member, &accessor.name)?,
+                    &mut pending_keys,
+                ),
                 function: lower_function_value(
                     module,
                     Some(accessor.name.clone()),
@@ -103,14 +139,25 @@ pub(super) fn lower_class(
             continue;
         }
         if let Some(field) = &member.field {
+            let captured = (!define_class_fields)
+                .then(|| super::computed_fields::temporary(member))
+                .flatten();
+            if let Some(name) = &captured {
+                let bluejs::PropertyKey::Computed(value) =
+                    lower_class_key(module, member, &field.name)?
+                else {
+                    unreachable!("a captured field key is computed")
+                };
+                pending_keys.push(super::computed_fields::assign_key(name.clone(), *value));
+            }
             let initializer = field
                 .initializer
                 .as_deref()
-                .map(|tokens| ExpressionLowerer::new(&module.id, tokens).parse())
+                .map(|tokens| ExpressionLowerer::for_module(module, tokens).parse())
                 .transpose()?;
             if define_class_fields || field.name.starts_with('#') {
                 elements.push(bluejs::ClassElement::Field {
-                    key: bluejs::PropertyKey::Identifier(field.name.clone()),
+                    key: lower_class_key(module, member, &field.name)?,
                     initializer,
                     is_static: field.is_static,
                     accessor: field.accessor,
@@ -122,10 +169,15 @@ pub(super) fn lower_class(
                     "decorators and auto-accessors need class fields to be defined (the default for ES2022)",
                 ));
             } else if let (true, Some(initializer)) = (field.is_static, initializer) {
-                elements.push(bluejs::ClassElement::StaticBlock(vec![assign_this_member(
-                    &field.name,
-                    initializer,
-                )]));
+                let key = match captured {
+                    Some(name) => {
+                        bluejs::PropertyKey::Computed(Box::new(bluejs::Expr::Identifier(name)))
+                    }
+                    None => lower_class_key(module, member, &field.name)?,
+                };
+                elements.push(bluejs::ClassElement::StaticBlock(vec![
+                    super::computed_fields::assign_this_key(key, initializer),
+                ]));
             }
             continue;
         }
@@ -164,7 +216,10 @@ pub(super) fn lower_class(
             )?;
         }
         elements.push(bluejs::ClassElement::Method {
-            key: bluejs::PropertyKey::Identifier(name.clone()),
+            key: super::computed_fields::ordered_key(
+                lower_class_key(module, member, &name)?,
+                &mut pending_keys,
+            ),
             function,
             is_static,
             decorators: lower_decorators(module, &member.decorators)?,
@@ -179,6 +234,14 @@ pub(super) fn lower_class(
     });
     if !field_assignments.is_empty() && !has_constructor {
         elements.insert(0, synthesized_constructor(class, field_assignments));
+    }
+    if !pending_keys.is_empty() {
+        elements.insert(
+            0,
+            bluejs::ClassElement::StaticBlock(
+                pending_keys.into_iter().map(bluejs::Stmt::Expr).collect(),
+            ),
+        );
     }
     Ok(bluejs::Stmt::ClassDecl(bluejs::Class {
         name: Some(class.name.clone()),
