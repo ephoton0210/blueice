@@ -18,8 +18,8 @@ impl Vm {
             None | Some("short") => Ok(blueice_ecma402::DurationStyle::Short),
             Some("long") => Ok(blueice_ecma402::DurationStyle::Long),
             Some("narrow") => Ok(blueice_ecma402::DurationStyle::Narrow),
-            Some("digital") => Ok(blueice_ecma402::DurationStyle::Digital),
-            Some(_) => unreachable!("string_option validates DurationFormat style"),
+            // string_option has already rejected every other spelling.
+            Some(_) => Ok(blueice_ecma402::DurationStyle::Digital),
         }
     }
 
@@ -59,15 +59,15 @@ impl Vm {
                 "short" => blueice_ecma402::DurationUnitStyle::Short,
                 "narrow" => blueice_ecma402::DurationUnitStyle::Narrow,
                 "numeric" => blueice_ecma402::DurationUnitStyle::Numeric,
-                "2-digit" => blueice_ecma402::DurationUnitStyle::TwoDigit,
-                _ => unreachable!("string_option validates DurationFormat unit style"),
+                // Only a validated "2-digit" remains.
+                _ => blueice_ecma402::DurationUnitStyle::TwoDigit,
             });
         let display = self
             .string_option(options, &format!("{name}Display"), &["auto", "always"])?
             .map(|display| match display.as_str() {
                 "auto" => blueice_ecma402::DurationUnitDisplay::Auto,
-                "always" => blueice_ecma402::DurationUnitDisplay::Always,
-                _ => unreachable!("string_option validates DurationFormat display"),
+                // Only a validated "always" remains.
+                _ => blueice_ecma402::DurationUnitDisplay::Always,
             });
         Ok(blueice_ecma402::DurationUnitOptions { style, display })
     }
@@ -165,14 +165,20 @@ impl Vm {
         let constructor = self.globals["%Intl.DurationFormat%"];
         let prototype = self
             .heap
-            .get(constructor, "prototype")?
+            .get(constructor, "prototype")
+            .expect("intl_global retains the installed intrinsic constructor")
             .object_id()
             .expect("Intl.DurationFormat.prototype is an object");
+        let base = self.stack.len();
         self.stack.push(Value::Object(prototype));
-        let data =
-            self.resolve_duration_format(native::argument(args, 0), native::argument(args, 1))?;
-        self.with_roots(|heap| heap.alloc_duration_format(data, prototype))
-            .map(Value::Object)
+        let result = (|| {
+            let data =
+                self.resolve_duration_format(native::argument(args, 0), native::argument(args, 1))?;
+            self.with_roots(|heap| heap.alloc_duration_format(data, prototype))
+                .map(Value::Object)
+        })();
+        self.stack.truncate(base);
+        result
     }
 
     pub(in super::super) fn create_duration_format(
@@ -189,15 +195,21 @@ impl Vm {
         let constructor = self.globals["%Intl.DurationFormat%"];
         let default = self
             .heap
-            .get(constructor, "prototype")?
+            .get(constructor, "prototype")
+            .expect("intl_global retains the installed intrinsic constructor")
             .object_id()
             .expect("Intl.DurationFormat.prototype is an object");
         let prototype = self.constructor_prototype(default)?;
+        let base = self.stack.len();
         self.stack.push(Value::Object(prototype));
-        let data =
-            self.resolve_duration_format(native::argument(args, 0), native::argument(args, 1))?;
-        self.with_roots(|heap| heap.alloc_duration_format(data, prototype))
-            .map(Value::Object)
+        let result = (|| {
+            let data =
+                self.resolve_duration_format(native::argument(args, 0), native::argument(args, 1))?;
+            self.with_roots(|heap| heap.alloc_duration_format(data, prototype))
+                .map(Value::Object)
+        })();
+        self.stack.truncate(base);
+        result
     }
 
     pub(in super::super) fn duration_format_data(
@@ -228,8 +240,8 @@ impl Vm {
                 }
             }
         }
-        if matches!(value, Value::String(_)) {
-            let source = self.coerce_string(value)?.to_utf8().map_err(|_| {
+        if let Value::String(value) = value {
+            let source = value.to_utf8().map_err(|_| {
                 RuntimeError::RangeError("invalid Intl.DurationFormat duration string".into())
             })?;
             return self
@@ -288,9 +300,13 @@ impl Vm {
     ) -> Result<Value, RuntimeError> {
         let data = self.duration_format_data(receiver)?;
         let duration = self.duration_record(duration)?;
-        data.format(duration)
-            .map(|value| Value::String(value.into()))
-            .map_err(|error| RuntimeError::RangeError(error.to_string()))
+        // duration_record validates every numeric field and sign; the fixed
+        // list provider uses an infallible String collector.
+        Ok(Value::String(
+            data.format(duration)
+                .expect("validated durations format with installed provider data")
+                .into(),
+        ))
     }
 
     pub(in super::super) fn duration_format_format_to_parts(
@@ -302,7 +318,7 @@ impl Vm {
         let duration = self.duration_record(duration)?;
         let parts = data
             .format_to_parts(duration)
-            .map_err(|error| RuntimeError::RangeError(error.to_string()))?;
+            .expect("validated durations partition with installed provider data");
         let prototype = self.object_prototype;
         let base = self.stack.len();
         let result = (|| {
@@ -356,85 +372,92 @@ impl Vm {
         let resolved = data.resolved_options();
         let prototype = self.object_prototype;
         let object = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
+        let base = self.stack.len();
         self.stack.push(Value::Object(object));
-        self.define_data(
-            object,
-            "locale",
-            Value::String(resolved.locale.clone().into()),
-            true,
-            true,
-            true,
-        )?;
-        self.define_data(
-            object,
-            "numberingSystem",
-            Value::String(resolved.numbering_system.clone().into()),
-            true,
-            true,
-            true,
-        )?;
-        let style = match resolved.style {
-            blueice_ecma402::DurationStyle::Long => "long",
-            blueice_ecma402::DurationStyle::Short => "short",
-            blueice_ecma402::DurationStyle::Narrow => "narrow",
-            blueice_ecma402::DurationStyle::Digital => "digital",
-        };
-        self.define_data(
-            object,
-            "style",
-            Value::String(style.into()),
-            true,
-            true,
-            true,
-        )?;
-        for unit in blueice_ecma402::DurationUnit::ALL {
-            let (name, display_name) = match unit {
-                blueice_ecma402::DurationUnit::Years => ("years", "yearsDisplay"),
-                blueice_ecma402::DurationUnit::Months => ("months", "monthsDisplay"),
-                blueice_ecma402::DurationUnit::Weeks => ("weeks", "weeksDisplay"),
-                blueice_ecma402::DurationUnit::Days => ("days", "daysDisplay"),
-                blueice_ecma402::DurationUnit::Hours => ("hours", "hoursDisplay"),
-                blueice_ecma402::DurationUnit::Minutes => ("minutes", "minutesDisplay"),
-                blueice_ecma402::DurationUnit::Seconds => ("seconds", "secondsDisplay"),
-                blueice_ecma402::DurationUnit::Milliseconds => {
-                    ("milliseconds", "millisecondsDisplay")
-                }
-                blueice_ecma402::DurationUnit::Microseconds => {
-                    ("microseconds", "microsecondsDisplay")
-                }
-                blueice_ecma402::DurationUnit::Nanoseconds => ("nanoseconds", "nanosecondsDisplay"),
-            };
-            let style = match resolved.unit_style(unit) {
-                blueice_ecma402::DurationUnitStyle::Long => "long",
-                blueice_ecma402::DurationUnitStyle::Short => "short",
-                blueice_ecma402::DurationUnitStyle::Narrow => "narrow",
-                blueice_ecma402::DurationUnitStyle::Numeric => "numeric",
-                blueice_ecma402::DurationUnitStyle::TwoDigit => "2-digit",
-            };
-            let display = match resolved.unit_display(unit) {
-                blueice_ecma402::DurationUnitDisplay::Auto => "auto",
-                blueice_ecma402::DurationUnitDisplay::Always => "always",
-            };
-            self.define_data(object, name, Value::String(style.into()), true, true, true)?;
+        let outcome = (|| {
             self.define_data(
                 object,
-                display_name,
-                Value::String(display.into()),
+                "locale",
+                Value::String(resolved.locale.clone().into()),
                 true,
                 true,
                 true,
             )?;
-        }
-        if let Some(fractional_digits) = resolved.fractional_digits {
             self.define_data(
                 object,
-                "fractionalDigits",
-                Value::Number(f64::from(fractional_digits)),
+                "numberingSystem",
+                Value::String(resolved.numbering_system.clone().into()),
                 true,
                 true,
                 true,
             )?;
-        }
-        Ok(Value::Object(object))
+            let style = match resolved.style {
+                blueice_ecma402::DurationStyle::Long => "long",
+                blueice_ecma402::DurationStyle::Short => "short",
+                blueice_ecma402::DurationStyle::Narrow => "narrow",
+                blueice_ecma402::DurationStyle::Digital => "digital",
+            };
+            self.define_data(
+                object,
+                "style",
+                Value::String(style.into()),
+                true,
+                true,
+                true,
+            )?;
+            for unit in blueice_ecma402::DurationUnit::ALL {
+                let (name, display_name) = match unit {
+                    blueice_ecma402::DurationUnit::Years => ("years", "yearsDisplay"),
+                    blueice_ecma402::DurationUnit::Months => ("months", "monthsDisplay"),
+                    blueice_ecma402::DurationUnit::Weeks => ("weeks", "weeksDisplay"),
+                    blueice_ecma402::DurationUnit::Days => ("days", "daysDisplay"),
+                    blueice_ecma402::DurationUnit::Hours => ("hours", "hoursDisplay"),
+                    blueice_ecma402::DurationUnit::Minutes => ("minutes", "minutesDisplay"),
+                    blueice_ecma402::DurationUnit::Seconds => ("seconds", "secondsDisplay"),
+                    blueice_ecma402::DurationUnit::Milliseconds => {
+                        ("milliseconds", "millisecondsDisplay")
+                    }
+                    blueice_ecma402::DurationUnit::Microseconds => {
+                        ("microseconds", "microsecondsDisplay")
+                    }
+                    blueice_ecma402::DurationUnit::Nanoseconds => {
+                        ("nanoseconds", "nanosecondsDisplay")
+                    }
+                };
+                let style = match resolved.unit_style(unit) {
+                    blueice_ecma402::DurationUnitStyle::Long => "long",
+                    blueice_ecma402::DurationUnitStyle::Short => "short",
+                    blueice_ecma402::DurationUnitStyle::Narrow => "narrow",
+                    blueice_ecma402::DurationUnitStyle::Numeric => "numeric",
+                    blueice_ecma402::DurationUnitStyle::TwoDigit => "2-digit",
+                };
+                let display = match resolved.unit_display(unit) {
+                    blueice_ecma402::DurationUnitDisplay::Auto => "auto",
+                    blueice_ecma402::DurationUnitDisplay::Always => "always",
+                };
+                self.define_data(object, name, Value::String(style.into()), true, true, true)?;
+                self.define_data(
+                    object,
+                    display_name,
+                    Value::String(display.into()),
+                    true,
+                    true,
+                    true,
+                )?;
+            }
+            if let Some(fractional_digits) = resolved.fractional_digits {
+                self.define_data(
+                    object,
+                    "fractionalDigits",
+                    Value::Number(f64::from(fractional_digits)),
+                    true,
+                    true,
+                    true,
+                )?;
+            }
+            Ok(Value::Object(object))
+        })();
+        self.stack.truncate(base);
+        outcome
     }
 }

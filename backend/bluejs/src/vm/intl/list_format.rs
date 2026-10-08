@@ -59,9 +59,12 @@ impl Vm {
             list_type: self.list_type(&options)?,
             style: self.list_style(&options)?,
         };
-        blueice_ecma402::ListFormat::try_new(&locales, options)
-            .map(Rc::new)
-            .map_err(|error| RuntimeError::RangeError(error.to_string()))
+        // Locale negotiation selects a pinned quartet for every type/width;
+        // the fixed provider validates all 766 x 9 records on load.
+        Ok(Rc::new(
+            blueice_ecma402::ListFormat::try_new(&locales, options)
+                .expect("the embedded provider covers every negotiated list variant"),
+        ))
     }
 
     pub(in super::super) fn list_format_supported_locales(
@@ -94,15 +97,21 @@ impl Vm {
         let constructor = self.globals["%Intl.ListFormat%"];
         let default = self
             .heap
-            .get(constructor, "prototype")?
+            .get(constructor, "prototype")
+            .expect("intl_global retains the installed intrinsic constructor")
             .object_id()
             .expect("Intl.ListFormat.prototype is an object");
         let prototype = self.constructor_prototype(default)?;
+        let base = self.stack.len();
         self.stack.push(Value::Object(prototype));
-        let data =
-            self.resolve_list_format(native::argument(args, 0), native::argument(args, 1))?;
-        self.with_roots(|heap| heap.alloc_list_format(data, prototype))
-            .map(Value::Object)
+        let result = (|| {
+            let data =
+                self.resolve_list_format(native::argument(args, 0), native::argument(args, 1))?;
+            self.with_roots(|heap| heap.alloc_list_format(data, prototype))
+                .map(Value::Object)
+        })();
+        self.stack.truncate(base);
+        result
     }
 
     pub(in super::super) fn list_format_data(
@@ -175,21 +184,26 @@ impl Vm {
             .collect::<Vec<_>>();
         let parts = data
             .format_to_parts(projected.iter())
-            .map_err(|error| RuntimeError::RangeError(error.to_string()))?;
-        let mut next_element = 0usize;
-        parts
+            .expect("the provider writes list parts into an infallible String collector");
+        // Both collectors omit empty elements when joining a multi-item list.
+        // Match their nonempty element stream instead of shifting UTF-16 values
+        // after an empty input. The pinned single-item path retains that input.
+        let mut elements = values
+            .iter()
+            .filter(|value| values.len() == 1 || !value.is_empty());
+        Ok(parts
             .into_iter()
             .map(|part| match part.kind {
                 blueice_ecma402::ListPartKind::Element => {
-                    let value = values.get(next_element).cloned().ok_or_else(|| {
-                        RuntimeError::RangeError("invalid ListFormat element data".into())
-                    })?;
-                    next_element += 1;
-                    Ok((part.kind, value))
+                    let value = elements
+                        .next()
+                        .expect("provider element parts preserve input order")
+                        .clone();
+                    (part.kind, value)
                 }
-                blueice_ecma402::ListPartKind::Literal => Ok((part.kind, part.value.into())),
+                blueice_ecma402::ListPartKind::Literal => (part.kind, part.value.into()),
             })
-            .collect()
+            .collect())
     }
 
     pub(in super::super) fn list_format_format(
@@ -250,34 +264,39 @@ impl Vm {
         let resolved = data.resolved_options();
         let prototype = self.object_prototype;
         let result = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
+        let base = self.stack.len();
         self.stack.push(Value::Object(result));
-        for (key, value) in [
-            ("locale", Value::String(resolved.locale.as_str().into())),
-            (
-                "type",
-                Value::String(
-                    match resolved.list_type {
-                        blueice_ecma402::ListType::Conjunction => "conjunction",
-                        blueice_ecma402::ListType::Disjunction => "disjunction",
-                        blueice_ecma402::ListType::Unit => "unit",
-                    }
-                    .into(),
+        let outcome = (|| {
+            for (key, value) in [
+                ("locale", Value::String(resolved.locale.as_str().into())),
+                (
+                    "type",
+                    Value::String(
+                        match resolved.list_type {
+                            blueice_ecma402::ListType::Conjunction => "conjunction",
+                            blueice_ecma402::ListType::Disjunction => "disjunction",
+                            blueice_ecma402::ListType::Unit => "unit",
+                        }
+                        .into(),
+                    ),
                 ),
-            ),
-            (
-                "style",
-                Value::String(
-                    match resolved.style {
-                        blueice_ecma402::ListStyle::Wide => "long",
-                        blueice_ecma402::ListStyle::Short => "short",
-                        blueice_ecma402::ListStyle::Narrow => "narrow",
-                    }
-                    .into(),
+                (
+                    "style",
+                    Value::String(
+                        match resolved.style {
+                            blueice_ecma402::ListStyle::Wide => "long",
+                            blueice_ecma402::ListStyle::Short => "short",
+                            blueice_ecma402::ListStyle::Narrow => "narrow",
+                        }
+                        .into(),
+                    ),
                 ),
-            ),
-        ] {
-            self.define_data(result, key, value, true, true, true)?;
-        }
-        Ok(Value::Object(result))
+            ] {
+                self.define_data(result, key, value, true, true, true)?;
+            }
+            Ok(Value::Object(result))
+        })();
+        self.stack.truncate(base);
+        outcome
     }
 }

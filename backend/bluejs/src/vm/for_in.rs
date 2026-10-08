@@ -57,43 +57,69 @@ impl Vm {
     /// or no longer enumerable is skipped, and one seen on an object nearer
     /// the receiver (enumerable or not) shadows the same key further up.
     pub(super) fn for_in_step(&mut self, record: ObjectId) -> Result<Option<Value>, RuntimeError> {
+        // Check heap ingress before relying on compiler-owned record fields.
+        self.heap.get_own(record, "forInVisited")?;
         let base = self.stack.len();
         self.stack.push(Value::Object(record));
         let result = self.for_in_next_key(record);
-        self.stack.truncate(base);
         if !matches!(result, Ok(Some(_))) {
-            self.with_roots(|heap| heap.set(record, "done", Value::Bool(true)))?;
+            self.heap
+                .set(record, "done", Value::Bool(true))
+                .expect("the retained private record owns its existing Boolean done slot");
         }
+        self.stack.truncate(base);
         result
     }
 
     fn for_in_next_key(&mut self, record: ObjectId) -> Result<Option<Value>, RuntimeError> {
-        let visited = self.heap.get_own(record, "forInVisited")?;
-        let Some(Value::Object(visited)) = visited else {
-            return Ok(None);
-        };
+        // No script can access or mutate these ordinary metadata objects.
+        // The record retains them across every observable Proxy operation.
+        let visited = self
+            .heap
+            .get_own(record, "forInVisited")
+            .expect("for_in_step validated the retained private record")
+            .and_then(|value| value.object_id())
+            .expect("for_in_iterator installs the private visited object");
         loop {
-            let Some(Value::Object(object)) = self.heap.get_own(record, "forInObject")? else {
+            let Some(Value::Object(object)) = self
+                .heap
+                .get_own(record, "forInObject")
+                .expect("the private record is retained")
+            else {
                 return Ok(None);
             };
             self.stack.push(Value::Object(object));
-            let keys = match self.heap.get_own(record, "forInKeys")? {
+            let keys = match self
+                .heap
+                .get_own(record, "forInKeys")
+                .expect("the private record is retained")
+            {
                 Some(Value::Object(keys)) => keys,
                 _ => {
                     // Entering this object: guard against a cyclic chain
                     // (a Proxy can return one), then list its own keys.
-                    let Some(Value::Object(chain)) = self.heap.get_own(record, "forInChain")?
-                    else {
-                        return Ok(None);
-                    };
-                    if self.array_contains_object(chain, object)? {
-                        self.with_roots(|heap| heap.set(record, "forInObject", Value::Null))?;
+                    let chain = self
+                        .heap
+                        .get_own(record, "forInChain")
+                        .expect("the private record is retained")
+                        .and_then(|value| value.object_id())
+                        .expect("for_in_iterator installs the private chain array");
+                    if self
+                        .array_contains_object(chain, object)
+                        .expect("the record retains its private chain array")
+                    {
+                        self.heap
+                            .set(record, "forInObject", Value::Null)
+                            .expect("replacing a private non-payload slot does not grow storage");
                         continue;
                     }
-                    let length = match self.heap.get_own(chain, "length")? {
-                        Some(Value::Number(length)) => length as usize,
-                        _ => 0,
-                    };
+                    let length = self
+                        .heap
+                        .get_own(chain, "length")
+                        .expect("the private metadata is retained")
+                        .and_then(|value| value.as_number())
+                        .expect("private arrays and indices have numeric lengths")
+                        as usize;
                     self.with_roots(|heap| {
                         heap.set(chain, length.to_string(), Value::Object(object))
                     })?;
@@ -104,34 +130,51 @@ impl Vm {
                         }
                     }
                     let keys = self.array_from(names)?;
-                    let Value::Object(keys) = keys else {
-                        unreachable!("array_from returns an array object")
-                    };
+                    let keys = keys
+                        .object_id()
+                        .expect("array_from returns an array object");
                     self.stack.push(Value::Object(keys));
-                    self.with_roots(|heap| heap.set(record, "forInKeys", Value::Object(keys)))?;
-                    self.with_roots(|heap| heap.set(record, "forInIndex", Value::Number(0.0)))?;
+                    self.heap
+                        .set(record, "forInKeys", Value::Object(keys))
+                        .expect("replacing a private non-payload slot does not grow storage");
+                    self.heap
+                        .set(record, "forInIndex", Value::Number(0.0))
+                        .expect("replacing a private non-payload slot does not grow storage");
                     keys
                 }
             };
-            let length = match self.heap.get_own(keys, "length")? {
-                Some(Value::Number(length)) => length as usize,
-                _ => 0,
-            };
-            let mut index = match self.heap.get_own(record, "forInIndex")? {
-                Some(Value::Number(index)) => index as usize,
-                _ => 0,
-            };
+            let length = self
+                .heap
+                .get_own(keys, "length")
+                .expect("the private metadata is retained")
+                .and_then(|value| value.as_number())
+                .expect("private arrays and indices have numeric lengths")
+                as usize;
+            let mut index = self
+                .heap
+                .get_own(record, "forInIndex")
+                .expect("the private metadata is retained")
+                .and_then(|value| value.as_number())
+                .expect("private arrays and indices have numeric lengths")
+                as usize;
             while index < length {
-                let key = self.heap.get_own(keys, index.to_string())?;
+                let key = self
+                    .heap
+                    .get_own(keys, index.to_string())
+                    .expect("the record retains the dense private key array")
+                    .and_then(|value| value.as_string().cloned())
+                    .expect("the captured keys contain only string names");
                 index += 1;
-                self.with_roots(|heap| {
-                    heap.set(record, "forInIndex", Value::Number(index as f64))
-                })?;
-                let Some(Value::String(key)) = key else {
-                    continue;
-                };
+                self.heap
+                    .set(record, "forInIndex", Value::Number(index as f64))
+                    .expect("replacing the private numeric index does not grow storage");
                 let name = PropertyName::String(key.clone());
-                if self.heap.get_own(visited, name.clone())?.is_some() {
+                if self
+                    .heap
+                    .get_own(visited, name.clone())
+                    .expect("the record retains its ordinary visited object")
+                    .is_some()
+                {
                     continue;
                 }
                 let Some(descriptor) = self.object_get_own_property(object, &name)? else {
@@ -145,8 +188,12 @@ impl Vm {
             // This object is exhausted: continue with its prototype.
             let prototype = self.object_get_prototype(object)?;
             let next = prototype.map_or(Value::Null, Value::Object);
-            self.with_roots(|heap| heap.set(record, "forInObject", next))?;
-            self.with_roots(|heap| heap.set(record, "forInKeys", Value::Undefined))?;
+            self.heap
+                .set(record, "forInObject", next)
+                .expect("replacing a private non-payload slot does not grow storage");
+            self.heap
+                .set(record, "forInKeys", Value::Undefined)
+                .expect("replacing a private non-payload slot does not grow storage");
         }
     }
 
@@ -155,12 +202,19 @@ impl Vm {
         array: ObjectId,
         object: ObjectId,
     ) -> Result<bool, RuntimeError> {
-        let length = match self.heap.get_own(array, "length")? {
-            Some(Value::Number(length)) => length as usize,
-            _ => 0,
-        };
+        let length =
+            self.heap
+                .get_own(array, "length")
+                .expect("the private metadata is retained")
+                .and_then(|value| value.as_number())
+                .expect("private arrays and indices have numeric lengths") as usize;
         for index in 0..length {
-            if self.heap.get_own(array, index.to_string())? == Some(Value::Object(object)) {
+            if self
+                .heap
+                .get_own(array, index.to_string())
+                .expect("the record retains its private chain array")
+                == Some(Value::Object(object))
+            {
                 return Ok(true);
             }
         }
