@@ -26,10 +26,11 @@ pub(super) fn overload_signature_erasures(module: &Module) -> Vec<TextEdit> {
             continue;
         };
         for member in &class.members {
-            let signature = member
-                .constructor
-                .as_ref()
-                .is_some_and(|constructor| constructor.body.is_none())
+            let signature = member.abstract_modifier.is_some()
+                || member
+                    .constructor
+                    .as_ref()
+                    .is_some_and(|constructor| constructor.body.is_none())
                 || member
                     .method
                     .as_ref()
@@ -174,12 +175,26 @@ pub(super) fn emit_class_declaration(
     context: Option<&super::inferred_declarations::Context<'_>>,
 ) -> Result<(), Diagnostic> {
     output.push_str(prefix);
+    if class.abstract_modifier.is_some() {
+        output.push_str("abstract ");
+    }
     output.push_str("class ");
     output.push_str(&class.name);
     super::emit_type_parameters(output, &class.type_parameters);
     if let Some(base) = &class.extends_name {
         output.push_str(" extends ");
         output.push_str(base);
+    }
+    if !class.implements.is_empty() {
+        output.push_str(" implements ");
+        output.push_str(
+            &class
+                .implements
+                .iter()
+                .map(|(value, _)| type_to_ts(value))
+                .collect::<Vec<_>>()
+                .join(", "),
+        );
     }
     output.push_str(" {\n");
     if declares_private_name(class) {
@@ -271,6 +286,9 @@ pub(super) fn emit_class_declaration(
             };
             output.push_str("    ");
             output.push_str(visibility_prefix(field.visibility));
+            if member.abstract_modifier.is_some() {
+                output.push_str("abstract ");
+            }
             if field.is_static {
                 output.push_str("static ");
             }
@@ -304,6 +322,9 @@ pub(super) fn emit_class_declaration(
         } else if let Some(accessor) = &member.accessor {
             output.push_str("    ");
             output.push_str(visibility_prefix(accessor.visibility));
+            if member.abstract_modifier.is_some() {
+                output.push_str("abstract ");
+            }
             if accessor.is_static {
                 output.push_str("static ");
             }
@@ -388,10 +409,16 @@ pub(super) fn emit_class_declaration(
                 };
                 output.push_str("    ");
                 output.push_str(visibility_prefix(method.visibility));
+                if shell.abstract_modifier.is_some() {
+                    output.push_str("abstract ");
+                }
                 if method.is_static {
                     output.push_str("static ");
                 }
                 output.push_str(&method.name);
+                if method.optional {
+                    output.push('?');
+                }
                 output.push_str(&parameters_to_ts(&method.parameters));
                 output.push_str(": ");
                 output.push_str(

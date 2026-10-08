@@ -7,7 +7,7 @@ use super::*;
 use crate::parser::Variance;
 
 impl ModuleChecker<'_> {
-    fn compatibility_shape(&self, value: &Type) -> Type {
+    pub(super) fn compatibility_shape(&self, value: &Type) -> Type {
         let mut value = value.clone();
         let mut visited = HashSet::new();
         let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
@@ -225,6 +225,38 @@ impl ModuleChecker<'_> {
         }
         let a = self.compatibility_shape(actual);
         let e = self.compatibility_shape(expected);
+        if let (
+            Type::CallableRecord {
+                signatures: actual, ..
+            },
+            Type::CallableRecord {
+                signatures: expected,
+                ..
+            },
+        ) = (&a, &e)
+        {
+            for target in expected.iter().filter(|signature| signature.construct) {
+                if actual
+                    .iter()
+                    .filter(|signature| signature.construct)
+                    .all(|signature| signature.abstract_constructor)
+                    && actual.iter().any(|signature| signature.construct)
+                    && !target.abstract_constructor
+                {
+                    return Some("\n  Cannot assign an abstract constructor type to a non-abstract constructor type.".into());
+                }
+                if let Some(source) = actual.iter().find(|signature| {
+                    signature.construct
+                        && signature.constructor_visibility != target.constructor_visibility
+                }) {
+                    return Some(format!(
+                        "\n  Cannot assign a '{}' constructor type to a '{}' constructor type.",
+                        source.constructor_visibility.keyword(),
+                        target.constructor_visibility.keyword()
+                    ));
+                }
+            }
+        }
         let (af, ac) = callable_parts(&a);
         let (ef, ec) = callable_parts(&e);
         if matches!(a, Type::CallableRecord { .. }) || matches!(e, Type::CallableRecord { .. }) {

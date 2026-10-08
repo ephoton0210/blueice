@@ -207,7 +207,6 @@ fn class_header_errors_and_unimplemented_forms_fail_closed_and_a_plain_class_com
         "class { }",
         "class Box<T> extends Base<T> {}",
         "class C extends Base[0] {}",
-        "class C implements Shape {}",
     ] {
         assert!(
             parse_module("memory:///classes.ts", source).is_err(),
@@ -224,6 +223,19 @@ fn class_header_errors_and_unimplemented_forms_fail_closed_and_a_plain_class_com
     );
     assert!(!compilation.has_errors(), "{:#?}", compilation.diagnostics);
     assert!(compilation.output.is_some());
+    let missing = crate::compile(
+        "memory:///classes.ts",
+        &crate::MapLoader::from([crate::ModuleSource::new(
+            "memory:///classes.ts",
+            "class C implements Shape {}",
+        )]),
+        crate::CompilerOptions::default(),
+    );
+    assert!(missing.has_errors());
+    assert_eq!(
+        missing.diagnostics[0].typescript.as_ref().unwrap().code,
+        2304
+    );
 }
 
 #[test]
@@ -528,7 +540,6 @@ fn opaque_class_member_interrupts_method_overload_group() {
 fn routes_unimplemented_class_member_shapes_to_opaque_shells() {
     for source in [
         "class C { ['field'] = 1; }",
-        "class C { static private read() {} }",
         "class C { async read() {} }",
         "class C { [key]() {} }",
         "class C { *generate() {} }",
@@ -541,6 +552,12 @@ fn routes_unimplemented_class_member_shapes_to_opaque_shells() {
         assert_eq!(class.members.len(), 1, "{source}");
         assert_eq!(class.members[0].kind, ClassMemberKind::Opaque, "{source}");
     }
+    let diagnostics = parse_module(
+        "memory:///opaque.ts",
+        "class C { static private read() {} }",
+    )
+    .unwrap_err();
+    assert_eq!(diagnostics[0].typescript.as_ref().unwrap().code, 1029);
 }
 
 #[test]

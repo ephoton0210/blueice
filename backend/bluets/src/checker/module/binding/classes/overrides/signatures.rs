@@ -147,7 +147,7 @@ pub(super) fn nearest_inherited_method<'a>(
                 (definition.kind == TypeDefinitionKind::Class).then_some(&definition.value)
             })
         };
-        let Type::Record(fields) = surface? else {
+        let (Type::Record(fields) | Type::CallableRecord { fields, .. }) = surface? else {
             return None;
         };
         let mut matching = fields.iter().filter(|field| field.name == group.name);

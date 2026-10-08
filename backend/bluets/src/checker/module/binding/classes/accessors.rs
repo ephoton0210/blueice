@@ -110,7 +110,9 @@ impl ModuleChecker<'_> {
             .iter()
             .filter_map(|member| member.accessor.as_ref())
         {
-            if accessor.getter && !super::super::super::return_inference::has_return(&accessor.body)
+            if accessor.getter
+                && accessor.body_present
+                && !super::super::super::return_inference::has_return(&accessor.body)
             {
                 let mut scope = self.values.clone();
                 scope.insert(
@@ -267,7 +269,7 @@ impl ModuleChecker<'_> {
                         .map(|definition| &definition.value)
                 };
                 return match record {
-                    Some(Type::Record(fields))
+                    Some(Type::Record(fields) | Type::CallableRecord { fields, .. })
                         if super::visibility::effective_visibility(fields, name).is_some() =>
                     {
                         Err(())
@@ -374,6 +376,16 @@ impl ModuleChecker<'_> {
                 }
             };
             if base_kind == kind {
+                continue;
+            }
+            if kind == BaseMemberKind::Field
+                && base_kind == BaseMemberKind::Accessor
+                && class
+                    .extends_name
+                    .as_ref()
+                    .and_then(|name| self.class_constructors.get(name))
+                    .is_some_and(|base| base.modifiers.abstract_members.contains(&name))
+            {
                 continue;
             }
             if kind == BaseMemberKind::Field && base_kind == BaseMemberKind::Method {

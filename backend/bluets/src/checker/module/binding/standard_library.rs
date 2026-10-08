@@ -197,6 +197,7 @@ impl ModuleChecker<'_> {
                     continue;
                 };
                 let binding = ClassConstructorBinding {
+                    modifiers: ClassModifierSurface::default(),
                     signatures: vec![FunctionSignature {
                         parameters: parameters.clone(),
                         type_parameters: Vec::new(),

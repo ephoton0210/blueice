@@ -219,7 +219,15 @@ impl Parser {
     }
 
     pub(super) fn parse_type_primary(&mut self, _stop: &[&str]) -> Type {
-        let mut value = if self.peek("infer") {
+        let mut value = if self.peek("new")
+            || (self.peek("abstract")
+                && self
+                    .tokens
+                    .get(self.index + 1)
+                    .is_some_and(|token| token.is("new")))
+        {
+            self.parse_constructor_type(_stop)
+        } else if self.peek("infer") {
             self.parse_infer_type()
         } else if self.current().kind == TokenKind::Template {
             self.parse_template_type()

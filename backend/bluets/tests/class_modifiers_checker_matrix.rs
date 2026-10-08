@@ -45,6 +45,9 @@ fn prepare(case: &Value, directory: &Path) -> PathBuf {
         }
     }
     let mut options = json!({"target":"ES2022","module":"ES2022","strict":true});
+    if directory.join("base.ts").is_file() {
+        options["allowImportingTsExtensions"] = Value::Bool(true);
+    }
     if case["flags"]
         .as_array()
         .unwrap()

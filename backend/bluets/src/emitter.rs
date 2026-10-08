@@ -295,7 +295,14 @@ fn emit_javascript(
             replacement: format!("{quote}{emitted_specifier}{quote}"),
         });
     }
-    edits.extend(classes::overload_signature_erasures(module));
+    let signatures = classes::overload_signature_erasures(module);
+    // Whole-member erasure owns its modifier/annotation edits as well.
+    edits.retain(|edit| {
+        !signatures
+            .iter()
+            .any(|signature| edit.start >= signature.start && edit.end <= signature.end)
+    });
+    edits.extend(signatures);
     // CommonJS name rewriting goes first so that the lowerings below, which copy
     // or move source text (a static initializer, a decorator expression), take
     // the rewritten text with them.

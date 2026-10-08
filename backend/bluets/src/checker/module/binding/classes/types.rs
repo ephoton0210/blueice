@@ -118,7 +118,7 @@ pub(super) fn class_method_fields(class: &ClassDeclaration, is_static: bool) -> 
                 method: true,
                 name: visibility::member_field_name(class, method.visibility, &method.name),
                 readonly: false,
-                optional: false,
+                optional: method.optional,
                 value: Type::Function {
                     parameters: method.parameters.clone(),
                     result: Box::new(method.return_type.clone().unwrap_or(Type::Unknown)),
@@ -152,7 +152,16 @@ pub(in crate::checker::module) fn class_constructor_side_type(class: &ClassDecla
         span: class.name_span.clone(),
     }];
     fields.extend(class_method_fields(class, true));
-    Type::Record(fields)
+    let binding = ClassConstructorBinding {
+        modifiers: ClassModifierSurface::declared(class),
+        signatures: class_constructor_signatures(class),
+        inherited: class.extends_name.is_some() && !class_declares_constructor(class),
+        visibility: class_constructor_visibility(class),
+    };
+    Type::CallableRecord {
+        fields,
+        signatures: binding.value_signatures(&class.name_span),
+    }
 }
 
 pub(super) fn class_constructor_overload_is_compatible(

@@ -6,6 +6,7 @@
 
 use super::*;
 mod compatibility;
+mod constructors;
 mod more_types;
 mod operators;
 
@@ -185,6 +186,9 @@ impl ModuleChecker<'_> {
         actual: &Type,
         expected: &Type,
     ) {
+        if self.constructor_assignment_error(span, &message, bts_code, actual, expected) {
+            return;
+        }
         if self.compatibility_assignment_error(span, &message, bts_code, actual, expected) {
             return;
         }

@@ -157,6 +157,9 @@ fn lower_class(
         ));
     }
     for member in &class.members {
+        if member.abstract_modifier.is_some() {
+            continue;
+        }
         let Some(field) = member.field.as_ref().filter(|field| !field.is_static) else {
             continue;
         };
@@ -189,6 +192,9 @@ fn lower_class(
         .unwrap_or_default();
     let mut statics = String::new();
     for member in &class.members {
+        if member.abstract_modifier.is_some() {
+            continue;
+        }
         if let Some(field) = member.field.as_ref().filter(|field| field.is_static) {
             let value = field
                 .initializer

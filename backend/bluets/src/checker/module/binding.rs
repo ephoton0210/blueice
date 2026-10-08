@@ -460,6 +460,8 @@ impl<'a> ModuleChecker<'a> {
         self.bind_inherited_class_instance_methods();
         self.bind_inherited_class_static_methods();
         self.bind_inherited_class_constructors();
+        self.bind_class_modifier_surfaces();
+        self.bind_class_constructor_value_signatures();
         self.collect_restricted_member_names();
         let mut enum_index = 0usize;
         for declaration in &self.module.declarations {
@@ -534,6 +536,8 @@ impl<'a> ModuleChecker<'a> {
                     let previous_parameters = self.type_parameters.clone();
                     self.check_type_parameters(&class.type_parameters);
                     self.validate_class_heritage_name(class);
+                    self.validate_class_modifiers(class);
+                    self.validate_class_implements(class);
                     self.validate_class_constructor_group(class);
                     self.validate_class_method_groups(class);
                     self.validate_class_method_overrides(class);

@@ -268,7 +268,7 @@ impl Parser {
     /// erased from the output. `None` when the parameter has neither, so it is
     /// an ordinary parameter. A modifier word counts only when a parameter
     /// follows it; `constructor(readonly)` names a parameter `readonly`.
-    fn consume_parameter_property_modifiers(&mut self) -> Option<(Visibility, bool)> {
+    fn consume_parameter_property_modifiers(&mut self) -> Option<(Visibility, bool, bool, usize)> {
         let starts_parameter = |token: Option<&Token>| {
             token.is_some_and(|token| {
                 matches!(token.kind, TokenKind::Identifier | TokenKind::Keyword)
@@ -280,12 +280,13 @@ impl Parser {
         let first = self.index;
         let mut visibility = None;
         let mut readonly = false;
+        let mut override_modifier = false;
         let mut misplaced = false;
         while starts_parameter(self.tokens.get(self.index + 1)) {
             let word = self.tokens[self.index].text.as_str();
             match word {
                 "public" | "protected" | "private" => {
-                    misplaced |= visibility.is_some() || readonly;
+                    misplaced |= visibility.is_some() || readonly || override_modifier;
                     visibility = Some(match word {
                         "protected" => Visibility::Protected,
                         "private" => Visibility::Private,
@@ -295,6 +296,10 @@ impl Parser {
                 "readonly" => {
                     misplaced |= readonly;
                     readonly = true;
+                }
+                "override" => {
+                    misplaced |= readonly || override_modifier;
+                    override_modifier = true;
                 }
                 _ => break,
             }
@@ -319,7 +324,12 @@ impl Parser {
             end: self.current().start,
             replacement: String::new(),
         });
-        Some((visibility.unwrap_or_default(), readonly))
+        Some((
+            visibility.unwrap_or_default(),
+            readonly,
+            override_modifier,
+            self.tokens[first].start,
+        ))
     }
 
     pub(in crate::parser::implementation) fn parse_parameters(&mut self) -> Vec<Parameter> {
@@ -329,7 +339,7 @@ impl Parser {
             let property_modifiers = if self.parameter_property_mode
                 || matches!(
                     self.current().text.as_str(),
-                    "public" | "protected" | "private" | "readonly"
+                    "public" | "protected" | "private" | "readonly" | "override"
                 ) {
                 self.consume_parameter_property_modifiers()
             } else {
@@ -428,7 +438,9 @@ impl Parser {
                 None
             };
             let parameter_end = self.previous().end;
-            if let Some((visibility, readonly)) = property_modifiers {
+            if let Some((visibility, readonly, override_modifier, modifiers_start)) =
+                property_modifiers
+            {
                 if !self.parameter_property_mode {
                     self.diagnostics.push(
                         Diagnostic::error(
@@ -454,6 +466,8 @@ impl Parser {
                         parameter_index: parameters.len(),
                         visibility,
                         readonly,
+                        override_modifier,
+                        modifiers_start,
                     });
                 }
             }

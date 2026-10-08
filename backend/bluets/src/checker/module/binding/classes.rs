@@ -10,12 +10,15 @@ use crate::parser::{ClassConstructor, ClassDeclaration, ClassMemberKind, ClassMe
 
 mod accessors;
 mod bodies;
+mod constructors;
 mod types;
 
 pub(in crate::checker::module) use types::class_constructor_side_type;
 pub(in crate::checker::module) use types::class_is_fully_structured;
 use types::*;
 mod fields;
+mod implements;
+mod modifiers;
 mod overrides;
 mod super_calls;
 mod visibility;
@@ -156,6 +159,7 @@ impl ModuleChecker<'_> {
         self.class_constructors.insert(
             local_name.to_string(),
             ClassConstructorBinding {
+                modifiers: class.constructor_binding.modifiers.clone(),
                 signatures,
                 inherited: class.constructor_binding.inherited,
                 visibility: class.constructor_binding.visibility,
@@ -183,7 +187,11 @@ impl ModuleChecker<'_> {
         receiver: &Token,
         scope: &BTreeMap<String, Type>,
     ) -> bool {
-        receiver.is("this") && matches!(scope.get("this"), Some(Type::Record(_)))
+        receiver.is("this")
+            && matches!(
+                scope.get("this"),
+                Some(Type::Record(_) | Type::CallableRecord { .. })
+            )
     }
 
     pub(super) fn bind_class(&mut self, class: &ClassDeclaration) {
@@ -219,6 +227,7 @@ impl ModuleChecker<'_> {
         self.class_constructors.insert(
             class.name.clone(),
             ClassConstructorBinding {
+                modifiers: ClassModifierSurface::declared(class),
                 signatures: class_constructor_signatures(class),
                 inherited: class.extends_name.is_some() && !class_declares_constructor(class),
                 visibility: class_constructor_visibility(class),
@@ -422,8 +431,12 @@ impl ModuleChecker<'_> {
             if !self.class_constructors.contains_key(&class.name) {
                 continue;
             }
-            let Type::Record(mut fields) = class_constructor_side_type(class) else {
-                unreachable!("class constructor side is a record")
+            let Type::CallableRecord {
+                mut fields,
+                signatures,
+            } = class_constructor_side_type(class)
+            else {
+                unreachable!("class constructor side retains construct signatures")
             };
             let mut names = fields
                 .iter()
@@ -447,7 +460,11 @@ impl ModuleChecker<'_> {
                 } else {
                     break;
                 };
-                let Type::Record(inherited) = inherited else {
+                let (Type::Record(inherited)
+                | Type::CallableRecord {
+                    fields: inherited, ..
+                }) = inherited
+                else {
                     break;
                 };
                 fields.extend(
@@ -458,7 +475,10 @@ impl ModuleChecker<'_> {
                 );
                 names.extend(inherited.iter().map(|field| field.name.clone()));
             }
-            surfaces.push((class.name.clone(), Type::Record(fields)));
+            surfaces.push((
+                class.name.clone(),
+                Type::CallableRecord { fields, signatures },
+            ));
         }
         for (name, value) in surfaces {
             self.values.insert(name, value);
@@ -496,6 +516,7 @@ impl ModuleChecker<'_> {
             self.class_constructors.insert(
                 class.name.clone(),
                 ClassConstructorBinding {
+                    modifiers: ClassModifierSurface::declared(class),
                     signatures,
                     inherited: false,
                     visibility: base.visibility,
@@ -721,6 +742,13 @@ impl ModuleChecker<'_> {
             }
 
             let Some(implementation_index) = group.implementation_member_index else {
+                if group
+                    .signature_member_indices
+                    .iter()
+                    .all(|&index| class.members[index].abstract_modifier.is_some())
+                {
+                    continue;
+                }
                 if let Some(&last_signature) = group.signature_member_indices.last() {
                     self.type_error(
                         &class.members[last_signature].span,
@@ -790,6 +818,12 @@ impl ModuleChecker<'_> {
             .receiver
             .is_some_and(|receiver| scope.get(&receiver.text) != self.values.get(&receiver.text))
         {
+            return;
+        }
+        if self.reject_abstract_construction(tokens, &call.callee.text, scope) {
+            return;
+        }
+        if self.reject_inaccessible_aliased_constructor(tokens, &call.callee.text, scope) {
             return;
         }
         if let Some(signatures) = self.function_value_signatures(&call.callee.text, scope, true) {
@@ -1139,6 +1173,7 @@ pub(in crate::checker) fn class_export(class: &ClassDeclaration) -> ExportedClas
         instance_type: class_instance_type(class),
         constructor_type: class_constructor_side_type(class),
         constructor_binding: ClassConstructorBinding {
+            modifiers: ClassModifierSurface::declared(class),
             signatures: class_constructor_signatures(class),
             inherited: class.extends_name.is_some() && !class_declares_constructor(class),
             visibility: class_constructor_visibility(class),

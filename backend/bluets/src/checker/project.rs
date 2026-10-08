@@ -364,8 +364,19 @@ fn local_exported_class_surfaces(
 }
 
 fn inherit_exported_class_surface(derived: &mut ExportedClass, base: &ExportedClass) {
+    derived
+        .constructor_binding
+        .modifiers
+        .inherit(&base.constructor_binding.modifiers);
     fn append_unshadowed(own: &mut Type, inherited: &Type) {
-        let (Type::Record(own), Type::Record(inherited)) = (own, inherited) else {
+        let (
+            Type::Record(own) | Type::CallableRecord { fields: own, .. },
+            Type::Record(inherited)
+            | Type::CallableRecord {
+                fields: inherited, ..
+            },
+        ) = (own, inherited)
+        else {
             return;
         };
         let names = own
@@ -397,6 +408,12 @@ fn inherit_exported_class_surface(derived: &mut ExportedClass, base: &ExportedCl
             })
             .collect();
         derived.constructor_binding.inherited = false;
+        derived.constructor_binding.visibility = base.constructor_binding.visibility;
+        if let Type::CallableRecord { signatures, .. } = &mut derived.constructor_type {
+            if let Some(span) = signatures.first().map(|signature| signature.span.clone()) {
+                *signatures = derived.constructor_binding.value_signatures(&span);
+            }
+        }
     }
 }
 

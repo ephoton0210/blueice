@@ -214,6 +214,10 @@ pub struct RawDeclaration {
 /// That intermediate state is rejected by the checker before any emission.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClassDeclaration {
+    /// An erased `abstract` keyword; its origin remains available to checking.
+    pub abstract_modifier: Option<SourceSpan>,
+    /// Structural instance obligations, with each original heritage type span.
+    pub implements: Vec<(Type, SourceSpan)>,
     pub type_parameters: Vec<TypeParameter>,
     /// The decorators written before the class (before or after `export`).
     pub decorators: Vec<Decorator>,
@@ -283,6 +287,8 @@ pub enum ClassMemberKind {
 /// `ClassDeclaration::body` and avoid cloning a potentially large body again.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClassMemberShell {
+    pub abstract_modifier: Option<SourceSpan>,
+    pub override_modifier: Option<SourceSpan>,
     /// The decorators written before the member. `token_start` and `span` begin
     /// after them.
     pub decorators: Vec<Decorator>,
@@ -394,6 +400,8 @@ pub struct ClassAccessor {
     pub return_type: Option<Type>,
     pub return_type_span: Option<SourceSpan>,
     pub body: Vec<FunctionBodyItem>,
+    /// An abstract accessor signature has no executable body.
+    pub body_present: bool,
     pub span: SourceSpan,
 }
 
@@ -430,6 +438,7 @@ impl ClassDeclaration {
             .filter_map(|member| member.accessor.as_ref())
             .map(|accessor| ClassMethod {
                 name: accessor.name.clone(),
+                name_span: accessor.name_span.clone(),
                 visibility: accessor.visibility,
                 is_static: accessor.is_static,
                 parameters: accessor.parameters.clone(),
@@ -439,7 +448,8 @@ impl ClassDeclaration {
                     Some(Type::Void)
                 },
                 return_type_span: accessor.return_type_span.clone(),
-                body: Some(accessor.body.clone()),
+                body: accessor.body_present.then(|| accessor.body.clone()),
+                optional: false,
                 span: accessor.span.clone(),
             })
             .collect()
@@ -560,6 +570,8 @@ pub struct ParameterProperty {
     pub parameter_index: usize,
     pub visibility: Visibility,
     pub readonly: bool,
+    pub override_modifier: bool,
+    pub modifiers_start: usize,
 }
 
 /// The point in a constructor body after which `this.p = p;` is emitted for
@@ -576,8 +588,10 @@ pub struct ParameterPropertyInsertion {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClassMethod {
     pub name: String,
+    pub name_span: SourceSpan,
     pub visibility: Visibility,
     pub is_static: bool,
+    pub optional: bool,
     pub parameters: Vec<Parameter>,
     pub return_type: Option<Type>,
     /// Original annotation tokens, excluding the colon and trailing gap.
@@ -646,6 +660,11 @@ impl InterfaceDeclaration {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TypeSignature {
     pub construct: bool,
+    pub abstract_constructor: bool,
+    /// Class constructor accessibility retained when its value is aliased.
+    pub constructor_visibility: Visibility,
+    /// Written as `new (...) => T` rather than an object signature.
+    pub constructor_arrow: bool,
     pub type_parameters: Vec<TypeParameter>,
     pub parameters: Vec<Parameter>,
     pub result: Type,

@@ -147,6 +147,7 @@ pub(super) fn resolve(
                     | "noUnusedLocals"
                     | "noUnusedParameters"
                     | "noImplicitReturns"
+                    | "noImplicitOverride"
                     | "noFallthroughCasesInSwitch"
                     | "exactOptionalPropertyTypes"
                     | "noUncheckedIndexedAccess"

@@ -28,6 +28,7 @@ use member_calls::{member_call_parts, member_call_ranges};
 mod properties;
 mod scopes;
 pub(crate) use scopes::flow::VERSION as FLOW_VERSION;
+pub(crate) const CLASS_SURFACE_VERSION: &str = "class-surface-v1";
 mod type_operators;
 mod type_relations;
 use properties::{
@@ -127,11 +128,19 @@ struct FunctionSignature {
 
 #[derive(Clone, PartialEq, Eq)]
 struct ClassConstructorBinding {
+    modifiers: ClassModifierSurface,
     signatures: Vec<FunctionSignature>,
     /// An omitted derived constructor whose base signature is not yet bound.
     inherited: bool,
     /// Who may `new` the class: an omitted constructor takes its base's.
     visibility: crate::parser::Visibility,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct ClassModifierSurface {
+    abstract_class: bool,
+    abstract_members: BTreeSet<String>,
+    declared_members: BTreeSet<String>,
 }
 
 #[derive(Clone, PartialEq, Eq)]

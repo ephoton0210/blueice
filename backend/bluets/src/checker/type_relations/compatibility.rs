@@ -5,6 +5,58 @@
 //! Callable objects and weak records retain structural member rules.
 use super::*;
 
+/// Instantiate a generic source constructor against a concrete target using the
+/// same bounded candidates and constraints as a contextual generic call.
+pub(in crate::checker) fn constructor_relation_type(
+    source: &crate::parser::TypeSignature,
+    target: &crate::parser::TypeSignature,
+    aliases: &BTreeMap<String, TypeDefinition>,
+    budget: &mut TypeExpansionBudget,
+) -> (Type, bool) {
+    if !source.construct || source.type_parameters.is_empty() || !target.type_parameters.is_empty()
+    {
+        return (source.function_type(), true);
+    }
+    let signature = FunctionSignature {
+        parameters: source.parameters.clone(),
+        type_parameters: source.type_parameters.clone(),
+        return_type: source.result.clone(),
+    };
+    let actuals = target
+        .parameters
+        .iter()
+        .map(|parameter| {
+            let value = parameter.annotation.clone().unwrap_or(Type::Any);
+            if parameter.rest {
+                match value {
+                    Type::Array(element) => *element,
+                    other => other,
+                }
+            } else {
+                value
+            }
+        })
+        .collect::<Vec<_>>();
+    let inference = crate::checker::inference::infer_contextual_result(
+        &signature,
+        &actuals,
+        aliases,
+        budget,
+        Some(&target.result),
+    );
+    let function = substitute_type(
+        &Type::Function {
+            parameters: source.parameters.clone(),
+            result: Box::new(source.result.clone()),
+        },
+        &inference.substitutions,
+    );
+    (
+        function,
+        inference.rejected_constraint.is_none() && !budget.exhausted,
+    )
+}
+
 pub(super) fn weak_pair(actual: &[TypeField], expected: &[TypeField]) -> bool {
     !actual.is_empty()
         && !expected.is_empty()
@@ -120,13 +172,21 @@ pub(super) fn assignable(
                 && ec.iter().all(|expected| {
                     ac.iter().any(|actual| {
                         actual.construct == expected.construct
-                            && is_assignable(
-                                &actual.function_type(),
-                                &expected.function_type(),
-                                aliases,
-                                &mut visited.clone(),
-                                budget,
-                            )
+                            && (!actual.abstract_constructor || expected.abstract_constructor)
+                            && (!actual.construct
+                                || actual.constructor_visibility == expected.constructor_visibility)
+                            && {
+                                let (function, valid) =
+                                    constructor_relation_type(actual, expected, aliases, budget);
+                                valid
+                                    && is_assignable(
+                                        &function,
+                                        &expected.function_type(),
+                                        aliases,
+                                        &mut visited.clone(),
+                                        budget,
+                                    )
+                            }
                     })
                 }),
         ),

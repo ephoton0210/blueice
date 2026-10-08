@@ -4098,10 +4098,6 @@ fn unsupported_and_misplaced_syntax_is_diagnosed_not_passed_through() {
             "a class member other than a constructor, method, field or accessor",
         ),
         (
-            "abstract class A {}",
-            "`abstract` declarations are not in the initial BlueTS matrix",
-        ),
-        (
             "declare abstract class A {}",
             "`abstract` is not in the initial BlueTS matrix",
         ),
@@ -4816,7 +4812,7 @@ fn concrete_named_tuple_spreads_check_and_emit_at_public_boundary() {
         .iter()
         .any(|diagnostic| diagnostic.code == DiagnosticCode::ResourceLimit));
 
-    let override_pending = compile(
+    let incompatible_override = compile(
         ENTRY,
         &MapLoader::from([ModuleSource::new(
             ENTRY,
@@ -4824,8 +4820,15 @@ fn concrete_named_tuple_spreads_check_and_emit_at_public_boundary() {
         )]),
         CompilerOptions::default(),
     );
-    assert!(override_pending.output.is_none());
-    assert!(override_pending
+    assert!(incompatible_override.output.is_none());
+    assert!(incompatible_override
+        .diagnostics
+        .iter()
+        .any(|diagnostic| diagnostic
+            .typescript
+            .as_ref()
+            .is_some_and(|counterpart| counterpart.code == 2416)));
+    assert!(!incompatible_override
         .diagnostics
         .iter()
         .any(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax));

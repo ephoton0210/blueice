@@ -6,8 +6,17 @@
 
 use super::*;
 
+#[path = "class/modifiers.rs"]
+mod modifiers;
+use modifiers::*;
+
 impl Parser {
-    pub(in crate::parser::implementation) fn parse_class(&mut self, start: usize, exported: bool) {
+    pub(in crate::parser::implementation) fn parse_class(
+        &mut self,
+        start: usize,
+        exported: bool,
+        abstract_modifier: Option<SourceSpan>,
+    ) {
         if self.current().kind != TokenKind::Identifier {
             self.error_here(DiagnosticCode::ParseError, "expected a class name");
             self.index = self.tokens.len() - 1;
@@ -52,12 +61,32 @@ impl Parser {
             None
         };
 
+        let mut implements = Vec::new();
+        if self.consume("implements") {
+            let begin = self.previous().start;
+            loop {
+                let type_start = self.current().start;
+                let value = self.parse_type_until(&[",", "{"]);
+                implements.push((
+                    value,
+                    SourceSpan::new(&self.id, type_start, self.previous().end),
+                ));
+                if !self.consume(",") {
+                    break;
+                }
+            }
+            self.edits.push(TextEdit {
+                start: begin,
+                end: self.current().start,
+                replacement: String::new(),
+            });
+        }
         if !self.peek("{") {
             let token = self.current().clone();
-            if matches!(token.text.as_str(), "<" | "." | "[" | "(" | "implements") {
+            if matches!(token.text.as_str(), "<" | "." | "[" | "(") {
                 self.unsupported(
                     token.span(&self.id),
-                    "generic, computed, and implemented class heritage is not in the first class form",
+                    "generic and computed class heritage is not in the first class form",
                 );
             } else {
                 self.error_here(DiagnosticCode::ParseError, "expected a class body");
@@ -121,6 +150,13 @@ impl Parser {
                 );
             }
         }
+        for member in &members {
+            self.validate_member_modifiers(
+                opening + 1 + member.token_start,
+                member,
+                abstract_modifier.is_some(),
+            );
+        }
         // Decorator expressions are ordinary expressions: erase their annotations.
         let decorator_ranges: Vec<(usize, usize)> = members
             .iter()
@@ -141,6 +177,8 @@ impl Parser {
         self.index = closing + 1;
         let decorators = std::mem::take(&mut self.pending_decorators);
         self.declarations.push(Declaration::Class(ClassDeclaration {
+            abstract_modifier,
+            implements,
             decorators,
             type_parameters,
             name: name_token.text,
@@ -411,7 +449,7 @@ impl Parser {
         let return_start = self.current().start;
         let (return_type, return_type_span) = if self.consume(":") {
             let type_start = self.current().start;
-            let value = self.parse_return_type_until(&["{"]);
+            let value = self.parse_return_type_until(&["{", ";"]);
             let type_end = self.previous().end;
             self.edits.push(TextEdit {
                 start: return_start,
@@ -465,15 +503,19 @@ impl Parser {
             }
             self.diagnostics.push(diagnostic);
         }
-        if !self.consume("{") {
+        let mut body = Vec::new();
+        let body_present = if self.consume("{") {
+            let body_start = self.previous().start;
+            let mut returns = Vec::new();
+            let mut locals = Vec::new();
+            self.parse_function_body(body_start, &mut body, &mut returns, &mut locals);
+            true
+        } else if member.abstract_modifier.is_some() && self.consume(";") {
+            false
+        } else {
             self.error_here(DiagnosticCode::ParseError, "expected an accessor body");
             return;
-        }
-        let body_start = self.previous().start;
-        let mut body = Vec::new();
-        let mut returns = Vec::new();
-        let mut locals = Vec::new();
-        self.parse_function_body(body_start, &mut body, &mut returns, &mut locals);
+        };
         if self.previous().end != member.span.end {
             self.error_at(
                 member.span.clone(),
@@ -493,6 +535,7 @@ impl Parser {
             return_type,
             return_type_span,
             body,
+            body_present,
             span: member.span.clone(),
         });
     }
@@ -508,6 +551,14 @@ impl Parser {
         let name = self.tokens[name_index].text.clone();
         let visibility = self.private_name_visibility(&self.tokens[name_index].clone(), &modifiers);
         self.index = name_index + 1;
+        let optional = self.consume("?");
+        if optional {
+            self.edits.push(TextEdit {
+                start: self.previous().start,
+                end: self.current().start,
+                replacement: String::new(),
+            });
+        }
         let parameters = self.parse_parameters();
         let return_start = self.current().start;
         let (return_type, return_type_span) = if self.consume(":") {
@@ -549,6 +600,8 @@ impl Parser {
         }
         member.method = Some(ClassMethod {
             name,
+            name_span: self.tokens[name_index].span(&self.id),
+            optional,
             visibility,
             is_static,
             parameters,
@@ -558,21 +611,6 @@ impl Parser {
             span: member.span.clone(),
         });
     }
-}
-
-/// The modifiers before a member name, in the only order TypeScript allows:
-/// `[public|protected|private] [static] [readonly]`. A modifier word counts
-/// only when a name follows it, so a member named `static` or `private` is
-/// still a name.
-struct MemberModifiers {
-    visibility: Visibility,
-    /// Token index of an explicit accessibility keyword.
-    visibility_token: Option<usize>,
-    is_static: bool,
-    /// Token index of the `accessor` keyword of an auto-accessor.
-    accessor_token: Option<usize>,
-    readonly_token: Option<usize>,
-    name_index: usize,
 }
 
 /// The decorator that starts at `tokens[index]` (an `@`) and the index after it:
@@ -612,63 +650,6 @@ pub(super) fn decorator_at(
         },
         next,
     ))
-}
-
-fn scan_member_modifiers(tokens: &[Token], start: usize, end: usize) -> Option<MemberModifiers> {
-    let name_like = |index: usize| {
-        index < end
-            && tokens.get(index).is_some_and(|token| {
-                matches!(token.kind, TokenKind::Identifier | TokenKind::Keyword)
-            })
-    };
-    let mut index = start;
-    let mut modifiers = MemberModifiers {
-        visibility: Visibility::Public,
-        visibility_token: None,
-        is_static: false,
-        accessor_token: None,
-        readonly_token: None,
-        name_index: start,
-    };
-    let visibility = match tokens.get(index).map(|token| token.text.as_str()) {
-        Some("public") => Some(Visibility::Public),
-        Some("protected") => Some(Visibility::Protected),
-        Some("private") => Some(Visibility::Private),
-        _ => None,
-    };
-    if let Some(visibility) = visibility.filter(|_| name_like(index + 1)) {
-        modifiers.visibility = visibility;
-        modifiers.visibility_token = Some(index);
-        index += 1;
-    }
-    if tokens.get(index).is_some_and(|token| token.is("static")) && name_like(index + 1) {
-        modifiers.is_static = true;
-        index += 1;
-    }
-    if tokens.get(index).is_some_and(|token| token.is("accessor"))
-        && name_like(index + 1)
-        && !tokens.get(index + 1).is_some_and(|token| token.is("("))
-    {
-        modifiers.accessor_token = Some(index);
-        index += 1;
-    }
-    if tokens.get(index).is_some_and(|token| token.is("readonly")) && name_like(index + 1) {
-        modifiers.readonly_token = Some(index);
-        index += 1;
-    }
-    // A modifier out of order (`static private x`) or repeated is not a
-    // member this parser structures.
-    if tokens.get(index).is_some_and(|token| {
-        matches!(
-            token.text.as_str(),
-            "public" | "protected" | "private" | "static" | "readonly" | "accessor"
-        )
-    }) && name_like(index + 1)
-    {
-        return None;
-    }
-    modifiers.name_index = index;
-    Some(modifiers)
 }
 
 /// Where a constructor's parameter-property assignments go: the start of the
@@ -790,17 +771,24 @@ fn class_member_shells(module: &str, tokens: &[Token]) -> Vec<ClassMemberShell> 
                 .is_some_and(|token| token.is("("));
         let head_index = name_index + usize::from(accessor_head);
         let name_token = &tokens[head_index];
+        let parameters_index = head_index
+            + 1
+            + usize::from(
+                tokens
+                    .get(head_index + 1)
+                    .is_some_and(|token| token.is("?")),
+            );
         let method_head = accessor_head
             || (modifiers
                 .as_ref()
                 .is_some_and(|modifiers| modifiers.readonly_token.is_none())
                 && matches!(name_token.kind, TokenKind::Identifier | TokenKind::Keyword)
                 && tokens
-                    .get(head_index + 1)
+                    .get(parameters_index)
                     .is_some_and(|token| token.is("(")));
         if method_head {
             if let Some(parameters_end) =
-                matching_closing_delimiter(tokens, head_index + 1, tokens.len(), "(", ")")
+                matching_closing_delimiter(tokens, parameters_index, tokens.len(), "(", ")")
             {
                 let boundary = method_body_boundary(tokens, parameters_end + 1);
                 let member_end = match boundary
@@ -899,7 +887,16 @@ fn class_member_shell(
     name: Option<String>,
     decorators: Vec<Decorator>,
 ) -> ClassMemberShell {
+    let modifiers = scan_member_modifiers(tokens, start, end);
     ClassMemberShell {
+        abstract_modifier: modifiers
+            .as_ref()
+            .and_then(|m| m.abstract_token)
+            .map(|i| tokens[i].span(module)),
+        override_modifier: modifiers
+            .as_ref()
+            .and_then(|m| m.override_token)
+            .map(|i| tokens[i].span(module)),
         decorators,
         kind,
         name,

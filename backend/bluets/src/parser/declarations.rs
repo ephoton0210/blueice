@@ -221,12 +221,22 @@ impl Parser {
                 }
             } else if self.consume("interface") {
                 self.parse_interface(start, exported);
-            } else if self.peek("abstract") {
-                self.unsupported(
-                    self.current().span(&self.id),
-                    "`abstract` declarations are not in the initial BlueTS matrix",
-                );
-                self.skip_statement();
+            } else if self.consume("abstract") {
+                let modifier = self.previous().span(&self.id);
+                if self.consume("class") {
+                    self.edits.push(TextEdit {
+                        start: modifier.start,
+                        end: self.previous().start,
+                        replacement: String::new(),
+                    });
+                    self.parse_class(start, exported, Some(modifier));
+                } else {
+                    self.error_here(
+                        DiagnosticCode::ParseError,
+                        "expected a class after abstract",
+                    );
+                    self.skip_statement();
+                }
             } else {
                 let explicit_declare = self.consume("declare");
                 if explicit_declare && self.ambient_depth > 0 {
@@ -248,7 +258,7 @@ impl Parser {
                         );
                         self.skip_statement();
                     } else {
-                        self.parse_class(start, exported);
+                        self.parse_class(start, exported, None);
                     }
                 } else if self.peek("const")
                     && self

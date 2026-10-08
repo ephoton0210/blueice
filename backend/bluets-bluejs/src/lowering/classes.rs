@@ -75,6 +75,9 @@ pub(super) fn lower_class(
         }
     }
     for member in &class.members {
+        if member.abstract_modifier.is_some() {
+            continue;
+        }
         if let Some(block) = &member.static_block {
             elements.push(bluejs::ClassElement::StaticBlock(lower_function_body(
                 module,

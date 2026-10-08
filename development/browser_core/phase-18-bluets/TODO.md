@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: K.5.1 (abstract and implements).** Sections A to J are complete (summarized below); J.6 closed in its
+**Current leaf: K.5.2 (generic and dynamic classes).** Sections A to J are complete (summarized below); J.6 closed in its
 measured form (`COMPATIBILITY_INVENTORY.md`). Section K closes the gaps that inventory lists.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
@@ -400,9 +400,10 @@ narrowing needs a flow graph or can stay structural, recorded in PLAN.md before 
 
 ### K.5 Remaining class forms — M8 — gap G-T9
 
-- [ ] **K.5.1 Abstract and implements (M).** `abstract` classes/members/constructors, `implements`
+- [x] **K.5.1 Abstract and implements (M).** `abstract` classes/members/constructors, `implements`
   (checked structurally), `override` and `noImplicitOverride`; emit erases all of them.
-  - *Failing baseline (2026-10-08):* 95 isolated pinned programs (45 accept, 50 reject), five Node/runtime witnesses and six exact declaration witnesses cover abstract member obligations and constructor types, structural implementations, override rules and imported boundaries. The frozen-source Linux replay records 94 verdict/primary-diagnostic differences and six emission failures; completeness and the pinned recorder pass (two tests pass, two fail). The shared diagnostic corpus contains 2,109 programs (971 accept, 1,138 reject) and 184 templates. Production sources are unchanged from the verified post-Test262 merge source. Evidence: `/private/tmp/blueice-k14-linux/blueice-k51-red-gate.log`. Commit this failing replay before implementation; the leaf stays open.
+  - *Failing baseline (2026-10-08):* 95 isolated pinned programs (45 accept, 50 reject), five Node/runtime witnesses and six exact declaration witnesses cover abstract member obligations and constructor types, structural implementations, override rules and imported boundaries. The frozen-source Linux replay records 94 verdict/primary-diagnostic differences and six emission failures; completeness and the pinned recorder pass (two tests pass, two fail). The shared diagnostic corpus contains 2,109 programs (971 accept, 1,138 reject) and 184 templates. Production sources are unchanged from the verified post-Test262 merge source. Evidence: `/private/tmp/blueice-k14-linux/blueice-k51-red-gate.log`. Baseline `05925c6cc` was committed before implementation; final verification follows.
+  - *Verified (2026-10-08):* All 95 pinned programs and twelve further constructor capability controls match, including exact primary/related diagnostics; all five Node/runtime and six exact declaration witnesses pass. Abstractness, accessibility and inherited/imported parameters survive constructor aliases; generic constructor assignment uses bounded contextual inference. The frozen-source Linux K.0 gate passes format and both-crate all-target Clippy with warnings denied; all 1,142 tests in 77 groups pass, including all 144 ignored oracles in 41 suite files. Both direct field modes pass; all 46 frozen backend files match the host. Refusal inventory regenerated: 162 sites. Largest changed production source: 1,188 lines. Evidence: `/private/tmp/blueice-k14-linux/blueice-k51-full-status.json` and logs. K.5.2/K.5.3 and M8 remain open.
 - [ ] **K.5.2 Generic and dynamic classes (L; needs K.4.3).** `class C<T> extends B<T>`, generic methods
   and static members rules, class expressions (named and anonymous, `NamedEvaluation`), computed and
   string-literal member names, index-signature members, `declare` fields.

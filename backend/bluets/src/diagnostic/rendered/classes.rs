@@ -7,6 +7,9 @@ use super::*;
 use crate::{ClassDeclaration, ClassMemberShell, Parameter, Type};
 
 pub(super) fn refine(project: &Project, diagnostic: &mut Diagnostic) {
+    if diagnostic.message.starts_with("implemented member ") {
+        return;
+    }
     let Some(counterpart) = &diagnostic.typescript else {
         return;
     };

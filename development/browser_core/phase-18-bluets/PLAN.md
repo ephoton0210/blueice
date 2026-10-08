@@ -5581,3 +5581,58 @@ API and direct-runtime behavior, exact diagnostics and declarations, the full
 two-crate K.0 gate and regenerated refusal inventory. Keep modifier policy and
 constructor signatures in focused modules: the largest production source is
 currently 1,153 lines. K.5.1 and all subsequent K.5–K.10 leaves remain open.
+
+### K.5.1 modifier and structural checking — 2026-10-08
+
+The failing baseline was committed as `05925c6cc` before production changes.
+The implementation retains modifier origins, abstract accessor signatures,
+optional methods, implements heritage and constructor-arrow types in the
+public AST. Focused parser/checker modules own modifier grammar, inherited
+abstract obligations, explicit/implicit override policy and structural instance
+comparison. Exported class bindings retain abstract obligations across module
+edges. `noImplicitOverride` defaults independently to false and contributes to
+cache identity while preserving valid JavaScript. Constructor surface semantics
+have a version token in the artifact fingerprint, including legacy API policy.
+
+Class values now carry actual construct signatures alongside static fields.
+Aliases, type queries and imports retain abstractness, constructor accessibility
+and inherited parameters. Generic-to-concrete constructor assignment reuses
+bounded contextual inference, constraints and return compatibility. Twelve
+additional pinned capability controls compare exact diagnostics, including
+TS2673/TS2674, abstract-to-concrete assignment details and incompatible generic
+construct signatures (TS2322/TS2419). Their retained reference has its own live
+TypeScript 5.9.3 replay; no fixture identity selects a checker behavior.
+
+The pinned compiler additionally measures reabstracted methods (TS4116) and
+parameter-property overrides (TS4112/TS4113 with the entire parameter span).
+Public parser/checker controls assert these observations and checking identity.
+Imported witnesses use explicit `.ts` specifiers with noEmit checking; suffix
+substitution remains later resolver work. Whole-member erasure removes enclosed
+modifier/annotation edits before emission, preserving physical lines and
+preventing erased abstract signatures from surviving as invalid JavaScript.
+Abstract getters can be implemented by concrete fields; abstract fields do not
+participate in initialization checks or runtime field lowering. Direct bridge
+regressions cover abstract methods/fields/accessors in both field modes and
+rejection of an abstract constructor alias before runtime admission.
+
+All 95 pinned programs and twelve further constructor capability controls
+match the checker verdicts and exact primary/related diagnostics. All five
+Node/runtime witnesses, six exact declaration witnesses, both direct field
+modes, public AST/policy controls and live TypeScript recorders pass. Obsolete
+abstract/override refusal assertions now test supported behavior and the real
+TS2416 tuple-parameter rejection; heritage budget exhaustion still reports its
+single owner-selected refusal. Concrete object constructor parameter causes
+retain the existing pinned diagnostic while generic sources report their
+instantiated construct-signature comparison.
+
+The frozen-source Linux K.0 gate passes format, format check and both-crate
+all-target Clippy with warnings denied. All 1,142 tests in 77 groups pass,
+including all 144 ignored oracles in 41 suite files. All 46 frozen backend files
+match the host snapshot. Evidence:
+`/private/tmp/blueice-k14-linux/blueice-k51-full-status.json` and its logs.
+Largest changed production source: 1,188 lines; focused modules own the new
+responsibilities. The generated refusal inventory contains 162 sites and
+narrows G-T9 while retaining generic/dynamic classes (K.5.2), obsolete refusal
+controls (K.5.3) and unmeasured combinations. K.5.1 is complete; M8 and the
+remaining K.5–K.10 leaves stay open. Full workspace/coverage verification runs
+at the milestone; this passing leaf is committed and pushed independently.

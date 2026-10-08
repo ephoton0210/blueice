@@ -7,6 +7,29 @@
 use super::*;
 
 impl Parser {
+    pub(super) fn parse_constructor_type(&mut self, stop: &[&str]) -> Type {
+        let start = self.current().start;
+        let abstract_constructor = self.consume("abstract");
+        self.expect("new");
+        let type_parameters = self.parse_type_parameters();
+        let parameters = self.parse_parameters();
+        self.expect("=>");
+        let result = self.parse_type_until(stop);
+        Type::CallableRecord {
+            fields: Vec::new(),
+            signatures: vec![TypeSignature {
+                construct: true,
+                abstract_constructor,
+                constructor_visibility: Visibility::Public,
+                constructor_arrow: true,
+                type_parameters,
+                parameters,
+                result,
+                span: SourceSpan::new(&self.id, start, self.previous().end),
+            }],
+        }
+    }
+
     pub(in crate::parser) fn parse_record_type(&mut self, field_expectation: &str) -> Type {
         let mut fields = Vec::new();
         let mut signatures = Vec::new();
@@ -35,6 +58,9 @@ impl Parser {
                 };
                 signatures.push(TypeSignature {
                     construct,
+                    abstract_constructor: false,
+                    constructor_visibility: Visibility::Public,
+                    constructor_arrow: false,
                     type_parameters,
                     parameters,
                     result: *result,

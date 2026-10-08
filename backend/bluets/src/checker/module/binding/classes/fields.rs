@@ -355,6 +355,15 @@ impl ModuleChecker<'_> {
             .filter_map(|constructor| constructor.body.as_deref())
             .collect();
         for field in fields {
+            if class.members.iter().any(|member| {
+                member.abstract_modifier.is_some()
+                    && member
+                        .field
+                        .as_ref()
+                        .is_some_and(|item| item.name == field.name)
+            }) {
+                continue;
+            }
             let needs_assignment = !field.is_static
                 && !field.optional
                 && !field.definite

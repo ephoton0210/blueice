@@ -67,6 +67,9 @@ impl ModuleChecker<'_> {
         construct: bool,
     ) -> Option<Vec<FunctionSignature>> {
         let bound = scope.get(callee)?;
+        if construct && self.is_bound_class_constructor_value(callee, scope) {
+            return None;
+        }
         if self.functions.contains_key(callee) && self.values.get(callee) == Some(bound) {
             return None;
         }

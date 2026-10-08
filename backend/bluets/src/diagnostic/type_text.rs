@@ -90,6 +90,23 @@ fn text(value: &Type, depth: usize, project: Option<&crate::Project>) -> String 
                 .join(", ")
         ),
         Type::CallableRecord { fields, signatures } => {
+            let record_text = text(&Type::Record(fields.clone()), depth, project);
+            if record_text.starts_with("typeof ") {
+                return record_text;
+            }
+            if fields.is_empty() && signatures.len() == 1 && signatures[0].constructor_arrow {
+                let signature = &signatures[0];
+                return format!(
+                    "{}new ({}) => {}",
+                    if signature.abstract_constructor {
+                        "abstract "
+                    } else {
+                        ""
+                    },
+                    parameter_list_in(&signature.parameters, project),
+                    render(&signature.result)
+                );
+            }
             let mut members = fields
                 .iter()
                 .map(|field| {

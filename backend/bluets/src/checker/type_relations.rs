@@ -7,6 +7,7 @@ mod compatibility;
 mod more_types;
 mod variance;
 use crate::checker::type_operators::union;
+pub(super) use compatibility::constructor_relation_type;
 pub(super) use compatibility::record_fields_assignable;
 pub(super) use more_types::normalized as normalize_more_type;
 

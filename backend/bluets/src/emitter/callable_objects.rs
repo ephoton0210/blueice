@@ -10,6 +10,18 @@ pub(super) fn render(
     fields: &[crate::parser::TypeField],
     signatures: &[crate::parser::TypeSignature],
 ) -> String {
+    if fields.is_empty() && signatures.len() == 1 && signatures[0].constructor_arrow {
+        let signature = &signatures[0];
+        return format!(
+            "{}new {}",
+            if signature.abstract_constructor {
+                "abstract "
+            } else {
+                ""
+            },
+            type_to_ts(&signature.function_type())
+        );
+    }
     render_with_indices(fields, signatures, &[])
 }
 

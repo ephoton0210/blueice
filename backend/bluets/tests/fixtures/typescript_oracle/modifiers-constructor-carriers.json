@@ -1,0 +1,114 @@
+{
+  "version": "5.9.3",
+  "cases": [
+    {
+      "name": "inherited-valid",
+      "source": "class B { constructor(public value: number) {} } class C extends B {} const Alias = C; new Alias(3);",
+      "diagnostics": []
+    },
+    {
+      "name": "inherited-invalid",
+      "source": "class B { constructor(public value: number) {} } class C extends B {} const Alias = C; new Alias(\"bad\");",
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+          "start": 97,
+          "length": 5
+        }
+      ]
+    },
+    {
+      "name": "protected-alias",
+      "source": "class B { protected constructor() {} } const Alias = B; new Alias();",
+      "diagnostics": [
+        {
+          "code": 2674,
+          "message": "Constructor of class 'B' is protected and only accessible within the class declaration.",
+          "start": 56,
+          "length": 11
+        }
+      ]
+    },
+    {
+      "name": "private-alias",
+      "source": "class B { private constructor() {} } const Alias = B; new Alias();",
+      "diagnostics": [
+        {
+          "code": 2673,
+          "message": "Constructor of class 'B' is private and only accessible within the class declaration.",
+          "start": 54,
+          "length": 11
+        }
+      ]
+    },
+    {
+      "name": "protected-signature",
+      "source": "class B { protected constructor() {} } type Ctor = new () => B; const ctor: Ctor = B;",
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'typeof B' is not assignable to type 'Ctor'.\n  Cannot assign a 'protected' constructor type to a 'public' constructor type.",
+          "start": 70,
+          "length": 4
+        }
+      ]
+    },
+    {
+      "name": "private-signature",
+      "source": "class B { private constructor() {} } type Ctor = new () => B; const ctor: Ctor = B;",
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'typeof B' is not assignable to type 'Ctor'.\n  Cannot assign a 'private' constructor type to a 'public' constructor type.",
+          "start": 68,
+          "length": 4
+        }
+      ]
+    },
+    {
+      "name": "abstract-abstract",
+      "source": "abstract class B {} type Ctor = abstract new () => B; const ctor: Ctor = B;",
+      "diagnostics": []
+    },
+    {
+      "name": "generic-concrete",
+      "source": "class B<T> { constructor(public value: T) {} } type Ctor = new (value: number) => B<number>; const ctor: Ctor = B; new ctor(3);",
+      "diagnostics": []
+    },
+    {
+      "name": "imported-inherited",
+      "source": "import { B } from \"./base.ts\"; class C extends B {} const Alias = C; new Alias(3);",
+      "diagnostics": []
+    },
+    {
+      "name": "generic-constraint-valid",
+      "source": "class B<T extends string> { constructor(public value: T) {} } type Ctor = new (value: string) => {value: string}; const ctor: Ctor = B;",
+      "diagnostics": []
+    },
+    {
+      "name": "generic-constraint-invalid",
+      "source": "class B<T extends string> { constructor(public value: T) {} } type Ctor = new (value: number) => {value: number}; const ctor: Ctor = B;",
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'typeof B' is not assignable to type 'Ctor'.\n  Types of construct signatures are incompatible.\n    Type 'new <T extends string>(value: T) => B<T>' is not assignable to type 'new (value: number) => { value: number; }'.\n      Types of parameters 'value' and 'value' are incompatible.\n        Type 'number' is not assignable to type 'string'.",
+          "start": 120,
+          "length": 4
+        }
+      ]
+    },
+    {
+      "name": "generic-inconsistent-result",
+      "source": "class B<T> { constructor(public value: T) {} } type Ctor = new (value: number) => {value: string}; const ctor: Ctor = B;",
+      "diagnostics": [
+        {
+          "code": 2419,
+          "message": "Types of construct signatures are incompatible.\n  Type 'new <T>(value: T) => B<T>' is not assignable to type 'new (value: number) => { value: string; }'.\n    Construct signature return types 'B<number>' and '{ value: string; }' are incompatible.\n      The types of 'value' are incompatible between these types.\n        Type 'number' is not assignable to type 'string'.",
+          "start": 105,
+          "length": 4
+        }
+      ]
+    }
+  ]
+}
