@@ -89,10 +89,29 @@ jobs:
       # same immutable Test262 revision on every operating system.
       - name: Checkout pinned Test262 corpus
         uses: actions/checkout@v4
+        env:
+          # Test262 asserts the original LF, CR and CRLF source sequences.
+          # Override Windows Git defaults only for this corpus checkout.
+          GIT_CONFIG_COUNT: "1"
+          GIT_CONFIG_KEY_0: core.autocrlf
+          GIT_CONFIG_VALUE_0: "false"
         with:
           repository: tc39/test262
           ref: 72faf8ec1445c55149615e8b35187830783aba1a
           path: development/browser_core/reference/test262
+      - name: Verify Test262 line-terminator fixture bytes
+        shell: bash
+        run: |
+          corpus=development/browser_core/reference/test262
+          for ending in LF CR CR-LF; do
+            fixture="test/built-ins/Function/prototype/toString/line-terminator-normalisation-${ending}.js"
+            expected=$(git -C "$corpus" rev-parse "HEAD:$fixture")
+            actual=$(git -C "$corpus" hash-object --no-filters "$fixture")
+            if [ "$actual" != "$expected" ]; then
+              echo "::error::Test262 checkout changed source bytes: $fixture"
+              exit 1
+            fi
+          done
       # The checked-in .b64 provider is a source input, not a build cache.
       # Rebuild it from its exact CLDR source on every CI platform so a
       # provider update cannot be generated on one OS and silently diverge on
@@ -189,10 +208,27 @@ jobs:
       # corpus as the cross-platform build-and-test job.
       - name: Checkout pinned Test262 corpus
         uses: actions/checkout@v4
+        env:
+          GIT_CONFIG_COUNT: "1"
+          GIT_CONFIG_KEY_0: core.autocrlf
+          GIT_CONFIG_VALUE_0: "false"
         with:
           repository: tc39/test262
           ref: 72faf8ec1445c55149615e8b35187830783aba1a
           path: development/browser_core/reference/test262
+      - name: Verify Test262 line-terminator fixture bytes
+        shell: bash
+        run: |
+          corpus=development/browser_core/reference/test262
+          for ending in LF CR CR-LF; do
+            fixture="test/built-ins/Function/prototype/toString/line-terminator-normalisation-${ending}.js"
+            expected=$(git -C "$corpus" rev-parse "HEAD:$fixture")
+            actual=$(git -C "$corpus" hash-object --no-filters "$fixture")
+            if [ "$actual" != "$expected" ]; then
+              echo "::error::Test262 checkout changed source bytes: $fixture"
+              exit 1
+            fi
+          done
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: llvm-tools-preview

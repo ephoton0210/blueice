@@ -5484,3 +5484,27 @@ The source commit and final documentation commit have identical backend, build,
 CI and script inputs. The largest production source remains 1,153 lines; the
 1,200-line review threshold and 1,300-line split threshold are not reached.
 Fixture correction evidence: `/private/tmp/blueice-k14-linux/blueice-k47-headers-status.json` and its compatibility/diagnostics logs.
+
+### Post-Test262 merge CI checkout correction — 2026-10-08
+
+Merge `06b9e3298` preserves the BlueTS and bridge sources. Its Linux replay
+passes all 1,128 tests, including all 141 normally ignored oracles, and both-crate
+all-target Clippy. Commit `5aea88fdf` fixes the twenty imported rustfmt
+differences; the workspace format check passes.
+
+Fresh CI [37724111592](https://github.com/ephoton0210/blueice/actions/runs/37724111592)
+exposes a Windows 11 VS2026 arm64 failure in the Test262 Function corpus:
+`line-terminator-normalisation-LF.js` fails in both sloppy and strict mode.
+Windows-style `core.autocrlf=true` changes the pinned LF source into CRLF,
+invalidating its exact `Function.prototype.toString` expectation. The corpus
+checkout now overrides that option only for the Test262 checkout process.
+The build matrix and coverage job additionally compare the LF, CR and CRLF
+fixtures' raw Git hashes with their pinned blobs before compilation.
+
+A temporary Git-index replay reproduces the LF corruption and then verifies
+all three original byte sequences with the checkout environment override.
+Both exact CI verification blocks pass against the pinned revision. Evidence:
+`/private/tmp/blueice-test262-eol-proof.log` and the failed Windows job log.
+Git documents the process-scoped override in [git-config's environment section](https://git-scm.com/docs/git-config#ENVIRONMENT).
+No fixture, verdict allowance, production Rust behavior or coverage threshold
+changes. Full CI remains pending on the corrected workflow.
