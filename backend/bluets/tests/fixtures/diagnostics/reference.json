@@ -19760,28 +19760,6 @@
       "diagnostics": []
     },
     {
-      "id": "class-dynamic:dynamic-capture-alias-chain/main.ts",
-      "matrix": "class-dynamic",
-      "entry": "dynamic-capture-alias-chain/main.ts",
-      "flags": [
-        "--target",
-        "ES2022",
-        "--module",
-        "ES2022",
-        "--strict",
-        "--allowImportingTsExtensions",
-        "--noEmit"
-      ],
-      "verdict": "accept",
-      "replayChecking": "strict",
-      "inputs": [
-        "typescript_oracle/dynamic-capture-alias-chain/main.ts"
-      ],
-      "accepts": true,
-      "first": null,
-      "diagnostics": []
-    },
-    {
       "id": "class-dynamic:dynamic-capture-alias-chain-error/main.ts",
       "matrix": "class-dynamic",
       "entry": "dynamic-capture-alias-chain-error/main.ts",
@@ -19824,9 +19802,9 @@
       ]
     },
     {
-      "id": "class-dynamic:dynamic-capture-factory-heritage/main.ts",
+      "id": "class-dynamic:dynamic-capture-alias-chain/main.ts",
       "matrix": "class-dynamic",
-      "entry": "dynamic-capture-factory-heritage/main.ts",
+      "entry": "dynamic-capture-alias-chain/main.ts",
       "flags": [
         "--target",
         "ES2022",
@@ -19839,7 +19817,7 @@
       "verdict": "accept",
       "replayChecking": "strict",
       "inputs": [
-        "typescript_oracle/dynamic-capture-factory-heritage/main.ts"
+        "typescript_oracle/dynamic-capture-alias-chain/main.ts"
       ],
       "accepts": true,
       "first": null,
@@ -19888,9 +19866,9 @@
       ]
     },
     {
-      "id": "class-dynamic:dynamic-capture-named-self/main.ts",
+      "id": "class-dynamic:dynamic-capture-factory-heritage/main.ts",
       "matrix": "class-dynamic",
-      "entry": "dynamic-capture-named-self/main.ts",
+      "entry": "dynamic-capture-factory-heritage/main.ts",
       "flags": [
         "--target",
         "ES2022",
@@ -19903,7 +19881,7 @@
       "verdict": "accept",
       "replayChecking": "strict",
       "inputs": [
-        "typescript_oracle/dynamic-capture-named-self/main.ts"
+        "typescript_oracle/dynamic-capture-factory-heritage/main.ts"
       ],
       "accepts": true,
       "first": null,
@@ -19952,9 +19930,9 @@
       ]
     },
     {
-      "id": "class-dynamic:dynamic-capture-own-default/main.ts",
+      "id": "class-dynamic:dynamic-capture-named-self/main.ts",
       "matrix": "class-dynamic",
-      "entry": "dynamic-capture-own-default/main.ts",
+      "entry": "dynamic-capture-named-self/main.ts",
       "flags": [
         "--target",
         "ES2022",
@@ -19967,7 +19945,7 @@
       "verdict": "accept",
       "replayChecking": "strict",
       "inputs": [
-        "typescript_oracle/dynamic-capture-own-default/main.ts"
+        "typescript_oracle/dynamic-capture-named-self/main.ts"
       ],
       "accepts": true,
       "first": null,
@@ -20016,6 +19994,28 @@
       ]
     },
     {
+      "id": "class-dynamic:dynamic-capture-own-default/main.ts",
+      "matrix": "class-dynamic",
+      "entry": "dynamic-capture-own-default/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/dynamic-capture-own-default/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
       "id": "class-dynamic:dynamic-computed-accessor/main.ts",
       "matrix": "class-dynamic",
       "entry": "dynamic-computed-accessor/main.ts",
@@ -20058,48 +20058,6 @@
       "accepts": true,
       "first": null,
       "diagnostics": []
-    },
-    {
-      "id": "class-dynamic:dynamic-computed-field-broad-call-error/main.ts",
-      "matrix": "class-dynamic",
-      "entry": "dynamic-computed-field-broad-call-error/main.ts",
-      "flags": [
-        "--target",
-        "ES2022",
-        "--module",
-        "ES2022",
-        "--strict",
-        "--allowImportingTsExtensions",
-        "--noEmit"
-      ],
-      "verdict": "reject",
-      "replayChecking": "strict",
-      "inputs": [
-        "typescript_oracle/dynamic-computed-field-broad-call-error/main.ts"
-      ],
-      "accepts": false,
-      "first": {
-        "code": 1166,
-        "category": "error",
-        "message": "A computed property name in a class property declaration must have a simple literal type or a 'unique symbol' type.",
-        "file": "typescript_oracle/dynamic-computed-field-broad-call-error/main.ts",
-        "start": 229,
-        "length": 17,
-        "line": 5,
-        "column": 26
-      },
-      "diagnostics": [
-        {
-          "code": 1166,
-          "category": "error",
-          "message": "A computed property name in a class property declaration must have a simple literal type or a 'unique symbol' type.",
-          "file": "typescript_oracle/dynamic-computed-field-broad-call-error/main.ts",
-          "start": 229,
-          "length": 17,
-          "line": 5,
-          "column": 26
-        }
-      ]
     },
     {
       "id": "class-dynamic:dynamic-computed-field-broad-call-error-assign/main.ts",
@@ -20146,6 +20104,48 @@
       ]
     },
     {
+      "id": "class-dynamic:dynamic-computed-field-broad-call-error/main.ts",
+      "matrix": "class-dynamic",
+      "entry": "dynamic-computed-field-broad-call-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/dynamic-computed-field-broad-call-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 1166,
+        "category": "error",
+        "message": "A computed property name in a class property declaration must have a simple literal type or a 'unique symbol' type.",
+        "file": "typescript_oracle/dynamic-computed-field-broad-call-error/main.ts",
+        "start": 229,
+        "length": 17,
+        "line": 5,
+        "column": 26
+      },
+      "diagnostics": [
+        {
+          "code": 1166,
+          "category": "error",
+          "message": "A computed property name in a class property declaration must have a simple literal type or a 'unique symbol' type.",
+          "file": "typescript_oracle/dynamic-computed-field-broad-call-error/main.ts",
+          "start": 229,
+          "length": 17,
+          "line": 5,
+          "column": 26
+        }
+      ]
+    },
+    {
       "id": "class-dynamic:dynamic-computed-field-key-error/main.ts",
       "matrix": "class-dynamic",
       "entry": "dynamic-computed-field-key-error/main.ts",
@@ -20166,48 +20166,6 @@
       "accepts": true,
       "first": null,
       "diagnostics": []
-    },
-    {
-      "id": "class-dynamic:dynamic-computed-field-literal-call-error/main.ts",
-      "matrix": "class-dynamic",
-      "entry": "dynamic-computed-field-literal-call-error/main.ts",
-      "flags": [
-        "--target",
-        "ES2022",
-        "--module",
-        "ES2022",
-        "--strict",
-        "--allowImportingTsExtensions",
-        "--noEmit"
-      ],
-      "verdict": "reject",
-      "replayChecking": "strict",
-      "inputs": [
-        "typescript_oracle/dynamic-computed-field-literal-call-error/main.ts"
-      ],
-      "accepts": false,
-      "first": {
-        "code": 1166,
-        "category": "error",
-        "message": "A computed property name in a class property declaration must have a simple literal type or a 'unique symbol' type.",
-        "file": "typescript_oracle/dynamic-computed-field-literal-call-error/main.ts",
-        "start": 258,
-        "length": 7,
-        "line": 5,
-        "column": 55
-      },
-      "diagnostics": [
-        {
-          "code": 1166,
-          "category": "error",
-          "message": "A computed property name in a class property declaration must have a simple literal type or a 'unique symbol' type.",
-          "file": "typescript_oracle/dynamic-computed-field-literal-call-error/main.ts",
-          "start": 258,
-          "length": 7,
-          "line": 5,
-          "column": 55
-        }
-      ]
     },
     {
       "id": "class-dynamic:dynamic-computed-field-literal-call-error-assign/main.ts",
@@ -20254,6 +20212,48 @@
       ]
     },
     {
+      "id": "class-dynamic:dynamic-computed-field-literal-call-error/main.ts",
+      "matrix": "class-dynamic",
+      "entry": "dynamic-computed-field-literal-call-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/dynamic-computed-field-literal-call-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 1166,
+        "category": "error",
+        "message": "A computed property name in a class property declaration must have a simple literal type or a 'unique symbol' type.",
+        "file": "typescript_oracle/dynamic-computed-field-literal-call-error/main.ts",
+        "start": 258,
+        "length": 7,
+        "line": 5,
+        "column": 55
+      },
+      "diagnostics": [
+        {
+          "code": 1166,
+          "category": "error",
+          "message": "A computed property name in a class property declaration must have a simple literal type or a 'unique symbol' type.",
+          "file": "typescript_oracle/dynamic-computed-field-literal-call-error/main.ts",
+          "start": 258,
+          "length": 7,
+          "line": 5,
+          "column": 55
+        }
+      ]
+    },
+    {
       "id": "class-dynamic:dynamic-computed-literal/main.ts",
       "matrix": "class-dynamic",
       "entry": "dynamic-computed-literal/main.ts",
@@ -20270,28 +20270,6 @@
       "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/dynamic-computed-literal/main.ts"
-      ],
-      "accepts": true,
-      "first": null,
-      "diagnostics": []
-    },
-    {
-      "id": "class-dynamic:dynamic-computed-method/main.ts",
-      "matrix": "class-dynamic",
-      "entry": "dynamic-computed-method/main.ts",
-      "flags": [
-        "--target",
-        "ES2022",
-        "--module",
-        "ES2022",
-        "--strict",
-        "--allowImportingTsExtensions",
-        "--noEmit"
-      ],
-      "verdict": "accept",
-      "replayChecking": "strict",
-      "inputs": [
-        "typescript_oracle/dynamic-computed-method/main.ts"
       ],
       "accepts": true,
       "first": null,
@@ -20338,6 +20316,28 @@
           "column": 142
         }
       ]
+    },
+    {
+      "id": "class-dynamic:dynamic-computed-method/main.ts",
+      "matrix": "class-dynamic",
+      "entry": "dynamic-computed-method/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/dynamic-computed-method/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
     },
     {
       "id": "class-dynamic:dynamic-computed-numeric/main.ts",
@@ -20922,28 +20922,6 @@
       ]
     },
     {
-      "id": "class-dynamic:dynamic-expr-generic/main.ts",
-      "matrix": "class-dynamic",
-      "entry": "dynamic-expr-generic/main.ts",
-      "flags": [
-        "--target",
-        "ES2022",
-        "--module",
-        "ES2022",
-        "--strict",
-        "--allowImportingTsExtensions",
-        "--noEmit"
-      ],
-      "verdict": "accept",
-      "replayChecking": "strict",
-      "inputs": [
-        "typescript_oracle/dynamic-expr-generic/main.ts"
-      ],
-      "accepts": true,
-      "first": null,
-      "diagnostics": []
-    },
-    {
       "id": "class-dynamic:dynamic-expr-generic-error/main.ts",
       "matrix": "class-dynamic",
       "entry": "dynamic-expr-generic-error/main.ts",
@@ -20984,6 +20962,28 @@
           "column": 78
         }
       ]
+    },
+    {
+      "id": "class-dynamic:dynamic-expr-generic/main.ts",
+      "matrix": "class-dynamic",
+      "entry": "dynamic-expr-generic/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/dynamic-expr-generic/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
     },
     {
       "id": "class-dynamic:dynamic-expr-heritage/main.ts",
@@ -21542,28 +21542,6 @@
       "diagnostics": []
     },
     {
-      "id": "class-dynamic:dynamic-import-expression/main.ts",
-      "matrix": "class-dynamic",
-      "entry": "dynamic-import-expression/main.ts",
-      "flags": [
-        "--target",
-        "ES2022",
-        "--module",
-        "ES2022",
-        "--strict",
-        "--allowImportingTsExtensions",
-        "--noEmit"
-      ],
-      "verdict": "accept",
-      "replayChecking": "strict",
-      "inputs": [
-        "typescript_oracle/dynamic-import-expression/main.ts"
-      ],
-      "accepts": true,
-      "first": null,
-      "diagnostics": []
-    },
-    {
       "id": "class-dynamic:dynamic-import-expression-error/main.ts",
       "matrix": "class-dynamic",
       "entry": "dynamic-import-expression-error/main.ts",
@@ -21604,28 +21582,6 @@
           "column": 41
         }
       ]
-    },
-    {
-      "id": "class-dynamic:dynamic-import-expression-heritage/main.ts",
-      "matrix": "class-dynamic",
-      "entry": "dynamic-import-expression-heritage/main.ts",
-      "flags": [
-        "--target",
-        "ES2022",
-        "--module",
-        "ES2022",
-        "--strict",
-        "--allowImportingTsExtensions",
-        "--noEmit"
-      ],
-      "verdict": "accept",
-      "replayChecking": "strict",
-      "inputs": [
-        "typescript_oracle/dynamic-import-expression-heritage/main.ts"
-      ],
-      "accepts": true,
-      "first": null,
-      "diagnostics": []
     },
     {
       "id": "class-dynamic:dynamic-import-expression-heritage-error/main.ts",
@@ -21670,6 +21626,50 @@
       ]
     },
     {
+      "id": "class-dynamic:dynamic-import-expression-heritage/main.ts",
+      "matrix": "class-dynamic",
+      "entry": "dynamic-import-expression-heritage/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/dynamic-import-expression-heritage/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-dynamic:dynamic-import-expression/main.ts",
+      "matrix": "class-dynamic",
+      "entry": "dynamic-import-expression/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/dynamic-import-expression/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
       "id": "class-dynamic:dynamic-imported-generic-alias/main.ts",
       "matrix": "class-dynamic",
       "entry": "dynamic-imported-generic-alias/main.ts",
@@ -21686,28 +21686,6 @@
       "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/dynamic-imported-generic-alias/main.ts"
-      ],
-      "accepts": true,
-      "first": null,
-      "diagnostics": []
-    },
-    {
-      "id": "class-dynamic:dynamic-imported-heritage/main.ts",
-      "matrix": "class-dynamic",
-      "entry": "dynamic-imported-heritage/main.ts",
-      "flags": [
-        "--target",
-        "ES2022",
-        "--module",
-        "ES2022",
-        "--strict",
-        "--allowImportingTsExtensions",
-        "--noEmit"
-      ],
-      "verdict": "accept",
-      "replayChecking": "strict",
-      "inputs": [
-        "typescript_oracle/dynamic-imported-heritage/main.ts"
       ],
       "accepts": true,
       "first": null,
@@ -21754,6 +21732,28 @@
           "column": 67
         }
       ]
+    },
+    {
+      "id": "class-dynamic:dynamic-imported-heritage/main.ts",
+      "matrix": "class-dynamic",
+      "entry": "dynamic-imported-heritage/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/dynamic-imported-heritage/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
     },
     {
       "id": "class-dynamic:dynamic-imported-method-error/main.ts",
@@ -21966,28 +21966,6 @@
       ]
     },
     {
-      "id": "class-dynamic:dynamic-index-number/main.ts",
-      "matrix": "class-dynamic",
-      "entry": "dynamic-index-number/main.ts",
-      "flags": [
-        "--target",
-        "ES2022",
-        "--module",
-        "ES2022",
-        "--strict",
-        "--allowImportingTsExtensions",
-        "--noEmit"
-      ],
-      "verdict": "accept",
-      "replayChecking": "strict",
-      "inputs": [
-        "typescript_oracle/dynamic-index-number/main.ts"
-      ],
-      "accepts": true,
-      "first": null,
-      "diagnostics": []
-    },
-    {
       "id": "class-dynamic:dynamic-index-number-string-error/main.ts",
       "matrix": "class-dynamic",
       "entry": "dynamic-index-number-string-error/main.ts",
@@ -22028,6 +22006,28 @@
           "column": 34
         }
       ]
+    },
+    {
+      "id": "class-dynamic:dynamic-index-number/main.ts",
+      "matrix": "class-dynamic",
+      "entry": "dynamic-index-number/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/dynamic-index-number/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
     },
     {
       "id": "class-dynamic:dynamic-index-optional-error/main.ts",
@@ -22548,9 +22548,9 @@
       "diagnostics": []
     },
     {
-      "id": "class-dynamic:dynamic-runtime-computed/main.ts",
+      "id": "class-dynamic:dynamic-runtime-computed-field-effects-assign/main.ts",
       "matrix": "class-dynamic",
-      "entry": "dynamic-runtime-computed/main.ts",
+      "entry": "dynamic-runtime-computed-field-effects-assign/main.ts",
       "flags": [
         "--target",
         "ES2022",
@@ -22558,12 +22558,14 @@
         "ES2022",
         "--strict",
         "--allowImportingTsExtensions",
-        "--noEmit"
+        "--noEmit",
+        "--useDefineForClassFields",
+        "false"
       ],
       "verdict": "accept",
       "replayChecking": "strict",
       "inputs": [
-        "typescript_oracle/dynamic-runtime-computed/main.ts"
+        "typescript_oracle/dynamic-runtime-computed-field-effects-assign/main.ts"
       ],
       "accepts": true,
       "first": null,
@@ -22592,9 +22594,9 @@
       "diagnostics": []
     },
     {
-      "id": "class-dynamic:dynamic-runtime-computed-field-effects-assign/main.ts",
+      "id": "class-dynamic:dynamic-runtime-computed/main.ts",
       "matrix": "class-dynamic",
-      "entry": "dynamic-runtime-computed-field-effects-assign/main.ts",
+      "entry": "dynamic-runtime-computed/main.ts",
       "flags": [
         "--target",
         "ES2022",
@@ -22602,14 +22604,12 @@
         "ES2022",
         "--strict",
         "--allowImportingTsExtensions",
-        "--noEmit",
-        "--useDefineForClassFields",
-        "false"
+        "--noEmit"
       ],
       "verdict": "accept",
       "replayChecking": "strict",
       "inputs": [
-        "typescript_oracle/dynamic-runtime-computed-field-effects-assign/main.ts"
+        "typescript_oracle/dynamic-runtime-computed/main.ts"
       ],
       "accepts": true,
       "first": null,
@@ -22682,28 +22682,6 @@
       "diagnostics": []
     },
     {
-      "id": "class-dynamic:dynamic-runtime-expression-computed-field/main.ts",
-      "matrix": "class-dynamic",
-      "entry": "dynamic-runtime-expression-computed-field/main.ts",
-      "flags": [
-        "--target",
-        "ES2022",
-        "--module",
-        "ES2022",
-        "--strict",
-        "--allowImportingTsExtensions",
-        "--noEmit"
-      ],
-      "verdict": "accept",
-      "replayChecking": "strict",
-      "inputs": [
-        "typescript_oracle/dynamic-runtime-expression-computed-field/main.ts"
-      ],
-      "accepts": true,
-      "first": null,
-      "diagnostics": []
-    },
-    {
       "id": "class-dynamic:dynamic-runtime-expression-computed-field-assign/main.ts",
       "matrix": "class-dynamic",
       "entry": "dynamic-runtime-expression-computed-field-assign/main.ts",
@@ -22722,6 +22700,28 @@
       "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/dynamic-runtime-expression-computed-field-assign/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-dynamic:dynamic-runtime-expression-computed-field/main.ts",
+      "matrix": "class-dynamic",
+      "entry": "dynamic-runtime-expression-computed-field/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/dynamic-runtime-expression-computed-field/main.ts"
       ],
       "accepts": true,
       "first": null,
@@ -22904,28 +22904,6 @@
       "diagnostics": []
     },
     {
-      "id": "class-dynamic:dynamic-scope-argument/main.ts",
-      "matrix": "class-dynamic",
-      "entry": "dynamic-scope-argument/main.ts",
-      "flags": [
-        "--target",
-        "ES2022",
-        "--module",
-        "ES2022",
-        "--strict",
-        "--allowImportingTsExtensions",
-        "--noEmit"
-      ],
-      "verdict": "accept",
-      "replayChecking": "strict",
-      "inputs": [
-        "typescript_oracle/dynamic-scope-argument/main.ts"
-      ],
-      "accepts": true,
-      "first": null,
-      "diagnostics": []
-    },
-    {
       "id": "class-dynamic:dynamic-scope-argument-name-error/main.ts",
       "matrix": "class-dynamic",
       "entry": "dynamic-scope-argument-name-error/main.ts",
@@ -23010,9 +22988,9 @@
       ]
     },
     {
-      "id": "class-dynamic:dynamic-scope-captured-generic/main.ts",
+      "id": "class-dynamic:dynamic-scope-argument/main.ts",
       "matrix": "class-dynamic",
-      "entry": "dynamic-scope-captured-generic/main.ts",
+      "entry": "dynamic-scope-argument/main.ts",
       "flags": [
         "--target",
         "ES2022",
@@ -23025,7 +23003,7 @@
       "verdict": "accept",
       "replayChecking": "strict",
       "inputs": [
-        "typescript_oracle/dynamic-scope-captured-generic/main.ts"
+        "typescript_oracle/dynamic-scope-argument/main.ts"
       ],
       "accepts": true,
       "first": null,
@@ -23072,6 +23050,28 @@
           "column": 99
         }
       ]
+    },
+    {
+      "id": "class-dynamic:dynamic-scope-captured-generic/main.ts",
+      "matrix": "class-dynamic",
+      "entry": "dynamic-scope-captured-generic/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/dynamic-scope-captured-generic/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
     },
     {
       "id": "class-dynamic:dynamic-scope-computed-expression-assign/main.ts",
@@ -23316,28 +23316,6 @@
       ]
     },
     {
-      "id": "class-dynamic:dynamic-shadow-capture-self/main.ts",
-      "matrix": "class-dynamic",
-      "entry": "dynamic-shadow-capture-self/main.ts",
-      "flags": [
-        "--target",
-        "ES2022",
-        "--module",
-        "ES2022",
-        "--strict",
-        "--allowImportingTsExtensions",
-        "--noEmit"
-      ],
-      "verdict": "accept",
-      "replayChecking": "strict",
-      "inputs": [
-        "typescript_oracle/dynamic-shadow-capture-self/main.ts"
-      ],
-      "accepts": true,
-      "first": null,
-      "diagnostics": []
-    },
-    {
       "id": "class-dynamic:dynamic-shadow-capture-self-error/main.ts",
       "matrix": "class-dynamic",
       "entry": "dynamic-shadow-capture-self-error/main.ts",
@@ -23378,6 +23356,28 @@
           "column": 147
         }
       ]
+    },
+    {
+      "id": "class-dynamic:dynamic-shadow-capture-self/main.ts",
+      "matrix": "class-dynamic",
+      "entry": "dynamic-shadow-capture-self/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/dynamic-shadow-capture-self/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
     },
     {
       "id": "class-dynamic:dynamic-shadow-capture-this/main.ts",
@@ -23440,50 +23440,6 @@
       "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/dynamic-shadow-captured-self-query/main.ts"
-      ],
-      "accepts": true,
-      "first": null,
-      "diagnostics": []
-    },
-    {
-      "id": "class-dynamic:dynamic-shadow-class-this-identity/main.ts",
-      "matrix": "class-dynamic",
-      "entry": "dynamic-shadow-class-this-identity/main.ts",
-      "flags": [
-        "--target",
-        "ES2022",
-        "--module",
-        "ES2022",
-        "--strict",
-        "--allowImportingTsExtensions",
-        "--noEmit"
-      ],
-      "verdict": "accept",
-      "replayChecking": "strict",
-      "inputs": [
-        "typescript_oracle/dynamic-shadow-class-this-identity/main.ts"
-      ],
-      "accepts": true,
-      "first": null,
-      "diagnostics": []
-    },
-    {
-      "id": "class-dynamic:dynamic-shadow-class-this-union/main.ts",
-      "matrix": "class-dynamic",
-      "entry": "dynamic-shadow-class-this-union/main.ts",
-      "flags": [
-        "--target",
-        "ES2022",
-        "--module",
-        "ES2022",
-        "--strict",
-        "--allowImportingTsExtensions",
-        "--noEmit"
-      ],
-      "verdict": "accept",
-      "replayChecking": "strict",
-      "inputs": [
-        "typescript_oracle/dynamic-shadow-class-this-union/main.ts"
       ],
       "accepts": true,
       "first": null,
@@ -23734,6 +23690,50 @@
       "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/dynamic-shadow-method-identity/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-dynamic:dynamic-shadow-this-identity/main.ts",
+      "matrix": "class-dynamic",
+      "entry": "dynamic-shadow-this-identity/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/dynamic-shadow-this-identity/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-dynamic:dynamic-shadow-this-union/main.ts",
+      "matrix": "class-dynamic",
+      "entry": "dynamic-shadow-this-union/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/dynamic-shadow-this-union/main.ts"
       ],
       "accepts": true,
       "first": null,
