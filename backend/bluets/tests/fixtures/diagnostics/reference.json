@@ -22158,6 +22158,96 @@
       "diagnostics": []
     },
     {
+      "id": "class-dynamic:dynamic-runtime-expression-alias-heritage/main.ts",
+      "matrix": "class-dynamic",
+      "entry": "dynamic-runtime-expression-alias-heritage/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/dynamic-runtime-expression-alias-heritage/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-dynamic:dynamic-runtime-expression-captured-generic/main.ts",
+      "matrix": "class-dynamic",
+      "entry": "dynamic-runtime-expression-captured-generic/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/dynamic-runtime-expression-captured-generic/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-dynamic:dynamic-runtime-expression-computed-field/main.ts",
+      "matrix": "class-dynamic",
+      "entry": "dynamic-runtime-expression-computed-field/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/dynamic-runtime-expression-computed-field/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-dynamic:dynamic-runtime-expression-computed-field-assign/main.ts",
+      "matrix": "class-dynamic",
+      "entry": "dynamic-runtime-expression-computed-field-assign/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--useDefineForClassFields",
+        "false"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/dynamic-runtime-expression-computed-field-assign/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
       "id": "class-dynamic:dynamic-runtime-expression-factory/main.ts",
       "matrix": "class-dynamic",
       "entry": "dynamic-runtime-expression-factory/main.ts",
@@ -22196,6 +22286,28 @@
       "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/dynamic-runtime-expression-generic/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-dynamic:dynamic-runtime-expression-object-name/main.ts",
+      "matrix": "class-dynamic",
+      "entry": "dynamic-runtime-expression-object-name/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/dynamic-runtime-expression-object-name/main.ts"
       ],
       "accepts": true,
       "first": null,
@@ -22262,6 +22374,286 @@
       "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/dynamic-runtime-names/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-dynamic:dynamic-scope-argument/main.ts",
+      "matrix": "class-dynamic",
+      "entry": "dynamic-scope-argument/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/dynamic-scope-argument/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-dynamic:dynamic-scope-argument-name-error/main.ts",
+      "matrix": "class-dynamic",
+      "entry": "dynamic-scope-argument-name-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/dynamic-scope-argument-name-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2304,
+        "category": "error",
+        "message": "Cannot find name 'missing'.",
+        "file": "typescript_oracle/dynamic-scope-argument-name-error/main.ts",
+        "start": 281,
+        "length": 7,
+        "line": 5,
+        "column": 78
+      },
+      "diagnostics": [
+        {
+          "code": 2304,
+          "category": "error",
+          "message": "Cannot find name 'missing'.",
+          "file": "typescript_oracle/dynamic-scope-argument-name-error/main.ts",
+          "start": 281,
+          "length": 7,
+          "line": 5,
+          "column": 78
+        }
+      ]
+    },
+    {
+      "id": "class-dynamic:dynamic-scope-argument-return-error/main.ts",
+      "matrix": "class-dynamic",
+      "entry": "dynamic-scope-argument-return-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/dynamic-scope-argument-return-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'string' is not assignable to type 'number'.",
+        "file": "typescript_oracle/dynamic-scope-argument-return-error/main.ts",
+        "start": 274,
+        "length": 6,
+        "line": 5,
+        "column": 71
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "file": "typescript_oracle/dynamic-scope-argument-return-error/main.ts",
+          "start": 274,
+          "length": 6,
+          "line": 5,
+          "column": 71
+        }
+      ]
+    },
+    {
+      "id": "class-dynamic:dynamic-scope-captured-generic/main.ts",
+      "matrix": "class-dynamic",
+      "entry": "dynamic-scope-captured-generic/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/dynamic-scope-captured-generic/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-dynamic:dynamic-scope-captured-generic-error/main.ts",
+      "matrix": "class-dynamic",
+      "entry": "dynamic-scope-captured-generic-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/dynamic-scope-captured-generic-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'number' is not assignable to type 'string'.",
+        "file": "typescript_oracle/dynamic-scope-captured-generic-error/main.ts",
+        "start": 302,
+        "length": 6,
+        "line": 5,
+        "column": 99
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "file": "typescript_oracle/dynamic-scope-captured-generic-error/main.ts",
+          "start": 302,
+          "length": 6,
+          "line": 5,
+          "column": 99
+        }
+      ]
+    },
+    {
+      "id": "class-dynamic:dynamic-scope-computed-expression-assign/main.ts",
+      "matrix": "class-dynamic",
+      "entry": "dynamic-scope-computed-expression-assign/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--useDefineForClassFields",
+        "false"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/dynamic-scope-computed-expression-assign/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-dynamic:dynamic-scope-expression-heritage/main.ts",
+      "matrix": "class-dynamic",
+      "entry": "dynamic-scope-expression-heritage/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/dynamic-scope-expression-heritage/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-dynamic:dynamic-scope-heritage-argument-error/main.ts",
+      "matrix": "class-dynamic",
+      "entry": "dynamic-scope-heritage-argument-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/dynamic-scope-heritage-argument-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2345,
+        "category": "error",
+        "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+        "file": "typescript_oracle/dynamic-scope-heritage-argument-error/main.ts",
+        "start": 345,
+        "length": 5,
+        "line": 5,
+        "column": 142
+      },
+      "diagnostics": [
+        {
+          "code": 2345,
+          "category": "error",
+          "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+          "file": "typescript_oracle/dynamic-scope-heritage-argument-error/main.ts",
+          "start": 345,
+          "length": 5,
+          "line": 5,
+          "column": 142
+        }
+      ]
+    },
+    {
+      "id": "class-dynamic:dynamic-scope-object-name/main.ts",
+      "matrix": "class-dynamic",
+      "entry": "dynamic-scope-object-name/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/dynamic-scope-object-name/main.ts"
       ],
       "accepts": true,
       "first": null,
