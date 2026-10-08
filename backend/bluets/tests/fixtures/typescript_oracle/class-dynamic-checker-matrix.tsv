@@ -104,6 +104,8 @@ dynamic-runtime-expression-object-name/main.ts	accept
 dynamic-runtime-heritage/main.ts	accept
 dynamic-runtime-method/main.ts	accept
 dynamic-runtime-names/main.ts	accept
+dynamic-runtime-shadow-capture-self/main.ts	accept
+dynamic-runtime-shadow-capture-this/main.ts	accept
 dynamic-scope-argument/main.ts	accept
 dynamic-scope-argument-name-error/main.ts	reject
 dynamic-scope-argument-return-error/main.ts	reject
@@ -113,6 +115,13 @@ dynamic-scope-computed-expression-assign/main.ts	accept
 dynamic-scope-expression-heritage/main.ts	accept
 dynamic-scope-heritage-argument-error/main.ts	reject
 dynamic-scope-object-name/main.ts	accept
+dynamic-shadow-capture-field-error/main.ts	reject
+dynamic-shadow-capture-self/main.ts	accept
+dynamic-shadow-capture-self-error/main.ts	reject
+dynamic-shadow-capture-this/main.ts	accept
+dynamic-shadow-computed-outer-this-error/main.ts	reject
+dynamic-shadow-method-field-error/main.ts	reject
+dynamic-shadow-method-identity/main.ts	accept
 dynamic-static-derived-valid/main.ts	accept
 dynamic-static-field-override-error/main.ts	reject
 dynamic-static-generic-binding/main.ts	accept

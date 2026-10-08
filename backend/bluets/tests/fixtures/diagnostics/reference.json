@@ -395,6 +395,10 @@
       "message": "Module '{0}' declares '{1}' locally, but it is not exported."
     },
     {
+      "code": 2465,
+      "message": "'this' cannot be referenced in a computed property name."
+    },
+    {
       "code": 2474,
       "message": "const enum member initializers must be constant expressions."
     },
@@ -581,6 +585,10 @@
     {
       "code": 2717,
       "message": "Subsequent property declarations must have the same type.  Property '{0}' must be of type '{1}', but here has type '{2}'."
+    },
+    {
+      "code": 2719,
+      "message": "Type '{0}' is not assignable to type '{1}'. Two different types with this name exist, but they are unrelated."
     },
     {
       "code": 2724,
@@ -22852,6 +22860,50 @@
       "diagnostics": []
     },
     {
+      "id": "class-dynamic:dynamic-runtime-shadow-capture-self/main.ts",
+      "matrix": "class-dynamic",
+      "entry": "dynamic-runtime-shadow-capture-self/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/dynamic-runtime-shadow-capture-self/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-dynamic:dynamic-runtime-shadow-capture-this/main.ts",
+      "matrix": "class-dynamic",
+      "entry": "dynamic-runtime-shadow-capture-this/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/dynamic-runtime-shadow-capture-this/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
       "id": "class-dynamic:dynamic-scope-argument/main.ts",
       "matrix": "class-dynamic",
       "entry": "dynamic-scope-argument/main.ts",
@@ -23126,6 +23178,298 @@
       "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/dynamic-scope-object-name/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-dynamic:dynamic-shadow-capture-field-error/main.ts",
+      "matrix": "class-dynamic",
+      "entry": "dynamic-shadow-capture-field-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/dynamic-shadow-capture-field-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2719,
+        "category": "error",
+        "message": "Type 'T' is not assignable to type 'T'. Two different types with this name exist, but they are unrelated.\n  'T' could be instantiated with an arbitrary type which could be unrelated to 'T'.",
+        "file": "typescript_oracle/dynamic-shadow-capture-field-error/main.ts",
+        "start": 280,
+        "length": 6,
+        "line": 5,
+        "column": 77,
+        "related": [
+          {
+            "code": 2208,
+            "category": "error",
+            "message": "This type parameter might need an `extends T` constraint.",
+            "file": "typescript_oracle/dynamic-shadow-capture-field-error/main.ts",
+            "start": 218,
+            "length": 1,
+            "line": 5,
+            "column": 15
+          }
+        ]
+      },
+      "diagnostics": [
+        {
+          "code": 2719,
+          "category": "error",
+          "message": "Type 'T' is not assignable to type 'T'. Two different types with this name exist, but they are unrelated.\n  'T' could be instantiated with an arbitrary type which could be unrelated to 'T'.",
+          "file": "typescript_oracle/dynamic-shadow-capture-field-error/main.ts",
+          "start": 280,
+          "length": 6,
+          "line": 5,
+          "column": 77,
+          "related": [
+            {
+              "code": 2208,
+              "category": "error",
+              "message": "This type parameter might need an `extends T` constraint.",
+              "file": "typescript_oracle/dynamic-shadow-capture-field-error/main.ts",
+              "start": 218,
+              "length": 1,
+              "line": 5,
+              "column": 15
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "class-dynamic:dynamic-shadow-capture-self/main.ts",
+      "matrix": "class-dynamic",
+      "entry": "dynamic-shadow-capture-self/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/dynamic-shadow-capture-self/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-dynamic:dynamic-shadow-capture-self-error/main.ts",
+      "matrix": "class-dynamic",
+      "entry": "dynamic-shadow-capture-self-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/dynamic-shadow-capture-self-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'number' is not assignable to type 'string'.",
+        "file": "typescript_oracle/dynamic-shadow-capture-self-error/main.ts",
+        "start": 350,
+        "length": 6,
+        "line": 5,
+        "column": 147
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "file": "typescript_oracle/dynamic-shadow-capture-self-error/main.ts",
+          "start": 350,
+          "length": 6,
+          "line": 5,
+          "column": 147
+        }
+      ]
+    },
+    {
+      "id": "class-dynamic:dynamic-shadow-capture-this/main.ts",
+      "matrix": "class-dynamic",
+      "entry": "dynamic-shadow-capture-this/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/dynamic-shadow-capture-this/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-dynamic:dynamic-shadow-computed-outer-this-error/main.ts",
+      "matrix": "class-dynamic",
+      "entry": "dynamic-shadow-computed-outer-this-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/dynamic-shadow-computed-outer-this-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2465,
+        "category": "error",
+        "message": "'this' cannot be referenced in a computed property name.",
+        "file": "typescript_oracle/dynamic-shadow-computed-outer-this-error/main.ts",
+        "start": 238,
+        "length": 4,
+        "line": 5,
+        "column": 35
+      },
+      "diagnostics": [
+        {
+          "code": 2465,
+          "category": "error",
+          "message": "'this' cannot be referenced in a computed property name.",
+          "file": "typescript_oracle/dynamic-shadow-computed-outer-this-error/main.ts",
+          "start": 238,
+          "length": 4,
+          "line": 5,
+          "column": 35
+        },
+        {
+          "code": 2339,
+          "category": "error",
+          "message": "Property 'key' does not exist on type '(Anonymous class)'.",
+          "file": "typescript_oracle/dynamic-shadow-computed-outer-this-error/main.ts",
+          "start": 243,
+          "length": 3,
+          "line": 5,
+          "column": 40
+        }
+      ]
+    },
+    {
+      "id": "class-dynamic:dynamic-shadow-method-field-error/main.ts",
+      "matrix": "class-dynamic",
+      "entry": "dynamic-shadow-method-field-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/dynamic-shadow-method-field-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2719,
+        "category": "error",
+        "message": "Type 'T' is not assignable to type 'T'. Two different types with this name exist, but they are unrelated.\n  'T' could be instantiated with an arbitrary type which could be unrelated to 'T'.",
+        "file": "typescript_oracle/dynamic-shadow-method-field-error/main.ts",
+        "start": 264,
+        "length": 6,
+        "line": 5,
+        "column": 61,
+        "related": [
+          {
+            "code": 2208,
+            "category": "error",
+            "message": "This type parameter might need an `extends T` constraint.",
+            "file": "typescript_oracle/dynamic-shadow-method-field-error/main.ts",
+            "start": 212,
+            "length": 1,
+            "line": 5,
+            "column": 9
+          }
+        ]
+      },
+      "diagnostics": [
+        {
+          "code": 2719,
+          "category": "error",
+          "message": "Type 'T' is not assignable to type 'T'. Two different types with this name exist, but they are unrelated.\n  'T' could be instantiated with an arbitrary type which could be unrelated to 'T'.",
+          "file": "typescript_oracle/dynamic-shadow-method-field-error/main.ts",
+          "start": 264,
+          "length": 6,
+          "line": 5,
+          "column": 61,
+          "related": [
+            {
+              "code": 2208,
+              "category": "error",
+              "message": "This type parameter might need an `extends T` constraint.",
+              "file": "typescript_oracle/dynamic-shadow-method-field-error/main.ts",
+              "start": 212,
+              "length": 1,
+              "line": 5,
+              "column": 9
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "class-dynamic:dynamic-shadow-method-identity/main.ts",
+      "matrix": "class-dynamic",
+      "entry": "dynamic-shadow-method-identity/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/dynamic-shadow-method-identity/main.ts"
       ],
       "accepts": true,
       "first": null,

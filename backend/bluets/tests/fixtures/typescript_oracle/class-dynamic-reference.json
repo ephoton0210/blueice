@@ -1242,6 +1242,22 @@
       "first": null
     },
     {
+      "entry": "dynamic-runtime-shadow-capture-self/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "dynamic-runtime-shadow-capture-this/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
       "entry": "dynamic-scope-argument/main.ts",
       "accepts": true,
       "flags": [],
@@ -1350,6 +1366,126 @@
     },
     {
       "entry": "dynamic-scope-object-name/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "dynamic-shadow-capture-field-error/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2719,
+        "message": "Type 'T' is not assignable to type 'T'. Two different types with this name exist, but they are unrelated.\n  'T' could be instantiated with an arbitrary type which could be unrelated to 'T'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 77,
+          "length": 6
+        },
+        "related": [
+          {
+            "code": 2208,
+            "message": "This type parameter might need an `extends T` constraint.",
+            "module": "main.ts",
+            "position": {
+              "line": 5,
+              "column": 15,
+              "length": 1
+            },
+            "related": []
+          }
+        ]
+      }
+    },
+    {
+      "entry": "dynamic-shadow-capture-self/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "dynamic-shadow-capture-self-error/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2322,
+        "message": "Type 'number' is not assignable to type 'string'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 147,
+          "length": 6
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "dynamic-shadow-capture-this/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "dynamic-shadow-computed-outer-this-error/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2465,
+        "message": "'this' cannot be referenced in a computed property name.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 35,
+          "length": 4
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "dynamic-shadow-method-field-error/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2719,
+        "message": "Type 'T' is not assignable to type 'T'. Two different types with this name exist, but they are unrelated.\n  'T' could be instantiated with an arbitrary type which could be unrelated to 'T'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 61,
+          "length": 6
+        },
+        "related": [
+          {
+            "code": 2208,
+            "message": "This type parameter might need an `extends T` constraint.",
+            "module": "main.ts",
+            "position": {
+              "line": 5,
+              "column": 9,
+              "length": 1
+            },
+            "related": []
+          }
+        ]
+      }
+    },
+    {
+      "entry": "dynamic-shadow-method-identity/main.ts",
       "accepts": true,
       "flags": [],
       "runtime": false,
