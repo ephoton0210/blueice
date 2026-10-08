@@ -479,6 +479,9 @@ fn invalid(message: &'static str) -> io::Error {
 mod tests {
     use super::*;
     use std::path::{Path, PathBuf};
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static FIXTURE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
     struct PhysicalFixture {
         directory: PathBuf,
@@ -488,12 +491,13 @@ mod tests {
     impl PhysicalFixture {
         fn new() -> Self {
             let directory = std::env::temp_dir().join(format!(
-                "blueice-catalog-roots-{}-{}",
+                "blueice-catalog-roots-{}-{}-{}",
                 std::process::id(),
                 std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap()
-                    .as_nanos()
+                    .as_nanos(),
+                FIXTURE_SEQUENCE.fetch_add(1, Ordering::Relaxed)
             ));
             let directory = {
                 std::fs::create_dir(&directory).unwrap();
@@ -681,6 +685,34 @@ mod tests {
 
         catalog.projects[1].canonical_output_root = "project:///second-dist".into();
         assert!(catalog.validate().is_ok());
+    }
+
+    #[test]
+    fn physical_catalog_fixtures_are_isolated_when_created_concurrently() {
+        let start = std::sync::Barrier::new(16);
+        let fixtures = std::thread::scope(|scope| {
+            let workers: Vec<_> = (0..16)
+                .map(|_| {
+                    scope.spawn(|| {
+                        start.wait();
+                        let fixture = PhysicalFixture::new();
+                        fixture.catalog.validate().unwrap();
+                        fixture
+                    })
+                })
+                .collect();
+            workers
+                .into_iter()
+                .map(|worker| worker.join().unwrap())
+                .collect::<Vec<_>>()
+        });
+        let directories: std::collections::BTreeSet<_> = fixtures
+            .iter()
+            .map(|fixture| fixture.directory.clone())
+            .collect();
+        assert_eq!(directories.len(), 16);
+        drop(fixtures);
+        assert!(directories.iter().all(|directory| !directory.exists()));
     }
 
     #[test]
