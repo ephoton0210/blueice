@@ -196,7 +196,21 @@ jobs:
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Rustfmt
+        if: runner.os != 'Windows'
         run: cargo fmt --all -- --check
+      - name: Rustfmt (Windows packages)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          # A single workspace rustfmt invocation exceeds Windows' command-line
+          # limit. Discover every workspace member and check all its targets.
+          $metadata = cargo metadata --no-deps --offline --format-version 1 | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw "cargo metadata failed" }
+          $members = @($metadata.packages | Where-Object { $_.id -in $metadata.workspace_members })
+          foreach ($package in $members) {
+            cargo fmt --package $package.name -- --check
+            if ($LASTEXITCODE -ne 0) { throw "Rustfmt failed for $($package.name)" }
+          }
 
   coverage:
     name: Coverage

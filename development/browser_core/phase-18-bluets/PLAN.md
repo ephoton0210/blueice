@@ -5508,3 +5508,18 @@ Both exact CI verification blocks pass against the pinned revision. Evidence:
 Git documents the process-scoped override in [git-config's environment section](https://git-scm.com/docs/git-config#ENVIRONMENT).
 No fixture, verdict allowance, production Rust behavior or coverage threshold
 changes. Full CI remains pending on the corrected workflow.
+
+### Post-Test262 merge Windows format invocation correction — 2026-10-08
+
+CI [37729027697](https://github.com/ephoton0210/blueice/actions/runs/37729027697)
+preserves the pinned Test262 fixture bytes on all five Windows configurations.
+The Windows 11 arm64 job passes workspace build/test, all three Node matrices
+and all-target Clippy, then fails before rustfmt runs with Windows error 206:
+the combined workspace target arguments exceed the command-line length limit.
+
+Windows now discovers every workspace member from Cargo metadata and runs the
+same rustfmt check for each package, including every target. All local path
+dependencies belong to the workspace. The largest package has 334 targets and
+approximately 24,012 command-line characters at the failing runner's checkout
+path, below the Windows limit. Other platforms retain the original workspace
+invocation. No target or format rule is excluded. Final full CI remains pending.
