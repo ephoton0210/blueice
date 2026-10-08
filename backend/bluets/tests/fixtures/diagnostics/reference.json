@@ -247,6 +247,10 @@
       "message": "This expression is not constructable."
     },
     {
+      "code": 2352,
+      "message": "Conversion of type '{0}' to type '{1}' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first."
+    },
+    {
       "code": 2353,
       "message": "Object literal may only specify known properties, and '{0}' does not exist in type '{1}'."
     },
@@ -23036,6 +23040,214 @@
       "diagnostics": []
     },
     {
+      "id": "class-dynamic:dynamic-runtime-target-anonymous-static-assign/main.ts",
+      "matrix": "class-dynamic",
+      "entry": "dynamic-runtime-target-anonymous-static-assign/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2020",
+        "--useDefineForClassFields",
+        "false"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/dynamic-runtime-target-anonymous-static-assign/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-dynamic:dynamic-runtime-target-anonymous-static-define/main.ts",
+      "matrix": "class-dynamic",
+      "entry": "dynamic-runtime-target-anonymous-static-define/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2020",
+        "--useDefineForClassFields",
+        "true"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/dynamic-runtime-target-anonymous-static-define/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-dynamic:dynamic-runtime-target-computed-factory/main.ts",
+      "matrix": "class-dynamic",
+      "entry": "dynamic-runtime-target-computed-factory/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2020",
+        "--useDefineForClassFields",
+        "false"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/dynamic-runtime-target-computed-factory/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-dynamic:dynamic-runtime-target-derived-factory/main.ts",
+      "matrix": "class-dynamic",
+      "entry": "dynamic-runtime-target-derived-factory/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2020",
+        "--useDefineForClassFields",
+        "false"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/dynamic-runtime-target-derived-factory/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-dynamic:dynamic-runtime-target-named-static/main.ts",
+      "matrix": "class-dynamic",
+      "entry": "dynamic-runtime-target-named-static/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2020",
+        "--useDefineForClassFields",
+        "true"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/dynamic-runtime-target-named-static/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-dynamic:dynamic-runtime-target-nested-field/main.ts",
+      "matrix": "class-dynamic",
+      "entry": "dynamic-runtime-target-nested-field/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2020",
+        "--useDefineForClassFields",
+        "false"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/dynamic-runtime-target-nested-field/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-dynamic:dynamic-runtime-target-private-factory/main.ts",
+      "matrix": "class-dynamic",
+      "entry": "dynamic-runtime-target-private-factory/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2020",
+        "--useDefineForClassFields",
+        "false"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/dynamic-runtime-target-private-factory/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-dynamic:dynamic-runtime-target-static-block/main.ts",
+      "matrix": "class-dynamic",
+      "entry": "dynamic-runtime-target-static-block/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2020",
+        "--useDefineForClassFields",
+        "false"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/dynamic-runtime-target-static-block/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
       "id": "class-dynamic:dynamic-scope-argument/main.ts",
       "matrix": "class-dynamic",
       "entry": "dynamic-scope-argument/main.ts",
@@ -24350,6 +24562,48 @@
       "accepts": true,
       "first": null,
       "diagnostics": []
+    },
+    {
+      "id": "class-dynamic:dynamic-target-literal-assertion-error/main.ts",
+      "matrix": "class-dynamic",
+      "entry": "dynamic-target-literal-assertion-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/dynamic-target-literal-assertion-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2352,
+        "category": "error",
+        "message": "Conversion of type 'number' to type '\"first\"' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.",
+        "file": "typescript_oracle/dynamic-target-literal-assertion-error/main.ts",
+        "start": 254,
+        "length": 12,
+        "line": 5,
+        "column": 51
+      },
+      "diagnostics": [
+        {
+          "code": 2352,
+          "category": "error",
+          "message": "Conversion of type 'number' to type '\"first\"' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.",
+          "file": "typescript_oracle/dynamic-target-literal-assertion-error/main.ts",
+          "start": 254,
+          "length": 12,
+          "line": 5,
+          "column": 51
+        }
+      ]
     },
     {
       "id": "class-modifiers:modifiers-abstract-accessor-body/main.ts",

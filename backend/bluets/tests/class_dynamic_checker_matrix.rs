@@ -45,6 +45,14 @@ fn prepare(case: &Value, directory: &Path) -> PathBuf {
         }
     }
     let mut options = json!({"target":"ES2022","module":"ES2022","strict":true});
+    if let Some(pair) = case["flags"]
+        .as_array()
+        .unwrap()
+        .windows(2)
+        .find(|pair| pair[0] == "--target")
+    {
+        options["target"] = pair[1].clone();
+    }
     if case["flags"]
         .as_array()
         .unwrap()
@@ -76,17 +84,17 @@ fn prepare(case: &Value, directory: &Path) -> PathBuf {
 #[test]
 fn matrix_covers_every_class_dynamic_fixture() {
     let cases = cases();
-    assert_eq!(cases.len(), 151);
+    assert_eq!(cases.len(), 160);
     assert_eq!(
         cases.iter().filter(|case| case["runtime"] == true).count(),
-        22
+        30
     );
     assert_eq!(
         cases
             .iter()
             .filter(|case| case["declaration"] == true)
             .count(),
-        28
+        36
     );
     let recorded = cases
         .iter()

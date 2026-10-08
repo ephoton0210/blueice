@@ -110,6 +110,14 @@ dynamic-runtime-names/main.ts	accept
 dynamic-runtime-shadow-capture-self/main.ts	accept
 dynamic-runtime-shadow-capture-this/main.ts	accept
 dynamic-runtime-static-arrow-binder/main.ts	accept
+dynamic-runtime-target-anonymous-static-assign/main.ts	accept
+dynamic-runtime-target-anonymous-static-define/main.ts	accept
+dynamic-runtime-target-computed-factory/main.ts	accept
+dynamic-runtime-target-derived-factory/main.ts	accept
+dynamic-runtime-target-named-static/main.ts	accept
+dynamic-runtime-target-nested-field/main.ts	accept
+dynamic-runtime-target-private-factory/main.ts	accept
+dynamic-runtime-target-static-block/main.ts	accept
 dynamic-scope-argument/main.ts	accept
 dynamic-scope-argument-name-error/main.ts	reject
 dynamic-scope-argument-return-error/main.ts	reject
@@ -149,3 +157,4 @@ dynamic-string-accessor/main.ts	accept
 dynamic-string-field/main.ts	accept
 dynamic-string-method/main.ts	accept
 dynamic-string-numeric/main.ts	accept
+dynamic-target-literal-assertion-error/main.ts	reject

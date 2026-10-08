@@ -5698,3 +5698,44 @@ when it approaches 1,300 before adding more responsibilities.
 
 
 *Static/local binder baseline (2026-10-09):* Eight controls expand the pinned corpus to 151 programs (95 accept, 56 reject), twenty-two runtime and twenty-eight exact declaration witnesses. The preceding frozen 83-file implementation completes the full two-crate gate with 1,149 passing tests and one recorder-order failure; format, all-target Clippy and every other ignored/live oracle pass. Recorder metadata now uses directory-name sorting, with all existing observations unchanged. An isolated pinned recorder and unchanged public Linux CLI record eight new verdict/primary differences: static generic arrow/function binders are confused with class parameters, callable annotation binders are missing from lexical lookup, and a method binder rewrites a captured outer function parameter through a local named self type, including one unsafe false acceptance. The rejection retains TS2322 and its TS2208 origin. The shared corpus contains 2,260 programs (1,066 accept, 1,194 reject), 193 templates. Evidence: `/private/tmp/blueice-k14-linux/blueice-k52-static-local-red.json`, its frozen 83-file hashes, the isolated pinned recorder logs and `blueice-k52-143-code-complete-full-status.json`. Only fixtures, recorder metadata and plans are committed before the binder correction; K.5.2 stays open.
+
+
+### K.5.2 Generic and dynamic class implementation
+
+Structured class declarations and expressions share heritage, modifier, index,
+field, constructor and member validation. Generic class definitions and captured
+outer parameters retain declaration identities; lexical source names resolve to
+those identities before method/function shadowing or instance substitution.
+Named self types and constructor aliases preserve captures through inheritance
+and imported module surfaces. Static restrictions consult the owning lexical
+scope, so a callback's own binder can shadow the class parameter while a free
+class parameter still reports TS2302. Same-named assignment mismatches retain
+TS2719 and exact TS2208 origins; outer-parameter errors retain their source name.
+
+Computed fields capture keys once in source order and share field placement
+between JavaScript emission and the direct bridge. `declare` and index members
+erase completely; declaration emission preserves quoted/computed dependencies,
+expands class-expression surfaces and chooses fresh nested binder names.
+Public regressions cover class-expression argument bodies, captured defaults,
+private imported instance surfaces, aliases, receiver types and both field modes.
+The public AST and checking fingerprints retain structured class surfaces. No
+loader, canonical-root, runtime or host capability is added.
+
+The 151-program focused replay passes every verdict, exact primary/related
+presentation, live TypeScript 5.9.3 recording, all 22 Node witnesses and all 28
+exact declaration witnesses. Both-crate all-target Clippy denies warnings; the
+legacy 2,260-program diagnostic replay and direct bridge pass. Symbolic tuple
+spread constraints retain both lexical and declaration identities. Evidence:
+`/private/tmp/blueice-k14-linux/blueice-k52-final-binders-status.json` and its
+frozen 88-file source hashes. The complete two-crate gate runs on the same frozen
+source before the production commit.
+
+Generated refusal inventory records 166 sites in ten areas. Remaining class
+refusals are scoped to K.5.3, generator/auto-accessor members, computed heritage,
+ES2020 computed class-expression field wrappers, decorated expressions and
+other unmeasured combinations. G-T9 records only the measured surface. The
+largest changed production source is 1,193 lines; no source approaches 1,300.
+K.5.3 and M8 remain open.
+
+
+*Expression-target baseline (2026-10-09):* Nine controls expand the corpus to 160 programs (103 accept, 57 reject), thirty runtime and thirty-six exact declaration witnesses. The preceding frozen 88-file implementation passes format, both-crate all-target Clippy and all 1,150 tests in 79 groups, including all 146 ignored oracles in 42 suite files. An independent ES2020 replay then records eight runtime failures, five declaration differences and one checker rejection for static fields/blocks, private fields/methods, derived and nested class expressions, and per-evaluation computed keys. Internal class identities leak into after-class JavaScript and private stores escape expression scope. Literal assertions in a computed-key getter lose their target; the invalid assertion control reports TS2322 instead of TS2352. Empty instance/export declarations also need exact TypeScript formatting. Shared diagnostic corpus: 2,269 programs (1,074 accept, 1,195 reject), 194 templates. Evidence: `/private/tmp/blueice-k14-linux/blueice-k52-151-pass-full-status.json`, its frozen 88-file source hashes, `blueice-k52-expression-target-red.json` and isolated pinned recorder logs. The baseline commits fixtures, target-aware harness, direct witnesses and plans before lowering changes. K.5.2 remains open until these supported-target boundaries pass.

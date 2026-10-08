@@ -1312,6 +1312,110 @@
       "first": null
     },
     {
+      "entry": "dynamic-runtime-target-anonymous-static-assign/main.ts",
+      "accepts": true,
+      "flags": [
+        "--target",
+        "ES2020",
+        "--useDefineForClassFields",
+        "false"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "dynamic-runtime-target-anonymous-static-define/main.ts",
+      "accepts": true,
+      "flags": [
+        "--target",
+        "ES2020",
+        "--useDefineForClassFields",
+        "true"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "dynamic-runtime-target-computed-factory/main.ts",
+      "accepts": true,
+      "flags": [
+        "--target",
+        "ES2020",
+        "--useDefineForClassFields",
+        "false"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "dynamic-runtime-target-derived-factory/main.ts",
+      "accepts": true,
+      "flags": [
+        "--target",
+        "ES2020",
+        "--useDefineForClassFields",
+        "false"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "dynamic-runtime-target-named-static/main.ts",
+      "accepts": true,
+      "flags": [
+        "--target",
+        "ES2020",
+        "--useDefineForClassFields",
+        "true"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "dynamic-runtime-target-nested-field/main.ts",
+      "accepts": true,
+      "flags": [
+        "--target",
+        "ES2020",
+        "--useDefineForClassFields",
+        "false"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "dynamic-runtime-target-private-factory/main.ts",
+      "accepts": true,
+      "flags": [
+        "--target",
+        "ES2020",
+        "--useDefineForClassFields",
+        "false"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "dynamic-runtime-target-static-block/main.ts",
+      "accepts": true,
+      "flags": [
+        "--target",
+        "ES2020",
+        "--useDefineForClassFields",
+        "false"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
       "entry": "dynamic-scope-argument/main.ts",
       "accepts": true,
       "flags": [],
@@ -1843,6 +1947,24 @@
       "runtime": false,
       "declaration": false,
       "first": null
+    },
+    {
+      "entry": "dynamic-target-literal-assertion-error/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2352,
+        "message": "Conversion of type 'number' to type '\"first\"' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 51,
+          "length": 12
+        },
+        "related": []
+      }
     }
   ]
 }
