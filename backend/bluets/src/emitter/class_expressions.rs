@@ -94,12 +94,14 @@ fn expand(
             arguments: arguments.iter().map(&mut child).collect(),
         },
         Type::Record(fields) => Type::Record(fields.iter().map(|field| TypeField {
-            value: child(&field.value), ..field.clone()
+            accessor_write_type: field.accessor_write_type.as_ref().map(|value| Box::new(child(value))),
+                    value: child(&field.value), ..field.clone()
         }).collect()),
         Type::CallableRecord { fields, signatures } => Type::CallableRecord {
             fields: fields.iter().filter(|field| {
                 !(field.name == "prototype" && matches!(&field.value, Type::Named { name, .. } if surfaces.contains_key(name)))
-            }).map(|field| TypeField { value: child(&field.value), ..field.clone() }).collect(),
+            }).map(|field| TypeField { accessor_write_type: field.accessor_write_type.as_ref().map(|value| Box::new(child(value))),
+                    value: child(&field.value), ..field.clone() }).collect(),
             signatures: signatures.iter().map(|signature| TypeSignature {
                 type_parameters: signature.type_parameters.iter().map(|parameter| TypeParameter {
                     constraint: parameter.constraint.as_ref().map(&mut child),

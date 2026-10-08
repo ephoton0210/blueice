@@ -793,7 +793,7 @@ fn an_interface_merges_into_the_class_of_the_same_name_in_either_order() {
 }
 
 #[test]
-fn a_merged_interface_is_erased_and_a_generic_or_inheriting_one_is_refused() {
+fn merged_interface_heritage_is_erased_and_contributes_instance_members() {
     let output = emit("interface Box { extra: string }\nclass Box { v: number = 1; }\n");
     assert!(!output.contains("interface"), "{output}");
     assert!(output.contains("class Box"), "{output}");
@@ -801,14 +801,15 @@ fn a_merged_interface_is_erased_and_a_generic_or_inheriting_one_is_refused() {
         ENTRY,
         &MapLoader::from([ModuleSource::new(
             ENTRY,
-            "interface Named { name: string } interface Box extends Named { x: number } class Box { v: number = 1; }",
+            "interface Named { name: string } interface Box extends Named { x: number } class Box { v: number = 1; } const b: Box = new Box(); const s: string = b.name; const x: number = b.x;",
         )]),
         CompilerOptions::default(),
     );
-    assert!(compiled
-        .diagnostics
-        .iter()
-        .any(|d| d.code == DiagnosticCode::UnsupportedSyntax));
+    assert!(
+        compiled.diagnostics.is_empty(),
+        "{:?}",
+        compiled.diagnostics
+    );
 }
 
 #[test]

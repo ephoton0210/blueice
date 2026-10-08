@@ -68,6 +68,7 @@ impl ModuleChecker<'_> {
                 }))
             };
             fields.push(TypeField {
+                accessor_write_type: None,
                 method: false,
                 name: self
                     .jsx_children_name()
@@ -95,6 +96,7 @@ impl ModuleChecker<'_> {
                         None => Type::Boolean,
                     };
                     fields.push(TypeField {
+                        accessor_write_type: None,
                         method: false,
                         name: name.text.clone(),
                         readonly: false,

@@ -28,12 +28,12 @@ use member_calls::{member_call_parts, member_call_ranges};
 mod properties;
 mod scopes;
 pub(crate) use scopes::flow::VERSION as FLOW_VERSION;
-pub(crate) const CLASS_SURFACE_VERSION: &str = "class-surface-v2";
+pub(crate) const CLASS_SURFACE_VERSION: &str = "class-surface-v3";
 mod type_operators;
 mod type_relations;
 use properties::{
-    contains_readonly_member, mutation_field_type, property_type, readonly_property, PropertyType,
-    TypeExpansionBudget,
+    contains_readonly_member, mutation_field_type, property_type, property_write_type,
+    readonly_property, PropertyType, TypeExpansionBudget,
 };
 pub(crate) use type_relations::type_label;
 use type_relations::{

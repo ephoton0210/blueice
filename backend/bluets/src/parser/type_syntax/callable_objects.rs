@@ -113,6 +113,7 @@ impl Parser {
                     self.parse_type_until(&[";", ",", "}"])
                 };
                 fields.push(TypeField {
+                    accessor_write_type: None,
                     method,
                     name,
                     readonly,

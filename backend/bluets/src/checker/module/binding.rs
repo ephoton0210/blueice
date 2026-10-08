@@ -26,8 +26,8 @@ pub(crate) use namespaces::{ExportedValue, NamespaceExport, NamespaceMembers};
 pub(in crate::checker::module) use nested_functions::{async_result, declared_function_type};
 mod nested_functions;
 pub(in crate::checker) use classes::{
-    class_definition_parameters, class_export, class_instance_type, formal_class_type,
-    heritage_substitutions, specialize_constructor,
+    class_definition_parameters, class_export, class_instance_type, class_with_interface_heritage,
+    formal_class_type, heritage_substitutions, specialize_constructor,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

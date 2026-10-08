@@ -609,6 +609,7 @@ impl ModuleChecker<'_> {
                 _ => Type::Unknown,
             };
             fields.push(TypeField {
+                accessor_write_type: None,
                 method: false,
                 name: name.clone(),
                 readonly: false,
@@ -621,6 +622,7 @@ impl ModuleChecker<'_> {
             let inner = format!("{path}.{name}");
             if self.values.contains_key(&inner) {
                 fields.push(TypeField {
+                    accessor_write_type: None,
                     method: false,
                     name: name.clone(),
                     readonly: true,

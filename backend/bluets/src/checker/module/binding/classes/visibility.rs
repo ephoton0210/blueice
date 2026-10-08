@@ -285,32 +285,7 @@ impl ModuleChecker<'_> {
             };
             let message = match (base_visibility, visibility) {
                 (Visibility::Public, Visibility::Public) => continue,
-                (Visibility::Protected, Visibility::Protected | Visibility::Public) => {
-                    // The signature or type comparison against a protected
-                    // member needs the base's declaration, which an imported
-                    // base does not provide.
-                    let imported = fields
-                        .iter()
-                        .filter_map(|field| parse_restricted_name(&field.name))
-                        .filter(|(kind, _, member)| {
-                            *kind == Visibility::Protected && *member == name
-                        })
-                        .any(|(_, owner, _)| {
-                            owner.rsplit_once('@').map(|(_, module)| module)
-                                != Some(class.span.module.as_str())
-                        });
-                    if imported {
-                        self.diagnostics.push(Diagnostic::error(
-                            DiagnosticCode::UnsupportedSyntax,
-                            span,
-                            format!(
-                                "redeclaring the protected member `{name}` of an imported base \
-                                 class is not supported yet"
-                            ),
-                        ));
-                    }
-                    continue;
-                }
+                (Visibility::Protected, Visibility::Protected | Visibility::Public) => continue,
                 (Visibility::Private, _) => format!(
                     "class `{}` incorrectly extends `{base_name}`: types have separate \
                      declarations of the private property `{name}`",

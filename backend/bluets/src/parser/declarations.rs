@@ -381,10 +381,10 @@ impl Parser {
                 if interface.name != class.name {
                     continue;
                 }
-                if !interface.type_parameters.is_empty() || !interface.heritage.is_empty() {
+                if !interface.type_parameters.is_empty() {
                     refused.push((
                         interface.span.clone(),
-                        "an interface with type parameters or an `extends` clause merged with a class is not supported yet",
+                        "an interface with type parameters merged with a class is not supported yet",
                     ));
                     continue;
                 }

@@ -64,6 +64,7 @@ impl<'a> ModuleChecker<'a> {
                     insert_inferred_record_field(
                         &mut fields,
                         TypeField {
+                            accessor_write_type: None,
                             method: self
                                 .module
                                 .nested_functions
@@ -117,6 +118,7 @@ impl<'a> ModuleChecker<'a> {
             insert_inferred_record_field(
                 &mut fields,
                 TypeField {
+                    accessor_write_type: None,
                     method: false,
                     name,
                     readonly: false,
@@ -264,6 +266,7 @@ fn insert_inferred_record_field(fields: &mut Vec<TypeField>, field: TypeField) {
 
 fn insert_inferred_spread_field(fields: &mut Vec<TypeField>, mut field: TypeField) {
     field.readonly = false;
+    field.accessor_write_type = None;
     if field.optional {
         if let Some(existing) = fields
             .iter_mut()

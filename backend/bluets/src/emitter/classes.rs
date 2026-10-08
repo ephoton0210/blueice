@@ -448,7 +448,11 @@ pub(super) fn emit_class_declaration(
                     ));
                 };
                 output.push_str("(): ");
-                output.push_str(&type_to_ts(&result));
+                output.push_str(
+                    context
+                        .and_then(|context| context.return_type(accessor.span.start))
+                        .unwrap_or(&type_to_ts(&result)),
+                );
                 output.push_str(";\n");
             } else {
                 output.push_str(&parameters_to_ts(&accessor.parameters));

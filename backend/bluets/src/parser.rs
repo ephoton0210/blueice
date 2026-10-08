@@ -696,6 +696,8 @@ pub struct TypeSignature {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TypeField {
+    /// Accessor input type; readonly getters use `never`. Data members use None.
+    pub accessor_write_type: Option<Box<Type>>,
     pub method: bool,
     pub name: String,
     pub readonly: bool,

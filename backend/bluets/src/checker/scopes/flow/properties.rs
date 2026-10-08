@@ -65,6 +65,26 @@ pub(super) fn project(
     (result != Type::Never).then_some(result)
 }
 
+/// A setter call does not establish the value subsequently returned by its getter.
+pub(super) fn accessor_target(
+    scopes: &ScopeModel<'_>,
+    value: &Type,
+    path: &[(String, bool)],
+) -> bool {
+    let Some((last, prefix)) = path.split_last() else {
+        return false;
+    };
+    let owner = if prefix.is_empty() {
+        Some(value.clone())
+    } else {
+        project(scopes, value, prefix)
+    };
+    owner.is_some_and(|owner| predicates::parts(scopes, &owner).iter().any(|part| {
+        matches!(predicates::expand(scopes, part).object_type(), Type::Record(fields) | Type::CallableRecord { fields, .. }
+            if fields.iter().any(|field| field.name == last.0 && field.accessor_write_type.is_some()))
+    }))
+}
+
 pub(super) fn derives(scopes: &ScopeModel<'_>, name: &str, base: &str) -> bool {
     let mut current = name;
     for _ in 0..scopes.max_type_expansions {

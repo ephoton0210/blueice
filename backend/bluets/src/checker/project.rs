@@ -314,7 +314,14 @@ fn local_exported_class_surfaces(
         let Declaration::Class(class) = declaration else {
             continue;
         };
-        let mut value = module::class_export(class);
+        let merged = module::class_with_interface_heritage(
+            class,
+            module,
+            &local_type_definitions(module),
+            max_type_expansions,
+        )
+        .unwrap_or_else(|| class.clone());
+        let mut value = module::class_export(&merged);
         if let Some(base_name) = &class.extends_name {
             if let Some(base) = declared.get(base_name).or_else(|| imported.get(base_name)) {
                 let depth = base.heritage_depth.saturating_add(1);

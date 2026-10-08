@@ -27844,6 +27844,7 @@
         "--noEmit"
       ],
       "verdict": "reject",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/retire-accessor-read-error/main.ts"
       ],
@@ -27885,6 +27886,7 @@
         "--noEmit"
       ],
       "verdict": "accept",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/retire-accessor-setter-context/main.ts"
       ],
@@ -27906,6 +27908,7 @@
         "--noEmit"
       ],
       "verdict": "reject",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/retire-accessor-write-error/main.ts"
       ],
@@ -27947,6 +27950,7 @@
         "--noEmit"
       ],
       "verdict": "reject",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/retire-branch-assignment-type-error/main.ts"
       ],
@@ -27988,6 +27992,7 @@
         "--noEmit"
       ],
       "verdict": "reject",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/retire-branch-missing-error/main.ts"
       ],
@@ -28029,6 +28034,7 @@
         "--noEmit"
       ],
       "verdict": "reject",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/retire-branch-nested-function-error/main.ts"
       ],
@@ -28070,6 +28076,7 @@
         "--noEmit"
       ],
       "verdict": "reject",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/retire-branch-read-before-assign-error/main.ts"
       ],
@@ -28111,6 +28118,7 @@
         "--noEmit"
       ],
       "verdict": "reject",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/retire-branch-return-error/main.ts"
       ],
@@ -28152,6 +28160,7 @@
         "--noEmit"
       ],
       "verdict": "accept",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/retire-declarations-getter-throw/main.ts"
       ],
@@ -28173,6 +28182,7 @@
         "--noEmit"
       ],
       "verdict": "reject",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/retire-getter-no-return-error/main.ts"
       ],
@@ -28214,6 +28224,7 @@
         "--noEmit"
       ],
       "verdict": "reject",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/retire-getter-read-error/main.ts"
       ],
@@ -28255,6 +28266,7 @@
         "--noEmit"
       ],
       "verdict": "reject",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/retire-getter-readonly-error/main.ts"
       ],
@@ -28296,6 +28308,7 @@
         "--noEmit"
       ],
       "verdict": "reject",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/retire-imported-accessor-field-error/main.ts"
       ],
@@ -28337,6 +28350,7 @@
         "--noEmit"
       ],
       "verdict": "reject",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/retire-imported-field-accessor-error/main.ts"
       ],
@@ -28378,6 +28392,7 @@
         "--noEmit"
       ],
       "verdict": "reject",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/retire-imported-field-type-error/main.ts"
       ],
@@ -28419,6 +28434,7 @@
         "--noEmit"
       ],
       "verdict": "reject",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/retire-imported-getter-type-error/main.ts"
       ],
@@ -28460,6 +28476,7 @@
         "--noEmit"
       ],
       "verdict": "reject",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/retire-imported-method-field-error/main.ts"
       ],
@@ -28501,6 +28518,7 @@
         "--noEmit"
       ],
       "verdict": "reject",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/retire-imported-private-field-error/main.ts"
       ],
@@ -28542,6 +28560,7 @@
         "--noEmit"
       ],
       "verdict": "reject",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/retire-imported-static-field-error/main.ts"
       ],
@@ -28587,6 +28606,7 @@
         "false"
       ],
       "verdict": "accept",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/retire-runtime-branch-fields-assign/main.ts"
       ],
@@ -28612,6 +28632,7 @@
         "true"
       ],
       "verdict": "accept",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/retire-runtime-branch-fields-define/main.ts"
       ],
@@ -28633,6 +28654,7 @@
         "--noEmit"
       ],
       "verdict": "accept",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/retire-runtime-branch-nested/main.ts"
       ],
@@ -28654,6 +28676,7 @@
         "--noEmit"
       ],
       "verdict": "accept",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/retire-runtime-branch-throws/main.ts"
       ],
@@ -28675,6 +28698,7 @@
         "--noEmit"
       ],
       "verdict": "accept",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/retire-runtime-generic-accessors/main.ts"
       ],
@@ -28696,6 +28720,7 @@
         "--noEmit"
       ],
       "verdict": "accept",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/retire-runtime-getter-branches/main.ts"
       ],
@@ -28717,6 +28742,7 @@
         "--noEmit"
       ],
       "verdict": "accept",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/retire-runtime-getter-record/main.ts"
       ],
@@ -28738,6 +28764,7 @@
         "--noEmit"
       ],
       "verdict": "accept",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/retire-runtime-imported-accessors/main.ts"
       ],
@@ -28759,6 +28786,7 @@
         "--noEmit"
       ],
       "verdict": "accept",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/retire-runtime-imported-field/main.ts"
       ],
@@ -28780,6 +28808,7 @@
         "--noEmit"
       ],
       "verdict": "accept",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/retire-runtime-imported-getter/main.ts"
       ],
@@ -28801,6 +28830,7 @@
         "--noEmit"
       ],
       "verdict": "accept",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/retire-runtime-imported-protected-method/main.ts"
       ],
@@ -28822,6 +28852,7 @@
         "--noEmit"
       ],
       "verdict": "accept",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/retire-runtime-imported-static-field/main.ts"
       ],
@@ -28843,6 +28874,7 @@
         "--noEmit"
       ],
       "verdict": "accept",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/retire-runtime-inherited-accessors/main.ts"
       ],
@@ -28864,6 +28896,7 @@
         "--noEmit"
       ],
       "verdict": "accept",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/retire-runtime-interface-merge-heritage/main.ts"
       ],
@@ -28885,6 +28918,7 @@
         "--noEmit"
       ],
       "verdict": "accept",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/retire-runtime-static-accessors/main.ts"
       ],
@@ -28906,6 +28940,7 @@
         "--noEmit"
       ],
       "verdict": "accept",
+      "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/retire-runtime-unrelated-accessors/main.ts"
       ],

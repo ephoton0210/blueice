@@ -126,9 +126,14 @@ impl Type {
             Self::Tuple(values) => values
                 .iter()
                 .for_each(|value| value.annotation.collect_infer(into)),
-            Self::Record(fields) | Self::CallableRecord { fields, .. } => fields
-                .iter()
-                .for_each(|field| field.value.collect_infer(into)),
+            Self::Record(fields) | Self::CallableRecord { fields, .. } => {
+                fields.iter().for_each(|field| {
+                    field.value.collect_infer(into);
+                    if let Some(value) = &field.accessor_write_type {
+                        value.collect_infer(into);
+                    }
+                })
+            }
             Self::Function { parameters, result }
             | Self::GenericFunction {
                 parameters, result, ..

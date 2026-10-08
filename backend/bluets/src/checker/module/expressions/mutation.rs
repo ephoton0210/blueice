@@ -113,7 +113,7 @@ impl<'a> ModuleChecker<'a> {
             }
             return;
         };
-        match property_type(
+        match property_write_type(
             &owner,
             property,
             &self.types,

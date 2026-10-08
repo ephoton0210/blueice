@@ -132,6 +132,7 @@ fn signature_related(
     if !derived.type_parameters.is_empty() || !inherited.type_parameters.is_empty() {
         let surface = |signature: &Signature| {
             Type::Record(vec![TypeField {
+                accessor_write_type: None,
                 name: "method".into(),
                 method: true,
                 readonly: false,

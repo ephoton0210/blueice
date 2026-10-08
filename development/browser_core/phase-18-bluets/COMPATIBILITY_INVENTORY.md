@@ -20,6 +20,8 @@ test files (`grep -rl '#\[ignore' backend/bluets*/tests`), section 4 is
 | `typescript_oracle.rs` | accepted/rejected verdicts, diagnostics, emitted JavaScript, declarations and runtime output of the core language subset (functions, arrows, async, generators, tuples, destructuring, records, generics, modules) | 109 cases, plus the fixture directories below |
 | `class_checker_matrix.rs` | accept/reject of class forms (fields, accessors, visibility, heritage, parameter properties, private names, static blocks) | 523 entries |
 | `class_modifiers_checker_matrix.rs` and `class_modifiers.rs` | abstract/implements/override origins, structural verdicts and exact primary/related diagnostics, constructor capability aliases, runtime and declarations | 95 programs, 12 further capability controls, 5 runtime and 6 declaration witnesses |
+| `class_dynamic_checker_matrix.rs` and `bluets-bluejs/tests/class_dynamic_direct.rs` | generic heritage/methods, captured class expressions and constructor aliases, computed/indexed members, exact primary/related diagnostics, both field modes and ES2020/ES2022 expression lowering | 160 programs, 30 runtime and 36 declaration witnesses, 4 direct tests |
+| `class_retirement_checker_matrix.rs` and `bluets-bluejs/tests/class_retirement_direct.rs` | separate accessor read/write contracts, inferred getters, imported member kinds, merged interface heritage and constructor branch initialization; exact diagnostics, execution and declarations | 35 programs, 16 runtime and 17 declaration witnesses, 3 direct tests |
 | `enum_checker_matrix.rs`, `enum_oracle.rs` | accept/reject of enum forms; emitted objects, reverse mappings, `const enum` options run under Node | 57 entries |
 | `namespace_checker_matrix.rs`, `namespace_oracle.rs`, `namespace_declaration_oracle.rs` | accept/reject of namespace forms; ES2022/ES2020 emit run under Node; `.d.ts` output | 76 entries, 2 targets |
 | `class_downlevel_oracle.rs` | private names, fields and static blocks below ES2022, under both field semantics | ES2020 and ES2022 |
@@ -38,15 +40,18 @@ test files (`grep -rl '#\[ignore' backend/bluets*/tests`), section 4 is
 | `option_combinations_oracle.rs` | one linked multi-feature program over target, module system, default/explicit class-field policy, preservation, isolated modules, sourceMap, declaration, noEmit and strict; project verdicts, artifact inventory, Node output, exact declarations and source-map structure | 768 configurations (384 emitted, 384 noEmit) |
 | `bluets-bluejs/tests/namespace_parity.rs`, `jsx_direct.rs`, `decorators_direct.rs` | the direct runtime (BlueJS) against Node running `tsc`'s output | 7 + 7 + 6 programs |
 | `diagnostic_source_families.rs` | additional lexical/semantic diagnostic source families, exact primary codes and positions | 97 controls |
-| `diagnostics_matrix.rs` | verdicts, TypeScript primary code/template, rendered message, UTF-16 position and related information | 1,744 programs, 147 templates, 947 rejected primaries |
+| `diagnostics_matrix.rs` | verdicts, TypeScript primary code/template, rendered message, UTF-16 position and related information | 2,304 programs, 195 templates, 1,212 rejected primaries |
 | `diagnostics_projects.rs` | project/configuration, CLI and option-combination diagnostic positions | 867 observations |
 | `diagnostics_presentation.rs` | actual plain/pretty CLI presentation, summaries, related source context, exit status and artifacts | 22 observations |
 | `guards_checker_matrix.rs` | predicate/assertion signatures, lexical call effects, receiver guards and exhaustive completion; exact primary/related diagnostics, Node behavior and every emitted declaration | 75 programs, 5 runtime/declaration witnesses |
 | `inference_checker_matrix.rs` | bounded argument/contextual candidates, constraints/defaults, explicit arguments, generic callable/class/interface signatures and imported boundaries; exact primary/related diagnostics, every emitted declaration, Node behavior and owner budget refusal | 74 programs, 4 runtime/declaration witnesses |
 | `overloads_checker_matrix.rs` | ordered call/construct/method candidates, callback context, literal specialization, merged interface groups and implementation compatibility; exact primary/related diagnostics, every emitted declaration and Node behavior | 74 programs, 6 runtime/declaration witnesses |
 | `narrowing_checker_matrix.rs` | lexical control-flow verdicts and exact primary diagnostics; Node behavior and exact declarations | 123 programs, 14 runtime/declaration witnesses |
+| `operators_checker_matrix.rs` | bounded keyof/indexed/conditional/infer/mapped/template/recursive operators, exact diagnostics and declarations, literal ordering and expansion limits | 82 programs, 3 runtime/declaration witnesses, 6 budget controls |
+| `more_types_checker_matrix.rs` | readonly/indexed containers, bigint/symbol, const/satisfies, tuple metadata, unknown/never, enum and void/undefined forms; exact diagnostics, execution and declarations | 100 programs, 6 runtime/declaration witnesses |
+| `compatibility_checker_matrix.rs` | freshness, weak records, function/method variance, optional/undefined, generic and callable/indexed structural relations; exact diagnostics, execution and declarations | 88 programs, 4 runtime/declaration witnesses |
 
-The fixture corpus under `tests/fixtures/typescript_oracle/` has 1954 top-level directories; each is an
+The fixture corpus under `tests/fixtures/typescript_oracle/` has 2514 top-level directories; each is an
 entry whose verdict was recorded from the pinned compiler by an ignored test
 (`BLUEICE_WRITE_*_MATRIX=1`), and the ordinary (non-ignored) tests replay the recorded verdicts offline.
 
@@ -89,6 +94,19 @@ The K.4.7 frozen-source Linux gate passes all 1,128 tests in 74 groups,
 including all 141 ignored oracles in 39 differential suite files. All 88
 compatibility programs and four exact runtime/declaration witnesses pass. The
 shared diagnostic corpus contains 2,014 programs and 167 templates.
+
+The K.5.2 frozen-source Linux gate passes all 1,151 tests in 79 groups,
+including all 146 ignored oracles in 42 suite files. Its 160 pinned class
+programs, 30 runtime and 36 exact declaration witnesses pass.
+
+The K.5.3 frozen-source Linux gate passes all 1,158 tests in 81 groups,
+including all 148 ignored oracles in 43 suite files. Its 35 pinned programs,
+16 Node runtime, 17 exact declaration witnesses and three direct regressions
+pass. Three obsolete deferred class fixtures return to the ordinary matrix.
+The shared diagnostic corpus contains 2,304 programs and 195 templates.
+Hosted workspace verification remains open after the macOS IPC fixture race
+in [CI 37845418066](https://github.com/ephoton0210/blueice/actions/runs/37845418066);
+the isolated fixture correction passes all 136 IPC tests on Linux.
 
 The final K.3/K.4 source CI passes all 29 jobs on `40de14abd`; workspace line
 coverage is 90.65%, independent BlueJS 93.00%, with no added exclusions.
@@ -146,7 +164,7 @@ suite entry, then removing the row.
 | G-T6 | K.4.7 supplies 88 pinned freshness, weak-record, strict function/method variance, optional/undefined, declared variance, rigid generic parameter, predicate/assertion and callable/indexed alias witnesses, with four exact runtime/declaration comparisons. Freshness covers initializer/variable/member/element assignment, direct/member argument and explicit return boundaries, with nested/array/spread/union/generic controls. Existing exactOptionalPropertyTypes/noUncheckedIndexedAccess and readonly write controls remain green. Remaining: unmeasured computed/nested expression contexts, composed variance and broader library structural relations. |
 | G-T7 | K.1.4 adds an original, versioned minimum ECMAScript library selected by target, with owner replacement and no runtime grant. The tested Array/ReadonlyArray, boxed/primitive methods, Object/Function, Promise, collections, Math/JSON/Symbol, errors, iteration and Date/RegExp forms match the same pinned target/lib. Remaining catalogs, constructors, computed iteration, callback result precision and opaque compatibility names are enumerated in `STANDARD_LIBRARY.md`; DOM remains owner supplied. |
 | G-T8 | K.1.5 infers the tested unannotated function/getter/method signatures, unions, void/never completion, async Promise and generator types, with literal widening and a bounded recursion guard. Imports and declaration emit retain those signatures. Remaining: literal freshness and widening in all positions, broader contextual and flow-sensitive inference, unproven unknown getter bodies and declaration precision; K.4/K.8 retain these gaps. |
-| G-T9 | K.5.1 measures abstract classes/members, structural `implements`, `override`, constructor capabilities and imported aliases. K.5.2 measures generic heritage/methods/defaults, static lexical restrictions, named/anonymous class expressions with captured self types and constructor aliases, computed/string/numeric keys, index signatures and `declare` fields in 160 pinned programs, 30 runtime and 36 exact declaration witnesses. Same-named binders preserve declaration identities and TS2208 origins. ES2020 expression wrappers retain per-evaluation private/static stores, computed keys and contextual names; both field modes reach the direct VM. Remaining: K.5.3 imported-base redeclarations, distinct accessor read/write types, branch definite assignment and unannotated getters; generators/auto-accessors, computed heritage expressions, stateful ES2020 expression keys containing await/yield, decorated class expressions and unmeasured combinations (section 4). |
+| G-T9 | K.5.1 measures abstract classes/members, structural `implements`, `override`, constructor capabilities and imported aliases. K.5.2 measures generic heritage/methods/defaults, static lexical restrictions, named/anonymous class expressions with captured self types and constructor aliases, computed/string/numeric keys, index signatures and `declare` fields in 160 pinned programs, 30 runtime and 36 exact declaration witnesses. Same-named binders preserve declaration identities and TS2208 origins. ES2020 expression wrappers retain per-evaluation private/static stores, computed keys and contextual names; both field modes reach the direct VM. K.5.3 adds 35 pinned imported-base member-kind, accessor read/write, inferred getter, bounded merged-interface heritage and constructor branch/early-return witnesses, with 16 runtime, 17 exact declarations and three direct regressions. Remaining: unresolved getter bodies, generic merged interfaces or heritage outside bounded records; the precise branch-super parameter-property refusal (pinned assignment mode rejects TS2401; ES2022 define output throws before super); generators/auto-accessors, computed heritage expressions, stateful ES2020 expression keys containing await/yield, decorated class expressions and unmeasured combinations (section 4). |
 | G-T10 | K.1.3 supplies checked value types for the tested named/default/namespace and CommonJS import forms, with inferred variable declarations and module-owned type identities. Remaining: imported-type query parsing; `import type`/`export type` forms beyond the supported ones, `export default <expression>`, value re-exports (`export * from`, `export { x } from`), import attributes, `export as namespace`, `declare module` augmentation and ambient module declarations, global augmentation, triple-slash directives, `unique` declaration merging beyond class+interface+namespace. |
 
 ### 3.2 Emit
@@ -195,36 +213,32 @@ legacy decorators, preserved and automatic JSX are refused with a diagnostic nam
 Generated by `python3 tools/inventory_refusals.py` from the source (malformed-input diagnostics are
 excluded). A refusal is never silent: the program is rejected with this text.
 
-166 refusal sites in 10 areas
+162 refusal sites in 10 areas
 
 ### bin (1)
 
 - `backend/bluets/src/bin/bluetsc/native_cli/mod.rs:187` — BlueTSC configuration or an explicit owner policy refused this input.
 
-### checker (24)
+### checker (20)
 
 - `backend/bluets/src/checker/module/binding/modules.rs:174` — `export =` cannot be used when the module system is ECMAScript; use `--module commonjs`
 - `backend/bluets/src/checker/module/binding/modules.rs:166` — `import x = require()` cannot be used when the module system is ECMAScript; use `--module commonjs`
-- `backend/bluets/src/checker/module/binding/classes/expressions.rs:184` — a class expression member has no structured runtime representation
-- `backend/bluets/src/checker/module/binding/enums.rs:215` — a computed initializer that refers to the member `{}` must write it \ as `{}.{}`
+- `backend/bluets/src/checker/module/binding/classes/expressions.rs:198` — a class expression member has no structured runtime representation
+- `backend/bluets/src/checker/module/binding/enums.rs:216` — a computed initializer that refers to the member `{}` must write it \ as `{}.{}`
 - `backend/bluets/src/checker/module/decorators.rs:128` — a decorator can only decorate a method implementation, not an overload
-- `backend/bluets/src/checker/module/binding/classes/fields.rs:328` — a field initializer that refers to a later field inside a nested \ function is not supported yet
-- `backend/bluets/src/checker/module/binding/classes/fields.rs:259` — a static block that refers to a later static field inside a nested \ function is not supported yet
+- `backend/bluets/src/checker/module/binding/classes/fields.rs:331` — a field initializer that refers to a later field inside a nested \ function is not supported yet
+- `backend/bluets/src/checker/module/binding/classes/fields.rs:262` — a static block that refers to a later static field inside a nested \ function is not supported yet
 - `backend/bluets/src/checker/module/binding.rs:251` — an unstructured class member (a generator or auto-accessor) is not supported yet
-- `backend/bluets/src/checker/module/binding/classes/visibility.rs:503` — cannot prove that access to `{}` is permitted for this receiver
-- `backend/bluets/src/checker/module/binding/classes/visibility.rs:584` — cannot prove that access to `{}` is permitted for this receiver
-- `backend/bluets/src/checker/module/binding/classes/fields.rs:116` — class field `{}` needs a type annotation unless its initializer \ or default is a number, string or boolean literal
-- `backend/bluets/src/checker/module/binding/classes.rs:500` — class tuple rest annotation cannot be specialized within the type budget
+- `backend/bluets/src/checker/module/binding/classes/accessors.rs:144` — cannot infer getter `{}` within the supported body boundary
+- `backend/bluets/src/checker/module/binding/classes/visibility.rs:478` — cannot prove that access to `{}` is permitted for this receiver
+- `backend/bluets/src/checker/module/binding/classes/visibility.rs:559` — cannot prove that access to `{}` is permitted for this receiver
+- `backend/bluets/src/checker/module/binding/classes/fields.rs:119` — class field `{}` needs a type annotation unless its initializer \ or default is a number, string or boolean literal
+- `backend/bluets/src/checker/module/binding/classes.rs:502` — class tuple rest annotation cannot be specialized within the type budget
 - `backend/bluets/src/checker/module/binding/names.rs:193` — cyclic tuple spread cannot be resolved
 - `backend/bluets/src/checker/module/decorators.rs:107` — decorators are not valid here: they decorate a class or a class member
-- `backend/bluets/src/checker/module/binding/classes/fields.rs:396` — definite assignment of `{}` through a branch is not supported yet
-- `backend/bluets/src/checker/module/binding/classes/fields.rs:451` — field `{}` redeclares a member of an imported base class, which is not supported yet
-- `backend/bluets/src/checker/module/binding/classes/accessors.rs:140` — getter `{}` needs a return type annotation; inferring it from the \ body is not supported yet
 - `backend/bluets/src/checker/module/binding.rs:614` — interface heritage {name} must name an interface declaration
-- `backend/bluets/src/checker/module/binding/namespaces.rs:1004` — namespace `{source}` has no run-time members; import it with `import type`
-- `backend/bluets/src/checker/module/binding/classes/accessors.rs:361` — redeclaring `{name}` as an accessor over a member of an \ imported base class is not supported yet
-- `backend/bluets/src/checker/module/binding/classes/visibility.rs:304` — redeclaring the protected member `{name}` of an imported base \ class is not supported yet
-- `backend/bluets/src/checker/module/binding/classes/accessors.rs:192` — the getter and setter of `{name}` have different types, \ which is not supported yet
+- `backend/bluets/src/checker/module/binding/classes/expressions.rs:54` — merged interface heritage must resolve to a bounded record of instance members
+- `backend/bluets/src/checker/module/binding/namespaces.rs:1006` — namespace `{source}` has no run-time members; import it with `import type`
 - `backend/bluets/src/checker/module/binding/names.rs:197` — tuple spread names an unresolved type
 - `backend/bluets/src/checker/module/binding/names.rs:201` — tuple spread requires one concrete tuple or array type
 
@@ -255,7 +269,7 @@ excluded). A refusal is never silent: the program is rejected with this text.
 - `backend/bluets/src/emitter/classes.rs:111` — declaration output for this string literal field needs an annotation
 - `backend/bluets/src/emitter/classes.rs:368` — declaration output requires a class field type
 - `backend/bluets/src/emitter/classes.rs:281` — declaration output requires a parameter property type
-- `backend/bluets/src/emitter/classes.rs:491` — declaration output requires an explicit class method return type
+- `backend/bluets/src/emitter/classes.rs:495` — declaration output requires an explicit class method return type
 - `backend/bluets/src/emitter/classes.rs:445` — declaration output requires an explicit getter return type
 - `backend/bluets/src/emitter/legacy_decorators.rs:581` — decorator metadata cannot serialize `{name}`: only types declared in this module are supported
 - `backend/bluets/src/emitter/legacy_decorators.rs:430` — decorator metadata needs this accessor's type annotation

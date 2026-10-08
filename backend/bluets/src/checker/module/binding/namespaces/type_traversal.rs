@@ -49,6 +49,9 @@ pub(super) fn named_types(value: &Type, into: &mut BTreeSet<String>) {
         Type::Record(fields) => {
             for field in fields {
                 named_types(&field.value, into);
+                if let Some(value) = &field.accessor_write_type {
+                    named_types(value, into);
+                }
             }
         }
         Type::Predicate(predicate) => {
@@ -221,6 +224,10 @@ impl Qualifier<'_> {
                 fields
                     .iter()
                     .map(|field| TypeField {
+                        accessor_write_type: field
+                            .accessor_write_type
+                            .as_ref()
+                            .map(|value| Box::new(self.ty(value))),
                         value: self.ty(&field.value),
                         ..field.clone()
                     })

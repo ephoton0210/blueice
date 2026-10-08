@@ -4,10 +4,8 @@
 
 //! `get` / `set` class accessors.
 //!
-//! An accessor pair is one property in the class's type record. It reads as
-//! the getter's type and is read-only when there is no setter. A getter and a
-//! setter with unrelated types (which TypeScript allows) would need a separate
-//! write type, so that pair is refused as unsupported instead.
+//! An accessor pair reads through its getter and writes through its setter.
+//! The contract survives generic instantiation and imported class surfaces.
 
 use super::visibility::member_field_name;
 use super::*;
@@ -80,6 +78,12 @@ pub(super) fn class_accessor_type_fields(
                 .or(group.setter)
                 .expect("a group has an accessor");
             TypeField {
+                accessor_write_type: Some(Box::new(
+                    group
+                        .setter
+                        .map(|setter| setter_type(setter).unwrap_or(Type::Unknown))
+                        .unwrap_or(Type::Never),
+                )),
                 method: false,
                 name: member_field_name(class, first.visibility, &name),
                 readonly: group.setter.is_none(),
@@ -140,8 +144,7 @@ impl ModuleChecker<'_> {
                         DiagnosticCode::UnsupportedSyntax,
                         accessor.name_span.clone(),
                         format!(
-                            "getter `{}` needs a return type annotation; inferring it from the \\
-                             body is not supported yet",
+                            "cannot infer getter `{}` within the supported body boundary",
                             accessor.name
                         ),
                     ));
@@ -184,20 +187,6 @@ impl ModuleChecker<'_> {
                             DiagnosticCode::TypeMismatch,
                         );
                     }
-                    if let (Some(read), Some(write)) =
-                        (getter.return_type.as_ref(), setter_type(setter))
-                    {
-                        if *read != write {
-                            self.diagnostics.push(Diagnostic::error(
-                                DiagnosticCode::UnsupportedSyntax,
-                                setter.name_span.clone(),
-                                format!(
-                                    "the getter and setter of `{name}` have different types, \\
-                                     which is not supported yet"
-                                ),
-                            ));
-                        }
-                    }
                 }
             }
         }
@@ -228,10 +217,8 @@ impl ModuleChecker<'_> {
         self.validate_member_kind_conflicts(class);
     }
 
-    /// The kind of the nearest declaration of `name` in the chain of local
-    /// base classes. `Err(())` when the chain leaves the module (or a base is
-    /// not local) before a declaration is found but the base's type record has
-    /// the member, so its kind cannot be told.
+    /// The kind of the nearest declaration, including an imported class surface.
+    /// `Err(())` records an exhausted inheritance walk.
     pub(super) fn base_member_kind(
         &self,
         class: &ClassDeclaration,
@@ -262,14 +249,29 @@ impl ModuleChecker<'_> {
                         .filter(|definition| definition.kind == TypeDefinitionKind::Class)
                         .map(|definition| &definition.value)
                 };
-                return match record {
-                    Some(Type::Record(fields) | Type::CallableRecord { fields, .. })
-                        if super::visibility::effective_visibility(fields, name).is_some() =>
-                    {
-                        Err(())
-                    }
-                    _ => Ok(None),
+                let Some(Type::Record(fields) | Type::CallableRecord { fields, .. }) =
+                    record.map(Type::object_type)
+                else {
+                    return Ok(None);
                 };
+                let visibility = super::visibility::effective_visibility(fields, name);
+                return Ok(fields
+                    .iter()
+                    .find(|field| {
+                        field.name == name
+                            || super::visibility::parse_restricted_name(&field.name).is_some_and(
+                                |(kind, _, member)| member == name && Some(kind) == visibility,
+                            )
+                    })
+                    .map(|field| {
+                        if field.method {
+                            BaseMemberKind::Method
+                        } else if field.accessor_write_type.is_some() {
+                            BaseMemberKind::Accessor
+                        } else {
+                            BaseMemberKind::Field
+                        }
+                    }));
             };
             if base
                 .method_groups
@@ -354,18 +356,14 @@ impl ModuleChecker<'_> {
                 Ok(None) => continue,
                 Ok(Some(base_kind)) => base_kind,
                 Err(()) => {
-                    // Only the type record of a base outside this module is
-                    // known; an accessor over it cannot be checked.
-                    if kind == BaseMemberKind::Accessor {
-                        self.diagnostics.push(Diagnostic::error(
-                            DiagnosticCode::UnsupportedSyntax,
-                            span,
-                            format!(
-                                "redeclaring `{name}` as an accessor over a member of an \\
-                                 imported base class is not supported yet"
-                            ),
-                        ));
-                    }
+                    self.type_error(
+                        &span,
+                        format!(
+                            "base member lookup exceeds the {} inheritance limit",
+                            self.max_type_expansions
+                        ),
+                        DiagnosticCode::ResourceLimit,
+                    );
                     continue;
                 }
             };

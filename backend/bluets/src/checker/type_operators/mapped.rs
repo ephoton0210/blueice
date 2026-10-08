@@ -124,6 +124,7 @@ pub(super) fn resolve(
                 field.value = union([field.value.clone(), property.clone()]);
             } else {
                 fields.push(TypeField {
+                    accessor_write_type: None,
                     method: false,
                     name,
                     value: property.clone(),

@@ -8,6 +8,8 @@
 use super::*;
 use crate::parser::ClassField;
 
+mod initialization;
+
 pub(in crate::checker) fn class_field_type(field: &ClassField) -> Option<Type> {
     field.declared_type()
 }
@@ -29,6 +31,7 @@ pub(super) fn class_field_type_fields(class: &ClassDeclaration, is_static: bool)
                 .filter(|field| field.is_static == is_static),
         )
         .map(|field| TypeField {
+            accessor_write_type: None,
             method: false,
             name: visibility::member_field_name(class, field.visibility, &field.name),
             readonly: field.readonly,
@@ -342,8 +345,8 @@ impl ModuleChecker<'_> {
 
     /// `strictPropertyInitialization`: a non-optional instance field with no
     /// initializer, no `!` and no `undefined`-admitting type must be assigned
-    /// at the top level of the constructor. An assignment only inside a
-    /// branch is not modeled and is refused as unsupported syntax.
+    /// on every path that completes or returns normally from the constructor.
+    /// Throwing paths need no initialization; nested functions do not assign it.
     fn check_definite_assignment(&mut self, class: &ClassDeclaration, fields: &[&ClassField]) {
         if !self.checking.strict_property_initialization {
             return;
@@ -378,29 +381,14 @@ impl ModuleChecker<'_> {
             if !needs_assignment {
                 continue;
             }
-            let mut top_level = false;
-            let mut nested = false;
+            let mut initialized = !constructor_bodies.is_empty();
+            let mut uninitialized_reads = Vec::new();
             for body in &constructor_bodies {
-                top_level |= body
-                    .iter()
-                    .any(|item| item_assigns_this_field(item, &field.name));
-                nested |= body
-                    .iter()
-                    .any(|item| nested_item_assigns_this_field(item, &field.name));
+                let (complete, reads) = initialization::analyze(body, &field.name);
+                initialized &= complete;
+                uninitialized_reads.extend(reads);
             }
-            if top_level {
-                continue;
-            }
-            if nested {
-                self.diagnostics.push(Diagnostic::error(
-                    DiagnosticCode::UnsupportedSyntax,
-                    field.span.clone(),
-                    format!(
-                        "definite assignment of `{}` through a branch is not supported yet",
-                        field.name
-                    ),
-                ));
-            } else {
+            if !initialized {
                 self.type_error(
                     &field.name_span,
                     format!(
@@ -408,6 +396,15 @@ impl ModuleChecker<'_> {
                         field.name
                     ),
                     DiagnosticCode::TypeMismatch,
+                );
+            }
+            for read in uninitialized_reads {
+                self.typescript_type_error(
+                    &SourceSpan::new(&field.span.module, read.start, read.end),
+                    format!("property `{}` is used before being assigned", field.name),
+                    DiagnosticCode::TypeMismatch,
+                    2565,
+                    vec![field.name.clone()],
                 );
             }
         }
@@ -421,20 +418,12 @@ impl ModuleChecker<'_> {
     }
 
     /// An own field must be assignable to the base class's same-named
-    /// property, and may not replace a method. A base outside this module has
-    /// only its type surface, so a same-named member there is refused.
+    /// property, and may not replace a method. Imported surfaces retain the
+    /// declaration kind and the specialized member type.
     fn check_class_field_overrides(&mut self, class: &ClassDeclaration, fields: &[&ClassField]) {
         let Some(base_name) = class.extends_name.as_deref() else {
             return;
         };
-        let local_base =
-            self.module
-                .declarations
-                .iter()
-                .find_map(|declaration| match declaration {
-                    Declaration::Class(base) if base.name == base_name => Some(base),
-                    _ => None,
-                });
         for field in fields {
             if field.name.starts_with('#') {
                 continue;
@@ -446,18 +435,10 @@ impl ModuleChecker<'_> {
             let Some(inherited) = inherited else {
                 continue;
             };
-            let Some(base) = local_base else {
-                self.diagnostics.push(Diagnostic::error(
-                    DiagnosticCode::UnsupportedSyntax,
-                    field.span.clone(),
-                    format!(
-                        "field `{}` redeclares a member of an imported base class, which is not supported yet",
-                        field.name
-                    ),
-                ));
-                continue;
-            };
-            if base_declares_method(base, &field.name, field.is_static) {
+            if matches!(
+                self.base_member_kind(class, &field.name, field.is_static),
+                Ok(Some(super::accessors::BaseMemberKind::Method))
+            ) {
                 self.field_method_error(class, field);
                 continue;
             }
@@ -606,12 +587,6 @@ impl ModuleChecker<'_> {
             })
             .map(|field| field.value.clone())
     }
-}
-
-fn base_declares_method(base: &ClassDeclaration, name: &str, is_static: bool) -> bool {
-    base.method_groups
-        .iter()
-        .any(|group| group.name == name && group.is_static == is_static)
 }
 
 /// `this.name = ...;` (plain assignment) as a whole statement.

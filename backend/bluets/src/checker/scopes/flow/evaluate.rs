@@ -316,7 +316,11 @@ fn expression(
             let mut next = after;
             next.invalidate(&id);
             next.remove(&id);
-            if let Some(declared) = properties::project(scopes, &scopes.flow_declared(&id), &path) {
+            let owner = scopes.flow_declared(&id);
+            if properties::accessor_target(scopes, &owner, &path) {
+                return next;
+            }
+            if let Some(declared) = properties::project(scopes, &owner, &path) {
                 let actual = infer(
                     &tokens[equal + 1..],
                     &values(scopes, &next, target[0].start),

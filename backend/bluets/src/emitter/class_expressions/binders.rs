@@ -69,6 +69,10 @@ fn rename(value: &Type, used: &BTreeSet<String>) -> Type {
             fields: fields
                 .iter()
                 .map(|field| TypeField {
+                    accessor_write_type: field
+                        .accessor_write_type
+                        .as_ref()
+                        .map(|value| Box::new(child(value))),
                     value: child(&field.value),
                     ..field.clone()
                 })
@@ -82,6 +86,10 @@ fn rename(value: &Type, used: &BTreeSet<String>) -> Type {
             fields
                 .iter()
                 .map(|field| TypeField {
+                    accessor_write_type: field
+                        .accessor_write_type
+                        .as_ref()
+                        .map(|value| Box::new(child(value))),
                     value: child(&field.value),
                     ..field.clone()
                 })

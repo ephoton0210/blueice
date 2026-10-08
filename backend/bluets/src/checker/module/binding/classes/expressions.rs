@@ -42,6 +42,20 @@ impl ModuleChecker<'_> {
         &mut self,
         original: &ClassDeclaration,
     ) {
+        if class_with_interface_heritage(
+            original,
+            self.module,
+            &self.types,
+            self.max_type_expansions,
+        )
+        .is_none()
+        {
+            self.diagnostics.push(Diagnostic::error(
+                DiagnosticCode::UnsupportedSyntax,
+                original.name_span.clone(),
+                "merged interface heritage must resolve to a bounded record of instance members",
+            ));
+        }
         let inferred = self.class_with_inferred_returns(original);
         let class = &inferred;
         self.with_class_type_scope(&class.instance_parameters(), |checker| {

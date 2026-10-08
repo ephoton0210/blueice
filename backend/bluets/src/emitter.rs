@@ -530,8 +530,16 @@ fn emit_declaration(
                 );
                 output.push_str(";\n");
             }
-            Declaration::Interface(interface) if interface.exported => {
-                output.push_str("export interface ");
+            Declaration::Interface(interface)
+                if interface.exported
+                    || inferred.is_some_and(|context| context.retained(&interface.name)) =>
+            {
+                private_alias |= !interface.exported;
+                output.push_str(if interface.exported {
+                    "export interface "
+                } else {
+                    "interface "
+                });
                 output.push_str(&interface.name);
                 emit_type_parameters(&mut output, &interface.type_parameters);
                 if !interface.heritage.is_empty() {
@@ -688,9 +696,12 @@ fn emit_declaration(
                 if class.exported
                     || is_default_export_name(module, &class.name)
                     || is_value_export_name(module, &class.name)
-                    || computed_key_dependencies.contains(&class.name) =>
+                    || computed_key_dependencies.contains(&class.name)
+                    || inferred.is_some_and(|context| context.retained(&class.name)) =>
             {
-                private_alias |= !class.exported && computed_key_dependencies.contains(&class.name);
+                private_alias |= !class.exported
+                    && (computed_key_dependencies.contains(&class.name)
+                        || inferred.is_some_and(|context| context.retained(&class.name)));
                 let prefix = if class.exported {
                     "export declare "
                 } else {

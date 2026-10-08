@@ -134,6 +134,14 @@ impl<'a> Context<'a> {
                         context.return_types.insert(function.span.start, rendered);
                     }
                 }
+                Declaration::Interface(interface) if interface.exported => {
+                    for parent in &interface.heritage {
+                        context.references(parent);
+                    }
+                    for field in &interface.fields {
+                        context.references(&field.value);
+                    }
+                }
                 Declaration::Class(class)
                     if class.exported
                         || is_default_export_name(module, &class.name)
@@ -146,6 +154,23 @@ impl<'a> Context<'a> {
                         if let Some(field) = &member.field {
                             if let Some(value) = &field.annotation {
                                 context.references(value);
+                            }
+                        }
+                        if let Some(accessor) = &member.accessor {
+                            for parameter in &accessor.parameters {
+                                if let Some(value) = &parameter.annotation {
+                                    context.references(value);
+                                }
+                            }
+                            let value = accessor.return_type.clone().or_else(|| {
+                                checked
+                                    .inferred_returns
+                                    .get(&accessor.span.start)
+                                    .map(super::inferred_returns::getter)
+                            });
+                            if let Some(value) = value {
+                                let rendered = context.render(&value, 4, &accessor.span)?;
+                                context.return_types.insert(accessor.span.start, rendered);
                             }
                         }
                         if let Some(method) = &member.method {
@@ -197,6 +222,10 @@ impl<'a> Context<'a> {
             }
         }
         Ok(context)
+    }
+
+    pub(super) fn retained(&self, name: &str) -> bool {
+        self.used_imports.contains(name)
     }
 
     pub(super) fn private_alias(&self, name: &str) -> Option<&str> {

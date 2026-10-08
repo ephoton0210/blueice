@@ -53,8 +53,7 @@ fn apply(
                             }
                         }
                         if accessor.getter && accessor.return_type.is_none() {
-                            accessor.return_type =
-                                inferred.get(&accessor.span.start).map(canonical);
+                            accessor.return_type = inferred.get(&accessor.span.start).map(getter);
                         }
                     }
                 }
@@ -63,6 +62,32 @@ fn apply(
             _ => {}
         }
     }
+}
+
+/// TypeScript emits numeric getter literals before string literals.
+pub(super) fn getter(value: &Type) -> Type {
+    let mut value = canonical(value);
+    if let Type::Union(parts) = &mut value {
+        parts.sort_by(|left, right| {
+            let rank = |part: &Type| match part {
+                Type::Literal(text) if text.parse::<f64>().is_ok() => 0,
+                Type::Literal(text) if text.starts_with(['\'', '"', '`']) => 1,
+                _ => 2,
+            };
+            rank(left)
+                .cmp(&rank(right))
+                .then_with(|| match (left, right) {
+                    (Type::Literal(left), Type::Literal(right)) => left
+                        .parse::<f64>()
+                        .ok()
+                        .zip(right.parse::<f64>().ok())
+                        .and_then(|(left, right)| left.partial_cmp(&right))
+                        .unwrap_or(std::cmp::Ordering::Equal),
+                    _ => std::cmp::Ordering::Equal,
+                })
+        });
+    }
+    value
 }
 
 pub(super) fn canonical(value: &Type) -> Type {
@@ -80,6 +105,10 @@ pub(super) fn canonical(value: &Type) -> Type {
                 .map(|field| {
                     let mut field = field.clone();
                     field.value = canonical(&field.value);
+                    field.accessor_write_type = field
+                        .accessor_write_type
+                        .as_ref()
+                        .map(|value| Box::new(canonical(value)));
                     field
                 })
                 .collect(),

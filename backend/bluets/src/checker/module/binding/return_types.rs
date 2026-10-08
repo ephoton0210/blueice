@@ -67,7 +67,14 @@ impl ModuleChecker<'_> {
         &mut self,
         class: &ClassDeclaration,
     ) -> ClassDeclaration {
-        let resolved = self.class_with_resolved_heritage(class);
+        let merged = classes::class_with_interface_heritage(
+            class,
+            self.module,
+            &self.types,
+            self.max_type_expansions,
+        )
+        .unwrap_or_else(|| class.clone());
+        let resolved = self.class_with_resolved_heritage(&merged);
         let class = &resolved;
         self.with_class_access(class, |checker| checker.infer_class_return_types(class))
     }

@@ -5774,3 +5774,67 @@ Node 26.7. This refusal is not obsolete. The isolated probe and its generated
 JavaScript are retained with the baseline; no runtime comparison is weakened to
 accept this compiler defect. Ordinary branch field assignment has valid Node
 witnesses in both field modes and remains required K.5.3 work.
+
+### K.5.3 Class refusal retirement implementation — 2026-10-09
+
+Accessor instance/static surfaces keep the getter's read type and a separate
+setter input contract. Generic substitution, imported surfaces, namespace
+qualification and expression binders retain both types; object spread copies a
+value into a data property. A setter write invalidates flow facts instead of
+asserting that the getter returns its argument. The class surface fingerprint
+is versioned as `class-surface-v3`.
+
+Imported class records retain field/method/accessor kind and visibility, so
+ordinary member overrides use existing TS2415/TS2416/TS2417/TS2610/TS2611
+checks. Three legacy deferred programs return to the normal class matrix;
+the precise branch-super parameter-property refusal remains. Bounded interface
+heritage adds erased instance fields to a merged class. Generic merged
+interfaces and heritage that cannot resolve to bounded record members remain
+precise refusals.
+
+Constructor initialization tracks both braced branches, nested conditions,
+normal early returns, throwing paths and reads before assignment. Assignments
+inside nested functions do not initialize the instance. Inferred getters retain
+numeric/string literal union order and multiline record declaration output;
+private local base declarations required by an exported subclass are retained.
+No loader or runtime capability is added.
+
+The frozen 96-file focused Linux replay passes all 35 pinned programs, exact
+primary/related diagnostics, all 16 Node and 17 declaration witnesses, the live
+TypeScript recorder and all three direct regressions. The original class
+matrix, including its live recorder, passes after retiring three exceptions.
+Evidence: `/private/tmp/blueice-k14-linux/blueice-k53-final-focused-status.json`
+and frozen source hashes, plus `blueice-k53-combined-draft-2-legacy.log`.
+The final frozen 99-file K.0 Linux gate passes format, both-crate all-target
+Clippy with warnings denied and all 1,158 tests in 81 groups. Every one of the
+148 ignored oracles in 43 suite files executes; none fails or remains ignored.
+The live shared recorder and all 2,304 diagnostic cases pass. Strict project
+replay metadata is recorded for the new retirement matrix; all verdicts and
+diagnostics, including every prior 2,269 observation, remain unchanged. Old
+branch-initialization and merged-interface tests now assert the supported
+behavior while retaining invalid controls.
+
+Evidence: `/private/tmp/blueice-k14-linux/blueice-k53-final-full-status.json`,
+`blueice-k53-final-full-report.json`, its frozen source hashes and
+`blueice-k53-metadata/comparison.json`. Refusal inventory is regenerated to
+162 sites in ten areas. The largest changed production source is 1,196 lines.
+K.5.3 closes on this source; K.6 and the remaining milestones stay open.
+Hosted workspace/platform/coverage verification follows the production push.
+
+### Workspace CI fixture isolation correction — 2026-10-09
+
+K.5.2 CI [37845418066](https://github.com/ephoton0210/blueice/actions/runs/37845418066)
+on `8132479c4` exposes a concurrent IPC fixture allocation failure on macOS 26
+arm64. `PhysicalFixture::new` names directories with the process ID and a
+wall-clock timestamp; two threads receive the same timestamp and `create_dir`
+fails with `AlreadyExists`. Both pinned BlueTS oracle jobs pass. The retained
+job log is `/private/tmp/blueice-k14-linux/blueice-k52-ci-macos26-arm-failure.log`.
+
+The test helper adds a process-wide atomic sequence to each name. A regression
+creates sixteen catalogs concurrently, validates every canonical catalog,
+checks distinct directory identities and verifies cleanup. Production catalog
+validation and path authority are unchanged. The frozen IPC correction passes
+Linux format, all-target Clippy with warnings denied and all 136 tests, including
+the sixteen-thread regression. Evidence:
+`/private/tmp/blueice-k14-linux/blueice-k52-ipc-fixture-status.json`, its source
+hash and logs. A fresh final-source workspace CI run remains required.

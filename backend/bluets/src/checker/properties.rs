@@ -52,6 +52,27 @@ pub(super) fn property_type(
     visited: &mut HashSet<String>,
     budget: &mut TypeExpansionBudget,
 ) -> PropertyType {
+    property_type_with_access(value, property, aliases, visited, budget, false)
+}
+
+pub(super) fn property_write_type(
+    value: &Type,
+    property: &str,
+    aliases: &BTreeMap<String, TypeDefinition>,
+    visited: &mut HashSet<String>,
+    budget: &mut TypeExpansionBudget,
+) -> PropertyType {
+    property_type_with_access(value, property, aliases, visited, budget, true)
+}
+
+fn property_type_with_access(
+    value: &Type,
+    property: &str,
+    aliases: &BTreeMap<String, TypeDefinition>,
+    visited: &mut HashSet<String>,
+    budget: &mut TypeExpansionBudget,
+    writing: bool,
+) -> PropertyType {
     if *value == Type::StrictUnknown {
         return PropertyType::Indeterminate;
     }
@@ -78,9 +99,13 @@ pub(super) fn property_type(
             Type::Tuple(items) => {
                 Type::Union(items.iter().map(|item| item.indexed_type()).collect())
             }
-            _ => return property_type(value, property, aliases, visited, budget),
+            _ => {
+                return property_type_with_access(
+                    value, property, aliases, visited, budget, writing,
+                )
+            }
         };
-        return property_type(
+        return property_type_with_access(
             &Type::Named {
                 name: "ReadonlyArray".into(),
                 arguments: vec![element],
@@ -89,10 +114,18 @@ pub(super) fn property_type(
             aliases,
             visited,
             budget,
+            writing,
         );
     }
     if let Type::IndexedRecord { object, indices } = value {
-        let declared = property_type(object, property, aliases, &mut visited.clone(), budget);
+        let declared = property_type_with_access(
+            object,
+            property,
+            aliases,
+            &mut visited.clone(),
+            budget,
+            writing,
+        );
         if !matches!(declared, PropertyType::Missing) {
             return declared;
         }
@@ -117,7 +150,14 @@ pub(super) fn property_type(
             if !budget.consume() {
                 return PropertyType::Exhausted;
             }
-            return property_type(&definition.value, property, aliases, visited, budget);
+            return property_type_with_access(
+                &definition.value,
+                property,
+                aliases,
+                visited,
+                budget,
+                writing,
+            );
         }
     }
     let boxed = match value {
@@ -145,7 +185,7 @@ pub(super) fn property_type(
         _ => None,
     };
     if let Some((name, arguments)) = boxed.filter(|(name, _)| aliases.contains_key(*name)) {
-        return property_type(
+        return property_type_with_access(
             &Type::Named {
                 name: name.to_string(),
                 arguments,
@@ -154,6 +194,7 @@ pub(super) fn property_type(
             aliases,
             visited,
             budget,
+            writing,
         );
     }
     match value {
@@ -166,10 +207,15 @@ pub(super) fn property_type(
                 if !values.is_empty() && !budget.consume() {
                     return PropertyType::Exhausted;
                 }
-                values.push(if field.optional {
-                    Type::Union(vec![field.value.clone(), Type::Undefined])
+                let value = if writing {
+                    field.accessor_write_type.as_deref().unwrap_or(&field.value)
                 } else {
-                    field.value.clone()
+                    &field.value
+                };
+                values.push(if field.optional {
+                    Type::Union(vec![value.clone(), Type::Undefined])
+                } else {
+                    value.clone()
                 });
                 readonly |= field.readonly;
             }
@@ -192,7 +238,9 @@ pub(super) fn property_type(
         | Type::KeyOf(_)
         | Type::TemplateLiteral(_) => {
             match instantiate_named(value, aliases, visited, budget, "property") {
-                Some(value) => property_type(&value, property, aliases, visited, budget),
+                Some(value) => {
+                    property_type_with_access(&value, property, aliases, visited, budget, writing)
+                }
                 None if budget.exhausted => PropertyType::Exhausted,
                 None => PropertyType::Indeterminate,
             }
@@ -205,7 +253,14 @@ pub(super) fn property_type(
                 if !budget.consume() {
                     return PropertyType::Exhausted;
                 }
-                match property_type(part, property, aliases, &mut visited.clone(), budget) {
+                match property_type_with_access(
+                    part,
+                    property,
+                    aliases,
+                    &mut visited.clone(),
+                    budget,
+                    writing,
+                ) {
                     PropertyType::Found {
                         value,
                         readonly: part_readonly,
@@ -238,7 +293,7 @@ pub(super) fn property_type(
             let mut found = Vec::new();
             let mut readonly = false;
             for part in parts {
-                match property_type(part, property, aliases, visited, budget) {
+                match property_type_with_access(part, property, aliases, visited, budget, writing) {
                     PropertyType::Found {
                         value,
                         readonly: part_readonly,

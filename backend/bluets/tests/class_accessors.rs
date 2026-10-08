@@ -167,15 +167,11 @@ fn the_accessor_grammar_is_enforced() {
 }
 
 #[test]
-fn getters_infer_their_body_and_pairs_need_compatible_types_and_accessibility() {
+fn getters_infer_their_body_and_pairs_keep_separate_types_and_accessibility() {
     assert_accepted("class A { get v() { return 1; } }");
     // The setter's parameter annotation supplies it.
     assert_accepted("class A { get v() { return 1; } set v(value: number) {} }");
-    assert_rejected(
-        "class A { get v(): number { return 1; } set v(value: string) {} }",
-        DiagnosticCode::UnsupportedSyntax,
-        "have different types",
-    );
+    assert_accepted("class A { get v(): number { return 1; } set v(value: string) {} }");
     assert_rejected(
         "class A { private get v(): number { return 1; } public set v(value: number) {} }",
         DiagnosticCode::TypeMismatch,

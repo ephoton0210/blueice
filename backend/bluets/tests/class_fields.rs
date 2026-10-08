@@ -158,11 +158,18 @@ fn definite_assignment_follows_strict_property_initialization() {
     assert_accepted(
         "class A { x?: number; y: number | undefined; z: unknown; w: any; static s: number; }",
     );
-    // An assignment only inside a branch is not modelled.
-    assert_rejected(
+    assert_accepted(
         "class A { x: number; constructor(c: boolean) { if (c) { this.x = 1; } else { this.x = 2; } } }",
-        DiagnosticCode::UnsupportedSyntax,
-        "through a branch",
+    );
+    assert_rejected(
+        "class A { x: number; constructor(c: boolean) { if (c) { this.x = 1; } } }",
+        DiagnosticCode::TypeMismatch,
+        "not definitely assigned",
+    );
+    assert_rejected(
+        "class A { x: number; constructor(c: boolean) { if (c) { return; } this.x = 1; } }",
+        DiagnosticCode::TypeMismatch,
+        "not definitely assigned",
     );
 }
 

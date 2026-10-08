@@ -185,6 +185,7 @@ impl ModuleChecker<'_> {
                         .unwrap_or(Type::Unknown)
                 });
             fields.push(TypeField {
+                accessor_write_type: None,
                 method: false,
                 span: span.clone(),
                 name,

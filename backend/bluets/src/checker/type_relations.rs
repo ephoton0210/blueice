@@ -944,6 +944,10 @@ pub(crate) fn substitute_type(value: &Type, substitutions: &BTreeMap<String, Typ
             fields
                 .iter()
                 .map(|field| TypeField {
+                    accessor_write_type: field
+                        .accessor_write_type
+                        .as_ref()
+                        .map(|value| Box::new(substitute_type(value, substitutions))),
                     method: field.method,
                     name: field.name.clone(),
                     readonly: field.readonly,

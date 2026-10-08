@@ -23,6 +23,7 @@ impl ModuleChecker<'_> {
                         {
                             if let Type::Record(fields) = &mut value {
                                 fields.push(TypeField {
+                                    accessor_write_type: None,
                                     method: false,
                                     name: "values".to_string(),
                                     readonly: false,
@@ -113,6 +114,7 @@ impl ModuleChecker<'_> {
                         for declaration in &namespace.body {
                             if let Declaration::Variable(variable) = declaration {
                                 fields.push(TypeField {
+                                    accessor_write_type: None,
                                     method: false,
                                     name: variable.name.clone(),
                                     readonly: variable.kind == crate::parser::VariableKind::Const,
@@ -127,6 +129,7 @@ impl ModuleChecker<'_> {
                             };
                             let signature = signature(function);
                             fields.push(TypeField {
+                                accessor_write_type: None,
                                 method: false,
                                 name: function.name.clone(),
                                 readonly: false,

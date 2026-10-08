@@ -826,6 +826,7 @@ mod tests {
         let plan = ContractPlan::from_type(
             "User",
             &Type::Record(vec![TypeField {
+                accessor_write_type: None,
                 method: false,
                 name: "id".to_string(),
                 readonly: false,
@@ -852,6 +853,7 @@ mod tests {
     #[test]
     fn validates_an_inherited_record_as_a_reifiable_intersection() {
         let field = |name: &str, value: Type| TypeField {
+            accessor_write_type: None,
             method: false,
             name: name.to_string(),
             readonly: false,
