@@ -23184,6 +23184,72 @@
       "diagnostics": []
     },
     {
+      "id": "class-dynamic:dynamic-shadow-argument-error/main.ts",
+      "matrix": "class-dynamic",
+      "entry": "dynamic-shadow-argument-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/dynamic-shadow-argument-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2345,
+        "category": "error",
+        "message": "Argument of type 'T' is not assignable to parameter of type 'T'.\n  'T' could be instantiated with an arbitrary type which could be unrelated to 'T'.",
+        "file": "typescript_oracle/dynamic-shadow-argument-error/main.ts",
+        "start": 286,
+        "length": 10,
+        "line": 5,
+        "column": 83,
+        "related": [
+          {
+            "code": 2208,
+            "category": "error",
+            "message": "This type parameter might need an `extends T` constraint.",
+            "file": "typescript_oracle/dynamic-shadow-argument-error/main.ts",
+            "start": 212,
+            "length": 1,
+            "line": 5,
+            "column": 9
+          }
+        ]
+      },
+      "diagnostics": [
+        {
+          "code": 2345,
+          "category": "error",
+          "message": "Argument of type 'T' is not assignable to parameter of type 'T'.\n  'T' could be instantiated with an arbitrary type which could be unrelated to 'T'.",
+          "file": "typescript_oracle/dynamic-shadow-argument-error/main.ts",
+          "start": 286,
+          "length": 10,
+          "line": 5,
+          "column": 83,
+          "related": [
+            {
+              "code": 2208,
+              "category": "error",
+              "message": "This type parameter might need an `extends T` constraint.",
+              "file": "typescript_oracle/dynamic-shadow-argument-error/main.ts",
+              "start": 212,
+              "length": 1,
+              "line": 5,
+              "column": 9
+            }
+          ]
+        }
+      ]
+    },
+    {
       "id": "class-dynamic:dynamic-shadow-capture-field-error/main.ts",
       "matrix": "class-dynamic",
       "entry": "dynamic-shadow-capture-field-error/main.ts",
@@ -23336,6 +23402,94 @@
       "diagnostics": []
     },
     {
+      "id": "class-dynamic:dynamic-shadow-captured-default/main.ts",
+      "matrix": "class-dynamic",
+      "entry": "dynamic-shadow-captured-default/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/dynamic-shadow-captured-default/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-dynamic:dynamic-shadow-captured-self-query/main.ts",
+      "matrix": "class-dynamic",
+      "entry": "dynamic-shadow-captured-self-query/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/dynamic-shadow-captured-self-query/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-dynamic:dynamic-shadow-class-this-identity/main.ts",
+      "matrix": "class-dynamic",
+      "entry": "dynamic-shadow-class-this-identity/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/dynamic-shadow-class-this-identity/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-dynamic:dynamic-shadow-class-this-union/main.ts",
+      "matrix": "class-dynamic",
+      "entry": "dynamic-shadow-class-this-union/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/dynamic-shadow-class-this-union/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
       "id": "class-dynamic:dynamic-shadow-computed-outer-this-error/main.ts",
       "matrix": "class-dynamic",
       "entry": "dynamic-shadow-computed-outer-this-error/main.ts",
@@ -23384,6 +23538,116 @@
           "length": 3,
           "line": 5,
           "column": 40
+        }
+      ]
+    },
+    {
+      "id": "class-dynamic:dynamic-shadow-inferred-outer/main.ts",
+      "matrix": "class-dynamic",
+      "entry": "dynamic-shadow-inferred-outer/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/dynamic-shadow-inferred-outer/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-dynamic:dynamic-shadow-inherited-outer/main.ts",
+      "matrix": "class-dynamic",
+      "entry": "dynamic-shadow-inherited-outer/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/dynamic-shadow-inherited-outer/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-dynamic:dynamic-shadow-local-error/main.ts",
+      "matrix": "class-dynamic",
+      "entry": "dynamic-shadow-local-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/dynamic-shadow-local-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2719,
+        "category": "error",
+        "message": "Type 'T' is not assignable to type 'T'. Two different types with this name exist, but they are unrelated.\n  'T' could be instantiated with an arbitrary type which could be unrelated to 'T'.",
+        "file": "typescript_oracle/dynamic-shadow-local-error/main.ts",
+        "start": 273,
+        "length": 1,
+        "line": 5,
+        "column": 70,
+        "related": [
+          {
+            "code": 2208,
+            "category": "error",
+            "message": "This type parameter might need an `extends T` constraint.",
+            "file": "typescript_oracle/dynamic-shadow-local-error/main.ts",
+            "start": 212,
+            "length": 1,
+            "line": 5,
+            "column": 9
+          }
+        ]
+      },
+      "diagnostics": [
+        {
+          "code": 2719,
+          "category": "error",
+          "message": "Type 'T' is not assignable to type 'T'. Two different types with this name exist, but they are unrelated.\n  'T' could be instantiated with an arbitrary type which could be unrelated to 'T'.",
+          "file": "typescript_oracle/dynamic-shadow-local-error/main.ts",
+          "start": 273,
+          "length": 1,
+          "line": 5,
+          "column": 70,
+          "related": [
+            {
+              "code": 2208,
+              "category": "error",
+              "message": "This type parameter might need an `extends T` constraint.",
+              "file": "typescript_oracle/dynamic-shadow-local-error/main.ts",
+              "start": 212,
+              "length": 1,
+              "line": 5,
+              "column": 9
+            }
+          ]
         }
       ]
     },

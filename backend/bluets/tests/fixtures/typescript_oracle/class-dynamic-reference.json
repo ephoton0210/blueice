@@ -1373,6 +1373,36 @@
       "first": null
     },
     {
+      "entry": "dynamic-shadow-argument-error/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2345,
+        "message": "Argument of type 'T' is not assignable to parameter of type 'T'.\n  'T' could be instantiated with an arbitrary type which could be unrelated to 'T'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 83,
+          "length": 10
+        },
+        "related": [
+          {
+            "code": 2208,
+            "message": "This type parameter might need an `extends T` constraint.",
+            "module": "main.ts",
+            "position": {
+              "line": 5,
+              "column": 9,
+              "length": 1
+            },
+            "related": []
+          }
+        ]
+      }
+    },
+    {
       "entry": "dynamic-shadow-capture-field-error/main.ts",
       "accepts": false,
       "flags": [],
@@ -1437,6 +1467,38 @@
       "first": null
     },
     {
+      "entry": "dynamic-shadow-captured-default/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "dynamic-shadow-captured-self-query/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "dynamic-shadow-class-this-identity/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "dynamic-shadow-class-this-union/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
       "entry": "dynamic-shadow-computed-outer-this-error/main.ts",
       "accepts": false,
       "flags": [],
@@ -1452,6 +1514,52 @@
           "length": 4
         },
         "related": []
+      }
+    },
+    {
+      "entry": "dynamic-shadow-inferred-outer/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "dynamic-shadow-inherited-outer/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "dynamic-shadow-local-error/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2719,
+        "message": "Type 'T' is not assignable to type 'T'. Two different types with this name exist, but they are unrelated.\n  'T' could be instantiated with an arbitrary type which could be unrelated to 'T'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 70,
+          "length": 1
+        },
+        "related": [
+          {
+            "code": 2208,
+            "message": "This type parameter might need an `extends T` constraint.",
+            "module": "main.ts",
+            "position": {
+              "line": 5,
+              "column": 9,
+              "length": 1
+            },
+            "related": []
+          }
+        ]
       }
     },
     {
