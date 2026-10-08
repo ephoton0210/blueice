@@ -521,6 +521,14 @@ class:paren-type-class-override-valid/main.ts	accept
 class:tuple-literal-argument-class-valid/main.ts	accept
 class:tuple-literal-return-class-error/main.ts	reject
 class:tuple-literal-return-class-valid/main.ts	accept
+class-dynamic:dynamic-capture-alias-chain/main.ts	accept
+class-dynamic:dynamic-capture-alias-chain-error/main.ts	reject
+class-dynamic:dynamic-capture-factory-heritage/main.ts	accept
+class-dynamic:dynamic-capture-factory-heritage-error/main.ts	reject
+class-dynamic:dynamic-capture-named-self/main.ts	accept
+class-dynamic:dynamic-capture-named-self-error/main.ts	reject
+class-dynamic:dynamic-capture-own-default/main.ts	accept
+class-dynamic:dynamic-capture-own-default-error/main.ts	reject
 class-dynamic:dynamic-computed-accessor/main.ts	accept
 class-dynamic:dynamic-computed-bound/main.ts	accept
 class-dynamic:dynamic-computed-field-broad-call-error/main.ts	reject
@@ -597,6 +605,10 @@ class-dynamic:dynamic-method-shadowing/main.ts	accept
 class-dynamic:dynamic-method-static/main.ts	accept
 class-dynamic:dynamic-method-this/main.ts	accept
 class-dynamic:dynamic-method-valid/main.ts	accept
+class-dynamic:dynamic-runtime-capture-alias-chain/main.ts	accept
+class-dynamic:dynamic-runtime-capture-factory-heritage/main.ts	accept
+class-dynamic:dynamic-runtime-capture-named-self/main.ts	accept
+class-dynamic:dynamic-runtime-capture-own-default/main.ts	accept
 class-dynamic:dynamic-runtime-computed/main.ts	accept
 class-dynamic:dynamic-runtime-computed-field-effects/main.ts	accept
 class-dynamic:dynamic-runtime-computed-field-effects-assign/main.ts	accept

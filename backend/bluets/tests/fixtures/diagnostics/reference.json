@@ -19752,6 +19752,262 @@
       "diagnostics": []
     },
     {
+      "id": "class-dynamic:dynamic-capture-alias-chain/main.ts",
+      "matrix": "class-dynamic",
+      "entry": "dynamic-capture-alias-chain/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/dynamic-capture-alias-chain/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-dynamic:dynamic-capture-alias-chain-error/main.ts",
+      "matrix": "class-dynamic",
+      "entry": "dynamic-capture-alias-chain-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/dynamic-capture-alias-chain-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2345,
+        "category": "error",
+        "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+        "file": "typescript_oracle/dynamic-capture-alias-chain-error/main.ts",
+        "start": 350,
+        "length": 5,
+        "line": 5,
+        "column": 147
+      },
+      "diagnostics": [
+        {
+          "code": 2345,
+          "category": "error",
+          "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+          "file": "typescript_oracle/dynamic-capture-alias-chain-error/main.ts",
+          "start": 350,
+          "length": 5,
+          "line": 5,
+          "column": 147
+        }
+      ]
+    },
+    {
+      "id": "class-dynamic:dynamic-capture-factory-heritage/main.ts",
+      "matrix": "class-dynamic",
+      "entry": "dynamic-capture-factory-heritage/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/dynamic-capture-factory-heritage/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-dynamic:dynamic-capture-factory-heritage-error/main.ts",
+      "matrix": "class-dynamic",
+      "entry": "dynamic-capture-factory-heritage-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/dynamic-capture-factory-heritage-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'number' is not assignable to type 'string'.",
+        "file": "typescript_oracle/dynamic-capture-factory-heritage-error/main.ts",
+        "start": 351,
+        "length": 6,
+        "line": 5,
+        "column": 148
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "file": "typescript_oracle/dynamic-capture-factory-heritage-error/main.ts",
+          "start": 351,
+          "length": 6,
+          "line": 5,
+          "column": 148
+        }
+      ]
+    },
+    {
+      "id": "class-dynamic:dynamic-capture-named-self/main.ts",
+      "matrix": "class-dynamic",
+      "entry": "dynamic-capture-named-self/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/dynamic-capture-named-self/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-dynamic:dynamic-capture-named-self-error/main.ts",
+      "matrix": "class-dynamic",
+      "entry": "dynamic-capture-named-self-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/dynamic-capture-named-self-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'number' is not assignable to type 'string'.",
+        "file": "typescript_oracle/dynamic-capture-named-self-error/main.ts",
+        "start": 347,
+        "length": 6,
+        "line": 5,
+        "column": 144
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "file": "typescript_oracle/dynamic-capture-named-self-error/main.ts",
+          "start": 347,
+          "length": 6,
+          "line": 5,
+          "column": 144
+        }
+      ]
+    },
+    {
+      "id": "class-dynamic:dynamic-capture-own-default/main.ts",
+      "matrix": "class-dynamic",
+      "entry": "dynamic-capture-own-default/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/dynamic-capture-own-default/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-dynamic:dynamic-capture-own-default-error/main.ts",
+      "matrix": "class-dynamic",
+      "entry": "dynamic-capture-own-default-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/dynamic-capture-own-default-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'number' is not assignable to type 'string'.",
+        "file": "typescript_oracle/dynamic-capture-own-default-error/main.ts",
+        "start": 344,
+        "length": 6,
+        "line": 5,
+        "column": 141
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "file": "typescript_oracle/dynamic-capture-own-default-error/main.ts",
+          "start": 344,
+          "length": 6,
+          "line": 5,
+          "column": 141
+        }
+      ]
+    },
+    {
       "id": "class-dynamic:dynamic-computed-accessor/main.ts",
       "matrix": "class-dynamic",
       "entry": "dynamic-computed-accessor/main.ts",
@@ -22062,6 +22318,94 @@
       "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/dynamic-method-valid/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-dynamic:dynamic-runtime-capture-alias-chain/main.ts",
+      "matrix": "class-dynamic",
+      "entry": "dynamic-runtime-capture-alias-chain/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/dynamic-runtime-capture-alias-chain/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-dynamic:dynamic-runtime-capture-factory-heritage/main.ts",
+      "matrix": "class-dynamic",
+      "entry": "dynamic-runtime-capture-factory-heritage/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/dynamic-runtime-capture-factory-heritage/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-dynamic:dynamic-runtime-capture-named-self/main.ts",
+      "matrix": "class-dynamic",
+      "entry": "dynamic-runtime-capture-named-self/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/dynamic-runtime-capture-named-self/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-dynamic:dynamic-runtime-capture-own-default/main.ts",
+      "matrix": "class-dynamic",
+      "entry": "dynamic-runtime-capture-own-default/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/dynamic-runtime-capture-own-default/main.ts"
       ],
       "accepts": true,
       "first": null,

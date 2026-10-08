@@ -1,3 +1,11 @@
+dynamic-capture-alias-chain/main.ts	accept
+dynamic-capture-alias-chain-error/main.ts	reject
+dynamic-capture-factory-heritage/main.ts	accept
+dynamic-capture-factory-heritage-error/main.ts	reject
+dynamic-capture-named-self/main.ts	accept
+dynamic-capture-named-self-error/main.ts	reject
+dynamic-capture-own-default/main.ts	accept
+dynamic-capture-own-default-error/main.ts	reject
 dynamic-computed-accessor/main.ts	accept
 dynamic-computed-bound/main.ts	accept
 dynamic-computed-field-broad-call-error/main.ts	reject
@@ -74,6 +82,10 @@ dynamic-method-shadowing/main.ts	accept
 dynamic-method-static/main.ts	accept
 dynamic-method-this/main.ts	accept
 dynamic-method-valid/main.ts	accept
+dynamic-runtime-capture-alias-chain/main.ts	accept
+dynamic-runtime-capture-factory-heritage/main.ts	accept
+dynamic-runtime-capture-named-self/main.ts	accept
+dynamic-runtime-capture-own-default/main.ts	accept
 dynamic-runtime-computed/main.ts	accept
 dynamic-runtime-computed-field-effects/main.ts	accept
 dynamic-runtime-computed-field-effects-assign/main.ts	accept

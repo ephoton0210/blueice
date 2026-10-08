@@ -2,6 +2,110 @@
   "version": "5.9.3",
   "cases": [
     {
+      "entry": "dynamic-capture-alias-chain/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "dynamic-capture-alias-chain-error/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2345,
+        "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 147,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "dynamic-capture-factory-heritage/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "dynamic-capture-factory-heritage-error/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2322,
+        "message": "Type 'number' is not assignable to type 'string'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 148,
+          "length": 6
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "dynamic-capture-named-self/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "dynamic-capture-named-self-error/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2322,
+        "message": "Type 'number' is not assignable to type 'string'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 144,
+          "length": 6
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "dynamic-capture-own-default/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "dynamic-capture-own-default-error/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2322,
+        "message": "Type 'number' is not assignable to type 'string'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 141,
+          "length": 6
+        },
+        "related": []
+      }
+    },
+    {
       "entry": "dynamic-computed-accessor/main.ts",
       "accepts": true,
       "flags": [],
@@ -933,6 +1037,38 @@
       "flags": [],
       "runtime": false,
       "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "dynamic-runtime-capture-alias-chain/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "dynamic-runtime-capture-factory-heritage/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "dynamic-runtime-capture-named-self/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "dynamic-runtime-capture-own-default/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": true,
+      "declaration": true,
       "first": null
     },
     {
