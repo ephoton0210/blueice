@@ -5647,3 +5647,29 @@ narrows G-T9 while retaining generic/dynamic classes (K.5.2), obsolete refusal
 controls (K.5.3) and unmeasured combinations. K.5.1 is complete; M8 and the
 remaining K.5–K.10 leaves stay open. Full workspace/coverage verification runs
 at the milestone; this passing leaf is committed and pushed independently.
+
+### K.5.2 generic and dynamic classes failing baseline — 2026-10-08
+
+K.5.1 is committed and pushed as `30db65f66`; its full GitHub CI runs against
+that exact source as run `37785330991`. K.5.2 starts with 83 isolated
+`dynamic-*` programs from pinned TypeScript 5.9.3: 50 accept and 33 reject.
+They cover generic/imported heritage and constructor specialization, generic
+methods/overloads and method scopes, static type-parameter rules, named and
+anonymous expressions, computed/string/numeric keys, instance/static index
+signatures and declare fields. Five runtime witnesses and six declaration
+witnesses compare emitted JavaScript through Node and every emitted `.d.ts`.
+The computed-method numeric-index rejection is retained alongside a runtime
+witness that explicitly uses `any`, as TypeScript requires for that access.
+
+The Linux replay on unchanged production `30db65f66` records 83
+verdict/primary-diagnostic differences and six emission failures. Completeness
+and the live pinned recorder pass; two tests pass and two fail. Shared
+checker diagnostic goldens now retain 2,192 programs (1,021 accept and 1,171
+reject) and 190 message templates. All 93 frozen changed backend files match
+that replay. Evidence: `/private/tmp/blueice-k14-linux/blueice-k52-red-status.json`
+and its log. Commit this failing replay before production changes. K.5.2 is
+open; syntax origins, inheritance substitution, class expression scopes and
+runtime/declaration lowering must pass the same boundary without widening
+loader or runtime authority. Production size remains at most 1,188 lines;
+review a growing source at 1,200 and perform the requested verified refactor
+when it approaches 1,300 before adding more responsibilities.

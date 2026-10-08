@@ -1,0 +1,999 @@
+{
+  "version": "5.9.3",
+  "cases": [
+    {
+      "entry": "dynamic-computed-accessor/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "dynamic-computed-bound/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "dynamic-computed-field-key-error/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "dynamic-computed-literal/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "dynamic-computed-method/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "dynamic-computed-method-index-error/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 7053,
+        "message": "Element implicitly has an 'any' type because expression of type '1' can't be used to index type 'C'.\n  Property '1' does not exist on type 'C'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 142,
+          "length": 10
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "dynamic-computed-numeric/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "dynamic-computed-static/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "dynamic-computed-symbol/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "dynamic-computed-unknown-name/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2304,
+        "message": "Cannot find name 'missing'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 12,
+          "length": 7
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "dynamic-declarations-surface/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "dynamic-declare-abstract-error/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "dynamic-declare-field/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "dynamic-declare-initializer-error/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 1039,
+        "message": "Initializers are not allowed in ambient contexts.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 35,
+          "length": 1
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "dynamic-declare-instance-generic/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "dynamic-declare-method-error/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 1031,
+        "message": "'declare' modifier cannot appear on class elements of this kind.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 11,
+          "length": 7
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "dynamic-declare-override-error/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 1243,
+        "message": "'override' modifier cannot be used with 'declare' modifier.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 52,
+          "length": 8
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "dynamic-declare-readonly/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2540,
+        "message": "Cannot assign to 'value' because it is a read-only property.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 66,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "dynamic-declare-static/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "dynamic-expr-anonymous/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "dynamic-expr-assignment/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "dynamic-expr-constructor-error/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2345,
+        "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 65,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "dynamic-expr-generic/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "dynamic-expr-generic-error/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2345,
+        "message": "Argument of type 'number' is not assignable to parameter of type 'string'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 78,
+          "length": 1
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "dynamic-expr-heritage/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "dynamic-expr-name-scope-error/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2304,
+        "message": "Cannot find name 'Inner'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 31,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "dynamic-expr-named/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "dynamic-expr-outer-name/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "dynamic-expr-return/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "dynamic-heritage-abstract/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "dynamic-heritage-argument/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2345,
+        "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 89,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "dynamic-heritage-chain/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "dynamic-heritage-constraint/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2344,
+        "message": "Type 'number' does not satisfy the constraint 'string'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 60,
+          "length": 6
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "dynamic-heritage-default/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "dynamic-heritage-extra-argument/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2314,
+        "message": "Generic type 'B<T>' requires 1 type argument(s).",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 43,
+          "length": 17
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "dynamic-heritage-field-error/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2416,
+        "message": "Property 'value' in type 'C' is not assignable to the same property in base type 'B<number>'.\n  Type 'string' is not assignable to type 'number'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 64,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "dynamic-heritage-method-error/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2416,
+        "message": "Property 'read' in type 'C' is not assignable to the same property in base type 'B<number>'.\n  Type '(value: string) => string' is not assignable to type '(value: number) => number'.\n    Types of parameters 'value' and 'value' are incompatible.\n      Type 'number' is not assignable to type 'string'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 89,
+          "length": 4
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "dynamic-heritage-missing-argument/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2314,
+        "message": "Generic type 'B<T>' requires 1 type argument(s).",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 43,
+          "length": 1
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "dynamic-heritage-multiple-arguments/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "dynamic-heritage-specialized/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "dynamic-heritage-super-error/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2345,
+        "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 91,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "dynamic-heritage-valid/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "dynamic-imported-generic-alias/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "dynamic-imported-heritage/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "dynamic-imported-heritage-error/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2345,
+        "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 67,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "dynamic-imported-method-error/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2416,
+        "message": "Property 'read' in type 'C' is not assignable to the same property in base type 'B<number>'.\n  Type '() => string' is not assignable to type '() => number'.\n    Type 'string' is not assignable to type 'number'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 69,
+          "length": 4
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "dynamic-index-field-error/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2411,
+        "message": "Property 'value' of type 'string' is not assignable to 'string' index type 'number'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 34,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "dynamic-index-key-error/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 1268,
+        "message": "An index signature parameter type must be 'string', 'number', 'symbol', or a template literal type.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 12,
+          "length": 3
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "dynamic-index-method-error/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2411,
+        "message": "Property 'read' of type '() => number' is not assignable to 'string' index type 'number'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 34,
+          "length": 4
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "dynamic-index-multiple-error/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 1096,
+        "message": "An index signature must have exactly one parameter.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 12,
+          "length": 4
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "dynamic-index-number/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "dynamic-index-number-string-error/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2413,
+        "message": "'number' index type 'string' is not assignable to 'string' index type 'number'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 34,
+          "length": 24
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "dynamic-index-optional-error/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 1019,
+        "message": "An index signature parameter cannot have a question mark.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 15,
+          "length": 1
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "dynamic-index-readonly/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2542,
+        "message": "Index signature in type 'C' only permits reading.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 75,
+          "length": 10
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "dynamic-index-static/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "dynamic-index-valid/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "dynamic-method-abstract/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "dynamic-method-constraint/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2345,
+        "message": "Argument of type 'number' is not assignable to parameter of type 'string'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 80,
+          "length": 1
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "dynamic-method-default/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "dynamic-method-explicit-argument/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "dynamic-method-explicit-error/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2345,
+        "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 73,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "dynamic-method-overloads/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "dynamic-method-return-error/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2322,
+        "message": "Type 'number' is not assignable to type 'T'.\n  'T' could be instantiated with an arbitrary type which could be unrelated to 'number'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 34,
+          "length": 6
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "dynamic-method-shadowing/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "dynamic-method-static/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "dynamic-method-this/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "dynamic-method-valid/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "dynamic-runtime-computed/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "dynamic-runtime-declare/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "dynamic-runtime-heritage/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "dynamic-runtime-method/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "dynamic-runtime-names/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "dynamic-static-derived-valid/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "dynamic-static-field-override-error/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2417,
+        "message": "Class static side 'typeof C' incorrectly extends base class static side 'typeof B'.\n  Types of property 'value' are incompatible.\n    Type 'string' is not assignable to type 'number'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 37,
+          "length": 1
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "dynamic-static-generic-binding/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "dynamic-static-instance-error/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2576,
+        "message": "Property 'value' does not exist on type 'C'. Did you mean to access the static member 'C.value' instead?",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 39,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "dynamic-static-method-parameter-error/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2302,
+        "message": "Static members cannot reference class type parameters.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 33,
+          "length": 1
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "dynamic-static-parameter-error/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2302,
+        "message": "Static members cannot reference class type parameters.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 28,
+          "length": 1
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "dynamic-static-prototype-error/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2699,
+        "message": "Static property 'prototype' conflicts with built-in property 'Function.prototype' of constructor function 'C'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 18,
+          "length": 9
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "dynamic-string-accessor/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "dynamic-string-field/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "dynamic-string-method/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "dynamic-string-numeric/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    }
+  ]
+}
