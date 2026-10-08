@@ -5630,6 +5630,15 @@ all-target Clippy with warnings denied. All 1,142 tests in 77 groups pass,
 including all 144 ignored oracles in 41 suite files. All 46 frozen backend files
 match the host snapshot. Evidence:
 `/private/tmp/blueice-k14-linux/blueice-k51-full-status.json` and its logs.
+Full CI run [37785330991](https://github.com/ephoton0210/blueice/actions/runs/37785330991)
+on `30db65f66` exposed a macOS oracle harness path mismatch: `temp_dir()` used
+the `/var` alias while the project loader canonicalized its root to
+`/private/var`. Absolute output paths therefore failed the root confinement
+check. The modifier runtime/declaration harness now canonicalizes its temporary
+root before creating any project or output paths. Compiler confinement remains
+unchanged. The correction is validated with a symlinked `TMPDIR` on Linux;
+full cross-platform CI must be rerun on the corrected commit.
+
 Largest changed production source: 1,188 lines; focused modules own the new
 responsibilities. The generated refusal inventory contains 162 sites and
 narrows G-T9 while retaining generic/dynamic classes (K.5.2), obsolete refusal

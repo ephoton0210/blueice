@@ -226,7 +226,10 @@ fn declarations(directory: &Path) -> BTreeMap<String, String> {
 #[ignore = "requires pinned TypeScript 5.9.3 and Node"]
 fn class_modifiers_preserve_execution_and_declarations() {
     let tsc = pinned_tsc();
-    let root = env::temp_dir().join(format!("bluets-modifiers-runtime-{}", std::process::id()));
+    // Configured output directories must use the same canonical root as the CLI.
+    let root = fs::canonicalize(env::temp_dir())
+        .unwrap()
+        .join(format!("bluets-modifiers-runtime-{}", std::process::id()));
     let _ = fs::remove_dir_all(&root);
     fs::create_dir_all(&root).unwrap();
     fs::write(root.join("package.json"), "{\"type\":\"module\"}").unwrap();
