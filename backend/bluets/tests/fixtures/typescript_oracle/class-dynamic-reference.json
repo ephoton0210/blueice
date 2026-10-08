@@ -2,6 +2,14 @@
   "version": "5.9.3",
   "cases": [
     {
+      "entry": "dynamic-capture-alias-chain/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
       "entry": "dynamic-capture-alias-chain-error/main.ts",
       "accepts": false,
       "flags": [],
@@ -20,7 +28,7 @@
       }
     },
     {
-      "entry": "dynamic-capture-alias-chain/main.ts",
+      "entry": "dynamic-capture-factory-heritage/main.ts",
       "accepts": true,
       "flags": [],
       "runtime": false,
@@ -46,7 +54,7 @@
       }
     },
     {
-      "entry": "dynamic-capture-factory-heritage/main.ts",
+      "entry": "dynamic-capture-named-self/main.ts",
       "accepts": true,
       "flags": [],
       "runtime": false,
@@ -72,7 +80,7 @@
       }
     },
     {
-      "entry": "dynamic-capture-named-self/main.ts",
+      "entry": "dynamic-capture-own-default/main.ts",
       "accepts": true,
       "flags": [],
       "runtime": false,
@@ -98,14 +106,6 @@
       }
     },
     {
-      "entry": "dynamic-capture-own-default/main.ts",
-      "accepts": true,
-      "flags": [],
-      "runtime": false,
-      "declaration": false,
-      "first": null
-    },
-    {
       "entry": "dynamic-computed-accessor/main.ts",
       "accepts": true,
       "flags": [],
@@ -120,6 +120,24 @@
       "runtime": false,
       "declaration": false,
       "first": null
+    },
+    {
+      "entry": "dynamic-computed-field-broad-call-error/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 1166,
+        "message": "A computed property name in a class property declaration must have a simple literal type or a 'unique symbol' type.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 26,
+          "length": 17
+        },
+        "related": []
+      }
     },
     {
       "entry": "dynamic-computed-field-broad-call-error-assign/main.ts",
@@ -143,7 +161,15 @@
       }
     },
     {
-      "entry": "dynamic-computed-field-broad-call-error/main.ts",
+      "entry": "dynamic-computed-field-key-error/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "dynamic-computed-field-literal-call-error/main.ts",
       "accepts": false,
       "flags": [],
       "runtime": false,
@@ -154,19 +180,11 @@
         "module": "main.ts",
         "position": {
           "line": 5,
-          "column": 26,
-          "length": 17
+          "column": 55,
+          "length": 7
         },
         "related": []
       }
-    },
-    {
-      "entry": "dynamic-computed-field-key-error/main.ts",
-      "accepts": true,
-      "flags": [],
-      "runtime": false,
-      "declaration": false,
-      "first": null
     },
     {
       "entry": "dynamic-computed-field-literal-call-error-assign/main.ts",
@@ -190,25 +208,15 @@
       }
     },
     {
-      "entry": "dynamic-computed-field-literal-call-error/main.ts",
-      "accepts": false,
+      "entry": "dynamic-computed-literal/main.ts",
+      "accepts": true,
       "flags": [],
       "runtime": false,
       "declaration": false,
-      "first": {
-        "code": 1166,
-        "message": "A computed property name in a class property declaration must have a simple literal type or a 'unique symbol' type.",
-        "module": "main.ts",
-        "position": {
-          "line": 5,
-          "column": 55,
-          "length": 7
-        },
-        "related": []
-      }
+      "first": null
     },
     {
-      "entry": "dynamic-computed-literal/main.ts",
+      "entry": "dynamic-computed-method/main.ts",
       "accepts": true,
       "flags": [],
       "runtime": false,
@@ -232,14 +240,6 @@
         },
         "related": []
       }
-    },
-    {
-      "entry": "dynamic-computed-method/main.ts",
-      "accepts": true,
-      "flags": [],
-      "runtime": false,
-      "declaration": false,
-      "first": null
     },
     {
       "entry": "dynamic-computed-numeric/main.ts",
@@ -470,6 +470,14 @@
       }
     },
     {
+      "entry": "dynamic-expr-generic/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
       "entry": "dynamic-expr-generic-error/main.ts",
       "accepts": false,
       "flags": [],
@@ -486,14 +494,6 @@
         },
         "related": []
       }
-    },
-    {
-      "entry": "dynamic-expr-generic/main.ts",
-      "accepts": true,
-      "flags": [],
-      "runtime": false,
-      "declaration": false,
-      "first": null
     },
     {
       "entry": "dynamic-expr-heritage/main.ts",
@@ -720,6 +720,14 @@
       "first": null
     },
     {
+      "entry": "dynamic-import-expression/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
       "entry": "dynamic-import-expression-error/main.ts",
       "accepts": false,
       "flags": [],
@@ -736,6 +744,14 @@
         },
         "related": []
       }
+    },
+    {
+      "entry": "dynamic-import-expression-heritage/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
     },
     {
       "entry": "dynamic-import-expression-heritage-error/main.ts",
@@ -756,23 +772,15 @@
       }
     },
     {
-      "entry": "dynamic-import-expression-heritage/main.ts",
-      "accepts": true,
-      "flags": [],
-      "runtime": false,
-      "declaration": false,
-      "first": null
-    },
-    {
-      "entry": "dynamic-import-expression/main.ts",
-      "accepts": true,
-      "flags": [],
-      "runtime": false,
-      "declaration": false,
-      "first": null
-    },
-    {
       "entry": "dynamic-imported-generic-alias/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "dynamic-imported-heritage/main.ts",
       "accepts": true,
       "flags": [],
       "runtime": false,
@@ -796,14 +804,6 @@
         },
         "related": []
       }
-    },
-    {
-      "entry": "dynamic-imported-heritage/main.ts",
-      "accepts": true,
-      "flags": [],
-      "runtime": false,
-      "declaration": false,
-      "first": null
     },
     {
       "entry": "dynamic-imported-method-error/main.ts",
@@ -896,6 +896,14 @@
       }
     },
     {
+      "entry": "dynamic-index-number/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
       "entry": "dynamic-index-number-string-error/main.ts",
       "accepts": false,
       "flags": [],
@@ -912,14 +920,6 @@
         },
         "related": []
       }
-    },
-    {
-      "entry": "dynamic-index-number/main.ts",
-      "accepts": true,
-      "flags": [],
-      "runtime": false,
-      "declaration": false,
-      "first": null
     },
     {
       "entry": "dynamic-index-optional-error/main.ts",
@@ -972,6 +972,44 @@
       "runtime": false,
       "declaration": false,
       "first": null
+    },
+    {
+      "entry": "dynamic-local-self-shadow/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "dynamic-local-self-shadow-error/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2322,
+        "message": "Type 'T' is not assignable to type 'string'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 124,
+          "length": 6
+        },
+        "related": [
+          {
+            "code": 2208,
+            "message": "This type parameter might need an `extends string` constraint.",
+            "module": "main.ts",
+            "position": {
+              "line": 5,
+              "column": 15,
+              "length": 1
+            },
+            "related": []
+          }
+        ]
+      }
     },
     {
       "entry": "dynamic-method-abstract/main.ts",
@@ -1124,12 +1162,9 @@
       "first": null
     },
     {
-      "entry": "dynamic-runtime-computed-field-effects-assign/main.ts",
+      "entry": "dynamic-runtime-computed/main.ts",
       "accepts": true,
-      "flags": [
-        "--useDefineForClassFields",
-        "false"
-      ],
+      "flags": [],
       "runtime": true,
       "declaration": true,
       "first": null
@@ -1143,9 +1178,12 @@
       "first": null
     },
     {
-      "entry": "dynamic-runtime-computed/main.ts",
+      "entry": "dynamic-runtime-computed-field-effects-assign/main.ts",
       "accepts": true,
-      "flags": [],
+      "flags": [
+        "--useDefineForClassFields",
+        "false"
+      ],
       "runtime": true,
       "declaration": true,
       "first": null
@@ -1175,20 +1213,20 @@
       "first": null
     },
     {
+      "entry": "dynamic-runtime-expression-computed-field/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
       "entry": "dynamic-runtime-expression-computed-field-assign/main.ts",
       "accepts": true,
       "flags": [
         "--useDefineForClassFields",
         "false"
       ],
-      "runtime": true,
-      "declaration": true,
-      "first": null
-    },
-    {
-      "entry": "dynamic-runtime-expression-computed-field/main.ts",
-      "accepts": true,
-      "flags": [],
       "runtime": true,
       "declaration": true,
       "first": null
@@ -1219,6 +1257,14 @@
     },
     {
       "entry": "dynamic-runtime-heritage/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "dynamic-runtime-local-self-shadow/main.ts",
       "accepts": true,
       "flags": [],
       "runtime": true,
@@ -1258,6 +1304,22 @@
       "first": null
     },
     {
+      "entry": "dynamic-runtime-static-arrow-binder/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "dynamic-scope-argument/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
       "entry": "dynamic-scope-argument-name-error/main.ts",
       "accepts": false,
       "flags": [],
@@ -1294,7 +1356,7 @@
       }
     },
     {
-      "entry": "dynamic-scope-argument/main.ts",
+      "entry": "dynamic-scope-captured-generic/main.ts",
       "accepts": true,
       "flags": [],
       "runtime": false,
@@ -1318,14 +1380,6 @@
         },
         "related": []
       }
-    },
-    {
-      "entry": "dynamic-scope-captured-generic/main.ts",
-      "accepts": true,
-      "flags": [],
-      "runtime": false,
-      "declaration": false,
-      "first": null
     },
     {
       "entry": "dynamic-scope-computed-expression-assign/main.ts",
@@ -1433,6 +1487,14 @@
       }
     },
     {
+      "entry": "dynamic-shadow-capture-self/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
       "entry": "dynamic-shadow-capture-self-error/main.ts",
       "accepts": false,
       "flags": [],
@@ -1449,14 +1511,6 @@
         },
         "related": []
       }
-    },
-    {
-      "entry": "dynamic-shadow-capture-self/main.ts",
-      "accepts": true,
-      "flags": [],
-      "runtime": false,
-      "declaration": false,
-      "first": null
     },
     {
       "entry": "dynamic-shadow-capture-this/main.ts",
@@ -1601,6 +1655,50 @@
       "first": null
     },
     {
+      "entry": "dynamic-static-arrow-argument-error/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2345,
+        "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 88,
+          "length": 3
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "dynamic-static-arrow-binder/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "dynamic-static-callable-outer-error/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2302,
+        "message": "Static members cannot reference class type parameters.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 42,
+          "length": 1
+        },
+        "related": []
+      }
+    },
+    {
       "entry": "dynamic-static-derived-valid/main.ts",
       "accepts": true,
       "flags": [],
@@ -1625,6 +1723,14 @@
         },
         "related": []
       }
+    },
+    {
+      "entry": "dynamic-static-function-binder/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
     },
     {
       "entry": "dynamic-static-generic-binding/main.ts",
