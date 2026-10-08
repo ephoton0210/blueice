@@ -99,6 +99,11 @@ struct PageViewport: NSViewRepresentable {
 final class CorePageView: NSView, NSTextInputClient, NSUserInterfaceValidations {
     weak var model: BrowserModel? {
         didSet {
+            model?.nativeFileActivation = { [weak self, weak model] state in
+                guard let self, let model, self.model === model, let window = self.window,
+                      window.isVisible, window.isKeyWindow, window.firstResponder === self else { return }
+                self.filePicker.present(state: state,model: model,window: window)
+            }
             textObservation = model.map { model in
                 Publishers.CombineLatest(model.$textInputState, model.$textInputBusy)
                     .receive(on: RunLoop.main).sink { [weak self] _ in

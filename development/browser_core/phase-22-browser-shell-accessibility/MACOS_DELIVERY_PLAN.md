@@ -636,8 +636,9 @@ submit and inspect binary HTTP bodies, cancel/reopen with Space, and reset while
 retaining ordinary editor content. The acceptance record is
 [file-input results](MACOS_FILE_INPUT_RESULTS.md). Selected-file FileList/File/Blob values and
 input/change/cancel events are now accepted, see [file API results](MACOS_FILE_API_RESULTS.md).
-Directory/capture, label click forwarding, drag/drop, remaining File API interfaces,
-private owner panels and the other delivery gates remain open.
+Native label activation is now accepted, see [label results](MACOS_LABEL_ACTIVATION_RESULTS.md).
+Directory/capture, drag/drop, remaining File API interfaces, private owner panels
+and the other delivery gates remain open.
 
 ## Completion audit
 
@@ -765,3 +766,28 @@ The complete Rust gates and exact unfiltered native suite passed. See the
 Remaining File API stream methods, FileReader/object URLs, BlueTS numeric index
 signatures/host new-expression inference and general page/OS drag-and-drop stay
 open alongside storage partitioning, remote protocol and physical hardware gates.
+
+## Native label activation increment
+
+Core now resolves explicit and implicit labels, skips hidden inputs and blocks
+forwarding from interactive descendants. Label and associated-control clicks run
+before the existing default; cancellation, changed association, disabled targets
+and replaced documents suppress stale activation. A correlated native gesture can
+present the existing file picker after validating the actual control again.
+Unsolicited replies have no presentation effect.
+
+Forwarding currently requires an enabled control with a layout fragment and no
+`hidden` or `inert` restriction on the control or its ancestors. Labels targeting
+file controls without a layout fragment remain pending.
+
+Focused public session and actual macOS UI regressions exercise file selection,
+cancel, text editing, checkbox/radio state, implicit buttons and association
+changes. The complete Rust gates and exact unfiltered 269-method native suite
+passed. Full/focused native inputs match; the sole later change from Rust inputs
+is an existing Swift AX test's fresh-frame synchronization barrier. Production
+Swift/Rust and build inputs are unchanged, as recorded in the dated results.
+Native file presentation additionally
+matches an independent echoed gesture identifier, so another client's colliding
+request/tab IDs do not authorize a picker. See the
+[label activation contract](MACOS_LABEL_ACTIVATION_CONTRACT.md) and
+[dated results](MACOS_LABEL_ACTIVATION_RESULTS.md).

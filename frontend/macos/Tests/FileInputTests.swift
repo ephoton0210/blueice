@@ -8,6 +8,58 @@ import UniformTypeIdentifiers
 
 @MainActor
 final class FileInputTests: XCTestCase {
+    func testNativeActivationWirePreservesGestureContextAndOptionalFileHint() throws {
+        let context = TextInputContext(version: 1,frame_source: 7,document_generation: 8,focus_generation: 9)
+        let data = try BrowserWire.encode(.nativeActivate(context,21,12,34),tab: 3,request: 21)
+        let root = try XCTUnwrap(JSONSerialization.jsonObject(with: data.dropFirst(4)) as? [String: Any])
+        let command = try XCTUnwrap((root["message"] as? [String: Any])?["NativeActivate"] as? [String: Any])
+        XCTAssertEqual((command["context"] as? [String: Any])?["document_generation"] as? Int,8)
+        XCTAssertEqual(command["gesture"] as? Int,21); XCTAssertEqual(root["request_id"] as? Int,21); XCTAssertEqual(root["tab_id"] as? Int,3)
+        let empty = Data("{\"request_id\":21,\"tab_id\":3,\"message\":{\"NativeActivationCompleted\":{\"gesture\":21,\"file_input\":null}}}".utf8)
+        guard case .nativeActivationCompleted(let gesture,let hint) = try JSONDecoder().decode(IncomingEnvelope.self,from: empty).message else {
+            return XCTFail("Native activation must acknowledge a gesture without a file control")
+        }
+        XCTAssertEqual(gesture,21); XCTAssertNil(hint)
+    }
+
+    func testActualLabelGestureAloneDeliversCorrelatedFileHintAndIgnoresUnsolicitedReplies() async throws {
+        let fixture = try HTTPFixture(); defer { fixture.stop() }
+        let launcher = Bundle(for: Self.self).bundleURL.deletingLastPathComponent().appendingPathComponent("BlueIce.app/Contents/MacOS/blueice-launcher")
+        let workspace = BrowserWorkspace(); await workspace.start(launcher: launcher)
+        defer { Task { await workspace.stop() } }
+        let model = try XCTUnwrap(workspace.models[1]); model.address = fixture.origin + "/label-activation"; model.navigateAddress()
+        let deadline = Date().addingTimeInterval(15)
+        while model.representation?.url != fixture.origin + "/label-activation"
+            || model.representation?.generation != model.textInputState?.frame_generation
+            || model.displayState?.frameGeneration != model.generation || model.textInputBusy {
+            guard Date() < deadline else { return XCTFail("Label document did not finish refreshing") }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        let upload = try XCTUnwrap(model.representation?.nodes.first(where: { $0.name == "Labelled upload" }))
+        let input = try XCTUnwrap(model.textInputState)
+        let hint = FileInputState(context: .init(tab_id: 1,frame_source: input.frame_source,
+            document_generation: input.document_generation,node_id: upload.id,revision: 0),multiple: false,accept: "",names: [])
+        var activations: [FileInputState] = []
+        model.nativeFileActivation = { activations.append($0) }
+        model.apply(IncomingEnvelope(requestID: nil,tabID: 1,message: .nativeActivationCompleted(21,hint)),pixels: nil)
+        model.apply(IncomingEnvelope(requestID: 99,tabID: 1,message: .fileInputState(hint)),pixels: nil)
+        XCTAssertTrue(activations.isEmpty)
+        let page = try XCTUnwrap(model.representation)
+        model.queueDocumentClick(x: upload.bounds.x + 40,y: upload.bounds.y - page.scrollY - 20,
+            cssSize: try XCTUnwrap(model.cssViewportSize),tab: 1,epoch: model.accessibilityEpoch,document: input.document_generation)
+        let activatedDeadline = Date().addingTimeInterval(10)
+        while activations.isEmpty {
+            guard Date() < activatedDeadline else { return XCTFail("Owned label gesture did not return a file hint") }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        XCTAssertEqual(activations.count,1); XCTAssertEqual(activations[0].context.node_id,upload.id)
+        model.address = "about:credits"; model.navigateAddress()
+        model.apply(IncomingEnvelope(requestID: 99,tabID: 1,message: .nativeActivationCompleted(21,hint)),pixels: nil)
+        XCTAssertEqual(activations.count,1); XCTAssertFalse(model.fileInputIsCurrent(hint.context,tab: 1))
+        XCTAssertEqual(fixture.requests,["/label-activation"])
+        await workspace.stop()
+    }
+
     func testSelectedRegularFilesPreserveBytesAndRejectPathsLinksDirectoriesAndBudgets() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("bi-file-read-" + UUID().uuidString)
         try FileManager.default.createDirectory(at: root,withIntermediateDirectories: true)

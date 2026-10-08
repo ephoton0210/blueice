@@ -216,12 +216,44 @@ pub(super) fn dispatch_click_before_default(
     node: NodeId,
     script_requests: Option<&ScriptRequestReceiver>,
 ) -> io::Result<Option<bool>> {
-    match javascript_executor.as_deref_mut() {
+    let document = tabs.get(tab_id).map(Page::document_generation);
+    let result = match javascript_executor.as_deref_mut() {
         Some(executor) => {
             executor.dispatch_click_serving_script(tabs, tab_id, node.as_u64(), script_requests)
         }
         None => Ok(None),
+    }?;
+    if result == Some(true) {
+        return Ok(result);
     }
+    let control = tabs.get(tab_id).and_then(|page| {
+        (Some(page.document_generation()) == document)
+            .then(|| page.native_label_activation_target(node))
+            .flatten()
+    });
+    let Some(control) = control else {
+        return Ok(result);
+    };
+    let forwarded = match javascript_executor.as_deref_mut() {
+        Some(executor) => executor.dispatch_click_serving_script(
+            tabs,
+            tab_id,
+            control.as_u64(),
+            script_requests,
+        )?,
+        None => None,
+    };
+    // A control listener can replace the document, remove/disable the control,
+    // or change the label association. Never default-activate a different node.
+    if forwarded == Some(true)
+        || !tabs.get(tab_id).is_some_and(|page| {
+            Some(page.document_generation()) == document
+                && page.native_label_activation_target(node) == Some(control)
+        })
+    {
+        return Ok(Some(true));
+    }
+    Ok(forwarded.or(result))
 }
 
 pub(super) fn synchronize_inline_page_executor(

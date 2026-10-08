@@ -76,28 +76,40 @@ final class BrowserModel: ObservableObject {
     private(set) var fileInputError = ""
     private var fileOperation: UUID?
     private var fileReplies: [IncomingEnvelope] = []
+    var nativeFileActivation: ((FileInputState) -> Void)?
     func presentFileInputError(_ text: String) { fileInputError = text; fileInputErrorPresented = true }
     func fileInputIsCurrent(_ context: FileInputContext, tab: UInt64) -> Bool {
         canInteract && selected == tab && context.tab_id == tab && tabs.contains(where: { $0.id == tab }) && status != "Loading…"
             && context.frame_source == PageRepresentation.frameSource(directory: session.frameDirectory.path)
             && textInputState?.document_generation == context.document_generation
     }
-    private func fileReply(_ action: FileInputAction, tab: UInt64) async -> FileInputState? {
+    private func fileMessage(_ command: BrowserCommand, tab: UInt64) async -> BrowserMessage? {
         guard ready, fileOperation == nil else { return nil }
         let token = UUID(); fileOperation = token; fileReplies.removeAll()
         defer { if fileOperation == token { fileOperation = nil; fileReplies.removeAll() } }
         let epoch = documentEpochs[tab,default: 0]
-        guard let request = await send(.fileInput(action),tab: tab) else { return nil }
+        guard let request = await send(command,tab: tab) else { return nil }
         let deadline = Date().addingTimeInterval(5)
         while !Task.isCancelled, ready, fileOperation == token, selected == tab,
               documentEpochs[tab,default: 0] == epoch, Date() < deadline {
-            if let reply = fileReplies.first(where: { $0.requestID == request && $0.tabID == tab }) {
-                if case .fileInputState(let state) = reply.message { return state }
-                return nil
+            if let reply = fileReplies.first(where: { envelope in
+                guard envelope.requestID == request, envelope.tabID == tab else { return false }
+                switch (command,envelope.message) {
+                case (.nativeActivate(_,let gesture,_,_), .nativeActivationCompleted(let echoed,_)): return gesture == echoed
+                case (.fileInput(_), .fileInputState(_)), (_, .error(_)): return true
+                default: return false
+                }
+            }) {
+                return reply.message
             }
             try? await Task.sleep(for: .milliseconds(10))
         }
         return nil
+    }
+    private func fileReply(_ action: FileInputAction, tab: UInt64) async -> FileInputState? {
+        guard let reply = await fileMessage(.fileInput(action),tab: tab),
+              case .fileInputState(let state) = reply else { return nil }
+        return state
     }
     func prepareFileInput(_ node: UInt64) async -> FileInputState? {
         guard canInteract, !textInputBusy, let tab = selected, let input = textInputState,
@@ -420,7 +432,7 @@ final class BrowserModel: ObservableObject {
         }
         if fileOperation != nil, fileReplies.count < 16 {
             switch envelope.message {
-            case .fileInputState, .error: fileReplies.append(envelope)
+            case .fileInputState, .nativeActivationCompleted, .error: fileReplies.append(envelope)
             default: break
             }
         }
@@ -1164,10 +1176,21 @@ final class BrowserModel: ObservableObject {
                         if inputFlight?.edit.id == edit.id { finishInputFlight(); drainTextInput() }
                         return
                     }
-                    await send(.nativeClick(state.context, point.x, point.y), tab: edit.tab)
+                    let gesture = UInt64.random(in: 1...UInt64.max)
+                    let reply = await fileMessage(.nativeActivate(state.context, gesture, point.x, point.y), tab: edit.tab)
                     guard inputFlight?.edit.id == edit.id else { return }
                     finishInputFlight()
                     inputStates.removeValue(forKey: edit.tab)
+                    if selected == edit.tab, documentEpochs[edit.tab,default: 0] == edit.epoch,
+                       inputSerials[edit.tab,default: 0] == edit.serial,
+                       let reply, case .nativeActivationCompleted(let echoed,let prepared) = reply, echoed == gesture, let prepared,
+                       prepared.context.frame_source == state.frame_source,
+                       prepared.context.document_generation == state.document_generation,
+                       prepared.context.node_id > 0,
+                       prepared.accept.utf8.count <= 4096, prepared.names.count <= 16,
+                       prepared.names.allSatisfy(SelectedFile.validName), fileInputIsCurrent(prepared.context,tab: edit.tab) {
+                        nativeFileActivation?(prepared)
+                    }
                     requestTextInput(edit.tab)
                     drainTextInput()
                 }

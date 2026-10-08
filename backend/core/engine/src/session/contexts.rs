@@ -177,6 +177,7 @@ pub(super) fn scoped_command(
         | ClientMessage::GetDisplayPreferences
         | ClientMessage::Click { .. }
         | ClientMessage::NativeClick { .. }
+        | ClientMessage::NativeActivate { .. }
         | ClientMessage::Hover { .. }
         | ClientMessage::Scroll { .. }
         | ClientMessage::InsertText { .. }

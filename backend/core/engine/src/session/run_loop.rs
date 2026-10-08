@@ -674,8 +674,26 @@ pub(super) fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
                             )?;
                         }
                     }
-                    ClientMessage::Click { x, y } | ClientMessage::NativeClick { x, y, .. } => {
-                        if let ClientMessage::NativeClick { context, .. } = msg {
+                    ClientMessage::Click { x, y }
+                    | ClientMessage::NativeClick { x, y, .. }
+                    | ClientMessage::NativeActivate { x, y, .. } => {
+                        let gesture = match &msg {
+                            ClientMessage::NativeActivate { gesture, .. } => Some(*gesture),
+                            _ => None,
+                        };
+                        let native_activation = gesture.is_some();
+                        if gesture == Some(0) {
+                            write_error(
+                                stream,
+                                reply_tab,
+                                request_id,
+                                "Invalid native gesture".into(),
+                            )?;
+                            continue;
+                        }
+                        if let ClientMessage::NativeClick { context, .. }
+                        | ClientMessage::NativeActivate { context, .. } = msg
+                        {
                             let source = blueice_ipc::shm::frame_source_id(frame_dir);
                             let validation = tabs
                                 .get(target)
@@ -735,6 +753,17 @@ pub(super) fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
                                 send_frame(
                                     page, stream, frame_dir, generation, reply_tab, request_id,
                                 )?;
+                                if native_activation {
+                                    blueice_ipc::write_server_message_with_ids(
+                                        stream,
+                                        reply_tab,
+                                        request_id,
+                                        &ServerMessage::NativeActivationCompleted {
+                                            gesture: gesture.expect("native gesture"),
+                                            file_input: None,
+                                        },
+                                    )?;
+                                }
                                 continue;
                             }
                         }
@@ -756,6 +785,17 @@ pub(super) fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
                                 send_frame(
                                     page, stream, frame_dir, generation, reply_tab, request_id,
                                 )?;
+                                if native_activation {
+                                    blueice_ipc::write_server_message_with_ids(
+                                        stream,
+                                        reply_tab,
+                                        request_id,
+                                        &ServerMessage::NativeActivationCompleted {
+                                            gesture: gesture.expect("native gesture"),
+                                            file_input: None,
+                                        },
+                                    )?;
+                                }
                                 continue;
                             }
                             let native_navigation = if let Some(node) = node {
@@ -776,6 +816,17 @@ pub(super) fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
                             if let Some(href) =
                                 href.map(BrowserNavigation::from).or(native_navigation)
                             {
+                                if native_activation {
+                                    blueice_ipc::write_server_message_with_ids(
+                                        stream,
+                                        reply_tab,
+                                        request_id,
+                                        &ServerMessage::NativeActivationCompleted {
+                                            gesture: gesture.expect("native gesture"),
+                                            file_input: None,
+                                        },
+                                    )?;
+                                }
                                 begin_gated_request(
                                     tabs,
                                     stream,
@@ -800,6 +851,35 @@ pub(super) fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
                                 .get_mut(target)
                                 .expect("a click cannot close a core-owned tab");
                             send_frame(page, stream, frame_dir, generation, reply_tab, request_id)?;
+                        }
+                        if native_activation {
+                            let source = blueice_ipc::shm::frame_source_id(frame_dir);
+                            let file_input = (prevented != Some(true))
+                                .then(|| {
+                                    let page = tabs.get(target)?;
+                                    let activated = node.map(|id| {
+                                        page.native_label_activation_target(id).unwrap_or(id)
+                                    })?;
+                                    let mut state = page
+                                        .file_input_state(
+                                            activated.as_u64(),
+                                            source,
+                                            page.document_generation(),
+                                        )
+                                        .ok()?;
+                                    state.context.tab_id = target.as_u64();
+                                    Some(state)
+                                })
+                                .flatten();
+                            blueice_ipc::write_server_message_with_ids(
+                                stream,
+                                reply_tab,
+                                request_id,
+                                &ServerMessage::NativeActivationCompleted {
+                                    gesture: gesture.expect("native gesture"),
+                                    file_input,
+                                },
+                            )?;
                         }
                     }
                     ClientMessage::Scroll { delta_y } => match tabs.get_mut(target) {

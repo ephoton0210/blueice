@@ -111,11 +111,21 @@ final class BrowserFilePicker {
     }
     func present(node: PageNode, model: BrowserModel, window: NSWindow) {
         guard task == nil, node.state.fileInput, !node.state.disabled else { return }
+        present(model: model,window: window) { await model.prepareFileInput(node.id) }
+    }
+    func present(state: FileInputState, model: BrowserModel, window: NSWindow) {
+        guard model.fileInputIsCurrent(state.context,tab: state.context.tab_id) else { return }
+        present(model: model,window: window) {
+            await model.validateFileInput(state.context,tab: state.context.tab_id) ? state : nil
+        }
+    }
+    private func present(model: BrowserModel, window: NSWindow, prepare: @escaping @MainActor () async -> FileInputState?) {
+        guard task == nil else { return }
         self.model = model
         task = Task { @MainActor [weak self, weak model, weak window] in
             guard let self, let model, let window else { return }
             defer { self.task = nil; self.panel = nil; self.context = nil; self.tab = nil }
-            guard let tab = model.selected, let state = await model.prepareFileInput(node.id),
+            guard let tab = model.selected, let state = await prepare(),
                   !Task.isCancelled, model.fileInputIsCurrent(state.context,tab: tab), window.isVisible else { return }
             self.context = state.context; self.tab = tab
             let panel = NSOpenPanel(); self.panel = panel

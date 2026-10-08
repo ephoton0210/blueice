@@ -135,6 +135,85 @@ final class HTTPFixture: @unchecked Sendable {
                     report.textContent='Ordinary script ready';
                     </script>
                     """
+                case "/label-activation": body = """
+                    <html><body><h1>Label activation fixture</h1>
+                    <p id="label-report">Label script pending</p>
+                    <label id="upload-label" for="label-upload" style="display:block;height:40px">Open labelled files</label>
+                    <input id="label-upload" type="file" aria-label="Labelled upload" style="display:block;width:440px;height:40px">
+                    <input aria-label="Retained label editor" value="retained 中文" style="display:block;width:280px;height:32px">
+                    <script>
+                    const report = document.getElementById('label-report');
+                    const label = document.getElementById('upload-label');
+                    const upload = document.getElementById('label-upload');
+                    const clicks = [];
+                    label.addEventListener('click',function(event) { clicks.push('label'); });
+                    upload.addEventListener('click',function(event) { clicks.push('control'); });
+                    upload.addEventListener('change',function(event) {
+                        const file = upload.files.item(0);
+                        file.bytes().then(function(bytes) {
+                            report.textContent = clicks.join(',') + ':' + file.name + ':' + Array.from(bytes).join(',');
+                        });
+                    });
+                    upload.addEventListener('cancel',function(event) {
+                        report.textContent = clicks.join(',') + ':cancel:' + upload.files.item(0).name;
+                    });
+                    report.textContent = 'Label script ready';
+                    </script></body></html>
+                    """
+                case "/label-cancellation": body = """
+                    <html><body><h1>Label cancellation fixture</h1><p id="report">Label cancellation pending</p>
+                    <label id="prevent-label" for="prevent-file" style="display:block;height:32px">Cancelled label</label>
+                    <input id="prevent-file" type="file" aria-label="Prevented label upload" style="display:block;height:32px;width:400px">
+                    <label for="cancel-file" style="display:block;height:32px">Cancelled control</label>
+                    <input id="cancel-file" type="file" aria-label="Cancelled control upload" style="display:block;height:32px;width:400px">
+                    <label id="disabled-label" for="disabled-file" style="display:block;height:32px">Disabled upload label</label>
+                    <input id="disabled-file" disabled type="file" aria-label="Disabled label upload" style="display:block;height:32px;width:400px">
+                    <label id="changed-label" style="display:block">Changed association
+                    <span id="changed-owner" style="display:block"><input id="changed-file" type="file" aria-label="Changed label upload" style="display:block;height:32px;width:400px"></span>
+                    <input id="other-file" type="file" aria-label="Other label upload" style="display:block;height:32px;width:400px">
+                    </label>
+                    <label for="other-file"><button id="inner" type="button" aria-label="Interactive label child" style="display:block;height:32px">Inner button</button></label>
+                    <script>
+                    const report = document.getElementById('report');
+                    document.getElementById('prevent-label').addEventListener('click',function(event) {
+                        event.preventDefault(); report.textContent='Label click cancelled';
+                    });
+                    document.getElementById('prevent-file').addEventListener('click',function(event) { report.textContent='Unexpected prevented control click'; });
+                    document.getElementById('cancel-file').addEventListener('click',function(event) {
+                        event.preventDefault(); report.textContent='Control click cancelled';
+                    });
+                    document.getElementById('disabled-label').addEventListener('click',function(event) { report.textContent='Disabled label clicked'; });
+                    document.getElementById('disabled-file').addEventListener('click',function(event) { report.textContent='Unexpected disabled control click'; });
+                    document.getElementById('changed-file').addEventListener('click',function(event) {
+                        document.getElementById('changed-owner').textContent=''; report.textContent='Label association changed';
+                    });
+                    document.getElementById('other-file').addEventListener('click',function(event) { report.textContent='Unexpected other control click'; });
+                    document.getElementById('inner').addEventListener('click',function(event) { report.textContent='Interactive child clicked'; });
+                    report.textContent='Label cancellation ready';
+                    </script></body></html>
+                    """
+                case "/label-controls": body = """
+                    <html><body><h1>Label control fixture</h1><p id="report">Label controls pending</p>
+                    <label for="editor" style="display:block;height:32px">Edit labelled text</label>
+                    <input id="editor" aria-label="Labelled editor" value="start" style="display:block;height:32px;width:300px">
+                    <label id="check-label" for="check" style="display:block;height:32px">Toggle labelled checkbox</label>
+                    <input id="check" type="checkbox" aria-label="Labelled checkbox" style="display:block;height:32px;width:32px">
+                    <label id="radio-label" for="radio" style="display:block;height:32px">Choose labelled radio</label>
+                    <input id="radio" type="radio" name="choice" aria-label="Labelled radio" style="display:block;height:32px;width:32px">
+                    <input type="radio" name="choice" checked aria-label="Other radio" style="display:block;height:32px;width:32px">
+                    <label id="implicit-label" style="display:block">Implicit button label
+                    <input type="hidden"><button id="button" type="button" aria-label="Implicit labelled button" style="display:block;height:32px">Button</button></label>
+                    <script>
+                    const report = document.getElementById('report');
+                    const events = [];
+                    document.getElementById('check-label').addEventListener('click',function(event) { events.push('label'); });
+                    document.getElementById('check').addEventListener('click',function(event) { events.push('check'); report.textContent=events.join(','); });
+                    document.getElementById('radio-label').addEventListener('click',function(event) { events.push('radio-label'); });
+                    document.getElementById('radio').addEventListener('click',function(event) { events.push('radio'); report.textContent=events.join(','); });
+                    document.getElementById('button').addEventListener('click',function(event) { events.push('button'); report.textContent=events.join(','); });
+                    report.textContent='Label controls ready';
+                    </script></body></html>
+                    """
                 case "/file-script": body = """
                     <html><body><h1>Script file selection fixture</h1>
                     <p id="file-report">File API not started</p>

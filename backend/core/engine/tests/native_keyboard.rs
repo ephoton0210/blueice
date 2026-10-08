@@ -17,7 +17,7 @@ use blueice_ipc::{AiSnapshot, ClientMessage, NodeAction, ServerMessage};
 use std::io::Write;
 use std::os::unix::net::UnixStream;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
@@ -297,6 +297,16 @@ impl Browser {
     }
 
     fn with_executor(html: &str, executor: Option<ClickExecutor>) -> Self {
+        Self::with_page_executor(
+            html,
+            executor.map(|e| Box::new(e) as Box<dyn PageJavaScriptExecutor + Send>),
+        )
+    }
+
+    fn with_page_executor(
+        html: &str,
+        executor: Option<Box<dyn PageJavaScriptExecutor + Send>>,
+    ) -> Self {
         static NEXT: AtomicU64 = AtomicU64::new(0);
         let root = std::env::temp_dir().join(format!(
             "blueice-keyboard-{}-{}",
@@ -323,7 +333,7 @@ impl Browser {
                     &mut 0,
                     &directory.join("unavailable-gatekeeper.sock"),
                     CoreSessionRequests::default(),
-                    Some(&mut executor),
+                    Some(executor.as_mut()),
                 )
                 .unwrap();
             } else {
@@ -449,6 +459,76 @@ impl Browser {
         });
     }
 
+    fn activate(
+        &mut self,
+        context: TextInputContext,
+        x: f64,
+        y: f64,
+    ) -> Result<Option<blueice_ipc::file_input::FileInputState>, String> {
+        self.activate_gesture(context, 42, x, y)
+    }
+
+    fn activate_gesture(
+        &mut self,
+        context: TextInputContext,
+        gesture: u64,
+        x: f64,
+        y: f64,
+    ) -> Result<Option<blueice_ipc::file_input::FileInputState>, String> {
+        blueice_ipc::write_client_message_with_ids(
+            &mut self.stream,
+            Some(1),
+            Some(82),
+            &ClientMessage::NativeActivate {
+                gesture,
+                context,
+                x,
+                y,
+            },
+        )
+        .unwrap();
+        blueice_ipc::write_client_message_with_ids(
+            &mut self.stream,
+            Some(1),
+            Some(83),
+            &ClientMessage::GetTextInputState,
+        )
+        .unwrap();
+        let mut result = None;
+        loop {
+            let (tab, request, message) =
+                blueice_ipc::read_server_message_with_ids(&mut self.stream).unwrap();
+            assert_eq!(tab, Some(1));
+            match message {
+                ServerMessage::FrameReady { shm_path, .. } => {
+                    assert_eq!(request, Some(82));
+                    self.pixels = blueice_ipc::shm::map_frame(std::path::Path::new(&shm_path))
+                        .unwrap()
+                        .to_vec();
+                }
+                ServerMessage::NativeActivationCompleted {
+                    gesture: echoed,
+                    file_input,
+                } => {
+                    assert_eq!(echoed, gesture);
+                    assert_eq!(request, Some(82));
+                    assert!(result.is_none());
+                    result = Some(Ok(file_input));
+                }
+                ServerMessage::Error { message } => {
+                    assert_eq!(request, Some(82));
+                    result = Some(Err(message));
+                }
+                ServerMessage::TextInputState(state) => {
+                    assert_eq!(request, Some(83));
+                    self.state = state;
+                    return result.expect("activation must acknowledge even an empty point");
+                }
+                message => panic!("unexpected {message:?}"),
+            }
+        }
+    }
+
     fn focus(&mut self, name: &str) {
         let id = self
             .snapshot()
@@ -501,6 +581,36 @@ struct ClickExecutor {
     calls: Arc<AtomicU64>,
     prevent: bool,
     replacement: Option<&'static str>,
+}
+
+struct LabelExecutor {
+    nodes: Arc<Mutex<Vec<u64>>>,
+    prevent_at: Option<usize>,
+    replace_at: Option<usize>,
+}
+impl PageJavaScriptExecutor for LabelExecutor {
+    fn synchronize_and_execute(&mut self, _: &TabManager) -> std::io::Result<()> {
+        Ok(())
+    }
+    fn dispatch_click_serving_script(
+        &mut self,
+        tabs: &mut TabManager,
+        tab: TabId,
+        node: u64,
+        _: Option<&blueice_engine::script::ScriptRequestReceiver>,
+    ) -> std::io::Result<Option<bool>> {
+        let mut nodes = self.nodes.lock().unwrap();
+        nodes.push(node);
+        if self.replace_at == Some(nodes.len()) {
+            tabs.get_mut(tab)
+                .unwrap()
+                .load_html_str("<input type='file' aria-label='Replacement'>", None);
+        }
+        Ok(Some(self.prevent_at == Some(nodes.len())))
+    }
+    fn drain_reports_for_tab(&mut self, _: TabId) -> Vec<JavaScriptPageExecutionReport> {
+        Vec::new()
+    }
 }
 
 impl PageJavaScriptExecutor for ClickExecutor {
@@ -704,6 +814,260 @@ fn label_click_and_keyboard_space_share_checkbox_focus_and_visible_state() {
         Some(false)
     );
     assert_ne!(clicked, browser.pixels);
+}
+
+#[test]
+fn label_click_dispatches_label_then_associated_control_once_before_default() {
+    let calls = Arc::new(AtomicU64::new(0));
+    let mut browser = Browser::with_executor(
+        "<label for='remember' role='button' aria-label='Toggle remember'>Remember</label>\
+         <input id='remember' type='checkbox' aria-label='Remember'>",
+        Some(ClickExecutor {
+            calls: calls.clone(),
+            prevent: false,
+            replacement: None,
+        }),
+    );
+    browser.click("Toggle remember");
+    assert_eq!(calls.load(Ordering::Relaxed), 2);
+    assert_eq!(browser.focused_name(), "Remember");
+    assert_eq!(
+        browser.snapshot().nodes.last().unwrap().state.checked,
+        Some(true)
+    );
+    browser.click("Remember");
+    assert_eq!(calls.load(Ordering::Relaxed), 3);
+    assert_eq!(
+        browser.snapshot().nodes.last().unwrap().state.checked,
+        Some(false)
+    );
+}
+
+#[test]
+fn cancelled_label_click_never_dispatches_or_activates_associated_control() {
+    let calls = Arc::new(AtomicU64::new(0));
+    let mut browser = Browser::with_executor(
+        "<label for='remember' role='button' aria-label='Toggle remember'>Remember</label>\
+         <input id='remember' type='checkbox' aria-label='Remember'>",
+        Some(ClickExecutor {
+            calls: calls.clone(),
+            prevent: true,
+            replacement: None,
+        }),
+    );
+    browser.click("Toggle remember");
+    assert_eq!(calls.load(Ordering::Relaxed), 1);
+    assert_eq!(browser.state.focused_node, None);
+    assert_eq!(
+        browser.snapshot().nodes.last().unwrap().state.checked,
+        Some(false)
+    );
+}
+
+#[test]
+fn implicit_label_skips_hidden_input_and_resolves_button() {
+    let mut browser = Browser::new(
+        "<label role='button' aria-label='Implicit label' style='display:block'>Activate\
+         <input type='hidden'><button type='button' aria-label='Implicit button' style='display:block'>Button</button></label>",
+    );
+    let label = browser
+        .snapshot()
+        .nodes
+        .into_iter()
+        .find(|n| n.name.as_deref() == Some("Implicit label"))
+        .unwrap();
+    browser.interaction(ClientMessage::Click {
+        x: label.bounds.x + 4.0,
+        y: label.bounds.y + 4.0,
+    });
+    assert_eq!(browser.focused_name(), "Implicit button");
+}
+
+#[test]
+fn explicit_label_does_not_associate_with_focusable_nonlabelable_first_id() {
+    let mut browser = Browser::new(
+        "<label for='duplicate' role='button' aria-label='Unassociated label'>Activate</label>\
+         <div id='duplicate' tabindex='0' role='button' aria-label='Nonlabelable'>First</div>\
+         <input id='duplicate' type='checkbox' aria-label='Later duplicate'>",
+    );
+    browser.click("Unassociated label");
+    assert_ne!(
+        browser
+            .snapshot()
+            .nodes
+            .into_iter()
+            .find(|n| n.state.focused)
+            .and_then(|n| n.name)
+            .as_deref(),
+        Some("Nonlabelable")
+    );
+    assert_eq!(
+        browser.snapshot().nodes.last().unwrap().state.checked,
+        Some(false)
+    );
+}
+
+#[test]
+fn interactive_label_descendant_does_not_forward_to_associated_checkbox() {
+    let calls = Arc::new(AtomicU64::new(0));
+    let mut browser = Browser::with_executor(
+        "<label for='remember'><button type='button' aria-label='Inner button'>Inner</button></label>\
+         <input id='remember' type='checkbox' aria-label='Remember'>",
+        Some(ClickExecutor { calls: calls.clone(), prevent: false, replacement: None }),
+    );
+    browser.click("Inner button");
+    assert_eq!(calls.load(Ordering::Relaxed), 1);
+    assert_eq!(browser.focused_name(), "Inner button");
+    assert_eq!(
+        browser.snapshot().nodes.last().unwrap().state.checked,
+        Some(false)
+    );
+}
+
+#[test]
+fn native_label_file_activation_acknowledges_exact_owner_and_both_event_targets() {
+    let nodes = Arc::new(Mutex::new(Vec::new()));
+    let mut browser = Browser::with_page_executor(
+        "<label for='upload' role='button' aria-label='File label' style='display:block;height:30px'>Upload</label>\
+         <input id='upload' type='file' multiple accept='.txt' aria-label='Upload'>",
+        Some(Box::new(LabelExecutor { nodes: nodes.clone(), prevent_at: None, replace_at: None })),
+    );
+    let snapshot = browser.snapshot();
+    let label = snapshot
+        .nodes
+        .iter()
+        .find(|n| n.name.as_deref() == Some("File label"))
+        .unwrap();
+    let upload = snapshot
+        .nodes
+        .iter()
+        .find(|n| n.name.as_deref() == Some("Upload"))
+        .unwrap();
+    let context = browser.context();
+    let state = browser
+        .activate(context, label.bounds.x + 4.0, label.bounds.y + 4.0)
+        .unwrap()
+        .unwrap();
+    assert_eq!(*nodes.lock().unwrap(), [label.id, upload.id]);
+    assert_eq!(state.context.tab_id, 1);
+    assert_eq!(state.context.frame_source, context.frame_source);
+    assert_eq!(
+        state.context.document_generation,
+        context.document_generation
+    );
+    assert_eq!(state.context.node_id, upload.id);
+    assert!(state.multiple);
+    assert_eq!(state.accept, ".txt");
+    assert!(state.names.is_empty());
+    assert_eq!(browser.focused_name(), "Upload");
+    assert_eq!(
+        browser.activate(browser.context(), 490.0, 290.0).unwrap(),
+        None
+    );
+}
+
+#[test]
+fn native_label_file_activation_cancellation_and_replacement_never_offer_a_picker() {
+    for (prevent_at, replace_at, expected) in [
+        (Some(1), None, 1),
+        (Some(2), None, 2),
+        (None, Some(1), 1),
+        (None, Some(2), 2),
+    ] {
+        let nodes = Arc::new(Mutex::new(Vec::new()));
+        let mut browser = Browser::with_page_executor(
+            "<label for='upload' role='button' aria-label='File label' style='display:block;height:30px'>Upload</label>\
+             <input id='upload' type='file' aria-label='Upload'>",
+            Some(Box::new(LabelExecutor { nodes: nodes.clone(), prevent_at, replace_at })),
+        );
+        let label = browser
+            .snapshot()
+            .nodes
+            .into_iter()
+            .find(|n| n.name.as_deref() == Some("File label"))
+            .unwrap();
+        let context = browser.context();
+        assert_eq!(
+            browser
+                .activate(context, label.bounds.x + 4.0, label.bounds.y + 4.0)
+                .unwrap(),
+            None
+        );
+        assert_eq!(nodes.lock().unwrap().len(), expected);
+        if replace_at.is_some() {
+            assert_ne!(
+                browser.context().document_generation,
+                context.document_generation
+            );
+        }
+    }
+}
+
+#[test]
+fn native_label_file_activation_rejects_stale_contexts_and_invalid_points_before_events() {
+    let nodes = Arc::new(Mutex::new(Vec::new()));
+    let mut browser = Browser::with_page_executor(
+        "<input type='file' aria-label='Upload'>",
+        Some(Box::new(LabelExecutor {
+            nodes: nodes.clone(),
+            prevent_at: None,
+            replace_at: None,
+        })),
+    );
+    let input = browser.context();
+    for context in [
+        TextInputContext {
+            version: 2,
+            ..input
+        },
+        TextInputContext {
+            frame_source: input.frame_source ^ 1,
+            ..input
+        },
+        TextInputContext {
+            document_generation: input.document_generation + 1,
+            ..input
+        },
+        TextInputContext {
+            focus_generation: input.focus_generation + 1,
+            ..input
+        },
+    ] {
+        assert!(browser.activate(context, 4.0, 4.0).is_err());
+    }
+    assert!(browser.activate(input, 1e10, 4.0).is_err());
+    assert!(browser.activate_gesture(input, 0, 4.0, 4.0).is_err());
+    assert!(nodes.lock().unwrap().is_empty());
+    assert!(browser.activate(input, 4.0, 4.0).unwrap().is_some());
+    assert_eq!(nodes.lock().unwrap().len(), 1);
+}
+
+#[test]
+fn disabled_label_control_never_receives_forwarded_event_or_picker_hint() {
+    let nodes = Arc::new(Mutex::new(Vec::new()));
+    let mut browser = Browser::with_page_executor(
+        "<label for='upload' role='button' aria-label='Disabled file label' style='display:block;height:30px'>Upload</label>\
+         <fieldset disabled><input id='upload' type='file' aria-label='Upload'></fieldset>",
+        Some(Box::new(LabelExecutor { nodes: nodes.clone(), prevent_at: None, replace_at: None })),
+    );
+    let label = browser
+        .snapshot()
+        .nodes
+        .into_iter()
+        .find(|n| n.name.as_deref() == Some("Disabled file label"))
+        .unwrap();
+    assert_eq!(
+        browser
+            .activate(
+                browser.context(),
+                label.bounds.x + 4.0,
+                label.bounds.y + 4.0
+            )
+            .unwrap(),
+        None
+    );
+    assert_eq!(*nodes.lock().unwrap(), [label.id]);
+    assert_eq!(browser.state.focused_node, None);
 }
 
 #[test]

@@ -246,6 +246,7 @@ impl<S: Read + Write> CoreConnection<S> {
                     | ServerMessage::BrowserContextState(_)
                 | ServerMessage::ViewportState(_)
                     | ServerMessage::FileInputState(_)
+                | ServerMessage::NativeActivationCompleted { .. }
             | ServerMessage::AccessibilityAcknowledged(_)
             | ServerMessage::AccessibilityRevealed(_)
             | ServerMessage::AccessibilityTextState(_)
@@ -366,6 +367,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::BrowserContextState(_)
                 | ServerMessage::ViewportState(_)
                 | ServerMessage::FileInputState(_)
+                | ServerMessage::NativeActivationCompleted { .. }
                 | ServerMessage::AccessibilityAcknowledged(_)
                 | ServerMessage::AccessibilityRevealed(_)
                 | ServerMessage::AccessibilityTextState(_)
@@ -633,6 +635,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::BrowserContextState(_)
                 | ServerMessage::ViewportState(_)
                 | ServerMessage::FileInputState(_)
+                | ServerMessage::NativeActivationCompleted { .. }
                 | ServerMessage::AccessibilityAcknowledged(_)
                 | ServerMessage::AccessibilityRevealed(_)
                 | ServerMessage::AccessibilityTextState(_)
@@ -717,6 +720,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::BrowserContextState(_)
                 | ServerMessage::ViewportState(_)
                 | ServerMessage::FileInputState(_)
+                | ServerMessage::NativeActivationCompleted { .. }
                 | ServerMessage::AccessibilityAcknowledged(_)
                 | ServerMessage::AccessibilityRevealed(_)
                 | ServerMessage::AccessibilityTextState(_)
@@ -848,6 +852,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::BrowserContextState(_)
                 | ServerMessage::ViewportState(_)
                 | ServerMessage::FileInputState(_)
+                | ServerMessage::NativeActivationCompleted { .. }
                 | ServerMessage::AccessibilityAcknowledged(_)
                 | ServerMessage::AccessibilityRevealed(_)
                 | ServerMessage::AccessibilityTextState(_)
@@ -929,6 +934,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::BrowserContextState(_)
                 | ServerMessage::ViewportState(_)
                 | ServerMessage::FileInputState(_)
+                | ServerMessage::NativeActivationCompleted { .. }
                 | ServerMessage::AccessibilityAcknowledged(_)
                 | ServerMessage::AccessibilityRevealed(_)
                 | ServerMessage::AccessibilityTextState(_)
@@ -1009,6 +1015,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::BrowserContextState(_)
                 | ServerMessage::ViewportState(_)
                 | ServerMessage::FileInputState(_)
+                | ServerMessage::NativeActivationCompleted { .. }
                 | ServerMessage::AccessibilityAcknowledged(_)
                 | ServerMessage::AccessibilityRevealed(_)
                 | ServerMessage::AccessibilityTextState(_)
@@ -1101,6 +1108,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::BrowserContextState(_)
                 | ServerMessage::ViewportState(_)
                 | ServerMessage::FileInputState(_)
+                | ServerMessage::NativeActivationCompleted { .. }
                 | ServerMessage::AccessibilityAcknowledged(_)
                 | ServerMessage::AccessibilityRevealed(_)
                 | ServerMessage::AccessibilityTextState(_)
@@ -1233,6 +1241,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::BrowserContextState(_)
                 | ServerMessage::ViewportState(_)
                 | ServerMessage::FileInputState(_)
+                | ServerMessage::NativeActivationCompleted { .. }
                 | ServerMessage::AccessibilityAcknowledged(_)
                 | ServerMessage::AccessibilityRevealed(_)
                 | ServerMessage::AccessibilityTextState(_)

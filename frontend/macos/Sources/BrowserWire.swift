@@ -27,6 +27,7 @@ enum BrowserCommand: Encodable, Sendable {
     case unit(String), values(String, [String: JSONValue])
     case textInput(TextInputContext, TextInputAction)
     case nativeClick(TextInputContext, Double, Double)
+    case nativeActivate(TextInputContext, UInt64, Double, Double)
     case accessibilityText(AccessibilityTextContext, AccessibilityTextAction)
     case accessibilityReveal(AccessibilityTextContext)
     case accessibilityAcknowledge(AccessibilityDelivery)
@@ -71,6 +72,12 @@ enum BrowserCommand: Encodable, Sendable {
         case .nativeClick(let context, let x, let y):
             var root = encoder.container(keyedBy: MessageKey.self)
             var value = root.nestedContainer(keyedBy: MessageKey.self, forKey: MessageKey("NativeClick"))
+            try value.encode(context, forKey: MessageKey("context"))
+            try value.encode(x, forKey: MessageKey("x")); try value.encode(y, forKey: MessageKey("y"))
+        case .nativeActivate(let context, let gesture, let x, let y):
+            var root = encoder.container(keyedBy: MessageKey.self)
+            var value = root.nestedContainer(keyedBy: MessageKey.self, forKey: MessageKey("NativeActivate"))
+            try value.encode(gesture,forKey: MessageKey("gesture"))
             try value.encode(context, forKey: MessageKey("context"))
             try value.encode(x, forKey: MessageKey("x")); try value.encode(y, forKey: MessageKey("y"))
         case .textInput(let context, let action):
@@ -319,6 +326,7 @@ enum BrowserMessage: Decodable, Sendable {
     case navigationSessionState(NavigationSessionState), sessionUnavailable
     case assistantResult(AssistantPageResult), assistantUnavailable, translation(TranslationState), translationUnavailable
     case fileInputState(FileInputState)
+    case nativeActivationCompleted(UInt64, FileInputState?)
     case printState(PrintReply)
     case hello(UInt32), tabs([BrowserTab]), opened(UInt64, String?), closed(UInt64)
     case downloadOffered(UInt64, String?), downloadStarted(UInt64)
@@ -372,6 +380,10 @@ enum BrowserMessage: Decodable, Sendable {
             else { self = .unknown }
         case "PrintState": self = .printState(try object.decode(PrintReply.self,forKey: key))
         case "FileInputState": self = .fileInputState(try object.decode(FileInputState.self,forKey: key))
+        case "NativeActivationCompleted":
+            struct Activation: Decodable { let gesture: UInt64; let file_input: FileInputState? }
+            let activation = try object.decode(Activation.self,forKey: key)
+            self = .nativeActivationCompleted(activation.gesture,activation.file_input)
         case "Hello": self = .hello(try object.decode(Hello.self, forKey: key).protocol_version)
         case "Tabs": self = .tabs(try object.decode([BrowserTab].self, forKey: key))
         case "TabOpened":

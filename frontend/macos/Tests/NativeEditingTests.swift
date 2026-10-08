@@ -134,7 +134,13 @@ final class NativeEditingTests: XCTestCase {
         let snapshot = try XCTUnwrap(model.representation), epoch = model.accessibilityEpoch
         model.action(.values("OpenTab", ["url": .null])); await wait { model.selected != snapshot.tabID && model.representation != nil }
         await refresh(); XCTAssertNil(paragraph.accessibilitySelectedText())
-        model.select(snapshot.tabID); await wait { model.representation?.url == fixture.origin + "/document-selection" }; await refresh()
+        model.select(snapshot.tabID)
+        // Selection first publishes the retained tab's cached frame, then
+        // schedules its viewport update. Wait for that fresh acknowledgement
+        // before a synchronous AX read, which correctly rejects stale frames.
+        let cachedFrame = model.generation
+        await wait { model.generation > cachedFrame && model.representation?.url == fixture.origin + "/document-selection" }
+        await refresh()
         XCTAssertNil(model.accessibilityText(snapshot, epoch: epoch, node: try XCTUnwrap(snapshot.nodes.first { $0.name == "Alpha bold 😀 é" }), action: .select(TextRange(NSRange(location: 0, length: 1)))))
         let retained = try XCTUnwrap(view.accessibilityTree.elements.values.first { $0.accessibilityLabel() == "Alpha bold 😀 é" })
         XCTAssertEqual(retained.accessibilitySelectedText(), "😀")

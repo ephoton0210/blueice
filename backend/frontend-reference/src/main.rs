@@ -1857,6 +1857,7 @@ mod unix {
                     | ServerMessage::BrowserContextState(_)
                     | ServerMessage::ViewportState(_)
                     | ServerMessage::FileInputState(_)
+                    | ServerMessage::NativeActivationCompleted { .. }
                     | ServerMessage::PrintState(_)
                     | ServerMessage::AccessibilityAcknowledged(_)
                     | ServerMessage::AccessibilityRevealed(_)

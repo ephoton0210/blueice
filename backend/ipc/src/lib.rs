@@ -241,6 +241,14 @@ pub enum ClientMessage {
         x: f64,
         y: f64,
     },
+    /// A native human gesture requests a correlated activation result. Only
+    /// this reply can offer a file control to the owning native gesture.
+    NativeActivate {
+        gesture: u64,
+        context: input::TextInputContext,
+        x: f64,
+        y: f64,
+    },
     /// The pointer moved to this viewport point (same coordinate space
     /// as `Click`) -- `core` resolves it to a node the same way `Click`
     /// already does, becoming the single source of truth for "what's
@@ -414,6 +422,10 @@ pub enum ServerMessage {
     AccessibilityRevealed(accessibility::AccessibilityRevealReply),
     AccessibilityTextState(accessibility::AccessibilityTextReply),
     FileInputState(file_input::FileInputState),
+    NativeActivationCompleted {
+        gesture: u64,
+        file_input: Option<file_input::FileInputState>,
+    },
     PrintState(printing::PrintReply),
     /// A form request has started; carries no POST body or field metadata.
     NavigationStarted {

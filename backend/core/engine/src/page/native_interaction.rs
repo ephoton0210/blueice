@@ -27,6 +27,24 @@ pub(super) fn input_type(doc: &Document, id: NodeId) -> String {
         .to_ascii_lowercase()
 }
 
+fn labelable(doc: &Document, id: NodeId) -> bool {
+    matches!(
+        tag(doc, id),
+        "button" | "meter" | "output" | "progress" | "select" | "textarea"
+    ) || tag(doc, id) == "input" && input_type(doc, id) != "hidden"
+}
+
+fn interactive(doc: &Document, id: NodeId) -> bool {
+    match tag(doc, id) {
+        "button" | "details" | "embed" | "iframe" | "label" | "select" | "textarea" => true,
+        "a" => has(doc, id, "href"),
+        "audio" | "video" => has(doc, id, "controls"),
+        "img" => has(doc, id, "usemap"),
+        "input" => input_type(doc, id) != "hidden",
+        _ => false,
+    }
+}
+
 fn descendants(doc: &Document, root: NodeId, nodes: &mut Vec<NodeId>) {
     nodes.push(root);
     for child in doc.children(root) {
@@ -120,28 +138,57 @@ impl Page {
         find_fragment_bounds(&self.fragment, id, 0.0, 0.0).is_some()
     }
 
-    pub(super) fn native_pointer_focus(&self, target: Option<NodeId>) -> Option<NodeId> {
-        let mut node = target?;
+    /// Resolve a label after listeners run. The first matching ID must itself
+    /// be labelable; an interactive descendant blocks its ancestor label.
+    pub(crate) fn native_label_activation_target(&self, target: NodeId) -> Option<NodeId> {
+        if !self.doc.contains(target) {
+            return None;
+        }
+        let mut node = target;
         loop {
             if tag(&self.doc, node) == "label" {
-                let target = if let Some(name) = element_attribute(&self.doc, node, "for") {
+                let control = if let Some(name) = element_attribute(&self.doc, node, "for") {
                     find_element_by_id(&self.doc, self.doc.root(), name)
+                        .filter(|id| labelable(&self.doc, *id))
                 } else {
                     let mut children = Vec::new();
                     descendants(&self.doc, node, &mut children);
-                    children.into_iter().find(|child| {
-                        matches!(tag(&self.doc, *child), "input" | "select" | "textarea")
-                    })
-                };
-                return target.filter(|id| self.native_focusable(*id));
+                    children.into_iter().find(|id| labelable(&self.doc, *id))
+                }?;
+                if self.native_control_disabled(control)
+                    || find_fragment_bounds(&self.fragment, control, 0.0, 0.0).is_none()
+                {
+                    return None;
+                }
+                let mut ancestor = Some(control);
+                while let Some(id) = ancestor {
+                    if has(&self.doc, id, "hidden") || has(&self.doc, id, "inert") {
+                        return None;
+                    }
+                    ancestor = self.doc.parent(id);
+                }
+                return Some(control);
+            }
+            if interactive(&self.doc, node) {
+                return None;
+            }
+            node = self.doc.parent(node)?;
+        }
+    }
+
+    pub(super) fn native_pointer_focus(&self, target: Option<NodeId>) -> Option<NodeId> {
+        if let Some(control) = target.and_then(|id| self.native_label_activation_target(id)) {
+            return self.native_focusable(control).then_some(control);
+        }
+        let mut node = target?;
+        loop {
+            if tag(&self.doc, node) == "label" {
+                return self.native_focusable(node).then_some(node);
             }
             if self.native_focusable(node) {
                 return Some(node);
             }
-            if matches!(
-                tag(&self.doc, node),
-                "input" | "button" | "select" | "textarea"
-            ) {
+            if interactive(&self.doc, node) {
                 return None;
             }
             node = self.doc.parent(node)?;

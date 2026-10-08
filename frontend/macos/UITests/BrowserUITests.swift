@@ -704,6 +704,92 @@ final class BrowserUITests: XCTestCase {
         let image = XCTAttachment(screenshot: app.screenshot())
         image.name = "macos-ordinary-page-script"; image.lifetime = .keepAlways; add(image)
     }
+    func testNativeLabelOpensFilePickerAndDispatchesBothClicksBeforeSelection() throws {
+        let fixture = try HTTPFixture(); defer { fixture.stop() }
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("bi-label-ui-" + UUID().uuidString)
+        try FileManager.default.createDirectory(at: root,withIntermediateDirectories: false,attributes: [.posixPermissions:0o700])
+        defer { try? FileManager.default.removeItem(at: root) }
+        let file = root.appendingPathComponent("label-中文.bin")
+        try Data([0,255,13,10,7]).write(to: file)
+        app.launchArguments += ["-AppleLanguages","(en)","-AppleLocale","en_US"]
+        launch(); enter(fixture.origin + "/label-activation")
+        waitPageContent("Label script ready")
+        let upload = app.groups["page"].buttons["Labelled upload"]
+        XCTAssertTrue(upload.waitForExistence(timeout: 15),app.debugDescription)
+        let before = XCTAttachment(screenshot: app.windows["browser-window"].screenshot())
+        before.name = "macos-label-file-before-click"; before.lifetime = .keepAlways; add(before)
+        // The label occupies the 40 CSS pixels immediately above the upload.
+        // Click its rendered text even though labels have no separate AX node.
+        upload.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 40,dy: -20)).click()
+        guard app.sheets["open-panel"].waitForExistence(timeout: 10) else {
+            XCTFail(app.debugDescription); return
+        }
+        try chooseFileAtPath(file.path)
+        waitPageContent("label,control:label-中文.bin:0,255,13,10,7")
+        waitValue(app.groups["page"].buttons["Labelled upload"],file.lastPathComponent)
+        upload.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 40,dy: -20)).click()
+        let panel = app.sheets["open-panel"]
+        XCTAssertTrue(panel.waitForExistence(timeout: 10),app.debugDescription)
+        panel.buttons["Cancel"].click()
+        waitPageContent("label,control,label,control:cancel:label-中文.bin")
+        waitValue(app.groups["page"].textFields["Retained label editor"],"retained 中文")
+        waitValue(app.textFields["address"],fixture.origin + "/label-activation")
+        XCTAssertEqual(fixture.requests,["/label-activation"])
+        let image = XCTAttachment(screenshot: app.windows["browser-window"].screenshot())
+        image.name = "macos-label-file-activation"; image.lifetime = .keepAlways; add(image)
+    }
+
+    func testNativeLabelCancelledDisabledAndChangedAssociationDoNotOpenFilePicker() throws {
+        let fixture = try HTTPFixture(); defer { fixture.stop() }
+        launch(); enter(fixture.origin + "/label-cancellation")
+        waitPageContent("Label cancellation ready")
+        for (name,report) in [("Prevented label upload","Label click cancelled"),
+                              ("Cancelled control upload","Control click cancelled"),
+                              ("Disabled label upload","Disabled label clicked"),
+                              ("Changed label upload","Label association changed")] {
+            let upload = app.groups["page"].buttons[name]
+            XCTAssertTrue(upload.waitForExistence(timeout: 15),app.debugDescription)
+            upload.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 40,dy: -16)).click()
+            waitPageContent(report)
+            XCTAssertFalse(app.sheets["open-panel"].exists,app.debugDescription)
+        }
+        app.groups["page"].buttons["Interactive label child"].click()
+        waitPageContent("Interactive child clicked")
+        XCTAssertFalse(app.sheets["open-panel"].exists,app.debugDescription)
+        waitValue(app.textFields["address"],fixture.origin + "/label-cancellation")
+        XCTAssertEqual(fixture.requests,["/label-cancellation"])
+        let image = XCTAttachment(screenshot: app.windows["browser-window"].screenshot())
+        image.name = "macos-label-cancellation"; image.lifetime = .keepAlways; add(image)
+    }
+
+    func testNativeLabelsFocusTextToggleCheckboxAndRadioAndActivateImplicitButton() throws {
+        let fixture = try HTTPFixture(); defer { fixture.stop() }
+        launch(); enter(fixture.origin + "/label-controls")
+        waitPageContent("Label controls ready")
+        let editor = app.groups["page"].textFields["Labelled editor"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 15),app.debugDescription)
+        editor.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 40,dy: -16)).click()
+        app.typeKey("a",modifierFlags: .command); app.typeText("label text")
+        waitValue(editor,"label text")
+        let checkbox = app.groups["page"].checkBoxes["Labelled checkbox"]
+        XCTAssertTrue(checkbox.waitForExistence(timeout: 15),app.debugDescription)
+        checkbox.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 8,dy: -16)).click()
+        waitPageContent("label,check"); waitChecked(checkbox,true)
+        let radio = pageContent("Labelled radio")
+        XCTAssertTrue(radio.waitForExistence(timeout: 15),app.debugDescription)
+        radio.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 8,dy: -16)).click()
+        waitPageContent("label,check,radio-label,radio"); waitChecked(radio,true)
+        waitChecked(pageContent("Other radio"),false)
+        let button = app.groups["page"].buttons["Implicit labelled button"]
+        XCTAssertTrue(button.waitForExistence(timeout: 15),app.debugDescription)
+        button.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 40,dy: -10)).click()
+        waitPageContent("label,check,radio-label,radio,button")
+        waitValue(editor,"label text")
+        XCTAssertEqual(fixture.requests,["/label-controls"])
+        let image = XCTAttachment(screenshot: app.windows["browser-window"].screenshot())
+        image.name = "macos-label-controls"; image.lifetime = .keepAlways; add(image)
+    }
+
     func testNativeFileSelectionRunsPageFileAPIAndOrderedChangeCancelEvents() throws {
         let fixture = try HTTPFixture(); defer { fixture.stop() }
         let saved = saveClipboard(); defer { NSPasteboard.general.clearContents(); NSPasteboard.general.writeObjects(saved) }

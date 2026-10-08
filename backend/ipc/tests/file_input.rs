@@ -6,6 +6,52 @@ use blueice_ipc::file_input::{FileData, FileInputAction, FileInputContext, MAX_S
 use blueice_ipc::{ClientMessage, ServerMessage};
 
 #[test]
+fn native_activation_round_trips_gesture_owner_and_optional_hint_without_paths() {
+    let context = blueice_ipc::input::TextInputContext {
+        version: 1,
+        frame_source: 7,
+        document_generation: 8,
+        focus_generation: 9,
+    };
+    let command = ClientMessage::NativeActivate {
+        gesture: 42,
+        context,
+        x: 12.0,
+        y: 34.0,
+    };
+    let mut bytes = vec![];
+    blueice_ipc::write_client_message_with_ids(&mut bytes, Some(3), Some(21), &command).unwrap();
+    let (tab, request, decoded) =
+        blueice_ipc::read_client_message_with_ids(&mut bytes.as_slice()).unwrap();
+    assert_eq!((tab, request, decoded), (Some(3), Some(21), command));
+    for file_input in [
+        None,
+        Some(blueice_ipc::file_input::FileInputState {
+            context: FileInputContext {
+                tab_id: 3,
+                frame_source: 7,
+                document_generation: 8,
+                node_id: 11,
+                revision: 2,
+            },
+            multiple: false,
+            accept: ".txt".into(),
+            names: vec!["selected.txt".into()],
+        }),
+    ] {
+        let reply = ServerMessage::NativeActivationCompleted {
+            gesture: 42,
+            file_input,
+        };
+        let mut bytes = vec![];
+        blueice_ipc::write_server_message_with_ids(&mut bytes, Some(3), Some(21), &reply).unwrap();
+        let (tab, request, decoded) =
+            blueice_ipc::read_server_message_with_ids(&mut bytes.as_slice()).unwrap();
+        assert_eq!((tab, request, decoded), (Some(3), Some(21), reply));
+    }
+}
+
+#[test]
 fn file_content_has_no_path_shape_and_cannot_inject_multipart_headers() {
     let mut file = FileData {
         name: "中文\".txt".into(),
