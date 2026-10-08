@@ -135,6 +135,94 @@ final class HTTPFixture: @unchecked Sendable {
                     report.textContent='Ordinary script ready';
                     </script>
                     """
+                case "/label-hidden-file": body = """
+                    <html><body><h1>Hidden file label fixture</h1><p id="report">Hidden file script pending</p>
+                    <form>
+                    <label id="explicit-label" for="explicit-file" style="display:block;height:40px">Choose hidden explicit upload</label>
+                    <input id="explicit-file" type="file" aria-label="Hidden explicit upload" style="display:none">
+                    <input readonly aria-label="Hidden explicit anchor" value="retained 中文" style="display:block;height:32px;width:300px">
+                    <label id="implicit-label" style="display:block;height:40px">Choose hidden implicit upload
+                    <input id="implicit-file" type="file" hidden aria-label="Hidden implicit upload" style="display:none"></label>
+                    <input readonly aria-label="Hidden implicit anchor" value="implicit retained" style="display:block;height:32px;width:300px">
+                    <button type="reset" aria-label="Reset hidden files">Reset</button>
+                    <button id="inspect" type="button" aria-label="Inspect hidden files">Inspect</button>
+                    </form><script>
+                    const report = document.getElementById('report');
+                    const explicit = document.getElementById('explicit-file');
+                    const implicit = document.getElementById('implicit-file');
+                    const events = [];
+                    let retained = null;
+                    document.getElementById('explicit-label').addEventListener('click',function(event) { events.push('explicit-label'); });
+                    explicit.addEventListener('click',function(event) { events.push('explicit-control'); });
+                    implicit.addEventListener('click',function(event) { events.push('implicit-control'); });
+                    explicit.addEventListener('change',function(event) {
+                        const file = explicit.files.item(0); retained = file;
+                        file.bytes().then(function(bytes) { report.textContent = events.join(',') + ':change:' + file.name + ':' + Array.from(bytes).join(','); });
+                    });
+                    explicit.addEventListener('cancel',function(event) { report.textContent = events.join(',') + ':cancel:' + explicit.files.item(0).name; });
+                    implicit.addEventListener('change',function(event) {
+                        const file = implicit.files.item(0);
+                        file.bytes().then(function(bytes) { report.textContent = events.join(',') + ':change:' + file.name + ':' + Array.from(bytes).join(','); });
+                    });
+                    document.getElementById('inspect').addEventListener('click',function(event) {
+                        const counts = 'counts:' + explicit.files.length + ',' + implicit.files.length;
+                        retained.bytes().then(function(bytes) { report.textContent = counts + ':retained:' + retained.name + ':' + Array.from(bytes).join(','); });
+                    });
+                    report.textContent = 'Hidden file script ready';
+                    </script></body></html>
+                    """
+                case "/label-hidden-cancellation": body = """
+                    <html><body><h1>Hidden label cancellation fixture</h1><p id="report">Hidden cancellation pending</p>
+                    <label id="prevent-label" for="prevent-file" style="display:block;height:32px">Cancelled hidden label</label>
+                    <input id="prevent-file" type="file" style="display:none"><input readonly aria-label="Prevented hidden anchor" value="anchor" style="display:block;height:32px;width:300px">
+                    <label for="cancel-file" style="display:block;height:32px">Cancelled hidden control</label>
+                    <input id="cancel-file" type="file" style="display:none"><input readonly aria-label="Cancelled hidden anchor" value="anchor" style="display:block;height:32px;width:300px">
+                    <label id="disabled-label" for="disabled-file" style="display:block;height:32px">Disabled hidden upload</label>
+                    <fieldset disabled style="display:none"><input id="disabled-file" type="file"></fieldset>
+                    <input readonly aria-label="Disabled hidden anchor" value="anchor" style="display:block;height:32px;width:300px">
+                    <label id="inert-label" for="inert-file" style="display:block;height:32px">Inert hidden upload</label>
+                    <div inert style="display:none"><input id="inert-file" type="file"></div>
+                    <input readonly aria-label="Inert hidden anchor" value="anchor" style="display:block;height:32px;width:300px">
+                    <label for="cancel-file"><button id="inner" type="button" aria-label="Hidden target interactive child">Inner</button></label>
+                    <script>
+                    const report = document.getElementById('report');
+                    document.getElementById('prevent-label').addEventListener('click',function(event) { event.preventDefault(); report.textContent='Hidden label cancelled'; });
+                    document.getElementById('prevent-file').addEventListener('click',function(event) { report.textContent='Unexpected cancelled label control'; });
+                    document.getElementById('cancel-file').addEventListener('click',function(event) { event.preventDefault(); report.textContent='Hidden control cancelled'; });
+                    document.getElementById('disabled-label').addEventListener('click',function(event) { report.textContent='Disabled hidden label clicked'; });
+                    document.getElementById('disabled-file').addEventListener('click',function(event) { report.textContent='Unexpected disabled hidden control'; });
+                    document.getElementById('inert-label').addEventListener('click',function(event) { report.textContent='Inert hidden label clicked'; });
+                    document.getElementById('inert-file').addEventListener('click',function(event) { report.textContent='Unexpected inert hidden control'; });
+                    document.getElementById('inner').addEventListener('click',function(event) { report.textContent='Hidden target interactive child clicked'; });
+                    report.textContent='Hidden cancellation ready';
+                    </script></body></html>
+                    """
+                case "/label-hidden-defaults": body = """
+                    <html><body><h1>Hidden control defaults fixture</h1><p id="report">Hidden defaults pending</p>
+                    <form method="get" action="/hidden-label-result">
+                    <label id="check-label" for="check" style="display:block;height:32px">Toggle hidden checkbox</label>
+                    <input id="check" type="checkbox" name="check" value="on" style="display:none" aria-label="Hidden checkbox">
+                    <input readonly aria-label="Hidden checkbox anchor" value="anchor" style="display:block;height:32px;width:300px">
+                    <label id="radio-label" for="radio" style="display:block;height:32px">Choose hidden radio</label>
+                    <input id="radio" type="radio" name="choice" value="first" style="display:none" aria-label="Hidden radio">
+                    <input type="radio" name="choice" value="second" checked style="display:none">
+                    <input readonly aria-label="Hidden radio anchor" value="anchor" style="display:block;height:32px;width:300px">
+                    <label id="send-label" for="send" style="display:block;height:32px">Submit hidden button</label>
+                    <button id="send" type="submit" name="submit" value="sent" style="display:none">Submit</button>
+                    <input readonly aria-label="Hidden submit anchor" value="anchor" style="display:block;height:32px;width:300px">
+                    </form><script>
+                    const report = document.getElementById('report');
+                    const events = [];
+                    document.getElementById('check-label').addEventListener('click',function(event) { events.push('check-label'); });
+                    document.getElementById('check').addEventListener('click',function(event) { events.push('check'); report.textContent=events.join(','); });
+                    document.getElementById('radio-label').addEventListener('click',function(event) { events.push('radio-label'); });
+                    document.getElementById('radio').addEventListener('click',function(event) { events.push('radio'); report.textContent=events.join(','); });
+                    document.getElementById('send-label').addEventListener('click',function(event) { events.push('send-label'); });
+                    document.getElementById('send').addEventListener('click',function(event) { events.push('send'); report.textContent=events.join(','); });
+                    report.textContent='Hidden defaults ready';
+                    </script></body></html>
+                    """
+                case "/hidden-label-result": body = "<html><body><h1>Hidden label form submitted</h1></body></html>"
                 case "/label-activation": body = """
                     <html><body><h1>Label activation fixture</h1>
                     <p id="label-report">Label script pending</p>

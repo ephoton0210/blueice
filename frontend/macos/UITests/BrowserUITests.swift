@@ -704,6 +704,90 @@ final class BrowserUITests: XCTestCase {
         let image = XCTAttachment(screenshot: app.screenshot())
         image.name = "macos-ordinary-page-script"; image.lifetime = .keepAlways; add(image)
     }
+    func testNativeLabelsOpenHiddenFilePickersPreserveCancellationAndResetSelection() throws {
+        let fixture = try HTTPFixture(); defer { fixture.stop() }
+        let saved = saveClipboard(); defer { NSPasteboard.general.clearContents(); NSPasteboard.general.writeObjects(saved) }
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("bi-hidden-label-ui-" + UUID().uuidString)
+        try FileManager.default.createDirectory(at: root,withIntermediateDirectories: false,attributes: [.posixPermissions:0o700])
+        defer { try? FileManager.default.removeItem(at: root) }
+        let file = root.appendingPathComponent("hidden-中文.bin")
+        try Data([0,255,13,10,7]).write(to: file)
+        app.launchArguments += ["-AppleLanguages","(en)","-AppleLocale","en_US"]
+        launch(); enter(fixture.origin + "/label-hidden-file")
+        waitPageContent("Hidden file script ready")
+        let explicit = app.groups["page"].textFields["Hidden explicit anchor"]
+        let implicit = app.groups["page"].textFields["Hidden implicit anchor"]
+        XCTAssertTrue(explicit.waitForExistence(timeout: 15),app.debugDescription)
+        XCTAssertTrue(implicit.exists,app.debugDescription)
+        XCTAssertFalse(app.groups["page"].buttons["Hidden explicit upload"].exists)
+        XCTAssertFalse(app.groups["page"].buttons["Hidden implicit upload"].exists)
+        // The visible labels sit immediately above readonly coordinate anchors.
+        explicit.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 40,dy: -20)).click()
+        try chooseFileAtPath(file.path)
+        waitPageContent("explicit-label,explicit-control:change:hidden-中文.bin:0,255,13,10,7")
+        explicit.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 40,dy: -20)).click()
+        let panel = app.sheets["open-panel"]
+        XCTAssertTrue(panel.waitForExistence(timeout: 10),app.debugDescription)
+        panel.buttons["Cancel"].click()
+        waitPageContent("explicit-label,explicit-control,explicit-label,explicit-control:cancel:hidden-中文.bin")
+        implicit.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 40,dy: -20)).click()
+        try chooseFileAtPath(file.path)
+        waitPageContent("explicit-label,explicit-control,explicit-label,explicit-control,implicit-control:change:hidden-中文.bin:0,255,13,10,7")
+        app.groups["page"].buttons["Reset hidden files"].click()
+        app.groups["page"].buttons["Inspect hidden files"].click()
+        waitPageContent("counts:0,0:retained:hidden-中文.bin:0,255,13,10,7")
+        waitValue(explicit,"retained 中文"); waitValue(implicit,"implicit retained")
+        XCTAssertEqual(fixture.requests,["/label-hidden-file"])
+        let image = XCTAttachment(screenshot: app.windows["browser-window"].screenshot())
+        image.name = "macos-hidden-label-file-selection"; image.lifetime = .keepAlways; add(image)
+    }
+
+    func testNativeHiddenLabelCancellationDisabledInertAndInteractiveChildDoNotOpenPicker() throws {
+        let fixture = try HTTPFixture(); defer { fixture.stop() }
+        launch(); enter(fixture.origin + "/label-hidden-cancellation")
+        waitPageContent("Hidden cancellation ready")
+        for (name,report) in [("Prevented hidden anchor","Hidden label cancelled"),
+                              ("Cancelled hidden anchor","Hidden control cancelled"),
+                              ("Disabled hidden anchor","Disabled hidden label clicked"),
+                              ("Inert hidden anchor","Inert hidden label clicked")] {
+            let anchor = app.groups["page"].textFields[name]
+            XCTAssertTrue(anchor.waitForExistence(timeout: 15),app.debugDescription)
+            anchor.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 40,dy: -16)).click()
+            waitPageContent(report)
+            XCTAssertFalse(app.sheets["open-panel"].exists,app.debugDescription)
+        }
+        app.groups["page"].buttons["Hidden target interactive child"].click()
+        waitPageContent("Hidden target interactive child clicked")
+        XCTAssertFalse(app.sheets["open-panel"].exists,app.debugDescription)
+        XCTAssertEqual(fixture.requests,["/label-hidden-cancellation"])
+        let image = XCTAttachment(screenshot: app.windows["browser-window"].screenshot())
+        image.name = "macos-hidden-label-cancellation"; image.lifetime = .keepAlways; add(image)
+    }
+
+    func testNativeLabelsActivateHiddenCheckboxRadioAndSubmitDefaults() throws {
+        let fixture = try HTTPFixture(); defer { fixture.stop() }
+        launch(); enter(fixture.origin + "/label-hidden-defaults")
+        waitPageContent("Hidden defaults ready")
+        XCTAssertFalse(app.groups["page"].checkBoxes["Hidden checkbox"].exists)
+        XCTAssertFalse(pageContent("Hidden radio").exists)
+        for (name,report) in [("Hidden checkbox anchor","check-label,check"),
+                              ("Hidden radio anchor","check-label,check,radio-label,radio")] {
+            let anchor = app.groups["page"].textFields[name]
+            XCTAssertTrue(anchor.waitForExistence(timeout: 15),app.debugDescription)
+            anchor.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 40,dy: -16)).click()
+            waitPageContent(report)
+        }
+        let submit = app.groups["page"].textFields["Hidden submit anchor"]
+        XCTAssertTrue(submit.exists,app.debugDescription)
+        submit.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 40,dy: -16)).click()
+        let result = "/hidden-label-result?check=on&choice=first&submit=sent"
+        waitValue(app.textFields["address"],fixture.origin + result)
+        waitPageContent("Hidden label form submitted")
+        XCTAssertEqual(fixture.requests,["/label-hidden-defaults",result])
+        let image = XCTAttachment(screenshot: app.windows["browser-window"].screenshot())
+        image.name = "macos-hidden-label-control-defaults"; image.lifetime = .keepAlways; add(image)
+    }
+
     func testNativeLabelOpensFilePickerAndDispatchesBothClicksBeforeSelection() throws {
         let fixture = try HTTPFixture(); defer { fixture.stop() }
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("bi-label-ui-" + UUID().uuidString)

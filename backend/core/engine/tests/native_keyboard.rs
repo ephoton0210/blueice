@@ -2453,3 +2453,309 @@ fn accessibility_text_composed_graphemes_and_marked_text_replacements_keep_atomi
         Some("a👨‍👩‍👧‍👦é")
     );
 }
+
+#[test]
+fn nonrendered_label_file_controls_receive_owned_hints_without_focus() {
+    for attributes in [
+        "style='display:none'",
+        "hidden",
+        "hidden style='display:none'",
+    ] {
+        for implicit in [false, true] {
+            let control =
+                format!("<input id='upload' type='file' multiple accept='.bin' {attributes}>");
+            let html = if implicit {
+                format!("<label role='button' aria-label='File label' style='display:block;height:30px'>Upload{control}</label>")
+            } else {
+                format!("<label for='upload' role='button' aria-label='File label' style='display:block;height:30px'>Upload</label>{control}")
+            };
+            let nodes = Arc::new(Mutex::new(Vec::new()));
+            let mut browser = Browser::with_page_executor(
+                &html,
+                Some(Box::new(LabelExecutor {
+                    nodes: nodes.clone(),
+                    prevent_at: None,
+                    replace_at: None,
+                })),
+            );
+            let label = browser
+                .snapshot()
+                .nodes
+                .into_iter()
+                .find(|node| node.name.as_deref() == Some("File label"))
+                .unwrap();
+            let context = browser.context();
+            let state = browser
+                .activate(context, label.bounds.x + 4.0, label.bounds.y + 4.0)
+                .unwrap()
+                .expect("A visible label can activate its enabled nonrendered file control");
+            assert_eq!(*nodes.lock().unwrap(), [label.id, state.context.node_id]);
+            assert_ne!(state.context.node_id, label.id);
+            assert_eq!(state.context.tab_id, 1);
+            assert_eq!(state.context.frame_source, context.frame_source);
+            assert_eq!(
+                state.context.document_generation,
+                context.document_generation
+            );
+            assert!(state.multiple);
+            assert_eq!(state.accept, ".bin");
+            assert!(state.names.is_empty());
+            assert_eq!(browser.state.focused_node, None);
+        }
+    }
+}
+
+#[test]
+fn nonrendered_label_controls_keep_disabled_and_inert_restrictions() {
+    for control in [
+        "<input id='upload' type='file' disabled style='display:none'>",
+        "<fieldset disabled><input id='upload' type='file' style='display:none'></fieldset>",
+        "<input id='upload' type='file' inert style='display:none'>",
+        "<div inert><input id='upload' type='file' style='display:none'></div>",
+        "<input id='upload' type='hidden'>",
+    ] {
+        let nodes = Arc::new(Mutex::new(Vec::new()));
+        let mut browser = Browser::with_page_executor(&format!("<label for='upload' role='button' aria-label='File label' style='display:block;height:30px'>Upload</label>{control}"), Some(Box::new(LabelExecutor {
+            nodes: nodes.clone(), prevent_at: None, replace_at: None,
+        })));
+        let label = browser
+            .snapshot()
+            .nodes
+            .into_iter()
+            .find(|node| node.name.as_deref() == Some("File label"))
+            .unwrap();
+        assert_eq!(
+            browser
+                .activate(
+                    browser.context(),
+                    label.bounds.x + 4.0,
+                    label.bounds.y + 4.0
+                )
+                .unwrap(),
+            None
+        );
+        assert_eq!(*nodes.lock().unwrap(), [label.id]);
+        assert_eq!(browser.state.focused_node, None);
+    }
+}
+
+#[test]
+fn nonrendered_label_file_listeners_cancel_or_replace_before_picker_hint() {
+    for (prevent_at, replace_at, expected) in [
+        (Some(1), None, 1),
+        (Some(2), None, 2),
+        (None, Some(1), 1),
+        (None, Some(2), 2),
+    ] {
+        let nodes = Arc::new(Mutex::new(Vec::new()));
+        let mut browser = Browser::with_page_executor("<label for='upload' role='button' aria-label='File label' style='display:block;height:30px'>Upload</label><input id='upload' type='file' style='display:none'>", Some(Box::new(LabelExecutor {
+            nodes: nodes.clone(), prevent_at, replace_at,
+        })));
+        let label = browser
+            .snapshot()
+            .nodes
+            .into_iter()
+            .find(|node| node.name.as_deref() == Some("File label"))
+            .unwrap();
+        let context = browser.context();
+        assert_eq!(
+            browser
+                .activate(context, label.bounds.x + 4.0, label.bounds.y + 4.0)
+                .unwrap(),
+            None
+        );
+        assert_eq!(nodes.lock().unwrap().len(), expected);
+        if replace_at.is_some() {
+            assert_ne!(
+                browser.context().document_generation,
+                context.document_generation
+            );
+        }
+    }
+}
+
+impl Browser {
+    fn file_input_roundtrip(
+        &mut self,
+        action: blueice_ipc::file_input::FileInputAction,
+    ) -> Result<blueice_ipc::file_input::FileInputState, String> {
+        blueice_ipc::write_client_message_with_ids(
+            &mut self.stream,
+            Some(1),
+            Some(90),
+            &ClientMessage::FileInput(action),
+        )
+        .unwrap();
+        blueice_ipc::write_client_message_with_ids(
+            &mut self.stream,
+            Some(1),
+            Some(91),
+            &ClientMessage::GetTextInputState,
+        )
+        .unwrap();
+        let mut result = None;
+        loop {
+            let (tab, request, message) =
+                blueice_ipc::read_server_message_with_ids(&mut self.stream).unwrap();
+            assert_eq!(tab, Some(1));
+            match message {
+                ServerMessage::FrameReady { shm_path, .. } => {
+                    assert_eq!(request, Some(90));
+                    self.pixels = blueice_ipc::shm::map_frame(std::path::Path::new(&shm_path))
+                        .unwrap()
+                        .to_vec();
+                }
+                ServerMessage::FileInputState(state) => {
+                    assert_eq!(request, Some(90));
+                    assert!(result.is_none());
+                    result = Some(Ok(state));
+                }
+                ServerMessage::Error { message } => {
+                    assert_eq!(request, Some(90));
+                    assert!(result.is_none());
+                    result = Some(Err(message));
+                }
+                ServerMessage::TextInputState(state) => {
+                    assert_eq!(request, Some(91));
+                    self.state = state;
+                    return result.expect("File operation must return an owned result");
+                }
+                message => panic!("unexpected {message:?}"),
+            }
+        }
+    }
+}
+
+#[test]
+fn nonrendered_file_selection_validates_cancels_and_resets_by_owned_context() {
+    use blueice_ipc::file_input::{FileData, FileInputAction};
+    let mut browser = Browser::new("<form><label for='upload' role='button' aria-label='File label' style='display:block;height:30px'>Upload</label><input id='upload' type='file' style='display:none'><button type='reset' aria-label='Reset hidden upload'>Reset</button></form>");
+    let label = browser
+        .snapshot()
+        .nodes
+        .into_iter()
+        .find(|node| node.name.as_deref() == Some("File label"))
+        .unwrap();
+    let prepared = browser
+        .activate(
+            browser.context(),
+            label.bounds.x + 4.0,
+            label.bounds.y + 4.0,
+        )
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        browser
+            .file_input_roundtrip(FileInputAction::Validate {
+                context: prepared.context
+            })
+            .unwrap(),
+        prepared
+    );
+    let selected = browser
+        .file_input_roundtrip(FileInputAction::Set {
+            context: prepared.context,
+            files: vec![FileData {
+                name: "hidden-中文.bin".into(),
+                media_type: "application/octet-stream".into(),
+                last_modified: 123,
+                bytes: vec![0, 255, 13, 10, 7],
+            }],
+        })
+        .unwrap();
+    assert_eq!(selected.names, ["hidden-中文.bin"]);
+    assert_ne!(selected.context.revision, prepared.context.revision);
+    assert_eq!(
+        browser
+            .file_input_roundtrip(FileInputAction::Cancel {
+                context: selected.context
+            })
+            .unwrap(),
+        selected
+    );
+    assert_eq!(
+        browser
+            .file_input_roundtrip(FileInputAction::Validate {
+                context: selected.context
+            })
+            .unwrap(),
+        selected
+    );
+    assert_ne!(browser.state.focused_node, Some(selected.context.node_id));
+    browser.click("Reset hidden upload");
+    assert!(browser
+        .file_input_roundtrip(FileInputAction::Validate {
+            context: selected.context
+        })
+        .is_err());
+    let cleared = browser
+        .file_input_roundtrip(FileInputAction::Prepare {
+            frame_source: selected.context.frame_source,
+            document_generation: selected.context.document_generation,
+            node_id: selected.context.node_id,
+        })
+        .unwrap();
+    assert!(cleared.names.is_empty());
+    assert_ne!(browser.state.focused_node, Some(cleared.context.node_id));
+}
+
+struct ControlDumpExecutor {
+    dumps: Arc<Mutex<Vec<String>>>,
+}
+impl PageJavaScriptExecutor for ControlDumpExecutor {
+    fn synchronize_and_execute(&mut self, _: &TabManager) -> std::io::Result<()> {
+        Ok(())
+    }
+    fn dispatch_click_serving_script(
+        &mut self,
+        tabs: &mut TabManager,
+        tab: TabId,
+        _: u64,
+        _: Option<&blueice_engine::script::ScriptRequestReceiver>,
+    ) -> std::io::Result<Option<bool>> {
+        self.dumps
+            .lock()
+            .unwrap()
+            .push(tabs.get(tab).unwrap().dom_dump());
+        Ok(Some(false))
+    }
+    fn drain_reports_for_tab(&mut self, _: TabId) -> Vec<JavaScriptPageExecutionReport> {
+        Vec::new()
+    }
+}
+
+#[test]
+fn labels_activate_nonrendered_checkbox_and_radio_defaults_without_control_focus() {
+    for kind in ["checkbox", "radio"] {
+        for tabindex in ["", "tabindex='0'"] {
+            let dumps = Arc::new(Mutex::new(Vec::new()));
+            let mut browser = Browser::with_page_executor(&format!("<label for='box' role='button' aria-label='Toggle' {tabindex} style='display:block;height:30px'>Toggle</label><input id='box' type='{kind}' style='display:none'><button type='button' aria-label='Inspect'>Inspect</button>"), Some(Box::new(ControlDumpExecutor { dumps: dumps.clone() })));
+            let label = browser
+                .snapshot()
+                .nodes
+                .into_iter()
+                .find(|node| node.name.as_deref() == Some("Toggle"))
+                .unwrap();
+            let expected_focus = (!tabindex.is_empty()).then_some(label.id);
+            browser.click("Toggle");
+            assert_eq!(browser.state.focused_node, expected_focus);
+            assert_eq!(dumps.lock().unwrap().len(), 2);
+            assert!(
+                dumps
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .all(|dump| !dump.contains("checked")),
+                "Both click listeners run before the native default"
+            );
+            browser.click("Inspect");
+            assert!(dumps.lock().unwrap().last().unwrap().contains("checked"));
+            if kind == "checkbox" {
+                browser.click("Toggle");
+                assert_eq!(browser.state.focused_node, expected_focus);
+                browser.click("Inspect");
+                assert!(!dumps.lock().unwrap().last().unwrap().contains("checked"));
+            }
+        }
+    }
+}

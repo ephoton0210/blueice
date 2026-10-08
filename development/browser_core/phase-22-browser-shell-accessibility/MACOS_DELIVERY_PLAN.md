@@ -776,9 +776,9 @@ and replaced documents suppress stale activation. A correlated native gesture ca
 present the existing file picker after validating the actual control again.
 Unsolicited replies have no presentation effect.
 
-Forwarding currently requires an enabled control with a layout fragment and no
-`hidden` or `inert` restriction on the control or its ancestors. Labels targeting
-file controls without a layout fragment remain pending.
+That accepted increment required an enabled control with a layout fragment and
+no `hidden` or `inert` restriction. The subsequent non-rendered control increment
+below separates activation from focus and has completed acceptance.
 
 Focused public session and actual macOS UI regressions exercise file selection,
 cancel, text editing, checkbox/radio state, implicit buttons and association
@@ -791,3 +791,23 @@ matches an independent echoed gesture identifier, so another client's colliding
 request/tab IDs do not authorize a picker. See the
 [label activation contract](MACOS_LABEL_ACTIVATION_CONTRACT.md) and
 [dated results](MACOS_LABEL_ACTIVATION_RESULTS.md).
+
+## Labels for non-rendered controls increment
+
+Core separates label activation availability from native focus geometry. Enabled
+hidden/non-rendered file, checkbox, radio and submit controls can receive their
+associated label action, while disabled/inert controls remain unavailable. Hidden
+controls stay outside native focus and Tab order; a visible tabindex label retains
+its own focus. File context validation, cancellation, reset and retained immutable
+File values use the existing ownership and data limits.
+
+Five new public regressions reproduced four failures before the correction.
+All 55 keyboard/file/script-file interface cases now pass. Three new real UI
+methods and the existing native label/file/AX regressions pass all 13 focused
+native methods without failures or skips. Complete Rust workspace acceptance
+passed 7,388 cases with 69 ignored; formatting,
+strict Clippy and the all-target build passed. The unfiltered native suite executed
+all 272 methods: 271 passed and the same physical Zhuyin method skipped. All final
+gates share 1,834 unchanged inputs. See the
+[non-rendered label contract](MACOS_NONRENDERED_LABEL_CONTRACT.md) and
+[dated results](MACOS_NONRENDERED_LABEL_RESULTS.md).

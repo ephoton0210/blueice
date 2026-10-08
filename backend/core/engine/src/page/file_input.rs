@@ -143,7 +143,7 @@ impl Page {
             || !self.doc.contains(id)
             || tag(&self.doc, id) != "input"
             || input_type(&self.doc, id) != "file"
-            || !self.native_focusable(id)
+            || !self.native_activation_available(id)
         {
             return Err("File control is stale or unavailable".into());
         }

@@ -111,8 +111,24 @@ impl Page {
         false
     }
 
-    pub(crate) fn native_focusable(&self, id: NodeId) -> bool {
+    /// Label activation does not require focus geometry, but still respects
+    /// disabled controls and inert subtrees.
+    pub(crate) fn native_activation_available(&self, id: NodeId) -> bool {
         if !self.doc.contains(id) || self.native_control_disabled(id) {
+            return false;
+        }
+        let mut ancestor = Some(id);
+        while let Some(node) = ancestor {
+            if has(&self.doc, node, "inert") {
+                return false;
+            }
+            ancestor = self.doc.parent(node);
+        }
+        true
+    }
+
+    pub(crate) fn native_focusable(&self, id: NodeId) -> bool {
+        if !self.native_activation_available(id) {
             return false;
         }
         let kind = tag(&self.doc, id);
@@ -130,7 +146,7 @@ impl Page {
         }
         let mut ancestor = Some(id);
         while let Some(node) = ancestor {
-            if has(&self.doc, node, "hidden") || has(&self.doc, node, "inert") {
+            if has(&self.doc, node, "hidden") {
                 return false;
             }
             ancestor = self.doc.parent(node);
@@ -155,17 +171,8 @@ impl Page {
                     descendants(&self.doc, node, &mut children);
                     children.into_iter().find(|id| labelable(&self.doc, *id))
                 }?;
-                if self.native_control_disabled(control)
-                    || find_fragment_bounds(&self.fragment, control, 0.0, 0.0).is_none()
-                {
+                if !self.native_activation_available(control) {
                     return None;
-                }
-                let mut ancestor = Some(control);
-                while let Some(id) = ancestor {
-                    if has(&self.doc, id, "hidden") || has(&self.doc, id, "inert") {
-                        return None;
-                    }
-                    ancestor = self.doc.parent(id);
                 }
                 return Some(control);
             }
@@ -177,8 +184,11 @@ impl Page {
     }
 
     pub(super) fn native_pointer_focus(&self, target: Option<NodeId>) -> Option<NodeId> {
-        if let Some(control) = target.and_then(|id| self.native_label_activation_target(id)) {
-            return self.native_focusable(control).then_some(control);
+        if let Some(control) = target
+            .and_then(|id| self.native_label_activation_target(id))
+            .filter(|id| self.native_focusable(*id))
+        {
+            return Some(control);
         }
         let mut node = target?;
         loop {
@@ -536,7 +546,10 @@ impl Page {
         if !self.doc.contains(target) {
             return Ok(None);
         }
-        let Some(id) = self.native_pointer_focus(Some(target)) else {
+        let Some(id) = self
+            .native_label_activation_target(target)
+            .or_else(|| self.native_pointer_focus(Some(target)))
+        else {
             return Ok(None);
         };
         let input = input_type(&self.doc, id);
@@ -566,7 +579,9 @@ impl Page {
                     for member in self.native_radios(id) {
                         self.native_set_boolean(member, "checked", member == id);
                     }
-                    self.native_focus_at(Some(id));
+                    if self.native_focusable(id) {
+                        self.native_focus_at(Some(id));
+                    }
                 }
                 _ => {}
             }
