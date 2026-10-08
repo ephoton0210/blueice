@@ -101,13 +101,12 @@ impl Vm {
 
     /// `Dispose ( V, hint, method )` folded into one call.
     fn dispose_one(&mut self, resource: &DisposableResource) -> Result<Value, RuntimeError> {
-        match &resource.method {
-            None => Ok(Value::Undefined),
-            Some(method) => {
-                let args = resource.argument.clone().map_or_else(Vec::new, |v| vec![v]);
-                self.call_native(method.clone(), resource.receiver.clone(), args, false)
-            }
-        }
+        let method = resource
+            .method
+            .as_ref()
+            .expect("synchronous resource producers omit nullish resources");
+        let args = resource.argument.clone().map_or_else(Vec::new, |v| vec![v]);
+        self.call_native(method.clone(), resource.receiver.clone(), args, false)
     }
 
     /// `DisposeResources ( disposeCapability, completion )` for the
@@ -148,15 +147,6 @@ impl Vm {
     ) -> Result<(), RuntimeError> {
         let mut completion = prior;
         while let Some(resource) = resources.pop() {
-            if resource.method.is_none() {
-                // A method-less `sync-dispose` resource (e.g. a `using`
-                // binding whose value was null/undefined) is a pure no-op.
-                // The spec's method-less `async-dispose` case still performs
-                // `Await(undefined)` -- one guaranteed microtask tick -- which
-                // this synchronous loop does not reproduce; see
-                // `dispose_resources_sync`'s own doc comment.
-                continue;
-            }
             if let Err(new_error) = self.dispose_one(&resource) {
                 if !new_error.is_catchable() {
                     return Err(new_error);
@@ -309,8 +299,8 @@ impl Vm {
             }
             if (hasError) throw pendingError;
         })"#;
-        let program =
-            crate::parse(SOURCE).map_err(|error| RuntimeError::SyntaxError(error.message))?;
+        let program = crate::parse(SOURCE)
+            .expect("the fixed asynchronous disposal helper is valid JavaScript");
         let code = crate::compiler::compile_eval(
             &program,
             &[],
@@ -319,7 +309,7 @@ impl Vm {
             crate::compiler::EvalContext::default(),
             crate::compiler::CompileLimits::default(),
         )
-        .map_err(|error| RuntimeError::SyntaxError(error.to_string()))?;
+        .expect("the fixed asynchronous disposal helper fits the default compile limits");
         let helper = self.execute_eval(&code, Vec::new(), !code.strict)?;
         self.async_dispose_helper = Some(helper.clone());
         Ok(helper)
@@ -380,9 +370,11 @@ impl Vm {
         } {
             return Ok(prototype);
         }
+        // Bootstrap Function first: it may collect, whereas this unpublished
+        // prototype has no owning edge until the stack retention below.
+        let function_prototype = self.function_prototype()?;
         let object_prototype = self.object_prototype;
         let prototype = self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;
-        let function_prototype = self.function_prototype()?;
         let tag = if is_async {
             "AsyncDisposableStack"
         } else {
@@ -407,7 +399,10 @@ impl Vm {
                 0,
                 NativeFunction::DisposableStackDispose { is_async },
             )?;
-            let dispose = self.heap.get(prototype, dispose_name)?;
+            let dispose = self
+                .heap
+                .get(prototype, dispose_name)
+                .expect("the rooted fresh disposal prototype owns its installed method");
             self.define_data(
                 prototype,
                 JsSymbol::well_known(dispose_key),
@@ -633,7 +628,9 @@ impl Vm {
         // names the intrinsic constructor directly, not `new.target` (there
         // is none -- `move` is an ordinary method call), so the plain
         // intrinsic prototype is used rather than `constructor_prototype`.
-        let prototype = self.disposable_stack_prototype(is_async)?;
+        let prototype = self
+            .disposable_stack_prototype(is_async)
+            .expect("a branded stack was produced with its initialized intrinsic prototype");
         let new_id = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
         let moved = if is_async {
             let mut state = self
@@ -721,7 +718,8 @@ impl Vm {
         };
         if self.async_disposable_stacks[&id].disposed {
             let promise_id = self.new_promise()?;
-            self.resolve_promise(promise_id, Value::Undefined)?;
+            self.resolve_promise(promise_id, Value::Undefined)
+                .expect("resolving a fresh tracked Promise with undefined cannot invoke user code");
             return Ok(Value::Object(promise_id));
         }
         let resources = {

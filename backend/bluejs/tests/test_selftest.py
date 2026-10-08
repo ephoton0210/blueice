@@ -21,7 +21,7 @@ from backend.bluejs.selftest.graph import empty_graph, inventory, plan, static_e
 from backend.bluejs.selftest.coverage import covered_sources, import_baseline, latest_baseline, profile_owners
 from backend.bluejs.selftest.report import compare_outcomes, coverage_summary, publish_report, render_report
 from backend.bluejs.selftest.runner import Manager, refresh_observations, test262_passed, validate_impact
-from backend.bluejs.selftest.shared_functions import body_contract, shared_function_graph, verified_body_contracts
+from backend.bluejs.selftest.shared_functions import body_contract, shared_function_edges, shared_function_graph, verified_body_contracts
 from backend.bluejs.selftest.partitions import (case_partitions, changed_opcodes, changed_symbols, latest_rust_anchor,
                                               partition_plan, passed_partition, public_reference_cases, selection_identity)
 from backend.bluejs.selftest.server import Application, make_server
@@ -150,6 +150,42 @@ class ImpactContracts(unittest.TestCase):
         edges, _ = static_edges(self.root)
         for owner in ("first", "second"):
             self.assertIn({"source": f"backend/bluejs/src/{owner}.rs", "target": "backend/bluejs/src/caller.rs", "kind": "shared-function"}, edges)
+
+    def test_array_classification_keeps_heap_and_vm_definitions_conservative(self):
+        heap = "backend/bluejs/src/heap/array.rs"
+        owner = "backend/bluejs/src/vm/builtins/arrays.rs"
+        caller = "backend/bluejs/src/vm/json.rs"
+        self.write(heap, "impl Heap { fn is_array(&self, id: u64) -> bool { true } }")
+        self.write(owner, "impl Vm { fn is_array(&self, value: &Value) -> bool { self.heap.is_array(1) } }")
+        self.write(caller, "fn json() { vm.is_array(value); }")
+        entry = next(item for item in shared_function_graph(self.root) if item["symbol"] == "is_array")
+        self.assertEqual(entry["boundary"], "array-classification")
+        self.assertEqual({item["source"] for item in entry["definitions"]}, {heap, owner})
+        edges = shared_function_edges([entry])
+        for source in (heap, owner):
+            self.assertIn({"source": source, "target": caller, "kind": "shared-function"}, edges)
+
+    def test_settlement_and_options_registry_tracks_real_owner_references(self):
+        options = "backend/bluejs/src/vm/temporal/conversion/options.rs"
+        promise = "backend/bluejs/src/vm/builtins/promise_core.rs"
+        caller = "backend/bluejs/src/vm/builtins/native_dispatch/dispatch.rs"
+        self.write(options, "fn temporal_fractional_second_digits(options: &Value) { old(); }")
+        self.write(promise, "fn promise_async_from_sync_fulfill(target: u64) { old(); }")
+        self.write(caller, "fn native_call() { self.promise_async_from_sync_fulfill(1); self.temporal_fractional_second_digits(value); }")
+        entries = shared_function_graph(self.root)
+        for symbol, source, family in [
+            ("temporal_fractional_second_digits", options, "temporal-options"),
+            ("promise_async_from_sync_fulfill", promise, "promise-settlement"),
+        ]:
+            entry = next(item for item in entries if item["symbol"] == symbol)
+            self.assertEqual(entry["boundary"], family)
+            self.assertEqual(entry["definitions"][0]["source"], source)
+            self.assertEqual(entry["references"][0]["function"], "native_call")
+        sources = {source: (self.root / source).read_text() for source in (options, promise)}
+        contracts = verified_body_contracts(sources, "complete")
+        self.assertEqual(set(contracts), {options, promise})
+        self.assertEqual(body_contract(sources[options]), body_contract(sources[options].replace("old()", "new()")))
+        self.assertNotEqual(body_contract(sources[options]), body_contract(sources[options].replace("&Value", "&String")))
 
     def test_shared_body_contract_uses_current_complete_evidence_and_checks_signatures(self):
         owner = "backend/bluejs/src/heap/capabilities.rs"

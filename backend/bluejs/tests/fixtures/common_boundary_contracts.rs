@@ -6,6 +6,7 @@
 
 use super::*;
 use crate::heap::TemporalKind;
+use crate::native::StringMethod;
 use crate::{compile, parse};
 
 fn execute(vm: &mut Vm, source: &str) -> Value {
@@ -198,7 +199,855 @@ impl Vm {
         algorithm_for_in_tracks_mutation_shadowing_symbols_and_proxy_cycles();
         algorithm_allocator_refusals_restore_operands_and_allow_retry();
         algorithm_cold_initialization_refusals_and_string_limits_remain_fallible();
+        shared_array_classification_preserves_revocation_and_push_errors();
+        shared_temporal_options_and_epoch_bounds_preserve_public_results();
+        shared_numeric_conversion_preserves_signed_infinity_and_coercion();
+        shared_promise_disposal_preserves_settlement_and_await_order();
+        shared_iterator_result_refusals_restore_operands_and_allow_retry();
+        shared_foreign_handle_ingress_remains_fallible();
+        shared_json_and_class_producers_preserve_public_descriptors();
+        shared_native_entry_guards_preserve_constructor_and_decimal_errors();
+        shared_properties_preserve_ingress_and_copy_refusals();
+        shared_cold_initializers_and_temporal_options_restore_roots();
+        shared_foreign_array_prototype_refusal_restores_operands();
     }
+}
+
+#[cfg_attr(test, test)]
+fn shared_array_classification_preserves_revocation_and_push_errors() {
+    for nursery_capacity in [256, 1] {
+        let mut vm = Vm::new(VmConfig {
+            heap: HeapConfig {
+                nursery_capacity,
+                ..HeapConfig::default()
+            },
+            ..VmConfig::default()
+        })
+        .unwrap();
+        assert_eq!(
+            execute(
+                &mut vm,
+                r#"
+            (() => {
+                const wrapped = new Proxy(new Proxy([1, [2]], {}), {});
+                if (!Array.isArray(wrapped) || JSON.stringify(wrapped) !== '[1,[2]]') throw 1;
+                if (Array.prototype.flat.call(wrapped).join() !== '1,2') throw 2;
+                const revoked = Proxy.revocable([], {}); revoked.revoke();
+                try { Array.isArray(revoked.proxy); throw 3; }
+                catch (e) { if (!(e instanceof TypeError)) throw e; }
+                const parent = Proxy.revocable({}, {}), array = [];
+                Object.setPrototypeOf(array, parent.proxy); parent.revoke();
+                if (Array.prototype.push.call(array) !== 0) throw 4;
+                try { Array.prototype.push.call(array, 1); throw 5; }
+                catch (e) { if (!(e instanceof TypeError)) throw e; }
+                if (array.length !== 0 || Object.hasOwn(array, '0')) throw 6;
+                const ordinary = Object.create(parent.proxy);
+                Object.defineProperty(ordinary, 'present', {value: 1, writable: true});
+                if (!Reflect.set(ordinary, 'present', 2) || ordinary.present !== 2) throw 7;
+                try { Reflect.set(ordinary, 'missing', 1); throw 8; }
+                catch (e) { if (!(e instanceof TypeError)) throw e; }
+                let reentrant;
+                reentrant = Proxy.revocable({}, {getOwnPropertyDescriptor() {reentrant.revoke();}});
+                try { Reflect.set({}, 'x', 1, reentrant.proxy); throw 9; }
+                catch (e) { if (!(e instanceof TypeError)) throw e; }
+                return !Object.hasOwn(ordinary, 'missing');
+            })()
+        "#
+            ),
+            Value::Bool(true)
+        );
+        assert!(vm.stack.is_empty());
+        assert_eq!(execute(&mut vm, "21 + 21"), Value::Number(42.0));
+    }
+}
+
+#[cfg_attr(test, test)]
+fn shared_temporal_options_and_epoch_bounds_preserve_public_results() {
+    for nursery_capacity in [256, 1] {
+        let mut vm = Vm::new(VmConfig {
+            heap: HeapConfig {
+                nursery_capacity,
+                ..HeapConfig::default()
+            },
+            ..VmConfig::default()
+        })
+        .unwrap();
+        assert_eq!(
+            execute(
+                &mut vm,
+                r#"
+            (() => {
+                const min = new Temporal.Instant(-8640000000000000000000n);
+                const max = new Temporal.Instant(8640000000000000000000n);
+                if (min.until(max, {largestUnit:'hour'}).hours !== 4800000000) throw 'difference';
+                if (max.since(min, {largestUnit:'second'}).seconds !== 17280000000000) throw 'seconds';
+                for (const instant of [min, max]) {
+                    if (instant.round('nanosecond').epochNanoseconds !== instant.epochNanoseconds) throw 'round';
+                    if (Temporal.Instant.from(instant.toString()).epochNanoseconds !== instant.epochNanoseconds) throw 'text';
+                    for (const zone of ['UTC','Asia/Taipei']) {
+                        const zoned = new Temporal.ZonedDateTime(0n, zone);
+                        if (instant.toString({timeZone: zoned}) !== instant.toString({timeZone: zone})) throw 'zone';
+                    }
+                }
+                for (const epoch of [-8640000000000000000001n,8640000000000000000001n]) {
+                    try { new Temporal.Instant(epoch); throw 'bound'; }
+                    catch (e) { if (!(e instanceof RangeError)) throw e; }
+                }
+                const time = new Temporal.PlainTime(1,2,3,4,5,6);
+                const units = ['minute','second','millisecond','microsecond','nanosecond'];
+                const texts = ['01:02','01:02:03','01:02:03.004','01:02:03.004005','01:02:03.004005006'];
+                for (let i=0;i<units.length;i++) if (time.toString({smallestUnit:units[i]}) !== texts[i]) throw units[i];
+                const trace = [], options = new Proxy({}, {get(_,key) {trace.push(key);return undefined;}});
+                time.toString(options);
+                if (trace.join() !== 'fractionalSecondDigits,roundingMode,smallestUnit') throw trace.join();
+                const marker = {};
+                for (const key of ['fractionalSecondDigits','roundingMode','smallestUnit']) {
+                    const o = {[key]: {toString() {throw marker;},valueOf() {throw marker;}}};
+                    try {time.toString(o); throw key;} catch(e) {if(e !== marker) throw e;}
+                }
+                for (const text of ['\ud800', '\udfff']) {
+                    for (const op of [() => Temporal.Instant.from(text), () => Temporal.PlainTime.from(text),
+                        () => time.toString({fractionalSecondDigits:text}), () => min.toString({timeZone:text})]) {
+                        try {op();throw 'UTF16';} catch(e) {if(!(e instanceof RangeError)) throw e;}
+                    }
+                }
+                const midnight = new Temporal.PlainTime(), end = new Temporal.PlainTime(23,59,59,999,999,999);
+                return midnight.until(end).nanoseconds === 999 && end.until(midnight).hours === -23;
+            })()
+        "#
+            ),
+            Value::Bool(true)
+        );
+        assert!(vm.stack.is_empty());
+    }
+}
+
+#[cfg_attr(test, test)]
+fn shared_numeric_conversion_preserves_signed_infinity_and_coercion() {
+    let mut vm = Vm::default();
+    assert_eq!(
+        execute(
+            &mut vm,
+            r#"
+        (() => {
+            const huge = 1n << 2048n;
+            if (Number(huge) !== Infinity || Number(-huge) !== -Infinity || Number(0n) !== 0 || Number(-42n) !== -42) throw 'BigInt';
+            const marker = {}, digits = {valueOf() {throw marker;}};
+            for (const method of ['toFixed','toExponential','toPrecision']) {
+                try {Number.prototype[method].call(Infinity,digits);throw method;}
+                catch(e) {if(e !== marker) throw e;}
+            }
+            try {(Infinity).toFixed(101);throw 'fixed';} catch(e) {if(!(e instanceof RangeError)) throw e;}
+            return (Infinity).toExponential(101) === 'Infinity' && (NaN).toPrecision(0) === 'NaN'
+                && (1e21).toFixed(2) === '1e+21' && (-0).toPrecision() === '0';
+        })()
+    "#
+        ),
+        Value::Bool(true)
+    );
+}
+
+#[cfg_attr(test, test)]
+fn shared_promise_disposal_preserves_settlement_and_await_order() {
+    for nursery_capacity in [256, 1] {
+        let mut vm = Vm::new(VmConfig {
+            heap: HeapConfig {
+                nursery_capacity,
+                ..HeapConfig::default()
+            },
+            ..VmConfig::default()
+        })
+        .unwrap();
+        execute(
+            &mut vm,
+            r#"
+            globalThis.sharedSettlement = false;
+            (async () => {
+                const trace = [], marker = {};
+                const p = new Promise((resolve,reject) => {resolve(7); reject(marker); resolve(8);});
+                if (await p !== 7) throw 'resolver';
+                let closed = 0;
+                const iterable = {[Symbol.iterator]() {return {
+                    next() {return {done:false,value:Promise.reject(marker)};},
+                    return() {closed++;throw 'close';}
+                };}};
+                try {for await (const value of iterable) {throw value;}} catch(e) {if(e !== marker) throw e;}
+                if (closed !== 1) throw 'IteratorClose';
+                const stack = new AsyncDisposableStack();
+                stack.use(null);
+                stack.use({[Symbol.dispose]() {trace.push('dispose'); return {then() {throw 'must not await';}};}});
+                const result = stack.disposeAsync();
+                trace.push('returned');
+                await result;
+                if (trace.join() !== 'dispose,returned') throw trace.join();
+                await stack.disposeAsync();
+                const sync = new DisposableStack();
+                sync.defer(() => {throw 1;}); sync.defer(() => {throw 2;});
+                try {sync.dispose();throw 'suppression';} catch(e) {
+                    if(!(e instanceof SuppressedError) || e.error !== 1 || e.suppressed !== 2) throw e;
+                }
+                globalThis.sharedSettlement = true;
+            })();
+        "#,
+        );
+        vm.run_promise_jobs().unwrap();
+        assert_eq!(execute(&mut vm, "sharedSettlement"), Value::Bool(true));
+        assert!(vm.stack.is_empty());
+
+        let resolve = execute(
+            &mut vm,
+            "globalThis.sharedPending = new Promise((resolve,reject) => {globalThis.sharedResolve=resolve;globalThis.sharedReject=reject;}); sharedResolve",
+        )
+        .object_id()
+        .unwrap();
+        let reject = execute(&mut vm, "sharedReject").object_id().unwrap();
+        let resolve_tag = vm.heap.native_function(resolve).unwrap().unwrap();
+        let reject_tag = vm.heap.native_function(reject).unwrap().unwrap();
+        let NativeFunction::PromiseResolvingFunction { promise, state, .. } = resolve_tag else {
+            panic!("the Promise constructor supplies a native resolver");
+        };
+        vm.stack.push(Value::Number(17.0));
+        collect_vm_roots(&mut vm);
+        let before = vm.stack.clone();
+        assert_eq!(vm.heap.get_own(state, "resolved").unwrap(), None);
+        let limit = vm.heap.allow_only(0);
+        assert_eq!(
+            vm.native_call(
+                resolve_tag,
+                Value::Undefined,
+                vec![Value::Number(7.0)],
+                false
+            ),
+            Err(RuntimeError::Heap(HeapError::HeapLimitExceeded { limit }))
+        );
+        assert_eq!(vm.stack, before);
+        assert_eq!(vm.heap.get_own(state, "resolved").unwrap(), None);
+        assert!(matches!(
+            vm.promises[&promise].status,
+            PromiseStatus::Pending
+        ));
+        vm.heap.allow_only(16 * 1024 * 1024);
+        assert_eq!(
+            vm.native_call(
+                resolve_tag,
+                Value::Undefined,
+                vec![Value::Number(7.0)],
+                false
+            ),
+            Ok(Value::Undefined)
+        );
+        assert_eq!(vm.stack, before);
+        assert_eq!(
+            vm.heap.get_own(state, "resolved").unwrap(),
+            Some(Value::Bool(true))
+        );
+        vm.heap.allow_only(0);
+        for tag in [resolve_tag, reject_tag] {
+            assert_eq!(
+                vm.native_call(tag, Value::Undefined, vec![Value::Number(8.0)], false),
+                Ok(Value::Undefined)
+            );
+            assert_eq!(vm.stack, before);
+            assert!(
+                matches!(&vm.promises[&promise].status, PromiseStatus::Fulfilled(Value::Number(value)) if *value == 7.0)
+            );
+        }
+        vm.heap.allow_only(16 * 1024 * 1024);
+        vm.stack.pop();
+        assert_eq!(execute(&mut vm, "21 + 21"), Value::Number(42.0));
+    }
+}
+
+#[cfg_attr(test, test)]
+fn shared_iterator_result_refusals_restore_operands_and_allow_retry() {
+    let mut extra = 0;
+    let mut refusals = 0;
+    loop {
+        let mut vm = Vm::default();
+        let value = execute(&mut vm, "globalThis.sharedValue = {}; sharedValue");
+        vm.stack.push(Value::Number(17.0));
+        let before = vm.stack.clone();
+        collect(&mut vm);
+        let limit = vm.heap.allow_only(extra);
+        let result = vm.iterator_result(value.clone(), false);
+        assert_eq!(vm.stack, before);
+        match result {
+            Ok(result) => {
+                let id = result.object_id().unwrap();
+                assert_eq!(vm.heap.get_own(id, "value").unwrap(), Some(value));
+                assert_eq!(
+                    vm.heap.get_own(id, "done").unwrap(),
+                    Some(Value::Bool(false))
+                );
+                assert!(refusals > 0);
+                break;
+            }
+            Err(RuntimeError::Heap(HeapError::HeapLimitExceeded { limit: actual })) => {
+                assert_eq!(actual, limit);
+                refusals += 1;
+                extra = vm.heap.next_allocation_headroom(extra);
+                assert!(extra <= 16 * 1024 * 1024);
+            }
+            Err(error) => panic!("iterator result: {error:?}"),
+        }
+        vm.stack.clear();
+        vm.heap.allow_only(16 * 1024 * 1024);
+        assert_eq!(execute(&mut vm, "21 + 21"), Value::Number(42.0));
+    }
+}
+
+#[cfg_attr(test, test)]
+fn shared_json_and_class_producers_preserve_public_descriptors() {
+    for nursery_capacity in [256, 1] {
+        let mut vm = Vm::new(VmConfig {
+            heap: HeapConfig {
+                nursery_capacity,
+                ..HeapConfig::default()
+            },
+            ..VmConfig::default()
+        })
+        .unwrap();
+        assert_eq!(
+            execute(
+                &mut vm,
+                r#"
+            (() => {
+                const raw = JSON.rawJSON('123'), d = Object.getOwnPropertyDescriptor(raw, 'rawJSON');
+                if(d.value !== '123' || d.writable || !d.enumerable || d.configurable || Object.isExtensible(raw)) throw 'raw';
+                if(Object.getPrototypeOf(raw) !== null || JSON.stringify({raw}) !== '{"raw":123}') throw 'serialize';
+                const symbol = Symbol('key'), obj = {[symbol]: class {static {delete this.name;}}};
+                if(obj[symbol].name !== '[key]') throw 'name';
+                class C {#x = 3; get() {return this.#x;} static read(o) {return o.#x;}}
+                if(new C().get() !== 3) throw 'private';
+                try {C.read({});throw 'brand';} catch(e) {if(!(e instanceof TypeError)) throw e;}
+                const text = JSON.stringify(['😀', '\ud800', 'a\nb', {x:1}], [0,'x']);
+                return JSON.parse(text)[0] === '😀' && JSON.parse(text)[1] === '\ud800';
+            })()
+        "#
+            ),
+            Value::Bool(true)
+        );
+    }
+}
+
+#[cfg_attr(test, test)]
+fn shared_foreign_handle_ingress_remains_fallible() {
+    let mut owner = Vm::default();
+    let id = owner.heap.alloc_object(None).unwrap();
+    let root = owner.heap.root(id).unwrap();
+    let foreign = Value::Object(id);
+    let mut vm = Vm::default();
+    let inputs = execute(&mut vm, "globalThis.sharedInputs = [[], new Promise(()=>{}), new DisposableStack(), new Temporal.PlainTime(), {}, new AsyncDisposableStack()]; sharedInputs").object_id().unwrap();
+    let value = |vm: &Vm, index: &str| vm.heap.get_own(inputs, index).unwrap().unwrap();
+    let array = value(&vm, "0");
+    let promise = value(&vm, "1");
+    let stack = value(&vm, "2");
+    let time = value(&vm, "3");
+    let object = value(&vm, "4");
+    let async_stack = value(&vm, "5");
+    let expected = Err(RuntimeError::Heap(HeapError::InvalidObject(id)));
+    let arrays: &[Operation] = &[
+        |v, r, f| v.array_flat_map(r, f, &Value::Undefined),
+        |v, r, f| v.array_for_each(r, f, &Value::Undefined),
+        |v, r, f| v.array_map(r, f, &Value::Undefined),
+        |v, r, f| v.array_filter(r, f, &Value::Undefined),
+        |v, r, f| v.array_every(r, f, &Value::Undefined),
+        |v, r, f| v.array_find(r, f, &Value::Undefined, false, false),
+        |v, r, f| v.array_reduce(r, std::slice::from_ref(f)),
+        |v, r, f| v.array_reduce_right(r, std::slice::from_ref(f)),
+        |v, r, f| v.array_sort(r, f),
+    ];
+    for operation in arrays {
+        assert_eq!(operation(&mut vm, &array, &foreign), expected);
+        assert!(vm.stack.is_empty());
+    }
+    assert_eq!(vm.promise_constructor(foreign.clone(), true), expected);
+    assert_eq!(
+        vm.new_promise_capability(&foreign)
+            .map(|_| Value::Undefined),
+        expected
+    );
+    assert_eq!(vm.promise_finally(&promise, &foreign), expected);
+    // Published properties reject an object from another heap. Keep the
+    // negative ingress at that real boundary instead of fabricating storage.
+    assert_eq!(
+        vm.heap
+            .set(object.object_id().unwrap(), "callback", foreign.clone()),
+        Err(HeapError::InvalidObject(id))
+    );
+    assert_eq!(
+        vm.heap
+            .get_own(object.object_id().unwrap(), "callback")
+            .unwrap(),
+        None
+    );
+    for source in [
+        "(function C(executor) {executor({},()=>{});})",
+        "(function C(executor) {executor(()=>{},{});})",
+    ] {
+        let constructor = execute(&mut vm, source);
+        assert!(matches!(
+            vm.new_promise_capability(&constructor),
+            Err(RuntimeError::TypeError(_))
+        ));
+        assert!(vm.stack.is_empty());
+    }
+    for (receiver, is_async) in [(&stack, false), (&async_stack, true)] {
+        assert_eq!(
+            vm.disposable_stack_adopt(receiver, Value::Undefined, foreign.clone(), is_async),
+            expected
+        );
+        assert_eq!(
+            vm.disposable_stack_defer(receiver, foreign.clone(), is_async),
+            expected
+        );
+    }
+    assert_eq!(
+        vm.temporal_to_instant_epoch(&foreign)
+            .map(|_| Value::Undefined),
+        expected
+    );
+    assert_eq!(
+        vm.temporal_to_plain_time(&foreign, &Value::Undefined)
+            .map(|_| Value::Undefined),
+        expected
+    );
+    let receiver = vm
+        .validate_temporal_receiver(&time, TemporalKind::PlainTime)
+        .unwrap();
+    assert_eq!(
+        vm.temporal_plain_time_with(&receiver, &foreign, &Value::Undefined),
+        expected
+    );
+    assert_eq!(vm.number_receiver(&foreign).map(Value::Number), expected);
+    assert_eq!(
+        vm.dispatch_string_method(StringMethod::ToString, &foreign, &[]),
+        expected
+    );
+    for all in [false, true] {
+        assert_eq!(
+            vm.string_replace(
+                &Value::String("a".into()),
+                &[Value::String("a".into()), foreign.clone()],
+                all,
+            ),
+            expected
+        );
+        assert!(vm.stack.is_empty());
+    }
+    assert_eq!(vm.is_array(&foreign).map(Value::Bool), expected);
+    assert_eq!(vm.json_is_raw_json(&foreign), expected);
+    assert_eq!(
+        vm.json_parse(&Value::String("1".into()), Some(&foreign)),
+        expected
+    );
+    assert_eq!(vm.json_stringify(&[Value::Null, foreign.clone()]), expected);
+    assert_eq!(
+        vm.json_stringify(&[Value::Null, Value::Undefined, foreign.clone()]),
+        expected
+    );
+    assert_eq!(
+        vm.json_stringify(std::slice::from_ref(&array)),
+        Ok(Value::String("[]".into()))
+    );
+    for native in [
+        NativeFunction::MapSize,
+        NativeFunction::SetSize,
+        NativeFunction::ArrayIteratorNext,
+        NativeFunction::TypedArrayByteLength,
+        NativeFunction::TypedArrayByteOffset,
+        NativeFunction::TypedArrayLength,
+        NativeFunction::FunctionToString,
+        NativeFunction::Apply,
+        NativeFunction::SymbolToString,
+        NativeFunction::SymbolDescription,
+        NativeFunction::BigIntToString,
+        NativeFunction::BigIntValueOf,
+        NativeFunction::BigIntToLocaleString,
+        NativeFunction::IteratorNext,
+        NativeFunction::PrimitiveMethod {
+            boolean: true,
+            string: false,
+        },
+    ] {
+        assert_eq!(
+            vm.native_call(native, foreign.clone(), vec![], false),
+            expected,
+            "{native:?}"
+        );
+    }
+    assert_eq!(
+        vm.native_call(
+            NativeFunction::ReflectApply,
+            Value::Undefined,
+            vec![foreign.clone()],
+            false
+        ),
+        expected
+    );
+    assert_eq!(
+        vm.native_call(
+            NativeFunction::ReflectConstruct,
+            Value::Undefined,
+            vec![foreign.clone()],
+            false
+        ),
+        expected
+    );
+    assert_eq!(
+        vm.native_call(
+            NativeFunction::PrimitiveConstructor(true),
+            Value::Undefined,
+            vec![foreign.clone()],
+            false
+        ),
+        expected
+    );
+    assert_eq!(
+        vm.native_call(
+            NativeFunction::ArrayToString,
+            foreign.clone(),
+            vec![],
+            false
+        ),
+        expected
+    );
+    assert_eq!(
+        vm.native_call(
+            NativeFunction::ObjectDefineAccessor { getter: true },
+            object.clone(),
+            vec![Value::String("key".into()), foreign.clone()],
+            false
+        ),
+        expected
+    );
+    assert_eq!(
+        vm.native_call(
+            NativeFunction::ObjectToLocaleString,
+            foreign.clone(),
+            vec![],
+            false
+        ),
+        expected
+    );
+    let object_constructor = vm.global("Object").unwrap();
+    assert_eq!(
+        vm.native_call(
+            NativeFunction::ReflectConstruct,
+            Value::Undefined,
+            vec![object_constructor, Value::Undefined, foreign.clone()],
+            false
+        ),
+        expected
+    );
+    assert!(vm.stack.is_empty());
+    owner.heap.unroot(root).unwrap();
+    assert_eq!(execute(&mut vm, "21 + 21"), Value::Number(42.0));
+
+    vm.install_test262_harness().unwrap();
+    assert_eq!(
+        execute(
+            &mut vm,
+            r#"
+        (() => {
+            const marker = {}, realm = $262.createRealm();
+            const method = realm.global.eval('() => "foreign"');
+            if ([{toLocaleString: method}].toLocaleString() !== 'foreign') throw 'locale';
+            if (JSON.stringify({toJSON: realm.global.eval('() => 7')}) !== '7') throw 'json';
+            const revoked = Proxy.revocable(() => 1, {}); revoked.revoke();
+            for (const operation of [
+                () => JSON.stringify({get toJSON() {throw marker;}}),
+                () => Object.prototype.toLocaleString.call({get toString() {throw marker;}}),
+                () => Array.prototype.toString.call({get join() {throw marker;}}),
+                () => Number({get valueOf() {throw marker;}})
+            ]) {
+                try {operation();throw 'getter';} catch(e) {if(e !== marker) throw e;}
+            }
+            for (const operation of [
+                () => JSON.stringify({toJSON: revoked.proxy}),
+                () => [{toLocaleString: revoked.proxy}].toLocaleString(),
+                () => Object.prototype.toLocaleString.call({toString: revoked.proxy}),
+                () => Array.prototype.toString.call({join: revoked.proxy}),
+                () => Number({valueOf: revoked.proxy}),
+                () => String({[Symbol.toPrimitive]: {}})
+            ]) {
+                try {operation();throw 'callback';} catch(e) {if(!(e instanceof TypeError)) throw e;}
+            }
+            const symbol = Object(Symbol('s')), bigint = Object(3n);
+            delete Symbol.prototype[Symbol.toStringTag];
+            delete BigInt.prototype[Symbol.toStringTag];
+            return Object.prototype.toString.call(symbol) === '[object Object]'
+                && Object.prototype.toString.call(bigint) === '[object Object]';
+        })()
+    "#
+        ),
+        Value::Bool(true)
+    );
+    assert!(vm.stack.is_empty());
+
+    // Keep the established released-realm ingress contract at native entry.
+    // The facade is produced normally; no private payload is fabricated.
+    let released = execute(&mut vm, "$262.createRealm().global.eval('Object(3n)')");
+    vm.test262_realms.clear();
+    let released_error = Err(RuntimeError::TypeError(
+        "foreign Test262 realm is no longer available".into(),
+    ));
+    for native in [
+        NativeFunction::SymbolToString,
+        NativeFunction::SymbolDescription,
+        NativeFunction::BigIntToString,
+        NativeFunction::BigIntToLocaleString,
+    ] {
+        assert_eq!(
+            vm.native_call(native, released.clone(), vec![], false),
+            released_error,
+            "{native:?}"
+        );
+        assert!(vm.stack.is_empty());
+    }
+}
+
+#[cfg_attr(test, test)]
+fn shared_native_entry_guards_preserve_constructor_and_decimal_errors() {
+    let mut vm = Vm::default();
+    // Obtain immutable tags from installed functions rather than inventing private payloads.
+    for source in [
+        "Symbol",
+        "Iterator.from",
+        "new ShadowRealm().evaluate('(x)=>x')",
+    ] {
+        let function = execute(&mut vm, source).object_id().unwrap();
+        let tag = vm.heap.native_function(function).unwrap().unwrap();
+        assert!(
+            matches!(
+                vm.native_call(tag, Value::Undefined, vec![], true),
+                Err(RuntimeError::TypeError(_))
+            ),
+            "{source}"
+        );
+    }
+    assert_eq!(
+        execute(
+            &mut vm,
+            r#"
+        (() => {
+            const decimal = BigInt('1' + '0'.repeat(32769));
+            try { decimal.toLocaleString('en'); throw 'decimal capacity'; }
+            catch(e) {return e instanceof RangeError;}
+        })()
+    "#
+        ),
+        Value::Bool(true)
+    );
+    assert!(vm.stack.is_empty());
+}
+
+#[cfg_attr(test, test)]
+fn shared_properties_preserve_ingress_and_copy_refusals() {
+    let mut owner = Vm::default();
+    let foreign_id = owner.heap.alloc_object(None).unwrap();
+    let root = owner.heap.root(foreign_id).unwrap();
+    let foreign = Value::Object(foreign_id);
+    let expected = Err(RuntimeError::Heap(HeapError::InvalidObject(foreign_id)));
+    let mut vm = Vm::default();
+    let class = execute(
+        &mut vm,
+        "globalThis.SharedOwner = class {static #field = 1;}; SharedOwner",
+    )
+    .object_id()
+    .unwrap();
+    assert_eq!(
+        vm.private_receiver(&foreign, class)
+            .map(|_| Value::Undefined),
+        expected
+    );
+    assert_eq!(vm.super_call(foreign.clone(), vec![]), expected);
+    assert_eq!(
+        vm.private_field_add(&foreign, class, "field".into(), Value::Undefined)
+            .map(|_| Value::Undefined),
+        expected
+    );
+    assert_eq!(
+        vm.set_function_name_from_key(&foreign, &Value::String("key".into()), 0)
+            .map(|_| Value::Undefined),
+        expected
+    );
+    assert_eq!(
+        vm.set_property(&foreign, &"x".into(), &Value::Undefined)
+            .map(|_| Value::Undefined),
+        expected
+    );
+    assert!(matches!(
+        vm.private_field_add(&Value::Number(1.0), class, "field".into(), Value::Undefined),
+        Err(RuntimeError::TypeError(_))
+    ));
+    assert!(matches!(
+        vm.private_field_add(
+            &Value::Object(class),
+            class,
+            "field".into(),
+            Value::Undefined
+        ),
+        Err(RuntimeError::TypeError(_))
+    ));
+    assert!(vm
+        .set_function_name_from_key(&Value::Number(1.0), &Value::String("key".into()), 0)
+        .is_ok());
+    let source = execute(&mut vm, "globalThis.copySource = {x:1}; copySource");
+    let target = execute(
+        &mut vm,
+        "globalThis.copyTarget = Object.preventExtensions({}); copyTarget",
+    )
+    .object_id()
+    .unwrap();
+    assert!(matches!(
+        vm.copy_data_properties(target, &source, &[]),
+        Err(RuntimeError::TypeError(_))
+    ));
+    for excluded in [
+        "({get length() {throw 11;}})",
+        "({length:{valueOf() {throw 11;}}})",
+        "({length:1,get 0() {throw 11;}})",
+        "({length:1,0:{toString() {throw 11;}}})",
+    ] {
+        let excluded = execute(&mut vm, excluded);
+        assert_eq!(
+            vm.destructure_object_rest(&source, &excluded),
+            Err(RuntimeError::Thrown(Value::Number(11.0)))
+        );
+        assert!(vm.stack.is_empty());
+    }
+    vm.remaining_instructions = vm.config.instruction_budget;
+    assert!(matches!(
+        vm.build_async_dispose_state(vec![], Some(RuntimeError::InstructionLimit)),
+        Err(RuntimeError::InstructionLimit)
+    ));
+    assert!(vm.stack.is_empty());
+    owner.heap.unroot(root).unwrap();
+    assert_eq!(execute(&mut vm, "21+21"), Value::Number(42.0));
+}
+
+#[cfg_attr(test, test)]
+fn shared_cold_initializers_and_temporal_options_restore_roots() {
+    type Initializer = fn(&mut Vm) -> Result<Value, RuntimeError>;
+    let cases: &[(&str, Initializer)] = &[
+        ("JSON", |v| v.json_global()),
+        ("done", |v| {
+            v.install_test262_done().map(|_| Value::Undefined)
+        }),
+        ("sync prototype", |v| {
+            v.disposable_stack_prototype(false).map(Value::Object)
+        }),
+        ("async prototype", |v| {
+            v.disposable_stack_prototype(true).map(Value::Object)
+        }),
+        ("sync constructor", |v| {
+            v.disposable_stack_constructor(false, true)
+        }),
+        ("async constructor", |v| {
+            v.disposable_stack_constructor(true, true)
+        }),
+    ];
+    for &(name, initialize) in cases {
+        let mut extra = 0;
+        let mut refusals = 0;
+        loop {
+            let mut vm = Vm::new(VmConfig {
+                heap: HeapConfig {
+                    nursery_capacity: 1,
+                    ..HeapConfig::default()
+                },
+                ..VmConfig::default()
+            })
+            .unwrap();
+            if name.ends_with("constructor") {
+                vm.new_target = vm.global("Object").unwrap();
+            }
+            vm.remaining_instructions = vm.config.instruction_budget;
+            collect(&mut vm);
+            let limit = vm.heap.allow_only(extra);
+            match initialize(&mut vm) {
+                Ok(_) => {
+                    assert!(refusals > 0, "{name}");
+                    break;
+                }
+                Err(RuntimeError::Heap(HeapError::HeapLimitExceeded { limit: actual })) => {
+                    assert_eq!(actual, limit, "{name}");
+                    refusals += 1;
+                    extra = vm.heap.next_allocation_headroom(extra);
+                    assert!(extra <= 16 * 1024 * 1024, "{name}");
+                }
+                Err(error) => panic!("{name}, headroom {extra}: {error:?}"),
+            }
+            assert!(vm.stack.is_empty(), "{name}");
+            vm.heap.allow_only(16 * 1024 * 1024);
+            collect(&mut vm);
+            initialize(&mut vm).unwrap();
+            assert!(vm.stack.is_empty(), "{name}");
+        }
+    }
+    let mut vm = Vm::default();
+    let time = execute(
+        &mut vm,
+        "globalThis.coldTime = new Temporal.PlainTime(1); coldTime",
+    );
+    let receiver = vm
+        .validate_temporal_receiver(&time, TemporalKind::PlainTime)
+        .unwrap();
+    collect(&mut vm);
+    let limit = vm.heap.allow_only(0);
+    assert_eq!(
+        vm.temporal_plain_time_round(&receiver, &Value::String("second".into())),
+        Err(RuntimeError::Heap(HeapError::HeapLimitExceeded { limit }))
+    );
+    assert!(vm.stack.is_empty());
+    vm.heap.allow_only(16 * 1024 * 1024);
+    vm.config.max_string_bytes = 4;
+    assert_eq!(
+        vm.json_parse(&Value::String("\"abcdef\"".into()), None),
+        Err(RuntimeError::StringLimit { limit: 4 })
+    );
+    assert!(vm.stack.is_empty());
+}
+
+#[cfg_attr(test, test)]
+fn shared_foreign_array_prototype_refusal_restores_operands() {
+    let mut vm = Vm::default();
+    vm.install_test262_harness().unwrap();
+    let realm = execute(
+        &mut vm,
+        "globalThis.sharedRealm = $262.createRealm(); sharedRealm.global",
+    )
+    .object_id()
+    .unwrap();
+    let receiver = execute(
+        &mut vm,
+        "globalThis.sharedArrayLike = {length:0}; sharedArrayLike",
+    );
+    vm.acting_realm = Some(realm);
+    vm.remaining_instructions = vm.config.instruction_budget;
+    let limit = vm
+        .test262_realms
+        .get_mut(&realm)
+        .unwrap()
+        .vm
+        .heap
+        .allow_only(0);
+    assert_eq!(
+        vm.array_flat(&receiver, &Value::Undefined),
+        Err(RuntimeError::Heap(HeapError::HeapLimitExceeded { limit }))
+    );
+    assert!(vm.stack.is_empty());
+    vm.test262_realms
+        .get_mut(&realm)
+        .unwrap()
+        .vm
+        .heap
+        .allow_only(16 * 1024 * 1024);
+    assert!(vm.array_flat(&receiver, &Value::Undefined).is_ok());
+    assert!(vm.stack.is_empty());
+    vm.acting_realm = None;
+    assert_eq!(execute(&mut vm, "21+21"), Value::Number(42.0));
 }
 
 #[cfg_attr(test, test)]

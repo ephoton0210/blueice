@@ -17,6 +17,57 @@
 use super::*;
 
 impl Vm {
+    /// Native resolving functions retain the Promise and AlreadyResolved record
+    /// in their immutable NativeFunction payload. The VM traces both records.
+    pub(in super::super) fn promise_resolving_function(
+        &mut self,
+        promise: ObjectId,
+        state: ObjectId,
+        value: Value,
+        fulfill: bool,
+    ) -> Result<Value, RuntimeError> {
+        // This operation also creates the flag on its first call. Retaining
+        // the record does not eliminate that property-allocation refusal.
+        if self.promise_already_resolved(state)? {
+            return Ok(Value::Undefined);
+        }
+        if fulfill {
+            self.resolve_promise(promise, value)?;
+        } else {
+            self.settle_promise(promise, PromiseStatus::Rejected(value))
+                .expect("a native resolver retains its tracked Promise record");
+        }
+        Ok(Value::Undefined)
+    }
+
+    /// Iterator-result creation on this path allocates only a fresh ordinary
+    /// object and its data slots. Its failures are uncatchable resource refusals;
+    /// propagate them before settling the retained continuation target.
+    pub(in super::super) fn promise_async_from_sync_fulfill(
+        &mut self,
+        target: ObjectId,
+        value: Value,
+        done: bool,
+    ) -> Result<Value, RuntimeError> {
+        let result = self.iterator_result(value, done)?;
+        self.settle_promise(target, PromiseStatus::Fulfilled(result))
+            .expect("an async-from-sync continuation retains its tracked target");
+        Ok(Value::Undefined)
+    }
+
+    pub(in super::super) fn promise_async_from_sync_reject(
+        &mut self,
+        target: ObjectId,
+        record: ObjectId,
+        value: Value,
+    ) -> Result<Value, RuntimeError> {
+        // IteratorClose with a throw completion preserves the original rejection.
+        let _ = self.iterator_close(&Value::Object(record));
+        self.settle_promise(target, PromiseStatus::Rejected(value))
+            .expect("an async-from-sync continuation retains its tracked target");
+        Ok(Value::Undefined)
+    }
+
     pub(in super::super) fn new_promise(&mut self) -> Result<ObjectId, RuntimeError> {
         // `promise_prototype()` alone builds the prototype object (`then`/
         // `catch`/`finally`/`@@toStringTag`) but not its "constructor" link
@@ -198,7 +249,16 @@ impl Vm {
             self.stack.push(promise.clone());
             let resolve = self.promise_field(storage, "resolve");
             let reject = self.promise_field(storage, "reject");
-            if !self.is_callable(&resolve)? || !self.is_callable(&reject)? {
+            // The executor stores both values through Heap::set, which
+            // validates object handles. The retained private record owns
+            // them; classifying those values cannot fail a heap lookup.
+            if !self
+                .is_callable(&resolve)
+                .expect("the retained capability record owns its validated resolve value")
+                || !self
+                    .is_callable(&reject)
+                    .expect("the retained capability record owns its validated reject value")
+            {
                 return Err(RuntimeError::TypeError(
                     "Promise constructor did not provide resolving functions".into(),
                 ));
@@ -530,7 +590,10 @@ impl Vm {
                 return Ok(());
             }
         };
-        if !self.is_callable(&then)? {
+        if !self
+            .is_callable(&then)
+            .expect("Get returned a live local value or an imported facade")
+        {
             self.settle_tracked_promise(promise, PromiseStatus::Fulfilled(resolution));
             return Ok(());
         }
@@ -590,7 +653,10 @@ impl Vm {
         if matches!(species, Value::Undefined | Value::Null) {
             return Ok(default);
         }
-        if !self.is_constructor(&species)? {
+        if !self
+            .is_constructor(&species)
+            .expect("Get returned a live local value or an imported facade")
+        {
             return Err(RuntimeError::TypeError(
                 "Promise species must be a constructor".into(),
             ));

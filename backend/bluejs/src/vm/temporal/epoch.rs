@@ -16,11 +16,30 @@
 //! friction rather than removing any.
 
 use num_bigint::BigInt;
+use num_traits::ToPrimitive;
 
 /// `(year, month, day)`.
 pub(crate) type CivilDate = (i32, u8, u8);
 /// `(hour, minute, second, millisecond, microsecond, nanosecond)`.
 pub(crate) type CivilTime = (u8, u8, u8, u16, u16, u16);
+
+/// Converts an epoch that a Temporal producer has checked against the Instant
+/// range. That range is less than 2^73 nanoseconds, so it fits in i128.
+/// Keep this private guarantee separate from observable argument conversion.
+pub(crate) fn instant_nanoseconds(value: &BigInt) -> i128 {
+    value
+        .to_i128()
+        .expect("a producer-validated Temporal epoch fits in i128")
+}
+
+/// DateTimeFormat consumes milliseconds from a producer-validated epoch.
+/// The pinned BigInt conversion returns a value even for large magnitudes;
+/// Temporal's supported millisecond range is finite in f64.
+pub(crate) fn instant_milliseconds(value: &BigInt) -> f64 {
+    (value / 1_000_000_u32)
+        .to_f64()
+        .expect("the pinned BigInt float conversion returns a value")
+}
 
 /// Converts a calendar date, time-of-day and UTC offset into epoch
 /// nanoseconds, using a Howard Hinnant-style `days_from_civil` calculation.

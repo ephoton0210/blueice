@@ -105,9 +105,7 @@ impl Vm {
         args: &[Value],
     ) -> Result<Value, RuntimeError> {
         let value = receiver.data();
-        let milliseconds = (&value.epoch_nanoseconds / 1_000_000_u32)
-            .to_f64()
-            .ok_or_else(|| RuntimeError::RangeError("invalid Temporal instant".into()))?;
+        let milliseconds = epoch::instant_milliseconds(&value.epoch_nanoseconds);
         let stack_base = self.stack.len();
         let result = (|| {
             let mut options = self.date_time_format_options(native::argument(args, 1))?;

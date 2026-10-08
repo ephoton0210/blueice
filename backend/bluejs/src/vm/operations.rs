@@ -13,11 +13,7 @@ use super::*;
 impl Vm {
     pub(super) fn unbox_string(&self, value: &Value) -> Result<Value, RuntimeError> {
         if let Value::Object(id) = value {
-            if let Some(string) = self
-                .heap
-                .boxed_string(*id)
-                .expect("a value handed to a String operation is a live object")
-            {
+            if let Some(string) = self.heap.boxed_string(*id)? {
                 return Ok(Value::String(string.clone()));
             }
         }
@@ -162,9 +158,7 @@ impl Vm {
         let string = self.string_receiver(receiver)?;
         let search = self.coerce_string(native::argument(args, 0))?;
         let replace = native::argument(args, 1);
-        let callable = self
-            .is_callable(replace)
-            .expect("an argument value is a live value");
+        let callable = self.is_callable(replace)?;
         let template = if callable {
             JsString::default()
         } else {

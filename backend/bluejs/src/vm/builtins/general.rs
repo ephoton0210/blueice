@@ -7,7 +7,9 @@ use super::*;
 impl Vm {
     pub fn install_test262_done(&mut self) -> Result<(), RuntimeError> {
         let global = self.global("globalThis")?.object_id().unwrap();
-        let prototype = self.function_prototype()?;
+        let prototype = self
+            .function_prototype()
+            .expect("materializing globalThis initialized Function intrinsics");
         self.install_native(global, prototype, "$DONE", 1, NativeFunction::Test262Done)
     }
 
@@ -47,7 +49,10 @@ impl Vm {
         };
         for name in names {
             let method = self.get_property(value, &name.into())?;
-            if self.is_callable(&method)? {
+            if self
+                .is_callable(&method)
+                .expect("Get returned a live local value or an imported facade")
+            {
                 let result = self.call_native(method, value.clone(), Vec::new(), false)?;
                 if !matches!(result, Value::Object(_)) {
                     return Ok(result);
@@ -315,7 +320,9 @@ impl Vm {
         let value = self.coerce_primitive(value, "string")?;
         Ok(match value {
             Value::Symbol(symbol) => symbol.into(),
-            value => primitive::string(&value)?.into(),
+            value => primitive::string(&value)
+                .expect("ToPrimitive produced a non-Symbol primitive property key")
+                .into(),
         })
     }
 
@@ -341,7 +348,10 @@ impl Vm {
         if matches!(method, Value::Undefined | Value::Null) {
             return Ok(Value::Undefined);
         }
-        if !self.is_callable(&method)? {
+        if !self
+            .is_callable(&method)
+            .expect("Get returned a live local value or an imported facade")
+        {
             return Err(RuntimeError::TypeError("property is not callable".into()));
         }
         Ok(method)
@@ -355,7 +365,11 @@ impl Vm {
         if !matches!(matcher, Value::Undefined) {
             return self.to_boolean(&matcher);
         }
-        Ok(self.heap.regexp(*id)?.is_some())
+        Ok(self
+            .heap
+            .regexp(*id)
+            .expect("Get of @@match validated this retained receiver")
+            .is_some())
     }
 
     pub(in super::super) fn dispatch_string_method(
@@ -504,13 +518,16 @@ impl Vm {
         done: bool,
     ) -> Result<Value, RuntimeError> {
         let prototype = self.object_prototype;
+        let base = self.stack.len();
         self.stack.push(value.clone());
-        let result = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
-        self.stack.push(Value::Object(result));
-        self.with_roots(|heap| heap.set(result, "value", value))?;
-        self.with_roots(|heap| heap.set(result, "done", Value::Bool(done)))?;
-        self.stack.pop();
-        self.stack.pop();
-        Ok(Value::Object(result))
+        let outcome = (|| {
+            let result = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
+            self.stack.push(Value::Object(result));
+            self.with_roots(|heap| heap.set(result, "value", value))?;
+            self.with_roots(|heap| heap.set(result, "done", Value::Bool(done)))?;
+            Ok(Value::Object(result))
+        })();
+        self.stack.truncate(base);
+        outcome
     }
 }

@@ -5,6 +5,22 @@
 use super::*;
 
 impl Vm {
+    /// ECMAScript `IsArray`, including the transparent Proxy recursion.
+    pub(in super::super) fn is_array(&self, value: &Value) -> Result<bool, RuntimeError> {
+        let Value::Object(mut object) = value else {
+            return Ok(false);
+        };
+        loop {
+            if self.heap.is_array(object)? {
+                return Ok(true);
+            }
+            let Some((target, _)) = self.heap.proxy(object)? else {
+                return Ok(false);
+            };
+            object = target;
+        }
+    }
+
     pub(in super::super) fn array_at(
         &mut self,
         receiver: &Value,
@@ -102,7 +118,7 @@ impl Vm {
         &mut self,
         object: ObjectId,
         count: usize,
-    ) -> Result<bool, RuntimeError> {
+    ) -> bool {
         // The caller has checked that `object` is an Array, so its `length` is
         // a Number, and an object's prototype chain consists of live objects.
         let live = "the receiver and its prototypes are live";
@@ -111,16 +127,16 @@ impl Vm {
         // Multiple arguments must all be stored before an overflowing length
         // write. A single append preserves that order when it returns the error.
         if count > 1 && length + count as f64 > f64::from(u32::MAX) {
-            return Ok(false);
+            return false;
         }
         let mut current = self.heap.prototype(object).expect(live);
         while let Some(prototype) = current {
-            if self.heap.proxy(prototype).expect(live).is_some()
+            if !matches!(self.heap.proxy(prototype), Ok(None))
                 || self.test262_foreign_reference(prototype).is_some()
                 || self.test262_reverse_reference(prototype).is_some()
                 || self.heap.is_module_namespace(prototype).expect(live)
             {
-                return Ok(false);
+                return false;
             }
             for offset in 0..count {
                 let key: PropertyName = ((length as u64) + offset as u64).to_string().into();
@@ -135,12 +151,12 @@ impl Vm {
                         .expect(live)
                         .is_some()
                 {
-                    return Ok(false);
+                    return false;
                 }
             }
             current = self.heap.prototype(prototype).expect(live);
         }
-        Ok(true)
+        true
     }
 
     /// `Array.prototype.push` for a receiver whose `length` is not a plain
@@ -1164,7 +1180,10 @@ impl Vm {
                 self.stack.push(value.clone());
                 let method = self.get_property(&value, &"toLocaleString".into())?;
                 self.stack.push(method.clone());
-                if !self.is_callable(&method)? {
+                if !self
+                    .is_callable(&method)
+                    .expect("Get returned a live local value or an imported facade")
+                {
                     return Err(RuntimeError::TypeError(
                         "Array element toLocaleString is not callable".into(),
                     ));
@@ -1414,7 +1433,10 @@ impl Vm {
         if matches!(species, Value::Undefined | Value::Null) {
             return ordinary_array(self);
         }
-        if !self.is_constructor(&species)? {
+        if !self
+            .is_constructor(&species)
+            .expect("Get returned a live local value or an imported facade")
+        {
             return Err(RuntimeError::TypeError(
                 "Array species must be a constructor".into(),
             ));

@@ -562,12 +562,9 @@ impl Vm {
         }
         let mut current = Some(target);
         while let Some(object) = current {
-            if self
-                .heap
-                .proxy(object)
-                .expect("the target or returned prototype is live in this realm")
-                .is_some()
-            {
+            // A live Proxy can be revoked. Reaching it in the prototype
+            // chain must preserve that language error instead of panicking.
+            if self.heap.proxy(object)?.is_some() {
                 return self.proxy_set(object, receiver, key, value);
             }
             // The prototype-chain walk below stops early for a *local*
@@ -680,12 +677,9 @@ impl Vm {
         } else {
             PropertyDescriptor::data(stored, true, true, true)
         };
-        if self
-            .heap
-            .proxy(*receiver)
-            .expect("GetOwnProperty validated and retained this receiver")
-            .is_some()
-        {
+        // A receiver's GetOwnProperty trap can revoke itself before this
+        // DefineOwnProperty step, despite having returned successfully.
+        if self.heap.proxy(*receiver)?.is_some() {
             return self.proxy_define_own_property(*receiver, key.clone(), descriptor);
         }
         let succeeded = self.object_define_own_property(*receiver, key.clone(), descriptor)?;

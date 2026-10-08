@@ -110,9 +110,7 @@ impl Vm {
             duration.nanoseconds,
         );
         let time = if negate { time.negated() } else { time };
-        let epoch_i128: i128 = epoch
-            .to_i128()
-            .ok_or_else(|| RuntimeError::RangeError("invalid Temporal.Instant".into()))?;
+        let epoch_i128 = epoch::instant_nanoseconds(&epoch);
         let result_i128 = epoch_i128 + time.total_nanoseconds();
         self.instant_from_epoch_nanoseconds(BigInt::from(result_i128))
     }
@@ -141,9 +139,7 @@ impl Vm {
                 "roundingIncrement does not divide evenly into a day".into(),
             ));
         }
-        let epoch_i128: i128 = epoch
-            .to_i128()
-            .ok_or_else(|| RuntimeError::RangeError("invalid Temporal.Instant".into()))?;
+        let epoch_i128 = epoch::instant_nanoseconds(&epoch);
         let rounded = duration_math::TimeDuration::from_nanoseconds(epoch_i128)
             .round_as_if_positive(smallest_unit, increment, mode)
             .total_nanoseconds();
@@ -190,12 +186,8 @@ impl Vm {
                 "roundingIncrement does not divide evenly into the next larger unit".into(),
             ));
         }
-        let self_i128: i128 = self_epoch
-            .to_i128()
-            .ok_or_else(|| RuntimeError::RangeError("invalid Temporal.Instant".into()))?;
-        let other_i128: i128 = other_epoch
-            .to_i128()
-            .ok_or_else(|| RuntimeError::RangeError("invalid Temporal.Instant".into()))?;
+        let self_i128 = epoch::instant_nanoseconds(&self_epoch);
+        let other_i128 = epoch::instant_nanoseconds(&other_epoch);
         let difference_ns = if since {
             self_i128 - other_i128
         } else {
@@ -225,7 +217,8 @@ impl Vm {
             i128::from(milliseconds),
             i128::from(microseconds),
             i128::from(nanoseconds),
-        ])?;
+        ])
+        .expect("a difference of supported Instants produces a valid time-only Duration");
         self.alloc_temporal_value(
             TemporalValue {
                 kind: TemporalKind::Duration,
@@ -329,42 +322,6 @@ impl Vm {
         result
     }
 
-    /// `GetTemporalFractionalSecondDigitsOption`, a `GetStringOrNumberOption`
-    /// whose only permitted string is `"auto"`: a Number is floored and then
-    /// range-checked (so `9.7` is 9 but `-0.6` is out of range), and anything
-    /// that is not a Number is stringified and must equal `"auto"`.
-    pub(in super::super) fn temporal_fractional_second_digits(
-        &mut self,
-        options: &Value,
-    ) -> Result<Option<u8>, RuntimeError> {
-        let value = self.get_property(options, &"fractionalSecondDigits".into())?;
-        match value {
-            Value::Undefined => Ok(None),
-            Value::Number(digits) => {
-                let digits = digits.floor();
-                if !digits.is_finite() || !(0.0..=9.0).contains(&digits) {
-                    return Err(RuntimeError::RangeError(
-                        "invalid fractionalSecondDigits".into(),
-                    ));
-                }
-                Ok(Some(digits as u8))
-            }
-            value => {
-                let text = self.coerce_string(&value)?;
-                let text = text.to_utf8().map_err(|_| {
-                    RuntimeError::RangeError("invalid fractionalSecondDigits".into())
-                })?;
-                if text == "auto" {
-                    Ok(None)
-                } else {
-                    Err(RuntimeError::RangeError(
-                        "invalid fractionalSecondDigits".into(),
-                    ))
-                }
-            }
-        }
-    }
-
     /// `ToTemporalTimeZoneIdentifier` for the `timeZone` option, resolved to
     /// the offset that zone was actually observing at `epoch_nanoseconds` —
     /// the receiver `Instant`'s own epoch, per `GetOffsetNanosecondsFor`.
@@ -379,11 +336,19 @@ impl Vm {
             return Ok(None);
         }
         if let Some(object) = value.object_id() {
-            if let Some(temporal) = self.heap.temporal_value(object)? {
+            if let Some(temporal) = self
+                .heap
+                .temporal_value(object)
+                .expect("Get returned a live timeZone value in this realm")
+            {
                 if temporal.kind == TemporalKind::ZonedDateTime {
-                    return iso::resolve_time_zone_offset(&temporal.time_zone, epoch_nanoseconds)
-                        .map(Some)
-                        .map_err(|()| RuntimeError::RangeError("invalid time zone".into()));
+                    // ZonedDateTime producers store an identifier parsed
+                    // against the same pinned database. Its offset lookup
+                    // supports the full Temporal epoch range.
+                    return Ok(Some(
+                        iso::resolve_time_zone_offset(&temporal.time_zone, epoch_nanoseconds)
+                            .expect("ZonedDateTime publication validates its time-zone identifier"),
+                    ));
                 }
             }
         }
@@ -464,9 +429,7 @@ impl Vm {
                 ),
             },
         };
-        let epoch_i128: i128 = epoch
-            .to_i128()
-            .ok_or_else(|| RuntimeError::RangeError("invalid Temporal.Instant".into()))?;
+        let epoch_i128 = epoch::instant_nanoseconds(&epoch);
         let rounded = duration_math::TimeDuration::from_nanoseconds(epoch_i128)
             .round_as_if_positive(unit, increment, mode)
             .total_nanoseconds();

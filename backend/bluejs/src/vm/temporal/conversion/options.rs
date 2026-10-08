@@ -8,6 +8,153 @@
 use super::super::*;
 
 impl Vm {
+    /// `GetTemporalFractionalSecondDigitsOption`, a `GetStringOrNumberOption`
+    /// whose only permitted string is `"auto"`: a Number is floored and then
+    /// range-checked (so `9.7` is 9 but `-0.6` is out of range), and anything
+    /// that is not a Number is stringified and must equal `"auto"`.
+    pub(in super::super::super) fn temporal_fractional_second_digits(
+        &mut self,
+        options: &Value,
+    ) -> Result<Option<u8>, RuntimeError> {
+        let value = self.get_property(options, &"fractionalSecondDigits".into())?;
+        match value {
+            Value::Undefined => Ok(None),
+            Value::Number(digits) => {
+                let digits = digits.floor();
+                if !digits.is_finite() || !(0.0..=9.0).contains(&digits) {
+                    return Err(RuntimeError::RangeError(
+                        "invalid fractionalSecondDigits".into(),
+                    ));
+                }
+                Ok(Some(digits as u8))
+            }
+            value => {
+                let text = self.coerce_string(&value)?;
+                let text = text.to_utf8().map_err(|_| {
+                    RuntimeError::RangeError("invalid fractionalSecondDigits".into())
+                })?;
+                if text == "auto" {
+                    Ok(None)
+                } else {
+                    Err(RuntimeError::RangeError(
+                        "invalid fractionalSecondDigits".into(),
+                    ))
+                }
+            }
+        }
+    }
+
+    /// Reads `options` values without validating them, so every property a
+    /// method consumes is fetched and coerced *before* any of them is
+    /// range-checked. Temporal requires exactly that ordering — Test262's
+    /// `PlainTime/prototype/round/options-read-before-algorithmic-validation.js`
+    /// reads `smallestUnit` (and throws on the increment) only after
+    /// `roundingIncrement`/`roundingMode` have already been read — so the
+    /// combined read-and-validate `temporal_string_option` cannot be used
+    /// where more than one option participates in a joint check.
+    pub(in super::super::super) fn temporal_raw_string_option(
+        &mut self,
+        options: &Value,
+        name: &str,
+    ) -> Result<Option<String>, RuntimeError> {
+        let value = self.get_property(options, &name.into())?;
+        if value == Value::Undefined {
+            return Ok(None);
+        }
+        let string = self.coerce_string(&value)?;
+        string
+            .to_utf8()
+            .map(Some)
+            .map_err(|_| RuntimeError::RangeError(format!("invalid {name} option")))
+    }
+
+    pub(in super::super::super) fn temporal_raw_number_option(
+        &mut self,
+        options: &Value,
+        name: &str,
+    ) -> Result<Option<f64>, RuntimeError> {
+        let value = self.get_property(options, &name.into())?;
+        if value == Value::Undefined {
+            return Ok(None);
+        }
+        self.coerce_number(&value).map(Some)
+    }
+
+    /// `ToTemporalRoundingIncrement` applied to an already-read raw value.
+    pub(in super::super::super) fn temporal_validated_rounding_increment(
+        increment: Option<f64>,
+    ) -> Result<i128, RuntimeError> {
+        let Some(increment) = increment else {
+            return Ok(1);
+        };
+        if !increment.is_finite() {
+            return Err(RuntimeError::RangeError("invalid roundingIncrement".into()));
+        }
+        let integer = increment.trunc();
+        if !(1.0..=1_000_000_000.0).contains(&integer) {
+            return Err(RuntimeError::RangeError("invalid roundingIncrement".into()));
+        }
+        Ok(integer as i128)
+    }
+
+    pub(in super::super::super) fn temporal_validated_rounding_mode(
+        mode: Option<&str>,
+        default: blueice_ecma402::NumberRoundingMode,
+    ) -> Result<blueice_ecma402::NumberRoundingMode, RuntimeError> {
+        match mode {
+            None => Ok(default),
+            Some(mode) => rounding::parse_rounding_mode(mode)
+                .ok_or_else(|| RuntimeError::RangeError("invalid roundingMode option".into())),
+        }
+    }
+
+    pub(in super::super::super) fn temporal_validated_time_unit(
+        unit: Option<&str>,
+        name: &str,
+    ) -> Result<Option<rounding::TimeUnit>, RuntimeError> {
+        match unit {
+            None => Ok(None),
+            Some(unit) => rounding::parse_time_unit(unit)
+                .map(Some)
+                .ok_or_else(|| RuntimeError::RangeError(format!("invalid {name} option"))),
+        }
+    }
+
+    /// `ValidateTemporalRoundingIncrement(increment, maximum, false)` for a
+    /// time-only type.
+    ///
+    /// This is deliberately *not* `Temporal.Instant.round`'s rule. An
+    /// `Instant` is unbounded, so its increment only has to divide a whole
+    /// day (`maximum` inclusive); a `PlainTime` is already bounded to one
+    /// day, so its increment must divide the *unit's own* place value and
+    /// stay strictly below it — `{ smallestUnit: "hours", roundingIncrement:
+    /// 24 }` and `{ smallestUnit: "nanoseconds", roundingIncrement: 1000 }`
+    /// both throw, per Test262's
+    /// `PlainTime/prototype/round/roundingincrement-invalid.js`.
+    pub(in super::super::super) fn temporal_validated_plain_time_increment(
+        increment: i128,
+        unit: rounding::TimeUnit,
+    ) -> Result<(), RuntimeError> {
+        let maximum = unit.increment_dividend();
+        if increment >= maximum || maximum % increment != 0 {
+            return Err(RuntimeError::RangeError(
+                "roundingIncrement does not divide evenly into the smallestUnit".into(),
+            ));
+        }
+        Ok(())
+    }
+
+    /// `GetTemporalOverflowOption`: `true` means `"reject"`.
+    pub(in super::super::super) fn temporal_overflow_option(
+        &mut self,
+        options: &Value,
+    ) -> Result<bool, RuntimeError> {
+        Ok(self
+            .temporal_string_option(options, "overflow", &["constrain", "reject"])?
+            .as_deref()
+            == Some("reject"))
+    }
+
     /// `GetOptionsObject`: `undefined` becomes a fresh empty object; an
     /// Object is used as-is; any other value is a `TypeError` — it is
     /// deliberately *not* boxed through `ToObject`, so

@@ -69,7 +69,9 @@ impl Vm {
                 Ok(value)
             }
             Err(error) => {
-                self.heap.unroot(root)?;
+                self.heap
+                    .unroot(root)
+                    .expect("this initializer owns its temporary root");
                 Err(error)
             }
         }
@@ -106,7 +108,11 @@ impl Vm {
             self.stack.push(Value::Object(wrapper));
             self.define_data(wrapper, "", value, true, true, true)?;
             if let Some(source) = parsed.primitive_source() {
-                let value = self.get_property(&Value::Object(wrapper), &"".into())?;
+                let value = self
+                    .heap
+                    .get_own(wrapper, "")
+                    .expect("the fresh rooted wrapper remains live")
+                    .expect("JSON parsing installed its own root slot");
                 sources.insert((wrapper, "".into()), (value, source.clone()));
             }
             self.json_internalize(&Value::Object(wrapper), &"".into(), &reviver, &sources)
@@ -140,25 +146,12 @@ impl Vm {
         let base = self.stack.len();
         self.stack.push(Value::Object(raw));
         let result = (|| {
-            self.define_data(raw, "rawJSON", Value::String(text), true, true, true)?;
-            if !self.object_define_own_property(
-                raw,
-                "rawJSON".into(),
-                PropertyDescriptor {
-                    writable: Some(false),
-                    configurable: Some(false),
-                    ..Default::default()
-                },
-            )? {
-                return Err(RuntimeError::TypeError(
-                    "cannot freeze raw JSON text".into(),
-                ));
-            }
-            if !self.object_prevent_extensions(raw)? {
-                return Err(RuntimeError::TypeError(
-                    "cannot freeze raw JSON object".into(),
-                ));
-            }
+            // This fresh, unexposed ordinary object has no user callbacks or
+            // exotic methods. Install its frozen data descriptor directly.
+            self.define_data(raw, "rawJSON", Value::String(text), false, true, false)?;
+            self.heap
+                .prevent_extensions(raw)
+                .expect("the rooted fresh raw JSON object remains live");
             Ok(Value::Object(raw))
         })();
         self.stack.truncate(base);
@@ -191,13 +184,13 @@ impl Vm {
             self.stack.push(holder.clone());
             let value = self.get_property(holder, &PropertyName::from(name))?;
             self.stack.push(value.clone());
-            let source = match holder {
-                Value::Object(object) => sources
-                    .get(&(*object, name.clone()))
-                    .filter(|(parsed, _)| crate::heap::same_value(parsed, &value))
-                    .map(|(_, source)| source.clone()),
-                _ => None,
-            };
+            let object = holder
+                .object_id()
+                .expect("JSON internalization receives its ordinary wrapper or an object child");
+            let source = sources
+                .get(&(object, name.clone()))
+                .filter(|(parsed, _)| crate::heap::same_value(parsed, &value))
+                .map(|(_, source)| source.clone());
             if let Value::Object(object) = value {
                 if self.is_array(&Value::Object(object))? {
                     let length = self.get_property(&Value::Object(object), &"length".into())?;
@@ -439,7 +432,12 @@ impl Vm {
         let primitive = if let Value::Object(object) = space {
             if self.heap.boxed_string(*object)?.is_some() {
                 Value::String(self.coerce_string(space)?)
-            } else if matches!(self.heap.boxed_primitive(*object)?, Some(Value::Number(_))) {
+            } else if matches!(
+                self.heap
+                    .boxed_primitive(*object)
+                    .expect("the preceding boxed-string lookup validated this receiver"),
+                Some(Value::Number(_))
+            ) {
                 Value::Number(self.coerce_number(space)?)
             } else {
                 Value::Undefined
@@ -467,35 +465,30 @@ impl Vm {
 
     fn json_property_list_key(&mut self, item: &Value) -> Result<Option<JsString>, RuntimeError> {
         match item {
-            Value::String(_) | Value::Number(_) => Ok(Some(self.coerce_string(item)?)),
-            Value::Object(object) if self.heap.boxed_string(*object)?.is_some() => {
+            Value::String(_) | Value::Number(_) => Ok(Some(
+                primitive::string(item)
+                    .expect("primitive String and Number property-list keys cannot throw"),
+            )),
+            Value::Object(object)
+                if self
+                    .heap
+                    .boxed_string(*object)
+                    .expect("Get returned a value retained on the property-list stack")
+                    .is_some() =>
+            {
                 Ok(Some(self.coerce_string(item)?))
             }
             Value::Object(object)
                 if matches!(
-                    self.heap.boxed_primitive(*object)?,
-                    Some(Value::String(_) | Value::Number(_))
+                    self.heap
+                        .boxed_primitive(*object)
+                        .expect("the preceding boxed-string lookup validated this receiver"),
+                    Some(Value::Number(_))
                 ) =>
             {
                 Ok(Some(self.coerce_string(item)?))
             }
             _ => Ok(None),
-        }
-    }
-
-    /// ECMAScript `IsArray`, including the transparent Proxy recursion.
-    pub(super) fn is_array(&self, value: &Value) -> Result<bool, RuntimeError> {
-        let Value::Object(mut object) = value else {
-            return Ok(false);
-        };
-        loop {
-            if self.heap.is_array(object)? {
-                return Ok(true);
-            }
-            let Some((target, _)) = self.heap.proxy(object)? else {
-                return Ok(false);
-            };
-            object = target;
         }
     }
 
@@ -516,7 +509,10 @@ impl Vm {
             self.stack.push(value.clone());
             if matches!(value, Value::Object(_) | Value::BigInt(_)) {
                 let to_json = self.get_property(&value, &"toJSON".into())?;
-                if self.is_callable(&to_json)? {
+                if self
+                    .is_callable(&to_json)
+                    .expect("Get returned a live local value or an imported facade")
+                {
                     value = self.call_native(
                         to_json,
                         value.clone(),
@@ -552,7 +548,8 @@ impl Vm {
             Value::Null => Ok(Some("null".into())),
             Value::Bool(value) => Ok(Some(if *value { "true" } else { "false" }.into())),
             Value::Number(value) => Ok(Some(if value.is_finite() {
-                primitive::string(&Value::Number(*value))?
+                primitive::string(&Value::Number(*value))
+                    .expect("primitive Number formatting cannot fail")
             } else {
                 "null".into()
             })),
@@ -561,35 +558,54 @@ impl Vm {
             )),
             Value::String(value) => Ok(Some(json_quote(value).into())),
             Value::Object(object) => {
-                if self.heap.is_raw_json(*object)? {
-                    let text = self.get_property(value, &"rawJSON".into())?;
-                    let Value::String(text) = text else {
-                        unreachable!("a branded raw JSON object retains its frozen text");
-                    };
-                    return Ok(Some(text));
+                if self
+                    .heap
+                    .is_raw_json(*object)
+                    .expect("JSON Str retains values returned by validated Get and calls")
+                {
+                    let text = self
+                        .heap
+                        .get_own(*object, "rawJSON")
+                        .expect("the validated raw JSON object remains live")
+                        .expect("a branded raw JSON object retains its frozen text");
+                    return Ok(Some(
+                        text.as_string()
+                            .expect("raw JSON publication installs a frozen String")
+                            .clone(),
+                    ));
                 }
-                if self.heap.boxed_string(*object)?.is_some() {
+                if self
+                    .heap
+                    .boxed_string(*object)
+                    .expect("raw JSON classification validated this retained object")
+                    .is_some()
+                {
                     let string = Value::String(self.coerce_string(value)?);
                     return self.json_serialize(&string, state, indent);
                 }
                 if let Some(primitive) = self
                     .heap
-                    .boxed_primitive(*object)?
-                    .or(self.test262_foreign_boxed_primitive(*object)?)
+                    .boxed_primitive(*object)
+                    .expect("raw JSON classification validated this retained object")
+                    .or(self.test262_foreign_boxed_primitive(*object).expect(
+                        "successful Get validated the facade whose membrane retains its realm and target",
+                    ))
                 {
                     return match primitive {
                         Value::Number(_) => {
                             let number = Value::Number(self.coerce_number(value)?);
                             self.json_serialize(&number, state, indent)
                         }
-                        Value::String(_) => {
-                            let string = Value::String(self.coerce_string(value)?);
-                            self.json_serialize(&string, state, indent)
-                        }
+                        // String wrappers use their distinct BoxedString kind
+                        // and were handled above; other scalar wrappers need
+                        // no observable numeric coercion here.
                         primitive => self.json_serialize(&primitive, state, indent),
                     };
                 }
-                if self.is_callable(value)? {
+                if self
+                    .is_callable(value)
+                    .expect("raw JSON classification validated this retained receiver")
+                {
                     return Ok(None);
                 }
                 if state.stack.borrow().contains(object) {
@@ -777,21 +793,18 @@ fn decode_json_string_body(body: &str) -> Vec<u16> {
                 b'n' => units.push(u16::from(b'\n')),
                 b'r' => units.push(u16::from(b'\r')),
                 b't' => units.push(u16::from(b'\t')),
-                b'u' => {
+                // Every other escape validated by string() is \uXXXX.
+                _ => {
                     let code = u16::from_str_radix(&body[i + 2..i + 6], 16)
                         .expect("the scan above validated four hex digits");
                     units.push(code);
                     i += 6;
                     continue;
                 }
-                _ => unreachable!("the scan above validated this escape"),
             }
             i += 2;
         } else {
-            let character = body[i..]
-                .chars()
-                .next()
-                .expect("i is a character boundary");
+            let character = body[i..].chars().next().expect("i is a character boundary");
             let mut buf = [0u16; 2];
             units.extend_from_slice(character.encode_utf16(&mut buf));
             i += character.len_utf8();
@@ -839,7 +852,8 @@ impl<'a> JsonSourceParser<'a> {
     }
 
     fn array(&mut self) -> Result<JsonNode, ()> {
-        self.expect(b'[')?;
+        // value() selected this parser only after observing the opening byte.
+        self.index += 1;
         self.skip_whitespace();
         if self.take(b']') {
             return Ok(JsonNode::Array(Vec::new()));
@@ -857,7 +871,8 @@ impl<'a> JsonSourceParser<'a> {
     }
 
     fn object(&mut self) -> Result<JsonNode, ()> {
-        self.expect(b'{')?;
+        // value() selected this parser only after observing the opening byte.
+        self.index += 1;
         self.skip_whitespace();
         if self.take(b'}') {
             return Ok(JsonNode::Object(Vec::new()));
@@ -966,7 +981,10 @@ impl<'a> JsonSourceParser<'a> {
                 }
                 Some(byte) if byte < 0x20 => return Err(()),
                 Some(_) => {
-                    let character = self.input[self.index..].chars().next().ok_or(())?;
+                    let character = self.input[self.index..]
+                        .chars()
+                        .next()
+                        .expect("peek observed a UTF-8 character");
                     self.index += character.len_utf8();
                 }
                 None => return Err(()),

@@ -16,117 +16,6 @@ pub(in super::super) enum PlainTimePrecision {
 impl Vm {
     // ---- Stage 1 Track D: Temporal.PlainTime arithmetic -----------------
 
-    /// Reads `options` values without validating them, so every property a
-    /// method consumes is fetched and coerced *before* any of them is
-    /// range-checked. Temporal requires exactly that ordering — Test262's
-    /// `PlainTime/prototype/round/options-read-before-algorithmic-validation.js`
-    /// reads `smallestUnit` (and throws on the increment) only after
-    /// `roundingIncrement`/`roundingMode` have already been read — so the
-    /// combined read-and-validate `temporal_string_option` cannot be used
-    /// where more than one option participates in a joint check.
-    pub(in super::super) fn temporal_raw_string_option(
-        &mut self,
-        options: &Value,
-        name: &str,
-    ) -> Result<Option<String>, RuntimeError> {
-        let value = self.get_property(options, &name.into())?;
-        if value == Value::Undefined {
-            return Ok(None);
-        }
-        let string = self.coerce_string(&value)?;
-        string
-            .to_utf8()
-            .map(Some)
-            .map_err(|_| RuntimeError::RangeError(format!("invalid {name} option")))
-    }
-
-    pub(in super::super) fn temporal_raw_number_option(
-        &mut self,
-        options: &Value,
-        name: &str,
-    ) -> Result<Option<f64>, RuntimeError> {
-        let value = self.get_property(options, &name.into())?;
-        if value == Value::Undefined {
-            return Ok(None);
-        }
-        self.coerce_number(&value).map(Some)
-    }
-
-    /// `ToTemporalRoundingIncrement` applied to an already-read raw value.
-    pub(in super::super) fn temporal_validated_rounding_increment(
-        increment: Option<f64>,
-    ) -> Result<i128, RuntimeError> {
-        let Some(increment) = increment else {
-            return Ok(1);
-        };
-        if !increment.is_finite() {
-            return Err(RuntimeError::RangeError("invalid roundingIncrement".into()));
-        }
-        let integer = increment.trunc();
-        if !(1.0..=1_000_000_000.0).contains(&integer) {
-            return Err(RuntimeError::RangeError("invalid roundingIncrement".into()));
-        }
-        Ok(integer as i128)
-    }
-
-    pub(in super::super) fn temporal_validated_rounding_mode(
-        mode: Option<&str>,
-        default: blueice_ecma402::NumberRoundingMode,
-    ) -> Result<blueice_ecma402::NumberRoundingMode, RuntimeError> {
-        match mode {
-            None => Ok(default),
-            Some(mode) => rounding::parse_rounding_mode(mode)
-                .ok_or_else(|| RuntimeError::RangeError("invalid roundingMode option".into())),
-        }
-    }
-
-    pub(in super::super) fn temporal_validated_time_unit(
-        unit: Option<&str>,
-        name: &str,
-    ) -> Result<Option<rounding::TimeUnit>, RuntimeError> {
-        match unit {
-            None => Ok(None),
-            Some(unit) => rounding::parse_time_unit(unit)
-                .map(Some)
-                .ok_or_else(|| RuntimeError::RangeError(format!("invalid {name} option"))),
-        }
-    }
-
-    /// `ValidateTemporalRoundingIncrement(increment, maximum, false)` for a
-    /// time-only type.
-    ///
-    /// This is deliberately *not* `Temporal.Instant.round`'s rule. An
-    /// `Instant` is unbounded, so its increment only has to divide a whole
-    /// day (`maximum` inclusive); a `PlainTime` is already bounded to one
-    /// day, so its increment must divide the *unit's own* place value and
-    /// stay strictly below it — `{ smallestUnit: "hours", roundingIncrement:
-    /// 24 }` and `{ smallestUnit: "nanoseconds", roundingIncrement: 1000 }`
-    /// both throw, per Test262's
-    /// `PlainTime/prototype/round/roundingincrement-invalid.js`.
-    pub(in super::super) fn temporal_validated_plain_time_increment(
-        increment: i128,
-        unit: rounding::TimeUnit,
-    ) -> Result<(), RuntimeError> {
-        let maximum = unit.increment_dividend();
-        if increment >= maximum || maximum % increment != 0 {
-            return Err(RuntimeError::RangeError(
-                "roundingIncrement does not divide evenly into the smallestUnit".into(),
-            ));
-        }
-        Ok(())
-    }
-
-    /// `GetTemporalOverflowOption`: `true` means `"reject"`.
-    pub(in super::super) fn temporal_overflow_option(
-        &mut self,
-        options: &Value,
-    ) -> Result<bool, RuntimeError> {
-        Ok(self
-            .temporal_string_option(options, "overflow", &["constrain", "reject"])?
-            .as_deref()
-            == Some("reject"))
-    }
-
     /// `ToIntegerWithTruncation`: a finite number, truncated toward zero.
     /// Temporal's *time* fields use this rather than requiring an already
     /// integral value — `new Temporal.PlainTime(11.9)` is hour 11, per
@@ -282,8 +171,9 @@ impl Vm {
                 "Temporal.PlainTime-like value must be an object or a string".into(),
             ));
         }
-        let source = self
-            .coerce_string(value)?
+        let source = value
+            .as_string()
+            .expect("the preceding branch validated a primitive String")
             .to_utf8()
             .map_err(|_| RuntimeError::RangeError("invalid Temporal.PlainTime string".into()))?;
         let fields = iso::parse_plain_time(&source)
@@ -476,7 +366,7 @@ impl Vm {
             i128::from(fields[4]),
             i128::from(fields[5]),
         )
-        .map_err(|error| RuntimeError::RangeError(error.to_string()))?;
+        .expect("balanced differences of two PlainTimes produce a valid time-only Duration");
         let mut value = Self::plain_time_value((0, 0, 0, 0, 0, 0));
         value.kind = TemporalKind::Duration;
         value.duration = Some(Box::new(record));
@@ -650,36 +540,32 @@ impl Vm {
                     "nanoseconds",
                 ],
             )?;
-            let smallest_unit =
-                Self::temporal_validated_time_unit(smallest_unit.as_deref(), "smallestUnit")?;
             // `ToSecondsStringPrecisionRecord`: an explicit `smallestUnit`
             // always wins over `fractionalSecondDigits`.
-            let (unit, increment, precision) = match smallest_unit {
-                Some(rounding::TimeUnit::Minute) => {
+            let (unit, increment, precision) = match smallest_unit.as_deref() {
+                Some("minute" | "minutes") => {
                     (rounding::TimeUnit::Minute, 1, PlainTimePrecision::Minute)
                 }
-                Some(rounding::TimeUnit::Second) => (
+                Some("second" | "seconds") => (
                     rounding::TimeUnit::Second,
                     1,
                     PlainTimePrecision::Seconds(Some(0)),
                 ),
-                Some(rounding::TimeUnit::Millisecond) => (
+                Some("millisecond" | "milliseconds") => (
                     rounding::TimeUnit::Millisecond,
                     1,
                     PlainTimePrecision::Seconds(Some(3)),
                 ),
-                Some(rounding::TimeUnit::Microsecond) => (
+                Some("microsecond" | "microseconds") => (
                     rounding::TimeUnit::Microsecond,
                     1,
                     PlainTimePrecision::Seconds(Some(6)),
                 ),
-                Some(rounding::TimeUnit::Nanosecond) => (
+                // The allowed list above leaves only nanosecond(s) here.
+                Some(_) => (
                     rounding::TimeUnit::Nanosecond,
                     1,
                     PlainTimePrecision::Seconds(Some(9)),
-                ),
-                Some(rounding::TimeUnit::Hour) => unreachable!(
-                    "the smallestUnit option list above excludes hour for serialization"
                 ),
                 None => match digits {
                     None => (
@@ -773,7 +659,8 @@ impl Vm {
             )?;
             self.stack.push(formatter.clone());
             if self
-                .date_time_format_data(&formatter)?
+                .date_time_format_data(&formatter)
+                .expect("the fresh rooted DateTimeFormat owns its native format data")
                 .options()
                 .date_style
                 .is_some()

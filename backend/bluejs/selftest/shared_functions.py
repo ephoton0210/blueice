@@ -26,6 +26,16 @@ BOUNDARIES = {
     "retained-payload": ("add_payload",),
     "list-format": ("resolve_list_format", "create_list_format", "list_format_values", "list_format_parts"),
     "duration-format": ("resolve_duration_format", "duration_record", "create_duration_format"),
+    "temporal-options": ("temporal_raw_string_option", "temporal_raw_number_option",
+                         "temporal_validated_rounding_increment", "temporal_validated_rounding_mode",
+                         "temporal_validated_time_unit", "temporal_validated_plain_time_increment",
+                         "temporal_overflow_option", "temporal_fractional_second_digits"),
+    "temporal-epoch": ("instant_nanoseconds", "instant_milliseconds"),
+    "array-classification": ("is_array",),
+    "promise-settlement": ("new_promise_capability", "resolve_promise", "settle_promise",
+                           "promise_resolving_function", "promise_async_from_sync_fulfill",
+                           "promise_async_from_sync_reject"),
+    "numeric-conversion": ("number_from_bigint",),
 }
 
 

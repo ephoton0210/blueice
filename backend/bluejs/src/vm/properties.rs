@@ -58,9 +58,17 @@ impl Vm {
                     _ => "Number",
                 })?;
                 let prototype = self
-                    .get_property(&constructor, &"prototype".into())?
+                    .heap
+                    .get_own(
+                        constructor
+                            .object_id()
+                            .expect("an intrinsic constructor is an object"),
+                        "prototype",
+                    )
+                    .expect("the cached scalar constructor remains live")
+                    .expect("a scalar constructor owns its immutable prototype slot")
                     .object_id()
-                    .unwrap();
+                    .expect("a scalar intrinsic prototype is an object");
                 self.get_from_prototype(prototype, receiver, key)
             }
         }
@@ -144,7 +152,11 @@ impl Vm {
             // observably absent.
             self.global("Array")?;
         }
-        if key == "constructor" && self.is_callable(&Value::Object(target))? {
+        if key == "constructor"
+            && self
+                .is_callable(&Value::Object(target))
+                .expect("the preceding Array classification validated this retained target")
+        {
             // `%Function.prototype%` owns its `constructor` property.
             // Materialize `%Function%` before an inherited lookup on a
             // closure (including one passed through Object(value)) can
@@ -165,10 +177,11 @@ impl Vm {
         }
         self.materialize_global_object_property(target, key)?;
         if let Some(cell) = self.global_property_cell(target, key) {
-            return self
+            return Ok(self
                 .heap
-                .get_own(cell, "value")?
-                .ok_or_else(|| RuntimeError::ReferenceError("global binding".into()));
+                .get_own(cell, "value")
+                .expect("a retained global binding cell remains live")
+                .expect("global binding publication installs its private value slot"));
         }
         self.materialize_string_intrinsics_for_key(key)?;
         if key == "propertyIsEnumerable" {
@@ -184,16 +197,14 @@ impl Vm {
         if key == "caller" || key == "arguments" {
             self.global("Function")?;
         }
-        if key == "__proto__" && self.string_intrinsics.is_none() {
-            self.string_intrinsics()?;
-        }
         // `%Object.prototype%` has an initial own constructor property.
         // Intrinsics otherwise bootstrap lazily, so make it observable before
         // an ordinary object performs an inherited lookup.
         if key == "constructor"
             && self
                 .heap
-                .get_own_property_descriptor(self.object_prototype, "constructor")?
+                .get_own_property_descriptor(self.object_prototype, "constructor")
+                .expect("the VM retains its intrinsic Object prototype")
                 .is_none()
         {
             self.global("Object")?;
@@ -233,7 +244,11 @@ impl Vm {
             {
                 return self.test262_foreign_set(*object, key, value);
             }
-            if self.heap.proxy(*object)?.is_none()
+            if self
+                .heap
+                .proxy(*object)
+                .expect("the preceding Proxy lookup validated this retained receiver")
+                .is_none()
                 && self.test262_reverse_reference(*object).is_some()
             {
                 return self.test262_reverse_set(*object, key, value);
@@ -287,19 +302,17 @@ impl Vm {
         &mut self,
         owner_slot: usize,
     ) -> Result<(Value, ObjectId, JsString), RuntimeError> {
-        let name = match self.pop() {
-            Value::String(name) => name,
-            _ => unreachable!("compiler emits a string private name"),
-        };
+        let name = self
+            .pop()
+            .as_string()
+            .expect("the compiler retains a String private name")
+            .clone();
         let receiver = self.pop();
         let owner = self
-            .binding_value(owner_slot)?
+            .binding_value(owner_slot)
+            .expect("the compiler private-owner binding is retained and is not an eval var")
             .and_then(|value| value.object_id())
-            .ok_or_else(|| {
-                RuntimeError::TypeError(
-                    "private elements are not available in this function".into(),
-                )
-            })?;
+            .expect("the resolved compiler private-owner binding contains its class");
         Ok((receiver, owner, name))
     }
 
@@ -340,11 +353,13 @@ impl Vm {
         let object = self.private_receiver(receiver, owner)?;
         let element = self.private_element_or_throw(owner, name)?;
         match element {
-            PrivateElement::Field => {
-                self.heap.private_slot(object, owner, name)?.ok_or_else(|| {
+            PrivateElement::Field => self
+                .heap
+                .private_slot(object, owner, name)
+                .expect("the branded receiver and validated declaration remain live")
+                .ok_or_else(|| {
                     RuntimeError::TypeError("private field has not been initialized".into())
-                })
-            }
+                }),
             PrivateElement::Method(function) => Ok(function),
             PrivateElement::Accessor { get: None, .. } => Err(RuntimeError::TypeError(
                 "private accessor has no getter".into(),
@@ -391,8 +406,10 @@ impl Vm {
                     name.push_str(&"]".into());
                 }
             }
-            Value::String(text) => name.push_str(text),
-            other => name.push_str(&crate::primitive::string(other)?),
+            key => name.push_str(
+                key.as_string()
+                    .expect("computed class and object keys were converted to property keys"),
+            ),
         }
         self.define_data(*function, "name", Value::String(name), false, false, true)
     }
@@ -409,7 +426,12 @@ impl Vm {
         match element {
             PrivateElement::Field => {
                 // Assignment updates an initialized field; it never adds one.
-                if self.heap.private_slot(object, owner, &name)?.is_none() {
+                if self
+                    .heap
+                    .private_slot(object, owner, &name)
+                    .expect("the branded receiver and validated declaration remain live")
+                    .is_none()
+                {
                     return Err(RuntimeError::TypeError(
                         "private field has not been initialized".into(),
                     ));
@@ -441,13 +463,20 @@ impl Vm {
             .expect("compiler emits a class closure before heritage");
         let prototype = self
             .heap
-            .get(class, "prototype")?
+            .get(class, "prototype")
+            .expect("the retained class owns its immutable prototype descriptor")
             .object_id()
             .expect("class constructors have a prototype object");
         let (constructor_parent, instance_parent) = match &base {
             // `extends null`: the constructor still inherits from
             // %Function.prototype%; only the instance prototype chain ends.
-            Value::Null => (Some(self.function_prototype()?), None),
+            Value::Null => (
+                Some(
+                    self.function_prototype()
+                        .expect("allocating a class closure initialized Function intrinsics"),
+                ),
+                None,
+            ),
             Value::Object(base) if self.is_constructor(&Value::Object(*base))? => {
                 let instance_parent =
                     match self.get_property(&Value::Object(*base), &"prototype".into())? {
@@ -467,9 +496,14 @@ impl Vm {
                 ))
             }
         };
-        self.heap.set_prototype(class, constructor_parent)?;
-        self.heap.set_prototype(prototype, instance_parent)?;
-        self.with_roots(|heap| heap.set_closure_home(class, prototype))?;
+        self.heap
+            .set_prototype(class, constructor_parent)
+            .expect("the fresh unexposed class accepts a validated parent");
+        self.heap
+            .set_prototype(prototype, instance_parent)
+            .expect("the fresh unexposed class prototype accepts a validated parent");
+        self.with_roots(|heap| heap.set_closure_home(class, prototype))
+            .expect("SetClassHome already installed this retained class's metadata");
         Ok(())
     }
 
@@ -516,11 +550,13 @@ impl Vm {
             .expect("compiler emits a class closure before its field initializer");
         let prototype = self
             .heap
-            .get(class, "prototype")?
+            .get(class, "prototype")
+            .expect("the retained class owns its immutable prototype descriptor")
             .object_id()
             .expect("class constructors have a prototype object");
         self.with_roots(|heap| heap.set_closure_home(initializer, prototype))?;
-        self.with_roots(|heap| heap.set_class_fields(class, initializer))?;
+        self.with_roots(|heap| heap.set_class_fields(class, initializer))
+            .expect("SetClassHome precedes field installation and retains class metadata");
         self.stack.pop();
         Ok(())
     }
@@ -532,10 +568,14 @@ impl Vm {
         constructor: &Value,
         instance: &Value,
     ) -> Result<(), RuntimeError> {
-        let Some(class) = constructor.object_id() else {
-            return Ok(());
-        };
-        if let Some(initializer) = self.heap.class_fields(class)? {
+        let class = constructor
+            .object_id()
+            .expect("constructor invocation and SuperCall supply an object callee");
+        if let Some(initializer) = self
+            .heap
+            .class_fields(class)
+            .expect("the constructor is retained through instance initialization")
+        {
             self.call_native(
                 Value::Object(initializer),
                 instance.clone(),
@@ -555,7 +595,8 @@ impl Vm {
             .expect("compiler emits a class closure before setting its home object");
         let prototype = self
             .heap
-            .get(class, "prototype")?
+            .get(class, "prototype")
+            .expect("the retained class owns its immutable prototype descriptor")
             .object_id()
             .expect("class constructors have a prototype object");
         self.with_roots(|heap| heap.set_closure_home(class, prototype))?;
@@ -568,7 +609,8 @@ impl Vm {
             RuntimeError::TypeError("super is not available in this function".into())
         })?;
         Ok(self
-            .object_get_prototype(home)?
+            .object_get_prototype(home)
+            .expect("compiler method homes are retained ordinary objects, never Proxies")
             .map_or(Value::Null, Value::Object))
     }
 
